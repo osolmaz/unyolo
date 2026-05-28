@@ -10,6 +10,7 @@ The central invariant is strict: GitCBA must not provide any API or internal ser
 - Shared-secret authentication for all broker endpoints
 - Git smart HTTP route shape
 - GitHub REST-compatible pull request route shape
+- Server-side GitHub token forwarding
 - GitHub access loaded from a manually edited JSON file
 - No credential API
 - No GitHub access config API
@@ -22,6 +23,7 @@ The central invariant is strict: GitCBA must not provide any API or internal ser
 cp .env.example .env
 cp github-access.example.json github-access.json
 # edit CBA_SHARED_SECRET to a generated value with at least 32 bytes
+# set CBA_GITHUB_TOKEN to a GitHub token with the repo access GitCBA should broker
 # edit github-access.json by hand
 source .env
 make check
@@ -48,7 +50,7 @@ git -c http.extraHeader="Authorization: Bearer $CBA_SHARED_SECRET" \
   ls-remote http://localhost:8080/dutifuldev/gitcba.git
 ```
 
-The broker routes currently enforce auth and access policy, then return `501 Not Implemented` until the GitHub adapters are added.
+The broker routes enforce auth and access policy before forwarding to GitHub with the server-side `CBA_GITHUB_TOKEN`.
 
 ## GitHub Access
 
@@ -88,4 +90,4 @@ There are intentionally no credential endpoints.
 
 GitCBA should run behind Tailnet-only reachability, but Tailnet access is not treated as authorization. Clients must still submit the configured shared secret on every broker request.
 
-For production, the server-side GitHub credential should be configured manually and used only by narrow Git/GitHub adapters. Clients must never receive raw credentials, decrypted credentials, reversible encrypted credential blobs, token metadata, or credential identifiers.
+The server-side GitHub credential is configured manually with `CBA_GITHUB_TOKEN` and is used only by narrow Git/GitHub adapters. Clients must never receive raw credentials, decrypted credentials, reversible encrypted credential blobs, token metadata, or credential identifiers.

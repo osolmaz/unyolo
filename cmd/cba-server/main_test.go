@@ -21,6 +21,7 @@ func TestRunReturnsConfigError(t *testing.T) {
 func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 	t.Setenv("CBA_PORT", "0")
 	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("a", 32))
+	t.Setenv("CBA_GITHUB_TOKEN", "github-token")
 	t.Setenv("CBA_GITHUB_ACCESS_FILE", writeGitHubAccessFile(t))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -32,6 +33,7 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 func TestRunReturnsGitHubAccessFileError(t *testing.T) {
 	t.Setenv("CBA_PORT", "0")
 	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("a", 32))
+	t.Setenv("CBA_GITHUB_TOKEN", "github-token")
 	t.Setenv("CBA_GITHUB_ACCESS_FILE", filepath.Join(t.TempDir(), "missing.json"))
 	err := run(t.Context())
 	if err == nil {

@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"net/url"
 	"testing"
 
 	"github.com/dutifuldev/gitcba/internal/config"
@@ -13,6 +13,7 @@ import (
 )
 
 const testSharedSecret = "0123456789abcdef0123456789abcdef"
+const testGitHubToken = "github-token"
 
 func TestGitCompatibleRoutesRequireAuth(t *testing.T) {
 	t.Parallel()
@@ -46,7 +47,7 @@ func TestGitRoutesUseGitHubAccessPolicy(t *testing.T) {
 	server := newTestServer(t)
 
 	allowed := do(t, server, http.MethodGet, "/dutifuldev/gitcba.git/info/refs?service=git-upload-pack", bearerAuth())
-	if allowed.Code != http.StatusNotImplemented {
+	if allowed.Code != http.StatusOK {
 		t.Fatalf("allowed status = %d, body = %s", allowed.Code, allowed.Body.String())
 	}
 
@@ -60,20 +61,40 @@ func TestGitReceivePackAllowsExplicitRepositoryOwner(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	response := do(t, server, http.MethodPost, "/openclaw/openclaw.git/git-receive-pack", basicAuth())
-	if response.Code != http.StatusNotImplemented {
+	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
 func TestPullRequestRouteUsesGitHubShape(t *testing.T) {
 	t.Parallel()
-	server := newTestServer(t)
+	var gotPath string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusCreated)
+	})
 	response := do(t, server, http.MethodPost, "/repos/dutifuldev/gitcba/pulls", bearerAuth())
-	if response.Code != http.StatusNotImplemented {
+	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if !strings.Contains(response.Body.String(), string(githubaccess.OperationCreatePullRequest)) {
-		t.Fatalf("response body = %s, want operation marker", response.Body.String())
+	if gotPath != "/repos/dutifuldev/gitcba/pulls" {
+		t.Fatalf("upstream path = %q, want GitHub pulls path", gotPath)
+	}
+}
+
+func TestGitProxyUsesServerSideCredential(t *testing.T) {
+	t.Parallel()
+	var gotAuthorization string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuthorization = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	})
+	response := do(t, server, http.MethodGet, "/dutifuldev/gitcba.git/info/refs?service=git-upload-pack", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotAuthorization != githubGitAuthorization(testGitHubToken) {
+		t.Fatalf("upstream authorization was not server-side GitHub auth")
 	}
 }
 
@@ -108,8 +129,19 @@ func TestNoGitHubAccessEndpoint(t *testing.T) {
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
+	return newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("proxied"))
+	})
+}
+
+func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
+	t.Helper()
+	upstream := httptest.NewServer(handler)
+	t.Cleanup(upstream.Close)
 	server, err := New(config.Config{
 		SharedSecret: testSharedSecret,
+		GitHubToken:  testGitHubToken,
 	}, githubaccess.Config{
 		Owners: []string{"dutifuldev", "osolmaz"},
 		Repositories: []githubaccess.RepositoryRef{
@@ -119,6 +151,13 @@ func newTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	server.githubClient = upstream.Client()
+	server.githubGitBaseURL = upstreamURL
+	server.githubAPIBaseURL = upstreamURL
 	return server
 }
 

@@ -8,6 +8,7 @@
 - GitHub access config is only a PAT-like selection of owners and explicit repositories.
 - GitHub access config cannot be changed or read through the API.
 - Clients authenticate with a manually configured shared secret.
+- GitCBA uses a manually configured server-side GitHub token for outbound GitHub requests.
 - Tailnet reachability is a network boundary only; every broker endpoint still requires auth.
 - GitCBA never exposes generic shell execution, arbitrary GitHub API proxying, token introspection, or token export.
 
@@ -16,6 +17,7 @@
 - Run as a Tailnet-oriented HTTP service.
 - Accept `Authorization: Bearer <CBA_SHARED_SECRET>`.
 - Accept Git-friendly Basic auth where the password is `CBA_SHARED_SECRET`.
+- Load `CBA_GITHUB_TOKEN` at startup and use it only for outbound GitHub requests.
 - Configure GitHub access in `github-access.json` with:
   - `owners`: blanket owner/org/user accounts, like selecting all repos under an owner for a PAT.
   - `repositories`: explicit `owner/name` repositories.
@@ -44,19 +46,14 @@ POST /repos/{owner}/{repo}/pulls
 ## Hardcoded For Now
 
 - One shared client secret.
-- GitHub operation implementations.
-- Server-side GitHub credential loading.
+- Detailed `git-receive-pack` ref update inspection.
 - Approval behavior.
 - Path restrictions.
 - Rate limits and audit detail.
 
 ## Next Work
 
-- Add server-side manual GitHub credential configuration with no readback path.
-- Implement Git smart HTTP proxying for `git-upload-pack`.
-- Implement Git smart HTTP proxying for `git-receive-pack`.
 - Detect and audit non-fast-forward updates inside `git-receive-pack`.
-- Implement `POST /repos/{owner}/{repo}/pulls`.
 - Add audit events that record operation ids and redacted inputs.
 
 ## Non-Goals
