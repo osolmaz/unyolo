@@ -51,6 +51,7 @@ vet:
 ## lint: Run golangci-lint
 .PHONY: lint
 lint:
+	@which golangci-lint > /dev/null || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	golangci-lint run
 
 ## check: Run local quality checks

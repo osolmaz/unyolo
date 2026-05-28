@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   go:
     runs-on: ubuntu-latest
@@ -23,7 +26,7 @@ jobs:
       - run: go test ./...
       - run: ./scripts/check-go-coverage.sh
       - run: go build ./cmd/cba-server
-      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
       - run: golangci-lint run
       - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@latest
       - run: slophammer-go dry .
