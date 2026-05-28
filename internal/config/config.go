@@ -9,13 +9,12 @@ import (
 	"time"
 )
 
-const minimumAdminTokenBytes = 32
+const minimumSharedSecretBytes = 32
 
 type Config struct {
 	Environment       string
 	Port              string
-	APIPrefix         string
-	AdminToken        string
+	SharedSecret      string
 	GitHubAccessFile  string
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
@@ -27,8 +26,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		Environment:       getEnv("CBA_ENVIRONMENT", "local"),
 		Port:              getEnv("CBA_PORT", "8080"),
-		APIPrefix:         getEnv("CBA_API_PREFIX", "/v1"),
-		AdminToken:        os.Getenv("CBA_ADMIN_TOKEN"),
+		SharedSecret:      os.Getenv("CBA_SHARED_SECRET"),
 		GitHubAccessFile:  getEnv("CBA_GITHUB_ACCESS_FILE", "github-access.json"),
 		ReadHeaderTimeout: durationEnv("CBA_READ_HEADER_TIMEOUT", 5*time.Second),
 		ReadTimeout:       durationEnv("CBA_READ_TIMEOUT", 15*time.Second),
@@ -45,11 +43,8 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Port) == "" {
 		return errors.New("CBA_PORT is required")
 	}
-	if !strings.HasPrefix(c.APIPrefix, "/") {
-		return errors.New("CBA_API_PREFIX must start with /")
-	}
-	if len([]byte(c.AdminToken)) < minimumAdminTokenBytes {
-		return fmt.Errorf("CBA_ADMIN_TOKEN must be at least %d bytes", minimumAdminTokenBytes)
+	if len([]byte(c.SharedSecret)) < minimumSharedSecretBytes {
+		return fmt.Errorf("CBA_SHARED_SECRET must be at least %d bytes", minimumSharedSecretBytes)
 	}
 	if strings.TrimSpace(c.GitHubAccessFile) == "" {
 		return errors.New("CBA_GITHUB_ACCESS_FILE is required")

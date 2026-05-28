@@ -11,7 +11,7 @@ import (
 )
 
 func TestRunReturnsConfigError(t *testing.T) {
-	t.Setenv("CBA_ADMIN_TOKEN", "short")
+	t.Setenv("CBA_SHARED_SECRET", "short")
 	err := run(t.Context())
 	if err == nil {
 		t.Fatal("run() error = nil, want config error")
@@ -20,8 +20,7 @@ func TestRunReturnsConfigError(t *testing.T) {
 
 func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 	t.Setenv("CBA_PORT", "0")
-	t.Setenv("CBA_API_PREFIX", "/v1")
-	t.Setenv("CBA_ADMIN_TOKEN", strings.Repeat("a", 32))
+	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("CBA_GITHUB_ACCESS_FILE", writeGitHubAccessFile(t))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -32,8 +31,7 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 
 func TestRunReturnsGitHubAccessFileError(t *testing.T) {
 	t.Setenv("CBA_PORT", "0")
-	t.Setenv("CBA_API_PREFIX", "/v1")
-	t.Setenv("CBA_ADMIN_TOKEN", strings.Repeat("a", 32))
+	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("CBA_GITHUB_ACCESS_FILE", filepath.Join(t.TempDir(), "missing.json"))
 	err := run(t.Context())
 	if err == nil {

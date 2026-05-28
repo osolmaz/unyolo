@@ -1,17 +1,19 @@
-# CBA
+# GitCBA
 
-CBA is a Credential Broker for Agents: a small Go service that lets agents use approved GitHub access without receiving the underlying credentials.
+GitCBA is a small Git-compatible credential broker for agents. It is intended to run on a private Tailnet and broker a very limited set of GitHub operations without exposing the underlying GitHub credential to clients.
 
-The central invariant is strict: CBA must not provide any API or internal service method that retrieves original credential material. Secrets enter through a write-only boundary, are handed to a secret sink, and the application keeps only metadata plus an opaque handle.
+The central invariant is strict: GitCBA must not provide any API or internal service method that retrieves original credential material.
 
 ## Current Seed
 
 - Echo HTTP server
-- Bearer-token authentication for management endpoints
-- Credential registration and metadata lookup
+- Shared-secret authentication for all broker endpoints
+- Git smart HTTP route shape
+- GitHub REST-compatible pull request route shape
 - GitHub access loaded from a manually edited JSON file
-- Write-only secret sink interface with no read/decrypt method
-- Tests that assert secret material is not returned from HTTP or domain responses
+- No credential API
+- No GitHub access config API
+- Tests for auth, route shape, and access decisions
 - Slophammer-oriented quality gates
 
 ## Local Development
@@ -19,7 +21,7 @@ The central invariant is strict: CBA must not provide any API or internal servic
 ```sh
 cp .env.example .env
 cp github-access.example.json github-access.json
-# edit CBA_ADMIN_TOKEN to a generated value with at least 32 bytes
+# edit CBA_SHARED_SECRET to a generated value with at least 32 bytes
 # edit github-access.json by hand
 source .env
 make check
@@ -32,18 +34,25 @@ Health check:
 curl http://localhost:8080/healthz
 ```
 
-Register a GitHub token:
+GitCBA accepts either Bearer auth:
 
 ```sh
-curl -X POST http://localhost:8080/v1/credentials \
-  -H "Authorization: Bearer $CBA_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"github-read","kind":"github_token","secret":"github_pat_example","scopes":["contents:read"]}'
+curl -H "Authorization: Bearer $CBA_SHARED_SECRET" \
+  "http://localhost:8080/dutifuldev/gitcba.git/info/refs?service=git-upload-pack"
 ```
 
-The response intentionally contains metadata only. There is no credential retrieval endpoint.
+Or Git-friendly Basic auth where the password is `CBA_SHARED_SECRET`:
 
-Configure which GitHub owners or repositories are in scope by manually editing `github-access.json`. There is no API endpoint for changing this file.
+```sh
+git -c http.extraHeader="Authorization: Bearer $CBA_SHARED_SECRET" \
+  ls-remote http://localhost:8080/dutifuldev/gitcba.git
+```
+
+The broker routes currently enforce auth and access policy, then return `501 Not Implemented` until the GitHub adapters are added.
+
+## GitHub Access
+
+Configure which GitHub owners or repositories are in scope by manually editing `github-access.json`. There is no API endpoint for changing or reading this file.
 
 ```json
 {
@@ -54,14 +63,29 @@ Configure which GitHub owners or repositories are in scope by manually editing `
 
 Hardcoded operation rules for now:
 
-- Agents may create pull requests for configured owners or repositories.
-- Agents may push to branches or forks only when the target account is in scope.
-- Agents may force-push using the same target-account rule as normal pushes.
+- `git-upload-pack` is allowed only for configured owners or repositories.
+- `git-receive-pack` is allowed only when the target account is in scope.
+- `POST /repos/{owner}/{repo}/pulls` is allowed only for configured owners or repositories.
 - A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
-- Any push or force-push outside that scope is denied.
+
+## Broker Routes
+
+```text
+GET  /healthz
+
+GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
+POST /{owner}/{repo}.git/git-upload-pack
+
+GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
+POST /{owner}/{repo}.git/git-receive-pack
+
+POST /repos/{owner}/{repo}/pulls
+```
+
+There are intentionally no credential endpoints.
 
 ## Security Model
 
-CBA should treat agents as untrusted callers. Agents may request operations, but they must never receive raw credentials, decrypted credentials, or reversible encrypted credential blobs.
+GitCBA should run behind Tailnet-only reachability, but Tailnet access is not treated as authorization. Clients must still submit the configured shared secret on every broker request.
 
-For production, the secret sink should be backed by a service that can perform constrained operations or mint short-lived delegated credentials without returning the stored secret to CBA callers. Local development currently uses a discarding sink, which proves the API shape but cannot execute real downstream actions.
+For production, the server-side GitHub credential should be configured manually and used only by narrow Git/GitHub adapters. Clients must never receive raw credentials, decrypted credentials, reversible encrypted credential blobs, token metadata, or credential identifiers.

@@ -3,44 +3,65 @@
 ## Security Invariants
 
 - Original credentials are never returned by HTTP handlers, service methods, logs, errors, audit records, or API responses.
-- CBA stores credential metadata and opaque handles only.
+- GitCBA exposes no credential listing, registration, lookup, export, decrypt, or introspection API.
 - GitHub access must be configured in a manually edited file before a credential-backed operation can run.
 - GitHub access config is only a PAT-like selection of owners and explicit repositories.
-- GitHub access config cannot be changed through the API.
-- Operation rules stay hardcoded for now.
-- CBA never exposes generic `git`, shell, arbitrary GitHub API proxying, token introspection, or token export.
+- GitHub access config cannot be changed or read through the API.
+- Clients authenticate with a manually configured shared secret.
+- Tailnet reachability is a network boundary only; every broker endpoint still requires auth.
+- GitCBA never exposes generic shell execution, arbitrary GitHub API proxying, token introspection, or token export.
 
 ## Current Scope
 
-- Register one or more GitHub credentials through a write-only boundary.
+- Run as a Tailnet-oriented HTTP service.
+- Accept `Authorization: Bearer <CBA_SHARED_SECRET>`.
+- Accept Git-friendly Basic auth where the password is `CBA_SHARED_SECRET`.
 - Configure GitHub access in `github-access.json` with:
   - `owners`: blanket owner/org/user accounts, like selecting all repos under an owner for a PAT.
   - `repositories`: explicit `owner/name` repositories.
 - Keep everything else hardcoded in code.
-- Agents may create pull requests for configured owners or repositories.
-- Agents may push branches or forks only when the target account is in scope.
-- Agents may force-push using the same target-account rule as normal pushes.
+- Mimic Git smart HTTP route shape for fetch and push.
+- Mimic GitHub REST route shape for pull request creation.
+- `git-upload-pack` is allowed for configured owners or repositories.
+- `git-receive-pack` is allowed only when the target account is in scope.
+- Pull request creation is allowed for configured owners or repositories.
 - A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
+
+## Broker Routes
+
+```text
+GET  /healthz
+
+GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
+POST /{owner}/{repo}.git/git-upload-pack
+
+GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
+POST /{owner}/{repo}.git/git-receive-pack
+
+POST /repos/{owner}/{repo}/pulls
+```
 
 ## Hardcoded For Now
 
-- Agents allowed to call CBA.
+- One shared client secret.
 - GitHub operation implementations.
+- Server-side GitHub credential loading.
 - Approval behavior.
 - Path restrictions.
 - Rate limits and audit detail.
 
 ## Next Work
 
-- Persist credentials with migrations.
-- Replace the development discarding sink with a production write-only credential backend.
-- Add narrow GitHub adapters after the access checks exist.
-- Use the access decision helper in the GitHub adapters.
+- Add server-side manual GitHub credential configuration with no readback path.
+- Implement Git smart HTTP proxying for `git-upload-pack`.
+- Implement Git smart HTTP proxying for `git-receive-pack`.
+- Detect and audit non-fast-forward updates inside `git-receive-pack`.
+- Implement `POST /repos/{owner}/{repo}/pulls`.
 - Add audit events that record operation ids and redacted inputs.
 
 ## Non-Goals
 
-- No credential retrieval endpoint.
+- No credential API.
 - No token introspection endpoint.
 - No broad GitHub API proxy.
 - No arbitrary local `git` command execution.

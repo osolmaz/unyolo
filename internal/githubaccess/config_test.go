@@ -55,7 +55,7 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestDecideCreatePullRequest(t *testing.T) {
+func TestDecideRepositoryScopedOperations(t *testing.T) {
 	t.Parallel()
 	cfg := Config{
 		Owners: []string{"dutifuldev"},
@@ -65,12 +65,20 @@ func TestDecideCreatePullRequest(t *testing.T) {
 	}
 
 	cases := map[string]DecisionInput{
-		"owner-wide repository": {
+		"owner-wide pull request": {
 			Operation:  OperationCreatePullRequest,
 			Repository: RepositoryRef{Owner: "dutifuldev", Name: "gitcba"},
 		},
-		"explicit repository": {
+		"explicit pull request": {
 			Operation:  OperationCreatePullRequest,
+			Repository: RepositoryRef{Owner: "openclaw", Name: "openclaw"},
+		},
+		"owner-wide upload pack": {
+			Operation:  OperationGitUploadPack,
+			Repository: RepositoryRef{Owner: "dutifuldev", Name: "gitcba"},
+		},
+		"explicit upload pack": {
+			Operation:  OperationGitUploadPack,
 			Repository: RepositoryRef{Owner: "openclaw", Name: "openclaw"},
 		},
 	}
@@ -100,7 +108,7 @@ func TestDecidePushAndForcePushTargets(t *testing.T) {
 	}
 	repository := RepositoryRef{Owner: "openclaw", Name: "openclaw"}
 
-	for _, operation := range []Operation{OperationPushBranch, OperationForcePushBranch} {
+	for _, operation := range []Operation{OperationGitReceivePack, OperationPushBranch, OperationForcePushBranch} {
 		for _, targetOwner := range []string{"osolmaz", "openclaw"} {
 			decision := cfg.Decide(DecisionInput{
 				Operation:   operation,

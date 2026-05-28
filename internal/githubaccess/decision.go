@@ -6,6 +6,8 @@ type Operation string
 
 const (
 	OperationCreatePullRequest Operation = "create_pull_request"
+	OperationGitUploadPack     Operation = "git_upload_pack"
+	OperationGitReceivePack    Operation = "git_receive_pack"
 	OperationPushBranch        Operation = "push_branch"
 	OperationForcePushBranch   Operation = "force_push_branch"
 )
@@ -29,12 +31,15 @@ func (c Config) Decide(input DecisionInput) Decision {
 	targetOwner := strings.TrimSpace(input.TargetOwner)
 
 	switch input.Operation {
-	case OperationCreatePullRequest:
+	case OperationCreatePullRequest, OperationGitUploadPack:
 		if c.Allows(repository.Owner, repository.Name) {
 			return allow("repository is in scope")
 		}
 		return deny("repository is not in scope")
-	case OperationPushBranch, OperationForcePushBranch:
+	case OperationGitReceivePack, OperationPushBranch, OperationForcePushBranch:
+		if targetOwner == "" {
+			targetOwner = repository.Owner
+		}
 		if c.allowsTargetOwner(repository, targetOwner) {
 			return allow("target owner is in scope")
 		}

@@ -9,15 +9,14 @@ import (
 func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("CBA_ENVIRONMENT", "test")
 	t.Setenv("CBA_PORT", "9090")
-	t.Setenv("CBA_API_PREFIX", "/api")
-	t.Setenv("CBA_ADMIN_TOKEN", strings.Repeat("a", minimumAdminTokenBytes))
+	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
 	t.Setenv("CBA_GITHUB_ACCESS_FILE", "/tmp/github-access.json")
 	t.Setenv("CBA_READ_TIMEOUT", "3")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Environment != "test" || cfg.Port != "9090" || cfg.APIPrefix != "/api" {
+	if cfg.Environment != "test" || cfg.Port != "9090" {
 		t.Fatalf("Load() = %+v, want configured values", cfg)
 	}
 	if cfg.GitHubAccessFile != "/tmp/github-access.json" {
@@ -28,29 +27,15 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsWeakAdminToken(t *testing.T) {
+func TestValidateRejectsWeakSharedSecret(t *testing.T) {
 	t.Parallel()
 	cfg := Config{
 		Port:             "8080",
-		APIPrefix:        "/v1",
-		AdminToken:       "short",
+		SharedSecret:     "short",
 		GitHubAccessFile: "github-access.json",
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want weak token error")
-	}
-}
-
-func TestValidateRejectsBadAPIPrefix(t *testing.T) {
-	t.Parallel()
-	cfg := Config{
-		Port:             "8080",
-		APIPrefix:        "v1",
-		AdminToken:       strings.Repeat("a", minimumAdminTokenBytes),
-		GitHubAccessFile: "github-access.json",
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want API prefix error")
 	}
 }
 

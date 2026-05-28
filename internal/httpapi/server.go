@@ -1,24 +1,23 @@
 package httpapi
 
 import (
-	"context"
-	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/dutifuldev/gitcba/internal/config"
-	"github.com/dutifuldev/gitcba/internal/credential"
+	"github.com/dutifuldev/gitcba/internal/githubaccess"
 	"github.com/dutifuldev/gitcba/internal/security"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
 type Server struct {
-	echo       *echo.Echo
-	credential *credential.Service
+	echo         *echo.Echo
+	githubAccess githubaccess.Config
 }
 
-func New(cfg config.Config, credentialService *credential.Service) (*Server, error) {
-	auth, err := security.NewTokenAuth(cfg.AdminToken)
+func New(cfg config.Config, githubAccess githubaccess.Config) (*Server, error) {
+	auth, err := security.NewTokenAuth(cfg.SharedSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -29,12 +28,13 @@ func New(cfg config.Config, credentialService *credential.Service) (*Server, err
 	e.Use(noStore)
 	e.Use(middleware.BodyLimit("32K"))
 	e.GET("/healthz", health)
-	server := &Server{echo: e, credential: credentialService}
-	api := e.Group(cfg.APIPrefix)
-	api.Use(auth.Middleware)
-	api.POST("/credentials", server.registerCredential)
-	api.GET("/credentials", server.listCredentials)
-	api.GET("/credentials/:id", server.getCredential)
+	server := &Server{echo: e, githubAccess: githubAccess}
+	protected := e.Group("")
+	protected.Use(auth.Middleware)
+	protected.GET("/:owner/:repoGit/info/refs", server.gitInfoRefs)
+	protected.POST("/:owner/:repoGit/git-upload-pack", server.gitUploadPack)
+	protected.POST("/:owner/:repoGit/git-receive-pack", server.gitReceivePack)
+	protected.POST("/repos/:owner/:repo/pulls", server.createPullRequest)
 	return server, nil
 }
 
@@ -42,45 +42,68 @@ func (s *Server) Handler() http.Handler {
 	return s.echo
 }
 
-type registerCredentialRequest struct {
-	Name   string          `json:"name"`
-	Kind   credential.Kind `json:"kind"`
-	Secret string          `json:"secret"`
-	Scopes []string        `json:"scopes"`
-}
-
-func (s *Server) registerCredential(c echo.Context) error {
-	var request registerCredentialRequest
-	if err := c.Bind(&request); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid JSON body")
-	}
-	secret, err := credential.NewSecretMaterial(request.Secret)
-	request.Secret = ""
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	record, err := s.credential.Register(c.Request().Context(), credential.RegisterInput{
-		Name:   request.Name,
-		Kind:   request.Kind,
-		Secret: secret,
-		Scopes: request.Scopes,
-	})
-	if err != nil {
-		return mapCredentialError(err)
-	}
-	return c.JSON(http.StatusCreated, record)
-}
-
-func (s *Server) listCredentials(c echo.Context) error {
-	return jsonList(c, s.credential.List, mapCredentialError)
-}
-
-func (s *Server) getCredential(c echo.Context) error {
-	return jsonGet(c, s.credential.Get, mapCredentialError)
-}
-
 func health(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) gitInfoRefs(c echo.Context) error {
+	operation, err := operationFromGitService(c.QueryParam("service"))
+	if err != nil {
+		return err
+	}
+	return s.authorizeBrokerOperation(c, operation)
+}
+
+func (s *Server) gitUploadPack(c echo.Context) error {
+	return s.authorizeBrokerOperation(c, githubaccess.OperationGitUploadPack)
+}
+
+func (s *Server) gitReceivePack(c echo.Context) error {
+	return s.authorizeBrokerOperation(c, githubaccess.OperationGitReceivePack)
+}
+
+func (s *Server) createPullRequest(c echo.Context) error {
+	return s.authorizeBrokerOperation(c, githubaccess.OperationCreatePullRequest)
+}
+
+func (s *Server) authorizeBrokerOperation(c echo.Context, operation githubaccess.Operation) error {
+	if decision := s.decide(c, operation); !decision.Allowed {
+		return echo.NewHTTPError(http.StatusForbidden, decision.Reason)
+	}
+	return notImplemented(c, operation)
+}
+
+func (s *Server) decide(c echo.Context, operation githubaccess.Operation) githubaccess.Decision {
+	repo := c.Param("repo")
+	if repo == "" {
+		repo = c.Param("repoGit")
+	}
+	return s.githubAccess.Decide(githubaccess.DecisionInput{
+		Operation: operation,
+		Repository: githubaccess.RepositoryRef{
+			Owner: c.Param("owner"),
+			Name:  strings.TrimSuffix(repo, ".git"),
+		},
+		TargetOwner: c.Param("owner"),
+	})
+}
+
+func operationFromGitService(service string) (githubaccess.Operation, error) {
+	switch service {
+	case "git-upload-pack":
+		return githubaccess.OperationGitUploadPack, nil
+	case "git-receive-pack":
+		return githubaccess.OperationGitReceivePack, nil
+	default:
+		return "", echo.NewHTTPError(http.StatusBadRequest, "unsupported git service")
+	}
+}
+
+func notImplemented(c echo.Context, operation githubaccess.Operation) error {
+	return c.JSON(http.StatusNotImplemented, map[string]string{
+		"error":     "broker operation is not implemented yet",
+		"operation": string(operation),
+	})
 }
 
 func noStore(next echo.HandlerFunc) echo.HandlerFunc {
@@ -90,39 +113,4 @@ func noStore(next echo.HandlerFunc) echo.HandlerFunc {
 		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
 		return next(c)
 	}
-}
-
-func jsonList[T any](
-	c echo.Context,
-	list func(context.Context) ([]T, error),
-	mapError func(error) error,
-) error {
-	records, err := list(c.Request().Context())
-	if err != nil {
-		return mapError(err)
-	}
-	return c.JSON(http.StatusOK, records)
-}
-
-func jsonGet[T any](
-	c echo.Context,
-	get func(context.Context, string) (T, error),
-	mapError func(error) error,
-) error {
-	record, err := get(c.Request().Context(), c.Param("id"))
-	if err != nil {
-		return mapError(err)
-	}
-	return c.JSON(http.StatusOK, record)
-}
-
-func mapCredentialError(err error) error {
-	return mapDomainError(err, credential.ErrNotFound, "credential not found")
-}
-
-func mapDomainError(err error, notFound error, message string) error {
-	if errors.Is(err, notFound) {
-		return echo.NewHTTPError(http.StatusNotFound, message)
-	}
-	return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 }

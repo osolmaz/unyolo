@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/dutifuldev/gitcba/internal/config"
-	"github.com/dutifuldev/gitcba/internal/credential"
 	"github.com/dutifuldev/gitcba/internal/githubaccess"
 	"github.com/dutifuldev/gitcba/internal/httpapi"
 )
@@ -37,14 +36,11 @@ func run(ctx context.Context) error {
 }
 
 func buildServer(cfg config.Config) (*http.Server, error) {
-	if _, err := githubaccess.LoadFile(cfg.GitHubAccessFile); err != nil {
+	access, err := githubaccess.LoadFile(cfg.GitHubAccessFile)
+	if err != nil {
 		return nil, err
 	}
-	credentialService := credential.NewService(
-		credential.NewDiscardingSecretSink(),
-		credential.NewMemoryMetadataStore(),
-	)
-	api, err := httpapi.New(cfg, credentialService)
+	api, err := httpapi.New(cfg, access)
 	if err != nil {
 		return nil, err
 	}

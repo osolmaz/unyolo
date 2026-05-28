@@ -23,6 +23,5 @@ go:
   crap_max_score: 8
   mutation:
     targets:
-      - internal/credential
       - internal/githubaccess
       - internal/security

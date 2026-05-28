@@ -6,11 +6,11 @@ These instructions apply to this repository.
 
 - This is a Go backend for CBA, Credential Broker for Agents.
 - Use Echo for HTTP routing. Do not introduce Gin.
-- Keep domain behavior in `internal/credential` independent from HTTP, process state, databases, and network clients.
-- Secret material must be write-only at the CBA API boundary. Do not add APIs, repository methods, logs, errors, tests, or debug helpers that return original credentials.
-- Credential storage adapters may accept secret material only to hand it to a write-only external sink and return an opaque handle.
+- Do not add credential management endpoints. Server-side GitHub credentials must be configured manually and must not have a readback path.
+- Secret material must be write-only inside CBA. Do not add APIs, repository methods, logs, errors, tests, or debug helpers that return original credentials.
 - GitHub access config is only a PAT-like selection of owners and explicit repositories. Keep all operation rules hardcoded until the project needs more.
-- Do not add broad GitHub API proxying, arbitrary `git`, organization admin, workflow admin, member management, or repository deletion operations.
+- Keep broker routes compatible with Git smart HTTP and the narrow GitHub REST endpoints being brokered.
+- Do not add broad GitHub API proxying, arbitrary local shell execution, organization admin, workflow admin, member management, or repository deletion operations.
 - Keep package APIs small and explicit. Keep interfaces near their consumers.
 - Do not add dependencies unless they remove real complexity.
 
