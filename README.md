@@ -67,6 +67,7 @@ Hardcoded operation rules for now:
 
 - `git-upload-pack` is allowed only for configured owners or repositories.
 - `git-receive-pack` is allowed only when the target account is in scope.
+- `git-receive-pack` rejects updates to `refs/heads/main` and to the repository's default branch.
 - `POST /repos/{owner}/{repo}/pulls` is allowed only for configured owners or repositories.
 - A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
 

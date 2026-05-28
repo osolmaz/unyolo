@@ -1,11 +1,15 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/dutifuldev/gitcba/internal/config"
@@ -82,7 +86,7 @@ func (s *Server) gitUploadPack(c echo.Context) error {
 }
 
 func (s *Server) gitReceivePack(c echo.Context) error {
-	return s.authorizeBrokerOperation(c, githubaccess.OperationGitReceivePack, s.proxyGit)
+	return s.authorizeBrokerOperation(c, githubaccess.OperationGitReceivePack, s.proxyGitReceivePack)
 }
 
 func (s *Server) createPullRequest(c echo.Context) error {
@@ -145,6 +149,112 @@ func (s *Server) proxyGit(c echo.Context) error {
 
 func gitRepoPrefix(c echo.Context) string {
 	return fmt.Sprintf("/%s/%s/", c.Param("owner"), c.Param("repoGit"))
+}
+
+func (s *Server) proxyGitReceivePack(c echo.Context) error {
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "read git receive-pack request")
+	}
+	updatedRefs, err := receivePackUpdatedRefs(body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "parse git receive-pack request")
+	}
+	if len(updatedRefs) > 0 {
+		defaultBranch, err := s.fetchDefaultBranch(c, c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git"))
+		if err != nil {
+			return err
+		}
+		if protectedRef := protectedBranchUpdate(updatedRefs, defaultBranch); protectedRef != "" {
+			return echo.NewHTTPError(http.StatusForbidden, "push to default branch is denied: "+protectedRef)
+		}
+	}
+	c.Request().Body = io.NopCloser(bytes.NewReader(body))
+	c.Request().ContentLength = int64(len(body))
+	return s.proxyGit(c)
+}
+
+func receivePackUpdatedRefs(body []byte) ([]string, error) {
+	var refs []string
+	for offset := 0; offset < len(body); {
+		line, nextOffset, flush, err := nextPktLine(body, offset)
+		if err != nil {
+			return nil, err
+		}
+		if flush {
+			break
+		}
+		offset = nextOffset
+		command := strings.SplitN(strings.TrimSuffix(line, "\n"), "\x00", 2)[0]
+		fields := strings.Fields(command)
+		if len(fields) >= 3 && strings.HasPrefix(fields[2], "refs/heads/") {
+			refs = append(refs, fields[2])
+		}
+	}
+	return refs, nil
+}
+
+func nextPktLine(body []byte, offset int) (line string, nextOffset int, flush bool, err error) {
+	if len(body)-offset < 4 {
+		return "", 0, false, errors.New("short pkt-line")
+	}
+	size, err := strconv.ParseInt(string(body[offset:offset+4]), 16, 32)
+	if err != nil {
+		return "", 0, false, err
+	}
+	if size == 0 {
+		return "", 0, true, nil
+	}
+	if size < 4 || int64(len(body)-offset-4) < size-4 {
+		return "", 0, false, errors.New("invalid pkt-line size")
+	}
+	start := offset + 4
+	end := start + int(size) - 4
+	return string(body[start:end]), end, false, nil
+}
+
+func protectedBranchUpdate(refs []string, defaultBranch string) string {
+	protected := map[string]struct{}{
+		"refs/heads/main": {},
+	}
+	if defaultBranch != "" {
+		protected["refs/heads/"+defaultBranch] = struct{}{}
+	}
+	for _, ref := range refs {
+		if _, exists := protected[ref]; exists {
+			return ref
+		}
+	}
+	return ""
+}
+
+func (s *Server) fetchDefaultBranch(c echo.Context, owner string, repo string) (string, error) {
+	upstreamURL := s.githubAPIBaseURL.JoinPath("repos", owner, repo)
+	request, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, upstreamURL.String(), http.NoBody)
+	if err != nil {
+		return "", echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
+	}
+	request.Header.Set("Authorization", "Bearer "+s.githubToken)
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL and file-policy-gated owner/repo params.
+	response, err := s.githubClient.Do(request)
+	if err != nil {
+		return "", echo.NewHTTPError(http.StatusBadGateway, "fetch default branch")
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return "", echo.NewHTTPError(http.StatusBadGateway, "fetch default branch")
+	}
+	var payload struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return "", echo.NewHTTPError(http.StatusBadGateway, "decode default branch")
+	}
+	return payload.DefaultBranch, nil
 }
 
 func (s *Server) proxyGitHubAPI(c echo.Context) error {

@@ -26,6 +26,7 @@
 - Mimic GitHub REST route shape for pull request creation.
 - `git-upload-pack` is allowed for configured owners or repositories.
 - `git-receive-pack` is allowed only when the target account is in scope.
+- `git-receive-pack` rejects updates to `refs/heads/main` and to the repository's default branch.
 - Pull request creation is allowed for configured owners or repositories.
 - A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
 
@@ -46,7 +47,6 @@ POST /repos/{owner}/{repo}/pulls
 ## Hardcoded For Now
 
 - One shared client secret.
-- Detailed `git-receive-pack` ref update inspection.
 - Approval behavior.
 - Path restrictions.
 - Rate limits and audit detail.

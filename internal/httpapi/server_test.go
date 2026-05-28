@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -63,6 +66,81 @@ func TestGitReceivePackAllowsExplicitRepositoryOwner(t *testing.T) {
 	response := do(t, server, http.MethodPost, "/openclaw/openclaw.git/git-receive-pack", basicAuth())
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestGitReceivePackRejectsMainBranchUpdate(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackBody("refs/heads/main"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestGitReceivePackRejectsDefaultBranchUpdate(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithDefaultBranch(t, "trunk")
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackBody("refs/heads/trunk"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestGitReceivePackAllowsFeatureBranchUpdate(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/dutifuldev/gitcba" {
+			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
+			return
+		}
+		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackBody("refs/heads/gitcba-smoke"),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !gotGitPush {
+		t.Fatal("git receive-pack was not proxied")
+	}
+}
+
+func TestGitReceivePackRejectsMalformedRequest(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		[]byte("bad"),
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 }
 
@@ -129,7 +207,16 @@ func TestNoGitHubAccessEndpoint(t *testing.T) {
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+	return newTestServerWithDefaultBranch(t, "main")
+}
+
+func newTestServerWithDefaultBranch(t *testing.T, defaultBranch string) *Server {
+	t.Helper()
+	return newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/dutifuldev/gitcba" || r.URL.Path == "/repos/openclaw/openclaw" {
+			_, _ = w.Write([]byte(`{"default_branch":"` + defaultBranch + `"}`))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("proxied"))
 	})
@@ -163,7 +250,23 @@ func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 
 func do(t *testing.T, server *Server, method string, path string, authorization string) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequestWithContext(context.Background(), method, path, http.NoBody)
+	return doWithBody(t, server, method, path, authorization, nil)
+}
+
+func doWithBody(
+	t *testing.T,
+	server *Server,
+	method string,
+	path string,
+	authorization string,
+	body []byte,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	var requestBody io.Reader = http.NoBody
+	if len(body) > 0 {
+		requestBody = bytes.NewReader(body)
+	}
+	request := httptest.NewRequestWithContext(context.Background(), method, path, requestBody)
 	request.Header.Set("Authorization", authorization)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
@@ -177,4 +280,15 @@ func bearerAuth() string {
 func basicAuth() string {
 	encoded := base64.StdEncoding.EncodeToString([]byte("git:" + testSharedSecret))
 	return "Basic " + encoded
+}
+
+func receivePackBody(ref string) []byte {
+	line := "0000000000000000000000000000000000000000 " +
+		"1111111111111111111111111111111111111111 " +
+		ref + "\x00 report-status\n"
+	return append(pktLine(line), []byte("0000")...)
+}
+
+func pktLine(line string) []byte {
+	return []byte(fmt.Sprintf("%04x%s", len(line)+4, line))
 }
