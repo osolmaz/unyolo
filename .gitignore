@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+bin/
+/cba-server
+coverage.out
+dist/
+tmp/

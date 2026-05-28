@@ -1,0 +1,28 @@
+go:
+  coverage_threshold: 85
+  targets:
+    - .
+  exclude:
+    - "fixtures/**"
+  dry:
+    max_findings: 0
+    paths:
+      - cmd
+      - internal
+    exclude:
+      - "**/*_test.go"
+      - "fixtures/**"
+    structural:
+      enabled: true
+      threshold: 0.82
+      min_lines: 4
+      min_nodes: 20
+    copied_blocks:
+      enabled: true
+      min_tokens: 100
+  crap_max_score: 8
+  mutation:
+    targets:
+      - internal/credential
+      - internal/security
+

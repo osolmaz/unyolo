@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - run: go fmt ./...
+      - run: go vet ./...
+      - run: go test ./...
+      - run: ./scripts/check-go-coverage.sh
+      - run: go build ./cmd/cba-server
+      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - run: golangci-lint run
+      - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@latest
+      - run: slophammer-go dry .
+      - run: slophammer-go crap .
+      - run: slophammer-go mutate . --scan
+      - run: slophammer-go check .
+      - run: slophammer-go check . --execute
