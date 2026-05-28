@@ -72,7 +72,7 @@ func (c Config) Allows(owner string, name string) bool {
 	if owner == "" || name == "" {
 		return false
 	}
-	for _, allowedOwner := range normalize.Strings(c.Owners) {
+	for _, allowedOwner := range normalizeOwners(c.Owners) {
 		if owner == allowedOwner {
 			return true
 		}
@@ -83,6 +83,10 @@ func (c Config) Allows(owner string, name string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeOwners(owners []string) []string {
+	return normalize.Strings(owners)
 }
 
 func normalizeRepositories(repositories []RepositoryRef) []RepositoryRef {

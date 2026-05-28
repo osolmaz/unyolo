@@ -55,6 +55,85 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestDecideCreatePullRequest(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Owners: []string{"dutifuldev"},
+		Repositories: []RepositoryRef{
+			{Owner: "openclaw", Name: "openclaw"},
+		},
+	}
+
+	cases := map[string]DecisionInput{
+		"owner-wide repository": {
+			Operation:  OperationCreatePullRequest,
+			Repository: RepositoryRef{Owner: "dutifuldev", Name: "gitcba"},
+		},
+		"explicit repository": {
+			Operation:  OperationCreatePullRequest,
+			Repository: RepositoryRef{Owner: "openclaw", Name: "openclaw"},
+		},
+	}
+	for name, input := range cases {
+		decision := cfg.Decide(input)
+		if !decision.Allowed {
+			t.Fatalf("%s decision = %+v, want allowed", name, decision)
+		}
+	}
+
+	decision := cfg.Decide(DecisionInput{
+		Operation:  OperationCreatePullRequest,
+		Repository: RepositoryRef{Owner: "other", Name: "repo"},
+	})
+	if decision.Allowed {
+		t.Fatalf("outside repository decision = %+v, want denied", decision)
+	}
+}
+
+func TestDecidePushAndForcePushTargets(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Owners: []string{"dutifuldev", "osolmaz"},
+		Repositories: []RepositoryRef{
+			{Owner: "openclaw", Name: "openclaw"},
+		},
+	}
+	repository := RepositoryRef{Owner: "openclaw", Name: "openclaw"}
+
+	for _, operation := range []Operation{OperationPushBranch, OperationForcePushBranch} {
+		for _, targetOwner := range []string{"osolmaz", "openclaw"} {
+			decision := cfg.Decide(DecisionInput{
+				Operation:   operation,
+				Repository:  repository,
+				TargetOwner: targetOwner,
+			})
+			if !decision.Allowed {
+				t.Fatalf("%s to %s decision = %+v, want allowed", operation, targetOwner, decision)
+			}
+		}
+
+		decision := cfg.Decide(DecisionInput{
+			Operation:   operation,
+			Repository:  repository,
+			TargetOwner: "someoneelse",
+		})
+		if decision.Allowed {
+			t.Fatalf("%s outside target decision = %+v, want denied", operation, decision)
+		}
+	}
+}
+
+func TestDecideRejectsUnsupportedOperation(t *testing.T) {
+	t.Parallel()
+	decision := Config{Owners: []string{"dutifuldev"}}.Decide(DecisionInput{
+		Operation:  Operation("delete_repository"),
+		Repository: RepositoryRef{Owner: "dutifuldev", Name: "gitcba"},
+	})
+	if decision.Allowed {
+		t.Fatalf("unsupported operation decision = %+v, want denied", decision)
+	}
+}
+
 func TestLoadFileMissingFile(t *testing.T) {
 	t.Parallel()
 	_, err := LoadFile(filepath.Join(t.TempDir(), "missing.json"))

@@ -55,9 +55,10 @@ Configure which GitHub owners or repositories are in scope by manually editing `
 Hardcoded operation rules for now:
 
 - Agents may create pull requests for configured owners or repositories.
-- Agents may push to branches or forks only when the target owner is covered by `owners` or `repositories`.
-- Agents may force-push to branches or forks only when the target owner is covered by `owners` or `repositories`.
-- Force-pushing any target outside the configured GitHub access scope is denied.
+- Agents may push to branches or forks only when the target account is in scope.
+- Agents may force-push using the same target-account rule as normal pushes.
+- A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
+- Any push or force-push outside that scope is denied.
 
 ## Security Model
 

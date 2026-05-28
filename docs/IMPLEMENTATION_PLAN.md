@@ -18,8 +18,9 @@
   - `repositories`: explicit `owner/name` repositories.
 - Keep everything else hardcoded in code.
 - Agents may create pull requests for configured owners or repositories.
-- Agents may push branches or forks only when the target owner is inside the configured GitHub access scope.
-- Agents may force-push branches or forks only when the target owner is inside the configured GitHub access scope.
+- Agents may push branches or forks only when the target account is in scope.
+- Agents may force-push using the same target-account rule as normal pushes.
+- A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
 
 ## Hardcoded For Now
 
@@ -33,9 +34,8 @@
 
 - Persist credentials with migrations.
 - Replace the development discarding sink with a production write-only credential backend.
-- Add a small access check: given `owner/name`, decide whether it is covered by the configured owners or explicit repositories.
-- Use the same access check before PR creation, push, and force-push operations.
 - Add narrow GitHub adapters after the access checks exist.
+- Use the access decision helper in the GitHub adapters.
 - Add audit events that record operation ids and redacted inputs.
 
 ## Non-Goals
