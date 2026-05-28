@@ -2,48 +2,47 @@
 
 ## Security Invariants
 
-- Original credentials are never returned by HTTP handlers, service methods, logs, errors, or audit records.
+- Original credentials are never returned by HTTP handlers, service methods, logs, errors, audit records, or policy responses.
 - CBA stores credential metadata and opaque handles only.
-- Agents receive operation results, not tokens.
-- Every operation is policy checked before a credential handle can be used.
-- High-risk operations require explicit approval hooks before execution.
+- Repositories are configured explicitly before any credential-backed operation can run.
+- Policies are allowlists. Missing policy means deny.
+- Agents receive approved operation results, not tokens.
+- Write operations require an approval path before execution.
+- CBA never exposes generic `git`, shell, or arbitrary GitHub API proxying.
 
-## Phase 1: Foundation
+## Current Scope
 
-- Keep the Echo server small and authenticated.
-- Add persistent metadata storage with migrations.
-- Replace the development discarding sink with a real write-only backend.
-- Add structured audit events that redact all request bodies and secret-derived values.
-- Add CI gates for tests, vet, lint, build, and Slophammer.
+- Register a GitHub credential through a write-only boundary.
+- Configure repositories that may use that credential.
+- Keep policy simple and repo-scoped:
+  - tenant id
+  - repository owner and name
+  - private/public marker
+  - credential id
+  - allowed agents
+  - allowed operations
+  - allowed branches
+  - allowed paths
+  - approval required for writes
+- Support read-oriented GitHub operations first: repository metadata, content reads, tree listings, and pull request diff reads.
+- Add write-oriented GitHub operations only behind policy and approval: branch creation, pull request creation, and content writes.
 
-## Phase 2: GitHub Broker
+## Near-Term Work
 
-- Add GitHub repository read operations first: repo metadata, file read, tree listing, and pull request diff read.
-- Add branch and pull request creation only after policy checks exist for owner, repo, branch name, base branch, and file path allowlists.
-- Do not expose generic `git` or arbitrary GitHub API proxying.
-- Do not expose token introspection or token export.
-- Require protected-branch assumptions in repository policy documentation.
+- Persist credentials and repository configuration with migrations.
+- Replace the development discarding sink with a production write-only credential backend.
+- Add a policy decision function that answers one question: whether an agent may perform an operation on a configured repo path/branch.
+- Add GitHub execution adapters for the narrow allowed operation set.
+- Add audit events that record decisions and operation ids while redacting request bodies and secret-derived values.
+- Add approval records for write operations.
+- Add rate limits per tenant, agent, repository, and credential handle.
+- Add prompt-injection regression tests for malicious repo content, issue text, PR text, and README instructions.
 
-## Phase 3: Policy Engine
+## Non-Goals
 
-- Model policies as explicit allowlists for tenants, agents, credential handles, tools, repositories, operations, and paths.
-- Deny by default.
-- Add approval states for write operations.
-- Add replay protection and request IDs for operation execution.
-- Add rate limits per tenant, agent, and credential handle.
-
-## Phase 4: Production Secret Boundary
-
-- Evaluate a backend that can use secrets without returning them to CBA callers, such as a dedicated signer/executor service, cloud KMS-backed broker, or hardware-backed module.
-- Keep the CBA application database free of reversible secret blobs.
-- Make credential rotation and revocation first-class operations.
-- Add break-glass procedures that revoke handles rather than reveal credentials.
-
-## Phase 5: Hardening
-
-- Add integration tests for prompt-injection-style operation requests.
-- Add fuzz tests for policy parsing and route input validation.
-- Add security headers, request body size limits, and strict content-type checks.
-- Add tamper-evident audit log export.
-- Threat model agent OS-user separation, local socket access, Docker group access, and browser automation access.
+- No credential retrieval endpoint.
+- No token introspection endpoint.
+- No broad GitHub API proxy.
+- No arbitrary local `git` command execution.
+- No organization administration, secret management, workflow administration, member management, or repository deletion operations.
 

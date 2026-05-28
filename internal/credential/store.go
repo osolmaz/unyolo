@@ -2,10 +2,10 @@ package credential
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"sync"
+
+	"github.com/dutifuldev/gitcba/internal/shared/id"
 )
 
 var ErrNotFound = errors.New("credential not found")
@@ -30,7 +30,7 @@ func (DiscardingSecretSink) Store(_ context.Context, secret SecretMaterial) (Opa
 	if secret.Empty() {
 		return "", errors.New("secret is required")
 	}
-	handle, err := randomID("opaque")
+	handle, err := id.New("opaque")
 	if err != nil {
 		return "", err
 	}
@@ -82,14 +82,6 @@ func (s *MemoryMetadataStore) List(_ context.Context, tenantID string) ([]Metada
 		items = append(items, metadata)
 	}
 	return items, nil
-}
-
-func randomID(prefix string) (string, error) {
-	var bytes [16]byte
-	if _, err := rand.Read(bytes[:]); err != nil {
-		return "", err
-	}
-	return prefix + "_" + hex.EncodeToString(bytes[:]), nil
 }
 
 func copyStrings(values []string) []string {

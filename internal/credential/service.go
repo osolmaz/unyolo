@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/dutifuldev/gitcba/internal/shared/id"
 )
 
 type Service struct {
@@ -20,7 +22,7 @@ func NewService(secrets SecretSink, store MetadataStore) *Service {
 		store:   store,
 		now:     time.Now,
 		newID: func() (string, error) {
-			return randomID("cred")
+			return id.New("cred")
 		},
 	}
 }

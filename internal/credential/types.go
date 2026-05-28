@@ -4,8 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"strings"
 	"time"
+
+	"github.com/dutifuldev/gitcba/internal/shared/normalize"
 )
 
 type Kind string
@@ -92,20 +93,7 @@ func (m Metadata) Public() PublicMetadata {
 }
 
 func NormalizeScopes(scopes []string) []string {
-	seen := make(map[string]struct{}, len(scopes))
-	normalized := make([]string, 0, len(scopes))
-	for _, scope := range scopes {
-		scope = strings.TrimSpace(scope)
-		if scope == "" {
-			continue
-		}
-		if _, exists := seen[scope]; exists {
-			continue
-		}
-		seen[scope] = struct{}{}
-		normalized = append(normalized, scope)
-	}
-	return normalized
+	return normalize.Strings(scopes)
 }
 
 func ValidateKind(kind Kind) error {
