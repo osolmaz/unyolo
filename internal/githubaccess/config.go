@@ -16,8 +16,10 @@ type RepositoryRef struct {
 }
 
 type Config struct {
-	Owners       []string        `json:"owners"`
-	Repositories []RepositoryRef `json:"repositories"`
+	Owners                []string        `json:"owners"`
+	Repositories          []RepositoryRef `json:"repositories"`
+	WritableBranchOwners  []string        `json:"writable_branch_owners"`
+	ForcePushBranchOwners []string        `json:"force_push_branch_owners"`
 }
 
 func LoadFile(path string) (Config, error) {
@@ -41,12 +43,23 @@ func (c Config) Validate() error {
 	if len(normalized.Owners) == 0 && len(normalized.Repositories) == 0 {
 		return errors.New("github access file must include owners or repositories")
 	}
-	for _, owner := range normalized.Owners {
-		if !validPart(owner) {
-			return errors.New("github access owners must not contain /")
-		}
+	if err := validateOwners(normalized.Owners, "github access owners must not contain /"); err != nil {
+		return err
 	}
-	for _, repository := range normalized.Repositories {
+	if err := validateRepositories(normalized.Repositories); err != nil {
+		return err
+	}
+	if err := validateOwners(normalized.WritableBranchOwners, "github access writable branch owners must not contain /"); err != nil {
+		return err
+	}
+	if err := validateOwners(normalized.ForcePushBranchOwners, "github access force-push branch owners must not contain /"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateRepositories(repositories []RepositoryRef) error {
+	for _, repository := range repositories {
 		if !validPart(repository.Owner) || !validPart(repository.Name) {
 			return errors.New("github access repository owner and name are required and must not contain /")
 		}
@@ -56,8 +69,10 @@ func (c Config) Validate() error {
 
 func (c Config) Normalized() Config {
 	return Config{
-		Owners:       normalize.Strings(c.Owners),
-		Repositories: normalizeRepositories(c.Repositories),
+		Owners:                normalize.Strings(c.Owners),
+		Repositories:          normalizeRepositories(c.Repositories),
+		WritableBranchOwners:  normalize.Strings(c.WritableBranchOwners),
+		ForcePushBranchOwners: normalize.Strings(c.ForcePushBranchOwners),
 	}
 }
 
@@ -78,6 +93,14 @@ func (c Config) Allows(owner string, name string) bool {
 		}
 	}
 	return false
+}
+
+func (c Config) CanPushBranch(owner string) bool {
+	return containsOwner(c.WritableBranchOwners, owner)
+}
+
+func (c Config) CanForcePushBranch(owner string) bool {
+	return containsOwner(c.ForcePushBranchOwners, owner)
 }
 
 func normalizeRepositories(repositories []RepositoryRef) []RepositoryRef {
@@ -103,4 +126,26 @@ func normalizeRepositories(repositories []RepositoryRef) []RepositoryRef {
 func validPart(value string) bool {
 	value = strings.TrimSpace(value)
 	return value != "" && !strings.Contains(value, "/")
+}
+
+func validateOwners(owners []string, message string) error {
+	for _, owner := range owners {
+		if !validPart(owner) {
+			return errors.New(message)
+		}
+	}
+	return nil
+}
+
+func containsOwner(owners []string, owner string) bool {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return false
+	}
+	for _, allowedOwner := range normalize.Strings(owners) {
+		if owner == allowedOwner {
+			return true
+		}
+	}
+	return false
 }

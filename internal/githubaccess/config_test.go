@@ -10,6 +10,8 @@ func TestLoadFileNormalizesManualConfig(t *testing.T) {
 	t.Parallel()
 	path := writeAccessFile(t, `{
 		"owners": [" dutifuldev ", "dutifuldev", "osolmaz"],
+		"writable_branch_owners": ["osolmaz", "dutifulbob", "osolmaz"],
+		"force_push_branch_owners": ["osolmaz", "dutifulbob"],
 		"repositories": [
 			{"owner": "openclaw", "name": "openclaw"},
 			{"owner": "openclaw", "name": "openclaw"}
@@ -19,17 +21,26 @@ func TestLoadFileNormalizesManualConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFile() error = %v", err)
 	}
-	if len(cfg.Owners) != 2 || len(cfg.Repositories) != 1 {
+	if len(cfg.Owners) != 2 || len(cfg.Repositories) != 1 || len(cfg.WritableBranchOwners) != 2 {
 		t.Fatalf("LoadFile() = %+v, want deduplicated config", cfg)
 	}
-	if !cfg.Allows("dutifuldev", "any-repo") {
-		t.Fatal("Allows() = false for owner-wide access")
+	assertAccessRules(t, cfg)
+}
+
+func assertAccessRules(t *testing.T, cfg Config) {
+	t.Helper()
+	checks := map[string]bool{
+		"owner-wide repo access":  cfg.Allows("dutifuldev", "any-repo"),
+		"explicit repo access":    cfg.Allows("openclaw", "openclaw"),
+		"denied repo access":      !cfg.Allows("other", "repo"),
+		"owned branch push":       cfg.CanPushBranch("osolmaz"),
+		"owned branch force-push": cfg.CanForcePushBranch("dutifulbob"),
+		"other branch force-push": !cfg.CanForcePushBranch("someoneelse"),
 	}
-	if !cfg.Allows("openclaw", "openclaw") {
-		t.Fatal("Allows() = false for explicit repo")
-	}
-	if cfg.Allows("other", "repo") {
-		t.Fatal("Allows() = true for unconfigured repo")
+	for name, passed := range checks {
+		if !passed {
+			t.Fatalf("%s check failed for %+v", name, cfg)
+		}
 	}
 }
 
@@ -40,6 +51,8 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 		`{"owners":["bad/owner"]}`,
 		`{"repositories":[{"owner":"bad/owner","name":"repo"}]}`,
 		`{"repositories":[{"owner":"owner","name":"bad/repo"}]}`,
+		`{"owners":["dutifuldev"],"writable_branch_owners":["bad/owner"]}`,
+		`{"owners":["dutifuldev"],"force_push_branch_owners":["bad/owner"]}`,
 		`not json`,
 	}
 	for _, body := range cases {
