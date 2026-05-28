@@ -12,8 +12,8 @@ import (
 
 	"github.com/dutifuldev/gitcba/internal/config"
 	"github.com/dutifuldev/gitcba/internal/credential"
+	"github.com/dutifuldev/gitcba/internal/githubaccess"
 	"github.com/dutifuldev/gitcba/internal/httpapi"
-	"github.com/dutifuldev/gitcba/internal/policy"
 )
 
 func main() {
@@ -41,8 +41,8 @@ func buildServer(cfg config.Config) (*http.Server, error) {
 		credential.NewDiscardingSecretSink(),
 		credential.NewMemoryMetadataStore(),
 	)
-	policyService := policy.NewService(policy.NewMemoryRepositoryStore())
-	api, err := httpapi.New(cfg, credentialService, policyService)
+	githubAccessService := githubaccess.NewService(githubaccess.NewMemoryStore())
+	api, err := httpapi.New(cfg, credentialService, githubAccessService)
 	if err != nil {
 		return nil, err
 	}

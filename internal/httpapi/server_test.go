@@ -11,7 +11,7 @@ import (
 
 	"github.com/dutifuldev/gitcba/internal/config"
 	"github.com/dutifuldev/gitcba/internal/credential"
-	"github.com/dutifuldev/gitcba/internal/policy"
+	"github.com/dutifuldev/gitcba/internal/githubaccess"
 )
 
 const testAdminToken = "0123456789abcdef0123456789abcdef"
@@ -42,19 +42,19 @@ func TestCredentialResponsesDoNotExposeSecret(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	rawSecret := "private-" + "repo-" + "read-" + "value"
-	createBody := `{"tenant_id":"tenant-a","name":"github-read","kind":"github_token","secret":"` + rawSecret + `","scopes":["contents:read"]}`
-	createResponse := doJSON(t, server, http.MethodPost, "/v1/credentials", "tenant-a", createBody)
+	createBody := `{"name":"github-read","kind":"github_token","secret":"` + rawSecret + `","scopes":["contents:read"]}`
+	createResponse := doJSON(t, server, http.MethodPost, "/v1/credentials", createBody)
 	if createResponse.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, body = %s", createResponse.Code, createResponse.Body.String())
 	}
 	assertBodyDoesNotContain(t, createResponse.Body.String(), rawSecret)
-	listResponse := doJSON(t, server, http.MethodGet, "/v1/credentials", "tenant-a", "")
+	listResponse := doJSON(t, server, http.MethodGet, "/v1/credentials", "")
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("list status = %d, body = %s", listResponse.Code, listResponse.Body.String())
 	}
 	assertBodyDoesNotContain(t, listResponse.Body.String(), rawSecret)
 	id := extractID(t, createResponse.Body.String())
-	getResponse := doJSON(t, server, http.MethodGet, "/v1/credentials/"+id, "tenant-a", "")
+	getResponse := doJSON(t, server, http.MethodGet, "/v1/credentials/"+id, "")
 	if getResponse.Code != http.StatusOK {
 		t.Fatalf("get status = %d, body = %s", getResponse.Code, getResponse.Body.String())
 	}
@@ -64,85 +64,63 @@ func TestCredentialResponsesDoNotExposeSecret(t *testing.T) {
 func TestNoSecretRetrievalEndpoint(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	response := doJSON(t, server, http.MethodGet, "/v1/credentials/cred_123/secret", "tenant-a", "")
+	response := doJSON(t, server, http.MethodGet, "/v1/credentials/cred_123/secret", "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
-func TestRepositoryRoutesConfigureRepoPolicy(t *testing.T) {
+func TestGitHubAccessRoutesConfigureOwnersAndRepos(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	body := `{
-		"tenant_id":"tenant-a",
-		"owner":"dutifuldev",
-		"name":"private-repo",
-		"private":true,
 		"credential_id":"cred_123",
-		"policy":{
-			"allowed_agents":["openclaw"],
-			"allowed_operations":["contents_read","pull_request_diff"],
-			"allowed_branches":[],
-			"allowed_paths":["README.md","internal/**"],
-			"require_approval_for_writes":false
-		}
+		"owners":["dutifuldev","osolmaz"],
+		"repositories":[{"owner":"openclaw","name":"openclaw"}]
 	}`
-	createResponse := doJSON(t, server, http.MethodPost, "/v1/repos", "tenant-a", body)
+	createResponse := doJSON(t, server, http.MethodPost, "/v1/github-access", body)
 	if createResponse.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, body = %s", createResponse.Code, createResponse.Body.String())
 	}
 	id := extractID(t, createResponse.Body.String())
-	getResponse := doJSON(t, server, http.MethodGet, "/v1/repos/"+id, "tenant-a", "")
+	getResponse := doJSON(t, server, http.MethodGet, "/v1/github-access/"+id, "")
 	if getResponse.Code != http.StatusOK {
 		t.Fatalf("get status = %d, body = %s", getResponse.Code, getResponse.Body.String())
 	}
 	if !strings.Contains(getResponse.Body.String(), `"credential_id":"cred_123"`) {
 		t.Fatalf("get body missing credential id: %s", getResponse.Body.String())
 	}
-	listResponse := doJSON(t, server, http.MethodGet, "/v1/repos", "tenant-a", "")
+	listResponse := doJSON(t, server, http.MethodGet, "/v1/github-access", "")
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("list status = %d, body = %s", listResponse.Code, listResponse.Body.String())
 	}
 }
 
-func TestRepositoryWritePolicyRequiresApproval(t *testing.T) {
+func TestGitHubAccessRequiresOwnerOrRepo(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	body := `{
-		"tenant_id":"tenant-a",
-		"owner":"dutifuldev",
-		"name":"private-repo",
-		"private":true,
-		"credential_id":"cred_123",
-		"policy":{
-			"allowed_agents":["openclaw"],
-			"allowed_operations":["contents_write"],
-			"allowed_branches":["main"],
-			"allowed_paths":["README.md"],
-			"require_approval_for_writes":false
-		}
-	}`
-	response := doJSON(t, server, http.MethodPost, "/v1/repos", "tenant-a", body)
+	body := `{"credential_id":"cred_123"}`
+	response := doJSON(t, server, http.MethodPost, "/v1/github-access", body)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 }
 
-func TestRepositoryGetNotFound(t *testing.T) {
+func TestGitHubAccessGetNotFound(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	response := doJSON(t, server, http.MethodGet, "/v1/repos/repo_missing", "tenant-a", "")
+	response := doJSON(t, server, http.MethodGet, "/v1/github-access/gha_missing", "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
-func TestListRequiresTenantHeader(t *testing.T) {
+func TestCredentialGetNotFound(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	response := doJSON(t, server, http.MethodGet, "/v1/credentials", "", "")
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	response := doJSON(t, server, http.MethodGet, "/v1/credentials/cred_missing", "")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
@@ -152,18 +130,18 @@ func newTestServer(t *testing.T) *Server {
 		credential.NewDiscardingSecretSink(),
 		credential.NewMemoryMetadataStore(),
 	)
-	policyService := policy.NewService(policy.NewMemoryRepositoryStore())
+	githubAccessService := githubaccess.NewService(githubaccess.NewMemoryStore())
 	server, err := New(config.Config{
 		APIPrefix:  "/v1",
 		AdminToken: testAdminToken,
-	}, service, policyService)
+	}, service, githubAccessService)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	return server
 }
 
-func doJSON(t *testing.T, server *Server, method string, path string, tenant string, body string) *httptest.ResponseRecorder {
+func doJSON(t *testing.T, server *Server, method string, path string, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	var reader io.Reader = http.NoBody
 	if body != "" {
@@ -171,7 +149,6 @@ func doJSON(t *testing.T, server *Server, method string, path string, tenant str
 	}
 	request := httptest.NewRequestWithContext(context.Background(), method, path, reader)
 	request.Header.Set("Authorization", "Bearer "+testAdminToken)
-	request.Header.Set("X-CBA-Tenant", tenant)
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}

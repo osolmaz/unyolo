@@ -42,7 +42,6 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (PublicMeta
 	}
 	metadata := Metadata{
 		ID:           id,
-		TenantID:     strings.TrimSpace(input.TenantID),
 		Name:         strings.TrimSpace(input.Name),
 		Kind:         input.Kind,
 		Scopes:       NormalizeScopes(input.Scopes),
@@ -57,16 +56,16 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (PublicMeta
 	return created.Public(), nil
 }
 
-func (s *Service) Get(ctx context.Context, tenantID string, id string) (PublicMetadata, error) {
-	metadata, err := s.store.Get(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(id))
+func (s *Service) Get(ctx context.Context, id string) (PublicMetadata, error) {
+	metadata, err := s.store.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
 		return PublicMetadata{}, err
 	}
 	return metadata.Public(), nil
 }
 
-func (s *Service) List(ctx context.Context, tenantID string) ([]PublicMetadata, error) {
-	records, err := s.store.List(ctx, strings.TrimSpace(tenantID))
+func (s *Service) List(ctx context.Context) ([]PublicMetadata, error) {
+	records, err := s.store.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -78,9 +77,6 @@ func (s *Service) List(ctx context.Context, tenantID string) ([]PublicMetadata, 
 }
 
 func validateRegisterInput(input RegisterInput) error {
-	if strings.TrimSpace(input.TenantID) == "" {
-		return errors.New("tenant_id is required")
-	}
 	if strings.TrimSpace(input.Name) == "" {
 		return errors.New("name is required")
 	}

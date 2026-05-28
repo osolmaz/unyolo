@@ -16,8 +16,8 @@ type SecretSink interface {
 
 type MetadataStore interface {
 	Create(ctx context.Context, metadata Metadata) (Metadata, error)
-	Get(ctx context.Context, tenantID string, id string) (Metadata, error)
-	List(ctx context.Context, tenantID string) ([]Metadata, error)
+	Get(ctx context.Context, id string) (Metadata, error)
+	List(ctx context.Context) ([]Metadata, error)
 }
 
 type DiscardingSecretSink struct{}
@@ -59,25 +59,22 @@ func (s *MemoryMetadataStore) Create(_ context.Context, metadata Metadata) (Meta
 	return metadata, nil
 }
 
-func (s *MemoryMetadataStore) Get(_ context.Context, tenantID string, id string) (Metadata, error) {
+func (s *MemoryMetadataStore) Get(_ context.Context, id string) (Metadata, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	metadata, exists := s.items[id]
-	if !exists || metadata.TenantID != tenantID {
+	if !exists {
 		return Metadata{}, ErrNotFound
 	}
 	metadata.Scopes = copyStrings(metadata.Scopes)
 	return metadata, nil
 }
 
-func (s *MemoryMetadataStore) List(_ context.Context, tenantID string) ([]Metadata, error) {
+func (s *MemoryMetadataStore) List(_ context.Context) ([]Metadata, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items := make([]Metadata, 0, len(s.items))
 	for _, metadata := range s.items {
-		if metadata.TenantID != tenantID {
-			continue
-		}
 		metadata.Scopes = copyStrings(metadata.Scopes)
 		items = append(items, metadata)
 	}

@@ -18,11 +18,10 @@ func TestRegisterDoesNotExposeSecretMaterial(t *testing.T) {
 		t.Fatalf("NewSecretMaterial() error = %v", err)
 	}
 	record, err := service.Register(context.Background(), RegisterInput{
-		TenantID: "tenant-a",
-		Name:     "github-read",
-		Kind:     KindGitHubToken,
-		Secret:   secret,
-		Scopes:   []string{"contents:read", "contents:read"},
+		Name:   "github-read",
+		Kind:   KindGitHubToken,
+		Secret: secret,
+		Scopes: []string{"contents:read", "contents:read"},
 	})
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
@@ -47,10 +46,9 @@ func TestRegisterRejectsUnsupportedKind(t *testing.T) {
 		t.Fatalf("NewSecretMaterial() error = %v", err)
 	}
 	_, err = service.Register(context.Background(), RegisterInput{
-		TenantID: "tenant-a",
-		Name:     "github-read",
-		Kind:     Kind("ssh_key"),
-		Secret:   secret,
+		Name:   "github-read",
+		Kind:   Kind("ssh_key"),
+		Secret: secret,
 	})
 	if err == nil {
 		t.Fatal("Register() error = nil, want unsupported kind error")
@@ -65,13 +63,12 @@ func TestRegisterRejectsMissingFields(t *testing.T) {
 		t.Fatalf("NewSecretMaterial() error = %v", err)
 	}
 	_, err = service.Register(context.Background(), RegisterInput{
-		TenantID: "",
-		Name:     "github-read",
-		Kind:     KindGitHubToken,
-		Secret:   secret,
+		Name:   "",
+		Kind:   KindGitHubToken,
+		Secret: secret,
 	})
 	if err == nil {
-		t.Fatal("Register() error = nil, want missing tenant error")
+		t.Fatal("Register() error = nil, want missing name error")
 	}
 }
 
@@ -89,23 +86,22 @@ func TestGetAndListReturnPublicMetadata(t *testing.T) {
 		t.Fatalf("NewSecretMaterial() error = %v", err)
 	}
 	created, err := service.Register(context.Background(), RegisterInput{
-		TenantID: "tenant-a",
-		Name:     "github-read",
-		Kind:     KindGitHubToken,
-		Secret:   secret,
-		Scopes:   []string{"contents:read"},
+		Name:   "github-read",
+		Kind:   KindGitHubToken,
+		Secret: secret,
+		Scopes: []string{"contents:read"},
 	})
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
-	got, err := service.Get(context.Background(), "tenant-a", created.ID)
+	got, err := service.Get(context.Background(), created.ID)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
 	if got.ID != "cred_test" || got.CreatedAt.IsZero() {
 		t.Fatalf("Get() = %+v, want registered public metadata", got)
 	}
-	list, err := service.List(context.Background(), "tenant-a")
+	list, err := service.List(context.Background())
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -117,7 +113,7 @@ func TestGetAndListReturnPublicMetadata(t *testing.T) {
 func TestGetNotFound(t *testing.T) {
 	t.Parallel()
 	service := NewService(NewDiscardingSecretSink(), NewMemoryMetadataStore())
-	_, err := service.Get(context.Background(), "tenant-a", "missing")
+	_, err := service.Get(context.Background(), "missing")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Get() error = %v, want ErrNotFound", err)
 	}
@@ -134,7 +130,7 @@ func TestDiscardingSecretSinkRejectsEmptySecret(t *testing.T) {
 func TestMemoryMetadataStoreRejectsDuplicateID(t *testing.T) {
 	t.Parallel()
 	store := NewMemoryMetadataStore()
-	metadata := Metadata{ID: "cred_test", TenantID: "tenant-a", Kind: KindGitHubToken}
+	metadata := Metadata{ID: "cred_test", Kind: KindGitHubToken}
 	if _, err := store.Create(context.Background(), metadata); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}

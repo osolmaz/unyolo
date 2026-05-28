@@ -50,16 +50,14 @@ func (s SecretMaterial) Zero() {
 type OpaqueHandle string
 
 type RegisterInput struct {
-	TenantID string
-	Name     string
-	Kind     Kind
-	Secret   SecretMaterial
-	Scopes   []string
+	Name   string
+	Kind   Kind
+	Secret SecretMaterial
+	Scopes []string
 }
 
 type Metadata struct {
 	ID           string
-	TenantID     string
 	Name         string
 	Kind         Kind
 	Scopes       []string
@@ -70,7 +68,6 @@ type Metadata struct {
 
 type PublicMetadata struct {
 	ID          string    `json:"id"`
-	TenantID    string    `json:"tenant_id"`
 	Name        string    `json:"name"`
 	Kind        Kind      `json:"kind"`
 	Scopes      []string  `json:"scopes"`
@@ -83,7 +80,6 @@ func (m Metadata) Public() PublicMetadata {
 	copy(scopes, m.Scopes)
 	return PublicMetadata{
 		ID:          m.ID,
-		TenantID:    m.TenantID,
 		Name:        m.Name,
 		Kind:        m.Kind,
 		Scopes:      scopes,
