@@ -16,12 +16,10 @@
 - Configure GitHub access in `github-access.json` with:
   - `owners`: blanket owner/org/user accounts, like selecting all repos under an owner for a PAT.
   - `repositories`: explicit `owner/name` repositories.
-  - `writable_branch_owners`: accounts whose branches or forks agents may push to.
-  - `force_push_branch_owners`: accounts whose branches or forks agents may force-push to.
 - Keep everything else hardcoded in code.
 - Agents may create pull requests for configured owners or repositories.
-- Agents may push branches owned by configured writable branch owners, including fork branches.
-- Agents may force-push only branches owned by configured force-push branch owners.
+- Agents may push branches or forks only when the target owner is inside the configured GitHub access scope.
+- Agents may force-push branches or forks only when the target owner is inside the configured GitHub access scope.
 
 ## Hardcoded For Now
 
@@ -36,7 +34,7 @@
 - Persist credentials with migrations.
 - Replace the development discarding sink with a production write-only credential backend.
 - Add a small access check: given `owner/name`, decide whether it is covered by the configured owners or explicit repositories.
-- Add a branch owner check before push and force-push operations.
+- Use the same access check before PR creation, push, and force-push operations.
 - Add narrow GitHub adapters after the access checks exist.
 - Add audit events that record operation ids and redacted inputs.
 

@@ -1,7 +1,5 @@
 {
   "owners": ["dutifuldev", "osolmaz"],
-  "writable_branch_owners": ["osolmaz", "dutifulbob"],
-  "force_push_branch_owners": ["osolmaz", "dutifulbob"],
   "repositories": [
     {"owner": "openclaw", "name": "openclaw"}
   ]

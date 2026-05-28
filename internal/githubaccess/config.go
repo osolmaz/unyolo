@@ -16,10 +16,8 @@ type RepositoryRef struct {
 }
 
 type Config struct {
-	Owners                []string        `json:"owners"`
-	Repositories          []RepositoryRef `json:"repositories"`
-	WritableBranchOwners  []string        `json:"writable_branch_owners"`
-	ForcePushBranchOwners []string        `json:"force_push_branch_owners"`
+	Owners       []string        `json:"owners"`
+	Repositories []RepositoryRef `json:"repositories"`
 }
 
 func LoadFile(path string) (Config, error) {
@@ -49,12 +47,6 @@ func (c Config) Validate() error {
 	if err := validateRepositories(normalized.Repositories); err != nil {
 		return err
 	}
-	if err := validateOwners(normalized.WritableBranchOwners, "github access writable branch owners must not contain /"); err != nil {
-		return err
-	}
-	if err := validateOwners(normalized.ForcePushBranchOwners, "github access force-push branch owners must not contain /"); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -69,10 +61,8 @@ func validateRepositories(repositories []RepositoryRef) error {
 
 func (c Config) Normalized() Config {
 	return Config{
-		Owners:                normalize.Strings(c.Owners),
-		Repositories:          normalizeRepositories(c.Repositories),
-		WritableBranchOwners:  normalize.Strings(c.WritableBranchOwners),
-		ForcePushBranchOwners: normalize.Strings(c.ForcePushBranchOwners),
+		Owners:       normalize.Strings(c.Owners),
+		Repositories: normalizeRepositories(c.Repositories),
 	}
 }
 
@@ -93,14 +83,6 @@ func (c Config) Allows(owner string, name string) bool {
 		}
 	}
 	return false
-}
-
-func (c Config) CanPushBranch(owner string) bool {
-	return containsOwner(c.WritableBranchOwners, owner)
-}
-
-func (c Config) CanForcePushBranch(owner string) bool {
-	return containsOwner(c.ForcePushBranchOwners, owner)
 }
 
 func normalizeRepositories(repositories []RepositoryRef) []RepositoryRef {
@@ -135,17 +117,4 @@ func validateOwners(owners []string, message string) error {
 		}
 	}
 	return nil
-}
-
-func containsOwner(owners []string, owner string) bool {
-	owner = strings.TrimSpace(owner)
-	if owner == "" {
-		return false
-	}
-	for _, allowedOwner := range normalize.Strings(owners) {
-		if owner == allowedOwner {
-			return true
-		}
-	}
-	return false
 }

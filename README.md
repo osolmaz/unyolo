@@ -48,8 +48,6 @@ Configure which GitHub owners or repositories are in scope by manually editing `
 ```json
 {
   "owners": ["dutifuldev", "osolmaz"],
-  "writable_branch_owners": ["osolmaz", "dutifulbob"],
-  "force_push_branch_owners": ["osolmaz", "dutifulbob"],
   "repositories": [{"owner": "openclaw", "name": "openclaw"}]
 }
 ```
@@ -57,10 +55,9 @@ Configure which GitHub owners or repositories are in scope by manually editing `
 Hardcoded operation rules for now:
 
 - Agents may create pull requests for configured owners or repositories.
-- Agents may push branches owned by accounts listed in `writable_branch_owners`.
-- Fork branches are allowed when the fork owner is listed in `writable_branch_owners`.
-- Agents may force-push only branches owned by accounts listed in `force_push_branch_owners`.
-- Force-pushing any other account's branches is denied.
+- Agents may push to branches or forks only when the target owner is covered by `owners` or `repositories`.
+- Agents may force-push to branches or forks only when the target owner is covered by `owners` or `repositories`.
+- Force-pushing any target outside the configured GitHub access scope is denied.
 
 ## Security Model
 
