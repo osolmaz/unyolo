@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,10 +22,22 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 	t.Setenv("CBA_PORT", "0")
 	t.Setenv("CBA_API_PREFIX", "/v1")
 	t.Setenv("CBA_ADMIN_TOKEN", strings.Repeat("a", 32))
+	t.Setenv("CBA_GITHUB_ACCESS_FILE", writeGitHubAccessFile(t))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := run(ctx); err != nil {
 		t.Fatalf("run() error = %v", err)
+	}
+}
+
+func TestRunReturnsGitHubAccessFileError(t *testing.T) {
+	t.Setenv("CBA_PORT", "0")
+	t.Setenv("CBA_API_PREFIX", "/v1")
+	t.Setenv("CBA_ADMIN_TOKEN", strings.Repeat("a", 32))
+	t.Setenv("CBA_GITHUB_ACCESS_FILE", filepath.Join(t.TempDir(), "missing.json"))
+	err := run(t.Context())
+	if err == nil {
+		t.Fatal("run() error = nil, want github access file error")
 	}
 }
 
@@ -50,4 +64,14 @@ func TestShutdownClosesServer(t *testing.T) {
 	if err := shutdown(server); err != nil {
 		t.Fatalf("shutdown() error = %v", err)
 	}
+}
+
+func writeGitHubAccessFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "github-access.json")
+	body := []byte(`{"owners":["dutifuldev"],"repositories":[{"owner":"openclaw","name":"openclaw"}]}`)
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	return path
 }

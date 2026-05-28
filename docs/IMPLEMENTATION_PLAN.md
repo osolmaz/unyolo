@@ -4,15 +4,16 @@
 
 - Original credentials are never returned by HTTP handlers, service methods, logs, errors, audit records, or API responses.
 - CBA stores credential metadata and opaque handles only.
-- GitHub access must be configured before a credential-backed operation can run.
+- GitHub access must be configured in a manually edited file before a credential-backed operation can run.
 - GitHub access config is only a PAT-like selection of owners and explicit repositories.
+- GitHub access config cannot be changed through the API.
 - Operation rules stay hardcoded for now.
 - CBA never exposes generic `git`, shell, arbitrary GitHub API proxying, token introspection, or token export.
 
 ## Current Scope
 
 - Register one or more GitHub credentials through a write-only boundary.
-- Configure GitHub access for a credential with:
+- Configure GitHub access in `github-access.json` with:
   - `owners`: blanket owner/org/user accounts, like selecting all repos under an owner for a PAT.
   - `repositories`: explicit `owner/name` repositories.
 - Keep everything else hardcoded in code.
@@ -29,7 +30,7 @@
 
 ## Next Work
 
-- Persist credentials and GitHub access selections with migrations.
+- Persist credentials with migrations.
 - Replace the development discarding sink with a production write-only credential backend.
 - Add a small access check: given `owner/name`, decide whether it is covered by the configured owners or explicit repositories.
 - Add narrow GitHub read adapters after the access check exists.

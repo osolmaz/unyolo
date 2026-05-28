@@ -16,6 +16,7 @@ type Config struct {
 	Port              string
 	APIPrefix         string
 	AdminToken        string
+	GitHubAccessFile  string
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
@@ -28,6 +29,7 @@ func Load() (Config, error) {
 		Port:              getEnv("CBA_PORT", "8080"),
 		APIPrefix:         getEnv("CBA_API_PREFIX", "/v1"),
 		AdminToken:        os.Getenv("CBA_ADMIN_TOKEN"),
+		GitHubAccessFile:  getEnv("CBA_GITHUB_ACCESS_FILE", "github-access.json"),
 		ReadHeaderTimeout: durationEnv("CBA_READ_HEADER_TIMEOUT", 5*time.Second),
 		ReadTimeout:       durationEnv("CBA_READ_TIMEOUT", 15*time.Second),
 		WriteTimeout:      durationEnv("CBA_WRITE_TIMEOUT", 15*time.Second),
@@ -48,6 +50,9 @@ func (c Config) Validate() error {
 	}
 	if len([]byte(c.AdminToken)) < minimumAdminTokenBytes {
 		return fmt.Errorf("CBA_ADMIN_TOKEN must be at least %d bytes", minimumAdminTokenBytes)
+	}
+	if strings.TrimSpace(c.GitHubAccessFile) == "" {
+		return errors.New("CBA_GITHUB_ACCESS_FILE is required")
 	}
 	return nil
 }

@@ -9,7 +9,7 @@ The central invariant is strict: CBA must not provide any API or internal servic
 - Echo HTTP server
 - Bearer-token authentication for management endpoints
 - Credential registration and metadata lookup
-- GitHub access configuration with owner and repository selection
+- GitHub access loaded from a manually edited JSON file
 - Write-only secret sink interface with no read/decrypt method
 - Tests that assert secret material is not returned from HTTP or domain responses
 - Slophammer-oriented quality gates
@@ -18,7 +18,9 @@ The central invariant is strict: CBA must not provide any API or internal servic
 
 ```sh
 cp .env.example .env
+cp github-access.example.json github-access.json
 # edit CBA_ADMIN_TOKEN to a generated value with at least 32 bytes
+# edit github-access.json by hand
 source .env
 make check
 make run
@@ -41,20 +43,16 @@ curl -X POST http://localhost:8080/v1/credentials \
 
 The response intentionally contains metadata only. There is no credential retrieval endpoint.
 
-Configure which GitHub owners or repositories may use that credential:
+Configure which GitHub owners or repositories are in scope by manually editing `github-access.json`. There is no API endpoint for changing this file.
 
-```sh
-curl -X POST http://localhost:8080/v1/github-access \
-  -H "Authorization: Bearer $CBA_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "credential_id": "cred_from_registration_response",
-    "owners": ["dutifuldev", "osolmaz"],
-    "repositories": [{"owner": "openclaw", "name": "openclaw"}]
-  }'
+```json
+{
+  "owners": ["dutifuldev", "osolmaz"],
+  "repositories": [{"owner": "openclaw", "name": "openclaw"}]
+}
 ```
 
-That is the whole initial config. Operation rules are hardcoded for now.
+Operation rules are hardcoded for now.
 
 ## Security Model
 

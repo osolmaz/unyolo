@@ -11,7 +11,6 @@ import (
 
 	"github.com/dutifuldev/gitcba/internal/config"
 	"github.com/dutifuldev/gitcba/internal/credential"
-	"github.com/dutifuldev/gitcba/internal/githubaccess"
 )
 
 const testAdminToken = "0123456789abcdef0123456789abcdef"
@@ -70,46 +69,23 @@ func TestNoSecretRetrievalEndpoint(t *testing.T) {
 	}
 }
 
-func TestGitHubAccessRoutesConfigureOwnersAndRepos(t *testing.T) {
+func TestNoGitHubAccessMutationEndpoint(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	body := `{
-		"credential_id":"cred_123",
 		"owners":["dutifuldev","osolmaz"],
 		"repositories":[{"owner":"openclaw","name":"openclaw"}]
 	}`
 	createResponse := doJSON(t, server, http.MethodPost, "/v1/github-access", body)
-	if createResponse.Code != http.StatusCreated {
-		t.Fatalf("create status = %d, body = %s", createResponse.Code, createResponse.Body.String())
-	}
-	id := extractID(t, createResponse.Body.String())
-	getResponse := doJSON(t, server, http.MethodGet, "/v1/github-access/"+id, "")
-	if getResponse.Code != http.StatusOK {
-		t.Fatalf("get status = %d, body = %s", getResponse.Code, getResponse.Body.String())
-	}
-	if !strings.Contains(getResponse.Body.String(), `"credential_id":"cred_123"`) {
-		t.Fatalf("get body missing credential id: %s", getResponse.Body.String())
-	}
-	listResponse := doJSON(t, server, http.MethodGet, "/v1/github-access", "")
-	if listResponse.Code != http.StatusOK {
-		t.Fatalf("list status = %d, body = %s", listResponse.Code, listResponse.Body.String())
+	if createResponse.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", createResponse.Code, http.StatusNotFound)
 	}
 }
 
-func TestGitHubAccessRequiresOwnerOrRepo(t *testing.T) {
+func TestNoGitHubAccessReadEndpoint(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	body := `{"credential_id":"cred_123"}`
-	response := doJSON(t, server, http.MethodPost, "/v1/github-access", body)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
-	}
-}
-
-func TestGitHubAccessGetNotFound(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	response := doJSON(t, server, http.MethodGet, "/v1/github-access/gha_missing", "")
+	response := doJSON(t, server, http.MethodGet, "/v1/github-access", "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
@@ -130,11 +106,10 @@ func newTestServer(t *testing.T) *Server {
 		credential.NewDiscardingSecretSink(),
 		credential.NewMemoryMetadataStore(),
 	)
-	githubAccessService := githubaccess.NewService(githubaccess.NewMemoryStore())
 	server, err := New(config.Config{
 		APIPrefix:  "/v1",
 		AdminToken: testAdminToken,
-	}, service, githubAccessService)
+	}, service)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

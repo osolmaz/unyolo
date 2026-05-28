@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+github-access.json
 bin/
 /cba-server
 coverage.out

@@ -37,12 +37,14 @@ func run(ctx context.Context) error {
 }
 
 func buildServer(cfg config.Config) (*http.Server, error) {
+	if _, err := githubaccess.LoadFile(cfg.GitHubAccessFile); err != nil {
+		return nil, err
+	}
 	credentialService := credential.NewService(
 		credential.NewDiscardingSecretSink(),
 		credential.NewMemoryMetadataStore(),
 	)
-	githubAccessService := githubaccess.NewService(githubaccess.NewMemoryStore())
-	api, err := httpapi.New(cfg, credentialService, githubAccessService)
+	api, err := httpapi.New(cfg, credentialService)
 	if err != nil {
 		return nil, err
 	}

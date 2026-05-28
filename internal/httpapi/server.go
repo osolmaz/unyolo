@@ -7,19 +7,17 @@ import (
 
 	"github.com/dutifuldev/gitcba/internal/config"
 	"github.com/dutifuldev/gitcba/internal/credential"
-	"github.com/dutifuldev/gitcba/internal/githubaccess"
 	"github.com/dutifuldev/gitcba/internal/security"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
 type Server struct {
-	echo         *echo.Echo
-	credential   *credential.Service
-	githubAccess *githubaccess.Service
+	echo       *echo.Echo
+	credential *credential.Service
 }
 
-func New(cfg config.Config, credentialService *credential.Service, githubAccessService *githubaccess.Service) (*Server, error) {
+func New(cfg config.Config, credentialService *credential.Service) (*Server, error) {
 	auth, err := security.NewTokenAuth(cfg.AdminToken)
 	if err != nil {
 		return nil, err
@@ -31,15 +29,12 @@ func New(cfg config.Config, credentialService *credential.Service, githubAccessS
 	e.Use(noStore)
 	e.Use(middleware.BodyLimit("32K"))
 	e.GET("/healthz", health)
-	server := &Server{echo: e, credential: credentialService, githubAccess: githubAccessService}
+	server := &Server{echo: e, credential: credentialService}
 	api := e.Group(cfg.APIPrefix)
 	api.Use(auth.Middleware)
 	api.POST("/credentials", server.registerCredential)
 	api.GET("/credentials", server.listCredentials)
 	api.GET("/credentials/:id", server.getCredential)
-	api.POST("/github-access", server.configureGitHubAccess)
-	api.GET("/github-access", server.listGitHubAccess)
-	api.GET("/github-access/:id", server.getGitHubAccess)
 	return server, nil
 }
 
@@ -52,12 +47,6 @@ type registerCredentialRequest struct {
 	Kind   credential.Kind `json:"kind"`
 	Secret string          `json:"secret"`
 	Scopes []string        `json:"scopes"`
-}
-
-type configureGitHubAccessRequest struct {
-	CredentialID string                       `json:"credential_id"`
-	Owners       []string                     `json:"owners"`
-	Repositories []githubaccess.RepositoryRef `json:"repositories"`
 }
 
 func (s *Server) registerCredential(c echo.Context) error {
@@ -88,30 +77,6 @@ func (s *Server) listCredentials(c echo.Context) error {
 
 func (s *Server) getCredential(c echo.Context) error {
 	return jsonGet(c, s.credential.Get, mapCredentialError)
-}
-
-func (s *Server) configureGitHubAccess(c echo.Context) error {
-	var request configureGitHubAccessRequest
-	if err := c.Bind(&request); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid JSON body")
-	}
-	selection, err := s.githubAccess.Configure(c.Request().Context(), githubaccess.ConfigureInput{
-		CredentialID: request.CredentialID,
-		Owners:       request.Owners,
-		Repositories: request.Repositories,
-	})
-	if err != nil {
-		return mapGitHubAccessError(err)
-	}
-	return c.JSON(http.StatusCreated, selection)
-}
-
-func (s *Server) listGitHubAccess(c echo.Context) error {
-	return jsonList(c, s.githubAccess.List, mapGitHubAccessError)
-}
-
-func (s *Server) getGitHubAccess(c echo.Context) error {
-	return jsonGet(c, s.githubAccess.Get, mapGitHubAccessError)
 }
 
 func health(c echo.Context) error {
@@ -153,10 +118,6 @@ func jsonGet[T any](
 
 func mapCredentialError(err error) error {
 	return mapDomainError(err, credential.ErrNotFound, "credential not found")
-}
-
-func mapGitHubAccessError(err error) error {
-	return mapDomainError(err, githubaccess.ErrNotFound, "github access selection not found")
 }
 
 func mapDomainError(err error, notFound error, message string) error {
