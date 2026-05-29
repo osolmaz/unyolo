@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dutifuldev/gitcba/internal/config"
 	"github.com/dutifuldev/gitcba/internal/githubaccess"
@@ -20,12 +22,14 @@ import (
 )
 
 type Server struct {
-	echo             *echo.Echo
-	githubAccess     githubaccess.Config
-	githubToken      string
-	githubClient     *http.Client
-	githubGitBaseURL *url.URL
-	githubAPIBaseURL *url.URL
+	echo                *echo.Echo
+	githubAccess        githubaccess.Config
+	githubToken         string
+	githubClient        *http.Client
+	githubGitBaseURL    *url.URL
+	githubAPIBaseURL    *url.URL
+	logger              *slog.Logger
+	maxReceivePackBytes int64
 }
 
 func New(cfg config.Config, githubAccess githubaccess.Config) (*Server, error) {
@@ -48,13 +52,23 @@ func New(cfg config.Config, githubAccess githubaccess.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	githubHTTPTimeout := cfg.GitHubHTTPTimeout
+	if githubHTTPTimeout <= 0 {
+		githubHTTPTimeout = 30 * time.Second
+	}
+	maxReceivePackBytes := cfg.MaxReceivePackBytes
+	if maxReceivePackBytes <= 0 {
+		maxReceivePackBytes = 25 * 1024 * 1024
+	}
 	server := &Server{
-		echo:             e,
-		githubAccess:     githubAccess,
-		githubToken:      cfg.GitHubToken,
-		githubClient:     http.DefaultClient,
-		githubGitBaseURL: gitBaseURL,
-		githubAPIBaseURL: apiBaseURL,
+		echo:                e,
+		githubAccess:        githubAccess,
+		githubToken:         cfg.GitHubToken,
+		githubClient:        &http.Client{Timeout: githubHTTPTimeout},
+		githubGitBaseURL:    gitBaseURL,
+		githubAPIBaseURL:    apiBaseURL,
+		logger:              slog.Default(),
+		maxReceivePackBytes: maxReceivePackBytes,
 	}
 	protected := e.Group("")
 	protected.Use(auth.Middleware)
@@ -99,9 +113,16 @@ func (s *Server) authorizeBrokerOperation(
 	run func(echo.Context) error,
 ) error {
 	if decision := s.decide(c, operation); !decision.Allowed {
+		s.audit(c, operation, "denied", decision.Reason, 0)
 		return echo.NewHTTPError(http.StatusForbidden, decision.Reason)
 	}
-	return run(c)
+	err := run(c)
+	if err != nil {
+		s.audit(c, operation, errorOutcome(err), errorString(err), errorStatus(c, err))
+		return err
+	}
+	s.audit(c, operation, "proxied", "", responseStatus(c))
+	return nil
 }
 
 func (s *Server) decide(c echo.Context, operation githubaccess.Operation) githubaccess.Decision {
@@ -152,9 +173,9 @@ func gitRepoPrefix(c echo.Context) string {
 }
 
 func (s *Server) proxyGitReceivePack(c echo.Context) error {
-	body, err := io.ReadAll(c.Request().Body)
+	body, err := readLimited(c.Request().Body, s.maxReceivePackBytes)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "read git receive-pack request")
+		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "git receive-pack request is too large")
 	}
 	updatedRefs, err := receivePackUpdatedRefs(body)
 	if err != nil {
@@ -172,6 +193,18 @@ func (s *Server) proxyGitReceivePack(c echo.Context) error {
 	c.Request().Body = io.NopCloser(bytes.NewReader(body))
 	c.Request().ContentLength = int64(len(body))
 	return s.proxyGit(c)
+}
+
+func readLimited(reader io.Reader, limit int64) ([]byte, error) {
+	limited := io.LimitReader(reader, limit+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, errors.New("body too large")
+	}
+	return body, nil
 }
 
 func receivePackUpdatedRefs(body []byte) ([]string, error) {
@@ -334,4 +367,57 @@ func hopByHopHeader(key string) bool {
 func githubGitAuthorization(token string) string {
 	credential := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
 	return "Basic " + credential
+}
+
+func (s *Server) audit(c echo.Context, operation githubaccess.Operation, outcome string, reason string, status int) {
+	repo := c.Param("repo")
+	if repo == "" {
+		repo = c.Param("repoGit")
+	}
+	attrs := []any{
+		"operation", string(operation),
+		"outcome", outcome,
+		"owner", c.Param("owner"),
+		"repo", strings.TrimSuffix(repo, ".git"),
+		"method", c.Request().Method,
+		"path", c.Request().URL.Path,
+	}
+	if status != 0 {
+		attrs = append(attrs, "status", status)
+	}
+	if reason != "" {
+		attrs = append(attrs, "reason", reason)
+	}
+	s.logger.Info("broker operation", attrs...)
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func errorOutcome(err error) string {
+	var httpError *echo.HTTPError
+	if errors.As(err, &httpError) && httpError.Code == http.StatusForbidden {
+		return "denied"
+	}
+	return "error"
+}
+
+func responseStatus(c echo.Context) int {
+	status := c.Response().Status
+	if status == 0 {
+		return http.StatusOK
+	}
+	return status
+}
+
+func errorStatus(c echo.Context, err error) int {
+	var httpError *echo.HTTPError
+	if errors.As(err, &httpError) {
+		return httpError.Code
+	}
+	return responseStatus(c)
 }

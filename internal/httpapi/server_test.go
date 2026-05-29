@@ -6,11 +6,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dutifuldev/gitcba/internal/config"
 	"github.com/dutifuldev/gitcba/internal/githubaccess"
@@ -284,6 +286,23 @@ func TestGitReceivePackRejectsMalformedPktLines(t *testing.T) {
 	}
 }
 
+func TestGitReceivePackRejectsOversizedRequest(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	server.maxReceivePackBytes = 4
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		[]byte("0000extra"),
+	)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
 func TestGitReceivePackPolicyDenialDoesNotCallUpstream(t *testing.T) {
 	t.Parallel()
 	var upstreamCalls int
@@ -304,6 +323,58 @@ func TestGitReceivePackPolicyDenialDoesNotCallUpstream(t *testing.T) {
 	}
 	if upstreamCalls != 0 {
 		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestAuditLogDoesNotExposeClientSecretsOrBodies(t *testing.T) {
+	t.Parallel()
+	var logs bytes.Buffer
+	server := newTestServer(t)
+	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	rawBody := []byte("do-not-log-body")
+	response := doWithHeaders(
+		t,
+		server,
+		http.MethodPost,
+		"/outside/repo.git/git-receive-pack",
+		map[string]string{
+			"Authorization": bearerAuth(),
+			"Cookie":        "session=do-not-log-cookie",
+		},
+		rawBody,
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	logText := logs.String()
+	for _, forbidden := range []string{testSharedSecret, "do-not-log-cookie", string(rawBody)} {
+		if strings.Contains(logText, forbidden) {
+			t.Fatalf("audit log exposed %q: %s", forbidden, logText)
+		}
+	}
+	for _, expected := range []string{`"operation":"git_receive_pack"`, `"outcome":"denied"`, `"owner":"outside"`, `"repo":"repo"`} {
+		if !strings.Contains(logText, expected) {
+			t.Fatalf("audit log missing %s: %s", expected, logText)
+		}
+	}
+}
+
+func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
+	t.Parallel()
+	server, err := New(config.Config{
+		SharedSecret:        testSharedSecret,
+		GitHubToken:         testGitHubToken,
+		GitHubHTTPTimeout:   7 * time.Second,
+		MaxReceivePackBytes: 99,
+	}, testGitHubAccess())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if server.githubClient.Timeout != 7*time.Second {
+		t.Fatalf("github timeout = %s, want 7s", server.githubClient.Timeout)
+	}
+	if server.maxReceivePackBytes != 99 {
+		t.Fatalf("max receive-pack bytes = %d, want 99", server.maxReceivePackBytes)
 	}
 }
 
@@ -488,12 +559,7 @@ func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 	server, err := New(config.Config{
 		SharedSecret: testSharedSecret,
 		GitHubToken:  testGitHubToken,
-	}, githubaccess.Config{
-		Owners: []string{"dutifuldev", "osolmaz"},
-		Repositories: []githubaccess.RepositoryRef{
-			{Owner: "openclaw", Name: "openclaw"},
-		},
-	})
+	}, testGitHubAccess())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -505,6 +571,15 @@ func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 	server.githubGitBaseURL = upstreamURL
 	server.githubAPIBaseURL = upstreamURL
 	return server
+}
+
+func testGitHubAccess() githubaccess.Config {
+	return githubaccess.Config{
+		Owners: []string{"dutifuldev", "osolmaz"},
+		Repositories: []githubaccess.RepositoryRef{
+			{Owner: "openclaw", Name: "openclaw"},
+		},
+	}
 }
 
 func do(t *testing.T, server *Server, method string, path string, authorization string) *httptest.ResponseRecorder {

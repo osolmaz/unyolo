@@ -32,7 +32,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return serve(ctx, server, cfg.Port)
+	return serve(ctx, server, cfg.BindAddr, cfg.Port)
 }
 
 func buildServer(cfg config.Config) (*http.Server, error) {
@@ -45,7 +45,7 @@ func buildServer(cfg config.Config) (*http.Server, error) {
 		return nil, err
 	}
 	return &http.Server{
-		Addr:              ":" + cfg.Port,
+		Addr:              cfg.BindAddr + ":" + cfg.Port,
 		Handler:           api.Handler(),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
@@ -54,10 +54,10 @@ func buildServer(cfg config.Config) (*http.Server, error) {
 	}, nil
 }
 
-func serve(ctx context.Context, server *http.Server, port string) error {
+func serve(ctx context.Context, server *http.Server, bindAddr string, port string) error {
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("cba-server listening on :%s", port)
+		log.Printf("cba-server listening on %s:%s", bindAddr, port)
 		errCh <- server.ListenAndServe()
 	}()
 	select {

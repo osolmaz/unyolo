@@ -11,6 +11,9 @@ The central invariant is strict: GitCBA must not provide any API or internal ser
 - Git smart HTTP route shape
 - GitHub REST-compatible pull request route shape
 - Server-side GitHub token forwarding
+- Localhost bind by default for Tailnet-oriented deployment
+- Conservative receive-pack size cap and upstream GitHub timeouts
+- Structured audit logs without secrets
 - GitHub access loaded from a manually edited JSON file
 - No credential API
 - No GitHub access config API
@@ -92,3 +95,11 @@ There are intentionally no credential endpoints.
 GitCBA should run behind Tailnet-only reachability, but Tailnet access is not treated as authorization. Clients must still submit the configured shared secret on every broker request.
 
 The server-side GitHub credential is configured manually with `CBA_GITHUB_TOKEN` and is used only by narrow Git/GitHub adapters. Clients must never receive raw credentials, decrypted credentials, reversible encrypted credential blobs, token metadata, or credential identifiers.
+
+Deployment safety defaults:
+
+- `CBA_BIND_ADDR` defaults to `127.0.0.1`; expose it through Tailscale or a local-only proxy.
+- `CBA_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
+- `CBA_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
+- Audit logs record operation, owner, repo, method, path, outcome, and status. They do not log tokens, cookies, request bodies, or pack contents.
+- Use a fine-grained GitHub token limited to the selected owners/repositories and only the permissions needed for Git push/fetch and pull request creation.
