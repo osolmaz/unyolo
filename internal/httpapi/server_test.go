@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/dutifuldev/gitcba/internal/config"
@@ -85,6 +86,22 @@ func TestGitReceivePackRejectsMainBranchUpdate(t *testing.T) {
 	}
 }
 
+func TestGitReceivePackRejectsDeleteOfMainBranch(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackCommand("1111111111111111111111111111111111111111", zeroOID(), "refs/heads/main"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
 func TestGitReceivePackRejectsDefaultBranchUpdate(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithDefaultBranch(t, "trunk")
@@ -95,6 +112,25 @@ func TestGitReceivePackRejectsDefaultBranchUpdate(t *testing.T) {
 		"/dutifuldev/gitcba.git/git-receive-pack",
 		bearerAuth(),
 		receivePackBody("refs/heads/trunk"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestGitReceivePackRejectsMultiRefUpdateContainingDefaultBranch(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithDefaultBranch(t, "trunk")
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackCommands(
+			commandLine(zeroOID(), "1111111111111111111111111111111111111111", "refs/heads/feature"),
+			commandLine(zeroOID(), "2222222222222222222222222222222222222222", "refs/heads/trunk"),
+		),
 	)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
@@ -128,6 +164,86 @@ func TestGitReceivePackAllowsFeatureBranchUpdate(t *testing.T) {
 	}
 }
 
+func TestGitReceivePackAllowsTagUpdateWithoutDefaultBranchLookup(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/dutifuldev/gitcba" {
+			t.Fatal("default branch lookup should not run for tag-only updates")
+		}
+		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackBody("refs/tags/v0.0.1"),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !gotGitPush {
+		t.Fatal("git receive-pack was not proxied")
+	}
+}
+
+func TestGitReceivePackFailsClosedWhenDefaultBranchFetchFails(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/dutifuldev/gitcba" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackBody("refs/heads/feature"),
+	)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotGitPush {
+		t.Fatal("git receive-pack proxied after default branch lookup failure")
+	}
+}
+
+func TestGitReceivePackFailsClosedWhenDefaultBranchResponseIsInvalid(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/dutifuldev/gitcba" {
+			_, _ = w.Write([]byte(`not json`))
+			return
+		}
+		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gitcba.git/git-receive-pack",
+		bearerAuth(),
+		receivePackBody("refs/heads/feature"),
+	)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotGitPush {
+		t.Fatal("git receive-pack proxied after invalid default branch response")
+	}
+}
+
 func TestGitReceivePackRejectsMalformedRequest(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
@@ -141,6 +257,53 @@ func TestGitReceivePackRejectsMalformedRequest(t *testing.T) {
 	)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGitReceivePackRejectsMalformedPktLines(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	cases := map[string][]byte{
+		"short header":       []byte("bad"),
+		"bad hex":            []byte("zzzz"),
+		"invalid small size": []byte("0003"),
+		"truncated body":     []byte("0008ab"),
+	}
+	for name, body := range cases {
+		response := doWithBody(
+			t,
+			server,
+			http.MethodPost,
+			"/dutifuldev/gitcba.git/git-receive-pack",
+			bearerAuth(),
+			body,
+		)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want %d", name, response.Code, http.StatusBadRequest)
+		}
+	}
+}
+
+func TestGitReceivePackPolicyDenialDoesNotCallUpstream(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/outside/repo.git/git-receive-pack",
+		bearerAuth(),
+		receivePackBody("refs/heads/feature"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
 	}
 }
 
@@ -160,6 +323,22 @@ func TestPullRequestRouteUsesGitHubShape(t *testing.T) {
 	}
 }
 
+func TestPullRequestPolicyDenialDoesNotCallUpstream(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusCreated)
+	})
+	response := do(t, server, http.MethodPost, "/repos/outside/repo/pulls", bearerAuth())
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
 func TestGitProxyUsesServerSideCredential(t *testing.T) {
 	t.Parallel()
 	var gotAuthorization string
@@ -173,6 +352,71 @@ func TestGitProxyUsesServerSideCredential(t *testing.T) {
 	}
 	if gotAuthorization != githubGitAuthorization(testGitHubToken) {
 		t.Fatalf("upstream authorization was not server-side GitHub auth")
+	}
+}
+
+func TestProxyDoesNotForwardClientCredentialHeaders(t *testing.T) {
+	t.Parallel()
+	var gotAuthorization string
+	var gotCookie string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuthorization = r.Header.Get("Authorization")
+		gotCookie = r.Header.Get("Cookie")
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithHeaders(
+		t,
+		server,
+		http.MethodGet,
+		"/dutifuldev/gitcba.git/info/refs?service=git-upload-pack",
+		map[string]string{
+			"Authorization": bearerAuth(),
+			"Cookie":        "session=client-secret",
+		},
+		nil,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotAuthorization != githubGitAuthorization(testGitHubToken) {
+		t.Fatalf("authorization = %q, want server-side GitHub auth", gotAuthorization)
+	}
+	if gotCookie != "" {
+		t.Fatalf("cookie = %q, want stripped", gotCookie)
+	}
+}
+
+func TestProxyDropsHopByHopHeaders(t *testing.T) {
+	t.Parallel()
+	var gotConnection string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotConnection = r.Header.Get("Connection")
+		w.Header().Set("Connection", "close")
+		w.Header().Set("X-Test-Upstream", "kept")
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithHeaders(
+		t,
+		server,
+		http.MethodGet,
+		"/dutifuldev/gitcba.git/info/refs?service=git-upload-pack",
+		map[string]string{
+			"Authorization": bearerAuth(),
+			"Connection":    "keep-alive",
+		},
+		nil,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotConnection != "" {
+		t.Fatalf("upstream connection header = %q, want stripped", gotConnection)
+	}
+	if response.Header().Get("Connection") != "" {
+		t.Fatalf("response connection header = %q, want stripped", response.Header().Get("Connection"))
+	}
+	if response.Header().Get("X-Test-Upstream") != "kept" {
+		t.Fatalf("response header missing non-hop upstream header")
 	}
 }
 
@@ -202,6 +446,21 @@ func TestNoGitHubAccessEndpoint(t *testing.T) {
 	response := do(t, server, http.MethodGet, "/v1/github-access", bearerAuth())
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}
+
+func TestReceivePackUpdatedRefsParsesMultipleBranchRefs(t *testing.T) {
+	t.Parallel()
+	refs, err := receivePackUpdatedRefs(receivePackCommands(
+		commandLine(zeroOID(), "1111111111111111111111111111111111111111", "refs/heads/a"),
+		commandLine(zeroOID(), "2222222222222222222222222222222222222222", "refs/tags/v1"),
+		commandLine(zeroOID(), "3333333333333333333333333333333333333333", "refs/heads/b"),
+	))
+	if err != nil {
+		t.Fatalf("receivePackUpdatedRefs() error = %v", err)
+	}
+	if strings.Join(refs, ",") != "refs/heads/a,refs/heads/b" {
+		t.Fatalf("refs = %v, want branch refs only", refs)
 	}
 }
 
@@ -250,7 +509,7 @@ func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 
 func do(t *testing.T, server *Server, method string, path string, authorization string) *httptest.ResponseRecorder {
 	t.Helper()
-	return doWithBody(t, server, method, path, authorization, nil)
+	return doWithHeaders(t, server, method, path, map[string]string{"Authorization": authorization}, nil)
 }
 
 func doWithBody(
@@ -262,12 +521,26 @@ func doWithBody(
 	body []byte,
 ) *httptest.ResponseRecorder {
 	t.Helper()
+	return doWithHeaders(t, server, method, path, map[string]string{"Authorization": authorization}, body)
+}
+
+func doWithHeaders(
+	t *testing.T,
+	server *Server,
+	method string,
+	path string,
+	headers map[string]string,
+	body []byte,
+) *httptest.ResponseRecorder {
+	t.Helper()
 	var requestBody io.Reader = http.NoBody
 	if len(body) > 0 {
 		requestBody = bytes.NewReader(body)
 	}
 	request := httptest.NewRequestWithContext(context.Background(), method, path, requestBody)
-	request.Header.Set("Authorization", authorization)
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	return response
@@ -283,12 +556,32 @@ func basicAuth() string {
 }
 
 func receivePackBody(ref string) []byte {
-	line := "0000000000000000000000000000000000000000 " +
-		"1111111111111111111111111111111111111111 " +
-		ref + "\x00 report-status\n"
-	return append(pktLine(line), []byte("0000")...)
+	return receivePackCommand(zeroOID(), "1111111111111111111111111111111111111111", ref)
+}
+
+func receivePackCommand(oldOID string, newOID string, ref string) []byte {
+	return receivePackCommands(commandLine(oldOID, newOID, ref))
+}
+
+func receivePackCommands(lines ...string) []byte {
+	var body []byte
+	for index, line := range lines {
+		if index == 0 {
+			line += "\x00 report-status"
+		}
+		body = append(body, pktLine(line+"\n")...)
+	}
+	return append(body, []byte("0000")...)
+}
+
+func commandLine(oldOID string, newOID string, ref string) string {
+	return oldOID + " " + newOID + " " + ref
 }
 
 func pktLine(line string) []byte {
 	return []byte(fmt.Sprintf("%04x%s", len(line)+4, line))
+}
+
+func zeroOID() string {
+	return "0000000000000000000000000000000000000000"
 }
