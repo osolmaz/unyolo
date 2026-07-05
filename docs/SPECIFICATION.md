@@ -223,17 +223,31 @@ Two channels are specified:
    agent does not have. Zero additional secrets, zero additional
    surface.
 
-2. **Push-notification approval** (M4). The grant request fires a
-   notification through an operator-configured notifier (e.g. ntfy,
-   Telegram bot, Slack webhook) carrying the request's operation class,
-   target, duration, reason, and a one-time approval code. The decision
-   authenticates through the *notification channel's own identity* (the
-   bot/topic credentials belong to the operator, are configured on the
-   broker host, and are never visible to or shared with the agent) —
-   never through a plain callback URL, which an agent that has read the
-   notification format could forge. Deny requires no action: unapproved
-   requests expire on their own (default 10 minutes pending, then
-   auto-denied).
+2. **Push-notification approval** (M4): **Telegram bot**. The grant
+   request is sent as a Telegram message to the operator's chat,
+   carrying the request's operation class, target, duration, and
+   reason, with inline Approve / Deny buttons. The decision
+   authenticates through the bot conversation itself: the bot token and
+   the operator's chat id are configured on the broker host, the broker
+   accepts a decision only from that chat id, and nothing about the
+   flow travels over a URL the agent could forge. Telegram is the v1
+   notifier because it gives two-way interaction (buttons, replies) with
+   a single bot token and no server-side callback to host — the broker
+   long-polls the Bot API, so it works from behind the Tailnet with no
+   inbound exposure. Deny requires no action: unapproved requests expire
+   on their own (default 10 minutes pending, then auto-denied).
+
+   The notifier is an interface, Telegram its first implementation.
+   Noted for later behind the same interface, not in scope for v1:
+
+   - **ntfy** — one-way unless self-hosted with auth; would pair a
+     notification with CLI or reply-code approval to keep the decision
+     off any agent-reachable surface.
+   - **Slack** — interactivity is callback-URL based, so it would need an
+     operator-side relay to preserve the no-inbound-surface invariant;
+     heavier than Telegram, fits team operation.
+   - **Signal / Matrix** — viable for operators who prefer them; each
+     needs a bot with an outbound-poll or operator-relayed decision path.
 
 There is no approval web UI in v1 (see Non-Goals). If one is ever added,
 it is a read-mostly operator dashboard (pending requests, active grants,
@@ -269,9 +283,10 @@ direct writes.
 - **M2 — bucket proxy**: S3 subset, verb policy, server-side snapshots.
 - **M3 — grants**: request/approve/expire, operator CLI approval
   channel.
-- **M4 — notification approvals**: push-notification channel (ntfy /
-  Telegram / Slack) with one-time approval codes and pending-request
-  expiry.
+- **M4 — Telegram approvals**: grant requests as Telegram messages with
+  inline Approve/Deny buttons, decided over outbound Bot API long-polling
+  (no inbound surface), with pending-request expiry. Other notifiers
+  (ntfy, Slack, Signal/Matrix) plug in behind the same interface later.
 
 ## Non-Goals (v1)
 
