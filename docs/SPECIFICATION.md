@@ -1,8 +1,13 @@
 # hf-broker — Specification
 
-Status: draft for review, 2026-07-05. Companion to
+Status: implementation-ready, 2026-07-06. Companion to
 [hf-auth-helper](https://github.com/osolmaz/hf-auth-helper); successor to
 the GitCBA prototype, which it retires.
+
+This document is written to be handed off: an implementer should be able
+to build M1 end to end from it without further design decisions. Where a
+behavior depends on unverified Hub behavior, the spec names both the
+assumption and the concrete fallback, so no item is a blocker.
 
 ## Purpose
 
@@ -148,19 +153,46 @@ Rules, applied per command, all-or-nothing for the push:
 
 ### Ancestry verification without duplicating data
 
-The broker maintains, per configured repo, a **commits-only mirror**:
-`git clone --bare --filter=tree:0` — the commit graph without trees or
-blobs, megabytes even for terabyte repos. On each push: fetch the mirror
-(commit objects only), index the incoming pack's commit objects, then
-`git merge-base --is-ancestor old new`. The mirror also serves as an
-append-only record of every history the broker has ever accepted.
+The chosen approach (V1 confirmed, see Verification Status) is a
+per-repo **commits-only mirror**: `git clone --bare --filter=tree:0` —
+the commit graph without trees or blobs, megabytes even for terabyte
+repos. Verified against a live Hub dataset: the filtered clone returned
+only commit objects (0 trees, 0 blobs), 56 KiB for 100 commits.
 
-Fallback if the Hub's git server rejects partial-clone filters
-(pre-implementation verification item V1): **stage-then-promote** — the
-push is forwarded to a temporary ref upstream (always safe), ancestry is
-checked by walking the upstream commit listing API from `new` to `old`,
-and on success the real ref is advanced with an empty-pack push (objects
-already upstream). No local state at all in this variant.
+Enforcement algorithm per push, per updated `refs/heads/*` or
+`refs/tags/*` command with a non-zero `old-sha`:
+
+1. Acquire the per-repo lock (see Concurrency).
+2. Ensure the mirror exists and is current: `git -C <mirror> fetch
+   --filter=tree:0 origin '+refs/heads/*:refs/heads/*'
+   '+refs/tags/*:refs/tags/*'` (the mirror uses the upstream token).
+3. Confirm the client-claimed `old-sha` matches the mirror's current
+   value for that ref. If it does not, the client is working from stale
+   state; refuse and let it re-fetch (prevents lost-update races and
+   TOCTOU between check and forward).
+4. Unpack the incoming pack's commit objects into the mirror's object
+   store (`git index-pack --stdin --fix-thin` against a copy, or
+   `git unpack-objects`; commit objects reference trees the mirror lacks,
+   so use `--filter`-tolerant reads: ancestry needs only commit parent
+   links, which are self-contained in commit objects).
+5. `git -C <mirror> merge-base --is-ancestor <old-sha> <new-sha>`: exit 0
+   → fast-forward, allowed; non-zero → history rewrite, refuse.
+6. If all commands in the push pass, forward the original request
+   upstream; on a 2xx upstream response, advance the mirror's refs to the
+   new values; release the lock.
+
+The mirror doubles as an append-only record of every history the broker
+has accepted — a recovery aid, though it holds commit graph only, not
+file contents.
+
+**Documented fallback (only if a future Hub change breaks partial
+clone): stage-then-promote** — forward the push to a temporary
+upstream ref (always safe: new ref), check ancestry by walking the
+upstream commit-listing API from `new` back toward `old`, and on success
+advance the real ref with an empty-pack push (objects already upstream),
+then delete the temp ref via a grant-free internal path. No local state.
+Not implemented in v1 because V1 confirmed the mirror path works; kept
+here so the fallback needs no new design if it is ever needed.
 
 ## Bucket Proxy (level 3)
 
@@ -253,7 +285,7 @@ There is no approval web UI in v1 (see Non-Goals). If one is ever added,
 it is a read-mostly operator dashboard (pending requests, active grants,
 audit tail, revoke) bound to an operator-only interface — reached from
 the broker host, never from the agent's network scope — and the approval
-mechanism itself remains one of the two channels above.
+mechanism itself remains one of the channels above.
 
 ## Audit
 
@@ -275,18 +307,316 @@ The intended pairing: `hf-auth-helper agent login` for level-1 access to
 everything, broker remotes for the specific repos/buckets that need
 direct writes.
 
+## Repository Layout
+
+Go module `github.com/osolmaz/hf-broker`, Go 1.23+. One binary
+(`cmd/hf-broker`), business logic in `internal/` so nothing but the
+command is importable.
+
+```text
+cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
+internal/config/                 env + scope.json loading and validation
+internal/auth/                   shared-secret extraction and constant-time check
+internal/scope/                  scope model + allow/deny decision engine
+internal/gitproxy/               receive-pack parsing, enforcement, upstream forward
+internal/gitproxy/pktline/       pkt-line framing reader/writer
+internal/mirror/                 commits-only mirror lifecycle + ancestry check
+internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
+internal/grants/                 grant store, expiry, decision (M3)
+internal/notify/                 Notifier interface + telegram impl (M4)
+internal/httpapi/                router, handlers, refusal responses, audit
+internal/audit/                  structured slog wiring
+```
+
+Boundaries (enforced by Slophammer `dependency_boundaries`): `httpapi`
+depends on the feature packages; feature packages depend on `scope`,
+`config`, `audit`; `scope`/`config`/`auth`/`pktline` depend on nothing
+internal. Domain logic (parsing, policy decisions, ancestry) stays free
+of `net/http` so it is unit-testable without a server.
+
+## Configuration
+
+### Secrets (environment only, never in files the agent could read)
+
+| Variable | Required | Meaning |
+|----------|----------|---------|
+| `BROKER_HF_TOKEN` | yes | upstream Hugging Face write token; used only for outbound Hub requests |
+| `BROKER_SHARED_SECRET` | yes unless `BROKER_SECRETS_FILE` set | single client secret; min 32 bytes |
+| `BROKER_SECRETS_FILE` | no | path to a file of `name = secret` lines for per-client secrets (one secret per agent); enables named clients in audit |
+| `BROKER_BIND_ADDR` | no | default `127.0.0.1` |
+| `BROKER_PORT` | no | default `8080` |
+| `BROKER_SCOPE_FILE` | no | default `scope.json` |
+| `BROKER_STATE_DIR` | no | default `./state`; holds mirrors and grant store |
+| `BROKER_MAX_PACK_BYTES` | no | default `26214400` (25 MiB) |
+| `BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
+| `BROKER_TELEGRAM_BOT_TOKEN` | no (M4) | bot token for approval channel |
+| `BROKER_TELEGRAM_CHAT_ID` | no (M4) | the single operator chat id decisions are accepted from |
+
+Startup validation fails closed: missing required secret, unreadable or
+invalid `scope.json`, secret under 32 bytes, or a `snapshot_prefix` that
+overlaps a writable path all abort boot with a specific error. The token
+value is never logged, even at startup.
+
+### scope.json (full schema)
+
+```json
+{
+  "repos": [
+    {
+      "id": "osolmaz/scraped-news",
+      "type": "dataset",
+      "mode": "append-only"
+    }
+  ],
+  "buckets": [
+    {
+      "id": "osolmaz/pipeline-output",
+      "mode": "append-only",
+      "snapshot_prefix": "snapshots/"
+    }
+  ]
+}
+```
+
+- `repos[].id`: `owner/name`, required, must not contain `..` or a
+  second slash beyond the single separator.
+- `repos[].type`: one of `model` | `dataset` | `space`. Determines the
+  upstream URL prefix (see Request Handling). Required.
+- `repos[].mode`: `read-only` | `append-only`. Default `append-only`.
+- `buckets[].id`: `owner/name`, same validation.
+- `buckets[].mode`: `read-only` | `append-only`. Default `append-only`.
+- `buckets[].snapshot_prefix`: required when mode is `append-only`;
+  default `snapshots/`. Must end with `/`. Writes under this prefix are
+  refused for all clients (it is the undo log).
+- Unknown fields are rejected (fail closed), so a typo cannot silently
+  widen access.
+- There is no API to read or reload this file at runtime; changing scope
+  is edit-file-then-restart. (Optional `SIGHUP` reload may be added later
+  but is not required for v1.)
+
+## Request Handling
+
+### Authentication
+
+Every route except `GET /healthz` requires the shared secret, accepted
+two ways (identical to GitCBA, so stock `git` and S3 tools work):
+
+- `Authorization: Bearer <secret>`, or
+- HTTP Basic auth where the **password** is the secret (username
+  ignored) — this is how `git` and boto3 present credentials.
+
+The presented secret is compared constant-time against each configured
+client secret; a match resolves the client name (for audit). No match →
+`401` (missing) or `403` (present but wrong). Never both branches leak
+which secrets exist.
+
+### Routing and upstream mapping
+
+Broker path → upstream URL, by repo type:
+
+| Broker request | Upstream |
+|----------------|----------|
+| `/{owner}/{repo}.git/...` (model) | `https://huggingface.co/{owner}/{repo}.git/...` |
+| `/datasets/{owner}/{repo}.git/...` | `https://huggingface.co/datasets/{owner}/{repo}.git/...` |
+| `/spaces/{owner}/{repo}.git/...` | `https://huggingface.co/spaces/{owner}/{repo}.git/...` |
+| bucket S3 verbs | Hub S3-compatible endpoint for `{owner}/{repo}` |
+
+The `(owner, repo, type)` triple must match a `scope.json` entry or the
+request is refused before any upstream contact. Upstream base URLs are
+compile-time constants; only the policy-approved `owner`/`repo`/path-tail
+is interpolated, so the agent cannot redirect the proxy elsewhere.
+
+Outbound requests: strip the client's `Authorization`/`Cookie`, inject
+the upstream token (`Basic x-access-token:<token>` for git,
+SigV4/`Bearer` as the S3 endpoint requires for buckets), copy through the
+remaining non-hop-by-hop headers. Response body is streamed back.
+
+### Refusal responses (must be legible to the client)
+
+A refusal must reach the human at the terminal, not just return a bare
+500:
+
+- **Git push refusals**: return HTTP `200` with a valid
+  `git-receive-pack` **report-status** that reports the offending ref as
+  failed with a message (`ng refs/heads/main non-fast-forward (hf-broker:
+  history rewrite refused)`), *and* an ERR sideband line so `git push`
+  prints the reason. The push must be rejected **before** any bytes reach
+  upstream. (If report-status framing proves impractical for a given
+  client, the documented fallback is HTTP `403` with the reason in the
+  body — acceptable but less clean.)
+- **Scope / auth refusals** on any route: `403` / `401` with a one-line
+  plain reason.
+- **Bucket refusals**: S3-style XML error body with an `AccessDenied`
+  code and an `hf-broker:`-prefixed message, HTTP `403`.
+
+### Health
+
+`GET /healthz` → `200 {"ok": true}`, no auth, no secrets, for liveness
+probes.
+
+## On-Disk State
+
+Everything the broker persists lives under `BROKER_STATE_DIR`:
+
+```text
+state/
+  mirrors/{type}/{owner}/{repo}.git/    commits-only bare mirror per repo
+  grants/grants.json                    active + pending grants (M3)
+```
+
+- Mirrors are created lazily on first push to a repo and refreshed per
+  push. They contain no file contents, only commit graph. Safe to delete;
+  they rebuild.
+- The grant store is written atomically (temp file + rename), mode `600`.
+  Expired grants are pruned on read and on a periodic sweep.
+- No token value is ever written to disk by the broker.
+
+## Concurrency
+
+- **Per-repo push serialization**: pushes to the same repo take a
+  per-repo mutex spanning the check-then-forward-then-advance-mirror
+  window, so two concurrent pushes cannot both pass an ancestry check
+  against the same base. Different repos proceed in parallel.
+- The claimed-`old-sha`-matches-mirror check (step 3 above) is the
+  correctness guard against a push whose base changed after the mirror
+  refresh; combined with the lock it makes enforcement atomic per repo.
+- Upstream calls carry the request context and the configured timeout;
+  a slow upstream cannot hold the lock indefinitely (timeout → refuse,
+  release, mirror unchanged).
+
+## Quality Gates and CI
+
+Slophammer Go standards (matching the tools-repo convention). `slophammer.yml`:
+
+```yaml
+go:
+  coverage:
+    threshold: 85
+  targets:
+    - .
+  exclude:
+    - "fixtures/**"
+  dry:
+    max_findings: 0
+    paths:
+      - cmd
+      - internal
+    exclude:
+      - "**/*_test.go"
+      - "fixtures/**"
+    structural:
+      enabled: true
+      threshold: 0.82
+      min_lines: 4
+      min_nodes: 20
+    copied_blocks:
+      enabled: true
+      min_tokens: 100
+  crap:
+    max_score: 8
+  mutation:
+    targets:
+      - internal/scope
+      - internal/gitproxy
+      - internal/mirror
+  dependency_boundaries: [ ... as in Repository Layout ... ]
+```
+
+CI (`.github/workflows/ci.yml`) runs, pinned to an exact Slophammer
+version: `gofmt` check, `go vet ./...`, `go test -race -coverprofile`,
+`golangci-lint` v2, coverage gate, `slophammer-go dry/crap/check`. Hard
+targets: coverage ≥ 85, CRAP ≤ 8, production DRY = 0. `AGENTS.md` in the
+repo restates these and the token-secrecy rule for future agents.
+
+## Testing Strategy
+
+The proxy is testable without a live Hub:
+
+- **Unit (the bulk)**: pkt-line parsing, ref-command extraction,
+  enforcement decisions, scope decisions, config validation, snapshot
+  key derivation, grant expiry — all pure, table-driven.
+- **Ancestry**: build throwaway real git repos in `tmp` with `git`
+  plumbing, exercise `mirror` against them (fast-forward, non-ff,
+  deletion, new branch, new tag, tag move) — real git, no network.
+- **Proxy integration**: a stub upstream (`httptest.Server`) mimicking
+  the Hub's `info/refs` + `receive-pack` responses asserts that refused
+  pushes never reach it and allowed pushes are forwarded verbatim with
+  the client Authorization stripped and the upstream token injected.
+- **Secrecy invariant test**: capture all log output and both response
+  streams across a representative run; assert no configured secret or
+  token value ever appears (mirrors hf-auth-helper's approach).
+- Live-Hub checks (V2–V4) are done once during their milestone as
+  scripted probes, not in the unit suite; their outcomes are recorded
+  back into this spec.
+
 ## Milestones
 
-- **M1 — git append-only proxy**: auth, scope file, upload-pack
-  pass-through, receive-pack enforcement with commits-only mirror,
-  audit. Shippable alone; delivers level 2.
-- **M2 — bucket proxy**: S3 subset, verb policy, server-side snapshots.
-- **M3 — grants**: request/approve/expire, operator CLI approval
-  channel.
-- **M4 — Telegram approvals**: grant requests as Telegram messages with
-  inline Approve/Deny buttons, decided over outbound Bot API long-polling
-  (no inbound surface), with pending-request expiry. Other notifiers
-  (ntfy, Slack, Signal/Matrix) plug in behind the same interface later.
+Each milestone is its own PR, green on all gates, with the acceptance
+criteria below satisfied. M1 is shippable and useful on its own.
+
+### M1 — git append-only proxy (delivers level 2)
+
+Scope: config + scope loading, auth, the four git smart-HTTP routes,
+Xet/LFS pass-through, receive-pack parsing and enforcement, commits-only
+mirror with ancestry check, per-repo locking, audit, `/healthz`.
+
+Acceptance criteria:
+- `git clone` and `git pull` through the broker work for an in-scope repo.
+- `git push` of a fast-forward commit succeeds and appears upstream.
+- Force-push, branch deletion, tag move, and tag deletion are each
+  refused with a legible message and never reach upstream (asserted
+  against the stub upstream).
+- New branch and new tag pushes succeed.
+- A push to an out-of-scope repo, or with a wrong/missing secret, is
+  refused before upstream contact.
+- Concurrent pushes to one repo cannot both pass an ancestry check
+  against the same base (race test).
+- Secrecy-invariant test passes. All quality gates green.
+
+### M2 — bucket proxy (delivers level 3)
+
+Scope: S3-compatible subset for in-scope buckets, per-verb policy,
+server-side snapshot before overwrite.
+
+Acceptance criteria:
+- GET/HEAD/LIST and PUT-to-new-key work through the broker.
+- PUT to an existing key produces a snapshot copy under
+  `snapshot_prefix` before the overwrite is forwarded (verified via a
+  stub S3 upstream, and once live during the milestone per V4).
+- DELETE and any bucket admin verb are refused.
+- Writes targeting the snapshot prefix are refused.
+- All quality gates green.
+
+### M3 — grants + operator CLI (delivers level 4, host channel)
+
+Scope: grant request endpoint, grant store with absolute expiry, policy
+integration (a live grant widens the decision for its target/duration
+only), `hf-broker grants|approve|deny|revoke` over a host-local socket.
+
+Acceptance criteria:
+- An agent grant request is held pending; nothing reachable with the
+  agent secret can approve it.
+- `hf-broker approve` enables the granted op for the target only, for the
+  duration only; expiry is enforced; `revoke` kills it early.
+- Every grant use is audit-logged. All quality gates green.
+
+### M4 — Telegram approvals
+
+Scope: `Notifier` interface + Telegram implementation; grant requests
+sent as messages with inline Approve/Deny buttons; decisions read via
+outbound Bot API long-polling; pending-request expiry.
+
+Acceptance criteria:
+- A request produces a Telegram message with working buttons.
+- A decision is accepted only from the configured chat id; a press from
+  any other chat is ignored.
+- A replayed/stale button press is rejected (one-time id consumed).
+- No inbound HTTP surface is added to the broker.
+- Unapproved requests auto-deny after the pending timeout.
+- All quality gates green.
+
+Other notifiers (ntfy, Slack, Signal/Matrix) plug in behind the same
+interface later; out of scope for v1.
 
 ## Non-Goals (v1)
 
@@ -300,13 +630,32 @@ direct writes.
   a read-mostly operator dashboard may come later, but is never the
   approval mechanism.
 
-## Pre-Implementation Verification Items
+## Verification Status
 
-- **V1**: does the Hub git server support partial clone
-  (`--filter=tree:0`)? Decides mirror vs stage-then-promote.
-- **V2**: does the Hub accept pushes to arbitrary ref namespaces (needed
-  only for stage-then-promote)?
-- **V3**: exact Xet/LFS endpoint set a push/upload flow touches through a
-  proxied remote, to enumerate the pass-through allowlist.
-- **V4**: S3-compatible API coverage of server-side copy
-  (`x-amz-copy-source`) on Hub buckets, for snapshots.
+None of these blocks starting M1; each has a defined path.
+
+- **V1 — partial clone (`--filter=tree:0`): CONFIRMED (2026-07-06).**
+  A filtered bare clone of a live Hub dataset returned commit objects
+  only (0 trees, 0 blobs; 56 KiB / 100 commits). The commits-only mirror
+  is therefore the chosen ancestry mechanism; stage-then-promote is the
+  documented fallback only.
+- **V2 — arbitrary ref namespaces: not needed for the chosen path.**
+  Only relevant to the stage-then-promote fallback. Verify only if that
+  fallback is ever adopted.
+- **V3 — Xet/LFS endpoint set touched by a proxied push: confirm during
+  M1.** Enumerate by running one real `git push` of a large file through
+  the broker with verbose transfer logging and recording every host/path
+  hit; the pass-through allowlist is built from that trace. Assumption:
+  large-file transfer uses Xet/LFS endpoints that are additive-only
+  (uploads to content-addressed storage), so pass-through is safe; the
+  M1 acceptance run validates this.
+- **V4 — S3 server-side copy on Hub buckets: confirm during M2.** Verify
+  `x-amz-copy-source` (or the Hub's documented equivalent) performs a
+  metadata-only copy; if the Hub exposes copy under a non-S3 API instead,
+  the snapshot step uses that API — the policy (snapshot before
+  overwrite) is unchanged, only the call differs.
+
+Probes use a disposable private repo/bucket under an owner the runner can
+write to (e.g. `dutifuldev/broker-probe`), and are deleted after. They
+require a real write token and so are run by a human-authorized session,
+not baked into CI.
