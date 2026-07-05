@@ -192,8 +192,8 @@ branch), the agent may *request* an elevation; nothing is self-service:
 1. Agent calls the request endpoint: operation class, target, duration,
    free-text reason.
 2. The broker notifies the operator out-of-band and holds the request.
-   Approval happens through an operator-only channel (CLI on the broker
-   host in v1); nothing reachable with the agent's secret can approve.
+   Approval happens through an operator-only channel; nothing reachable
+   with the agent's secret can approve.
 3. On approval, the named operations are permitted for the grant's
    duration (default 15 minutes, hard cap 1 hour), for the named target
    only, and every use is audit-logged. Expiry is absolute; there is no
@@ -203,6 +203,43 @@ Time-boxing here is honest about what it buys: it limits credential
 persistence and forgotten access, not in-window damage — which is why
 grants are narrow and short, and why nothing irreversible is ever
 standing policy.
+
+### Approval channels
+
+**Channel separation is a security requirement, not a UX choice**: the
+approval action must travel on a channel the agent's execution context
+cannot reach or forge. In particular, approval is never an endpoint on
+the broker surface the agent talks to — anything reachable with (or
+adjacent to) the agent's secret is disqualified by construction.
+
+Two channels are specified:
+
+1. **Operator CLI on the broker host** (M3). `hf-broker grants` lists
+   pending and active grants; `hf-broker approve <id> --minutes 15` and
+   `hf-broker deny <id>` decide them; `hf-broker revoke <id>` kills an
+   active grant early. The CLI talks to the broker process locally
+   (unix socket or localhost port not exposed beyond the host);
+   authentication is possession of a shell on the broker host, which the
+   agent does not have. Zero additional secrets, zero additional
+   surface.
+
+2. **Push-notification approval** (M4). The grant request fires a
+   notification through an operator-configured notifier (e.g. ntfy,
+   Telegram bot, Slack webhook) carrying the request's operation class,
+   target, duration, reason, and a one-time approval code. The decision
+   authenticates through the *notification channel's own identity* (the
+   bot/topic credentials belong to the operator, are configured on the
+   broker host, and are never visible to or shared with the agent) —
+   never through a plain callback URL, which an agent that has read the
+   notification format could forge. Deny requires no action: unapproved
+   requests expire on their own (default 10 minutes pending, then
+   auto-denied).
+
+There is no approval web UI in v1 (see Non-Goals). If one is ever added,
+it is a read-mostly operator dashboard (pending requests, active grants,
+audit tail, revoke) bound to an operator-only interface — reached from
+the broker host, never from the agent's network scope — and the approval
+mechanism itself remains one of the two channels above.
 
 ## Audit
 
@@ -230,7 +267,11 @@ direct writes.
   pass-through, receive-pack enforcement with commits-only mirror,
   audit. Shippable alone; delivers level 2.
 - **M2 — bucket proxy**: S3 subset, verb policy, server-side snapshots.
-- **M3 — grants**: request/approve/expire, operator CLI.
+- **M3 — grants**: request/approve/expire, operator CLI approval
+  channel.
+- **M4 — notification approvals**: push-notification channel (ntfy /
+  Telegram / Slack) with one-time approval codes and pending-request
+  expiry.
 
 ## Non-Goals (v1)
 
@@ -240,6 +281,9 @@ direct writes.
   secrets (one secret per agent client is supported; RBAC is not).
 - Installing itself as a system service; deployment is documented, not
   automated.
+- An approval web UI. Approvals are CLI (M3) and notifications (M4);
+  a read-mostly operator dashboard may come later, but is never the
+  approval mechanism.
 
 ## Pre-Implementation Verification Items
 
