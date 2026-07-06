@@ -1,0 +1,64 @@
+go:
+  coverage:
+    threshold: 85
+  targets:
+    - .
+  exclude:
+    - "fixtures/**"
+  dry:
+    max_findings: 0
+    paths:
+      - cmd
+      - internal
+    exclude:
+      - "**/*_test.go"
+      - "fixtures/**"
+    structural:
+      enabled: true
+      threshold: 0.82
+      min_lines: 4
+      min_nodes: 20
+    copied_blocks:
+      enabled: true
+      min_tokens: 100
+  crap:
+    max_score: 8
+  mutation:
+    targets:
+      - internal/scope/decision.go
+  dependency_boundaries:
+    - from: internal/httpapi
+      allow:
+        - internal/audit
+        - internal/auth
+        - internal/config
+        - internal/gitproxy
+        - internal/gitproxy/pktline
+        - internal/grants
+        - internal/mirror
+        - internal/notify
+        - internal/scope
+    - from: internal/gitproxy
+      allow:
+        - internal/audit
+        - internal/config
+        - internal/gitproxy/pktline
+        - internal/scope
+    - from: internal/mirror
+      allow:
+        - internal/audit
+        - internal/config
+    - from: internal/scope
+      allow: []
+    - from: internal/config
+      allow: []
+    - from: internal/auth
+      allow: []
+    - from: internal/gitproxy/pktline
+      allow: []
+    - from: internal/audit
+      allow: []
+    - from: internal/grants
+      allow: []
+    - from: internal/notify
+      allow: []

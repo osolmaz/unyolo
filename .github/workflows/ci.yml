@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - name: gofmt check
+        run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -race -coverprofile=coverage.out ./...
+      - run: go build ./cmd/hf-broker
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+      - run: golangci-lint run
+      - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
+      - run: slophammer-go dry .
+      - run: slophammer-go crap .
+      - run: slophammer-go mutate . --target internal/scope --scan
+      - run: slophammer-go mutate . --target internal/gitproxy --scan
+      - run: slophammer-go mutate . --target internal/mirror --scan
+      - run: slophammer-go mutate . --target internal/scope/decision.go
+      - run: slophammer-go check .
+      - run: slophammer-go check . --execute

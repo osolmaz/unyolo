@@ -1,0 +1,37 @@
+package notify
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"strconv"
+	"testing"
+	"time"
+)
+
+func TestTelegramLiveSendGrantRequest(t *testing.T) {
+	token := os.Getenv("BROKER_TELEGRAM_BOT_TOKEN")
+	rawChatID := os.Getenv("BROKER_TELEGRAM_CHAT_ID")
+	if token == "" || rawChatID == "" {
+		t.Skip("BROKER_TELEGRAM_BOT_TOKEN and BROKER_TELEGRAM_CHAT_ID are not set")
+	}
+	chatID, err := strconv.ParseInt(rawChatID, 10, 64)
+	if err != nil {
+		t.Fatalf("BROKER_TELEGRAM_CHAT_ID is invalid: %v", err)
+	}
+	telegram := NewTelegram(token, chatID, &http.Client{Timeout: 10 * time.Second}, "")
+	err = telegram.SendGrantRequest(context.Background(), GrantMessage{
+		ID:               "live-smoke",
+		DecisionToken:    "not-a-real-grant",
+		Client:           "local-smoke",
+		Operation:        "git_receive_pack",
+		Target:           "dataset/dutifulbob/hf-broker-smoke",
+		Ref:              "refs/heads/main",
+		Reason:           "live Telegram delivery smoke test",
+		RequestedMinutes: 1,
+		PendingExpiresAt: time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("SendGrantRequest() live error = %v", err)
+	}
+}

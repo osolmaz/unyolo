@@ -1,0 +1,16 @@
+{
+  "repos": [
+    {
+      "id": "osolmaz/scraped-news",
+      "type": "dataset",
+      "mode": "append-only"
+    }
+  ],
+  "buckets": [
+    {
+      "id": "osolmaz/pipeline-output",
+      "mode": "append-only",
+      "snapshot_prefix": "snapshots/"
+    }
+  ]
+}
