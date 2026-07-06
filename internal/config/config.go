@@ -29,7 +29,6 @@ const (
 	DefaultHFTimeout    = 120 * time.Second
 
 	canonicalEnvPrefix = "HF_BROKER_"
-	legacyEnvPrefix    = "BROKER_"
 )
 
 // Client is one named broker client and its shared secret.
@@ -176,10 +175,7 @@ func parseSecretsFile(path string) ([]Client, error) {
 }
 
 func brokerEnv(getenv func(string) string, suffix string) string {
-	if value := getenv(brokerEnvName(suffix)); value != "" {
-		return value
-	}
-	return getenv(legacyEnvPrefix + suffix)
+	return getenv(brokerEnvName(suffix))
 }
 
 func brokerEnvName(suffix string) string {

@@ -110,36 +110,3 @@ func TestLoadOverrides(t *testing.T) {
 		t.Fatalf("telegram config not applied: %+v", cfg)
 	}
 }
-
-func TestLoadAcceptsLegacyBrokerPrefix(t *testing.T) {
-	env := map[string]string{
-		"BROKER_HF_TOKEN":      "legacy_hf_token_value",
-		"BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"BROKER_PORT":          "9091",
-	}
-	cfg, err := Load(func(key string) string { return env[key] })
-	if err != nil {
-		t.Fatalf("Load() legacy error = %v", err)
-	}
-	if cfg.HFToken != "legacy_hf_token_value" || cfg.Port != 9091 {
-		t.Fatalf("legacy config not applied: %+v", cfg)
-	}
-}
-
-func TestLoadPrefersHFBrokerPrefixOverLegacyPrefix(t *testing.T) {
-	env := map[string]string{
-		"HF_BROKER_HF_TOKEN":      "canonical_hf_token_value",
-		"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_PORT":          "9092",
-		"BROKER_HF_TOKEN":         "legacy_hf_token_value",
-		"BROKER_SHARED_SECRET":    "123456abcdefghijklmnopqrstuvwxyz",
-		"BROKER_PORT":             "9091",
-	}
-	cfg, err := Load(func(key string) string { return env[key] })
-	if err != nil {
-		t.Fatalf("Load() precedence error = %v", err)
-	}
-	if cfg.HFToken != "canonical_hf_token_value" || cfg.Port != 9092 || cfg.Clients[0].Secret != "abcdefghijklmnopqrstuvwxyz123456" {
-		t.Fatalf("canonical config did not win: %+v", cfg)
-	}
-}

@@ -10,8 +10,8 @@ import (
 )
 
 func TestTelegramLiveSendGrantRequest(t *testing.T) {
-	token := envWithLegacyFallback("TELEGRAM_BOT_TOKEN")
-	rawChatID := envWithLegacyFallback("TELEGRAM_CHAT_ID")
+	token := os.Getenv("HF_BROKER_TELEGRAM_BOT_TOKEN")
+	rawChatID := os.Getenv("HF_BROKER_TELEGRAM_CHAT_ID")
 	if token == "" || rawChatID == "" {
 		t.Skip("HF_BROKER_TELEGRAM_BOT_TOKEN and HF_BROKER_TELEGRAM_CHAT_ID are not set")
 	}
@@ -34,11 +34,4 @@ func TestTelegramLiveSendGrantRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendGrantRequest() live error = %v", err)
 	}
-}
-
-func envWithLegacyFallback(suffix string) string {
-	if value := os.Getenv("HF_BROKER_" + suffix); value != "" {
-		return value
-	}
-	return os.Getenv("BROKER_" + suffix)
 }

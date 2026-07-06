@@ -355,9 +355,7 @@ of `net/http` so it is unit-testable without a server.
 Startup validation fails closed: missing required secret, unreadable or
 invalid `scope.json`, secret under 32 bytes, or a `snapshot_prefix` that
 overlaps a writable path all abort boot with a specific error. The token
-value is never logged, even at startup. Legacy `BROKER_*` environment
-names are accepted as aliases during migration, but `HF_BROKER_*` values
-take precedence when both names are set.
+value is never logged, even at startup.
 
 ### scope.json (full schema)
 

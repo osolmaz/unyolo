@@ -105,10 +105,6 @@ callback URL. A grant only covers the requested repo/ref, expires at the
 approved time, and decisions from any chat except the configured operator
 chat are ignored.
 
-`HF_BROKER_*` is the canonical environment namespace. The older
-`BROKER_*` names are accepted as legacy aliases, but if both are set the
-`HF_BROKER_*` value wins.
-
 ## License
 
 [MIT](LICENSE)
