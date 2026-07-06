@@ -76,8 +76,28 @@ normal. A history rewrite is refused with a message at the terminal:
 ## Telegram Grants
 
 Destructive git pushes are still refused by default. To make a narrow
-exception, configure the broker host with a Telegram bot token and the
-single operator chat id:
+exception, enable a grant policy for the repo in `scope.json` and
+configure the broker host with a Telegram bot token and the single
+operator chat id:
+
+```json
+{
+  "repos": [
+    {
+      "id": "osolmaz/scraped-news",
+      "type": "dataset",
+      "mode": "append-only",
+      "grant_policy": {
+        "git_receive_pack": {
+          "default_minutes": 5,
+          "default_max_uses": 1,
+          "max_uses": 3
+        }
+      }
+    }
+  ]
+}
+```
 
 ```sh
 export HF_BROKER_TELEGRAM_BOT_TOKEN=...
@@ -94,7 +114,9 @@ curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
     "target": "dataset/osolmaz/scraped-news",
     "ref": "refs/heads/main",
     "reason": "recover main after a bad commit",
-    "minutes": 5
+    "minutes": 5,
+    "max_uses": 1,
+    "client_request_id": "recover-main-20260706"
   }' \
   https://broker.tailnet:8080/grants
 ```
@@ -102,8 +124,8 @@ curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
 The broker sends the request to Telegram with Approve and Deny buttons
 and long-polls the Bot API for the answer. There is no inbound Telegram
 callback URL. A grant only covers the requested repo/ref, expires at the
-approved time, and decisions from any chat except the configured operator
-chat are ignored.
+approved time, is consumed after its use budget is exhausted, and
+decisions from any chat except the configured operator chat are ignored.
 
 ## License
 

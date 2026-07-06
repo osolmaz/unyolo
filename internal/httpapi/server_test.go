@@ -24,6 +24,7 @@ import (
 	"github.com/osolmaz/hf-broker/internal/config"
 	"github.com/osolmaz/hf-broker/internal/gitproxy"
 	"github.com/osolmaz/hf-broker/internal/gitproxy/pktline"
+	"github.com/osolmaz/hf-broker/internal/grants"
 	"github.com/osolmaz/hf-broker/internal/notify"
 	"github.com/osolmaz/hf-broker/internal/scope"
 )
@@ -131,7 +132,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	defer upstream.server.Close()
 	var auditLog bytes.Buffer
 	notifier := &captureGrantNotifier{}
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only"}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{"max_uses":3}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +186,8 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover main",
-		"minutes":5
+		"minutes":5,
+		"client_request_id":"recover-main"
 	}`))
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("grant request = %d %q, want 202", resp.StatusCode, body)
@@ -196,6 +198,17 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	msg := notifier.messages[0]
 	if strings.Contains(body, msg.DecisionToken) {
 		t.Fatalf("grant response leaked decision token: %s", body)
+	}
+	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover main",
+		"minutes":5,
+		"client_request_id":"recover-main"
+	}`))
+	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
+		t.Fatalf("idempotent grant status=%d messages=%d, want 202 and one message", resp.StatusCode, len(notifier.messages))
 	}
 	answer := handler.handleTelegramDecision(context.Background(), notify.Decision{
 		Action:      notify.DecisionApprove,
@@ -220,6 +233,13 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	if upstreamRef := strings.TrimSpace(runGit(t, upstreamRepo, "rev-parse", "refs/heads/main")); upstreamRef != initial {
 		t.Fatalf("upstream main after grant = %s, want %s", upstreamRef, initial)
 	}
+	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "Access is now closed") {
+		t.Fatalf("grant use notification updates = %+v", notifier.updates)
+	}
+	output, err = runClientGitErr(clone, "push", "origin", ":main")
+	if err == nil || !strings.Contains(output, "hf-broker") {
+		t.Fatalf("delete push after consumed grant err=%v output:\n%s", err, output)
+	}
 	if got := auditLog.String(); !strings.Contains(got, `"decision":"grant-used"`) || strings.Contains(got, testSecret) || strings.Contains(got, testToken) || strings.Contains(got, msg.DecisionToken) {
 		t.Fatalf("audit missing grant-used or leaked secret material:\n%s", got)
 	}
@@ -231,7 +251,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 func TestGrantRequestErrors(t *testing.T) {
 	dir := t.TempDir()
 	var auditLog bytes.Buffer
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only"}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{"max_uses":2}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,6 +307,8 @@ func TestGrantRequestErrors(t *testing.T) {
 		{name: "out of scope", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/other","ref":"refs/heads/main","reason":"recover"}`, want: http.StatusForbidden},
 		{name: "negative minutes", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":-1}`, want: http.StatusBadRequest},
 		{name: "too many minutes", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":61}`, want: http.StatusBadRequest},
+		{name: "negative max uses", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","max_uses":-1}`, want: http.StatusBadRequest},
+		{name: "too many uses", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","max_uses":3}`, want: http.StatusBadRequest},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -305,6 +327,122 @@ func TestGrantRequestErrors(t *testing.T) {
 	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(validBody))
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("notifier failure status = %d, want 502", resp.StatusCode)
+	}
+}
+
+func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
+	dir := t.TempDir()
+	notifier := &captureGrantNotifier{}
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: "http://127.0.0.1:1",
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := handler.grants.Request(grants.Request{
+		Client:          "agent",
+		ClientRequestID: "retry-missing-message",
+		Operation:       string(scope.OpGitPush),
+		Target:          "dataset/acme/repo",
+		Ref:             "refs/heads/main",
+		Reason:          "recover",
+		MaxUses:         1,
+	}); err != nil {
+		t.Fatalf("preseed Request() error = %v", err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+
+	resp, body := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover",
+		"client_request_id":"retry-missing-message"
+	}`))
+	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
+		t.Fatalf("retry grant status=%d body=%q messages=%d, want 202 and one message", resp.StatusCode, body, len(notifier.messages))
+	}
+}
+
+func TestRecordGrantUseFailureMarksGrantSpent(t *testing.T) {
+	dir := t.TempDir()
+	store := grants.New(filepath.Join(dir, "grants.json"), grants.Options{})
+	grant, _, err := store.Request(grants.Request{
+		Client:    "agent",
+		Operation: string(scope.OpGitPush),
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "force push",
+		MaxUses:   1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.Chmod(dir, 0o700)
+	}()
+	server := &Server{grants: store, spentGrants: map[string]bool{}}
+
+	server.recordGrantUses([]grantUse{{grant: approved}})
+	if !server.grantUseSpent(approved.ID) {
+		t.Fatalf("grantUseSpent(%q) = false, want true after RecordUse failure", approved.ID)
+	}
+}
+
+func TestGrantStatusUpdateText(t *testing.T) {
+	tests := []struct {
+		name   string
+		update grants.StatusUpdate
+		want   string
+	}{
+		{
+			name:   "active",
+			update: grants.StatusUpdate{Status: grants.StatusActive},
+			want:   "✅ Approved. Access is active.",
+		},
+		{
+			name:   "denied",
+			update: grants.StatusUpdate{Status: grants.StatusDenied},
+			want:   "❌ Denied. Access was not granted.",
+		},
+		{
+			name:   "consumed",
+			update: grants.StatusUpdate{Status: grants.StatusConsumed, Grant: grants.Grant{Status: grants.StatusConsumed, MaxUses: 1, UsedCount: 1}},
+			want:   "✅ Used. Access is now closed.",
+		},
+		{
+			name:   "expired",
+			update: grants.StatusUpdate{Status: grants.StatusExpired, Grant: grants.Grant{ExpiredFrom: grants.StatusActive}},
+			want:   "⌛ Expired. Access window ended.",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := grantStatusUpdateText(tc.update); got != tc.want {
+				t.Fatalf("grantStatusUpdateText() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -741,17 +879,23 @@ func (w *writeErrorResponseWriter) Write([]byte) (int, error) {
 
 type captureGrantNotifier struct {
 	messages []notify.GrantMessage
+	updates  []string
 }
 
-func (n *captureGrantNotifier) SendGrantRequest(_ context.Context, msg notify.GrantMessage) error {
+func (n *captureGrantNotifier) SendGrantRequest(_ context.Context, msg notify.GrantMessage) (notify.MessageRef, error) {
 	n.messages = append(n.messages, msg)
+	return notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: len(n.messages), Text: "grant text"}, nil
+}
+
+func (n *captureGrantNotifier) UpdateGrantStatus(_ context.Context, _ notify.MessageRef, status string) error {
+	n.updates = append(n.updates, status)
 	return nil
 }
 
 type failingGrantNotifier struct{}
 
-func (failingGrantNotifier) SendGrantRequest(context.Context, notify.GrantMessage) error {
-	return errors.New("notify failed")
+func (failingGrantNotifier) SendGrantRequest(context.Context, notify.GrantMessage) (notify.MessageRef, error) {
+	return notify.MessageRef{}, errors.New("notify failed")
 }
 
 type gitUpstream struct {

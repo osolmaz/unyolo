@@ -3,14 +3,36 @@
     {
       "id": "osolmaz/scraped-news",
       "type": "dataset",
-      "mode": "append-only"
+      "mode": "append-only",
+      "grant_policy": {
+        "git_receive_pack": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "repo_metadata_update": {
+          "default_minutes": 5,
+          "max_minutes": 60
+        },
+        "repo_visibility_update": {
+          "allowed": ["public_to_private"]
+        }
+      }
     }
   ],
   "buckets": [
     {
       "id": "osolmaz/pipeline-output",
       "mode": "append-only",
-      "snapshot_prefix": "snapshots/"
+      "snapshot_prefix": "snapshots/",
+      "grant_policy": {
+        "bucket_delete": {
+          "allowed": ["object", "prefix"],
+          "default_minutes": 5,
+          "max_minutes": 60
+        }
+      }
     }
   ]
 }

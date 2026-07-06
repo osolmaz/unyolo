@@ -24,7 +24,7 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 	defer server.Close()
 	telegram := NewTelegram("telegram_token_value", 123, server.Client(), server.URL)
 
-	err := telegram.SendGrantRequest(context.Background(), GrantMessage{
+	ref, err := telegram.SendGrantRequest(context.Background(), GrantMessage{
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
@@ -33,10 +33,14 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
 		RequestedMinutes: 15,
+		MaxUses:          3,
 		PendingExpiresAt: time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("SendGrantRequest() error = %v", err)
+	}
+	if ref.Kind != "telegram" || ref.ChatID != 123 || ref.MessageID != 1 || ref.Text == "" {
+		t.Fatalf("message ref = %+v", ref)
 	}
 	if sent["chat_id"].(float64) != 123 {
 		t.Fatalf("chat_id = %v, want 123", sent["chat_id"])
@@ -45,6 +49,7 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 	if !strings.Contains(text, "🔐 Approval needed for hf-broker") ||
 		!strings.Contains(text, "agent is asking to push to a Git repo.") ||
 		!strings.Contains(text, "⏱️ Access: 15 minutes") ||
+		!strings.Contains(text, "🔁 Uses: up to 3 pushes") ||
 		!strings.Contains(text, "⌛ Request expires: 2026-07-06 01:02 UTC") ||
 		!strings.Contains(text, "⚠️ Approve only if this looks right.") ||
 		!strings.Contains(text, "dataset/acme/repo") ||
@@ -148,7 +153,7 @@ func TestTelegramMarksPendingAndActiveExpiry(t *testing.T) {
 	defer server.Close()
 	telegram := NewTelegram("telegram_token_value", 123, server.Client(), server.URL)
 
-	err := telegram.SendGrantRequest(context.Background(), GrantMessage{
+	_, err := telegram.SendGrantRequest(context.Background(), GrantMessage{
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
@@ -157,6 +162,7 @@ func TestTelegramMarksPendingAndActiveExpiry(t *testing.T) {
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
 		RequestedMinutes: 5,
+		MaxUses:          1,
 		PendingExpiresAt: now.Add(time.Minute),
 	})
 	if err != nil {
@@ -182,13 +188,64 @@ func TestTelegramMarksPendingAndActiveExpiry(t *testing.T) {
 	}
 }
 
+func TestTelegramConsumedUpdateClearsTrackedExpiry(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	var edits []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":7,"chat":{"id":123}}}`))
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			edits = append(edits, payload)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":7}}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	telegram := NewTelegram("telegram_token_value", 123, server.Client(), server.URL)
+
+	ref, err := telegram.SendGrantRequest(context.Background(), GrantMessage{
+		ID:               "grant-id",
+		DecisionToken:    "decision-token",
+		Client:           "agent",
+		Operation:        "git_receive_pack",
+		Target:           "dataset/acme/repo",
+		Ref:              "refs/heads/main",
+		Reason:           "recover",
+		RequestedMinutes: 5,
+		MaxUses:          1,
+		PendingExpiresAt: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("SendGrantRequest() error = %v", err)
+	}
+	telegram.trackAfterDecision(Decision{
+		ID:          "grant-id",
+		ChatID:      ref.ChatID,
+		MessageID:   ref.MessageID,
+		MessageText: ref.Text,
+	}, DecisionResult{Answer: "Grant approved", ActiveExpiresAt: now.Add(5 * time.Minute)})
+	if err := telegram.UpdateGrantStatus(context.Background(), ref, "✅ Used. Access is now closed."); err != nil {
+		t.Fatalf("UpdateGrantStatus() error = %v", err)
+	}
+	telegram.expireTracked(context.Background(), now.Add(5*time.Minute))
+	if len(edits) != 1 || !strings.Contains(edits[0]["text"].(string), "Status: ✅ Used. Access is now closed.") {
+		t.Fatalf("edits after consumed update = %+v, want only consumed status", edits)
+	}
+}
+
 func TestTelegramPostErrorsDoNotExposeToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusInternalServerError)
 	}))
 	defer server.Close()
 	telegram := NewTelegram("telegram_token_value", 123, server.Client(), server.URL)
-	err := telegram.SendGrantRequest(context.Background(), GrantMessage{
+	_, err := telegram.SendGrantRequest(context.Background(), GrantMessage{
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
@@ -197,6 +254,7 @@ func TestTelegramPostErrorsDoNotExposeToken(t *testing.T) {
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
 		RequestedMinutes: 15,
+		MaxUses:          1,
 		PendingExpiresAt: time.Now(),
 	})
 	if err == nil {
@@ -207,7 +265,7 @@ func TestTelegramPostErrorsDoNotExposeToken(t *testing.T) {
 	}
 
 	telegram = NewTelegram("telegram_token_value", 123, server.Client(), "://bad")
-	if err := telegram.SendGrantRequest(context.Background(), GrantMessage{}); err == nil || strings.Contains(err.Error(), "telegram_token_value") {
+	if _, err := telegram.SendGrantRequest(context.Background(), GrantMessage{}); err == nil || strings.Contains(err.Error(), "telegram_token_value") {
 		t.Fatalf("bad URL error = %v, want sanitized error", err)
 	}
 }

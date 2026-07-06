@@ -104,11 +104,26 @@ Configuration: environment for secrets (`HF_BROKER_SHARED_SECRET`,
 ```json
 {
   "repos": [
-    {"id": "osolmaz/scraped-news", "type": "dataset", "mode": "append-only"}
+    {
+      "id": "osolmaz/scraped-news",
+      "type": "dataset",
+      "mode": "append-only",
+      "grant_policy": {
+        "git_receive_pack": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        }
+      }
+    }
   ],
   "buckets": [
     {"id": "osolmaz/pipeline-output", "mode": "append-only",
-     "snapshot_prefix": "snapshots/"}
+     "snapshot_prefix": "snapshots/",
+     "grant_policy": {
+       "bucket_delete": {"allowed": ["object", "prefix"]}
+     }}
   ]
 }
 ```
@@ -232,9 +247,166 @@ branch), the agent may *request* an elevation; nothing is self-service:
    renewal without a fresh approval.
 
 Time-boxing here is honest about what it buys: it limits credential
-persistence and forgotten access, not in-window damage — which is why
-grants are narrow and short, and why nothing irreversible is ever
-standing policy.
+persistence and forgotten access, not in-window damage. Grants therefore
+have two additional constraints: a narrow target and an explicit use
+budget or exact execution plan.
+
+### Grant protocol v1
+
+Grant requests are typed resources. The broker never accepts a generic
+Hub API path, arbitrary HTTP method, caller-supplied upstream headers, or
+opaque JSON patch as a grant.
+
+Smallest valid git override request:
+
+```json
+{
+  "operation": "git_receive_pack",
+  "target": "dataset/osolmaz/scraped-news",
+  "ref": "refs/heads/main",
+  "reason": "repair main after a bad push"
+}
+```
+
+The broker fills defaults from `scope.json` grant policy: `minutes`
+defaults to `5`, `max_uses` defaults to `1`, and no grant may exceed
+`60` minutes. A push request is one use regardless of how many commits it
+contains.
+
+Grant modes:
+
+| Mode | Used for | Behavior |
+|------|----------|----------|
+| `window` | Git push overrides | Operator approves a short-lived permission for one client, target, ref, and use budget. |
+| `execution` | Settings/admin/bucket-destructive actions | Operator approves one broker-built plan. The broker executes that exact plan once. |
+
+Window grants are appropriate when the broker cannot know the final
+request body until the agent performs the operation, as with
+`git-receive-pack`. Execution grants are required for settings,
+repository administration, and bucket deletion because the broker can
+precompute and display the exact mutation before approval.
+
+Grant lifecycle:
+
+```text
+pending -> active -> consumed
+pending -> denied
+pending -> expired
+active  -> expired
+active  -> revoked
+active  -> consumed
+```
+
+Only `active` grants can be used. A consumed, expired, denied, or revoked
+grant is terminal. Reusing a terminal grant fails closed and is
+audit-logged.
+
+### Grant action registry
+
+Initial grantable actions:
+
+| Action | Mode | Target | Notes |
+|--------|------|--------|-------|
+| `git_receive_pack` | `window` | repo + exact ref | May override history rewrite, branch/tag deletion, or tag update when policy and use budget allow it. |
+| `repo_create_private` | `execution` | exact repo id | Creates only a private repo predeclared in `scope.json`. |
+| `repo_metadata_update` | `execution` | exact repo id | Non-security metadata only, such as description, tags, or card metadata. |
+| `repo_visibility_update` | `execution` | exact repo id | Exact `private_to_public` or `public_to_private` direction must be allowed by policy. |
+| `bucket_delete` | `execution` | bucket object or prefix | Requires a deletion manifest; object/prefix shape must be allowed by policy. |
+
+Never grantable through hf-broker:
+
+- generic Hugging Face API proxying
+- arbitrary HTTP requests
+- token, secret, webhook, or credential changes
+- members, permissions, org roles, or resource groups
+- repo transfer, namespace move, or ownership changes
+- billing, paid hardware, storage tier, or quota changes
+- Space secrets or variables that may expose credentials
+- repo or bucket deletion as a whole
+
+### Execution plans
+
+Execution grants are approved over a canonical plan, not over loose text.
+The broker builds the plan after reading upstream state. The operator
+sees the action, target, before/after diff, risk label, expiry, and plan
+hash.
+
+Example visibility plan:
+
+```json
+{
+  "mode": "execution",
+  "action": "repo_visibility_update",
+  "target": "dataset/dutifulbob/hf-broker-smoke",
+  "before": {"private": true},
+  "after": {"private": false},
+  "plan_hash": "sha256:..."
+}
+```
+
+Before execution, the broker re-reads upstream state under the relevant
+target lock. If the current state no longer matches the plan's `before`
+snapshot, execution is refused and a fresh request is required. Execution
+plans are single-use; there is no multi-use settings/admin grant.
+
+### Idempotency and concurrency
+
+Grant requests may include `client_request_id`. The tuple
+`client + client_request_id` is idempotent: retrying the same request
+returns the original pending, active, denied, expired, consumed, or
+revoked grant instead of creating a duplicate Telegram prompt.
+
+The broker locks the relevant target while validating and executing a
+grant use. Window grants are consumed only after upstream accepts the
+operation. Execution grants are consumed after the planned upstream
+mutation succeeds; if an upstream call may have partially applied side
+effects, the broker records the ambiguous result and refuses retries
+until an operator resolves it.
+
+### Notification state
+
+Notifier message metadata (`chat_id`, `message_id`, notifier kind) is
+stored with the grant so restarts can still update operator messages.
+Telegram messages are updated when a request is approved, denied, used,
+expired, revoked, or fails during execution. Buttons are removed after
+the first terminal decision.
+
+Operator prompts must show:
+
+- action and mode
+- client
+- target and ref/object/prefix
+- requested duration and use budget
+- reason
+- before/after diff for execution plans
+- risk label for high-risk actions such as `private_to_public`
+- pending expiry
+
+### Audit requirements
+
+Every grant lifecycle event is audit-logged. Grant audit entries include
+at least:
+
+```json
+{
+  "event": "grant-used",
+  "grant_id": "...",
+  "client": "local-smoke",
+  "action": "git_receive_pack",
+  "target": "dataset/dutifulbob/hf-broker-smoke",
+  "ref": "refs/heads/main",
+  "mode": "window",
+  "plan_hash": "",
+  "max_uses": 1,
+  "used_count": 1,
+  "operator": "telegram:@operator",
+  "upstream_status": 200
+}
+```
+
+Audit lines never include upstream tokens, broker client secrets,
+Telegram tokens, request bodies that may contain secrets, pack contents,
+or object payloads.
 
 ### Approval channels
 
@@ -365,14 +537,36 @@ value is never logged, even at startup.
     {
       "id": "osolmaz/scraped-news",
       "type": "dataset",
-      "mode": "append-only"
+      "mode": "append-only",
+      "grant_policy": {
+        "git_receive_pack": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "repo_metadata_update": {
+          "default_minutes": 5,
+          "max_minutes": 60
+        },
+        "repo_visibility_update": {
+          "allowed": ["public_to_private"]
+        }
+      }
     }
   ],
   "buckets": [
     {
       "id": "osolmaz/pipeline-output",
       "mode": "append-only",
-      "snapshot_prefix": "snapshots/"
+      "snapshot_prefix": "snapshots/",
+      "grant_policy": {
+        "bucket_delete": {
+          "allowed": ["object", "prefix"],
+          "default_minutes": 5,
+          "max_minutes": 60
+        }
+      }
     }
   ]
 }
@@ -383,11 +577,42 @@ value is never logged, even at startup.
 - `repos[].type`: one of `model` | `dataset` | `space`. Determines the
   upstream URL prefix (see Request Handling). Required.
 - `repos[].mode`: `read-only` | `append-only`. Default `append-only`.
+- `repos[].grant_policy`: optional object listing grantable operations
+  for this exact repo entry. Omitted means no grants are available for
+  this repo beyond standing `read-only` or `append-only` policy.
+- `repos[].grant_policy.git_receive_pack`: optional window-grant policy
+  for push overrides on refs in this repo. Fields:
+  - `default_minutes`: default grant duration. Default `5`; must be
+    between `1` and `60`.
+  - `max_minutes`: longest allowed grant duration. Default `60`; must be
+    at least `default_minutes` and at most `60`.
+  - `default_max_uses`: default push-use budget. Default `1`; one push
+    request is one use, regardless of commit count.
+  - `max_uses`: largest requested push-use budget accepted by policy.
+    Default `default_max_uses`; must be at least `default_max_uses` and
+    at most `25`.
+- `repos[].grant_policy.repo_create_private`: optional execution-grant
+  policy allowing the broker to create this exact repo id as private.
+  It accepts `default_minutes` and `max_minutes`.
+- `repos[].grant_policy.repo_metadata_update`: optional execution-grant
+  policy for non-security metadata such as description/tags/card
+  metadata. It accepts `default_minutes` and `max_minutes`.
+- `repos[].grant_policy.repo_visibility_update`: optional
+  execution-grant policy for visibility changes. It requires `allowed`,
+  a non-empty list of `private_to_public` and/or `public_to_private`,
+  and accepts `default_minutes` and `max_minutes`. `private_to_public`
+  should be configured sparingly because it publishes data.
 - `buckets[].id`: `owner/name`, same validation.
 - `buckets[].mode`: `read-only` | `append-only`. Default `append-only`.
 - `buckets[].snapshot_prefix`: required when mode is `append-only`;
   default `snapshots/`. Must end with `/`. Writes under this prefix are
   refused for all clients (it is the undo log).
+- `buckets[].grant_policy`: optional object listing grantable operations
+  for this exact bucket entry.
+- `buckets[].grant_policy.bucket_delete`: optional execution-grant
+  policy for object and prefix deletion. It requires `allowed`, a
+  non-empty list of `object` and/or `prefix`, and accepts
+  `default_minutes` and `max_minutes`.
 - Unknown fields are rejected (fail closed), so a typo cannot silently
   widen access.
 - There is no API to read or reload this file at runtime; changing scope
@@ -534,7 +759,9 @@ The proxy is testable without a live Hub:
 
 - **Unit (the bulk)**: pkt-line parsing, ref-command extraction,
   enforcement decisions, scope decisions, config validation, snapshot
-  key derivation, grant expiry — all pure, table-driven.
+  key derivation, grant policy validation, grant expiry, grant use
+  budgets, idempotency, execution-plan hashing — all pure,
+  table-driven.
 - **Ancestry**: build throwaway real git repos in `tmp` with `git`
   plumbing, exercise `mirror` against them (fast-forward, non-ff,
   deletion, new branch, new tag, tag move) — real git, no network.
@@ -572,6 +799,9 @@ Acceptance criteria:
 - Concurrent pushes to one repo cannot both pass an ancestry check
   against the same base (race test).
 - Secrecy-invariant test passes. All quality gates green.
+- Grant policy settings reject unknown fields, invalid directions,
+  invalid bucket delete shapes, over-cap durations, and invalid use
+  budgets.
 
 ### M2 — bucket proxy (delivers level 3)
 
@@ -598,6 +828,12 @@ Acceptance criteria:
   agent secret can approve it.
 - `hf-broker approve` enables the granted op for the target only, for the
   duration only; expiry is enforced; `revoke` kills it early.
+- `max_uses` defaults to one, decrements after each accepted matching
+  push, and closes the grant when exhausted.
+- `client_request_id` retries are idempotent and do not create duplicate
+  operator prompts.
+- Durable notifier metadata lets approve/deny/use/expire/revoke updates
+  survive broker restarts.
 - Every grant use is audit-logged. All quality gates green.
 
 ### M4 — Telegram approvals

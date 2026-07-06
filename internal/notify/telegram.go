@@ -33,6 +33,14 @@ const (
 	activeExpiredStatus  = "⌛ Expired. Access window ended."
 )
 
+// MessageRef identifies one editable operator notification.
+type MessageRef struct {
+	Kind      string
+	ChatID    int64
+	MessageID int
+	Text      string
+}
+
 // GrantMessage is the grant metadata sent to an operator.
 type GrantMessage struct {
 	ID               string
@@ -43,6 +51,7 @@ type GrantMessage struct {
 	Ref              string
 	Reason           string
 	RequestedMinutes int
+	MaxUses          int
 	PendingExpiresAt time.Time
 }
 
@@ -121,7 +130,7 @@ func NewTelegram(token string, chatID int64, client *http.Client, baseURL string
 }
 
 // SendGrantRequest sends one pending grant request with Approve and Deny buttons.
-func (t *Telegram) SendGrantRequest(ctx context.Context, msg GrantMessage) error {
+func (t *Telegram) SendGrantRequest(ctx context.Context, msg GrantMessage) (MessageRef, error) {
 	text := grantText(msg)
 	payload := map[string]any{
 		"chat_id": t.chatID,
@@ -135,12 +144,13 @@ func (t *Telegram) SendGrantRequest(ctx context.Context, msg GrantMessage) error
 	}
 	var response telegramMessageResponse
 	if err := t.post(ctx, "sendMessage", payload, &response); err != nil {
-		return err
+		return MessageRef{}, err
 	}
 	chatID := response.Result.Chat.ID
 	if chatID == 0 {
 		chatID = t.chatID
 	}
+	ref := MessageRef{Kind: "telegram", ChatID: chatID, MessageID: response.Result.MessageID, Text: text}
 	t.track(trackedMessage{
 		id:             msg.ID,
 		chatID:         chatID,
@@ -149,7 +159,7 @@ func (t *Telegram) SendGrantRequest(ctx context.Context, msg GrantMessage) error
 		expiresAt:      msg.PendingExpiresAt,
 		statusOnExpire: pendingExpiredStatus,
 	})
-	return nil
+	return ref, nil
 }
 
 // Poll runs Telegram long polling until ctx is canceled.
@@ -190,7 +200,6 @@ func (t *Telegram) PollOnce(ctx context.Context, offset int64, handler DecisionH
 			t.trackAfterDecision(decision, result)
 		}
 	}
-	t.expireTracked(ctx, time.Now().UTC())
 	return nextOffset, nil
 }
 
@@ -303,6 +312,38 @@ func (t *Telegram) editMessageStatus(ctx context.Context, message trackedMessage
 	return t.post(ctx, "editMessageText", payload, nil)
 }
 
+// UpdateGrantStatus edits a persisted grant notification.
+func (t *Telegram) UpdateGrantStatus(ctx context.Context, ref MessageRef, status string) error {
+	err := t.editMessageStatus(ctx, trackedMessage{
+		chatID:    ref.ChatID,
+		messageID: ref.MessageID,
+		text:      ref.Text,
+	}, status)
+	if err == nil && terminalGrantStatus(status) {
+		t.forgetMessage(ref.ChatID, ref.MessageID)
+	}
+	return err
+}
+
+func terminalGrantStatus(status string) bool {
+	switch status {
+	case pendingExpiredStatus, activeExpiredStatus, "✅ Used. Access is now closed.":
+		return true
+	default:
+		return false
+	}
+}
+
+func (t *Telegram) forgetMessage(chatID int64, messageID int) {
+	t.trackedMu.Lock()
+	defer t.trackedMu.Unlock()
+	for id, message := range t.tracked {
+		if message.chatID == chatID && message.messageID == messageID {
+			delete(t.tracked, id)
+		}
+	}
+}
+
 func (t *Telegram) post(ctx context.Context, method string, payload any, out any) error {
 	req, err := t.newPostRequest(ctx, method, payload)
 	if err != nil {
@@ -356,15 +397,23 @@ func callbackData(action DecisionAction, id, token string) string {
 }
 
 func grantText(msg GrantMessage) string {
-	return fmt.Sprintf("🔐 Approval needed for hf-broker\n\n%s is asking to %s.\n\n📍 Target: %s\n🌿 Ref: %s\n⏱️ Access: %d minutes\n⌛ Request expires: %s\n\n📝 Reason: %s\n\n⚠️ Approve only if this looks right.",
+	return fmt.Sprintf("🔐 Approval needed for hf-broker\n\n%s is asking to %s.\n\n📍 Target: %s\n🌿 Ref: %s\n⏱️ Access: %d minutes\n🔁 Uses: %s\n⌛ Request expires: %s\n\n📝 Reason: %s\n\n⚠️ Approve only if this looks right.",
 		msg.Client,
 		operationText(msg.Operation),
 		msg.Target,
 		msg.Ref,
 		msg.RequestedMinutes,
+		usesText(msg.MaxUses),
 		formatTelegramTime(msg.PendingExpiresAt),
 		msg.Reason,
 	)
+}
+
+func usesText(maxUses int) string {
+	if maxUses <= 1 {
+		return "1 push"
+	}
+	return fmt.Sprintf("up to %d pushes", maxUses)
 }
 
 func operationText(operation string) string {

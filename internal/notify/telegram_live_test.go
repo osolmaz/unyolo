@@ -20,7 +20,7 @@ func TestTelegramLiveSendGrantRequest(t *testing.T) {
 		t.Fatalf("HF_BROKER_TELEGRAM_CHAT_ID is invalid: %v", err)
 	}
 	telegram := NewTelegram(token, chatID, &http.Client{Timeout: 10 * time.Second}, "")
-	err = telegram.SendGrantRequest(context.Background(), GrantMessage{
+	_, err = telegram.SendGrantRequest(context.Background(), GrantMessage{
 		ID:               "live-smoke",
 		DecisionToken:    "not-a-real-grant",
 		Client:           "local-smoke",
@@ -29,6 +29,7 @@ func TestTelegramLiveSendGrantRequest(t *testing.T) {
 		Ref:              "refs/heads/main",
 		Reason:           "live Telegram delivery smoke test",
 		RequestedMinutes: 5,
+		MaxUses:          1,
 		PendingExpiresAt: time.Now().UTC().Add(5 * time.Minute),
 	})
 	if err != nil {

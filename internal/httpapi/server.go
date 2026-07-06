@@ -63,13 +63,19 @@ type Server struct {
 	grants     *grants.Store
 	notifier   GrantNotifier
 
-	lfsMu      sync.Mutex
-	lfsActions map[string]lfsAction
+	lfsMu       sync.Mutex
+	lfsActions  map[string]lfsAction
+	grantUseMu  sync.Mutex
+	spentGrants map[string]bool
 }
 
 // GrantNotifier sends pending grants to an operator approval channel.
 type GrantNotifier interface {
-	SendGrantRequest(context.Context, notify.GrantMessage) error
+	SendGrantRequest(context.Context, notify.GrantMessage) (notify.MessageRef, error)
+}
+
+type GrantStatusNotifier interface {
+	UpdateGrantStatus(context.Context, notify.MessageRef, string) error
 }
 
 type route struct {
@@ -118,6 +124,9 @@ func New(opts Options) (*Server, error) {
 	}
 	server := newServer(opts, upstream, clients, auditLogger)
 	server.startTelegram(ctx, opts)
+	if opts.Config.TelegramBotToken != "" {
+		server.startGrantNotificationSweeper(ctx)
+	}
 	return server, nil
 }
 
@@ -134,17 +143,18 @@ func parseUpstreamBase(upstreamBase string) (*url.URL, error) {
 
 func newServer(opts Options, upstream *url.URL, clients map[string]string, auditLogger *audit.Logger) *Server {
 	return &Server{
-		auth:       auth.New(clients),
-		scope:      opts.Scope,
-		audit:      auditLogger,
-		mirrors:    mirror.New(opts.Config.StateDir, opts.Config.HFToken, opts.Config.HFTimeout),
-		upstream:   upstream,
-		httpClient: &http.Client{Timeout: opts.Config.HFTimeout},
-		hfToken:    opts.Config.HFToken,
-		maxBody:    opts.Config.MaxPackBytes,
-		grants:     grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{}),
-		notifier:   opts.GrantNotifier,
-		lfsActions: map[string]lfsAction{},
+		auth:        auth.New(clients),
+		scope:       opts.Scope,
+		audit:       auditLogger,
+		mirrors:     mirror.New(opts.Config.StateDir, opts.Config.HFToken, opts.Config.HFTimeout),
+		upstream:    upstream,
+		httpClient:  &http.Client{Timeout: opts.Config.HFTimeout},
+		hfToken:     opts.Config.HFToken,
+		maxBody:     opts.Config.MaxPackBytes,
+		grants:      grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{}),
+		notifier:    opts.GrantNotifier,
+		lfsActions:  map[string]lfsAction{},
+		spentGrants: map[string]bool{},
 	}
 }
 
@@ -232,11 +242,13 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (string, b
 }
 
 type grantRequestBody struct {
-	Operation string `json:"operation"`
-	Target    string `json:"target"`
-	Ref       string `json:"ref"`
-	Reason    string `json:"reason"`
-	Minutes   int    `json:"minutes"`
+	Operation       string `json:"operation"`
+	Target          string `json:"target"`
+	Ref             string `json:"ref"`
+	Reason          string `json:"reason"`
+	Minutes         int    `json:"minutes"`
+	MaxUses         int    `json:"max_uses"`
+	ClientRequestID string `json:"client_request_id"`
 }
 
 type grantResponseBody struct {
@@ -244,17 +256,12 @@ type grantResponseBody struct {
 	Status           string `json:"status"`
 	PendingExpiresAt string `json:"pending_expires_at"`
 	Minutes          int    `json:"minutes"`
+	MaxUses          int    `json:"max_uses"`
+	UsedCount        int    `json:"used_count"`
 }
 
 func (s *Server) handleGrantRequest(w http.ResponseWriter, r *http.Request, client string) {
-	if r.Method != http.MethodPost {
-		writePlain(w, http.StatusMethodNotAllowed, "hf-broker: unsupported grant route\n")
-		s.record(client, "grant_request", "", audit.DecisionRefused, "unsupported grant route", 0)
-		return
-	}
-	if s.notifier == nil {
-		writePlain(w, http.StatusServiceUnavailable, "hf-broker: approval channel is not configured\n")
-		s.record(client, "grant_request", "", audit.DecisionRefused, "approval channel is not configured", 0)
+	if !s.acceptGrantRequestRoute(w, r, client) {
 		return
 	}
 	req, ok := s.readGrantRequest(w, r, client)
@@ -267,34 +274,82 @@ func (s *Server) handleGrantRequest(w http.ResponseWriter, r *http.Request, clie
 		s.record(client, "grant_request", grantRequestAuditTarget(rt), audit.DecisionRefused, reason, 0)
 		return
 	}
-	grant, err := s.requestGrant(client, req, rt)
+	grant, created, err := s.requestGrant(client, req, rt)
 	if err != nil {
 		writePlain(w, http.StatusBadRequest, "hf-broker: "+err.Error()+"\n")
 		s.record(client, "grant_request", targetName(rt), audit.DecisionRefused, err.Error(), 0)
 		return
 	}
-	if err := s.notifier.SendGrantRequest(r.Context(), grantMessage(grant)); err != nil {
-		_ = s.grants.Cancel(grant.ID)
-		writePlain(w, http.StatusBadGateway, "hf-broker: could not notify operator\n")
-		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, "could not notify operator", 0)
-		return
+	if shouldNotifyGrant(created, grant) {
+		var notified bool
+		grant, notified = s.notifyCreatedGrant(w, r, client, grant)
+		if !notified {
+			return
+		}
 	}
 	writeJSON(w, http.StatusAccepted, grantResponseBody{
 		ID:               grant.ID,
 		Status:           string(grant.Status),
 		PendingExpiresAt: grant.PendingExpiresAt.Format(time.RFC3339),
 		Minutes:          grant.RequestedMinutes,
+		MaxUses:          grant.MaxUses,
+		UsedCount:        grant.UsedCount,
 	})
 	s.record(client, "grant_request", grant.Target, audit.DecisionAllowed, "pending", 0)
 }
 
-func (s *Server) validateGrantRequest(req grantRequestBody) (route, int, string) {
-	rt, ok := parseGrantTarget(req.Target)
-	if !ok || !gitproxy.ValidRefName(req.Ref) || req.Operation != string(scope.OpGitPush) {
-		return rt, http.StatusBadRequest, "invalid grant request"
+func shouldNotifyGrant(created bool, grant grants.Grant) bool {
+	return created || grant.Status == grants.StatusPending && (grant.Notifier == nil || grant.Notifier.MessageID == 0)
+}
+
+func (s *Server) acceptGrantRequestRoute(w http.ResponseWriter, r *http.Request, client string) bool {
+	if r.Method != http.MethodPost {
+		writePlain(w, http.StatusMethodNotAllowed, "hf-broker: unsupported grant route\n")
+		s.record(client, "grant_request", "", audit.DecisionRefused, "unsupported grant route", 0)
+		return false
 	}
-	if req.Minutes < 0 {
-		return rt, http.StatusBadRequest, "grant duration must be positive"
+	if s.notifier == nil {
+		writePlain(w, http.StatusServiceUnavailable, "hf-broker: approval channel is not configured\n")
+		s.record(client, "grant_request", "", audit.DecisionRefused, "approval channel is not configured", 0)
+		return false
+	}
+	return true
+}
+
+func (s *Server) notifyCreatedGrant(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant) (grants.Grant, bool) {
+	messageRef, err := s.notifier.SendGrantRequest(r.Context(), grantMessage(grant))
+	if err != nil {
+		s.rejectGrantNotification(w, client, grant, "could not notify operator")
+		return grants.Grant{}, false
+	}
+	if messageRef.MessageID == 0 {
+		return grant, true
+	}
+	updated, err := s.grants.SetNotifier(grant.ID, grantNotifierMessage(messageRef))
+	if err != nil {
+		s.rejectGrantNotification(w, client, grant, "could not record operator notification")
+		return grants.Grant{}, false
+	}
+	return updated, true
+}
+
+func (s *Server) rejectGrantNotification(w http.ResponseWriter, client string, grant grants.Grant, reason string) {
+	_ = s.grants.Cancel(grant.ID)
+	writePlain(w, http.StatusBadGateway, "hf-broker: could not notify operator\n")
+	s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
+}
+
+func (s *Server) validateGrantRequest(req grantRequestBody) (route, int, string) {
+	rt, status, reason := validateGrantRequestShape(req)
+	if reason != "" {
+		return rt, status, reason
+	}
+	policy, ok := s.repoGrantUsePolicy(rt)
+	if !ok {
+		return rt, http.StatusForbidden, "git push grants are not enabled for repository"
+	}
+	if status, reason := validateGrantPolicyBounds(req, policy); reason != "" {
+		return rt, status, reason
 	}
 	decision := s.scope.DecideRepo(rt.repoType, rt.owner, rt.name, scope.OpGitPush)
 	if !decision.Allowed {
@@ -303,15 +358,61 @@ func (s *Server) validateGrantRequest(req grantRequestBody) (route, int, string)
 	return rt, 0, ""
 }
 
-func (s *Server) requestGrant(client string, req grantRequestBody, rt route) (grants.Grant, error) {
+func validateGrantRequestShape(req grantRequestBody) (route, int, string) {
+	rt, ok := parseGrantTarget(req.Target)
+	if !ok || !gitproxy.ValidRefName(req.Ref) || req.Operation != string(scope.OpGitPush) {
+		return rt, http.StatusBadRequest, "invalid grant request"
+	}
+	if req.Minutes < 0 {
+		return rt, http.StatusBadRequest, "grant duration must be positive"
+	}
+	if req.MaxUses < 0 {
+		return rt, http.StatusBadRequest, "grant max uses must be positive"
+	}
+	return rt, 0, ""
+}
+
+func validateGrantPolicyBounds(req grantRequestBody, policy scope.GrantUsePolicy) (int, string) {
+	if req.Minutes > policy.MaxMinutes {
+		return http.StatusBadRequest, fmt.Sprintf("grant duration exceeds %d minutes", policy.MaxMinutes)
+	}
+	if req.MaxUses > policy.MaxUses {
+		return http.StatusBadRequest, fmt.Sprintf("grant max uses exceeds %d", policy.MaxUses)
+	}
+	return 0, ""
+}
+
+func (s *Server) requestGrant(client string, req grantRequestBody, rt route) (grants.Grant, bool, error) {
+	policy, ok := s.repoGrantUsePolicy(rt)
+	if !ok {
+		return grants.Grant{}, false, errors.New("git push grants are not enabled for repository")
+	}
+	minutes := req.Minutes
+	if minutes == 0 {
+		minutes = policy.DefaultMinutes
+	}
+	maxUses := req.MaxUses
+	if maxUses == 0 {
+		maxUses = policy.DefaultMaxUses
+	}
 	return s.grants.Request(grants.Request{
 		Client:            client,
+		ClientRequestID:   req.ClientRequestID,
 		Operation:         req.Operation,
 		Target:            targetName(rt),
 		Ref:               req.Ref,
 		Reason:            req.Reason,
-		RequestedDuration: time.Duration(req.Minutes) * time.Minute,
+		RequestedDuration: time.Duration(minutes) * time.Minute,
+		MaxUses:           maxUses,
 	})
+}
+
+func (s *Server) repoGrantUsePolicy(rt route) (scope.GrantUsePolicy, bool) {
+	repo, ok := s.scope.Repo(rt.repoType, rt.owner, rt.name)
+	if !ok || repo.GrantPolicy.GitReceivePack == nil {
+		return scope.GrantUsePolicy{}, false
+	}
+	return *repo.GrantPolicy.GitReceivePack, true
 }
 
 func grantRequestAuditTarget(rt route) string {
@@ -389,8 +490,20 @@ func grantMessage(grant grants.Grant) notify.GrantMessage {
 		Ref:              grant.Ref,
 		Reason:           grant.Reason,
 		RequestedMinutes: grant.RequestedMinutes,
+		MaxUses:          grant.MaxUses,
 		PendingExpiresAt: grant.PendingExpiresAt,
 	}
+}
+
+func grantNotifierMessage(ref notify.MessageRef) grants.NotifierMessage {
+	return grants.NotifierMessage{Kind: ref.Kind, ChatID: ref.ChatID, MessageID: ref.MessageID, Text: ref.Text}
+}
+
+func notifyMessageRef(message *grants.NotifierMessage) notify.MessageRef {
+	if message == nil {
+		return notify.MessageRef{}
+	}
+	return notify.MessageRef{Kind: message.Kind, ChatID: message.ChatID, MessageID: message.MessageID, Text: message.Text}
 }
 
 func (s *Server) handleTelegramDecision(_ context.Context, decision notify.Decision) notify.DecisionResult {
@@ -641,6 +754,7 @@ func (s *Server) readReceivePack(w http.ResponseWriter, r *http.Request, client,
 
 func (s *Server) withLockedPush(w http.ResponseWriter, r *http.Request, rt route, repo mirror.Repo, req gitproxy.ReceivePackRequest, body []byte, client, target string) (int, error) {
 	var upstreamStatus int
+	var grantsToNotify []grants.Grant
 	lockErr := s.mirrors.WithLock(repo, func(mir *mirror.Repository) error {
 		refused, usedGrants, err := s.refuseInvalidPush(w, r, req, mir, client, target)
 		if err != nil || refused {
@@ -656,7 +770,7 @@ func (s *Server) withLockedPush(w http.ResponseWriter, r *http.Request, rt route
 			return nil
 		}
 		_ = gitproxy.AdvanceAccepted(context.Background(), req, mir)
-		s.recordGrantUses(usedGrants)
+		grantsToNotify = s.recordGrantUses(usedGrants)
 		decision := audit.DecisionAllowed
 		auditReason := ""
 		if len(usedGrants) > 0 {
@@ -666,6 +780,7 @@ func (s *Server) withLockedPush(w http.ResponseWriter, r *http.Request, rt route
 		s.record(client, string(scope.OpGitPush), target, decision, auditReason, statusCode)
 		return nil
 	})
+	s.updateGrantUseMessages(grantsToNotify)
 	return upstreamStatus, lockErr
 }
 
@@ -677,6 +792,9 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 		}
 		grant, ok, err := s.grants.MatchActive(client, string(scope.OpGitPush), target, command.Ref)
 		if err != nil || !ok {
+			return false
+		}
+		if s.grantUseSpent(grant.ID) {
 			return false
 		}
 		used[grant.ID] = grantUse{grant: grant, ref: command.Ref}
@@ -712,10 +830,135 @@ func grantUses(used map[string]grantUse) []grantUse {
 	return uses
 }
 
-func (s *Server) recordGrantUses(uses []grantUse) {
+func (s *Server) recordGrantUses(uses []grantUse) []grants.Grant {
+	updated := make([]grants.Grant, 0, len(uses))
 	for _, use := range uses {
-		_, _ = s.grants.RecordUse(use.grant.ID)
+		grant, err := s.grants.RecordUse(use.grant.ID)
+		if err != nil {
+			s.markGrantUseSpent(use.grant.ID)
+			continue
+		}
+		updated = append(updated, grant)
 	}
+	return updated
+}
+
+func (s *Server) updateGrantUseMessages(updated []grants.Grant) {
+	for _, grant := range updated {
+		s.updateGrantUseMessage(grant)
+	}
+}
+
+func (s *Server) markGrantUseSpent(id string) {
+	s.grantUseMu.Lock()
+	defer s.grantUseMu.Unlock()
+	s.spentGrants[id] = true
+}
+
+func (s *Server) grantUseSpent(id string) bool {
+	s.grantUseMu.Lock()
+	defer s.grantUseMu.Unlock()
+	return s.spentGrants[id]
+}
+
+func (s *Server) startGrantNotificationSweeper(ctx context.Context) {
+	if s.grantStatusNotifier() == nil {
+		return
+	}
+	go func() {
+		s.sweepGrantNotifications(ctx)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.sweepGrantNotifications(ctx)
+			}
+		}
+	}()
+}
+
+func (s *Server) sweepGrantNotifications(ctx context.Context) {
+	updates, err := s.grants.StatusUpdatesDue()
+	if err != nil {
+		return
+	}
+	for _, item := range updates {
+		status := grantStatusUpdateText(item)
+		if err := s.updateGrantMessage(ctx, item.Grant, status); err == nil {
+			_ = s.grants.MarkNotifierStatus(item.Grant.ID, string(item.Status))
+		}
+	}
+}
+
+func grantStatusUpdateText(update grants.StatusUpdate) string {
+	switch update.Status {
+	case grants.StatusActive:
+		return "✅ Approved. Access is active."
+	case grants.StatusDenied:
+		return "❌ Denied. Access was not granted."
+	case grants.StatusConsumed:
+		return grantUseStatus(update.Grant)
+	default:
+		return pendingExpiredStatusForGrant(update.Grant)
+	}
+}
+
+func (s *Server) updateGrantUseMessage(grant grants.Grant) {
+	if grant.Notifier == nil {
+		return
+	}
+	status := grantUseStatus(grant)
+	if err := s.updateGrantMessage(context.Background(), grant, status); err == nil {
+		_ = s.grants.MarkNotifierStatus(grant.ID, grantMessageStatusKey(grant))
+	}
+}
+
+func (s *Server) updateGrantMessage(ctx context.Context, grant grants.Grant, status string) error {
+	notifier := s.grantStatusNotifier()
+	if notifier == nil || grant.Notifier == nil {
+		return nil
+	}
+	return notifier.UpdateGrantStatus(ctx, notifyMessageRef(grant.Notifier), status)
+}
+
+func (s *Server) grantStatusNotifier() GrantStatusNotifier {
+	notifier, ok := s.notifier.(GrantStatusNotifier)
+	if !ok {
+		return nil
+	}
+	return notifier
+}
+
+func pendingExpiredStatusForGrant(grant grants.Grant) string {
+	if grant.ExpiredFrom == grants.StatusPending {
+		return "⌛ Expired. Request was not approved in time."
+	}
+	return "⌛ Expired. Access window ended."
+}
+
+func grantUseStatus(grant grants.Grant) string {
+	maxUses := grant.MaxUses
+	if maxUses <= 0 {
+		maxUses = 1
+	}
+	if grant.Status == grants.StatusConsumed {
+		return "✅ Used. Access is now closed."
+	}
+	remaining := maxUses - grant.UsedCount
+	if remaining < 0 {
+		remaining = 0
+	}
+	return fmt.Sprintf("✅ Used %d of %d. %d uses remain.", grant.UsedCount, maxUses, remaining)
+}
+
+func grantMessageStatusKey(grant grants.Grant) string {
+	if grant.Status == grants.StatusConsumed {
+		return string(grants.StatusConsumed)
+	}
+	return "used"
 }
 
 func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {
