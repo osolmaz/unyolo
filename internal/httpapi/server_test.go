@@ -204,8 +204,8 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		OperatorID:  42,
 		OperatorTag: "operator",
 	})
-	if answer != "Grant approved" {
-		t.Fatalf("telegram answer = %q", answer)
+	if answer.Answer != "Grant approved" || answer.ActiveExpiresAt.IsZero() {
+		t.Fatalf("telegram answer = %+v", answer)
 	}
 
 	output, err = runClientGitErrAs(testOtherSecret, clone, "push", "--force", "origin", "main")
@@ -223,8 +223,8 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	if got := auditLog.String(); !strings.Contains(got, `"decision":"grant-used"`) || strings.Contains(got, testSecret) || strings.Contains(got, testToken) || strings.Contains(got, msg.DecisionToken) {
 		t.Fatalf("audit missing grant-used or leaked secret material:\n%s", got)
 	}
-	if replay := handler.handleTelegramDecision(context.Background(), notify.Decision{Action: notify.DecisionDeny, ID: msg.ID, Token: msg.DecisionToken}); replay != "Grant is no longer pending" {
-		t.Fatalf("replay answer = %q", replay)
+	if replay := handler.handleTelegramDecision(context.Background(), notify.Decision{Action: notify.DecisionDeny, ID: msg.ID, Token: msg.DecisionToken}); replay.Answer != "Grant is no longer pending" {
+		t.Fatalf("replay answer = %+v", replay)
 	}
 }
 

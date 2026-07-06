@@ -393,21 +393,22 @@ func grantMessage(grant grants.Grant) notify.GrantMessage {
 	}
 }
 
-func (s *Server) handleTelegramDecision(_ context.Context, decision notify.Decision) string {
+func (s *Server) handleTelegramDecision(_ context.Context, decision notify.Decision) notify.DecisionResult {
 	actor := telegramActor(decision)
 	switch decision.Action {
 	case notify.DecisionApprove:
-		if _, err := s.grants.Approve(decision.ID, decision.Token, actor); err != nil {
-			return grantDecisionAnswer(err)
+		approved, err := s.grants.Approve(decision.ID, decision.Token, actor)
+		if err != nil {
+			return notify.DecisionResult{Answer: grantDecisionAnswer(err)}
 		}
-		return "Grant approved"
+		return notify.DecisionResult{Answer: "Grant approved", ActiveExpiresAt: approved.ExpiresAt}
 	case notify.DecisionDeny:
 		if _, err := s.grants.Deny(decision.ID, decision.Token, actor); err != nil {
-			return grantDecisionAnswer(err)
+			return notify.DecisionResult{Answer: grantDecisionAnswer(err)}
 		}
-		return "Grant denied"
+		return notify.DecisionResult{Answer: "Grant denied"}
 	default:
-		return "Grant decision ignored"
+		return notify.DecisionResult{Answer: "Grant decision ignored"}
 	}
 }
 

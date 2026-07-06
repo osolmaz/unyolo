@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,13 +20,18 @@ const (
 )
 
 var decisionStatusTexts = map[string]string{
-	"Grant approved":                     "Approved. Access is active.",
-	"Grant denied":                       "Denied. Access was not granted.",
-	"Grant is no longer pending":         "No change. This request is no longer pending.",
-	"Grant not found":                    "No change. This request was not found.",
-	"Grant decision token did not match": "No change. This approval button did not match the request.",
-	"Grant decision ignored":             "No change. This decision was ignored.",
+	"Grant approved":                     "✅ Approved. Access is active.",
+	"Grant denied":                       "❌ Denied. Access was not granted.",
+	"Grant is no longer pending":         "⚠️ No change. This request is no longer pending.",
+	"Grant not found":                    "⚠️ No change. This request was not found.",
+	"Grant decision token did not match": "⚠️ No change. This approval button did not match the request.",
+	"Grant decision ignored":             "⚠️ No change. This decision was ignored.",
 }
+
+const (
+	pendingExpiredStatus = "⌛ Expired. Request was not approved in time."
+	activeExpiredStatus  = "⌛ Expired. Access window ended."
+)
 
 // GrantMessage is the grant metadata sent to an operator.
 type GrantMessage struct {
@@ -62,9 +68,27 @@ type Decision struct {
 	OperatorTag string
 }
 
-// DecisionHandler applies one approved-chat decision and returns the text
-// sent back to Telegram's callback answer.
-type DecisionHandler func(context.Context, Decision) string
+// DecisionResult is the visible result of one Telegram approval decision.
+type DecisionResult struct {
+	// Answer is the short text sent back to Telegram's callback answer.
+	Answer string
+	// Status overrides the status line edited into the approval message.
+	Status string
+	// ActiveExpiresAt tracks the approved access window for a second expiry edit.
+	ActiveExpiresAt time.Time
+}
+
+// DecisionHandler applies one approved-chat decision.
+type DecisionHandler func(context.Context, Decision) DecisionResult
+
+type trackedMessage struct {
+	id             string
+	chatID         int64
+	messageID      int
+	text           string
+	expiresAt      time.Time
+	statusOnExpire string
+}
 
 // Telegram long-polls the Bot API for grant decisions.
 type Telegram struct {
@@ -73,6 +97,9 @@ type Telegram struct {
 	baseURL            string
 	client             *http.Client
 	pollTimeoutSeconds int
+
+	trackedMu sync.Mutex
+	tracked   map[string]trackedMessage
 }
 
 // NewTelegram returns a Telegram notifier.
@@ -89,22 +116,40 @@ func NewTelegram(token string, chatID int64, client *http.Client, baseURL string
 		baseURL:            strings.TrimRight(baseURL, "/"),
 		client:             client,
 		pollTimeoutSeconds: 30,
+		tracked:            map[string]trackedMessage{},
 	}
 }
 
 // SendGrantRequest sends one pending grant request with Approve and Deny buttons.
 func (t *Telegram) SendGrantRequest(ctx context.Context, msg GrantMessage) error {
+	text := grantText(msg)
 	payload := map[string]any{
 		"chat_id": t.chatID,
-		"text":    grantText(msg),
+		"text":    text,
 		"reply_markup": map[string]any{
 			"inline_keyboard": [][]map[string]string{{
-				{"text": "Approve", "callback_data": callbackData(DecisionApprove, msg.ID, msg.DecisionToken)},
-				{"text": "Deny", "callback_data": callbackData(DecisionDeny, msg.ID, msg.DecisionToken)},
+				{"text": "✅ Approve", "callback_data": callbackData(DecisionApprove, msg.ID, msg.DecisionToken)},
+				{"text": "❌ Deny", "callback_data": callbackData(DecisionDeny, msg.ID, msg.DecisionToken)},
 			}},
 		},
 	}
-	return t.post(ctx, "sendMessage", payload, nil)
+	var response telegramMessageResponse
+	if err := t.post(ctx, "sendMessage", payload, &response); err != nil {
+		return err
+	}
+	chatID := response.Result.Chat.ID
+	if chatID == 0 {
+		chatID = t.chatID
+	}
+	t.track(trackedMessage{
+		id:             msg.ID,
+		chatID:         chatID,
+		messageID:      response.Result.MessageID,
+		text:           text,
+		expiresAt:      msg.PendingExpiresAt,
+		statusOnExpire: pendingExpiredStatus,
+	})
+	return nil
 }
 
 // Poll runs Telegram long polling until ctx is canceled.
@@ -135,15 +180,17 @@ func (t *Telegram) PollOnce(ctx context.Context, offset int64, handler DecisionH
 		if !ok {
 			continue
 		}
-		answer := "Grant decision ignored"
+		result := DecisionResult{Answer: "Grant decision ignored"}
 		if decision.ChatID == t.chatID {
-			answer = handler(ctx, decision)
+			result = normalizeDecisionResult(handler(ctx, decision))
 		}
-		_ = t.answerCallback(ctx, decision.CallbackID, answer)
+		_ = t.answerCallback(ctx, decision.CallbackID, result.Answer)
 		if decision.ChatID == t.chatID {
-			_ = t.markDecision(ctx, decision, answer)
+			_ = t.markDecision(ctx, decision, result)
+			t.trackAfterDecision(decision, result)
 		}
 	}
+	t.expireTracked(ctx, time.Now().UTC())
 	return nextOffset, nil
 }
 
@@ -168,14 +215,87 @@ func (t *Telegram) answerCallback(ctx context.Context, callbackID, text string) 
 	return t.post(ctx, "answerCallbackQuery", payload, nil)
 }
 
-func (t *Telegram) markDecision(ctx context.Context, decision Decision, answer string) error {
+func (t *Telegram) markDecision(ctx context.Context, decision Decision, result DecisionResult) error {
 	if decision.MessageID == 0 || decision.MessageText == "" {
 		return nil
+	}
+	status := result.Status
+	if status == "" {
+		status = decisionStatusText(result.Answer)
 	}
 	payload := map[string]any{
 		"chat_id":    decision.ChatID,
 		"message_id": decision.MessageID,
-		"text":       withDecisionStatus(decision.MessageText, decisionStatusText(answer)),
+		"text":       withDecisionStatus(decision.MessageText, status),
+		"reply_markup": map[string]any{
+			"inline_keyboard": []any{},
+		},
+	}
+	return t.post(ctx, "editMessageText", payload, nil)
+}
+
+func (t *Telegram) trackAfterDecision(decision Decision, result DecisionResult) {
+	if result.ActiveExpiresAt.IsZero() {
+		t.forget(decision.ID)
+		return
+	}
+	t.track(trackedMessage{
+		id:             decision.ID,
+		chatID:         decision.ChatID,
+		messageID:      decision.MessageID,
+		text:           decision.MessageText,
+		expiresAt:      result.ActiveExpiresAt,
+		statusOnExpire: activeExpiredStatus,
+	})
+}
+
+func normalizeDecisionResult(result DecisionResult) DecisionResult {
+	if result.Answer == "" {
+		result.Answer = "Grant decision ignored"
+	}
+	return result
+}
+
+func (t *Telegram) track(message trackedMessage) {
+	if message.id == "" || message.chatID == 0 || message.messageID == 0 || message.text == "" || message.expiresAt.IsZero() {
+		return
+	}
+	t.trackedMu.Lock()
+	defer t.trackedMu.Unlock()
+	t.tracked[message.id] = message
+}
+
+func (t *Telegram) forget(id string) {
+	t.trackedMu.Lock()
+	defer t.trackedMu.Unlock()
+	delete(t.tracked, id)
+}
+
+func (t *Telegram) expireTracked(ctx context.Context, now time.Time) {
+	for _, message := range t.dueMessages(now.UTC()) {
+		_ = t.editMessageStatus(ctx, message, message.statusOnExpire)
+	}
+}
+
+func (t *Telegram) dueMessages(now time.Time) []trackedMessage {
+	t.trackedMu.Lock()
+	defer t.trackedMu.Unlock()
+	var due []trackedMessage
+	for id, message := range t.tracked {
+		if now.Before(message.expiresAt) {
+			continue
+		}
+		due = append(due, message)
+		delete(t.tracked, id)
+	}
+	return due
+}
+
+func (t *Telegram) editMessageStatus(ctx context.Context, message trackedMessage, status string) error {
+	payload := map[string]any{
+		"chat_id":    message.chatID,
+		"message_id": message.messageID,
+		"text":       withDecisionStatus(message.text, status),
 		"reply_markup": map[string]any{
 			"inline_keyboard": []any{},
 		},
@@ -236,7 +356,7 @@ func callbackData(action DecisionAction, id, token string) string {
 }
 
 func grantText(msg GrantMessage) string {
-	return fmt.Sprintf("Approval needed for hf-broker\n\n%s is asking to %s.\n\nTarget: %s\nRef: %s\nAccess: %d minutes\nRequest expires: %s\n\nReason: %s\n\nApprove only if this looks right.",
+	return fmt.Sprintf("🔐 Approval needed for hf-broker\n\n%s is asking to %s.\n\n📍 Target: %s\n🌿 Ref: %s\n⏱️ Access: %d minutes\n⌛ Request expires: %s\n\n📝 Reason: %s\n\n⚠️ Approve only if this looks right.",
 		msg.Client,
 		operationText(msg.Operation),
 		msg.Target,
@@ -322,6 +442,11 @@ func wait(ctx context.Context, d time.Duration) {
 type telegramUpdatesResponse struct {
 	OK     bool             `json:"ok"`
 	Result []telegramUpdate `json:"result"`
+}
+
+type telegramMessageResponse struct {
+	OK     bool            `json:"ok"`
+	Result telegramMessage `json:"result"`
 }
 
 type telegramUpdate struct {

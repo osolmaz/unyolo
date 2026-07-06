@@ -19,7 +19,7 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&sent); err != nil {
 			t.Fatal(err)
 		}
-		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1,"chat":{"id":123}}}`))
 	}))
 	defer server.Close()
 	telegram := NewTelegram("telegram_token_value", 123, server.Client(), server.URL)
@@ -42,11 +42,11 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 		t.Fatalf("chat_id = %v, want 123", sent["chat_id"])
 	}
 	text := sent["text"].(string)
-	if !strings.Contains(text, "Approval needed for hf-broker") ||
+	if !strings.Contains(text, "🔐 Approval needed for hf-broker") ||
 		!strings.Contains(text, "agent is asking to push to a Git repo.") ||
-		!strings.Contains(text, "Access: 15 minutes") ||
-		!strings.Contains(text, "Request expires: 2026-07-06 01:02 UTC") ||
-		!strings.Contains(text, "Approve only if this looks right.") ||
+		!strings.Contains(text, "⏱️ Access: 15 minutes") ||
+		!strings.Contains(text, "⌛ Request expires: 2026-07-06 01:02 UTC") ||
+		!strings.Contains(text, "⚠️ Approve only if this looks right.") ||
 		!strings.Contains(text, "dataset/acme/repo") ||
 		strings.Contains(text, "decision-token") {
 		t.Fatalf("unexpected message text: %q", text)
@@ -55,6 +55,9 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 	keyboard := replyMarkup["inline_keyboard"].([]any)
 	row := keyboard[0].([]any)
 	approve := row[0].(map[string]any)
+	if approve["text"] != "✅ Approve" {
+		t.Fatalf("approve text = %v", approve["text"])
+	}
 	if approve["callback_data"] != "hfbg:approve:grant-id:decision-token" {
 		t.Fatalf("approve callback = %v", approve["callback_data"])
 	}
@@ -68,7 +71,7 @@ func TestTelegramPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
 			_, _ = w.Write([]byte(`{"ok":true,"result":[` +
 				`{"update_id":10,"callback_query":{"id":"wrong","from":{"id":1,"username":"bad"},"message":{"chat":{"id":999}},"data":"hfbg:approve:g1:t1"}},` +
-				`{"update_id":11,"callback_query":{"id":"right","from":{"id":2,"username":"operator"},"message":{"message_id":42,"chat":{"id":123},"text":"Approval needed for hf-broker\n\nApprove only if this looks right."},"data":"hfbg:deny:g2:t2"}}` +
+				`{"update_id":11,"callback_query":{"id":"right","from":{"id":2,"username":"operator"},"message":{"message_id":42,"chat":{"id":123},"text":"🔐 Approval needed for hf-broker\n\n⚠️ Approve only if this looks right."},"data":"hfbg:deny:g2:t2"}}` +
 				`]}`))
 		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
 			var payload map[string]any
@@ -93,9 +96,9 @@ func TestTelegramPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	telegram.pollTimeoutSeconds = 0
 	var decisions []Decision
 
-	offset, err := telegram.PollOnce(context.Background(), 0, func(_ context.Context, decision Decision) string {
+	offset, err := telegram.PollOnce(context.Background(), 0, func(_ context.Context, decision Decision) DecisionResult {
 		decisions = append(decisions, decision)
-		return "handled"
+		return DecisionResult{Answer: "handled"}
 	})
 	if err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
@@ -121,6 +124,61 @@ func TestTelegramPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	replyMarkup := edits[0]["reply_markup"].(map[string]any)
 	if keyboard := replyMarkup["inline_keyboard"].([]any); len(keyboard) != 0 {
 		t.Fatalf("edit keyboard = %+v, want empty", keyboard)
+	}
+}
+
+func TestTelegramMarksPendingAndActiveExpiry(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	var edits []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":7,"chat":{"id":123}}}`))
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			edits = append(edits, payload)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":7}}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	telegram := NewTelegram("telegram_token_value", 123, server.Client(), server.URL)
+
+	err := telegram.SendGrantRequest(context.Background(), GrantMessage{
+		ID:               "grant-id",
+		DecisionToken:    "decision-token",
+		Client:           "agent",
+		Operation:        "git_receive_pack",
+		Target:           "dataset/acme/repo",
+		Ref:              "refs/heads/main",
+		Reason:           "recover",
+		RequestedMinutes: 5,
+		PendingExpiresAt: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("SendGrantRequest() error = %v", err)
+	}
+	telegram.expireTracked(context.Background(), now.Add(time.Minute))
+	if len(edits) != 1 || !strings.Contains(edits[0]["text"].(string), "Status: ⌛ Expired. Request was not approved in time.") {
+		t.Fatalf("pending expiry edits = %+v", edits)
+	}
+
+	telegram.trackAfterDecision(Decision{
+		ID:          "grant-id",
+		ChatID:      123,
+		MessageID:   7,
+		MessageText: edits[0]["text"].(string),
+	}, DecisionResult{Answer: "Grant approved", ActiveExpiresAt: now.Add(5 * time.Minute)})
+	telegram.expireTracked(context.Background(), now.Add(5*time.Minute))
+	if len(edits) != 2 || !strings.Contains(edits[1]["text"].(string), "Status: ⌛ Expired. Access window ended.") {
+		t.Fatalf("active expiry edits = %+v", edits)
+	}
+	if strings.Contains(edits[1]["text"].(string), "Request was not approved") {
+		t.Fatalf("active expiry kept old status: %q", edits[1]["text"].(string))
 	}
 }
 
@@ -185,8 +243,8 @@ func TestTelegramParsingHelpers(t *testing.T) {
 func TestTelegramPollStopsWhenCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	NewTelegram("token", 1, nil, "").Poll(ctx, func(context.Context, Decision) string {
+	NewTelegram("token", 1, nil, "").Poll(ctx, func(context.Context, Decision) DecisionResult {
 		t.Fatal("handler should not be called")
-		return ""
+		return DecisionResult{}
 	})
 }
