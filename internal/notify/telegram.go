@@ -418,8 +418,12 @@ func usesText(maxUses int) string {
 
 func operationText(operation string) string {
 	switch operation {
-	case "git_receive_pack":
-		return "push to a Git repo"
+	case "git_history_rewrite":
+		return "force-push / rewrite Git history"
+	case "git_ref_delete":
+		return "delete a Git ref"
+	case "git_tag_update":
+		return "move or delete a Git tag"
 	default:
 		return operation
 	}

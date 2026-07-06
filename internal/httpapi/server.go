@@ -450,9 +450,9 @@ func (s *Server) validateGrantRequest(req grantRequestBody) (route, int, string)
 	if reason != "" {
 		return rt, status, reason
 	}
-	policy, ok := s.repoGrantUsePolicy(rt)
+	policy, ok := s.repoGrantUsePolicy(rt, scope.Operation(req.Operation))
 	if !ok {
-		return rt, http.StatusForbidden, "git push grants are not enabled for repository"
+		return rt, http.StatusForbidden, "git grants are not enabled for operation"
 	}
 	if status, reason := validateGrantPolicyBounds(req, policy); reason != "" {
 		return rt, status, reason
@@ -466,7 +466,8 @@ func (s *Server) validateGrantRequest(req grantRequestBody) (route, int, string)
 
 func validateGrantRequestShape(req grantRequestBody) (route, int, string) {
 	rt, ok := parseGrantTarget(req.Target)
-	if !ok || !gitproxy.ValidRefName(req.Ref) || req.Operation != string(scope.OpGitPush) {
+	operation := scope.Operation(req.Operation)
+	if !ok || !gitproxy.ValidRefName(req.Ref) || !isGitGrantOperation(operation) || !grantRefMatchesOperation(operation, req.Ref) {
 		return rt, http.StatusBadRequest, "invalid grant request"
 	}
 	if req.Minutes < 0 {
@@ -476,6 +477,28 @@ func validateGrantRequestShape(req grantRequestBody) (route, int, string) {
 		return rt, http.StatusBadRequest, "grant max uses must be positive"
 	}
 	return rt, 0, ""
+}
+
+func isGitGrantOperation(operation scope.Operation) bool {
+	switch operation {
+	case scope.OpGitHistoryRewrite, scope.OpGitRefDelete, scope.OpGitTagUpdate:
+		return true
+	default:
+		return false
+	}
+}
+
+func grantRefMatchesOperation(operation scope.Operation, ref string) bool {
+	switch operation {
+	case scope.OpGitHistoryRewrite:
+		return !isTagRef(ref) && !isReplaceRef(ref)
+	case scope.OpGitRefDelete:
+		return !isTagRef(ref) && !isReplaceRef(ref)
+	case scope.OpGitTagUpdate:
+		return isTagRef(ref)
+	default:
+		return false
+	}
 }
 
 func validateGrantPolicyBounds(req grantRequestBody, policy scope.GrantUsePolicy) (int, string) {
@@ -489,9 +512,9 @@ func validateGrantPolicyBounds(req grantRequestBody, policy scope.GrantUsePolicy
 }
 
 func (s *Server) requestGrant(client string, req grantRequestBody, rt route) (grants.Grant, bool, error) {
-	policy, ok := s.repoGrantUsePolicy(rt)
+	policy, ok := s.repoGrantUsePolicy(rt, scope.Operation(req.Operation))
 	if !ok {
-		return grants.Grant{}, false, errors.New("git push grants are not enabled for repository")
+		return grants.Grant{}, false, errors.New("git grants are not enabled for operation")
 	}
 	minutes := req.Minutes
 	if minutes == 0 {
@@ -513,12 +536,26 @@ func (s *Server) requestGrant(client string, req grantRequestBody, rt route) (gr
 	})
 }
 
-func (s *Server) repoGrantUsePolicy(rt route) (scope.GrantUsePolicy, bool) {
+func (s *Server) repoGrantUsePolicy(rt route, operation scope.Operation) (scope.GrantUsePolicy, bool) {
 	repo, ok := s.scope.Repo(rt.repoType, rt.owner, rt.name)
-	if !ok || repo.GrantPolicy.GitReceivePack == nil {
+	if !ok {
 		return scope.GrantUsePolicy{}, false
 	}
-	return *repo.GrantPolicy.GitReceivePack, true
+	var policy *scope.GrantUsePolicy
+	switch operation {
+	case scope.OpGitHistoryRewrite:
+		policy = repo.GrantPolicy.GitHistoryRewrite
+	case scope.OpGitRefDelete:
+		policy = repo.GrantPolicy.GitRefDelete
+	case scope.OpGitTagUpdate:
+		policy = repo.GrantPolicy.GitTagUpdate
+	default:
+		return scope.GrantUsePolicy{}, false
+	}
+	if policy == nil {
+		return scope.GrantUsePolicy{}, false
+	}
+	return *policy, true
 }
 
 func grantRequestAuditTarget(rt route) string {
@@ -919,20 +956,23 @@ func (s *Server) acceptReservedPush(req gitproxy.ReceivePackRequest, mir *mirror
 	result.grantsToNotify = s.commitGrantUses(reservedGrants)
 	decision := audit.DecisionAllowed
 	auditReason := ""
+	operation := string(scope.OpGitPush)
 	if len(usedGrants) > 0 {
 		decision = audit.DecisionGrantUsed
 		auditReason = "operator grant used"
+		operation = grantAuditOperation(usedGrants)
 	}
-	s.record(client, string(scope.OpGitPush), target, decision, auditReason, statusCode)
+	s.record(client, operation, target, decision, auditReason, statusCode)
 }
 
 func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req gitproxy.ReceivePackRequest, mir *mirror.Repository, client, target string) (bool, []grantUse, error) {
 	used := map[string]grantUse{}
 	failures, err := gitproxy.CheckPushWithOverrides(r.Context(), req, mir, func(command gitproxy.Command, reason string) bool {
-		if !grantablePushReason(reason) {
+		operation, ok := grantOperationForPushFailure(command, reason)
+		if !ok {
 			return false
 		}
-		grant, ok, err := s.grants.MatchActive(client, string(scope.OpGitPush), target, command.Ref)
+		grant, ok, err := s.grants.MatchActive(client, string(operation), target, command.Ref)
 		if err != nil || !ok {
 			return false
 		}
@@ -952,13 +992,31 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 	return false, grantUses(used), nil
 }
 
-func grantablePushReason(reason string) bool {
+func grantOperationForPushFailure(command gitproxy.Command, reason string) (scope.Operation, bool) {
 	switch reason {
-	case "history rewrite refused", "deletion refused", "tag update refused":
-		return true
+	case "history rewrite refused":
+		return scope.OpGitHistoryRewrite, true
+	case "deletion refused":
+		if isReplaceRef(command.Ref) {
+			return "", false
+		}
+		if isTagRef(command.Ref) {
+			return scope.OpGitTagUpdate, true
+		}
+		return scope.OpGitRefDelete, true
+	case "tag update refused":
+		return scope.OpGitTagUpdate, true
 	default:
-		return false
+		return "", false
 	}
+}
+
+func isTagRef(ref string) bool {
+	return strings.HasPrefix(ref, "refs/tags/")
+}
+
+func isReplaceRef(ref string) bool {
+	return strings.HasPrefix(ref, "refs/replace/")
 }
 
 func grantUses(used map[string]grantUse) []grantUse {
@@ -967,6 +1025,16 @@ func grantUses(used map[string]grantUse) []grantUse {
 		uses = append(uses, use)
 	}
 	return uses
+}
+
+func grantAuditOperation(used []grantUse) string {
+	operation := used[0].grant.Operation
+	for _, use := range used[1:] {
+		if use.grant.Operation != operation {
+			return string(scope.OpGitPush)
+		}
+	}
+	return operation
 }
 
 func (s *Server) reserveGrantUses(uses []grantUse) ([]grants.Grant, error) {

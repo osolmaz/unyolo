@@ -88,7 +88,7 @@ operator chat id:
       "type": "dataset",
       "mode": "append-only",
       "grant_policy": {
-        "git_receive_pack": {
+        "git_history_rewrite": {
           "default_minutes": 5,
           "default_max_uses": 1,
           "max_uses": 3
@@ -110,7 +110,7 @@ An authenticated client can then request a time-boxed grant:
 curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
-    "operation": "git_receive_pack",
+    "operation": "git_history_rewrite",
     "target": "dataset/osolmaz/scraped-news",
     "ref": "refs/heads/main",
     "reason": "recover main after a bad commit",
@@ -120,6 +120,10 @@ curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
   }' \
   https://broker.tailnet:8080/grants
 ```
+
+Other grantable git capabilities are `git_ref_delete` for non-tag
+branch/ref deletion and `git_tag_update` for moving or deleting tags.
+Each one must be enabled separately in `scope.json`.
 
 The broker sends the request to Telegram with Approve and Deny buttons
 and long-polls the Bot API for the answer. There is no inbound Telegram

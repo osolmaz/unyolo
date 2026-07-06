@@ -28,7 +28,7 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_receive_pack",
+		Operation:        "git_history_rewrite",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
@@ -47,7 +47,7 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 	}
 	text := sent["text"].(string)
 	if !strings.Contains(text, "🔐 Approval needed for hf-broker") ||
-		!strings.Contains(text, "agent is asking to push to a Git repo.") ||
+		!strings.Contains(text, "agent is asking to force-push / rewrite Git history.") ||
 		!strings.Contains(text, "⏱️ Access: 15 minutes") ||
 		!strings.Contains(text, "🔁 Uses: up to 3 pushes") ||
 		!strings.Contains(text, "⌛ Request expires: 2026-07-06 01:02 UTC") ||
@@ -157,7 +157,7 @@ func TestTelegramMarksPendingAndActiveExpiry(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_receive_pack",
+		Operation:        "git_history_rewrite",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
@@ -213,7 +213,7 @@ func TestTelegramConsumedUpdateClearsTrackedExpiry(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_receive_pack",
+		Operation:        "git_history_rewrite",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
@@ -264,7 +264,7 @@ func TestTelegramAmbiguousUpdateClearsTrackedExpiry(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_receive_pack",
+		Operation:        "git_history_rewrite",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
@@ -301,7 +301,7 @@ func TestTelegramPostErrorsDoNotExposeToken(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_receive_pack",
+		Operation:        "git_history_rewrite",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",

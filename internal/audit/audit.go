@@ -19,7 +19,7 @@ const (
 // Entry is one audit record.
 type Entry struct {
 	Client         string // resolved client name, or "" before authentication
-	Operation      string // operation class, e.g. "git_receive_pack"
+	Operation      string // operation class, e.g. "git_history_rewrite"
 	Target         string // e.g. "dataset/osolmaz/scraped-news"
 	Decision       string // DecisionAllowed or DecisionRefused
 	Reason         string // refusal reason, empty when allowed

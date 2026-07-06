@@ -14,7 +14,7 @@ func TestGrantLifecycleApproveUseAndReplay(t *testing.T) {
 
 	grant, created, err := store.Request(Request{
 		Client:            "agent",
-		Operation:         "git_receive_pack",
+		Operation:         "git_history_rewrite",
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "recover main",
@@ -79,7 +79,7 @@ func TestGrantDenyTokenAndExpiry(t *testing.T) {
 	})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/tags/v1",
 		Reason:    "retag",
@@ -106,7 +106,7 @@ func TestGrantDenyTokenAndExpiry(t *testing.T) {
 
 	expiring, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "expire",
@@ -128,7 +128,7 @@ func TestGrantCancelAndMissing(t *testing.T) {
 	grant, _, err := store.Request(Request{
 		Client:          "agent",
 		ClientRequestID: "notify-failure",
-		Operation:       "git_receive_pack",
+		Operation:       "git_history_rewrite",
 		Target:          "dataset/acme/repo",
 		Ref:             "refs/heads/main",
 		Reason:          "notify failure",
@@ -146,7 +146,7 @@ func TestGrantCancelAndMissing(t *testing.T) {
 	retry, created, err := store.Request(Request{
 		Client:          "agent",
 		ClientRequestID: "notify-failure",
-		Operation:       "git_receive_pack",
+		Operation:       "git_history_rewrite",
 		Target:          "dataset/acme/repo",
 		Ref:             "refs/heads/main",
 		Reason:          "notify failure",
@@ -165,7 +165,7 @@ func TestGrantNotifierClaimSerializesAndExpires(t *testing.T) {
 	grant, _, err := store.Request(Request{
 		Client:          "agent",
 		ClientRequestID: "notify-once",
-		Operation:       "git_receive_pack",
+		Operation:       "git_history_rewrite",
 		Target:          "dataset/acme/repo",
 		Ref:             "refs/heads/main",
 		Reason:          "notify once",
@@ -213,7 +213,7 @@ func TestSetNotifierIfClaimedRejectsStaleClaim(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "notify once",
@@ -252,7 +252,7 @@ func TestCancelIfNotifierClaimedRejectsStaleClaim(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "notify once",
@@ -291,7 +291,7 @@ func TestGrantUseReservationCommitAndRelease(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "force push",
@@ -346,7 +346,7 @@ func TestCommitReservedUseAfterAccessWindowExpires(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:            "agent",
-		Operation:         "git_receive_pack",
+		Operation:         "git_history_rewrite",
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "slow accepted push",
@@ -378,7 +378,7 @@ func TestExpiredReservedUseKeepsUsedStatusUpdate(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:            "agent",
-		Operation:         "git_receive_pack",
+		Operation:         "git_history_rewrite",
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "slow accepted push",
@@ -431,7 +431,7 @@ func TestPartialUsedGrantExpirationUpdatesClosedStatus(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:            "agent",
-		Operation:         "git_receive_pack",
+		Operation:         "git_history_rewrite",
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "multi-use push",
@@ -468,7 +468,7 @@ func TestGrantRequestValidation(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	if _, _, err := store.Request(Request{
 		Client:            "agent",
-		Operation:         "git_receive_pack",
+		Operation:         "git_history_rewrite",
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "too long",
@@ -478,7 +478,7 @@ func TestGrantRequestValidation(t *testing.T) {
 	}
 	if _, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 	}); err == nil {
@@ -499,7 +499,7 @@ func TestGrantMultiUseAndNotifierMetadata(t *testing.T) {
 	grant, created, err := store.Request(Request{
 		Client:          "agent",
 		ClientRequestID: "req-1",
-		Operation:       "git_receive_pack",
+		Operation:       "git_history_rewrite",
 		Target:          "dataset/acme/repo",
 		Ref:             "refs/heads/main",
 		Reason:          "recover twice",
@@ -514,7 +514,7 @@ func TestGrantMultiUseAndNotifierMetadata(t *testing.T) {
 	again, created, err := store.Request(Request{
 		Client:          "agent",
 		ClientRequestID: "req-1",
-		Operation:       "git_receive_pack",
+		Operation:       "git_history_rewrite",
 		Target:          "dataset/acme/repo",
 		Ref:             "refs/heads/main",
 		Reason:          "recover twice",
@@ -558,7 +558,7 @@ func TestLegacyUsedGrantLoadsConsumed(t *testing.T) {
 		"id":"grant-id",
 		"decision_token":"decision-token",
 		"client":"agent",
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"legacy use",
@@ -574,7 +574,7 @@ func TestLegacyUsedGrantLoadsConsumed(t *testing.T) {
 	}
 	store := New(path, Options{})
 
-	if grant, ok, err := store.MatchActive("agent", "git_receive_pack", "dataset/acme/repo", "refs/heads/main"); err != nil || ok {
+	if grant, ok, err := store.MatchActive("agent", "git_history_rewrite", "dataset/acme/repo", "refs/heads/main"); err != nil || ok {
 		t.Fatalf("legacy used MatchActive() = %+v ok=%v err=%v, want no active grant", grant, ok, err)
 	}
 }
@@ -584,7 +584,7 @@ func TestConsumedGrantStatusUpdateDue(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "single use",
@@ -622,7 +622,7 @@ func TestRetainedReservationStatusUpdateDue(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(Request{
 		Client:            "agent",
-		Operation:         "git_receive_pack",
+		Operation:         "git_history_rewrite",
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "ambiguous push",
@@ -695,7 +695,7 @@ func TestInFlightReservationStatusUpdateDue(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "slow push",
@@ -742,7 +742,7 @@ func TestStaleReservationStatusUpdateDue(t *testing.T) {
 	})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "crashed push",
@@ -790,7 +790,7 @@ func TestDecisionStatusUpdatesDue(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	approved, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "approve",
@@ -807,7 +807,7 @@ func TestDecisionStatusUpdatesDue(t *testing.T) {
 
 	denied, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/dev",
 		Reason:    "deny",
@@ -849,7 +849,7 @@ func TestGrantExpireDueReturnsNotifierUpdates(t *testing.T) {
 	})
 	grant, _, err := store.Request(Request{
 		Client:    "agent",
-		Operation: "git_receive_pack",
+		Operation: "git_history_rewrite",
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "expire pending",

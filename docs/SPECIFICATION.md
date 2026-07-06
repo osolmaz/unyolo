@@ -109,7 +109,19 @@ Configuration: environment for secrets (`HF_BROKER_SHARED_SECRET`,
       "type": "dataset",
       "mode": "append-only",
       "grant_policy": {
-        "git_receive_pack": {
+        "git_history_rewrite": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "git_ref_delete": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "git_tag_update": {
           "default_minutes": 5,
           "max_minutes": 60,
           "default_max_uses": 1,
@@ -261,7 +273,7 @@ Smallest valid git override request:
 
 ```json
 {
-  "operation": "git_receive_pack",
+  "operation": "git_history_rewrite",
   "target": "dataset/osolmaz/scraped-news",
   "ref": "refs/heads/main",
   "reason": "repair main after a bad push"
@@ -307,7 +319,9 @@ Initial grantable actions:
 
 | Action | Mode | Target | Notes |
 |--------|------|--------|-------|
-| `git_receive_pack` | `window` | repo + exact ref | May override history rewrite, branch/tag deletion, or tag update when policy and use budget allow it. |
+| `git_history_rewrite` | `window` | repo + exact ref | May override a non-fast-forward update of a non-tag, non-replace ref when policy and use budget allow it. |
+| `git_ref_delete` | `window` | repo + exact ref | May override deletion of a non-tag, non-replace ref, including a branch, when policy and use budget allow it. |
+| `git_tag_update` | `window` | repo + exact tag ref | May override moving or deleting a tag when policy and use budget allow it. |
 | `repo_create_private` | `execution` | exact repo id | Creates only a private repo predeclared in `scope.json`. |
 | `repo_metadata_update` | `execution` | exact repo id | Non-security metadata only, such as description, tags, or card metadata. |
 | `repo_visibility_update` | `execution` | exact repo id | Exact `private_to_public` or `public_to_private` direction must be allowed by policy. |
@@ -401,7 +415,7 @@ at least:
   "event": "grant-used",
   "grant_id": "...",
   "client": "local-smoke",
-  "action": "git_receive_pack",
+  "action": "git_history_rewrite",
   "target": "dataset/dutifulbob/hf-broker-smoke",
   "ref": "refs/heads/main",
   "mode": "window",
@@ -548,7 +562,19 @@ value is never logged, even at startup.
       "type": "dataset",
       "mode": "append-only",
       "grant_policy": {
-        "git_receive_pack": {
+        "git_history_rewrite": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "git_ref_delete": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "git_tag_update": {
           "default_minutes": 5,
           "max_minutes": 60,
           "default_max_uses": 1,
@@ -589,8 +615,10 @@ value is never logged, even at startup.
 - `repos[].grant_policy`: optional object listing grantable operations
   for this exact repo entry. Omitted means no grants are available for
   this repo beyond standing `read-only` or `append-only` policy.
-- `repos[].grant_policy.git_receive_pack`: optional window-grant policy
-  for push overrides on refs in this repo. Fields:
+- `repos[].grant_policy.git_history_rewrite`,
+  `repos[].grant_policy.git_ref_delete`, and
+  `repos[].grant_policy.git_tag_update`: optional window-grant policies
+  for the matching dangerous git capability on refs in this repo. Fields:
   - `default_minutes`: default grant duration. Default `5`; must be
     between `1` and `60`.
   - `max_minutes`: longest allowed grant duration. Default `60`; must be

@@ -13,7 +13,7 @@ func TestParseAndDecideRepo(t *testing.T) {
 			{"id": "osolmaz/model", "type": "model"},
 			{"id": "osolmaz/data", "type": "dataset", "mode": "read-only",
 			 "grant_policy": {
-			   "git_receive_pack": {"max_uses": 3},
+			   "git_history_rewrite": {"max_uses": 3},
 			   "repo_metadata_update": {},
 			   "repo_visibility_update": {"allowed": ["public_to_private"]}
 			 }}
@@ -39,8 +39,8 @@ func TestParseAndDecideRepo(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing dataset repo")
 	}
-	if repo.GrantPolicy.GitReceivePack == nil || repo.GrantPolicy.GitReceivePack.DefaultMinutes != DefaultGrantMinutes || repo.GrantPolicy.GitReceivePack.MaxUses != 3 {
-		t.Fatalf("repo git grant policy = %+v", repo.GrantPolicy.GitReceivePack)
+	if repo.GrantPolicy.GitHistoryRewrite == nil || repo.GrantPolicy.GitHistoryRewrite.DefaultMinutes != DefaultGrantMinutes || repo.GrantPolicy.GitHistoryRewrite.MaxUses != 3 {
+		t.Fatalf("repo git grant policy = %+v", repo.GrantPolicy.GitHistoryRewrite)
 	}
 	if repo.GrantPolicy.RepoMetadataUpdate == nil || repo.GrantPolicy.RepoMetadataUpdate.MaxMinutes != MaxGrantMinutes {
 		t.Fatalf("repo metadata grant policy = %+v", repo.GrantPolicy.RepoMetadataUpdate)
@@ -94,10 +94,11 @@ func TestParseRejectsInvalidScope(t *testing.T) {
 		{name: "bad mode", body: `{"repos": [{"id": "a/b", "type": "model", "mode": "write"}]}`, want: "mode must"},
 		{name: "bad snapshot prefix", body: `{"buckets": [{"id": "a/b", "snapshot_prefix": "../snapshots/"}]}`, want: "snapshot_prefix"},
 		{name: "unknown repo grant field", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"bad": {}}}]}`, want: "unknown field"},
+		{name: "legacy repo grant field", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"git_receive_pack": {}}}]}`, want: "unknown field"},
 		{name: "empty repo grant policy", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {}}]}`, want: "at least one action"},
-		{name: "zero repo grant minutes", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"git_receive_pack": {"default_minutes": 0}}}]}`, want: "default_minutes"},
-		{name: "bad repo grant use cap", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"git_receive_pack": {"default_max_uses": 4, "max_uses": 3}}}]}`, want: "max_uses"},
-		{name: "zero repo grant uses", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"git_receive_pack": {"max_uses": 0}}}]}`, want: "max_uses"},
+		{name: "zero repo grant minutes", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"git_history_rewrite": {"default_minutes": 0}}}]}`, want: "default_minutes"},
+		{name: "bad repo grant use cap", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"git_history_rewrite": {"default_max_uses": 4, "max_uses": 3}}}]}`, want: "max_uses"},
+		{name: "zero repo grant uses", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"git_history_rewrite": {"max_uses": 0}}}]}`, want: "max_uses"},
 		{name: "bad visibility grant direction", body: `{"repos": [{"id": "a/b", "type": "model", "grant_policy": {"repo_visibility_update": {"allowed": ["public"]}}}]}`, want: "unsupported value"},
 		{name: "empty bucket grant policy", body: `{"buckets": [{"id": "a/b", "grant_policy": {}}]}`, want: "at least one action"},
 		{name: "zero bucket grant minutes", body: `{"buckets": [{"id": "a/b", "grant_policy": {"bucket_delete": {"max_minutes": 0, "allowed": ["object"]}}}]}`, want: "max_minutes"},

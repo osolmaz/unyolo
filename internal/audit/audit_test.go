@@ -11,7 +11,7 @@ func TestRecordWritesStructuredAuditLine(t *testing.T) {
 	logger := New(&buf)
 	logger.Record(Entry{
 		Client:         "agent",
-		Operation:      "git_receive_pack",
+		Operation:      "git_history_rewrite",
 		Target:         "dataset/acme/repo",
 		Decision:       DecisionRefused,
 		Reason:         "history rewrite refused",
@@ -20,7 +20,7 @@ func TestRecordWritesStructuredAuditLine(t *testing.T) {
 	line := buf.String()
 	for _, want := range []string{
 		`"client":"agent"`,
-		`"operation":"git_receive_pack"`,
+		`"operation":"git_history_rewrite"`,
 		`"target":"dataset/acme/repo"`,
 		`"decision":"refused"`,
 		`"reason":"history rewrite refused"`,

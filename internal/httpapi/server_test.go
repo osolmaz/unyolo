@@ -138,7 +138,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	defer upstream.server.Close()
 	var auditLog bytes.Buffer
 	notifier := &captureGrantNotifier{}
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{"max_uses":3}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{"max_uses":3}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover main",
@@ -206,7 +206,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		t.Fatalf("grant response leaked decision token: %s", body)
 	}
 	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover main",
@@ -235,6 +235,8 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		t.Fatalf("cross-client force push reached upstream: hits=%d want %d", got, beforeGrant)
 	}
 
+	assertHistoryRewriteGrantDoesNotAllowDeletion(t, clone, upstream, beforeGrant)
+
 	runClientGit(t, clone, "push", "--force", "origin", "main")
 	if upstreamRef := strings.TrimSpace(runGit(t, upstreamRepo, "rev-parse", "refs/heads/main")); upstreamRef != initial {
 		t.Fatalf("upstream main after grant = %s, want %s", upstreamRef, initial)
@@ -254,6 +256,17 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	}
 }
 
+func assertHistoryRewriteGrantDoesNotAllowDeletion(t *testing.T, clone string, upstream *gitUpstream, wantHits int) {
+	t.Helper()
+	output, err := runClientGitErr(clone, "push", "origin", ":main")
+	if err == nil || !strings.Contains(output, "hf-broker") {
+		t.Fatalf("branch deletion used history-rewrite grant err=%v output:\n%s", err, output)
+	}
+	if got := upstream.receivePackHits(); got != wantHits {
+		t.Fatalf("branch deletion with history-rewrite grant reached upstream: hits=%d want %d", got, wantHits)
+	}
+}
+
 func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -263,7 +276,7 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 	upstream := newGitUpstream(t, upstreamRepo, testToken)
 	defer upstream.server.Close()
 	notifier := &captureGrantNotifier{}
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +309,7 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 	runClientGit(t, clone, "reset", "--hard", initial)
 
 	resp, body := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover main"
@@ -330,7 +343,7 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 	if updated.Status != grants.StatusActive || updated.ReservedCount != 1 || updated.UsedCount != 0 || !updated.ReservationRetained {
 		t.Fatalf("grant after upstream rejection = %+v, want active with retained reservation", updated)
 	}
-	if _, ok, err := handler.grants.MatchActive("agent", string(scope.OpGitPush), "dataset/acme/repo", "refs/heads/main"); err != nil || ok {
+	if _, ok, err := handler.grants.MatchActive("agent", string(scope.OpGitHistoryRewrite), "dataset/acme/repo", "refs/heads/main"); err != nil || ok {
 		t.Fatalf("MatchActive() after retained reservation ok=%v err=%v, want false nil", ok, err)
 	}
 	rejectedHits := upstream.receivePackHits()
@@ -352,7 +365,7 @@ func TestGrantBackedForwardErrorRetainsReservationAndUpdatesMessage(t *testing.T
 	upstream := newGitUpstream(t, upstreamRepo, testToken)
 	defer upstream.server.Close()
 	notifier := &captureGrantNotifier{}
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +398,7 @@ func TestGrantBackedForwardErrorRetainsReservationAndUpdatesMessage(t *testing.T
 	runClientGit(t, clone, "reset", "--hard", initial)
 
 	resp, body := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover main"
@@ -421,10 +434,73 @@ func TestGrantBackedForwardErrorRetainsReservationAndUpdatesMessage(t *testing.T
 	}
 }
 
+func TestGrantRequestAcceptsConfiguredGitCapabilities(t *testing.T) {
+	dir := t.TempDir()
+	notifier := &captureGrantNotifier{}
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{},"git_ref_delete":{},"git_tag_update":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: "http://127.0.0.1:1",
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+
+	tests := []struct {
+		operation string
+		ref       string
+	}{
+		{operation: "git_history_rewrite", ref: "refs/heads/main"},
+		{operation: "git_ref_delete", ref: "refs/heads/feature"},
+		{operation: "git_tag_update", ref: "refs/tags/v1"},
+	}
+	for i, tc := range tests {
+		body := fmt.Sprintf(`{"operation":%q,"target":"dataset/acme/repo","ref":%q,"reason":"recover","client_request_id":%q}`, tc.operation, tc.ref, tc.operation)
+		resp, text := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(body))
+		if resp.StatusCode != http.StatusAccepted {
+			t.Fatalf("%s grant request = %d %q, want 202", tc.operation, resp.StatusCode, text)
+		}
+		if len(notifier.messages) != i+1 || notifier.messages[i].Operation != tc.operation {
+			t.Fatalf("notifier messages = %+v, want operation %s at index %d", notifier.messages, tc.operation, i)
+		}
+	}
+
+	invalid := []struct {
+		operation string
+		ref       string
+	}{
+		{operation: "git_history_rewrite", ref: "refs/tags/v1"},
+		{operation: "git_history_rewrite", ref: "refs/replace/abc"},
+		{operation: "git_ref_delete", ref: "refs/tags/v1"},
+		{operation: "git_ref_delete", ref: "refs/replace/abc"},
+		{operation: "git_tag_update", ref: "refs/heads/main"},
+	}
+	for _, tc := range invalid {
+		body := fmt.Sprintf(`{"operation":%q,"target":"dataset/acme/repo","ref":%q,"reason":"recover"}`, tc.operation, tc.ref)
+		resp, _ := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(body))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s grant request for %s = %d, want 400", tc.operation, tc.ref, resp.StatusCode)
+		}
+	}
+}
+
 func TestGrantRequestErrors(t *testing.T) {
 	dir := t.TempDir()
 	var auditLog bytes.Buffer
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{"max_uses":2}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{"max_uses":2}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +517,7 @@ func TestGrantRequestErrors(t *testing.T) {
 	}
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
-	validBody := `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":5}`
+	validBody := `{"operation":"git_history_rewrite","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":5}`
 	resp, _ := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(validBody))
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("grant without notifier = %d, want 503", resp.StatusCode)
@@ -455,7 +531,7 @@ func TestGrantRequestErrors(t *testing.T) {
 	broker.Config.Handler = handler
 	beforeBadTargetAudit := auditLog.Len()
 	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(fmt.Sprintf(`{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":%q,
 		"ref":"refs/heads/main",
 		"reason":"recover"
@@ -476,12 +552,14 @@ func TestGrantRequestErrors(t *testing.T) {
 		{name: "bad json", method: http.MethodPost, body: `{`, want: http.StatusBadRequest},
 		{name: "trailing json", method: http.MethodPost, body: validBody + `{}`, want: http.StatusBadRequest},
 		{name: "bad operation", method: http.MethodPost, body: `{"operation":"git_upload_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover"}`, want: http.StatusBadRequest},
-		{name: "bad ref", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"main","reason":"recover"}`, want: http.StatusBadRequest},
-		{name: "out of scope", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/other","ref":"refs/heads/main","reason":"recover"}`, want: http.StatusForbidden},
-		{name: "negative minutes", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":-1}`, want: http.StatusBadRequest},
-		{name: "too many minutes", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":61}`, want: http.StatusBadRequest},
-		{name: "negative max uses", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","max_uses":-1}`, want: http.StatusBadRequest},
-		{name: "too many uses", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","max_uses":3}`, want: http.StatusBadRequest},
+		{name: "transport operation", method: http.MethodPost, body: `{"operation":"git_receive_pack","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover"}`, want: http.StatusBadRequest},
+		{name: "unconfigured capability", method: http.MethodPost, body: `{"operation":"git_ref_delete","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover"}`, want: http.StatusForbidden},
+		{name: "bad ref", method: http.MethodPost, body: `{"operation":"git_history_rewrite","target":"dataset/acme/repo","ref":"main","reason":"recover"}`, want: http.StatusBadRequest},
+		{name: "out of scope", method: http.MethodPost, body: `{"operation":"git_history_rewrite","target":"dataset/acme/other","ref":"refs/heads/main","reason":"recover"}`, want: http.StatusForbidden},
+		{name: "negative minutes", method: http.MethodPost, body: `{"operation":"git_history_rewrite","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":-1}`, want: http.StatusBadRequest},
+		{name: "too many minutes", method: http.MethodPost, body: `{"operation":"git_history_rewrite","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","minutes":61}`, want: http.StatusBadRequest},
+		{name: "negative max uses", method: http.MethodPost, body: `{"operation":"git_history_rewrite","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","max_uses":-1}`, want: http.StatusBadRequest},
+		{name: "too many uses", method: http.MethodPost, body: `{"operation":"git_history_rewrite","target":"dataset/acme/repo","ref":"refs/heads/main","reason":"recover","max_uses":3}`, want: http.StatusBadRequest},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -506,7 +584,7 @@ func TestGrantRequestErrors(t *testing.T) {
 func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 	dir := t.TempDir()
 	notifier := &captureGrantNotifier{}
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,7 +606,7 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 	if _, _, err := handler.grants.Request(grants.Request{
 		Client:          "agent",
 		ClientRequestID: "retry-missing-message",
-		Operation:       string(scope.OpGitPush),
+		Operation:       string(scope.OpGitHistoryRewrite),
 		Target:          "dataset/acme/repo",
 		Ref:             "refs/heads/main",
 		Reason:          "recover",
@@ -540,7 +618,7 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 	defer broker.Close()
 
 	resp, body := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover",
@@ -554,7 +632,7 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 func TestConcurrentIdempotentGrantRequestsSendOneNotification(t *testing.T) {
 	dir := t.TempDir()
 	notifier := newBlockingGrantNotifier()
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,7 +654,7 @@ func TestConcurrentIdempotentGrantRequestsSendOneNotification(t *testing.T) {
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 	body := `{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover",
@@ -633,7 +711,7 @@ func TestConcurrentGrantRetrySeesNotificationFailure(t *testing.T) {
 	dir := t.TempDir()
 	notifier := newBlockingGrantNotifier()
 	notifier.err = errors.New("notify failed")
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +733,7 @@ func TestConcurrentGrantRetrySeesNotificationFailure(t *testing.T) {
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 	body := `{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover",
@@ -715,7 +793,7 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 	}
 	notifier := newBlockingGrantNotifier()
 	notifier.firstErr = errors.New("notify failed")
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +816,7 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 	body := `{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover",
@@ -799,7 +877,7 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 func TestGrantRequestWithNonEditableNotifierIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	notifier := &zeroMessageGrantNotifier{}
-	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_history_rewrite":{}}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -821,7 +899,7 @@ func TestGrantRequestWithNonEditableNotifierIsIdempotent(t *testing.T) {
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 	body := `{
-		"operation":"git_receive_pack",
+		"operation":"git_history_rewrite",
 		"target":"dataset/acme/repo",
 		"ref":"refs/heads/main",
 		"reason":"recover",
@@ -846,7 +924,7 @@ func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 	store := grants.New(filepath.Join(dir, "grants.json"), grants.Options{})
 	grant, _, err := store.Request(grants.Request{
 		Client:    "agent",
-		Operation: string(scope.OpGitPush),
+		Operation: string(scope.OpGitHistoryRewrite),
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "force push",
@@ -886,7 +964,7 @@ func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	grant, _, err := store.Request(grants.Request{
 		Client:    "agent",
-		Operation: string(scope.OpGitPush),
+		Operation: string(scope.OpGitHistoryRewrite),
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "force push",
@@ -919,7 +997,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	grant, _, err := store.Request(grants.Request{
 		Client:    "agent",
-		Operation: string(scope.OpGitPush),
+		Operation: string(scope.OpGitHistoryRewrite),
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "ambiguous push",
@@ -962,7 +1040,7 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{Now: func() time.Time { return now }})
 	grant, _, err := store.Request(grants.Request{
 		Client:            "agent",
-		Operation:         string(scope.OpGitPush),
+		Operation:         string(scope.OpGitHistoryRewrite),
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "slow ambiguous push",
@@ -1067,6 +1145,32 @@ func TestGrantUseStatusCountsReservedUses(t *testing.T) {
 	got = grantUseStatus(grants.Grant{Status: grants.StatusExpired, MaxUses: 3, UsedCount: 1})
 	if strings.Contains(got, "remain") || !strings.Contains(got, "Access is now closed") {
 		t.Fatalf("expired grantUseStatus() = %q, want closed access without remaining budget", got)
+	}
+}
+
+func TestGrantOperationForPushFailure(t *testing.T) {
+	tests := []struct {
+		name   string
+		ref    string
+		reason string
+		want   scope.Operation
+		ok     bool
+	}{
+		{name: "history rewrite", ref: "refs/heads/main", reason: "history rewrite refused", want: scope.OpGitHistoryRewrite, ok: true},
+		{name: "branch deletion", ref: "refs/heads/main", reason: "deletion refused", want: scope.OpGitRefDelete, ok: true},
+		{name: "tag deletion", ref: "refs/tags/v1", reason: "deletion refused", want: scope.OpGitTagUpdate, ok: true},
+		{name: "tag update", ref: "refs/tags/v1", reason: "tag update refused", want: scope.OpGitTagUpdate, ok: true},
+		{name: "replace deletion", ref: "refs/replace/abc", reason: "deletion refused", ok: false},
+		{name: "replace ref", ref: "refs/replace/abc", reason: "replace refs refused", ok: false},
+		{name: "stale client", ref: "refs/heads/main", reason: "client ref is stale", ok: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := grantOperationForPushFailure(gitproxy.Command{Ref: tc.ref}, tc.reason)
+			if got != tc.want || ok != tc.ok {
+				t.Fatalf("grantOperationForPushFailure() = %q, %v; want %q, %v", got, ok, tc.want, tc.ok)
+			}
+		})
 	}
 }
 

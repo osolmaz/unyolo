@@ -12,6 +12,13 @@ const (
 	OpLFSUpload   Operation = "lfs_upload"
 )
 
+// Grant operation classes for dangerous git updates.
+const (
+	OpGitHistoryRewrite Operation = "git_history_rewrite"
+	OpGitRefDelete      Operation = "git_ref_delete"
+	OpGitTagUpdate      Operation = "git_tag_update"
+)
+
 // Decision is an allow/refuse outcome with a human-readable reason.
 type Decision struct {
 	Allowed bool

@@ -5,7 +5,19 @@
       "type": "dataset",
       "mode": "append-only",
       "grant_policy": {
-        "git_receive_pack": {
+        "git_history_rewrite": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "git_ref_delete": {
+          "default_minutes": 5,
+          "max_minutes": 60,
+          "default_max_uses": 1,
+          "max_uses": 3
+        },
+        "git_tag_update": {
           "default_minutes": 5,
           "max_minutes": 60,
           "default_max_uses": 1,

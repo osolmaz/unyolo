@@ -67,7 +67,9 @@ type Bucket struct {
 
 // RepoGrantPolicy configures optional grantable operations for one repo entry.
 type RepoGrantPolicy struct {
-	GitReceivePack       *GrantUsePolicy          `json:"git_receive_pack,omitempty"`
+	GitHistoryRewrite    *GrantUsePolicy          `json:"git_history_rewrite,omitempty"`
+	GitRefDelete         *GrantUsePolicy          `json:"git_ref_delete,omitempty"`
+	GitTagUpdate         *GrantUsePolicy          `json:"git_tag_update,omitempty"`
 	RepoCreatePrivate    *ExecutionGrantPolicy    `json:"repo_create_private,omitempty"`
 	RepoMetadataUpdate   *ExecutionGrantPolicy    `json:"repo_metadata_update,omitempty"`
 	RepoVisibilityUpdate *RepoVisibilityGrantSpec `json:"repo_visibility_update,omitempty"`
@@ -386,24 +388,54 @@ func normalizeRepoGrantPolicy(policy *RepoGrantPolicy) (RepoGrantPolicy, error) 
 }
 
 func repoGrantPolicyConfigured(policy *RepoGrantPolicy) bool {
-	return policy.GitReceivePack != nil ||
+	return policy.GitHistoryRewrite != nil ||
+		policy.GitRefDelete != nil ||
+		policy.GitTagUpdate != nil ||
 		policy.RepoCreatePrivate != nil ||
 		policy.RepoMetadataUpdate != nil ||
 		policy.RepoVisibilityUpdate != nil
 }
 
 func normalizeRepoGrantActions(policy *RepoGrantPolicy) error {
-	if err := normalizeGrantUsePolicy("grant_policy.git_receive_pack", policy.GitReceivePack); err != nil {
+	if err := normalizeRepoGitGrantActions(policy); err != nil {
 		return err
 	}
-	if err := normalizeExecutionGrantPolicy("grant_policy.repo_create_private", policy.RepoCreatePrivate); err != nil {
-		return err
-	}
-	if err := normalizeExecutionGrantPolicy("grant_policy.repo_metadata_update", policy.RepoMetadataUpdate); err != nil {
+	if err := normalizeRepoExecutionGrantActions(policy); err != nil {
 		return err
 	}
 	if err := normalizeRepoVisibilityGrantPolicy(policy.RepoVisibilityUpdate); err != nil {
 		return err
+	}
+	return nil
+}
+
+func normalizeRepoGitGrantActions(policy *RepoGrantPolicy) error {
+	for _, item := range []struct {
+		name   string
+		policy *GrantUsePolicy
+	}{
+		{name: "grant_policy.git_history_rewrite", policy: policy.GitHistoryRewrite},
+		{name: "grant_policy.git_ref_delete", policy: policy.GitRefDelete},
+		{name: "grant_policy.git_tag_update", policy: policy.GitTagUpdate},
+	} {
+		if err := normalizeGrantUsePolicy(item.name, item.policy); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func normalizeRepoExecutionGrantActions(policy *RepoGrantPolicy) error {
+	for _, item := range []struct {
+		name   string
+		policy *ExecutionGrantPolicy
+	}{
+		{name: "grant_policy.repo_create_private", policy: policy.RepoCreatePrivate},
+		{name: "grant_policy.repo_metadata_update", policy: policy.RepoMetadataUpdate},
+	} {
+		if err := normalizeExecutionGrantPolicy(item.name, item.policy); err != nil {
+			return err
+		}
 	}
 	return nil
 }
