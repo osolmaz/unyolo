@@ -18,6 +18,15 @@ const (
 	callbackPrefix         = "hfbg"
 )
 
+var decisionStatusTexts = map[string]string{
+	"Grant approved":                     "Approved. Access is active.",
+	"Grant denied":                       "Denied. Access was not granted.",
+	"Grant is no longer pending":         "No change. This request is no longer pending.",
+	"Grant not found":                    "No change. This request was not found.",
+	"Grant decision token did not match": "No change. This approval button did not match the request.",
+	"Grant decision ignored":             "No change. This decision was ignored.",
+}
+
 // GrantMessage is the grant metadata sent to an operator.
 type GrantMessage struct {
 	ID               string
@@ -47,6 +56,8 @@ type Decision struct {
 	Token       string
 	CallbackID  string
 	ChatID      int64
+	MessageID   int
+	MessageText string
 	OperatorID  int64
 	OperatorTag string
 }
@@ -129,6 +140,9 @@ func (t *Telegram) PollOnce(ctx context.Context, offset int64, handler DecisionH
 			answer = handler(ctx, decision)
 		}
 		_ = t.answerCallback(ctx, decision.CallbackID, answer)
+		if decision.ChatID == t.chatID {
+			_ = t.markDecision(ctx, decision, answer)
+		}
 	}
 	return nextOffset, nil
 }
@@ -152,6 +166,21 @@ func (t *Telegram) answerCallback(ctx context.Context, callbackID, text string) 
 		"text":              text,
 	}
 	return t.post(ctx, "answerCallbackQuery", payload, nil)
+}
+
+func (t *Telegram) markDecision(ctx context.Context, decision Decision, answer string) error {
+	if decision.MessageID == 0 || decision.MessageText == "" {
+		return nil
+	}
+	payload := map[string]any{
+		"chat_id":    decision.ChatID,
+		"message_id": decision.MessageID,
+		"text":       withDecisionStatus(decision.MessageText, decisionStatusText(answer)),
+		"reply_markup": map[string]any{
+			"inline_keyboard": []any{},
+		},
+	}
+	return t.post(ctx, "editMessageText", payload, nil)
 }
 
 func (t *Telegram) post(ctx context.Context, method string, payload any, out any) error {
@@ -231,6 +260,19 @@ func formatTelegramTime(value time.Time) string {
 	return value.UTC().Format("2006-01-02 15:04 UTC")
 }
 
+func decisionStatusText(answer string) string {
+	if status, ok := decisionStatusTexts[answer]; ok {
+		return status
+	}
+	return answer
+}
+
+func withDecisionStatus(text, status string) string {
+	const marker = "\n\nStatus: "
+	base, _, _ := strings.Cut(text, marker)
+	return base + marker + status
+}
+
 func parseDecision(update telegramUpdate) (Decision, bool) {
 	if update.CallbackQuery == nil {
 		return Decision{}, false
@@ -246,6 +288,8 @@ func parseDecision(update telegramUpdate) (Decision, bool) {
 		Token:       token,
 		CallbackID:  callback.ID,
 		ChatID:      callback.Message.Chat.ID,
+		MessageID:   callback.Message.MessageID,
+		MessageText: callback.Message.Text,
 		OperatorID:  callback.From.ID,
 		OperatorTag: callback.From.Username,
 	}, true
@@ -298,7 +342,9 @@ type telegramUser struct {
 }
 
 type telegramMessage struct {
-	Chat telegramChat `json:"chat"`
+	MessageID int          `json:"message_id"`
+	Chat      telegramChat `json:"chat"`
+	Text      string       `json:"text"`
 }
 
 type telegramChat struct {

@@ -62,12 +62,13 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 
 func TestTelegramPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	var answered []string
+	var edits []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
 			_, _ = w.Write([]byte(`{"ok":true,"result":[` +
 				`{"update_id":10,"callback_query":{"id":"wrong","from":{"id":1,"username":"bad"},"message":{"chat":{"id":999}},"data":"hfbg:approve:g1:t1"}},` +
-				`{"update_id":11,"callback_query":{"id":"right","from":{"id":2,"username":"operator"},"message":{"chat":{"id":123}},"data":"hfbg:deny:g2:t2"}}` +
+				`{"update_id":11,"callback_query":{"id":"right","from":{"id":2,"username":"operator"},"message":{"message_id":42,"chat":{"id":123},"text":"Approval needed for hf-broker\n\nApprove only if this looks right."},"data":"hfbg:deny:g2:t2"}}` +
 				`]}`))
 		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
 			var payload map[string]any
@@ -76,6 +77,13 @@ func TestTelegramPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 			}
 			answered = append(answered, payload["callback_query_id"].(string)+":"+payload["text"].(string))
 			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			edits = append(edits, payload)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":42}}`))
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -95,11 +103,24 @@ func TestTelegramPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	if offset != 12 {
 		t.Fatalf("offset = %d, want 12", offset)
 	}
-	if len(decisions) != 1 || decisions[0].ID != "g2" || decisions[0].Action != DecisionDeny || decisions[0].OperatorTag != "operator" {
+	if len(decisions) != 1 || decisions[0].ID != "g2" || decisions[0].Action != DecisionDeny || decisions[0].OperatorTag != "operator" || decisions[0].MessageID != 42 {
 		t.Fatalf("decisions = %+v", decisions)
 	}
 	if len(answered) != 2 || answered[0] != "wrong:Grant decision ignored" || answered[1] != "right:handled" {
 		t.Fatalf("answered = %+v", answered)
+	}
+	if len(edits) != 1 {
+		t.Fatalf("edits = %+v, want one edit", edits)
+	}
+	if edits[0]["chat_id"].(float64) != 123 || edits[0]["message_id"].(float64) != 42 {
+		t.Fatalf("edit target = %+v", edits[0])
+	}
+	if text := edits[0]["text"].(string); !strings.Contains(text, "Status: handled") || strings.Contains(text, "hfbg:") {
+		t.Fatalf("edit text = %q", text)
+	}
+	replyMarkup := edits[0]["reply_markup"].(map[string]any)
+	if keyboard := replyMarkup["inline_keyboard"].([]any); len(keyboard) != 0 {
+		t.Fatalf("edit keyboard = %+v, want empty", keyboard)
 	}
 }
 
