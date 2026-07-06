@@ -28,8 +28,8 @@ func TestTelegramLiveSendGrantRequest(t *testing.T) {
 		Target:           "dataset/dutifulbob/hf-broker-smoke",
 		Ref:              "refs/heads/main",
 		Reason:           "live Telegram delivery smoke test",
-		RequestedMinutes: 1,
-		PendingExpiresAt: time.Now().UTC().Add(time.Minute),
+		RequestedMinutes: 5,
+		PendingExpiresAt: time.Now().UTC().Add(5 * time.Minute),
 	})
 	if err != nil {
 		t.Fatalf("SendGrantRequest() live error = %v", err)

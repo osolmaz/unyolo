@@ -42,7 +42,13 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 		t.Fatalf("chat_id = %v, want 123", sent["chat_id"])
 	}
 	text := sent["text"].(string)
-	if !strings.Contains(text, "dataset/acme/repo") || strings.Contains(text, "decision-token") {
+	if !strings.Contains(text, "Approval needed for hf-broker") ||
+		!strings.Contains(text, "agent is asking to push to a Git repo.") ||
+		!strings.Contains(text, "Access: 15 minutes") ||
+		!strings.Contains(text, "Request expires: 2026-07-06 01:02 UTC") ||
+		!strings.Contains(text, "Approve only if this looks right.") ||
+		!strings.Contains(text, "dataset/acme/repo") ||
+		strings.Contains(text, "decision-token") {
 		t.Fatalf("unexpected message text: %q", text)
 	}
 	replyMarkup := sent["reply_markup"].(map[string]any)

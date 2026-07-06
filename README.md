@@ -94,7 +94,7 @@ curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
     "target": "dataset/osolmaz/scraped-news",
     "ref": "refs/heads/main",
     "reason": "recover main after a bad commit",
-    "minutes": 15
+    "minutes": 5
   }' \
   https://broker.tailnet:8080/grants
 ```

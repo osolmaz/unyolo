@@ -227,7 +227,7 @@ branch), the agent may *request* an elevation; nothing is self-service:
    Approval happens through an operator-only channel; nothing reachable
    with the agent's secret can approve.
 3. On approval, the named operations are permitted for the grant's
-   duration (default 15 minutes, hard cap 1 hour), for the named target
+   duration (default 5 minutes, hard cap 1 hour), for the named target
    only, and every use is audit-logged. Expiry is absolute; there is no
    renewal without a fresh approval.
 
@@ -247,7 +247,7 @@ adjacent to) the agent's secret is disqualified by construction.
 Two channels are specified:
 
 1. **Operator CLI on the broker host** (M3). `hf-broker grants` lists
-   pending and active grants; `hf-broker approve <id> --minutes 15` and
+   pending and active grants; `hf-broker approve <id> --minutes 5` and
    `hf-broker deny <id>` decide them; `hf-broker revoke <id>` kills an
    active grant early. The CLI talks to the broker process locally
    (unix socket or localhost port not exposed beyond the host);

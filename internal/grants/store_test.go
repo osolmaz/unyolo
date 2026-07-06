@@ -81,6 +81,9 @@ func TestGrantDenyTokenAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if grant.RequestedMinutes != 5 {
+		t.Fatalf("default grant minutes = %d, want 5", grant.RequestedMinutes)
+	}
 	if _, err := store.Approve(grant.ID, "wrong", "telegram:1"); !errors.Is(err, ErrInvalidDecisionToken) {
 		t.Fatalf("Approve(wrong token) error = %v, want ErrInvalidDecisionToken", err)
 	}

@@ -22,7 +22,7 @@ const (
 	// DefaultPendingTimeout is how long an unapproved request remains pending.
 	DefaultPendingTimeout = 10 * time.Minute
 	// DefaultDuration is the grant duration used when a request omits minutes.
-	DefaultDuration = 15 * time.Minute
+	DefaultDuration = 5 * time.Minute
 	// MaxDuration is the hard cap for one approved grant.
 	MaxDuration = time.Hour
 )

@@ -207,15 +207,28 @@ func callbackData(action DecisionAction, id, token string) string {
 }
 
 func grantText(msg GrantMessage) string {
-	return fmt.Sprintf("hf-broker grant request\nClient: %s\nOperation: %s\nTarget: %s\nRef: %s\nMinutes: %d\nPending until: %s\nReason: %s",
+	return fmt.Sprintf("Approval needed for hf-broker\n\n%s is asking to %s.\n\nTarget: %s\nRef: %s\nAccess: %d minutes\nRequest expires: %s\n\nReason: %s\n\nApprove only if this looks right.",
 		msg.Client,
-		msg.Operation,
+		operationText(msg.Operation),
 		msg.Target,
 		msg.Ref,
 		msg.RequestedMinutes,
-		msg.PendingExpiresAt.UTC().Format(time.RFC3339),
+		formatTelegramTime(msg.PendingExpiresAt),
 		msg.Reason,
 	)
+}
+
+func operationText(operation string) string {
+	switch operation {
+	case "git_receive_pack":
+		return "push to a Git repo"
+	default:
+		return operation
+	}
+}
+
+func formatTelegramTime(value time.Time) string {
+	return value.UTC().Format("2006-01-02 15:04 UTC")
 }
 
 func parseDecision(update telegramUpdate) (Decision, bool) {
