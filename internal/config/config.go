@@ -27,6 +27,9 @@ const (
 	DefaultStateDir     = "./state"
 	DefaultMaxPackBytes = 25 * 1024 * 1024
 	DefaultHFTimeout    = 120 * time.Second
+
+	canonicalEnvPrefix = "HF_BROKER_"
+	legacyEnvPrefix    = "BROKER_"
 )
 
 // Client is one named broker client and its shared secret.
@@ -53,13 +56,13 @@ type Config struct {
 // os.Getenv). It reads the secrets file, if configured, from disk.
 func Load(getenv func(string) string) (Config, error) {
 	cfg := Config{
-		HFToken:   getenv("BROKER_HF_TOKEN"),
-		BindAddr:  stringOr(getenv("BROKER_BIND_ADDR"), DefaultBindAddr),
-		ScopeFile: stringOr(getenv("BROKER_SCOPE_FILE"), DefaultScopeFile),
-		StateDir:  stringOr(getenv("BROKER_STATE_DIR"), DefaultStateDir),
+		HFToken:   brokerEnv(getenv, "HF_TOKEN"),
+		BindAddr:  stringOr(brokerEnv(getenv, "BIND_ADDR"), DefaultBindAddr),
+		ScopeFile: stringOr(brokerEnv(getenv, "SCOPE_FILE"), DefaultScopeFile),
+		StateDir:  stringOr(brokerEnv(getenv, "STATE_DIR"), DefaultStateDir),
 	}
 	if cfg.HFToken == "" {
-		return Config{}, errors.New("BROKER_HF_TOKEN is required")
+		return Config{}, fmt.Errorf("%s is required", brokerEnvName("HF_TOKEN"))
 	}
 	var err error
 	if cfg.Clients, err = loadClients(getenv); err != nil {
@@ -72,17 +75,17 @@ func Load(getenv func(string) string) (Config, error) {
 }
 
 func loadNumeric(getenv func(string) string, cfg *Config) error {
-	port, err := intOr(getenv("BROKER_PORT"), DefaultPort)
+	port, err := intOr(brokerEnv(getenv, "PORT"), DefaultPort)
 	if err != nil {
-		return fmt.Errorf("BROKER_PORT: %w", err)
+		return fmt.Errorf("%s: %w", brokerEnvName("PORT"), err)
 	}
-	maxPack, err := intOr(getenv("BROKER_MAX_PACK_BYTES"), DefaultMaxPackBytes)
+	maxPack, err := intOr(brokerEnv(getenv, "MAX_PACK_BYTES"), DefaultMaxPackBytes)
 	if err != nil {
-		return fmt.Errorf("BROKER_MAX_PACK_BYTES: %w", err)
+		return fmt.Errorf("%s: %w", brokerEnvName("MAX_PACK_BYTES"), err)
 	}
-	timeoutSeconds, err := intOr(getenv("BROKER_HF_TIMEOUT"), 0)
+	timeoutSeconds, err := intOr(brokerEnv(getenv, "HF_TIMEOUT"), 0)
 	if err != nil {
-		return fmt.Errorf("BROKER_HF_TIMEOUT: %w", err)
+		return fmt.Errorf("%s: %w", brokerEnvName("HF_TIMEOUT"), err)
 	}
 	cfg.Port = port
 	cfg.MaxPackBytes = int64(maxPack)
@@ -94,17 +97,17 @@ func loadNumeric(getenv func(string) string, cfg *Config) error {
 }
 
 func loadTelegram(getenv func(string) string, cfg *Config) error {
-	cfg.TelegramBotToken = getenv("BROKER_TELEGRAM_BOT_TOKEN")
-	rawChatID := getenv("BROKER_TELEGRAM_CHAT_ID")
+	cfg.TelegramBotToken = brokerEnv(getenv, "TELEGRAM_BOT_TOKEN")
+	rawChatID := brokerEnv(getenv, "TELEGRAM_CHAT_ID")
 	if cfg.TelegramBotToken == "" && rawChatID == "" {
 		return nil
 	}
 	if cfg.TelegramBotToken == "" || rawChatID == "" {
-		return errors.New("BROKER_TELEGRAM_BOT_TOKEN and BROKER_TELEGRAM_CHAT_ID must be set together")
+		return fmt.Errorf("%s and %s must be set together", brokerEnvName("TELEGRAM_BOT_TOKEN"), brokerEnvName("TELEGRAM_CHAT_ID"))
 	}
 	chatID, err := strconv.ParseInt(rawChatID, 10, 64)
 	if err != nil || chatID == 0 {
-		return fmt.Errorf("BROKER_TELEGRAM_CHAT_ID: expected a non-zero integer")
+		return fmt.Errorf("%s: expected a non-zero integer", brokerEnvName("TELEGRAM_CHAT_ID"))
 	}
 	cfg.TelegramChatID = chatID
 	return nil
@@ -112,10 +115,10 @@ func loadTelegram(getenv func(string) string, cfg *Config) error {
 
 func loadClients(getenv func(string) string) ([]Client, error) {
 	var clients []Client
-	if shared := getenv("BROKER_SHARED_SECRET"); shared != "" {
+	if shared := brokerEnv(getenv, "SHARED_SECRET"); shared != "" {
 		clients = append(clients, Client{Name: "default", Secret: shared})
 	}
-	if path := getenv("BROKER_SECRETS_FILE"); path != "" {
+	if path := brokerEnv(getenv, "SECRETS_FILE"); path != "" {
 		fromFile, err := parseSecretsFile(path)
 		if err != nil {
 			return nil, err
@@ -123,7 +126,7 @@ func loadClients(getenv func(string) string) ([]Client, error) {
 		clients = append(clients, fromFile...)
 	}
 	if len(clients) == 0 {
-		return nil, errors.New("BROKER_SHARED_SECRET or BROKER_SECRETS_FILE is required")
+		return nil, fmt.Errorf("%s or %s is required", brokerEnvName("SHARED_SECRET"), brokerEnvName("SECRETS_FILE"))
 	}
 	return validateClients(clients)
 }
@@ -153,13 +156,13 @@ func validateClients(clients []Client) ([]Client, error) {
 func parseSecretsFile(path string) ([]Client, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- operator-configured path from the environment.
 	if err != nil {
-		return nil, fmt.Errorf("read BROKER_SECRETS_FILE: %w", err)
+		return nil, fmt.Errorf("read %s: %w", brokerEnvName("SECRETS_FILE"), err)
 	}
 	var clients []Client
 	for lineNumber, line := range strings.Split(string(data), "\n") {
 		client, ok, err := parseSecretLine(line)
 		if err != nil {
-			return nil, fmt.Errorf("BROKER_SECRETS_FILE line %d: %w", lineNumber+1, err)
+			return nil, fmt.Errorf("%s line %d: %w", brokerEnvName("SECRETS_FILE"), lineNumber+1, err)
 		}
 		if !ok {
 			continue
@@ -167,9 +170,20 @@ func parseSecretsFile(path string) ([]Client, error) {
 		clients = append(clients, client)
 	}
 	if len(clients) == 0 {
-		return nil, errors.New("BROKER_SECRETS_FILE contains no clients")
+		return nil, fmt.Errorf("%s contains no clients", brokerEnvName("SECRETS_FILE"))
 	}
 	return clients, nil
+}
+
+func brokerEnv(getenv func(string) string, suffix string) string {
+	if value := getenv(brokerEnvName(suffix)); value != "" {
+		return value
+	}
+	return getenv(legacyEnvPrefix + suffix)
+}
+
+func brokerEnvName(suffix string) string {
+	return canonicalEnvPrefix + suffix
 }
 
 func parseSecretLine(line string) (Client, bool, error) {

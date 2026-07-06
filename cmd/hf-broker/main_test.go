@@ -14,25 +14,48 @@ import (
 )
 
 func TestRunFailsClosedWhenRequiredEnvMissing(t *testing.T) {
-	t.Setenv("BROKER_HF_TOKEN", "")
-	t.Setenv("BROKER_SHARED_SECRET", "")
+	clearBrokerEnv(t)
+	t.Setenv("HF_BROKER_HF_TOKEN", "")
+	t.Setenv("HF_BROKER_SHARED_SECRET", "")
 	err := run()
-	if err == nil || !strings.Contains(err.Error(), "BROKER_HF_TOKEN") {
+	if err == nil || !strings.Contains(err.Error(), "HF_BROKER_HF_TOKEN") {
 		t.Fatalf("run() error = %v, want missing token", err)
 	}
 }
 
 func TestRunFailsOnMissingScopeFileWithoutLeakingToken(t *testing.T) {
-	t.Setenv("BROKER_HF_TOKEN", "hf_token_value")
-	t.Setenv("BROKER_SHARED_SECRET", "abcdefghijklmnopqrstuvwxyz123456")
-	t.Setenv("BROKER_SCOPE_FILE", "does-not-exist.json")
-	t.Setenv("BROKER_PORT", "65530")
+	clearBrokerEnv(t)
+	t.Setenv("HF_BROKER_HF_TOKEN", "hf_token_value")
+	t.Setenv("HF_BROKER_SHARED_SECRET", "abcdefghijklmnopqrstuvwxyz123456")
+	t.Setenv("HF_BROKER_SCOPE_FILE", "does-not-exist.json")
+	t.Setenv("HF_BROKER_PORT", "65530")
 	err := run()
 	if err == nil || !strings.Contains(err.Error(), "read scope file") {
 		t.Fatalf("run() error = %v, want missing scope", err)
 	}
-	if strings.Contains(err.Error(), os.Getenv("BROKER_HF_TOKEN")) {
+	if strings.Contains(err.Error(), os.Getenv("HF_BROKER_HF_TOKEN")) {
 		t.Fatalf("run() leaked token in error: %v", err)
+	}
+}
+
+func clearBrokerEnv(t *testing.T) {
+	t.Helper()
+	suffixes := []string{
+		"HF_TOKEN",
+		"SHARED_SECRET",
+		"SECRETS_FILE",
+		"BIND_ADDR",
+		"PORT",
+		"SCOPE_FILE",
+		"STATE_DIR",
+		"MAX_PACK_BYTES",
+		"HF_TIMEOUT",
+		"TELEGRAM_BOT_TOKEN",
+		"TELEGRAM_CHAT_ID",
+	}
+	for _, suffix := range suffixes {
+		t.Setenv("HF_BROKER_"+suffix, "")
+		t.Setenv("BROKER_"+suffix, "")
 	}
 }
 
@@ -44,11 +67,11 @@ func TestRunWithContextStartsAndStops(t *testing.T) {
 	}
 	port := freePort(t)
 	env := map[string]string{
-		"BROKER_HF_TOKEN":      "hf_token_value",
-		"BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"BROKER_SCOPE_FILE":    scopePath,
-		"BROKER_STATE_DIR":     filepath.Join(dir, "state"),
-		"BROKER_PORT":          strconv.Itoa(port),
+		"HF_BROKER_HF_TOKEN":      "hf_token_value",
+		"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_SCOPE_FILE":    scopePath,
+		"HF_BROKER_STATE_DIR":     filepath.Join(dir, "state"),
+		"HF_BROKER_PORT":          strconv.Itoa(port),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,11 +110,11 @@ func TestRunWithContextReturnsListenError(t *testing.T) {
 	}()
 	port := listener.Addr().(*net.TCPAddr).Port
 	env := map[string]string{
-		"BROKER_HF_TOKEN":      "hf_token_value",
-		"BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"BROKER_SCOPE_FILE":    scopePath,
-		"BROKER_STATE_DIR":     filepath.Join(dir, "state"),
-		"BROKER_PORT":          strconv.Itoa(port),
+		"HF_BROKER_HF_TOKEN":      "hf_token_value",
+		"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_SCOPE_FILE":    scopePath,
+		"HF_BROKER_STATE_DIR":     filepath.Join(dir, "state"),
+		"HF_BROKER_PORT":          strconv.Itoa(port),
 	}
 	err = runWithContext(context.Background(), func(key string) string { return env[key] }, ioDiscard{}, ioDiscard{})
 	if err == nil || !strings.Contains(err.Error(), "bind") {

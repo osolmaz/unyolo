@@ -35,8 +35,8 @@ go install github.com/osolmaz/hf-broker/cmd/hf-broker@latest
 ## Run
 
 ```sh
-export BROKER_HF_TOKEN=hf_...            # upstream write token, outbound only
-export BROKER_SHARED_SECRET=$(openssl rand -hex 32)
+export HF_BROKER_HF_TOKEN=hf_...            # upstream write token, outbound only
+export HF_BROKER_SHARED_SECRET=$(openssl rand -hex 32)
 cp scope.example.json scope.json         # edit: which repos are reachable
 hf-broker
 ```
@@ -63,7 +63,7 @@ is the password:
 
 ```sh
 git remote set-url origin https://broker.tailnet:8080/datasets/osolmaz/scraped-news
-git config credential.helper '!f() { echo username=agent; echo password=$BROKER_SECRET; }; f'
+git config credential.helper '!f() { echo username=agent; echo password=$HF_BROKER_SHARED_SECRET; }; f'
 ```
 
 Clones, pulls, fast-forward pushes, new branches, and new tags work as
@@ -80,14 +80,14 @@ exception, configure the broker host with a Telegram bot token and the
 single operator chat id:
 
 ```sh
-export BROKER_TELEGRAM_BOT_TOKEN=...
-export BROKER_TELEGRAM_CHAT_ID=123456789
+export HF_BROKER_TELEGRAM_BOT_TOKEN=...
+export HF_BROKER_TELEGRAM_CHAT_ID=123456789
 ```
 
 An authenticated client can then request a time-boxed grant:
 
 ```sh
-curl -sS -H "Authorization: Bearer $BROKER_SECRET" \
+curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "operation": "git_receive_pack",
@@ -104,6 +104,10 @@ and long-polls the Bot API for the answer. There is no inbound Telegram
 callback URL. A grant only covers the requested repo/ref, expires at the
 approved time, and decisions from any chat except the configured operator
 chat are ignored.
+
+`HF_BROKER_*` is the canonical environment namespace. The older
+`BROKER_*` names are accepted as legacy aliases, but if both are set the
+`HF_BROKER_*` value wins.
 
 ## License
 

@@ -10,14 +10,14 @@ import (
 )
 
 func TestTelegramLiveSendGrantRequest(t *testing.T) {
-	token := os.Getenv("BROKER_TELEGRAM_BOT_TOKEN")
-	rawChatID := os.Getenv("BROKER_TELEGRAM_CHAT_ID")
+	token := envWithLegacyFallback("TELEGRAM_BOT_TOKEN")
+	rawChatID := envWithLegacyFallback("TELEGRAM_CHAT_ID")
 	if token == "" || rawChatID == "" {
-		t.Skip("BROKER_TELEGRAM_BOT_TOKEN and BROKER_TELEGRAM_CHAT_ID are not set")
+		t.Skip("HF_BROKER_TELEGRAM_BOT_TOKEN and HF_BROKER_TELEGRAM_CHAT_ID are not set")
 	}
 	chatID, err := strconv.ParseInt(rawChatID, 10, 64)
 	if err != nil {
-		t.Fatalf("BROKER_TELEGRAM_CHAT_ID is invalid: %v", err)
+		t.Fatalf("HF_BROKER_TELEGRAM_CHAT_ID is invalid: %v", err)
 	}
 	telegram := NewTelegram(token, chatID, &http.Client{Timeout: 10 * time.Second}, "")
 	err = telegram.SendGrantRequest(context.Background(), GrantMessage{
@@ -34,4 +34,11 @@ func TestTelegramLiveSendGrantRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendGrantRequest() live error = %v", err)
 	}
+}
+
+func envWithLegacyFallback(suffix string) string {
+	if value := os.Getenv("HF_BROKER_" + suffix); value != "" {
+		return value
+	}
+	return os.Getenv("BROKER_" + suffix)
 }

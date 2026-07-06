@@ -98,8 +98,8 @@ agent ── shared secret ──> hf-broker ── HF write token ──> huggi
                             └─ health + (later) grant endpoints (level 4)
 ```
 
-Configuration: environment for secrets (`BROKER_SHARED_SECRET`,
-`BROKER_HF_TOKEN`), a hand-edited `scope.json` for what is reachable:
+Configuration: environment for secrets (`HF_BROKER_SHARED_SECRET`,
+`HF_BROKER_HF_TOKEN`), a hand-edited `scope.json` for what is reachable:
 
 ```json
 {
@@ -340,22 +340,24 @@ of `net/http` so it is unit-testable without a server.
 
 | Variable | Required | Meaning |
 |----------|----------|---------|
-| `BROKER_HF_TOKEN` | yes | upstream Hugging Face write token; used only for outbound Hub requests |
-| `BROKER_SHARED_SECRET` | yes unless `BROKER_SECRETS_FILE` set | single client secret; min 32 bytes |
-| `BROKER_SECRETS_FILE` | no | path to a file of `name = secret` lines for per-client secrets (one secret per agent); enables named clients in audit |
-| `BROKER_BIND_ADDR` | no | default `127.0.0.1` |
-| `BROKER_PORT` | no | default `8080` |
-| `BROKER_SCOPE_FILE` | no | default `scope.json` |
-| `BROKER_STATE_DIR` | no | default `./state`; holds mirrors and grant store |
-| `BROKER_MAX_PACK_BYTES` | no | default `26214400` (25 MiB) |
-| `BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
-| `BROKER_TELEGRAM_BOT_TOKEN` | no (M4) | bot token for approval channel |
-| `BROKER_TELEGRAM_CHAT_ID` | no (M4) | the single operator chat id decisions are accepted from |
+| `HF_BROKER_HF_TOKEN` | yes | upstream Hugging Face write token; used only for outbound Hub requests |
+| `HF_BROKER_SHARED_SECRET` | yes unless `HF_BROKER_SECRETS_FILE` set | single client secret; min 32 bytes |
+| `HF_BROKER_SECRETS_FILE` | no | path to a file of `name = secret` lines for per-client secrets (one secret per agent); enables named clients in audit |
+| `HF_BROKER_BIND_ADDR` | no | default `127.0.0.1` |
+| `HF_BROKER_PORT` | no | default `8080` |
+| `HF_BROKER_SCOPE_FILE` | no | default `scope.json` |
+| `HF_BROKER_STATE_DIR` | no | default `./state`; holds mirrors and grant store |
+| `HF_BROKER_MAX_PACK_BYTES` | no | default `26214400` (25 MiB) |
+| `HF_BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
+| `HF_BROKER_TELEGRAM_BOT_TOKEN` | no (M4) | bot token for approval channel |
+| `HF_BROKER_TELEGRAM_CHAT_ID` | no (M4) | the single operator chat id decisions are accepted from |
 
 Startup validation fails closed: missing required secret, unreadable or
 invalid `scope.json`, secret under 32 bytes, or a `snapshot_prefix` that
 overlaps a writable path all abort boot with a specific error. The token
-value is never logged, even at startup.
+value is never logged, even at startup. Legacy `BROKER_*` environment
+names are accepted as aliases during migration, but `HF_BROKER_*` values
+take precedence when both names are set.
 
 ### scope.json (full schema)
 
@@ -456,7 +458,7 @@ probes.
 
 ## On-Disk State
 
-Everything the broker persists lives under `BROKER_STATE_DIR`:
+Everything the broker persists lives under `HF_BROKER_STATE_DIR`:
 
 ```text
 state/

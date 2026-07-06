@@ -15,8 +15,8 @@ func TestLoadDefaultsAndSecretsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := map[string]string{
-		"BROKER_HF_TOKEN":     "hf_token_value",
-		"BROKER_SECRETS_FILE": secrets,
+		"HF_BROKER_HF_TOKEN":     "hf_token_value",
+		"HF_BROKER_SECRETS_FILE": secrets,
 	}
 	cfg, err := Load(func(key string) string { return env[key] })
 	if err != nil {
@@ -39,12 +39,12 @@ func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		{name: "missing token", env: map[string]string{"BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "BROKER_HF_TOKEN"},
-		{name: "missing client", env: map[string]string{"BROKER_HF_TOKEN": "hf_token_value"}, want: "BROKER_SHARED_SECRET"},
-		{name: "short secret", env: map[string]string{"BROKER_HF_TOKEN": "hf_token_value", "BROKER_SHARED_SECRET": "short"}, want: "shorter than"},
-		{name: "bad port", env: map[string]string{"BROKER_HF_TOKEN": "hf_token_value", "BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "BROKER_PORT": "zero"}, want: "BROKER_PORT"},
-		{name: "telegram token without chat", env: map[string]string{"BROKER_HF_TOKEN": "hf_token_value", "BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value"}, want: "BROKER_TELEGRAM"},
-		{name: "bad telegram chat", env: map[string]string{"BROKER_HF_TOKEN": "hf_token_value", "BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "BROKER_TELEGRAM_CHAT_ID": "chat"}, want: "BROKER_TELEGRAM_CHAT_ID"},
+		{name: "missing token", env: map[string]string{"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN"},
+		{name: "missing client", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value"}, want: "HF_BROKER_SHARED_SECRET"},
+		{name: "short secret", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "short"}, want: "shorter than"},
+		{name: "bad port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_PORT": "zero"}, want: "HF_BROKER_PORT"},
+		{name: "telegram token without chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value"}, want: "HF_BROKER_TELEGRAM"},
+		{name: "bad telegram chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "HF_BROKER_TELEGRAM_CHAT_ID": "chat"}, want: "HF_BROKER_TELEGRAM_CHAT_ID"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -70,8 +70,8 @@ func TestLoadRejectsDuplicateClientSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := map[string]string{
-		"BROKER_HF_TOKEN":     "hf_token_value",
-		"BROKER_SECRETS_FILE": secrets,
+		"HF_BROKER_HF_TOKEN":     "hf_token_value",
+		"HF_BROKER_SECRETS_FILE": secrets,
 	}
 
 	_, err := Load(func(key string) string { return env[key] })
@@ -85,16 +85,16 @@ func TestLoadRejectsDuplicateClientSecrets(t *testing.T) {
 
 func TestLoadOverrides(t *testing.T) {
 	env := map[string]string{
-		"BROKER_HF_TOKEN":           "hf_token_value",
-		"BROKER_SHARED_SECRET":      "abcdefghijklmnopqrstuvwxyz123456",
-		"BROKER_BIND_ADDR":          "0.0.0.0",
-		"BROKER_PORT":               "9090",
-		"BROKER_SCOPE_FILE":         "/tmp/scope.json",
-		"BROKER_STATE_DIR":          "/tmp/state",
-		"BROKER_MAX_PACK_BYTES":     "64",
-		"BROKER_HF_TIMEOUT":         "5",
-		"BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value",
-		"BROKER_TELEGRAM_CHAT_ID":   "12345",
+		"HF_BROKER_HF_TOKEN":           "hf_token_value",
+		"HF_BROKER_SHARED_SECRET":      "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_BIND_ADDR":          "0.0.0.0",
+		"HF_BROKER_PORT":               "9090",
+		"HF_BROKER_SCOPE_FILE":         "/tmp/scope.json",
+		"HF_BROKER_STATE_DIR":          "/tmp/state",
+		"HF_BROKER_MAX_PACK_BYTES":     "64",
+		"HF_BROKER_HF_TIMEOUT":         "5",
+		"HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value",
+		"HF_BROKER_TELEGRAM_CHAT_ID":   "12345",
 	}
 	cfg, err := Load(func(key string) string { return env[key] })
 	if err != nil {
@@ -108,5 +108,38 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.TelegramBotToken != "telegram_token_value" || cfg.TelegramChatID != 12345 {
 		t.Fatalf("telegram config not applied: %+v", cfg)
+	}
+}
+
+func TestLoadAcceptsLegacyBrokerPrefix(t *testing.T) {
+	env := map[string]string{
+		"BROKER_HF_TOKEN":      "legacy_hf_token_value",
+		"BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
+		"BROKER_PORT":          "9091",
+	}
+	cfg, err := Load(func(key string) string { return env[key] })
+	if err != nil {
+		t.Fatalf("Load() legacy error = %v", err)
+	}
+	if cfg.HFToken != "legacy_hf_token_value" || cfg.Port != 9091 {
+		t.Fatalf("legacy config not applied: %+v", cfg)
+	}
+}
+
+func TestLoadPrefersHFBrokerPrefixOverLegacyPrefix(t *testing.T) {
+	env := map[string]string{
+		"HF_BROKER_HF_TOKEN":      "canonical_hf_token_value",
+		"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_PORT":          "9092",
+		"BROKER_HF_TOKEN":         "legacy_hf_token_value",
+		"BROKER_SHARED_SECRET":    "123456abcdefghijklmnopqrstuvwxyz",
+		"BROKER_PORT":             "9091",
+	}
+	cfg, err := Load(func(key string) string { return env[key] })
+	if err != nil {
+		t.Fatalf("Load() precedence error = %v", err)
+	}
+	if cfg.HFToken != "canonical_hf_token_value" || cfg.Port != 9092 || cfg.Clients[0].Secret != "abcdefghijklmnopqrstuvwxyz123456" {
+		t.Fatalf("canonical config did not win: %+v", cfg)
 	}
 }
