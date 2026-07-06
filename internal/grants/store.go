@@ -29,6 +29,9 @@ const (
 	DefaultMaxUses = 1
 	// MaxUses is the hard cap for one grant's use budget.
 	MaxUses = 25
+	// DefaultReservationTimeout is how long a use reservation can remain
+	// in-flight before restart recovery treats it as needing operator review.
+	DefaultReservationTimeout = 5 * time.Minute
 )
 
 // Status is the lifecycle state of one grant request.
@@ -44,6 +47,18 @@ const (
 	StatusConsumed Status = "consumed"
 )
 
+const (
+	// NotifierStatusReserved means a grant notification should show that a
+	// retained use reservation needs operator review.
+	NotifierStatusReserved Status = "reserved"
+	// NotifierStatusUsed means a grant notification should show that at least
+	// one approved operation used the grant budget.
+	NotifierStatusUsed Status = "used"
+	// NotifierStatusUsedExpired means a partially used grant notification
+	// should show that the access window is now closed.
+	NotifierStatusUsedExpired Status = "used:expired"
+)
+
 var (
 	// ErrNotFound means no grant with the requested id exists.
 	ErrNotFound = errors.New("grant not found")
@@ -57,10 +72,11 @@ var (
 
 // Options configures a Store.
 type Options struct {
-	PendingTimeout  time.Duration
-	DefaultDuration time.Duration
-	MaxDuration     time.Duration
-	Now             func() time.Time
+	PendingTimeout     time.Duration
+	DefaultDuration    time.Duration
+	MaxDuration        time.Duration
+	ReservationTimeout time.Duration
+	Now                func() time.Time
 }
 
 // Request is one requested grant.
@@ -85,27 +101,31 @@ type NotifierMessage struct {
 
 // Grant is one persisted grant request or approval.
 type Grant struct {
-	ID               string           `json:"id"`
-	DecisionToken    string           `json:"decision_token"`
-	Client           string           `json:"client"`
-	ClientRequestID  string           `json:"client_request_id,omitempty"`
-	Operation        string           `json:"operation"`
-	Target           string           `json:"target"`
-	Ref              string           `json:"ref"`
-	Reason           string           `json:"reason"`
-	RequestedMinutes int              `json:"requested_minutes"`
-	MaxUses          int              `json:"max_uses"`
-	UsedCount        int              `json:"used_count"`
-	Status           Status           `json:"status"`
-	CreatedAt        time.Time        `json:"created_at"`
-	PendingExpiresAt time.Time        `json:"pending_expires_at"`
-	ExpiresAt        time.Time        `json:"expires_at,omitempty"`
-	DecidedAt        time.Time        `json:"decided_at,omitempty"`
-	DecidedBy        string           `json:"decided_by,omitempty"`
-	UsedAt           time.Time        `json:"used_at,omitempty"`
-	ExpiredFrom      Status           `json:"expired_from,omitempty"`
-	Notifier         *NotifierMessage `json:"notifier,omitempty"`
-	NotifierStatus   string           `json:"notifier_status,omitempty"`
+	ID                  string           `json:"id"`
+	DecisionToken       string           `json:"decision_token"`
+	Client              string           `json:"client"`
+	ClientRequestID     string           `json:"client_request_id,omitempty"`
+	Operation           string           `json:"operation"`
+	Target              string           `json:"target"`
+	Ref                 string           `json:"ref"`
+	Reason              string           `json:"reason"`
+	RequestedMinutes    int              `json:"requested_minutes"`
+	MaxUses             int              `json:"max_uses"`
+	UsedCount           int              `json:"used_count"`
+	ReservedCount       int              `json:"reserved_count,omitempty"`
+	ReservationRetained bool             `json:"reservation_retained,omitempty"`
+	Status              Status           `json:"status"`
+	CreatedAt           time.Time        `json:"created_at"`
+	PendingExpiresAt    time.Time        `json:"pending_expires_at"`
+	ExpiresAt           time.Time        `json:"expires_at,omitempty"`
+	ReservedAt          time.Time        `json:"reserved_at,omitempty"`
+	DecidedAt           time.Time        `json:"decided_at,omitempty"`
+	DecidedBy           string           `json:"decided_by,omitempty"`
+	UsedAt              time.Time        `json:"used_at,omitempty"`
+	ExpiredFrom         Status           `json:"expired_from,omitempty"`
+	Notifier            *NotifierMessage `json:"notifier,omitempty"`
+	NotifierStatus      string           `json:"notifier_status,omitempty"`
+	NotifierClaimedAt   time.Time        `json:"notifier_claimed_at,omitempty"`
 }
 
 // ExpiredGrant is one grant that became or remains expired and may need a
@@ -116,11 +136,22 @@ type ExpiredGrant struct {
 	NeedsMessage bool
 }
 
-// StatusUpdate is one terminal grant status whose operator notification needs
-// to be refreshed.
+// StatusUpdate is one grant notification status that needs to be refreshed.
 type StatusUpdate struct {
-	Grant  Grant
-	Status Status
+	Grant          Grant
+	Status         Status
+	NotifierStatus string
+}
+
+// NotifierStatusKey returns the persisted status key for this notification.
+func (u StatusUpdate) NotifierStatusKey() string {
+	if u.NotifierStatus != "" {
+		return u.NotifierStatus
+	}
+	if u.Status == NotifierStatusReserved {
+		return retainedReservationNotifierStatus(u.Grant)
+	}
+	return string(u.Status)
 }
 
 // Store owns the grant file.
@@ -154,6 +185,9 @@ func New(path string, opts Options) *Store {
 	if opts.MaxDuration <= 0 {
 		opts.MaxDuration = MaxDuration
 	}
+	if opts.ReservationTimeout <= 0 {
+		opts.ReservationTimeout = DefaultReservationTimeout
+	}
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -168,6 +202,27 @@ func (s *Store) Request(req Request) (Grant, bool, error) {
 		return Grant{}, false, err
 	}
 	return s.createRequest(req, normalized, s.opts.Now().UTC())
+}
+
+// Get returns one grant by id.
+func (s *Store) Get(id string) (Grant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return Grant{}, err
+	}
+	expired := s.expireGrants(&data)
+	_, grant, err := s.findGrant(&data, id)
+	if err != nil {
+		return Grant{}, err
+	}
+	if len(expired) > 0 {
+		if err := s.save(data); err != nil {
+			return Grant{}, err
+		}
+	}
+	return grant, nil
 }
 
 func (s *Store) normalizeRequest(req Request) (normalizedRequest, error) {
@@ -329,26 +384,98 @@ func (s *Store) Cancel(id string) error {
 		}
 		grant.Status = StatusCanceled
 		grant.DecidedAt = s.opts.Now().UTC()
+		grant.NotifierClaimedAt = time.Time{}
 		data.Grants[index] = grant
 		return nil
 	})
 }
 
-// SetNotifier records the editable operator notification for a grant.
-func (s *Store) SetNotifier(id string, message NotifierMessage) (Grant, error) {
+// CancelIfNotifierClaimed marks a pending grant canceled only when the current
+// notifier claim still matches claimedAt.
+func (s *Store) CancelIfNotifierClaimed(id string, claimedAt time.Time) (Grant, bool, error) {
 	var out Grant
+	canceled := false
 	err := s.update(func(data *fileData) error {
 		index, grant, err := s.findGrant(data, id)
 		if err != nil {
 			return err
 		}
-		grant.Notifier = &message
-		grant.NotifierStatus = string(StatusPending)
+		out = grant
+		if grant.Status != StatusPending || !grant.NotifierClaimedAt.Equal(claimedAt) {
+			return nil
+		}
+		grant.Status = StatusCanceled
+		grant.DecidedAt = s.opts.Now().UTC()
+		grant.NotifierClaimedAt = time.Time{}
 		data.Grants[index] = grant
 		out = grant
+		canceled = true
 		return nil
 	})
-	return out, err
+	return out, canceled, err
+}
+
+// ClaimNotifier reserves responsibility for sending the operator notification.
+// A stale claim may be reclaimed after lease has elapsed.
+func (s *Store) ClaimNotifier(id string, lease time.Duration) (Grant, bool, error) {
+	var out Grant
+	claimed := false
+	err := s.update(func(data *fileData) error {
+		index, grant, err := s.findGrant(data, id)
+		if err != nil {
+			return err
+		}
+		out = grant
+		if !grantNeedsNotificationClaim(grant) {
+			return nil
+		}
+		now := s.opts.Now().UTC()
+		if !grant.NotifierClaimedAt.IsZero() && now.Before(grant.NotifierClaimedAt.Add(lease)) {
+			return nil
+		}
+		grant.NotifierClaimedAt = now
+		data.Grants[index] = grant
+		out = grant
+		claimed = true
+		return nil
+	})
+	return out, claimed, err
+}
+
+// SetNotifier records the editable operator notification for a grant.
+func (s *Store) SetNotifier(id string, message NotifierMessage) (Grant, error) {
+	grant, _, err := s.setNotifier(id, time.Time{}, message, false)
+	return grant, err
+}
+
+// SetNotifierIfClaimed records the notification only if the current notifier
+// claim matches claimedAt. It prevents stale send attempts from overwriting a
+// notification created after their claim was reclaimed.
+func (s *Store) SetNotifierIfClaimed(id string, claimedAt time.Time, message NotifierMessage) (Grant, bool, error) {
+	return s.setNotifier(id, claimedAt, message, true)
+}
+
+func (s *Store) setNotifier(id string, claimedAt time.Time, message NotifierMessage, requireClaim bool) (Grant, bool, error) {
+	var out Grant
+	recorded := false
+	err := s.update(func(data *fileData) error {
+		index, grant, err := s.findGrant(data, id)
+		if err != nil {
+			return err
+		}
+		out = grant
+		if requireClaim && !grant.NotifierClaimedAt.Equal(claimedAt) {
+			return nil
+		}
+		grant.Notifier = &message
+		grant.NotifierStatus = string(StatusPending)
+		grant.NotifierClaimedAt = time.Time{}
+		data.Grants[index] = grant
+		out = grant
+		recorded = true
+		return nil
+	})
+	return out, recorded, err
 }
 
 // MarkNotifierStatus records that the operator notification shows status.
@@ -362,6 +489,105 @@ func (s *Store) MarkNotifierStatus(id, status string) error {
 		data.Grants[index] = grant
 		return nil
 	})
+}
+
+// ReserveUse durably reserves one use before forwarding a dangerous operation
+// upstream. Reserved uses count against the budget until committed or released.
+func (s *Store) ReserveUse(id string) (Grant, error) {
+	var out Grant
+	err := s.update(func(data *fileData) error {
+		index, grant, err := s.findGrant(data, id)
+		if err != nil {
+			return err
+		}
+		if !grantCanReserveUse(grant) {
+			return ErrNotActive
+		}
+		if grant.ReservedCount == 0 {
+			grant.ReservedAt = s.opts.Now().UTC()
+		}
+		grant.ReservedCount++
+		data.Grants[index] = grant
+		out = grant
+		return nil
+	})
+	return out, err
+}
+
+// RetainUse marks a reserved use as needing operator review after an ambiguous
+// upstream result.
+func (s *Store) RetainUse(id string) (Grant, error) {
+	var out Grant
+	err := s.update(func(data *fileData) error {
+		index, grant, err := s.findGrant(data, id)
+		if err != nil {
+			return err
+		}
+		if !grantCanCommitUse(grant) {
+			return ErrNotActive
+		}
+		grant.ReservationRetained = true
+		if grant.ReservedAt.IsZero() {
+			grant.ReservedAt = s.opts.Now().UTC()
+		}
+		data.Grants[index] = grant
+		out = grant
+		return nil
+	})
+	return out, err
+}
+
+// CommitUse converts one reserved use into an accepted use.
+func (s *Store) CommitUse(id string) (Grant, error) {
+	var out Grant
+	err := s.update(func(data *fileData) error {
+		index, grant, err := s.findGrant(data, id)
+		if err != nil {
+			return err
+		}
+		if !grantCanCommitUse(grant) {
+			return ErrNotActive
+		}
+		grant.ReservedCount--
+		grant.UsedAt = s.opts.Now().UTC()
+		grant.UsedCount++
+		if grant.ReservedCount == 0 {
+			grant.ReservationRetained = false
+			grant.ReservedAt = time.Time{}
+		}
+		if grant.UsedCount >= grantMaxUses(grant) {
+			grant.Status = StatusConsumed
+			grant.ExpiredFrom = ""
+		}
+		data.Grants[index] = grant
+		out = grant
+		return nil
+	})
+	return out, err
+}
+
+// ReleaseUse releases one reserved use after an upstream rejection or error.
+func (s *Store) ReleaseUse(id string) (Grant, error) {
+	var out Grant
+	err := s.update(func(data *fileData) error {
+		index, grant, err := s.findGrant(data, id)
+		if err != nil {
+			return err
+		}
+		if grant.ReservedCount <= 0 {
+			out = grant
+			return nil
+		}
+		grant.ReservedCount--
+		if grant.ReservedCount == 0 {
+			grant.ReservationRetained = false
+			grant.ReservedAt = time.Time{}
+		}
+		data.Grants[index] = grant
+		out = grant
+		return nil
+	})
+	return out, err
 }
 
 // MatchActive returns an active grant for client, operation, target, and ref.
@@ -392,7 +618,7 @@ func (s *Store) RecordUse(id string) (Grant, error) {
 		if grant.Status != StatusActive {
 			return ErrNotActive
 		}
-		if grant.UsedCount >= grantMaxUses(grant) {
+		if grant.UsedCount+grant.ReservedCount >= grantMaxUses(grant) {
 			return ErrNotActive
 		}
 		grant.UsedAt = s.opts.Now().UTC()
@@ -423,8 +649,8 @@ func (s *Store) ExpireDue() ([]ExpiredGrant, error) {
 	return expired, nil
 }
 
-// StatusUpdatesDue marks due grants expired and returns terminal grants whose
-// notifications have not yet been updated to their terminal status.
+// StatusUpdatesDue marks due grants expired and returns grants whose
+// notifications have not yet been updated to their latest status.
 func (s *Store) StatusUpdatesDue() ([]StatusUpdate, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -432,9 +658,12 @@ func (s *Store) StatusUpdatesDue() ([]StatusUpdate, error) {
 	if err != nil {
 		return nil, err
 	}
-	expired := s.expireGrants(&data)
+	changed := len(s.expireGrants(&data)) > 0
+	if s.retainStaleReservations(&data) {
+		changed = true
+	}
 	due := statusUpdatesNeedingMessage(data.Grants)
-	if len(expired) > 0 {
+	if changed {
 		if err := s.save(data); err != nil {
 			return nil, err
 		}
@@ -521,6 +750,13 @@ func normalizeLoadedGrant(grant *Grant) {
 	if legacyUseBudget {
 		grant.MaxUses = DefaultMaxUses
 	}
+	if grant.ReservedCount < 0 {
+		grant.ReservedCount = 0
+	}
+	if grant.ReservedCount == 0 {
+		grant.ReservationRetained = false
+		grant.ReservedAt = time.Time{}
+	}
 	if legacyUseBudget && grant.Status == StatusActive && !grant.UsedAt.IsZero() && grant.UsedCount == 0 {
 		grant.UsedCount = grant.MaxUses
 		grant.Status = StatusConsumed
@@ -547,6 +783,24 @@ func (s *Store) save(data fileData) error {
 
 func (s *Store) pruneExpired(data *fileData) bool {
 	return len(s.expireGrants(data)) > 0
+}
+
+func (s *Store) retainStaleReservations(data *fileData) bool {
+	now := s.opts.Now().UTC()
+	changed := false
+	for i := range data.Grants {
+		grant := data.Grants[i]
+		if !grantHasStaleReservation(grant, now, s.opts.ReservationTimeout) {
+			continue
+		}
+		grant.ReservationRetained = true
+		if grant.ReservedAt.IsZero() {
+			grant.ReservedAt = now
+		}
+		data.Grants[i] = grant
+		changed = true
+	}
+	return changed
 }
 
 func (s *Store) expireGrants(data *fileData) []ExpiredGrant {
@@ -579,22 +833,36 @@ func (s *Store) expireGrants(data *fileData) []ExpiredGrant {
 func statusUpdatesNeedingMessage(grants []Grant) []StatusUpdate {
 	var out []StatusUpdate
 	for _, grant := range grants {
-		switch grant.Status {
-		case StatusActive:
-			if grantNeedsPendingDecisionMessage(grant) {
-				out = append(out, StatusUpdate{Grant: grant, Status: grant.Status})
-			}
-		case StatusDenied:
-			if grantNeedsStatusMessage(grant, string(grant.Status)) {
-				out = append(out, StatusUpdate{Grant: grant, Status: grant.Status})
-			}
-		case StatusExpired, StatusConsumed:
-			if grantNeedsStatusMessage(grant, string(grant.Status)) {
-				out = append(out, StatusUpdate{Grant: grant, Status: grant.Status})
-			}
+		update, ok := statusUpdateNeedingMessage(grant)
+		if ok {
+			out = append(out, update)
 		}
 	}
 	return out
+}
+
+func statusUpdateNeedingMessage(grant Grant) (StatusUpdate, bool) {
+	if grantHasRetainedReservation(grant) {
+		update := retainedReservationStatusUpdate(grant)
+		return update, grantNeedsStatusMessage(grant, update.NotifierStatusKey())
+	}
+	if grantHasExpiredUse(grant) {
+		update := expiredUseStatusUpdate(grant)
+		return update, grantNeedsStatusMessage(grant, update.NotifierStatusKey())
+	}
+	update := StatusUpdate{Grant: grant, Status: grant.Status}
+	return update, grantNeedsLifecycleStatusMessage(grant)
+}
+
+func grantNeedsLifecycleStatusMessage(grant Grant) bool {
+	switch grant.Status {
+	case StatusActive:
+		return grantNeedsActiveMessage(grant)
+	case StatusDenied, StatusExpired, StatusConsumed:
+		return grantNeedsStatusMessage(grant, string(grant.Status))
+	default:
+		return false
+	}
 }
 
 func grantNeedsExpiredMessage(grant Grant) bool {
@@ -607,8 +875,52 @@ func grantNeedsPendingDecisionMessage(grant Grant) bool {
 		(grant.NotifierStatus == "" || grant.NotifierStatus == string(StatusPending))
 }
 
+func grantNeedsActiveMessage(grant Grant) bool {
+	return grantNeedsPendingDecisionMessage(grant) ||
+		(grant.Notifier != nil && grant.Notifier.MessageID != 0 && strings.HasPrefix(grant.NotifierStatus, string(NotifierStatusReserved)))
+}
+
 func grantNeedsStatusMessage(grant Grant, status string) bool {
 	return grant.Notifier != nil && grant.Notifier.MessageID != 0 && grant.NotifierStatus != status
+}
+
+func grantHasRetainedReservation(grant Grant) bool {
+	return grant.ReservationRetained && grant.ReservedCount > 0 && (grant.Status == StatusActive || grant.Status == StatusExpired)
+}
+
+func grantHasStaleReservation(grant Grant, now time.Time, timeout time.Duration) bool {
+	if grant.ReservationRetained || grant.ReservedCount <= 0 || (grant.Status != StatusActive && grant.Status != StatusExpired) {
+		return false
+	}
+	return grant.ReservedAt.IsZero() || !now.Before(grant.ReservedAt.Add(timeout))
+}
+
+func retainedReservationStatusUpdate(grant Grant) StatusUpdate {
+	return newStatusUpdate(grant, NotifierStatusReserved, retainedReservationNotifierStatus(grant))
+}
+
+func retainedReservationNotifierStatus(grant Grant) string {
+	return string(NotifierStatusReserved) + ":" + string(grant.Status)
+}
+
+func grantHasExpiredUse(grant Grant) bool {
+	return grant.Status == StatusExpired && grant.UsedCount > 0 && grant.ReservedCount == 0
+}
+
+func expiredUseStatusUpdate(grant Grant) StatusUpdate {
+	return newStatusUpdate(grant, StatusConsumed, string(NotifierStatusUsedExpired))
+}
+
+func newStatusUpdate(grant Grant, status Status, notifierStatus string) StatusUpdate {
+	return StatusUpdate{
+		Grant:          grant,
+		Status:         status,
+		NotifierStatus: notifierStatus,
+	}
+}
+
+func grantNeedsNotificationClaim(grant Grant) bool {
+	return grant.Status == StatusPending && grant.Notifier == nil
 }
 
 func (s *Store) findGrant(data *fileData, id string) (int, Grant, error) {
@@ -639,7 +951,16 @@ func grantMatchesActive(grant Grant, client, operation, target, ref string) bool
 		grant.Operation == operation &&
 		grant.Target == target &&
 		grant.Ref == ref &&
-		grant.UsedCount < grantMaxUses(grant)
+		grant.UsedCount+grant.ReservedCount < grantMaxUses(grant)
+}
+
+func grantCanReserveUse(grant Grant) bool {
+	return grant.Status == StatusActive &&
+		grant.UsedCount+grant.ReservedCount < grantMaxUses(grant)
+}
+
+func grantCanCommitUse(grant Grant) bool {
+	return grant.ReservedCount > 0 && (grant.Status == StatusActive || grant.Status == StatusExpired)
 }
 
 func grantMaxUses(grant Grant) int {

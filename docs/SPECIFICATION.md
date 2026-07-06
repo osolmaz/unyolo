@@ -357,11 +357,20 @@ returns the original pending, active, denied, expired, consumed, or
 revoked grant instead of creating a duplicate Telegram prompt.
 
 The broker locks the relevant target while validating and executing a
-grant use. Window grants are consumed only after upstream accepts the
-operation. Execution grants are consumed after the planned upstream
-mutation succeeds; if an upstream call may have partially applied side
-effects, the broker records the ambiguous result and refuses retries
-until an operator resolves it.
+grant use. Window grants are durably reserved, with a `reserved_at`
+timestamp, before the broker forwards the operation upstream, so a crash
+cannot reopen the same budget after a dangerous push has been attempted.
+The reservation is released only for HTTP-layer refusals that could not
+have applied a Git update. Once a receive-pack response is observed,
+non-accepted or malformed results keep the reservation fail-closed unless
+every requested ref is accepted and the reservation is converted into a
+consumed use. If the broker restarts with a reservation that has remained
+in-flight longer than the configured upstream timeout plus recovery
+grace, the periodic grant sweep marks it retained and updates the
+operator message for review. Execution grants are consumed after the
+planned upstream mutation succeeds; if an upstream call may have
+partially applied side effects, the broker records the ambiguous result
+and refuses retries until an operator resolves it.
 
 ### Notification state
 
@@ -693,7 +702,9 @@ state/
   push. They contain no file contents, only commit graph. Safe to delete;
   they rebuild.
 - The grant store is written atomically (temp file + rename), mode `600`.
-  Expired grants are pruned on read and on a periodic sweep.
+  Expired grants are pruned on read and on a periodic sweep. Stale
+  in-flight use reservations are retained during the sweep so the
+  operator can review crash-orphaned budget.
 - No token value is ever written to disk by the broker.
 
 ## Concurrency

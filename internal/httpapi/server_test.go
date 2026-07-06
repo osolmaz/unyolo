@@ -35,6 +35,12 @@ const (
 	testToken       = "hf_upstream_token_value_1234567890"
 )
 
+type grantRequestResult struct {
+	status int
+	body   string
+	err    error
+}
+
 func TestGitProxyEndToEndAppendOnly(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -248,6 +254,173 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	}
 }
 
+func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	upstreamRepo := seedBareRepo(t, dir)
+	upstream := newGitUpstream(t, upstreamRepo, testToken)
+	defer upstream.server.Close()
+	notifier := &captureGrantNotifier{}
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: upstream.server.URL,
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+
+	clone := filepath.Join(dir, "clone")
+	runClientGit(t, dir, "clone", brokerRemoteURL(broker.URL), clone)
+	runClientGit(t, clone, "config", "user.email", "agent@example.com")
+	runClientGit(t, clone, "config", "user.name", "Agent")
+	initial := strings.TrimSpace(runClientGit(t, clone, "rev-parse", "HEAD"))
+	writeFile(t, filepath.Join(clone, "file.txt"), "two\n")
+	runClientGit(t, clone, "commit", "-am", "second")
+	runClientGit(t, clone, "push", "origin", "main")
+	runClientGit(t, clone, "reset", "--hard", initial)
+
+	resp, body := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover main"
+	}`))
+	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
+		t.Fatalf("grant request status=%d body=%q messages=%d, want 202 and one message", resp.StatusCode, body, len(notifier.messages))
+	}
+	msg := notifier.messages[0]
+	answer := handler.handleTelegramDecision(context.Background(), notify.Decision{
+		Action:     notify.DecisionApprove,
+		ID:         msg.ID,
+		Token:      msg.DecisionToken,
+		OperatorID: 42,
+	})
+	if answer.Answer != "Grant approved" {
+		t.Fatalf("telegram answer = %+v", answer)
+	}
+
+	upstream.setRejectReceive(true)
+	output, err := runClientGitErr(clone, "push", "--force", "origin", "main")
+	if err == nil || !strings.Contains(output, "upstream rejected") {
+		t.Fatalf("upstream-rejected force push err=%v output:\n%s", err, output)
+	}
+	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "ambiguous") {
+		t.Fatalf("grant retained-reservation updates = %+v, want ambiguous update", notifier.updates)
+	}
+	updated, err := handler.grants.Get(msg.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", msg.ID, err)
+	}
+	if updated.Status != grants.StatusActive || updated.ReservedCount != 1 || updated.UsedCount != 0 || !updated.ReservationRetained {
+		t.Fatalf("grant after upstream rejection = %+v, want active with retained reservation", updated)
+	}
+	if _, ok, err := handler.grants.MatchActive("agent", string(scope.OpGitPush), "dataset/acme/repo", "refs/heads/main"); err != nil || ok {
+		t.Fatalf("MatchActive() after retained reservation ok=%v err=%v, want false nil", ok, err)
+	}
+	rejectedHits := upstream.receivePackHits()
+	output, err = runClientGitErr(clone, "push", "--force", "origin", "main")
+	if err == nil || !strings.Contains(output, "hf-broker") {
+		t.Fatalf("retry after retained reservation err=%v output:\n%s", err, output)
+	}
+	if got := upstream.receivePackHits(); got != rejectedHits {
+		t.Fatalf("retry after retained reservation reached upstream: hits=%d want %d", got, rejectedHits)
+	}
+}
+
+func TestGrantBackedForwardErrorRetainsReservationAndUpdatesMessage(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	upstreamRepo := seedBareRepo(t, dir)
+	upstream := newGitUpstream(t, upstreamRepo, testToken)
+	defer upstream.server.Close()
+	notifier := &captureGrantNotifier{}
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: upstream.server.URL,
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+
+	clone := filepath.Join(dir, "clone")
+	runClientGit(t, dir, "clone", brokerRemoteURL(broker.URL), clone)
+	runClientGit(t, clone, "config", "user.email", "agent@example.com")
+	runClientGit(t, clone, "config", "user.name", "Agent")
+	initial := strings.TrimSpace(runClientGit(t, clone, "rev-parse", "HEAD"))
+	writeFile(t, filepath.Join(clone, "file.txt"), "two\n")
+	runClientGit(t, clone, "commit", "-am", "second")
+	runClientGit(t, clone, "push", "origin", "main")
+	runClientGit(t, clone, "reset", "--hard", initial)
+
+	resp, body := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(`{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover main"
+	}`))
+	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
+		t.Fatalf("grant request status=%d body=%q messages=%d, want 202 and one message", resp.StatusCode, body, len(notifier.messages))
+	}
+	msg := notifier.messages[0]
+	answer := handler.handleTelegramDecision(context.Background(), notify.Decision{
+		Action:     notify.DecisionApprove,
+		ID:         msg.ID,
+		Token:      msg.DecisionToken,
+		OperatorID: 42,
+	})
+	if answer.Answer != "Grant approved" {
+		t.Fatalf("telegram answer = %+v", answer)
+	}
+
+	upstream.setFailReceive(true)
+	output, err := runClientGitErr(clone, "push", "--force", "origin", "main")
+	if err == nil || !strings.Contains(output, "HTTP 403") {
+		t.Fatalf("forward-error force push err=%v output:\n%s", err, output)
+	}
+	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "ambiguous") {
+		t.Fatalf("grant forward-error updates = %+v, want ambiguous update", notifier.updates)
+	}
+	updated, err := handler.grants.Get(msg.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", msg.ID, err)
+	}
+	if updated.Status != grants.StatusActive || updated.ReservedCount != 1 || updated.UsedCount != 0 || !updated.ReservationRetained {
+		t.Fatalf("grant after forward error = %+v, want active with retained reservation", updated)
+	}
+}
+
 func TestGrantRequestErrors(t *testing.T) {
 	dir := t.TempDir()
 	var auditLog bytes.Buffer
@@ -378,7 +551,297 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 	}
 }
 
-func TestRecordGrantUseFailureMarksGrantSpent(t *testing.T) {
+func TestConcurrentIdempotentGrantRequestsSendOneNotification(t *testing.T) {
+	dir := t.TempDir()
+	notifier := newBlockingGrantNotifier()
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: "http://127.0.0.1:1",
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	body := `{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover",
+		"client_request_id":"concurrent-notify"
+	}`
+
+	firstDone := make(chan grantRequestResult, 1)
+	go func() {
+		firstDone <- doGrantRequestForTest(broker.URL, body)
+	}()
+	notifier.waitForSend(t)
+
+	retryDone := make(chan grantRequestResult, 1)
+	go func() {
+		retryDone <- doGrantRequestForTest(broker.URL, body)
+	}()
+	select {
+	case got := <-retryDone:
+		t.Fatalf("retry grant returned before notification resolved: %+v", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if calls := notifier.calls(); calls != 1 {
+		t.Fatalf("notifier calls before release = %d, want one", calls)
+	}
+	notifier.releaseSend()
+	select {
+	case got := <-firstDone:
+		if got.err != nil {
+			t.Fatalf("first grant request error = %v", got.err)
+		}
+		if got.status != http.StatusAccepted {
+			t.Fatalf("first grant status=%d body=%q, want 202", got.status, got.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("first grant request did not finish")
+	}
+	select {
+	case got := <-retryDone:
+		if got.err != nil {
+			t.Fatalf("retry grant request error = %v", got.err)
+		}
+		if got.status != http.StatusAccepted {
+			t.Fatalf("retry grant status=%d body=%q, want 202", got.status, got.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("retry grant request did not finish")
+	}
+	if calls := notifier.calls(); calls != 1 {
+		t.Fatalf("notifier calls after release = %d, want one", calls)
+	}
+}
+
+func TestConcurrentGrantRetrySeesNotificationFailure(t *testing.T) {
+	dir := t.TempDir()
+	notifier := newBlockingGrantNotifier()
+	notifier.err = errors.New("notify failed")
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: "http://127.0.0.1:1",
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	body := `{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover",
+		"client_request_id":"concurrent-notify-failure"
+	}`
+
+	firstDone := make(chan grantRequestResult, 1)
+	go func() {
+		firstDone <- doGrantRequestForTest(broker.URL, body)
+	}()
+	notifier.waitForSend(t)
+	retryDone := make(chan grantRequestResult, 1)
+	go func() {
+		retryDone <- doGrantRequestForTest(broker.URL, body)
+	}()
+	select {
+	case got := <-retryDone:
+		t.Fatalf("retry grant returned before notification failure resolved: %+v", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if calls := notifier.calls(); calls != 1 {
+		t.Fatalf("notifier calls before failure release = %d, want one", calls)
+	}
+
+	notifier.releaseSend()
+	for name, done := range map[string]chan grantRequestResult{"first": firstDone, "retry": retryDone} {
+		select {
+		case got := <-done:
+			if got.err != nil {
+				t.Fatalf("%s grant request error = %v", name, got.err)
+			}
+			if got.status != http.StatusBadGateway {
+				t.Fatalf("%s grant status=%d body=%q, want 502", name, got.status, got.body)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s grant request did not finish", name)
+		}
+	}
+	if calls := notifier.calls(); calls != 1 {
+		t.Fatalf("notifier calls = %d, want one", calls)
+	}
+}
+
+func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	var nowMu sync.Mutex
+	nowFunc := func() time.Time {
+		nowMu.Lock()
+		defer nowMu.Unlock()
+		return now
+	}
+	advanceNow := func(d time.Duration) {
+		nowMu.Lock()
+		defer nowMu.Unlock()
+		now = now.Add(d)
+	}
+	notifier := newBlockingGrantNotifier()
+	notifier.firstErr = errors.New("notify failed")
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: "http://127.0.0.1:1",
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.grants = grants.New(filepath.Join(dir, "state", "grants", "grants.json"), grants.Options{Now: nowFunc})
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	body := `{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover",
+		"client_request_id":"stale-notify-failure"
+	}`
+
+	firstDone := make(chan grantRequestResult, 1)
+	go func() {
+		firstDone <- doGrantRequestForTest(broker.URL, body)
+	}()
+	notifier.waitForSend(t)
+	advanceNow(grantNotificationClaimLease + time.Second)
+
+	retryDone := make(chan grantRequestResult, 1)
+	go func() {
+		retryDone <- doGrantRequestForTest(broker.URL, body)
+	}()
+	var retry grantResponseBody
+	select {
+	case got := <-retryDone:
+		if got.err != nil {
+			t.Fatalf("retry grant request error = %v", got.err)
+		}
+		if got.status != http.StatusAccepted {
+			t.Fatalf("retry grant status=%d body=%q, want 202", got.status, got.body)
+		}
+		if err := json.Unmarshal([]byte(got.body), &retry); err != nil {
+			t.Fatalf("retry grant response JSON error = %v body=%q", err, got.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("retry grant request did not finish")
+	}
+	if calls := notifier.calls(); calls != 2 {
+		t.Fatalf("notifier calls before stale failure release = %d, want two", calls)
+	}
+
+	notifier.releaseSend()
+	select {
+	case got := <-firstDone:
+		if got.err != nil {
+			t.Fatalf("first grant request error = %v", got.err)
+		}
+		if got.status != http.StatusAccepted {
+			t.Fatalf("first grant status=%d body=%q, want 202", got.status, got.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("first grant request did not finish")
+	}
+	updated, err := handler.grants.Get(retry.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", retry.ID, err)
+	}
+	if updated.Status != grants.StatusPending || updated.Notifier == nil || updated.Notifier.MessageID != 2 || !updated.NotifierClaimedAt.IsZero() {
+		t.Fatalf("grant after stale notifier failure = %+v, want pending grant with newer notifier", updated)
+	}
+}
+
+func TestGrantRequestWithNonEditableNotifierIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	notifier := &zeroMessageGrantNotifier{}
+	scp, err := scope.Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset","mode":"append-only","grant_policy":{"git_receive_pack":{}}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken:      testToken,
+			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir:     filepath.Join(dir, "state"),
+			MaxPackBytes: 25 * 1024 * 1024,
+			HFTimeout:    10 * time.Second,
+		},
+		Scope:           scp,
+		UpstreamBaseURL: "http://127.0.0.1:1",
+		GrantNotifier:   notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	body := `{
+		"operation":"git_receive_pack",
+		"target":"dataset/acme/repo",
+		"ref":"refs/heads/main",
+		"reason":"recover",
+		"client_request_id":"non-editable-notifier"
+	}`
+
+	resp, bodyText := doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(body))
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("grant request status=%d body=%q, want 202", resp.StatusCode, bodyText)
+	}
+	resp, bodyText = doRequest(t, http.MethodPost, broker.URL+"/grants", "Bearer "+testSecret, strings.NewReader(body))
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("retry grant status=%d body=%q, want 202", resp.StatusCode, bodyText)
+	}
+	if notifier.calls != 1 {
+		t.Fatalf("notifier calls = %d, want one", notifier.calls)
+	}
+}
+
+func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 	dir := t.TempDir()
 	store := grants.New(filepath.Join(dir, "grants.json"), grants.Options{})
 	grant, _, err := store.Request(grants.Request{
@@ -402,11 +865,151 @@ func TestRecordGrantUseFailureMarksGrantSpent(t *testing.T) {
 	defer func() {
 		_ = os.Chmod(dir, 0o700)
 	}()
-	server := &Server{grants: store, spentGrants: map[string]bool{}}
+	server := &Server{grants: store}
 
-	server.recordGrantUses([]grantUse{{grant: approved}})
-	if !server.grantUseSpent(approved.ID) {
-		t.Fatalf("grantUseSpent(%q) = false, want true after RecordUse failure", approved.ID)
+	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
+	if err == nil {
+		t.Fatalf("reserveGrantUses() error = nil, want persistence failure")
+	}
+	if len(reserved) != 0 {
+		t.Fatalf("reserved grants after failure = %+v, want none", reserved)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := store.MatchActive(approved.Client, approved.Operation, approved.Target, approved.Ref); err != nil || !ok {
+		t.Fatalf("MatchActive() after failed reservation ok=%v err=%v, want true nil", ok, err)
+	}
+}
+
+func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	grant, _, err := store.Request(grants.Request{
+		Client:    "agent",
+		Operation: string(scope.OpGitPush),
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "force push",
+		MaxUses:   1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	server := &Server{grants: store}
+
+	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
+	if err != nil {
+		t.Fatalf("reserveGrantUses() error = %v", err)
+	}
+	if _, ok, err := store.MatchActive(approved.Client, approved.Operation, approved.Target, approved.Ref); err != nil || ok {
+		t.Fatalf("MatchActive() while reserved ok=%v err=%v, want false nil", ok, err)
+	}
+
+	server.releaseGrantUses(reserved)
+	if _, ok, err := store.MatchActive(approved.Client, approved.Operation, approved.Target, approved.Ref); err != nil || !ok {
+		t.Fatalf("MatchActive() after release ok=%v err=%v, want true nil", ok, err)
+	}
+}
+
+func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	grant, _, err := store.Request(grants.Request{
+		Client:    "agent",
+		Operation: string(scope.OpGitPush),
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "ambiguous push",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetNotifier(grant.ID, grants.NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	server := &Server{grants: store}
+	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
+	if err != nil {
+		t.Fatalf("reserveGrantUses() error = %v", err)
+	}
+
+	retained, err := server.retainGrantUseReservations(reserved)
+	if err != nil {
+		t.Fatalf("retainGrantUseReservations() error = %v", err)
+	}
+
+	if len(retained) != 1 || !retained[0].ReservationRetained || retained[0].ReservedCount != 1 {
+		t.Fatalf("retained grants = %+v, want one retained reservation", retained)
+	}
+	updates, err := store.StatusUpdatesDue()
+	if err != nil {
+		t.Fatalf("StatusUpdatesDue() error = %v", err)
+	}
+	if len(updates) != 1 || updates[0].Status != grants.NotifierStatusReserved {
+		t.Fatalf("StatusUpdatesDue() = %+v, want retained reservation update", updates)
+	}
+}
+
+func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(grants.Request{
+		Client:            "agent",
+		Operation:         string(scope.OpGitPush),
+		Target:            "dataset/acme/repo",
+		Ref:               "refs/heads/main",
+		Reason:            "slow ambiguous push",
+		RequestedDuration: time.Minute,
+		MaxUses:           3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetNotifier(grant.ID, grants.NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, string(grants.StatusActive)); err != nil {
+		t.Fatalf("MarkNotifierStatus(active) error = %v", err)
+	}
+	reserved, err := store.ReserveUse(approved.ID)
+	if err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	now = now.Add(2 * time.Minute)
+	notifier := &captureGrantNotifier{}
+	server := &Server{grants: store, notifier: notifier}
+
+	server.updateRetainedGrantReservationMessage(reserved)
+
+	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "Access is closed") || strings.Contains(notifier.updates[0], "uses remain") {
+		t.Fatalf("retained reservation updates = %+v, want closed expired status", notifier.updates)
+	}
+	updated, err := store.Get(grant.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", grant.ID, err)
+	}
+	if updated.Status != grants.StatusExpired || !updated.ReservationRetained || updated.NotifierStatus != "reserved:expired" {
+		t.Fatalf("grant after retained reservation update = %+v, want expired retained grant with reserved notifier status", updated)
+	}
+}
+
+func TestWaitForGrantNotificationCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := (&Server{}).waitForGrantNotification(ctx, "grant-id")
+	if !errors.Is(err, errGrantNotificationStillQueued) {
+		t.Fatalf("waitForGrantNotification() error = %v, want errGrantNotificationStillQueued", err)
 	}
 }
 
@@ -432,6 +1035,16 @@ func TestGrantStatusUpdateText(t *testing.T) {
 			want:   "✅ Used. Access is now closed.",
 		},
 		{
+			name:   "reserved",
+			update: grants.StatusUpdate{Status: grants.NotifierStatusReserved, Grant: grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1}},
+			want:   "⚠️ Push result is ambiguous. 2 of 2 uses are held; 0 uses remain.",
+		},
+		{
+			name:   "reserved expired",
+			update: grants.StatusUpdate{Status: grants.NotifierStatusReserved, Grant: grants.Grant{Status: grants.StatusExpired, MaxUses: 3, UsedCount: 1, ReservedCount: 1}},
+			want:   "⚠️ Push result is ambiguous. Access is closed; operator review is still needed.",
+		},
+		{
 			name:   "expired",
 			update: grants.StatusUpdate{Status: grants.StatusExpired, Grant: grants.Grant{ExpiredFrom: grants.StatusActive}},
 			want:   "⌛ Expired. Access window ended.",
@@ -443,6 +1056,17 @@ func TestGrantStatusUpdateText(t *testing.T) {
 				t.Fatalf("grantStatusUpdateText() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestGrantUseStatusCountsReservedUses(t *testing.T) {
+	got := grantUseStatus(grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1})
+	if !strings.Contains(got, "1 use is held") || !strings.Contains(got, "0 uses remain") {
+		t.Fatalf("grantUseStatus() = %q, want held use counted against remaining budget", got)
+	}
+	got = grantUseStatus(grants.Grant{Status: grants.StatusExpired, MaxUses: 3, UsedCount: 1})
+	if strings.Contains(got, "remain") || !strings.Contains(got, "Access is now closed") {
+		t.Fatalf("expired grantUseStatus() = %q, want closed access without remaining budget", got)
 	}
 }
 
@@ -782,6 +1406,30 @@ func TestUpstreamReceivePackRejectionDoesNotAdvanceMirror(t *testing.T) {
 	}
 }
 
+func TestReceivePackAcceptedClassifiesReservationRelease(t *testing.T) {
+	req := gitproxy.ReceivePackRequest{Commands: []gitproxy.Command{{Ref: "refs/heads/main"}}}
+	if accepted, reason, definitive := receivePackAccepted(req, http.StatusInternalServerError, nil); accepted || definitive || !strings.Contains(reason, "HTTP 500") {
+		t.Fatalf("HTTP failure accepted=%v reason=%q definitive=%v, want ambiguous rejection", accepted, reason, definitive)
+	}
+	if accepted, reason, definitive := receivePackAccepted(req, http.StatusForbidden, nil); accepted || !definitive || !strings.Contains(reason, "HTTP 403") {
+		t.Fatalf("HTTP refusal accepted=%v reason=%q definitive=%v, want definitive pre-receive rejection", accepted, reason, definitive)
+	}
+	if accepted, reason, definitive := receivePackAccepted(req, http.StatusOK, []byte("not pktline")); accepted || definitive || reason != "could not parse upstream receive-pack report" {
+		t.Fatalf("parse failure accepted=%v reason=%q definitive=%v, want ambiguous parse rejection", accepted, reason, definitive)
+	}
+	rejected := pktline.AppendString(nil, "unpack ok\n")
+	rejected = pktline.AppendString(rejected, "ng refs/heads/main upstream rejected\n")
+	rejected = pktline.AppendFlush(rejected)
+	if accepted, reason, definitive := receivePackAccepted(req, http.StatusOK, rejected); accepted || definitive || !strings.Contains(reason, "upstream rejected") {
+		t.Fatalf("ng rejection accepted=%v reason=%q definitive=%v, want ambiguous receive-pack rejection", accepted, reason, definitive)
+	}
+	missing := pktline.AppendString(nil, "unpack ok\n")
+	missing = pktline.AppendFlush(missing)
+	if accepted, reason, definitive := receivePackAccepted(req, http.StatusOK, missing); accepted || definitive || !strings.Contains(reason, "missing ref status") {
+		t.Fatalf("missing status accepted=%v reason=%q definitive=%v, want ambiguous missing status", accepted, reason, definitive)
+	}
+}
+
 func TestForwardReceivePackKeepsAcceptedOutcomeOnClientWriteError(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
@@ -810,7 +1458,7 @@ func TestForwardReceivePackKeepsAcceptedOutcomeOnClientWriteError(t *testing.T) 
 
 	req := httptest.NewRequest(http.MethodPost, "/datasets/acme/repo.git/git-receive-pack", nil)
 	writer := &writeErrorResponseWriter{}
-	status, accepted, reason, err := handler.forwardReceivePack(writer, req, route{
+	status, accepted, reason, _, err := handler.forwardReceivePack(writer, req, route{
 		repoType: scope.TypeDataset,
 		owner:    "acme",
 		name:     "repo",
@@ -892,6 +1540,75 @@ func (n *captureGrantNotifier) UpdateGrantStatus(_ context.Context, _ notify.Mes
 	return nil
 }
 
+type blockingGrantNotifier struct {
+	mu       sync.Mutex
+	messages []notify.GrantMessage
+	started  chan struct{}
+	release  chan struct{}
+	once     sync.Once
+	err      error
+	firstErr error
+}
+
+func newBlockingGrantNotifier() *blockingGrantNotifier {
+	return &blockingGrantNotifier{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (n *blockingGrantNotifier) SendGrantRequest(ctx context.Context, msg notify.GrantMessage) (notify.MessageRef, error) {
+	n.mu.Lock()
+	n.messages = append(n.messages, msg)
+	messageID := len(n.messages)
+	n.mu.Unlock()
+	if messageID == 1 {
+		n.once.Do(func() {
+			close(n.started)
+		})
+		select {
+		case <-n.release:
+		case <-ctx.Done():
+			return notify.MessageRef{}, ctx.Err()
+		}
+	}
+	if messageID == 1 && n.firstErr != nil {
+		return notify.MessageRef{}, n.firstErr
+	}
+	if n.err != nil {
+		return notify.MessageRef{}, n.err
+	}
+	return notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: messageID, Text: "grant text"}, nil
+}
+
+func (n *blockingGrantNotifier) waitForSend(t *testing.T) {
+	t.Helper()
+	select {
+	case <-n.started:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("notifier send did not start")
+	}
+}
+
+func (n *blockingGrantNotifier) releaseSend() {
+	close(n.release)
+}
+
+func (n *blockingGrantNotifier) calls() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.messages)
+}
+
+type zeroMessageGrantNotifier struct {
+	calls int
+}
+
+func (n *zeroMessageGrantNotifier) SendGrantRequest(context.Context, notify.GrantMessage) (notify.MessageRef, error) {
+	n.calls++
+	return notify.MessageRef{Kind: "capture", ChatID: 123, Text: "grant text"}, nil
+}
+
 type failingGrantNotifier struct{}
 
 func (failingGrantNotifier) SendGrantRequest(context.Context, notify.GrantMessage) (notify.MessageRef, error) {
@@ -908,6 +1625,7 @@ type gitUpstream struct {
 	total         int
 	receivePack   int
 	rejectReceive bool
+	failReceive   bool
 }
 
 func newGitUpstream(t *testing.T, repo, token string) *gitUpstream {
@@ -978,7 +1696,12 @@ func (u *gitUpstream) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		u.mu.Lock()
 		u.receivePack++
 		rejectReceive := u.rejectReceive
+		failReceive := u.failReceive
 		u.mu.Unlock()
+		if failReceive {
+			u.serveReceiveFailure(w, r)
+			return
+		}
 		if rejectReceive {
 			u.serveReceiveRejection(w, r)
 			return
@@ -987,6 +1710,20 @@ func (u *gitUpstream) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (u *gitUpstream) serveReceiveFailure(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijack unsupported", http.StatusInternalServerError)
+		return
+	}
+	conn, _, err := hijacker.Hijack()
+	if err != nil {
+		return
+	}
+	_ = conn.Close()
 }
 
 func (u *gitUpstream) serveReceiveRejection(w http.ResponseWriter, r *http.Request) {
@@ -1135,6 +1872,12 @@ func (u *gitUpstream) setRejectReceive(reject bool) {
 	u.rejectReceive = reject
 }
 
+func (u *gitUpstream) setFailReceive(fail bool) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.failReceive = fail
+}
+
 func (u *gitUpstream) totalHits() int {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -1180,6 +1923,26 @@ func commitInClone(t *testing.T, clone, filename, contents, message string) {
 func doRequest(t *testing.T, method, requestURL, authorization string, body io.Reader) (*http.Response, string) {
 	t.Helper()
 	return doRequestWithHeaders(t, method, requestURL, authorization, nil, body)
+}
+
+func doGrantRequestForTest(serverURL, body string) grantRequestResult {
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/grants", strings.NewReader(body))
+	if err != nil {
+		return grantRequestResult{err: err}
+	}
+	req.Header.Set("Authorization", "Bearer "+testSecret)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return grantRequestResult{err: err}
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return grantRequestResult{err: err}
+	}
+	return grantRequestResult{status: resp.StatusCode, body: string(data)}
 }
 
 func doRequestWithHeaders(t *testing.T, method, requestURL, authorization string, headers map[string]string, body io.Reader) (*http.Response, string) {

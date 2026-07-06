@@ -330,7 +330,7 @@ func terminalGrantStatus(status string) bool {
 	case pendingExpiredStatus, activeExpiredStatus, "✅ Used. Access is now closed.":
 		return true
 	default:
-		return false
+		return strings.HasPrefix(status, "⚠️ Push result is ambiguous.")
 	}
 }
 

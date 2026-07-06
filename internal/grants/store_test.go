@@ -159,6 +159,311 @@ func TestGrantCancelAndMissing(t *testing.T) {
 	}
 }
 
+func TestGrantNotifierClaimSerializesAndExpires(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:          "agent",
+		ClientRequestID: "notify-once",
+		Operation:       "git_receive_pack",
+		Target:          "dataset/acme/repo",
+		Ref:             "refs/heads/main",
+		Reason:          "notify once",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	claimedGrant, claimed, err := store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("first ClaimNotifier() = %+v claimed=%v err=%v, want claimed", claimedGrant, claimed, err)
+	}
+	if !claimedGrant.NotifierClaimedAt.Equal(now) {
+		t.Fatalf("claim timestamp = %s, want %s", claimedGrant.NotifierClaimedAt, now)
+	}
+	_, claimed, err = store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || claimed {
+		t.Fatalf("second ClaimNotifier() claimed=%v err=%v, want unclaimed nil", claimed, err)
+	}
+
+	now = now.Add(3 * time.Minute)
+	reclaimed, claimed, err := store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("stale ClaimNotifier() = %+v claimed=%v err=%v, want claimed", reclaimed, claimed, err)
+	}
+	if !reclaimed.NotifierClaimedAt.Equal(now) {
+		t.Fatalf("reclaim timestamp = %s, want %s", reclaimed.NotifierClaimedAt, now)
+	}
+
+	withNotifier, err := store.SetNotifier(grant.ID, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"})
+	if err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	if !withNotifier.NotifierClaimedAt.IsZero() {
+		t.Fatalf("SetNotifier() kept claim timestamp: %+v", withNotifier)
+	}
+	_, claimed, err = store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || claimed {
+		t.Fatalf("ClaimNotifier() after SetNotifier claimed=%v err=%v, want unclaimed nil", claimed, err)
+	}
+}
+
+func TestSetNotifierIfClaimedRejectsStaleClaim(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:    "agent",
+		Operation: "git_receive_pack",
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "notify once",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, claimed, err := store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("first ClaimNotifier() claimed=%v err=%v, want claimed", claimed, err)
+	}
+	now = now.Add(3 * time.Minute)
+	second, claimed, err := store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("second ClaimNotifier() claimed=%v err=%v, want claimed", claimed, err)
+	}
+
+	stale, recorded, err := store.SetNotifierIfClaimed(grant.ID, first.NotifierClaimedAt, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 1, Text: "stale"})
+	if err != nil || recorded {
+		t.Fatalf("stale SetNotifierIfClaimed() recorded=%v err=%v, want false nil", recorded, err)
+	}
+	if stale.Notifier != nil || !stale.NotifierClaimedAt.Equal(second.NotifierClaimedAt) {
+		t.Fatalf("stale SetNotifierIfClaimed() grant = %+v, want current claim without notifier", stale)
+	}
+	current, recorded, err := store.SetNotifierIfClaimed(grant.ID, second.NotifierClaimedAt, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "current"})
+	if err != nil || !recorded {
+		t.Fatalf("current SetNotifierIfClaimed() recorded=%v err=%v, want true nil", recorded, err)
+	}
+	if current.Notifier == nil || current.Notifier.MessageID != 2 || !current.NotifierClaimedAt.IsZero() {
+		t.Fatalf("current SetNotifierIfClaimed() grant = %+v, want recorded current notifier", current)
+	}
+}
+
+func TestCancelIfNotifierClaimedRejectsStaleClaim(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:    "agent",
+		Operation: "git_receive_pack",
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "notify once",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, claimed, err := store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("first ClaimNotifier() claimed=%v err=%v, want claimed", claimed, err)
+	}
+	now = now.Add(3 * time.Minute)
+	second, claimed, err := store.ClaimNotifier(grant.ID, 2*time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("second ClaimNotifier() claimed=%v err=%v, want claimed", claimed, err)
+	}
+
+	stale, canceled, err := store.CancelIfNotifierClaimed(grant.ID, first.NotifierClaimedAt)
+	if err != nil || canceled {
+		t.Fatalf("stale CancelIfNotifierClaimed() canceled=%v err=%v, want false nil", canceled, err)
+	}
+	if stale.Status != StatusPending || !stale.NotifierClaimedAt.Equal(second.NotifierClaimedAt) {
+		t.Fatalf("stale CancelIfNotifierClaimed() grant = %+v, want current pending claim", stale)
+	}
+	current, canceled, err := store.CancelIfNotifierClaimed(grant.ID, second.NotifierClaimedAt)
+	if err != nil || !canceled {
+		t.Fatalf("current CancelIfNotifierClaimed() canceled=%v err=%v, want true nil", canceled, err)
+	}
+	if current.Status != StatusCanceled || !current.NotifierClaimedAt.IsZero() {
+		t.Fatalf("current CancelIfNotifierClaimed() grant = %+v, want canceled without claim", current)
+	}
+}
+
+func TestGrantUseReservationCommitAndRelease(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:    "agent",
+		Operation: "git_receive_pack",
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "force push",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+
+	reserved, err := store.ReserveUse(approved.ID)
+	if err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	if reserved.ReservedCount != 1 || reserved.UsedCount != 0 || reserved.Status != StatusActive || !reserved.ReservedAt.Equal(now) {
+		t.Fatalf("reserved grant = %+v, want one reservation on active grant", reserved)
+	}
+	if _, ok, err := store.MatchActive(grant.Client, grant.Operation, grant.Target, grant.Ref); err != nil || ok {
+		t.Fatalf("reserved MatchActive() ok=%v err=%v, want false nil", ok, err)
+	}
+	released, err := store.ReleaseUse(approved.ID)
+	if err != nil {
+		t.Fatalf("ReleaseUse() error = %v", err)
+	}
+	if released.ReservedCount != 0 || released.Status != StatusActive || !released.ReservedAt.IsZero() {
+		t.Fatalf("released grant = %+v, want active without reservation", released)
+	}
+	if _, ok, err := store.MatchActive(grant.Client, grant.Operation, grant.Target, grant.Ref); err != nil || !ok {
+		t.Fatalf("released MatchActive() ok=%v err=%v, want true nil", ok, err)
+	}
+
+	if _, err := store.ReserveUse(approved.ID); err != nil {
+		t.Fatalf("second ReserveUse() error = %v", err)
+	}
+	now = now.Add(time.Minute)
+	committed, err := store.CommitUse(approved.ID)
+	if err != nil {
+		t.Fatalf("CommitUse() error = %v", err)
+	}
+	if committed.ReservedCount != 0 || committed.UsedCount != 1 || committed.Status != StatusConsumed || !committed.UsedAt.Equal(now) || !committed.ReservedAt.IsZero() {
+		t.Fatalf("committed grant = %+v, want consumed use at %s", committed, now)
+	}
+	if _, err := store.CommitUse(approved.ID); !errors.Is(err, ErrNotActive) {
+		t.Fatalf("CommitUse() without reservation error = %v, want ErrNotActive", err)
+	}
+}
+
+func TestCommitReservedUseAfterAccessWindowExpires(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:            "agent",
+		Operation:         "git_receive_pack",
+		Target:            "dataset/acme/repo",
+		Ref:               "refs/heads/main",
+		Reason:            "slow accepted push",
+		RequestedDuration: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if _, err := store.ReserveUse(approved.ID); err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+
+	now = now.Add(2 * time.Minute)
+	committed, err := store.CommitUse(approved.ID)
+	if err != nil {
+		t.Fatalf("CommitUse() after expiry error = %v", err)
+	}
+	if committed.Status != StatusConsumed || committed.ReservedCount != 0 || committed.UsedCount != 1 {
+		t.Fatalf("committed expired reservation = %+v, want consumed use", committed)
+	}
+}
+
+func TestExpiredReservedUseKeepsUsedStatusUpdate(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:            "agent",
+		Operation:         "git_receive_pack",
+		Target:            "dataset/acme/repo",
+		Ref:               "refs/heads/main",
+		Reason:            "slow accepted push",
+		RequestedDuration: time.Minute,
+		MaxUses:           3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetNotifier(grant.ID, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, string(StatusActive)); err != nil {
+		t.Fatalf("MarkNotifierStatus(active) error = %v", err)
+	}
+	if _, err := store.ReserveUse(approved.ID); err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	now = now.Add(2 * time.Minute)
+	committed, err := store.CommitUse(approved.ID)
+	if err != nil {
+		t.Fatalf("CommitUse() error = %v", err)
+	}
+	if committed.Status != StatusExpired || committed.UsedCount != 1 || committed.ReservedCount != 0 {
+		t.Fatalf("committed grant = %+v, want expired grant with one used reservation", committed)
+	}
+
+	updates, err := store.StatusUpdatesDue()
+	if err != nil {
+		t.Fatalf("StatusUpdatesDue() error = %v", err)
+	}
+	if len(updates) != 1 || updates[0].Status != StatusConsumed || updates[0].NotifierStatusKey() != string(NotifierStatusUsedExpired) {
+		t.Fatalf("updates = %+v, want expired used status update", updates)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, string(NotifierStatusUsedExpired)); err != nil {
+		t.Fatalf("MarkNotifierStatus(used:expired) error = %v", err)
+	}
+	updates, err = store.StatusUpdatesDue()
+	if err != nil || len(updates) != 0 {
+		t.Fatalf("second StatusUpdatesDue() = %+v err=%v, want none", updates, err)
+	}
+}
+
+func TestPartialUsedGrantExpirationUpdatesClosedStatus(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:            "agent",
+		Operation:         "git_receive_pack",
+		Target:            "dataset/acme/repo",
+		Ref:               "refs/heads/main",
+		Reason:            "multi-use push",
+		RequestedDuration: time.Minute,
+		MaxUses:           3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetNotifier(grant.ID, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	if _, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if _, err := store.RecordUse(grant.ID); err != nil {
+		t.Fatalf("RecordUse() error = %v", err)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, string(NotifierStatusUsed)); err != nil {
+		t.Fatalf("MarkNotifierStatus(used) error = %v", err)
+	}
+
+	now = now.Add(2 * time.Minute)
+	updates, err := store.StatusUpdatesDue()
+	if err != nil {
+		t.Fatalf("StatusUpdatesDue() error = %v", err)
+	}
+	if len(updates) != 1 || updates[0].Status != StatusConsumed || updates[0].NotifierStatusKey() != string(NotifierStatusUsedExpired) {
+		t.Fatalf("updates = %+v, want expired used status update", updates)
+	}
+}
+
 func TestGrantRequestValidation(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	if _, _, err := store.Request(Request{
@@ -309,6 +614,175 @@ func TestConsumedGrantStatusUpdateDue(t *testing.T) {
 	updates, err = store.StatusUpdatesDue()
 	if err != nil || len(updates) != 0 {
 		t.Fatalf("second StatusUpdatesDue() = %+v err=%v, want none", updates, err)
+	}
+}
+
+func TestRetainedReservationStatusUpdateDue(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	grant, _, err := store.Request(Request{
+		Client:            "agent",
+		Operation:         "git_receive_pack",
+		Target:            "dataset/acme/repo",
+		Ref:               "refs/heads/main",
+		Reason:            "ambiguous push",
+		RequestedDuration: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetNotifier(grant.ID, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, string(StatusActive)); err != nil {
+		t.Fatalf("MarkNotifierStatus(active) error = %v", err)
+	}
+	if _, err := store.ReserveUse(approved.ID); err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	if _, err := store.RetainUse(approved.ID); err != nil {
+		t.Fatalf("RetainUse() error = %v", err)
+	}
+
+	updates, err := store.StatusUpdatesDue()
+	if err != nil {
+		t.Fatalf("StatusUpdatesDue() error = %v", err)
+	}
+	if len(updates) != 1 || updates[0].Grant.ID != grant.ID || updates[0].Status != NotifierStatusReserved {
+		t.Fatalf("updates = %+v, want retained reservation update", updates)
+	}
+	activeRetainedStatus := updates[0].NotifierStatusKey()
+	if activeRetainedStatus != "reserved:active" {
+		t.Fatalf("active retained status key = %q, want reserved:active", activeRetainedStatus)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, activeRetainedStatus); err != nil {
+		t.Fatalf("MarkNotifierStatus(reserved) error = %v", err)
+	}
+	updates, err = store.StatusUpdatesDue()
+	if err != nil || len(updates) != 0 {
+		t.Fatalf("second StatusUpdatesDue() = %+v err=%v, want none", updates, err)
+	}
+
+	now = now.Add(2 * time.Minute)
+	updates, err = store.StatusUpdatesDue()
+	if err != nil {
+		t.Fatalf("expired reserved StatusUpdatesDue() error = %v", err)
+	}
+	if len(updates) != 1 || updates[0].Grant.ID != grant.ID || updates[0].Status != NotifierStatusReserved || updates[0].NotifierStatusKey() != "reserved:expired" {
+		t.Fatalf("expired reserved StatusUpdatesDue() = %+v, want expired retained reservation update", updates)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, updates[0].NotifierStatusKey()); err != nil {
+		t.Fatalf("MarkNotifierStatus(expired reserved) error = %v", err)
+	}
+	updates, err = store.StatusUpdatesDue()
+	if err != nil || len(updates) != 0 {
+		t.Fatalf("second expired reserved StatusUpdatesDue() = %+v err=%v, want none", updates, err)
+	}
+	expired, err := store.Get(grant.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", grant.ID, err)
+	}
+	if expired.Status != StatusExpired || expired.ReservedCount != 1 || expired.NotifierStatus != "reserved:expired" {
+		t.Fatalf("expired reserved grant = %+v, want expired held reservation with reserved notifier status", expired)
+	}
+}
+
+func TestInFlightReservationStatusUpdateDue(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	grant, _, err := store.Request(Request{
+		Client:    "agent",
+		Operation: "git_receive_pack",
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "slow push",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetNotifier(grant.ID, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, string(StatusActive)); err != nil {
+		t.Fatalf("MarkNotifierStatus(active) error = %v", err)
+	}
+	reserved, err := store.ReserveUse(approved.ID)
+	if err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	if reserved.ReservationRetained {
+		t.Fatalf("reserved grant = %+v, want in-flight reservation without retained marker", reserved)
+	}
+
+	updates, err := store.StatusUpdatesDue()
+	if err != nil || len(updates) != 0 {
+		t.Fatalf("in-flight StatusUpdatesDue() = %+v err=%v, want none", updates, err)
+	}
+	released, err := store.ReleaseUse(approved.ID)
+	if err != nil {
+		t.Fatalf("ReleaseUse() error = %v", err)
+	}
+	if released.ReservedCount != 0 || released.ReservationRetained || released.NotifierStatus != string(StatusActive) {
+		t.Fatalf("released grant = %+v, want active grant without retained reservation", released)
+	}
+}
+
+func TestStaleReservationStatusUpdateDue(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{
+		Now:                func() time.Time { return now },
+		ReservationTimeout: time.Minute,
+	})
+	grant, _, err := store.Request(Request{
+		Client:    "agent",
+		Operation: "git_receive_pack",
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "crashed push",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetNotifier(grant.ID, NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotifier() error = %v", err)
+	}
+	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
+	if err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if err := store.MarkNotifierStatus(grant.ID, string(StatusActive)); err != nil {
+		t.Fatalf("MarkNotifierStatus(active) error = %v", err)
+	}
+	if _, err := store.ReserveUse(approved.ID); err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+
+	now = now.Add(time.Minute - time.Nanosecond)
+	updates, err := store.StatusUpdatesDue()
+	if err != nil || len(updates) != 0 {
+		t.Fatalf("pre-timeout StatusUpdatesDue() = %+v err=%v, want none", updates, err)
+	}
+	now = now.Add(time.Nanosecond)
+	updates, err = store.StatusUpdatesDue()
+	if err != nil {
+		t.Fatalf("stale StatusUpdatesDue() error = %v", err)
+	}
+	if len(updates) != 1 || updates[0].Status != NotifierStatusReserved || updates[0].NotifierStatusKey() != "reserved:active" {
+		t.Fatalf("stale StatusUpdatesDue() = %+v, want retained reservation update", updates)
+	}
+	current, err := store.Get(grant.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", grant.ID, err)
+	}
+	if !current.ReservationRetained || current.ReservedCount != 1 {
+		t.Fatalf("stale reservation grant = %+v, want retained reservation", current)
 	}
 }
 

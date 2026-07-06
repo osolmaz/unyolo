@@ -239,6 +239,58 @@ func TestTelegramConsumedUpdateClearsTrackedExpiry(t *testing.T) {
 	}
 }
 
+func TestTelegramAmbiguousUpdateClearsTrackedExpiry(t *testing.T) {
+	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
+	var edits []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":7,"chat":{"id":123}}}`))
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			edits = append(edits, payload)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":7}}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	telegram := NewTelegram("telegram_token_value", 123, server.Client(), server.URL)
+
+	ref, err := telegram.SendGrantRequest(context.Background(), GrantMessage{
+		ID:               "grant-id",
+		DecisionToken:    "decision-token",
+		Client:           "agent",
+		Operation:        "git_receive_pack",
+		Target:           "dataset/acme/repo",
+		Ref:              "refs/heads/main",
+		Reason:           "recover",
+		RequestedMinutes: 5,
+		MaxUses:          1,
+		PendingExpiresAt: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("SendGrantRequest() error = %v", err)
+	}
+	telegram.trackAfterDecision(Decision{
+		ID:          "grant-id",
+		ChatID:      ref.ChatID,
+		MessageID:   ref.MessageID,
+		MessageText: ref.Text,
+	}, DecisionResult{Answer: "Grant approved", ActiveExpiresAt: now.Add(5 * time.Minute)})
+	status := "⚠️ Push result is ambiguous. Access is closed until an operator reviews it."
+	if err := telegram.UpdateGrantStatus(context.Background(), ref, status); err != nil {
+		t.Fatalf("UpdateGrantStatus() error = %v", err)
+	}
+	telegram.expireTracked(context.Background(), now.Add(5*time.Minute))
+	if len(edits) != 1 || !strings.Contains(edits[0]["text"].(string), "Status: "+status) {
+		t.Fatalf("edits after ambiguous update = %+v, want only ambiguous status", edits)
+	}
+}
+
 func TestTelegramPostErrorsDoNotExposeToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusInternalServerError)
