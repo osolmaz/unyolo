@@ -533,15 +533,16 @@ internal/mirror/                 commits-only mirror lifecycle + ancestry check
 internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
 internal/grants/                 grant store, expiry, decision (M3)
 internal/notify/                 Notifier interface + telegram impl (M4)
-internal/httpapi/                router, handlers, refusal responses, audit
+internal/httpapi/                Echo router, handlers, refusal responses, audit
 internal/audit/                  structured slog wiring
 ```
 
 Boundaries (enforced by Slophammer `dependency_boundaries`): `httpapi`
-depends on the feature packages; feature packages depend on `scope`,
-`config`, `audit`; `scope`/`config`/`auth`/`pktline` depend on nothing
-internal. Domain logic (parsing, policy decisions, ancestry) stays free
-of `net/http` so it is unit-testable without a server.
+depends on Echo and the feature packages; feature packages depend on
+`scope`, `config`, `audit`; `scope`/`config`/`auth`/`pktline` depend on
+nothing internal. Domain logic (parsing, policy decisions, ancestry)
+stays free of HTTP framework types so it is unit-testable without a
+server.
 
 ## Configuration
 

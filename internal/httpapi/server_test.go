@@ -1247,6 +1247,10 @@ func TestAuthScopeAndHealth(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || strings.TrimSpace(body) != `{"ok": true}` {
 		t.Fatalf("health = %d %q", resp.StatusCode, body)
 	}
+	resp, _ = doRequest(t, http.MethodHead, broker.URL+"/healthz", "", nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("HEAD health status = %d, want 401", resp.StatusCode)
+	}
 	infoRefs := broker.URL + "/datasets/acme/repo.git/info/refs?service=git-upload-pack"
 	resp, _ = doRequest(t, http.MethodGet, infoRefs, "", nil)
 	if resp.StatusCode != http.StatusUnauthorized {

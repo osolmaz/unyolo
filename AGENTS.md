@@ -18,7 +18,8 @@ These instructions apply to this repository.
 - Every endpoint except `GET /healthz` requires authentication.
 - Fail closed: a request the policy engine cannot classify is refused.
 - Audit log lines never contain secrets, request bodies, or pack contents.
-- Stdlib only; do not add dependencies unless they remove real complexity.
+- Use Echo for HTTP routing. Do not add other dependencies unless they
+  remove real complexity.
 - Keep domain logic (parsing, policy decisions, ancestry) free of
   `net/http` so it stays unit-testable without a server.
 

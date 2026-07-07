@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/hf-broker/internal/audit"
 	"github.com/osolmaz/hf-broker/internal/auth"
 	"github.com/osolmaz/hf-broker/internal/config"
@@ -61,8 +62,10 @@ type Options struct {
 	TelegramBaseURL string
 }
 
-// Server is an http.Handler for the broker.
+// Server is an Echo-backed http.Handler for the broker.
 type Server struct {
+	router *echo.Echo
+
 	auth       *auth.Authenticator
 	scope      scope.Scope
 	audit      *audit.Logger
@@ -157,7 +160,7 @@ func parseUpstreamBase(upstreamBase string) (*url.URL, error) {
 }
 
 func newServer(opts Options, upstream *url.URL, clients map[string]string, auditLogger *audit.Logger) *Server {
-	return &Server{
+	server := &Server{
 		auth:       auth.New(clients),
 		scope:      opts.Scope,
 		audit:      auditLogger,
@@ -172,6 +175,24 @@ func newServer(opts Options, upstream *url.URL, clients map[string]string, audit
 		notifier:   opts.GrantNotifier,
 		lfsActions: map[string]lfsAction{},
 	}
+	server.router = newRouter(server)
+	return server
+}
+
+func newRouter(server *Server) *echo.Echo {
+	router := echo.New()
+	router.HideBanner = true
+	router.HidePort = true
+	router.GET("/healthz", func(c echo.Context) error {
+		c.Response().Header().Set("Content-Type", "application/json")
+		_, err := c.Response().Write([]byte(`{"ok": true}`))
+		return err
+	})
+	router.Any("/*", func(c echo.Context) error {
+		server.serveHTTP(c.Response(), c.Request())
+		return nil
+	})
+	return router
 }
 
 func grantReservationTimeout(hfTimeout time.Duration) time.Duration {
@@ -189,8 +210,16 @@ func (s *Server) startTelegram(ctx context.Context, opts Options) {
 	}
 }
 
-// ServeHTTP routes one broker request.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.router != nil {
+		s.router.ServeHTTP(w, r)
+		return
+	}
+	s.serveHTTP(w, r)
+}
+
+// serveHTTP routes one broker request after Echo dispatch.
+func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if writeHealth(w, r) {
 		return
 	}
