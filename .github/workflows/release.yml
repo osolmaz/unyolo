@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - run: go test ./...
+      - run: scripts/release.sh "${GITHUB_REF_NAME}"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/hf-broker_linux_amd64.tar.gz
+            dist/hf-broker_linux_arm64.tar.gz
+            dist/hf-broker_darwin_amd64.tar.gz
+            dist/hf-broker_darwin_arm64.tar.gz
+            dist/checksums.txt

@@ -26,7 +26,36 @@ refused pushes never leave the broker and `git push` prints the reason.
 
 ## Install
 
-Requires Go 1.23+ and `git` on the broker host.
+The recommended install path downloads a prebuilt release binary and
+installs it globally:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/hf-broker/main/install.sh | sh
+```
+
+Pin a release with `VERSION`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/hf-broker/main/install.sh | VERSION=v0.1.0 sh
+```
+
+Install to a specific directory with `INSTALL_DIR`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/hf-broker/main/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
+```
+
+Manual install is also just a tarball download:
+
+```sh
+curl -LO https://github.com/osolmaz/hf-broker/releases/download/v0.1.0/hf-broker_linux_arm64.tar.gz
+curl -LO https://github.com/osolmaz/hf-broker/releases/download/v0.1.0/checksums.txt
+sha256sum -c checksums.txt --ignore-missing
+tar -xzf hf-broker_linux_arm64.tar.gz
+sudo install -m 0755 hf-broker /usr/local/bin/hf-broker
+```
+
+For development, install from source with Go 1.23+:
 
 ```sh
 go install github.com/osolmaz/hf-broker/cmd/hf-broker@latest
@@ -63,6 +92,52 @@ Binding defaults to `127.0.0.1:8080`. Expose it to the agent over a
 Tailnet or equivalent — and run the broker somewhere the agent cannot
 log into, otherwise the isolation is decoration. See the specification
 for all environment variables.
+
+## Linux Service Setup
+
+For a same-host setup, run the broker as a dedicated service user rather
+than as the agent or your interactive account:
+
+```text
+onur      = admin
+bob       = agent account, no sudo or docker
+hf-broker = service account that can read the real Hugging Face token
+```
+
+After installing the binary, create a token file and configure systemd:
+
+```sh
+sudo hf-broker setup systemd \
+  --hf-token-file ./hf-token \
+  --repo osolmaz/scraped-news \
+  --repo-type dataset
+```
+
+The setup command creates:
+
+```text
+/etc/hf-broker/hf-token
+/etc/hf-broker/secrets
+/etc/hf-broker/scope.json
+/etc/hf-broker/env
+/var/lib/hf-broker
+/etc/systemd/system/hf-broker.service
+```
+
+It also creates the `hf-broker` service user when needed, enables and
+starts the service, then prints the broker URL and generated broker
+client secret. The real Hugging Face token stays readable only by the
+service. The agent receives only the broker client secret.
+
+Use `--dry-run` to preview the service setup without writing files:
+
+```sh
+sudo hf-broker setup systemd \
+  --hf-token-file ./hf-token \
+  --repo osolmaz/scraped-news \
+  --repo-type dataset \
+  --dry-run
+```
 
 ## Check Local Isolation
 
