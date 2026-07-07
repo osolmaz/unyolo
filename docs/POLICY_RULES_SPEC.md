@@ -197,6 +197,48 @@ For a classified broker request:
 
 This is fail-closed: no match means no access.
 
+## Conflict Resolution
+
+Rule list order does not affect authorization. The `rules` array is
+ordered only so humans can keep related rules together and so diagnostics
+can report matching rule ids predictably.
+
+The broker resolves overlapping rules by effect, not by position:
+
+```text
+deny > active generated grant allow > static allow > request > no match
+```
+
+Cases:
+
+- Multiple matching `deny` rules are allowed. The request is refused.
+- Multiple matching static `allow` rules are allowed. The request is
+  allowed unless a `deny` rule also matches.
+- A matching active grant and a matching static `allow` both allow the
+  request, unless a `deny` rule also matches.
+- A matching `allow` rule and a matching `request` rule means execution
+  is already allowed. Approval is not required for that classified
+  request.
+- A matching `request` rule and no matching `allow` or active grant means
+  execution is refused with "approval required"; the grant-request
+  endpoint may create a pending request.
+- Multiple matching `request` rules for the same classified request are
+  valid only when their normalized `grant_policy` objects are identical.
+  If the normalized grant policies differ, the policy is invalid at
+  startup.
+
+Normalization fills `grant_policy` defaults before comparison:
+
+- `mode` defaults from the operation registry.
+- `default_minutes` defaults to `5`.
+- `max_minutes` defaults to `60`.
+- `default_max_uses` defaults to `1` for window grants.
+- `max_uses` defaults to `default_max_uses`.
+
+The broker does not intersect or merge different grant policies. Requiring
+identical request policies keeps operator prompts predictable and avoids
+silent privilege changes from overlapping wildcard rules.
+
 ## Operation Registry
 
 Operation names are stable strings. New operations require an explicit
@@ -437,6 +479,8 @@ Invalid policy examples:
 - unsupported operation/target pairing
 - unknown fields
 - malformed glob
+- overlapping `request` rules whose normalized `grant_policy` objects
+  differ for the same possible classified request
 - `request` rule without `grant_policy`
 - `allow` rule with `grant_policy`
 - `deny` rule with `grant_policy`
