@@ -229,11 +229,15 @@ repository rules before implementation.
 Every implementation slice must pass:
 
 ```sh
+go mod tidy
+git diff --exit-code -- go.mod go.sum
+go mod verify
 gofmt -l .
 go vet ./...
 go test -race ./...
 go build ./cmd/hf-broker
 golangci-lint run
+govulncheck ./...
 /home/bob/go/bin/slophammer-go dry .
 /home/bob/go/bin/slophammer-go crap .
 /home/bob/go/bin/slophammer-go check .

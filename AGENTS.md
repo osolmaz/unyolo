@@ -28,19 +28,21 @@ These instructions apply to this repository.
 Run these before finishing code changes:
 
 ```sh
+go mod tidy
+git diff --exit-code -- go.mod go.sum
+go mod verify
 gofmt -l .            # must print nothing
 go vet ./...
 go test -race ./...
 go build ./cmd/hf-broker
-```
-
-When `golangci-lint` and `slophammer-go` are available, also run:
-
-```sh
 golangci-lint run
-slophammer-go dry .
-slophammer-go crap .
-slophammer-go check .
+govulncheck ./...
+/home/bob/go/bin/slophammer-go dry .
+/home/bob/go/bin/slophammer-go crap .
+/home/bob/go/bin/slophammer-go check .
 ```
+
+If a tool is installed outside `PATH`, run it by absolute path and report
+that in the final note.
 
 Hard targets: coverage >= 85, CRAP <= 8, production DRY findings = 0.

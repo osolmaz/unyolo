@@ -517,9 +517,9 @@ direct writes.
 
 ## Repository Layout
 
-Go module `github.com/osolmaz/hf-broker`, Go 1.23+. One binary
-(`cmd/hf-broker`), business logic in `internal/` so nothing but the
-command is importable.
+Go module `github.com/osolmaz/hf-broker`, Go language version 1.25 with
+toolchain `go1.26.4`. One binary (`cmd/hf-broker`), business logic in
+`internal/` so nothing but the command is importable.
 
 ```text
 cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
@@ -750,6 +750,7 @@ API responses, separate repo-content-read capability, and generated
 temporary grant rules.
 
 The concrete implementation sequence is `docs/2026-07-08-next-implementation-spec.md`.
+Go tooling and CI pins are specified in `docs/2026-07-08-go-tooling-spec.md`.
 
 ## Request Handling
 
@@ -881,11 +882,13 @@ go:
   dependency_boundaries: [ ... as in Repository Layout ... ]
 ```
 
-CI (`.github/workflows/ci.yml`) runs, pinned to an exact Slophammer
-version: `gofmt` check, `go vet ./...`, `go test -race -coverprofile`,
-`golangci-lint` v2, coverage gate, `slophammer-go dry/crap/check`. Hard
-targets: coverage ≥ 85, CRAP ≤ 8, production DRY = 0. `AGENTS.md` in the
-repo restates these and the token-secrecy rule for future agents.
+CI (`.github/workflows/ci.yml`) runs pinned Go tools from
+`docs/2026-07-08-go-tooling-spec.md`: module tidy/verify checks,
+`gofmt`, `go vet ./...`, `go test -race -coverprofile`, `go build`,
+`golangci-lint`, `govulncheck`, coverage gate, and `slophammer-go`
+dry/crap/mutation/check. Hard targets: coverage ≥ 85, CRAP ≤ 8,
+production DRY = 0. `AGENTS.md` in the repo restates these and the
+token-secrecy rule for future agents.
 
 ## Testing Strategy
 
