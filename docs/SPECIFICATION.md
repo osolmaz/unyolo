@@ -749,6 +749,8 @@ boundary, but adds typed wildcard targets, independent `allow`,
 API responses, separate repo-content-read capability, and generated
 temporary grant rules.
 
+The concrete implementation sequence is `docs/2026-07-08-next-implementation-spec.md`.
+
 ## Request Handling
 
 ### Authentication
