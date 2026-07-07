@@ -12,6 +12,8 @@ go:
       - internal
     exclude:
       - "**/*_test.go"
+      - pattern: "internal/isolation/isolation_darwin.go"
+        reason: platform backend mirrors Linux isolation checks with OS-specific process and syscall behavior
       - "fixtures/**"
     structural:
       enabled: true

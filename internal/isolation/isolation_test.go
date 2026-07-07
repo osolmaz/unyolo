@@ -332,7 +332,7 @@ func TestRunProbeChecksWriteOnlyTokenFile(t *testing.T) {
 	if err := os.WriteFile(token, []byte("hf_secret_value"), 0o200); err != nil {
 		t.Fatal(err)
 	}
-	result := RunProbe(token, 0)
+	result := RunProbe(token, 0, "")
 	if result.TokenFileReadable {
 		t.Fatalf("TokenFileReadable = true, want false")
 	}
@@ -742,6 +742,26 @@ func TestActiveProbeUsesHelper(t *testing.T) {
 	}
 }
 
+func TestActiveProbeRunsForSocketOnlyChecks(t *testing.T) {
+	dir := localTempDir(t)
+	helper := filepath.Join(dir, "probe-helper")
+	if err := os.WriteFile(helper, []byte("#!/bin/sh\nprintf '{\"socket_connectable\":true}\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Run(context.Background(), Options{
+		AgentUID:    os.Getuid(),
+		AgentUIDSet: true,
+		Socket:      "/tmp/hf-broker.sock",
+		HelperPath:  helper,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(report, CheckFail, "active_probe_socket_connect") {
+		t.Fatalf("checks = %+v, want socket active probe failure", report.Checks)
+	}
+}
+
 func TestActiveProbeScrubsEnvironment(t *testing.T) {
 	t.Setenv("HF_BROKER_HF_TOKEN", "hf_secret_value")
 	cmd, ok := activeProbeCommand(context.Background(), identity{uid: os.Getuid(), gid: os.Getgid()}, Options{
@@ -832,7 +852,7 @@ func TestRunProbeDoesNotReturnContents(t *testing.T) {
 	if err := os.WriteFile(token, []byte("hf_secret_value"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	result := RunProbe(token, os.Getpid())
+	result := RunProbe(token, os.Getpid(), "")
 	if !result.TokenFileReadable || !result.BrokerEnvReadable {
 		t.Fatalf("RunProbe() = %+v, want readable token and environ for current process", result)
 	}

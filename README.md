@@ -83,9 +83,10 @@ live doctor process. This catches stale sessions that still carry old
 root-equivalent groups after the account has been demoted.
 
 The doctor fails closed when the agent is host root, root-equivalent
-through groups such as `sudo`, `wheel`, `docker`, `lxd`, or `incus`, can
-read or modify the token file, can read the broker process environment,
-can write/connect to the checked Unix socket, or shares the broker UID.
+through groups such as `sudo`, `wheel`, `admin`, `docker`, `lxd`, or
+`incus`, can read or modify the token file, can read the broker process
+environment, can write/connect to the checked Unix socket, or shares the
+broker UID.
 It can also emit JSON for deployment checks:
 
 ```sh
@@ -98,6 +99,15 @@ setup safe; it verifies whether the host matches the broker threat model.
 It does not echo the `--token-file` value in findings. For file-token
 deployments, pass `--token-file`; `--broker-pid` checks broker
 environment reachability but does not verify file permissions by itself.
+
+On macOS, the doctor keeps the same CLI and JSON report shape but is
+intentionally conservative. It treats `admin` and `wheel` membership as
+root-equivalent, checks token files and Unix sockets by ownership, mode
+bits, parent-directory writability, symlink targets, and active
+read/connect probes when it can run as the agent identity. Process
+environment and ACL facts that cannot be proven through safe stdlib
+interfaces are reported as `unknown`, which makes the overall result
+`inconclusive` rather than `ok`.
 
 ## Point the agent at it
 

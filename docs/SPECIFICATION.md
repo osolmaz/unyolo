@@ -570,7 +570,7 @@ a specific error. The token value is never logged, even at startup.
 
 ### Local isolation doctor
 
-The broker binary includes a local host checker:
+The broker binary includes a local host checker on Linux and macOS:
 
 ```sh
 hf-broker doctor \
@@ -589,15 +589,20 @@ Options:
   no agent identity or process is supplied, the current doctor process is
   checked so stale sessions with old supplementary groups are reported.
 - `--agent-pid`: optional running agent process. When supplied, the
-  doctor checks process UID, effective and permitted Linux capabilities,
-  and HF token variable names in the process environment.
+  doctor checks process UID. On Linux it also checks effective and
+  permitted capabilities and HF token variable names in the process
+  environment. On macOS, process environment checks are reported as
+  unknown because the stdlib does not expose a safe no-secret process
+  environment-name primitive.
 - `--broker-pid`: optional running broker process. When supplied, the
-  doctor checks that the broker UID differs from the agent UID and uses
-  an active probe to verify the agent cannot open
-  `/proc/<broker-pid>/environ`.
+  doctor checks that the broker UID differs from the agent UID. On Linux,
+  it uses an active probe to verify the agent cannot open
+  `/proc/<broker-pid>/environ`. On macOS, broker environment
+  readability is reported as unknown.
 - `--token-file`: optional upstream token file. The doctor checks Unix
-  mode bits, parent-directory writability, POSIX ACL presence, and active
-  read/write open probes when it can run as the agent identity.
+  mode bits, parent-directory writability, ACL uncertainty, symlink
+  targets, and active read/write open probes when it can run as the agent
+  identity.
 - `--socket`: optional Unix socket path. The doctor checks that the path
   is a socket, is not world-writable, is not writable/connectable by the
   agent identity, does not use POSIX ACLs that make mode-bit checks
@@ -613,13 +618,15 @@ Exit codes:
 - `64`: invalid arguments.
 
 The doctor never prints secret values. Active probes only attempt
-non-destructive opens of protected files and broker process environment
-files; they do not read, write, or echo contents. Token-file option
-values are not echoed in findings because configuration mistakes can put
-the token value there. POSIX ACLs on token-file or socket paths make
-mode-bit checks incomplete, so the report is inconclusive. Host-root or
-root-equivalent agents are always unsafe because local permissions
-cannot protect a credential from them.
+non-destructive opens of protected files, broker process environment
+files where the platform exposes them safely, and Unix socket connects;
+they do not read, write, or echo contents. Token-file option values are
+not echoed in findings because configuration mistakes can put the token
+value there. POSIX ACLs on token-file or socket paths make mode-bit
+checks incomplete, so the report is inconclusive. On macOS, ACL state is
+reported as unknown in the first milestone. Host-root or root-equivalent
+agents are always unsafe because local permissions cannot protect a
+credential from them; on macOS this includes `admin` and `wheel`.
 For file-token deployments, `--token-file` must be supplied for an OK
 result. `--broker-pid` verifies broker environment reachability and is
 sufficient only for broker environment-token deployments; if the broker

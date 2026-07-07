@@ -63,4 +63,5 @@ type ProbeResult struct {
 	TokenFileReadable bool `json:"token_file_readable"`
 	TokenFileWritable bool `json:"token_file_writable"`
 	BrokerEnvReadable bool `json:"broker_env_readable"`
+	SocketConnectable bool `json:"socket_connectable"`
 }

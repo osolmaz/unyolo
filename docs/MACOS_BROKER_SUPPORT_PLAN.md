@@ -1,6 +1,6 @@
 # macOS Broker Support Plan
 
-Status: planning, 2026-07-07.
+Status: implemented for the conservative doctor milestone, 2026-07-07.
 
 ## Goal
 

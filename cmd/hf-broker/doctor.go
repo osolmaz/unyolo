@@ -122,6 +122,7 @@ func runDoctorIsolationProbe(stdout, stderr io.Writer, args []string) error {
 	fs.SetOutput(stderr)
 	tokenFile := fs.String("token-file", "", "token file path to probe")
 	brokerPID := fs.Int("broker-pid", 0, "broker process PID to probe")
+	socket := fs.String("socket", "", "broker Unix socket path to probe")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitError{code: 0}
@@ -131,7 +132,7 @@ func runDoctorIsolationProbe(stdout, stderr io.Writer, args []string) error {
 	if fs.NArg() != 0 {
 		return exitError{code: 64, message: "probe does not accept positional arguments"}
 	}
-	return json.NewEncoder(stdout).Encode(isolation.RunProbe(*tokenFile, *brokerPID))
+	return json.NewEncoder(stdout).Encode(isolation.RunProbe(*tokenFile, *brokerPID, *socket))
 }
 
 type optionalIntFlag struct {

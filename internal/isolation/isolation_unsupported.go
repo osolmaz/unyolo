@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package isolation
 
@@ -13,7 +13,7 @@ func Run(context.Context, Options) (Report, error) {
 }
 
 // RunProbe is a no-op on unsupported platforms.
-func RunProbe(string, int) ProbeResult {
+func RunProbe(string, int, string) ProbeResult {
 	return ProbeResult{}
 }
 

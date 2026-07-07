@@ -34,3 +34,17 @@ jobs:
       - run: slophammer-go mutate . --target internal/scope/decision.go
       - run: slophammer-go check .
       - run: slophammer-go check . --execute
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - run: go test ./...
+      - run: go build ./cmd/hf-broker
+      - run: GOOS=darwin GOARCH=amd64 go build ./cmd/hf-broker
+      - run: GOOS=darwin GOARCH=arm64 go build ./cmd/hf-broker
