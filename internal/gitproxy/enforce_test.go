@@ -156,6 +156,73 @@ func TestCheckPushOverridesGrantableFailuresOnly(t *testing.T) {
 	}
 }
 
+func TestClassifyPush(t *testing.T) {
+	ctx := context.Background()
+	oldSHA := strings.Repeat("a", 40)
+	newSHA := strings.Repeat("b", 40)
+	tagOld := strings.Repeat("c", 40)
+	tagNew := strings.Repeat("d", 40)
+	mirror := &fakeMirror{
+		refs: map[string]string{
+			"refs/heads/main": oldSHA,
+			"refs/heads/old":  oldSHA,
+			"refs/tags/v1":    tagOld,
+		},
+		objects:   map[string]GitObject{},
+		ancestors: map[string]bool{oldSHA + ".." + newSHA: true},
+	}
+	req := ReceivePackRequest{Commands: []Command{
+		{Old: oldSHA, New: newSHA, Ref: "refs/heads/main"},
+		{Old: zeroSHA, New: strings.Repeat("e", 40), Ref: "refs/heads/new"},
+		{Old: oldSHA, New: zeroSHA, Ref: "refs/heads/old"},
+		{Old: tagOld, New: tagNew, Ref: "refs/tags/v1"},
+	}}
+	classes, failures, err := ClassifyPush(ctx, req, mirror)
+	if err != nil || len(failures) != 0 {
+		t.Fatalf("ClassifyPush() classes=%+v failures=%+v err=%v", classes, failures, err)
+	}
+	got := map[string]RefUpdateKind{}
+	for _, class := range classes {
+		got[class.Command.Ref] = class.Kind
+	}
+	want := map[string]RefUpdateKind{
+		"refs/heads/main": RefUpdateAppend,
+		"refs/heads/new":  RefUpdateAppend,
+		"refs/heads/old":  RefUpdateRefDelete,
+		"refs/tags/v1":    RefUpdateTagUpdate,
+	}
+	for ref, kind := range want {
+		if got[ref] != kind {
+			t.Fatalf("classified %s as %s, want %s; all=%+v", ref, got[ref], kind, got)
+		}
+	}
+
+	mirror.ancestors = map[string]bool{}
+	classes, failures, err = ClassifyPush(ctx, ReceivePackRequest{Commands: []Command{{Old: oldSHA, New: newSHA, Ref: "refs/heads/main"}}}, mirror)
+	if err != nil || len(failures) != 0 || len(classes) != 1 || classes[0].Kind != RefUpdateHistoryRewrite {
+		t.Fatalf("non-ff ClassifyPush() classes=%+v failures=%+v err=%v", classes, failures, err)
+	}
+}
+
+func TestClassifyPushRejectsReplaceAndStaleRefs(t *testing.T) {
+	ctx := context.Background()
+	oldSHA := strings.Repeat("a", 40)
+	newSHA := strings.Repeat("b", 40)
+	mirror := &fakeMirror{
+		refs:      map[string]string{"refs/heads/main": oldSHA},
+		objects:   map[string]GitObject{},
+		ancestors: map[string]bool{},
+	}
+	_, failures, err := ClassifyPush(ctx, ReceivePackRequest{Commands: []Command{{Old: zeroSHA, New: newSHA, Ref: "refs/replace/abc"}}}, mirror)
+	if err != nil || len(failures) != 1 || failures[0].Reason != "replace refs refused" {
+		t.Fatalf("replace ClassifyPush() failures=%+v err=%v", failures, err)
+	}
+	_, failures, err = ClassifyPush(ctx, ReceivePackRequest{Commands: []Command{{Old: zeroSHA, New: newSHA, Ref: "refs/heads/main"}}}, mirror)
+	if err != nil || len(failures) != 1 || failures[0].Reason != "client ref is stale" {
+		t.Fatalf("stale ClassifyPush() failures=%+v err=%v", failures, err)
+	}
+}
+
 func TestDeltaApplication(t *testing.T) {
 	base := []byte("hello world")
 	delta := []byte{

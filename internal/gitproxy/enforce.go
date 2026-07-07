@@ -21,9 +21,97 @@ type Mirror interface {
 // operator-approved grant.
 type OverrideFunc func(Command, string) bool
 
+// RefUpdateKind is the policy-relevant class of one receive-pack command.
+type RefUpdateKind string
+
+const (
+	RefUpdateAppend         RefUpdateKind = "append"
+	RefUpdateHistoryRewrite RefUpdateKind = "history_rewrite"
+	RefUpdateRefDelete      RefUpdateKind = "ref_delete"
+	RefUpdateTagUpdate      RefUpdateKind = "tag_update"
+)
+
+// ClassifiedCommand is one receive-pack command classified for policy.
+type ClassifiedCommand struct {
+	Command Command
+	Kind    RefUpdateKind
+}
+
 // CheckPush verifies that the parsed push is append-only against mirror.
 func CheckPush(ctx context.Context, req ReceivePackRequest, mirror Mirror) ([]RefFailure, error) {
 	return CheckPushWithOverrides(ctx, req, mirror, nil)
+}
+
+// ClassifyPush verifies a push enough to classify every ref update for
+// policy. Stale client refs and inspection errors are returned as failures.
+func ClassifyPush(ctx context.Context, req ReceivePackRequest, mirror Mirror) ([]ClassifiedCommand, []RefFailure, error) {
+	if failures := unsupportedStaticFailures(req.Commands); len(failures) > 0 {
+		return nil, failures, nil
+	}
+	if err := mirror.Ensure(ctx); err != nil {
+		return nil, nil, err
+	}
+	if failures, err := checkClientOldValues(ctx, req.Commands, mirror); err != nil || len(failures) > 0 {
+		return nil, failures, err
+	}
+	if failures, err := storeObjectsForAncestry(ctx, req, mirror); err != nil || len(failures) > 0 {
+		return nil, failures, err
+	}
+	classes, failures, err := classifyCommands(ctx, req.Commands, mirror)
+	if err != nil {
+		return nil, nil, err
+	}
+	return classes, failures, nil
+}
+
+func unsupportedStaticFailures(commands []Command) []RefFailure {
+	var failures []RefFailure
+	for _, command := range commands {
+		if strings.HasPrefix(command.Ref, "refs/replace/") {
+			failures = append(failures, RefFailure{Ref: command.Ref, Reason: "replace refs refused"})
+		}
+	}
+	return failures
+}
+
+func classifyCommands(ctx context.Context, commands []Command, mirror Mirror) ([]ClassifiedCommand, []RefFailure, error) {
+	out := make([]ClassifiedCommand, 0, len(commands))
+	var failures []RefFailure
+	for _, command := range commands {
+		kind, failure, err := classifyCommand(ctx, command, mirror)
+		if err != nil {
+			return nil, nil, err
+		}
+		if failure.Reason != "" {
+			failures = append(failures, failure)
+			continue
+		}
+		out = append(out, ClassifiedCommand{Command: command, Kind: kind})
+	}
+	return out, failures, nil
+}
+
+func classifyCommand(ctx context.Context, command Command, mirror Mirror) (RefUpdateKind, RefFailure, error) {
+	switch {
+	case IsZeroSHA(command.New):
+		if strings.HasPrefix(command.Ref, "refs/tags/") {
+			return RefUpdateTagUpdate, RefFailure{}, nil
+		}
+		return RefUpdateRefDelete, RefFailure{}, nil
+	case strings.HasPrefix(command.Ref, "refs/tags/") && !IsZeroSHA(command.Old):
+		return RefUpdateTagUpdate, RefFailure{}, nil
+	case IsZeroSHA(command.Old) || strings.HasPrefix(command.Ref, "refs/tags/"):
+		return RefUpdateAppend, RefFailure{}, nil
+	default:
+		ok, err := mirror.IsAncestor(ctx, command.Old, command.New)
+		if err != nil {
+			return "", RefFailure{}, err
+		}
+		if !ok {
+			return RefUpdateHistoryRewrite, RefFailure{}, nil
+		}
+		return RefUpdateAppend, RefFailure{}, nil
+	}
 }
 
 // CheckPushWithOverrides verifies a push while allowing selected failures to
