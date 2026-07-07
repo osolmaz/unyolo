@@ -73,6 +73,7 @@ func parseDoctorIsolation(stderr io.Writer, args []string) (doctorIsolationComma
 	if fs.NArg() != 0 {
 		return doctorIsolationCommand{}, exitError{code: 64, message: "doctor isolation does not accept positional arguments"}
 	}
+	agentPIDValue := doctorAgentPID(*agentUser, agentUID.set, *agentPID, flagProvided(fs, "agent-pid"))
 	helperPath, err := os.Executable()
 	if err != nil {
 		return doctorIsolationCommand{}, fmt.Errorf("resolve executable path: %w", err)
@@ -82,7 +83,7 @@ func parseDoctorIsolation(stderr io.Writer, args []string) (doctorIsolationComma
 			AgentUser:   *agentUser,
 			AgentUID:    agentUID.value,
 			AgentUIDSet: agentUID.set,
-			AgentPID:    *agentPID,
+			AgentPID:    agentPIDValue,
 			BrokerPID:   *brokerPID,
 			TokenFile:   *tokenFile,
 			Socket:      *socket,
@@ -90,6 +91,23 @@ func parseDoctorIsolation(stderr io.Writer, args []string) (doctorIsolationComma
 		},
 		jsonOutput: *jsonOutput,
 	}, nil
+}
+
+func doctorAgentPID(agentUser string, agentUIDSet bool, agentPID int, agentPIDProvided bool) int {
+	if agentUser != "" || agentUIDSet || agentPIDProvided {
+		return agentPID
+	}
+	return os.Getpid()
+}
+
+func flagProvided(fs *flag.FlagSet, name string) bool {
+	var found bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }
 
 func writeDoctorReport(stdout io.Writer, report isolation.Report, jsonOutput bool) error {

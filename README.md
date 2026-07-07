@@ -78,6 +78,9 @@ hf-broker doctor \
 ```
 
 `hf-broker doctor isolation` is the explicit form and behaves the same.
+If no agent identity flags are supplied, `hf-broker doctor` checks the
+live doctor process. This catches stale sessions that still carry old
+root-equivalent groups after the account has been demoted.
 
 The doctor fails closed when the agent is host root, root-equivalent
 through groups such as `sudo`, `wheel`, `docker`, `lxd`, or `incus`, can

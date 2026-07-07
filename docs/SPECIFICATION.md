@@ -586,7 +586,8 @@ subcommand form for scripts.
 Options:
 
 - `--agent-user` or `--agent-uid`: the agent identity to evaluate. If
-  neither is supplied, the current user is checked.
+  no agent identity or process is supplied, the current doctor process is
+  checked so stale sessions with old supplementary groups are reported.
 - `--agent-pid`: optional running agent process. When supplied, the
   doctor checks process UID, effective and permitted Linux capabilities,
   and HF token variable names in the process environment.

@@ -92,6 +92,42 @@ func TestDoctorDefaultRunsIsolationWithFlags(t *testing.T) {
 	}
 }
 
+func TestDoctorDefaultChecksCurrentProcess(t *testing.T) {
+	cmd, err := parseDoctorIsolation(ioDiscard{}, nil)
+	if err != nil {
+		t.Fatalf("parseDoctorIsolation() error = %v", err)
+	}
+	if cmd.options.AgentPID != os.Getpid() {
+		t.Fatalf("agent PID = %d, want current process PID %d", cmd.options.AgentPID, os.Getpid())
+	}
+	if cmd.options.AgentUser != "" || cmd.options.AgentUIDSet {
+		t.Fatalf("agent identity = user %q uidSet %v, want implicit current process", cmd.options.AgentUser, cmd.options.AgentUIDSet)
+	}
+}
+
+func TestDoctorDefaultDoesNotOverrideExplicitAgentIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want int
+	}{
+		{name: "agent user", args: []string{"--agent-user", "agent"}},
+		{name: "agent uid", args: []string{"--agent-uid", "1234"}},
+		{name: "agent pid zero", args: []string{"--agent-pid", "0"}},
+		{name: "agent pid explicit", args: []string{"--agent-pid", "1234"}, want: 1234},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, err := parseDoctorIsolation(ioDiscard{}, tc.args)
+			if err != nil {
+				t.Fatalf("parseDoctorIsolation() error = %v", err)
+			}
+			if cmd.options.AgentPID != tc.want {
+				t.Fatalf("agent PID = %d, want %d", cmd.options.AgentPID, tc.want)
+			}
+		})
+	}
+}
+
 func TestDoctorIsolationRejectsUnknownSubcommand(t *testing.T) {
 	err := runWithArgs(context.Background(), os.Getenv, ioDiscard{}, ioDiscard{}, []string{"doctor", "wat"})
 	var exitErr exitError
