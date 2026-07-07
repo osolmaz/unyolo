@@ -2,14 +2,15 @@
 
 Status: draft for vNext, 2026-07-08.
 
-This specification defines the future policy-rule format for hf-broker.
-It is meant to replace the current exact-entry `scope.json` model with a
-small typed rule system that supports wildcards, repo listing, requestable
-approvals, and generated temporary grants.
+This specification defines the cutover policy-rule format for hf-broker.
+It replaces the exact-entry v1 `scope.json` model with a small typed rule
+system that supports wildcards, repo listing, requestable approvals, and
+generated temporary grants.
 
-The current v1 `repos[]` and `buckets[]` schema remains valid until this
-format is implemented. A v1 entry can be compiled into equivalent vNext
-rules during migration.
+The current v1 `repos[]` and `buckets[]` schema remains valid only until
+this format is implemented. After cutover, runtime policy loading accepts
+only `version: 2`. A one-shot converter may translate v1 files, but the
+broker does not keep dual runtime formats.
 
 ## Smallest Valid File
 
@@ -239,31 +240,46 @@ The broker does not intersect or merge different grant policies. Requiring
 identical request policies keeps operator prompts predictable and avoids
 silent privilege changes from overlapping wildcard rules.
 
+For cutover, overlap validation is intentionally conservative. When two
+`request` rules have the same possible client and operation, and their
+target matchers are identical or one side contains a wildcard that can
+cover the other side, their normalized grant policies must be identical.
+If the broker cannot prove two request rules are disjoint, it rejects the
+policy at startup. Operators should split or narrow rules until the
+overlap is obvious.
+
 ## Operation Registry
 
 Operation names are stable strings. New operations require an explicit
-registry entry and tests.
+registry entry, default grant mode, and tests.
 
-| Operation | Meaning |
-|-----------|---------|
-| `repo.list` | List repositories visible to the upstream token, filtered by matching target rules. |
-| `repo.metadata.read` | Read repository metadata such as id, type, visibility, tags, and timestamps. |
-| `repo.contents.read` | Read repo files, file listings, README/card text, branches, tags, commits, or raw blobs. |
-| `git.fetch` | Git clone/fetch. This is content read. |
-| `git.push.append` | Fast-forward push or new ref creation allowed by append-only policy. |
-| `git.push.force` | Non-fast-forward ref update. |
-| `git.ref.delete` | Branch or non-tag ref deletion. |
-| `git.tag.update` | Tag move or tag deletion. |
-| `bucket.object.list` | List bucket/object keys or prefixes. |
-| `bucket.object.read` | Read object contents. |
-| `bucket.object.write` | Create object or overwrite with snapshot policy. |
-| `bucket.object.delete` | Delete object or prefix. |
-| `repo.create.private` | Create a private repository. |
-| `repo.metadata.update` | Update non-security metadata such as description, tags, or card metadata. |
-| `repo.visibility.update` | Change repository visibility. |
-| `repo.settings.update` | Change repository settings beyond non-security metadata. |
-| `repo.members.update` | Add, remove, or modify members, roles, or permissions. |
-| `repo.delete` | Delete a repository. |
+Operation-family globs are allowed only at a single dot segment boundary:
+`repo.*`, `git.*`, `bucket.*`. Arbitrary partial operation globs such as
+`repo.*.read` or `git.push.*` are invalid in v2.
+
+| Operation | Default grant mode | Meaning |
+|-----------|--------------------|---------|
+| `repo.list` | none | List repositories visible to the upstream token, filtered by matching target rules. |
+| `repo.metadata.read` | none | Read repository metadata such as id, type, visibility, tags, and timestamps. |
+| `repo.contents.read` | window | Read repo files, file listings, README/card text, branches, tags, commits, or raw blobs. |
+| `git.fetch` | window | Git clone/fetch. This is content read. |
+| `git.push.append` | window | Fast-forward push or new ref creation allowed by append-only policy. |
+| `git.push.force` | window | Non-fast-forward ref update. |
+| `git.ref.delete` | window | Branch or non-tag ref deletion. |
+| `git.tag.update` | window | Tag move or tag deletion. |
+| `bucket.object.list` | none | List bucket/object keys or prefixes. |
+| `bucket.object.read` | window | Read object contents. |
+| `bucket.object.write` | window | Create object or overwrite with snapshot policy. |
+| `bucket.object.delete` | execution | Delete object or prefix. |
+| `repo.create.private` | execution | Create a private repository. |
+| `repo.metadata.update` | execution | Update non-security metadata such as description, tags, or card metadata. |
+| `repo.visibility.update` | execution | Change repository visibility. |
+| `repo.settings.update` | execution | Change repository settings beyond non-security metadata. |
+| `repo.members.update` | execution | Add, remove, or modify members, roles, or permissions. |
+| `repo.delete` | execution | Delete a repository. |
+
+Operations with default grant mode `none` are not grantable. They must be
+allowed by static policy or refused.
 
 Never grantable through hf-broker, even with this policy format:
 
@@ -278,6 +294,25 @@ Never grantable through hf-broker, even with this policy format:
 
 `repo.list` is intentionally separate from `repo.contents.read`.
 
+The repo listing endpoint is:
+
+```text
+GET /api/repos
+```
+
+Query parameters:
+
+| Parameter | Required | Meaning |
+|-----------|----------|---------|
+| `type` | no | `model`, `dataset`, or `space`. |
+| `owner` | no | Exact owner filter. |
+| `private` | no | `true` or `false`. |
+| `limit` | no | Page size. Default `100`, maximum `500`. |
+| `cursor` | no | Opaque pagination cursor returned by the broker. |
+
+The cursor is opaque. Clients must not parse it. Invalid cursors return
+`400`.
+
 Listing may return repository inventory metadata:
 
 ```json
@@ -289,18 +324,30 @@ Listing may return repository inventory metadata:
       "private": true,
       "updated_at": "2026-07-08T00:00:00Z"
     }
-  ]
+  ],
+  "next_cursor": "opaque"
 }
 ```
 
-Listing must not return file paths, file contents, README text, model
-card text, dataset rows, branch names, tag names, commit messages, or raw
-blobs. Those require `repo.contents.read` or `git.fetch`.
+Metadata includes only: repo id, type, owner, name, visibility/private
+flag, created timestamp, updated timestamp, tags, and cheap aggregate
+counters such as likes or downloads when the upstream list API already
+returns them.
+
+Contents include: file paths, file contents, README text, model card
+text, dataset card text, dataset rows, branches, tags, commit ids, commit
+messages, raw blobs, LFS metadata, and sibling/file-tree listings.
+Contents require `repo.contents.read` or `git.fetch`.
 
 When a `repo.list` rule uses wildcard targets, the broker may ask the Hub
 for accessible repos, then filter the response through matching policy
 targets before returning it. If a repo does not match a `repo.list` allow
 rule, it is not included in the response.
+
+Public repositories are not special when accessed through the broker.
+Broker-routed public reads still require policy. Agents may read public
+Hub data directly without the broker if they do not need the broker's
+credential or audit trail.
 
 ## Target Matchers
 
@@ -362,6 +409,12 @@ expressions.
 - Globs in `owner`, `name`, and `type` never match `/`.
 - `..`, empty segments, and absolute paths are invalid.
 - Matching is case-sensitive.
+- URL path inputs are decoded exactly once before matching.
+- Invalid percent encoding, NUL bytes, absolute paths, and any `..`
+  segment are refused before policy matching.
+- Leading `/` is trimmed only for repo file paths and bucket keys.
+- Unicode is compared as received. The broker does not normalize Unicode
+  in v2.
 
 Examples:
 
@@ -399,6 +452,11 @@ Initial attribute keys:
 
 Unknown attribute keys are rejected unless the operation registry defines
 them.
+
+Numeric attributes use `actual <= configured` semantics. Negative
+configured values are invalid policy. If a rule requires a numeric
+attribute and the broker cannot classify the request's actual value, the
+request is refused.
 
 ## Grant Policy
 
@@ -461,14 +519,29 @@ Generated grant rules:
 - are exact or narrower than the approved request
 - never broaden static policy
 - are checked after deny rules
+- are bound to the requesting client only
 - expire absolutely
 - are consumed according to their operation mode
 - are audit-logged on every lifecycle transition
+
+Generated grant rules must never use `clients: ["*"]`.
 
 ## Validation Rules
 
 The broker validates the full policy at startup and refuses to boot on
 invalid policy.
+
+Hard limits:
+
+| Limit | Value |
+|-------|-------|
+| Policy file size | 1 MiB |
+| Rules | 1000 |
+| Targets per rule | 50 |
+| Operations per rule | 50 |
+| Clients per rule | 100 |
+| Glob length | 256 bytes |
+| Rule id length | 128 bytes |
 
 Invalid policy examples:
 
@@ -486,11 +559,42 @@ Invalid policy examples:
 - `deny` rule with `grant_policy`
 - grant policy where defaults exceed maxima
 - a repo target whose `owner` or `name` contains `/`
+- generated grant rule with `clients: ["*"]`
+- file larger than 1 MiB
+- rule, target, client, operation, glob, or id count beyond the hard
+  limits
 
 Policy is loaded only from local disk. There is no broker endpoint to
 read, update, or reload policy.
 
+## Audit Requirements
+
+Every policy decision audit entry includes at least:
+
+```json
+{
+  "client": "local-agent",
+  "operation": "git.push.append",
+  "target": "dataset/dutifulbob/hf-broker-smoke",
+  "decision": "allowed",
+  "matched_deny_rule_ids": [],
+  "matched_grant_rule_ids": [],
+  "matched_allow_rule_ids": ["append-smoke-datasets"],
+  "matched_request_rule_ids": [],
+  "grant_id": ""
+}
+```
+
+Audit entries must not include upstream tokens, broker client secrets,
+request bodies that may contain secrets, pack contents, file contents, or
+object payloads.
+
 ## Legacy Scope Migration
+
+This is a cutover migration. After the policy engine is implemented, the
+broker runtime accepts only `version: 2`. The project may provide a
+one-shot converter for old v1 `scope.json`, but the server must not keep
+both v1 and v2 runtime policy loaders.
 
 A v1 repo entry:
 
@@ -539,6 +643,11 @@ compiles to standing vNext rules equivalent to:
 
 Existing `grant_policy` entries compile to `request` rules with matching
 targets and grant bounds.
+
+The old `internal/scope` package is replaced by `internal/policy`.
+Handlers classify requests into `policy.Request`; only `internal/policy`
+decides allow/request/deny. Do not compile v2 policy into the old scope
+model.
 
 ## Security Invariants
 
