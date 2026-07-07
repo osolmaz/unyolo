@@ -738,13 +738,15 @@ supplied, the report is inconclusive.
   is edit-file-then-restart. (Optional `SIGHUP` reload may be added later
   but is not required for v1.)
 
-### Policy rules vNext
+### Policy rules cutover
 
-The future wildcard/rule-based policy format is specified separately in
-`docs/POLICY_RULES_SPEC.md`. That format keeps the same fail-closed
+The cutover wildcard/rule-based policy format is specified separately in
+`docs/POLICY_RULES_SPEC.md`. Once implemented, it replaces the current
+exact-entry `scope.json` runtime format. It keeps the same fail-closed
 boundary, but adds typed wildcard targets, independent `allow`,
-`request`, and `deny` rules, explicit repo-listing capability, separate
-repo-content-read capability, and generated temporary grant rules.
+`request`, and `deny` rules, explicit repo-listing capability, JSend JSON
+API responses, separate repo-content-read capability, and generated
+temporary grant rules.
 
 ## Request Handling
 
