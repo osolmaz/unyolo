@@ -19,6 +19,8 @@ import (
 	"github.com/osolmaz/hf-broker/internal/scope"
 )
 
+var version = "dev"
+
 func main() {
 	os.Exit(exitCodeForRun(run(), os.Stderr))
 }
@@ -53,12 +55,17 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 		return runServer(ctx, getenv, stdout, stderr)
 	}
 	switch args[0] {
+	case "--version", "version":
+		_, err := fmt.Fprintln(stdout, version)
+		return err
 	case "doctor":
 		return runDoctor(ctx, stdout, stderr, args[1:])
+	case "setup":
+		return runSetup(ctx, stdout, stderr, args[1:])
 	case "__doctor-isolation-probe":
 		return runDoctorIsolationProbe(stdout, stderr, args[1:])
 	default:
-		return exitError{code: 64, message: "usage: hf-broker [doctor [isolation]]"}
+		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup]"}
 	}
 }
 
