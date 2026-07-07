@@ -78,12 +78,21 @@ sudo install -o hf-broker -g hf-broker -m 0600 /path/to/hf-token /etc/hf-broker/
 export HF_BROKER_HF_TOKEN_FILE=/etc/hf-broker/hf-token
 ```
 
-`scope.json` lists the only repos the broker will touch:
+`scope.json` is a rule file. This minimal rule lets one client read,
+fetch, and append-push one dataset repo:
 
 ```json
 {
-  "repos": [
-    {"id": "osolmaz/scraped-news", "type": "dataset", "mode": "append-only"}
+  "rules": [
+    {
+      "id": "allow-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["repo.contents.read", "git.fetch", "git.push.append"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    }
   ]
 }
 ```
@@ -191,7 +200,7 @@ is the password:
 
 ```sh
 git remote set-url origin https://broker.tailnet:8080/datasets/osolmaz/scraped-news
-git config credential.helper '!f() { echo username=agent; echo password=$HF_BROKER_SHARED_SECRET; }; f'
+git config credential.helper '!f() { echo username=default; echo password=$HF_BROKER_SHARED_SECRET; }; f'
 ```
 
 Clones, pulls, fast-forward pushes, new branches, and new tags work as
@@ -204,23 +213,25 @@ normal. A history rewrite is refused with a message at the terminal:
 ## Telegram Grants
 
 Destructive git pushes are still refused by default. To make a narrow
-exception, enable a grant policy for the repo in `scope.json` and
+exception, add a request rule for the repo in `scope.json` and
 configure the broker host with a Telegram bot token and the single
 operator chat id:
 
 ```json
 {
-  "repos": [
+  "rules": [
     {
-      "id": "osolmaz/scraped-news",
-      "type": "dataset",
-      "mode": "append-only",
+      "id": "request-scraped-news-force",
+      "effect": "request",
+      "clients": ["default"],
+      "operations": ["git.push.force"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ],
       "grant_policy": {
-        "git_history_rewrite": {
-          "default_minutes": 5,
-          "default_max_uses": 1,
-          "max_uses": 3
-        }
+        "default_minutes": 5,
+        "default_max_uses": 1,
+        "max_uses": 3
       }
     }
   ]
@@ -238,19 +249,24 @@ An authenticated client can then request a time-boxed grant:
 curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
-    "operation": "git_history_rewrite",
-    "target": "dataset/osolmaz/scraped-news",
-    "ref": "refs/heads/main",
+    "operation": "git.push.force",
+    "target": {
+      "kind": "repo",
+      "type": "dataset",
+      "owner": "osolmaz",
+      "name": "scraped-news",
+      "refs": ["refs/heads/main"]
+    },
     "reason": "recover main after a bad commit",
     "minutes": 5,
     "max_uses": 1,
     "client_request_id": "recover-main-20260706"
   }' \
-  https://broker.tailnet:8080/grants
+  https://broker.tailnet:8080/api/grants
 ```
 
-Other grantable git capabilities are `git_ref_delete` for non-tag
-branch/ref deletion and `git_tag_update` for moving or deleting tags.
+Other grantable git capabilities are `git.ref.delete` for non-tag
+branch/ref deletion and `git.tag.update` for moving or deleting tags.
 Each one must be enabled separately in `scope.json`.
 
 The broker sends the request to Telegram with Approve and Deny buttons

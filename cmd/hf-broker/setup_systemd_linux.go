@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -266,12 +267,28 @@ func writeFile(path string, data []byte, mode os.FileMode) error {
 }
 
 func renderScopeJSON(repo, repoType string) ([]byte, error) {
+	if !validRepo(repo) {
+		return nil, fmt.Errorf("--repo must be owner/name")
+	}
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("--repo must be owner/name")
+	}
 	body := map[string]any{
-		"repos": []map[string]string{{
-			"id":   repo,
-			"type": repoType,
-			"mode": "append-only",
-		}},
+		"rules": []map[string]any{
+			{
+				"id":         "allow-configured-repo",
+				"effect":     "allow",
+				"clients":    []string{"*"},
+				"operations": []string{"repo.contents.read", "git.fetch", "git.push.append"},
+				"targets": []map[string]string{{
+					"kind":  "repo",
+					"type":  repoType,
+					"owner": owner,
+					"name":  name,
+				}},
+			},
+		},
 	}
 	data, err := json.MarshalIndent(body, "", "  ")
 	if err != nil {

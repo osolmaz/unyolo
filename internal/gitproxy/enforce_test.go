@@ -20,6 +20,7 @@ type fakeMirror struct {
 	ensureErr   error
 	storedTypes []string
 	advanced    []string
+	deleted     []string
 }
 
 func (m *fakeMirror) Ensure(context.Context) error {
@@ -50,6 +51,12 @@ func (m *fakeMirror) IsAncestor(_ context.Context, oldSHA, newSHA string) (bool,
 func (m *fakeMirror) AdvanceRef(_ context.Context, ref, newSHA string) error {
 	m.refs[ref] = newSHA
 	m.advanced = append(m.advanced, ref)
+	return nil
+}
+
+func (m *fakeMirror) DeleteRef(_ context.Context, ref string) error {
+	delete(m.refs, ref)
+	m.deleted = append(m.deleted, ref)
 	return nil
 }
 
@@ -97,6 +104,14 @@ func TestCheckPushFastForwardStoresObjectsAndAdvances(t *testing.T) {
 	}
 	if mirror.refs["refs/heads/main"] != newSHA || len(mirror.advanced) != 1 {
 		t.Fatalf("advanced refs = %+v advanced=%+v", mirror.refs, mirror.advanced)
+	}
+
+	deleteReq := ReceivePackRequest{Commands: []Command{{Old: newSHA, New: zeroSHA, Ref: "refs/heads/main"}}}
+	if err := AdvanceAccepted(ctx, deleteReq, mirror); err != nil {
+		t.Fatalf("AdvanceAccepted(delete) error = %v", err)
+	}
+	if _, ok := mirror.refs["refs/heads/main"]; ok || len(mirror.deleted) != 1 {
+		t.Fatalf("delete advance refs = %+v deleted=%+v", mirror.refs, mirror.deleted)
 	}
 }
 

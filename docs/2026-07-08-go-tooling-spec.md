@@ -43,6 +43,8 @@ golangci-lint run
 govulncheck ./...
 /home/bob/go/bin/slophammer-go dry .
 /home/bob/go/bin/slophammer-go crap .
+./scripts/check-go-coverage.sh
+./scripts/check-mutation.sh
 /home/bob/go/bin/slophammer-go check .
 ```
 
@@ -64,7 +66,12 @@ The main CI workflow must:
 - install and run pinned `golangci-lint`
 - install and run pinned `govulncheck`
 - install and run pinned `slophammer-go`
-- run Slophammer DRY, CRAP, mutation scans, and full checks
+- run Slophammer DRY, CRAP, the coverage script, the mutation script, and
+  non-executing checks
+
+`scripts/check-mutation.sh` defaults to mutation scan mode for CI. Set
+`HF_BROKER_FULL_MUTATION=1` to run the current full mutation target; that is
+intentionally a manual hardening path until the target has no survivors.
 
 The release workflow must at least run:
 

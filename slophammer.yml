@@ -25,9 +25,6 @@ go:
       min_tokens: 100
   crap:
     max_score: 8
-  mutation:
-    targets:
-      - internal/scope/decision.go
   dependency_boundaries:
     - from: internal/httpapi
       allow:
@@ -37,20 +34,20 @@ go:
         - internal/gitproxy
         - internal/gitproxy/pktline
         - internal/grants
+        - internal/jsend
         - internal/mirror
         - internal/notify
-        - internal/scope
+        - internal/policy
     - from: internal/gitproxy
       allow:
         - internal/audit
         - internal/config
         - internal/gitproxy/pktline
-        - internal/scope
     - from: internal/mirror
       allow:
         - internal/audit
         - internal/config
-    - from: internal/scope
+    - from: internal/policy
       allow: []
     - from: internal/config
       allow: []
@@ -63,6 +60,8 @@ go:
     - from: internal/audit
       allow: []
     - from: internal/grants
+      allow: []
+    - from: internal/jsend
       allow: []
     - from: internal/notify
       allow: []

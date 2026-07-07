@@ -84,8 +84,20 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderScopeJSON() error = %v", err)
 	}
+	if _, err := renderScopeJSON("osolmaz/team/scraped-news", opts.RepoType); err == nil {
+		t.Fatal("renderScopeJSON() with extra path segment error = nil")
+	}
 	scopeText := string(scopeJSON)
-	for _, want := range []string{`"id": "osolmaz/scraped-news"`, `"type": "dataset"`, `"mode": "append-only"`} {
+	for _, want := range []string{
+		`"rules"`,
+		`"operations"`,
+		`"repo.contents.read"`,
+		`"git.fetch"`,
+		`"git.push.append"`,
+		`"type": "dataset"`,
+		`"owner": "osolmaz"`,
+		`"name": "scraped-news"`,
+	} {
 		if !strings.Contains(scopeText, want) {
 			t.Fatalf("scope json missing %q:\n%s", want, scopeText)
 		}

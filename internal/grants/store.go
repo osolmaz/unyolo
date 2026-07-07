@@ -6,6 +6,7 @@
 package grants
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -32,6 +33,11 @@ const (
 	// DefaultReservationTimeout is how long a use reservation can remain
 	// in-flight before restart recovery treats it as needing operator review.
 	DefaultReservationTimeout = 5 * time.Minute
+)
+
+const (
+	ModeWindow    = "window"
+	ModeExecution = "execution"
 )
 
 // Status is the lifecycle state of one grant request.
@@ -68,6 +74,8 @@ var (
 	ErrNotPending = errors.New("grant is not pending")
 	// ErrNotActive means a grant cannot be used because it is not active.
 	ErrNotActive = errors.New("grant is not active")
+	// ErrIdempotencyConflict means a client reused an idempotency key with a different request.
+	ErrIdempotencyConflict = errors.New("idempotency conflict")
 )
 
 // Options configures a Store.
@@ -84,10 +92,13 @@ type Request struct {
 	Client            string
 	ClientRequestID   string
 	Operation         string
+	Mode              string
 	Target            string
 	Ref               string
+	Attrs             map[string]any
 	Reason            string
 	RequestedDuration time.Duration
+	PendingTimeout    time.Duration
 	MaxUses           int
 }
 
@@ -106,8 +117,10 @@ type Grant struct {
 	Client              string           `json:"client"`
 	ClientRequestID     string           `json:"client_request_id,omitempty"`
 	Operation           string           `json:"operation"`
+	Mode                string           `json:"mode,omitempty"`
 	Target              string           `json:"target"`
 	Ref                 string           `json:"ref"`
+	Attrs               map[string]any   `json:"attrs,omitempty"`
 	Reason              string           `json:"reason"`
 	RequestedMinutes    int              `json:"requested_minutes"`
 	MaxUses             int              `json:"max_uses"`
@@ -168,8 +181,10 @@ type fileData struct {
 
 type normalizedRequest struct {
 	ClientRequestID string
+	Mode            string
 	Reason          string
 	Duration        time.Duration
+	PendingTimeout  time.Duration
 	Minutes         int
 	MaxUses         int
 }
@@ -225,6 +240,41 @@ func (s *Store) Get(id string) (Grant, error) {
 	return grant, nil
 }
 
+// GetForClient returns one grant only when it belongs to client.
+func (s *Store) GetForClient(client, id string) (Grant, error) {
+	grant, err := s.Get(id)
+	if err != nil {
+		return Grant{}, err
+	}
+	if grant.Client != client {
+		return Grant{}, ErrNotFound
+	}
+	return grant, nil
+}
+
+// ListForClient returns all grants for one client after expiring due grants.
+func (s *Store) ListForClient(client string) ([]Grant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	expired := s.expireGrants(&data)
+	out := make([]Grant, 0, len(data.Grants))
+	for _, grant := range data.Grants {
+		if grant.Client == client {
+			out = append(out, grant)
+		}
+	}
+	if len(expired) > 0 {
+		if err := s.save(data); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) normalizeRequest(req Request) (normalizedRequest, error) {
 	duration, minutes, err := s.requestDuration(req.RequestedDuration)
 	if err != nil {
@@ -242,10 +292,16 @@ func (s *Store) normalizeRequest(req Request) (normalizedRequest, error) {
 	if err != nil {
 		return normalizedRequest{}, err
 	}
+	mode, err := normalizeMode(req.Mode)
+	if err != nil {
+		return normalizedRequest{}, err
+	}
 	return normalizedRequest{
 		ClientRequestID: clientRequestID,
+		Mode:            mode,
 		Reason:          reason,
 		Duration:        duration,
+		PendingTimeout:  requestPendingTimeout(req.PendingTimeout, s.opts.PendingTimeout),
 		Minutes:         minutes,
 		MaxUses:         maxUses,
 	}, nil
@@ -262,15 +318,29 @@ func normalizeReason(value string) (string, error) {
 	return reason, nil
 }
 
+func normalizeMode(value string) (string, error) {
+	switch value {
+	case "", ModeWindow:
+		return ModeWindow, nil
+	case ModeExecution:
+		return ModeExecution, nil
+	default:
+		return "", errors.New("grant mode is invalid")
+	}
+}
+
 func (s *Store) createRequest(req Request, normalized normalizedRequest, now time.Time) (Grant, bool, error) {
 	var grant Grant
 	created := false
 	if err := s.update(func(data *fileData) error {
 		if existing, ok := findIdempotentRequest(data, req.Client, normalized.ClientRequestID); ok {
+			if !sameIdempotentRequest(existing, req, normalized) {
+				return ErrIdempotencyConflict
+			}
 			grant = existing
 			return nil
 		}
-		next, err := newGrant(req, normalized, now, s.opts.PendingTimeout)
+		next, err := newGrant(req, normalized, now)
 		if err != nil {
 			return err
 		}
@@ -284,6 +354,31 @@ func (s *Store) createRequest(req Request, normalized normalizedRequest, now tim
 	return grant, created, nil
 }
 
+func sameIdempotentRequest(existing Grant, req Request, normalized normalizedRequest) bool {
+	return existing.Operation == req.Operation &&
+		existing.Mode == normalized.Mode &&
+		existing.Target == req.Target &&
+		existing.Ref == req.Ref &&
+		attrsEqual(existing.Attrs, req.Attrs) &&
+		existing.Reason == normalized.Reason &&
+		existing.RequestedMinutes == normalized.Minutes &&
+		existing.MaxUses == normalized.MaxUses
+}
+
+func attrsEqual(left, right map[string]any) bool {
+	leftJSON, leftOK := canonicalAttrs(left)
+	rightJSON, rightOK := canonicalAttrs(right)
+	return leftOK && rightOK && bytes.Equal(leftJSON, rightJSON)
+}
+
+func canonicalAttrs(attrs map[string]any) ([]byte, bool) {
+	if len(attrs) == 0 {
+		return []byte("{}"), true
+	}
+	data, err := json.Marshal(attrs)
+	return data, err == nil
+}
+
 func findIdempotentRequest(data *fileData, client, clientRequestID string) (Grant, bool) {
 	if clientRequestID == "" {
 		return Grant{}, false
@@ -291,7 +386,7 @@ func findIdempotentRequest(data *fileData, client, clientRequestID string) (Gran
 	return findClientRequest(data, client, clientRequestID)
 }
 
-func newGrant(req Request, normalized normalizedRequest, now time.Time, pendingTimeout time.Duration) (Grant, error) {
+func newGrant(req Request, normalized normalizedRequest, now time.Time) (Grant, error) {
 	id, err := randomID(16)
 	if err != nil {
 		return Grant{}, err
@@ -306,16 +401,29 @@ func newGrant(req Request, normalized normalizedRequest, now time.Time, pendingT
 		Client:           req.Client,
 		ClientRequestID:  normalized.ClientRequestID,
 		Operation:        req.Operation,
+		Mode:             normalized.Mode,
 		Target:           req.Target,
 		Ref:              req.Ref,
+		Attrs:            cloneAttrs(req.Attrs),
 		Reason:           normalized.Reason,
 		RequestedMinutes: normalized.Minutes,
 		MaxUses:          normalized.MaxUses,
 		Status:           StatusPending,
 		CreatedAt:        now,
-		PendingExpiresAt: now.Add(pendingTimeout),
+		PendingExpiresAt: now.Add(normalized.PendingTimeout),
 		ExpiresAt:        now.Add(normalized.Duration),
 	}, nil
+}
+
+func cloneAttrs(attrs map[string]any) map[string]any {
+	if len(attrs) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(attrs))
+	for key, value := range attrs {
+		out[key] = value
+	}
+	return out
 }
 
 // Approve activates a pending grant.
@@ -592,11 +700,16 @@ func (s *Store) ReleaseUse(id string) (Grant, error) {
 
 // MatchActive returns an active grant for client, operation, target, and ref.
 func (s *Store) MatchActive(client, operation, target, ref string) (Grant, bool, error) {
+	return s.MatchActiveFunc(client, operation, target, ref, nil)
+}
+
+// MatchActiveFunc returns the first active grant that also satisfies match.
+func (s *Store) MatchActiveFunc(client, operation, target, ref string, match func(Grant) bool) (Grant, bool, error) {
 	var out Grant
 	found := false
 	err := s.update(func(data *fileData) error {
 		for _, grant := range data.Grants {
-			if grantMatchesActive(grant, client, operation, target, ref) {
+			if grantMatchesActive(grant, client, operation, target, ref) && (match == nil || match(grant)) {
 				out = grant
 				found = true
 				return nil
@@ -686,6 +799,13 @@ func (s *Store) requestDuration(requested time.Duration) (time.Duration, int, er
 	return duration, minutes, nil
 }
 
+func requestPendingTimeout(requested, fallback time.Duration) time.Duration {
+	if requested <= 0 {
+		return fallback
+	}
+	return requested
+}
+
 func requestMaxUses(requested int) (int, error) {
 	if requested < 0 {
 		return 0, errors.New("grant max uses must be positive")
@@ -746,10 +866,27 @@ func (s *Store) load() (fileData, error) {
 }
 
 func normalizeLoadedGrant(grant *Grant) {
+	defaultLoadedGrantMode(grant)
+	legacyUseBudget := defaultLoadedGrantMaxUses(grant)
+	normalizeLoadedGrantReservation(grant)
+	normalizeLegacyUsedGrantStatus(grant, legacyUseBudget)
+}
+
+func defaultLoadedGrantMode(grant *Grant) {
+	if grant.Mode == "" {
+		grant.Mode = ModeWindow
+	}
+}
+
+func defaultLoadedGrantMaxUses(grant *Grant) bool {
 	legacyUseBudget := grant.MaxUses <= 0
 	if legacyUseBudget {
 		grant.MaxUses = DefaultMaxUses
 	}
+	return legacyUseBudget
+}
+
+func normalizeLoadedGrantReservation(grant *Grant) {
 	if grant.ReservedCount < 0 {
 		grant.ReservedCount = 0
 	}
@@ -757,6 +894,9 @@ func normalizeLoadedGrant(grant *Grant) {
 		grant.ReservationRetained = false
 		grant.ReservedAt = time.Time{}
 	}
+}
+
+func normalizeLegacyUsedGrantStatus(grant *Grant, legacyUseBudget bool) {
 	if legacyUseBudget && grant.Status == StatusActive && !grant.UsedAt.IsZero() && grant.UsedCount == 0 {
 		grant.UsedCount = grant.MaxUses
 		grant.Status = StatusConsumed

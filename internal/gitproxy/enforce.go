@@ -15,6 +15,7 @@ type Mirror interface {
 	ReadObject(context.Context, string) (string, []byte, bool, error)
 	IsAncestor(context.Context, string, string) (bool, error)
 	AdvanceRef(context.Context, string, string) error
+	DeleteRef(context.Context, string) error
 }
 
 // OverrideFunc reports whether a specific ref failure is covered by an
@@ -51,10 +52,7 @@ func ClassifyPush(ctx context.Context, req ReceivePackRequest, mirror Mirror) ([
 	if err := mirror.Ensure(ctx); err != nil {
 		return nil, nil, err
 	}
-	if failures, err := checkClientOldValues(ctx, req.Commands, mirror); err != nil || len(failures) > 0 {
-		return nil, failures, err
-	}
-	if failures, err := storeObjectsForAncestry(ctx, req, mirror); err != nil || len(failures) > 0 {
+	if failures, err := preparePushClassification(ctx, req, mirror); err != nil || len(failures) > 0 {
 		return nil, failures, err
 	}
 	classes, failures, err := classifyCommands(ctx, req.Commands, mirror)
@@ -62,6 +60,13 @@ func ClassifyPush(ctx context.Context, req ReceivePackRequest, mirror Mirror) ([
 		return nil, nil, err
 	}
 	return classes, failures, nil
+}
+
+func preparePushClassification(ctx context.Context, req ReceivePackRequest, mirror Mirror) ([]RefFailure, error) {
+	if failures, err := checkClientOldValues(ctx, req.Commands, mirror); err != nil || len(failures) > 0 {
+		return failures, err
+	}
+	return storeObjectsForAncestry(ctx, req, mirror)
 }
 
 func unsupportedStaticFailures(commands []Command) []RefFailure {
@@ -92,26 +97,46 @@ func classifyCommands(ctx context.Context, commands []Command, mirror Mirror) ([
 }
 
 func classifyCommand(ctx context.Context, command Command, mirror Mirror) (RefUpdateKind, RefFailure, error) {
-	switch {
-	case IsZeroSHA(command.New):
-		if strings.HasPrefix(command.Ref, "refs/tags/") {
-			return RefUpdateTagUpdate, RefFailure{}, nil
-		}
-		return RefUpdateRefDelete, RefFailure{}, nil
-	case strings.HasPrefix(command.Ref, "refs/tags/") && !IsZeroSHA(command.Old):
+	if IsZeroSHA(command.New) {
+		return classifyDeletedCommand(command), RefFailure{}, nil
+	}
+	if updatingExistingTag(command) {
 		return RefUpdateTagUpdate, RefFailure{}, nil
-	case IsZeroSHA(command.Old) || strings.HasPrefix(command.Ref, "refs/tags/"):
-		return RefUpdateAppend, RefFailure{}, nil
-	default:
-		ok, err := mirror.IsAncestor(ctx, command.Old, command.New)
-		if err != nil {
-			return "", RefFailure{}, err
-		}
-		if !ok {
-			return RefUpdateHistoryRewrite, RefFailure{}, nil
-		}
+	}
+	if createsRefOrTag(command) {
 		return RefUpdateAppend, RefFailure{}, nil
 	}
+	return classifyBranchUpdate(ctx, command, mirror)
+}
+
+func classifyDeletedCommand(command Command) RefUpdateKind {
+	if isTagRef(command.Ref) {
+		return RefUpdateTagUpdate
+	}
+	return RefUpdateRefDelete
+}
+
+func updatingExistingTag(command Command) bool {
+	return isTagRef(command.Ref) && !IsZeroSHA(command.Old)
+}
+
+func createsRefOrTag(command Command) bool {
+	return IsZeroSHA(command.Old) || isTagRef(command.Ref)
+}
+
+func classifyBranchUpdate(ctx context.Context, command Command, mirror Mirror) (RefUpdateKind, RefFailure, error) {
+	ok, err := mirror.IsAncestor(ctx, command.Old, command.New)
+	if err != nil {
+		return "", RefFailure{}, err
+	}
+	if !ok {
+		return RefUpdateHistoryRewrite, RefFailure{}, nil
+	}
+	return RefUpdateAppend, RefFailure{}, nil
+}
+
+func isTagRef(ref string) bool {
+	return strings.HasPrefix(ref, "refs/tags/")
 }
 
 // CheckPushWithOverrides verifies a push while allowing selected failures to
@@ -159,6 +184,9 @@ func checkAncestryWithOverrides(ctx context.Context, commands []Command, mirror 
 func AdvanceAccepted(ctx context.Context, req ReceivePackRequest, mirror Mirror) error {
 	for _, command := range req.Commands {
 		if IsZeroSHA(command.New) {
+			if err := mirror.DeleteRef(ctx, command.Ref); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := mirror.AdvanceRef(ctx, command.Ref, command.New); err != nil {

@@ -16,7 +16,7 @@ import (
 	"github.com/osolmaz/hf-broker/internal/audit"
 	"github.com/osolmaz/hf-broker/internal/config"
 	"github.com/osolmaz/hf-broker/internal/httpapi"
-	"github.com/osolmaz/hf-broker/internal/scope"
+	"github.com/osolmaz/hf-broker/internal/policy"
 )
 
 var version = "dev"
@@ -74,13 +74,13 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
-	scp, err := scope.LoadFile(cfg.ScopeFile)
+	pol, err := policy.LoadFile(cfg.ScopeFile)
 	if err != nil {
 		return err
 	}
 	handler, err := httpapi.New(httpapi.Options{
 		Config:  cfg,
-		Scope:   scp,
+		Scope:   pol,
 		Audit:   audit.New(stdout),
 		Context: ctx,
 	})

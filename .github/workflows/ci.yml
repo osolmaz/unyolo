@@ -33,12 +33,9 @@ jobs:
       - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
       - run: slophammer-go dry .
       - run: slophammer-go crap .
-      - run: slophammer-go mutate . --target internal/scope --scan
-      - run: slophammer-go mutate . --target internal/gitproxy --scan
-      - run: slophammer-go mutate . --target internal/mirror --scan
-      - run: slophammer-go mutate . --target internal/scope/decision.go
+      - run: ./scripts/check-go-coverage.sh
+      - run: ./scripts/check-mutation.sh
       - run: slophammer-go check .
-      - run: slophammer-go check . --execute
 
   macos:
     runs-on: macos-latest

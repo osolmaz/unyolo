@@ -63,7 +63,7 @@ func clearBrokerEnv(t *testing.T) {
 func TestRunWithContextStartsAndStops(t *testing.T) {
 	dir := t.TempDir()
 	scopePath := filepath.Join(dir, "scope.json")
-	if err := os.WriteFile(scopePath, []byte(`{"repos":[]}`), 0o600); err != nil {
+	if err := os.WriteFile(scopePath, []byte(`{"rules":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	port := freePort(t)
@@ -99,7 +99,7 @@ func TestRunWithContextStartsAndStops(t *testing.T) {
 func TestRunWithContextReturnsListenError(t *testing.T) {
 	dir := t.TempDir()
 	scopePath := filepath.Join(dir, "scope.json")
-	if err := os.WriteFile(scopePath, []byte(`{"repos":[]}`), 0o600); err != nil {
+	if err := os.WriteFile(scopePath, []byte(`{"rules":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

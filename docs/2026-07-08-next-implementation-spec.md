@@ -64,7 +64,7 @@ Make handlers classify requests into `policy.Request` before enforcement.
 
 Scope:
 
-- Replace direct `scope.DecideRepo` calls with `policy.Decide`.
+- Route all handler authorization through `policy.Decide`.
 - Classify Git fetch, append push, force push, ref delete, tag update, LFS
   read/write, grant requests, and future `/api/*` routes.
 - Preserve the append-only Git enforcement path before forwarding upstream.
@@ -148,20 +148,20 @@ Implement metadata-only repository listing.
 Scope:
 
 - Add `GET /api/repos`.
-- Support `type`, `owner`, `private`, `limit`, and `cursor`.
-- Return only metadata allowed by `repo.list` and `repo.metadata.read`.
-- Filter upstream-visible repos through policy before returning them.
-- Use broker-owned opaque cursors.
-- Bind cursors to client and query shape.
+- Support `type`, `owner`, `limit`, and reserved `cursor`.
+- Return only type, owner, and name for exact repo targets that have both
+  `repo.list` and `repo.metadata.read` allowed for the authenticated client.
+- Do not call the Hub list API or expand wildcard policy targets in the
+  cutover endpoint.
+- Return `invalid_cursor` for any non-empty cursor.
 - Keep file paths, refs, commits, README/card text, blobs, LFS metadata, and
   file-tree listings out of listing responses.
 
 Acceptance tests:
 
-- broad listing returns only policy-matching repos
+- listing returns exact policy targets only
 - listing does not return file paths or commit ids
 - invalid cursor returns `invalid_cursor`
-- cursor cannot be reused by another client
 - public repo still requires broker policy when accessed through broker
 
 ## Slice 6: Doctor Polish

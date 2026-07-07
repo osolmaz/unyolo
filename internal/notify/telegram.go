@@ -28,6 +28,18 @@ var decisionStatusTexts = map[string]string{
 	"Grant decision ignored":             "⚠️ No change. This decision was ignored.",
 }
 
+var operationTexts = map[string]string{
+	"repo.contents.read":   "read repo contents",
+	"git.fetch":            "fetch from a Git repo",
+	"git.push.append":      "append-push to a Git repo",
+	"git.push.force":       "force-push / rewrite Git history",
+	"git.ref.delete":       "delete a Git ref",
+	"git.tag.update":       "move or delete a Git tag",
+	"bucket.object.read":   "read a bucket object",
+	"bucket.object.write":  "write a bucket object",
+	"bucket.object.delete": "delete a bucket object",
+}
+
 const (
 	pendingExpiredStatus = "⌛ Expired. Request was not approved in time."
 	activeExpiredStatus  = "⌛ Expired. Access window ended."
@@ -47,8 +59,10 @@ type GrantMessage struct {
 	DecisionToken    string
 	Client           string
 	Operation        string
+	Mode             string
 	Target           string
 	Ref              string
+	Attrs            map[string]any
 	Reason           string
 	RequestedMinutes int
 	MaxUses          int
@@ -397,36 +411,69 @@ func callbackData(action DecisionAction, id, token string) string {
 }
 
 func grantText(msg GrantMessage) string {
-	return fmt.Sprintf("🔐 Approval needed for hf-broker\n\n%s is asking to %s.\n\n📍 Target: %s\n🌿 Ref: %s\n⏱️ Access: %d minutes\n🔁 Uses: %s\n⌛ Request expires: %s\n\n📝 Reason: %s\n\n⚠️ Approve only if this looks right.",
+	return fmt.Sprintf("🔐 Approval needed for hf-broker\n\n%s is asking to %s.\n\n%s\n\n📝 Reason: %s\n\n⚠️ Approve only if this looks right.",
 		msg.Client,
 		operationText(msg.Operation),
-		msg.Target,
-		msg.Ref,
-		msg.RequestedMinutes,
-		usesText(msg.MaxUses),
-		formatTelegramTime(msg.PendingExpiresAt),
+		strings.Join(grantDetailLines(msg), "\n"),
 		msg.Reason,
 	)
 }
 
-func usesText(maxUses int) string {
-	if maxUses <= 1 {
-		return "1 push"
+func grantDetailLines(msg GrantMessage) []string {
+	lines := []string{fmt.Sprintf("📍 Target: %s", msg.Target)}
+	if msg.Ref != "" {
+		lines = append(lines, fmt.Sprintf("🌿 Ref: %s", msg.Ref))
 	}
-	return fmt.Sprintf("up to %d pushes", maxUses)
+	if msg.Mode != "" {
+		lines = append(lines, fmt.Sprintf("⚙️ Mode: %s", msg.Mode))
+	}
+	if attrs := attrsText(msg.Attrs); attrs != "" {
+		lines = append(lines, fmt.Sprintf("🏷️ Attrs: %s", attrs))
+	}
+	return append(lines,
+		fmt.Sprintf("⏱️ Access: %d minutes", msg.RequestedMinutes),
+		fmt.Sprintf("🔁 Uses: %s", usesText(msg.Operation, msg.MaxUses)),
+		fmt.Sprintf("⌛ Request expires: %s", formatTelegramTime(msg.PendingExpiresAt)),
+	)
+}
+
+func attrsText(attrs map[string]any) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(attrs)
+	if err != nil {
+		return "present"
+	}
+	return string(data)
+}
+
+func usesText(operation string, maxUses int) string {
+	noun := "use"
+	if pushBudgetOperation(operation) {
+		noun = "push"
+	}
+	if maxUses <= 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("up to %d %s", maxUses, pluralNoun(noun))
+}
+
+func pluralNoun(noun string) string {
+	switch noun {
+	case "push":
+		return "pushes"
+	default:
+		return noun + "s"
+	}
+}
+
+func pushBudgetOperation(operation string) bool {
+	return strings.HasPrefix(operation, "git.push.")
 }
 
 func operationText(operation string) string {
-	switch operation {
-	case "git_history_rewrite":
-		return "force-push / rewrite Git history"
-	case "git_ref_delete":
-		return "delete a Git ref"
-	case "git_tag_update":
-		return "move or delete a Git tag"
-	default:
-		return operation
-	}
+	return lookupText(operationTexts, operation)
 }
 
 func formatTelegramTime(value time.Time) string {
@@ -434,10 +481,14 @@ func formatTelegramTime(value time.Time) string {
 }
 
 func decisionStatusText(answer string) string {
-	if status, ok := decisionStatusTexts[answer]; ok {
-		return status
+	return lookupText(decisionStatusTexts, answer)
+}
+
+func lookupText(values map[string]string, fallback string) string {
+	if value, ok := values[fallback]; ok {
+		return value
 	}
-	return answer
+	return fallback
 }
 
 func withDecisionStatus(text, status string) string {

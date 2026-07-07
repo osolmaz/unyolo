@@ -116,39 +116,32 @@ a hand-edited `scope.json` for what is reachable:
 
 ```json
 {
-  "repos": [
+  "rules": [
     {
-      "id": "osolmaz/scraped-news",
-      "type": "dataset",
-      "mode": "append-only",
+      "id": "append-scraped-news",
+      "effect": "allow",
+      "clients": ["agent"],
+      "operations": ["repo.contents.read", "git.fetch", "git.push.append"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    },
+    {
+      "id": "request-dangerous-git-updates",
+      "effect": "request",
+      "clients": ["agent"],
+      "operations": ["git.push.force", "git.ref.delete", "git.tag.update"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ],
       "grant_policy": {
-        "git_history_rewrite": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "git_ref_delete": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "git_tag_update": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        }
+        "default_minutes": 5,
+        "max_minutes": 60,
+        "request_ttl_minutes": 5,
+        "default_max_uses": 1,
+        "max_uses": 3
       }
     }
-  ],
-  "buckets": [
-    {"id": "osolmaz/pipeline-output", "mode": "append-only",
-     "snapshot_prefix": "snapshots/",
-     "grant_policy": {
-       "bucket_delete": {"allowed": ["object", "prefix"]}
-     }}
   ]
 }
 ```
@@ -171,7 +164,10 @@ POST /{repo_path}/git-receive-pack
 
 plus pass-through of the Xet/LFS transfer endpoints those flows require
 (uploads to content-addressed storage are additive by construction and
-carry no destructive capability).
+carry no destructive capability). Git LFS upload requests do not carry
+the Git ref, so they are authorized against repo-level append permission
+or an active append grant; the later `git-receive-pack` request enforces
+the concrete ref before any Git mutation reaches upstream.
 
 ### Push enforcement
 
@@ -286,9 +282,14 @@ Smallest valid git override request:
 
 ```json
 {
-  "operation": "git_history_rewrite",
-  "target": "dataset/osolmaz/scraped-news",
-  "ref": "refs/heads/main",
+  "operation": "git.push.force",
+  "target": {
+    "kind": "repo",
+    "type": "dataset",
+    "owner": "osolmaz",
+    "name": "scraped-news",
+    "refs": ["refs/heads/main"]
+  },
   "reason": "repair main after a bad push"
 }
 ```
@@ -303,13 +304,14 @@ Grant modes:
 | Mode | Used for | Behavior |
 |------|----------|----------|
 | `window` | Git push overrides | Operator approves a short-lived permission for one client, target, ref, and use budget. |
-| `execution` | Settings/admin/bucket-destructive actions | Operator approves one broker-built plan. The broker executes that exact plan once. |
+| `execution` | Reserved broker-built plans | Operator approves one exact plan. No execution-plan actions are exposed in this cutover. |
 
 Window grants are appropriate when the broker cannot know the final
 request body until the agent performs the operation, as with
-`git-receive-pack`. Execution grants are required for settings,
-repository administration, and bucket deletion because the broker can
-precompute and display the exact mutation before approval.
+`git-receive-pack`. Execution grants are the reserved model for future
+operations whose exact mutation can be precomputed before approval; the
+current runtime does not expose repo administration, settings, members,
+create, delete, bucket administration, or generic Hub API operations.
 
 Grant lifecycle:
 
@@ -332,13 +334,13 @@ Initial grantable actions:
 
 | Action | Mode | Target | Notes |
 |--------|------|--------|-------|
-| `git_history_rewrite` | `window` | repo + exact ref | May override a non-fast-forward update of a non-tag, non-replace ref when policy and use budget allow it. |
-| `git_ref_delete` | `window` | repo + exact ref | May override deletion of a non-tag, non-replace ref, including a branch, when policy and use budget allow it. |
-| `git_tag_update` | `window` | repo + exact tag ref | May override moving or deleting a tag when policy and use budget allow it. |
-| `repo_create_private` | `execution` | exact repo id | Creates only a private repo predeclared in `scope.json`. |
-| `repo_metadata_update` | `execution` | exact repo id | Non-security metadata only, such as description, tags, or card metadata. |
-| `repo_visibility_update` | `execution` | exact repo id | Exact `private_to_public` or `public_to_private` direction must be allowed by policy. |
-| `bucket_delete` | `execution` | bucket object or prefix | Requires a deletion manifest; object/prefix shape must be allowed by policy. |
+| `git.push.force` | `window` | repo + exact ref | May override a non-fast-forward update of a non-tag, non-replace ref when policy and use budget allow it. |
+| `git.ref.delete` | `window` | repo + exact ref | May override deletion of a non-tag, non-replace ref, including a branch, when policy and use budget allow it. |
+| `git.tag.update` | `window` | repo + exact tag ref | May override moving or deleting a tag when policy and use budget allow it. |
+
+Repo administration, bucket administration, settings, members, create,
+delete, and generic Hub API operations are not grantable in this
+cutover.
 
 Never grantable through hf-broker:
 
@@ -356,9 +358,10 @@ Never grantable through hf-broker:
 Execution grants are approved over a canonical plan, not over loose text.
 The broker builds the plan after reading upstream state. The operator
 sees the action, target, before/after diff, risk label, expiry, and plan
-hash.
+hash. This is a reserved contract for future work; no execution-plan
+action is implemented or exposed in this cutover.
 
-Example visibility plan:
+Reserved visibility-plan shape:
 
 ```json
 {
@@ -371,10 +374,11 @@ Example visibility plan:
 }
 ```
 
-Before execution, the broker re-reads upstream state under the relevant
-target lock. If the current state no longer matches the plan's `before`
-snapshot, execution is refused and a fresh request is required. Execution
-plans are single-use; there is no multi-use settings/admin grant.
+Before any future execution action runs, the broker must re-read upstream
+state under the relevant target lock. If the current state no longer
+matches the plan's `before` snapshot, execution is refused and a fresh
+request is required. Execution plans are single-use; there is no
+multi-use settings/admin grant.
 
 ### Idempotency and concurrency
 
@@ -428,7 +432,7 @@ at least:
   "event": "grant-used",
   "grant_id": "...",
   "client": "local-smoke",
-  "action": "git_history_rewrite",
+  "action": "git.push.force",
   "target": "dataset/dutifulbob/hf-broker-smoke",
   "ref": "refs/heads/main",
   "mode": "window",
@@ -526,23 +530,23 @@ cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
 internal/config/                 env + scope.json loading and validation
 internal/auth/                   shared-secret extraction and constant-time check
 internal/isolation/              local runtime isolation doctor checks
-internal/scope/                  scope model + allow/deny decision engine
+internal/policy/                 rule-based policy parser and decision engine
 internal/gitproxy/               receive-pack parsing, enforcement, upstream forward
 internal/gitproxy/pktline/       pkt-line framing reader/writer
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
 internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
 internal/grants/                 grant store, expiry, decision (M3)
 internal/notify/                 Notifier interface + telegram impl (M4)
+internal/jsend/                  JSON API response envelopes
 internal/httpapi/                Echo router, handlers, refusal responses, audit
 internal/audit/                  structured slog wiring
 ```
 
 Boundaries (enforced by Slophammer `dependency_boundaries`): `httpapi`
 depends on Echo and the feature packages; feature packages depend on
-`scope`, `config`, `audit`; `scope`/`config`/`auth`/`pktline` depend on
-nothing internal. Domain logic (parsing, policy decisions, ancestry)
-stays free of HTTP framework types so it is unit-testable without a
-server.
+`policy`, `config`, `audit`; `policy`/`config`/`auth`/`pktline` depend
+on nothing internal. Domain logic (parsing, policy decisions, ancestry)
+stays free of HTTP framework types so it is unit-testable without a server.
 
 ## Configuration
 
@@ -635,119 +639,23 @@ sufficient only for broker environment-token deployments; if the broker
 process advertises `HF_BROKER_HF_TOKEN_FILE` and no `--token-file` is
 supplied, the report is inconclusive.
 
-### scope.json (full schema)
+### scope.json
 
-```json
-{
-  "repos": [
-    {
-      "id": "osolmaz/scraped-news",
-      "type": "dataset",
-      "mode": "append-only",
-      "grant_policy": {
-        "git_history_rewrite": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "git_ref_delete": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "git_tag_update": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "repo_metadata_update": {
-          "default_minutes": 5,
-          "max_minutes": 60
-        },
-        "repo_visibility_update": {
-          "allowed": ["public_to_private"]
-        }
-      }
-    }
-  ],
-  "buckets": [
-    {
-      "id": "osolmaz/pipeline-output",
-      "mode": "append-only",
-      "snapshot_prefix": "snapshots/",
-      "grant_policy": {
-        "bucket_delete": {
-          "allowed": ["object", "prefix"],
-          "default_minutes": 5,
-          "max_minutes": 60
-        }
-      }
-    }
-  ]
-}
-```
+The runtime format is the wildcard/rule-based policy format specified in
+`docs/POLICY_RULES_SPEC.md`. The old exact-entry `repos[]` and
+`buckets[]` format is rejected at startup. The top level contains only
+`rules`; each rule has an `effect` (`allow`, `request`, or `deny`),
+`clients`, `operations`, `targets`, and optional `attrs` and
+`grant_policy`.
 
-- `repos[].id`: `owner/name`, required, must not contain `..` or a
-  second slash beyond the single separator.
-- `repos[].type`: one of `model` | `dataset` | `space`. Determines the
-  upstream URL prefix (see Request Handling). Required.
-- `repos[].mode`: `read-only` | `append-only`. Default `append-only`.
-- `repos[].grant_policy`: optional object listing grantable operations
-  for this exact repo entry. Omitted means no grants are available for
-  this repo beyond standing `read-only` or `append-only` policy.
-- `repos[].grant_policy.git_history_rewrite`,
-  `repos[].grant_policy.git_ref_delete`, and
-  `repos[].grant_policy.git_tag_update`: optional window-grant policies
-  for the matching dangerous git capability on refs in this repo. Fields:
-  - `default_minutes`: default grant duration. Default `5`; must be
-    between `1` and `60`.
-  - `max_minutes`: longest allowed grant duration. Default `60`; must be
-    at least `default_minutes` and at most `60`.
-  - `default_max_uses`: default push-use budget. Default `1`; one push
-    request is one use, regardless of commit count.
-  - `max_uses`: largest requested push-use budget accepted by policy.
-    Default `default_max_uses`; must be at least `default_max_uses` and
-    at most `25`.
-- `repos[].grant_policy.repo_create_private`: optional execution-grant
-  policy allowing the broker to create this exact repo id as private.
-  It accepts `default_minutes` and `max_minutes`.
-- `repos[].grant_policy.repo_metadata_update`: optional execution-grant
-  policy for non-security metadata such as description/tags/card
-  metadata. It accepts `default_minutes` and `max_minutes`.
-- `repos[].grant_policy.repo_visibility_update`: optional
-  execution-grant policy for visibility changes. It requires `allowed`,
-  a non-empty list of `private_to_public` and/or `public_to_private`,
-  and accepts `default_minutes` and `max_minutes`. `private_to_public`
-  should be configured sparingly because it publishes data.
-- `buckets[].id`: `owner/name`, same validation.
-- `buckets[].mode`: `read-only` | `append-only`. Default `append-only`.
-- `buckets[].snapshot_prefix`: required when mode is `append-only`;
-  default `snapshots/`. Must end with `/`. Writes under this prefix are
-  refused for all clients (it is the undo log).
-- `buckets[].grant_policy`: optional object listing grantable operations
-  for this exact bucket entry.
-- `buckets[].grant_policy.bucket_delete`: optional execution-grant
-  policy for object and prefix deletion. It requires `allowed`, a
-  non-empty list of `object` and/or `prefix`, and accepts
-  `default_minutes` and `max_minutes`.
-- Unknown fields are rejected (fail closed), so a typo cannot silently
-  widen access.
-- There is no API to read or reload this file at runtime; changing scope
-  is edit-file-then-restart. (Optional `SIGHUP` reload may be added later
-  but is not required for v1.)
+Unknown fields are rejected fail-closed, so a typo cannot silently widen
+access. There is no API to read or reload this file at runtime; changing
+scope is edit-file-then-restart.
 
-### Policy rules cutover
-
-The cutover wildcard/rule-based policy format is specified separately in
-`docs/POLICY_RULES_SPEC.md`. Once implemented, it replaces the current
-exact-entry `scope.json` runtime format. It keeps the same fail-closed
-boundary, but adds typed wildcard targets, independent `allow`,
-`request`, and `deny` rules, explicit repo-listing capability, JSend JSON
-API responses, separate repo-content-read capability, and generated
-temporary grant rules.
+The current grantable git operations are `git.push.force`,
+`git.ref.delete`, and `git.tag.update`. The broker does not currently
+grant repo administration, bucket administration, settings, members,
+create, delete, or generic Hub API operations.
 
 The concrete implementation sequence is `docs/2026-07-08-next-implementation-spec.md`.
 Go tooling and CI pins are specified in `docs/2026-07-08-go-tooling-spec.md`.
@@ -779,10 +687,11 @@ Broker path → upstream URL, by repo type:
 | `/spaces/{owner}/{repo}.git/...` | `https://huggingface.co/spaces/{owner}/{repo}.git/...` |
 | bucket S3 verbs | Hub S3-compatible endpoint for `{owner}/{repo}` |
 
-The `(owner, repo, type)` triple must match a `scope.json` entry or the
-request is refused before any upstream contact. Upstream base URLs are
-compile-time constants; only the policy-approved `owner`/`repo`/path-tail
-is interpolated, so the agent cannot redirect the proxy elsewhere.
+The classified operation and `(owner, repo, type)` target must match a
+`scope.json` policy rule or an active generated grant before upstream
+contact. Upstream base URLs are compile-time constants; only the
+policy-approved `owner`/`repo`/path-tail is interpolated, so the agent
+cannot redirect the proxy elsewhere.
 
 Outbound requests: strip the client's `Authorization`/`Cookie`, inject
 the upstream token (`Basic x-access-token:<token>` for git,
@@ -874,11 +783,6 @@ go:
       min_tokens: 100
   crap:
     max_score: 8
-  mutation:
-    targets:
-      - internal/scope
-      - internal/gitproxy
-      - internal/mirror
   dependency_boundaries: [ ... as in Repository Layout ... ]
 ```
 
@@ -886,7 +790,8 @@ CI (`.github/workflows/ci.yml`) runs pinned Go tools from
 `docs/2026-07-08-go-tooling-spec.md`: module tidy/verify checks,
 `gofmt`, `go vet ./...`, `go test -race -coverprofile`, `go build`,
 `golangci-lint`, `govulncheck`, coverage gate, and `slophammer-go`
-dry/crap/mutation/check. Hard targets: coverage ≥ 85, CRAP ≤ 8,
+dry/crap/check plus `scripts/check-go-coverage.sh` and
+`scripts/check-mutation.sh`. Hard targets: coverage ≥ 85, CRAP ≤ 8,
 production DRY = 0. `AGENTS.md` in the repo restates these and the
 token-secrecy rule for future agents.
 

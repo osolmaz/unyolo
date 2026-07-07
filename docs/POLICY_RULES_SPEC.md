@@ -7,11 +7,10 @@ It replaces the exact-entry v1 `scope.json` model with a small typed rule
 system that supports wildcards, repo listing, requestable approvals, and
 generated temporary grants.
 
-The current v1 `repos[]` and `buckets[]` schema remains valid only until
-this format is implemented. After cutover, `scope.json` is a rules file:
-runtime policy loading accepts the new `rules` format only. A one-shot
-converter may translate old files, but the broker does not keep dual
-runtime formats.
+The old `repos[]` and `buckets[]` schema is not accepted after cutover.
+`scope.json` is now a rules file: runtime policy loading accepts the new
+`rules` format only. A one-shot converter may translate old files, but
+the broker does not keep dual runtime formats.
 
 ## Smallest Valid File
 
@@ -19,21 +18,26 @@ runtime formats.
 {
   "rules": [
     {
-      "id": "list-visible-repos",
+      "id": "list-smoke-dataset",
       "effect": "allow",
       "clients": ["local-agent"],
       "operations": ["repo.list", "repo.metadata.read"],
       "targets": [
-        {"kind": "repo", "type": "*", "owner": "*", "name": "*"}
+        {
+          "kind": "repo",
+          "type": "dataset",
+          "owner": "dutifulbob",
+          "name": "hf-broker-smoke"
+        }
       ]
     }
   ]
 }
 ```
 
-This lets `local-agent` list repositories and read repository metadata.
-It does not allow file contents, git fetch, git push, settings changes,
-member changes, or deletion.
+This lets `local-agent` list that repository and read its broker-exposed
+metadata. It does not allow file contents, git fetch, git push, settings
+changes, member changes, or deletion.
 
 ## Full Example
 
@@ -41,12 +45,17 @@ member changes, or deletion.
 {
   "rules": [
     {
-      "id": "list-all-repos",
+      "id": "list-smoke-dataset",
       "effect": "allow",
       "clients": ["local-agent"],
       "operations": ["repo.list", "repo.metadata.read"],
       "targets": [
-        {"kind": "repo", "type": "*", "owner": "*", "name": "*"}
+        {
+          "kind": "repo",
+          "type": "dataset",
+          "owner": "dutifulbob",
+          "name": "hf-broker-smoke"
+        }
       ]
     },
     {
@@ -59,8 +68,7 @@ member changes, or deletion.
           "kind": "repo",
           "type": "dataset",
           "owner": "dutifulbob",
-          "name": "hf-broker-*",
-          "refs": ["refs/heads/main"]
+          "name": "hf-broker-*"
         }
       ]
     },
@@ -101,13 +109,13 @@ member changes, or deletion.
       }
     },
     {
-      "id": "deny-openclaw-admin",
+      "id": "deny-openclaw-dangerous-git",
       "effect": "deny",
       "clients": ["*"],
       "operations": [
-        "repo.settings.update",
-        "repo.members.update",
-        "repo.delete"
+        "git.push.force",
+        "git.ref.delete",
+        "git.tag.update"
       ],
       "targets": [
         {"kind": "repo", "type": "*", "owner": "openclaw", "name": "*"}
@@ -148,7 +156,7 @@ Unknown top-level fields are rejected.
 | `clients` | yes | array | Client names or `*`. |
 | `operations` | yes | array | Operation names or operation-family globs. |
 | `targets` | yes | array | Target matchers. |
-| `attrs` | no | object | Extra attribute constraints, such as refs, paths, visibility direction, or bucket keys. |
+| `attrs` | no | object | Extra attribute constraints, such as ref-change class, maximum byte size, or bucket keys. |
 | `grant_policy` | required for `request` | object | Bounds for generated approval requests. |
 | `description` | no | string | Operator-facing explanation. No policy effect. |
 
@@ -421,11 +429,11 @@ cutover format.
 
 | Operation | Default grant mode | Meaning |
 |-----------|--------------------|---------|
-| `repo.list` | none | List repositories visible to the upstream token, filtered by matching target rules. |
-| `repo.metadata.read` | none | Read repository metadata such as id, type, visibility, tags, and timestamps. |
+| `repo.list` | none | List repositories explicitly disclosed by exact policy targets. |
+| `repo.metadata.read` | none | Read broker-exposed repository metadata. In the cutover API this is type, owner, and name only. |
 | `repo.contents.read` | window | Read repo files, file listings, README/card text, branches, tags, commits, or raw blobs. |
 | `git.fetch` | window | Git clone/fetch. This is content read. |
-| `git.push.append` | window | Fast-forward push or new ref creation allowed by append-only policy. |
+| `git.push.append` | window | Fast-forward push or new ref creation allowed by append-only policy. LFS upload support traffic uses the repo target because LFS requests do not carry the Git ref; `git-receive-pack` still enforces the actual ref before mutation. |
 | `git.push.force` | window | Non-fast-forward ref update. |
 | `git.ref.delete` | window | Branch or non-tag ref deletion. |
 | `git.tag.update` | window | Tag move or tag deletion. |
@@ -433,12 +441,6 @@ cutover format.
 | `bucket.object.read` | window | Read object contents. |
 | `bucket.object.write` | window | Create object or overwrite with snapshot policy. |
 | `bucket.object.delete` | execution | Delete object or prefix. |
-| `repo.create.private` | execution | Create a private repository. |
-| `repo.metadata.update` | execution | Update non-security metadata such as description, tags, or card metadata. |
-| `repo.visibility.update` | execution | Change repository visibility. |
-| `repo.settings.update` | execution | Change repository settings beyond non-security metadata. |
-| `repo.members.update` | execution | Add, remove, or modify members, roles, or permissions. |
-| `repo.delete` | execution | Delete a repository. |
 
 Operations with default grant mode `none` are not grantable. They must be
 allowed by static policy or refused.
@@ -448,7 +450,9 @@ Never grantable through hf-broker, even with this policy format:
 - generic Hugging Face API proxying
 - arbitrary HTTP requests
 - upstream token, secret, webhook, or credential changes
-- org roles, resource groups, namespace transfer, or ownership changes
+- repo administration, settings, members, creation, deletion, transfer,
+  namespace move, or ownership changes
+- org roles or resource groups
 - billing, paid hardware, storage tier, or quota changes
 - Space secrets or variables that may expose credentials
 
@@ -468,12 +472,10 @@ Query parameters:
 |-----------|----------|---------|
 | `type` | no | `model`, `dataset`, or `space`. |
 | `owner` | no | Exact owner filter. |
-| `private` | no | `true` or `false`. |
-| `limit` | no | Page size. Default `100`, maximum `500`. |
-| `cursor` | no | Opaque pagination cursor returned by the broker. |
+| `limit` | no | Page size. Default `100`, maximum `100`. |
+| `cursor` | no | Reserved. Any non-empty cursor is invalid in the cutover implementation. |
 
-The cursor is opaque. Clients must not parse it. Invalid cursors return
-`400`.
+Invalid cursors return `400`.
 
 Success response:
 
@@ -483,38 +485,31 @@ Success response:
   "data": {
     "repos": [
       {
-        "id": "dutifulbob/hf-broker-smoke",
         "type": "dataset",
         "owner": "dutifulbob",
-        "name": "hf-broker-smoke",
-        "private": true,
-        "updated_at": "2026-07-08T00:00:00Z"
+        "name": "hf-broker-smoke"
       }
     ],
-    "next_cursor": "opaque"
+    "next_cursor": null
   }
 }
 ```
 
-Metadata includes only: repo id, type, owner, name, visibility/private
-flag, created timestamp, updated timestamp, tags, and cheap aggregate
-counters such as likes or downloads when the upstream list API already
-returns them.
+The cutover endpoint returns local policy metadata only: type, owner, and
+name for exact repo targets that have both `repo.list` and
+`repo.metadata.read` allowed for the authenticated client. It does not
+call the Hub list API, expand wildcard targets, include visibility, tags,
+timestamps, counters, branches, commits, siblings, or files, or return
+raw upstream metadata.
 
 Contents include: file paths, file contents, README text, model card
 text, dataset card text, dataset rows, branches, tags, commit ids, commit
 messages, raw blobs, LFS metadata, and sibling/file-tree listings.
 Contents require `repo.contents.read` or `git.fetch`.
 
-When a `repo.list` rule uses wildcard targets, the broker may ask the Hub
-for accessible repos, then filter the response through matching policy
-targets before returning it. If a repo does not match a `repo.list` allow
-rule, it is not included in the response.
-
-The broker cursor wraps the upstream pagination cursor and the original
-broker filters. A cursor is valid only for the same authenticated client
-and same query shape. The cursor must not expose the upstream token,
-upstream URL, or unfiltered repo ids.
+Wildcard targets authorize matching future requests, but they do not
+create list rows by themselves in the cutover endpoint. A repo is listed
+only when an exact policy target for that repo is visible to the client.
 
 Public repositories are not special when accessed through the broker.
 Broker-routed public reads still require policy. Agents may read public
@@ -562,9 +557,14 @@ Fields:
 | `type` | yes | string | `model`, `dataset`, `space`, or `*`. |
 | `owner` | yes | string | Exact owner or segment glob. |
 | `name` | yes | string | Exact repo name or segment glob. |
-| `refs` | no | array | Exact ref names or ref globs. Applies only to git operations. |
+| `refs` | no | array | Exact ref names or ref globs. Applies only to push/ref-update operations whose refs the broker classifies. LFS upload support traffic does not carry a ref, so it is authorized at the repo target level and the following `git-receive-pack` request enforces ref scope. |
 | `paths` | no | array | Repo file path globs. Applies only to content reads when the broker can classify paths. |
 | `visibility` | no | array | `public`, `private`, or `*` for operations that know visibility. |
+
+Omit an optional array to mean "any". If `refs`, `paths`, or
+`visibility` is present, it must contain at least one value. Empty arrays
+are rejected at startup so a partially edited policy cannot silently
+widen access.
 
 ### Bucket Target
 
@@ -588,6 +588,9 @@ Fields:
 | `snapshot_prefix` | no | string | Prefix reserved for broker snapshots; write/delete requests under it are refused. |
 
 Unknown target fields are rejected.
+
+Omit `keys` to mean "any key". If `keys` is present, it must contain at
+least one value.
 
 ## Glob Rules
 
@@ -627,8 +630,8 @@ Example:
 ```json
 {
   "attrs": {
-    "visibility_direction": ["public_to_private"],
-    "max_bytes": 10485760
+    "max_bytes": 10485760,
+    "ref_change": ["fast_forward"]
   }
 }
 ```
@@ -637,7 +640,6 @@ Initial attribute keys:
 
 | Key | Applies to | Meaning |
 |-----|------------|---------|
-| `visibility_direction` | `repo.visibility.update` | `public_to_private` or `private_to_public`. |
 | `max_bytes` | upload/write operations | Maximum request or object size accepted by the rule. |
 | `ref_change` | git push operations | `create`, `fast_forward`, `non_fast_forward`, `delete`, or `tag_update`. |
 
@@ -702,8 +704,7 @@ Request body:
     "kind": "repo",
     "type": "dataset",
     "owner": "dutifulbob",
-    "name": "hf-broker-smoke",
-    "refs": ["refs/heads/main"]
+    "name": "hf-broker-smoke"
   },
   "attrs": {},
   "minutes": 5,
@@ -740,8 +741,7 @@ normalized `grant_policy`, the broker creates a pending grant:
         "kind": "repo",
         "type": "dataset",
         "owner": "dutifulbob",
-        "name": "hf-broker-smoke",
-        "refs": ["refs/heads/main"]
+        "name": "hf-broker-smoke"
       },
       "attrs": {},
       "mode": "window",
@@ -793,8 +793,7 @@ Grant list response:
           "kind": "repo",
           "type": "dataset",
           "owner": "dutifulbob",
-          "name": "hf-broker-smoke",
-          "refs": ["refs/heads/main"]
+          "name": "hf-broker-smoke"
         },
         "mode": "window",
         "max_uses": 1,

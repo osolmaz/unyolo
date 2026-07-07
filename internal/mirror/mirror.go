@@ -199,6 +199,14 @@ func (r *Repository) AdvanceRef(ctx context.Context, ref, newSHA string) error {
 	return nil
 }
 
+// DeleteRef removes the mirror ref after a successful upstream deletion.
+func (r *Repository) DeleteRef(ctx context.Context, ref string) error {
+	if _, err := r.git(ctx, r.path, "update-ref", "-d", ref); err != nil {
+		return fmt.Errorf("delete ref %s: %w", ref, err)
+	}
+	return nil
+}
+
 func (r *Repository) git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return r.gitWithInput(ctx, dir, nil, args...)
 }

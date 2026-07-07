@@ -1,49 +1,46 @@
 {
-  "repos": [
+  "rules": [
     {
-      "id": "osolmaz/scraped-news",
-      "type": "dataset",
-      "mode": "append-only",
-      "grant_policy": {
-        "git_history_rewrite": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "git_ref_delete": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "git_tag_update": {
-          "default_minutes": 5,
-          "max_minutes": 60,
-          "default_max_uses": 1,
-          "max_uses": 3
-        },
-        "repo_metadata_update": {
-          "default_minutes": 5,
-          "max_minutes": 60
-        },
-        "repo_visibility_update": {
-          "allowed": ["public_to_private"]
-        }
-      }
-    }
-  ],
-  "buckets": [
+      "id": "list-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["repo.list", "repo.metadata.read"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    },
     {
-      "id": "osolmaz/pipeline-output",
-      "mode": "append-only",
-      "snapshot_prefix": "snapshots/",
+      "id": "read-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["repo.contents.read", "git.fetch"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    },
+    {
+      "id": "append-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["git.push.append"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    },
+    {
+      "id": "request-dangerous-git-updates",
+      "effect": "request",
+      "clients": ["default"],
+      "operations": ["git.push.force", "git.ref.delete", "git.tag.update"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ],
       "grant_policy": {
-        "bucket_delete": {
-          "allowed": ["object", "prefix"],
-          "default_minutes": 5,
-          "max_minutes": 60
-        }
+        "default_minutes": 5,
+        "max_minutes": 60,
+        "request_ttl_minutes": 5,
+        "default_max_uses": 1,
+        "max_uses": 3
       }
     }
   ]

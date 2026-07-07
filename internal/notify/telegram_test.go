@@ -28,9 +28,11 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_history_rewrite",
+		Operation:        "git.push.force",
+		Mode:             "window",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
+		Attrs:            map[string]any{"ref_change": "non_fast_forward"},
 		Reason:           "recover",
 		RequestedMinutes: 15,
 		MaxUses:          3,
@@ -48,6 +50,8 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 	text := sent["text"].(string)
 	if !strings.Contains(text, "🔐 Approval needed for hf-broker") ||
 		!strings.Contains(text, "agent is asking to force-push / rewrite Git history.") ||
+		!strings.Contains(text, "⚙️ Mode: window") ||
+		!strings.Contains(text, `🏷️ Attrs: {"ref_change":"non_fast_forward"}`) ||
 		!strings.Contains(text, "⏱️ Access: 15 minutes") ||
 		!strings.Contains(text, "🔁 Uses: up to 3 pushes") ||
 		!strings.Contains(text, "⌛ Request expires: 2026-07-06 01:02 UTC") ||
@@ -65,6 +69,33 @@ func TestTelegramSendGrantRequest(t *testing.T) {
 	}
 	if approve["callback_data"] != "hfbg:approve:grant-id:decision-token" {
 		t.Fatalf("approve callback = %v", approve["callback_data"])
+	}
+}
+
+func TestTelegramGrantTextShowsNonPushUses(t *testing.T) {
+	text := grantText(GrantMessage{
+		Client:           "agent",
+		Operation:        "repo.contents.read",
+		Mode:             "window",
+		Target:           "dataset/acme/repo",
+		Attrs:            map[string]any{"max_bytes": int64(12)},
+		Reason:           "inspect one file",
+		RequestedMinutes: 5,
+		MaxUses:          1,
+		PendingExpiresAt: time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC),
+	})
+	for _, want := range []string{
+		"agent is asking to read repo contents.",
+		"⚙️ Mode: window",
+		`🏷️ Attrs: {"max_bytes":12}`,
+		"🔁 Uses: 1 use",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("grantText() missing %q in %q", want, text)
+		}
+	}
+	if strings.Contains(text, "push") || strings.Contains(text, "🌿 Ref:") {
+		t.Fatalf("grantText() has push/ref wording for non-push grant: %q", text)
 	}
 }
 
@@ -157,7 +188,7 @@ func TestTelegramMarksPendingAndActiveExpiry(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_history_rewrite",
+		Operation:        "git.push.force",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
@@ -213,7 +244,7 @@ func TestTelegramConsumedUpdateClearsTrackedExpiry(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_history_rewrite",
+		Operation:        "git.push.force",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
@@ -264,7 +295,7 @@ func TestTelegramAmbiguousUpdateClearsTrackedExpiry(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_history_rewrite",
+		Operation:        "git.push.force",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",
@@ -301,7 +332,7 @@ func TestTelegramPostErrorsDoNotExposeToken(t *testing.T) {
 		ID:               "grant-id",
 		DecisionToken:    "decision-token",
 		Client:           "agent",
-		Operation:        "git_history_rewrite",
+		Operation:        "git.push.force",
 		Target:           "dataset/acme/repo",
 		Ref:              "refs/heads/main",
 		Reason:           "recover",

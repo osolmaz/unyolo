@@ -24,7 +24,7 @@ func TestTelegramLiveSendGrantRequest(t *testing.T) {
 		ID:               "live-smoke",
 		DecisionToken:    "not-a-real-grant",
 		Client:           "local-smoke",
-		Operation:        "git_history_rewrite",
+		Operation:        "git.push.force",
 		Target:           "dataset/dutifulbob/hf-broker-smoke",
 		Ref:              "refs/heads/main",
 		Reason:           "live Telegram delivery smoke test",
