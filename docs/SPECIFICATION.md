@@ -64,15 +64,16 @@ separate Unix user. A broker running as the same user as the agent is
 decoration. Network reachability is never treated as authorization;
 every request must present a broker secret.
 
-`hf-broker doctor isolation` is the local verification tool for this
-runtime boundary. It checks the configured agent identity, broker
-process, token file, and optional Unix socket and fails closed when the
-agent is host root, root-equivalent through groups such as `sudo`,
-`wheel`, `docker`, `lxd`, or `incus`, can read or modify the token file,
-can read the broker process environment, can write/connect to the
-checked Unix socket, or shares the broker UID. The doctor is a checker,
-not a sandbox: if it reports unsafe, the deployment must be changed; no
-broker policy can protect a local token from host root.
+`hf-broker doctor` is the local verification tool for this runtime
+boundary; `hf-broker doctor isolation` is the explicit form. It checks
+the configured agent identity, broker process, token file, and optional
+Unix socket and fails closed when the agent is host root,
+root-equivalent through groups such as `sudo`, `wheel`, `docker`, `lxd`,
+or `incus`, can read or modify the token file, can read the broker
+process environment, can write/connect to the checked Unix socket, or
+shares the broker UID. The doctor is a checker, not a sandbox: if it
+reports unsafe, the deployment must be changed; no broker policy can
+protect a local token from host root.
 
 **Not protected against:** exfiltration of anything readable through the
 broker (same residual risk as level 1); junk accumulation within scope
@@ -572,12 +573,15 @@ a specific error. The token value is never logged, even at startup.
 The broker binary includes a local host checker:
 
 ```sh
-hf-broker doctor isolation \
+hf-broker doctor \
   --agent-user agent \
   --broker-pid 12345 \
   --token-file /etc/hf-broker/hf-token \
   --socket /run/hf-broker/hf-broker.sock
 ```
+
+`hf-broker doctor isolation` is equivalent and remains the explicit
+subcommand form for scripts.
 
 Options:
 

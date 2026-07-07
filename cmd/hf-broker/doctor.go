@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,19 +10,20 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/osolmaz/hf-broker/internal/isolation"
 )
 
 func runDoctor(ctx context.Context, stdout, stderr io.Writer, args []string) error {
-	if len(args) == 0 {
-		return exitError{code: 64, message: "usage: hf-broker doctor isolation [flags]"}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return runDoctorIsolation(ctx, stdout, stderr, args)
 	}
 	switch args[0] {
 	case "isolation":
 		return runDoctorIsolation(ctx, stdout, stderr, args[1:])
 	default:
-		return exitError{code: 64, message: "usage: hf-broker doctor isolation [flags]"}
+		return exitError{code: 64, message: "usage: hf-broker doctor [isolation] [flags]"}
 	}
 }
 
@@ -51,8 +53,9 @@ type doctorIsolationCommand struct {
 
 func parseDoctorIsolation(stderr io.Writer, args []string) (doctorIsolationCommand, error) {
 	var agentUID optionalIntFlag
-	fs := flag.NewFlagSet("hf-broker doctor isolation", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	var flagOutput bytes.Buffer
+	fs := flag.NewFlagSet("hf-broker doctor [isolation]", flag.ContinueOnError)
+	fs.SetOutput(&flagOutput)
 	agentUser := fs.String("agent-user", "", "agent username to evaluate")
 	fs.Var(&agentUID, "agent-uid", "agent UID to evaluate")
 	agentPID := fs.Int("agent-pid", 0, "optional running agent process PID")
@@ -62,9 +65,10 @@ func parseDoctorIsolation(stderr io.Writer, args []string) (doctorIsolationComma
 	jsonOutput := fs.Bool("json", false, "write JSON output")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
+			_, _ = io.Copy(stderr, &flagOutput)
 			return doctorIsolationCommand{}, exitError{code: 0}
 		}
-		return doctorIsolationCommand{}, exitError{code: 64, message: err.Error()}
+		return doctorIsolationCommand{}, exitError{code: 64, message: "invalid doctor isolation flags"}
 	}
 	if fs.NArg() != 0 {
 		return doctorIsolationCommand{}, exitError{code: 64, message: "doctor isolation does not accept positional arguments"}

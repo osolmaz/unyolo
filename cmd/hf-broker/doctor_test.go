@@ -61,11 +61,57 @@ func TestDoctorIsolationDoesNotEchoTokenFileFlag(t *testing.T) {
 	}
 }
 
+func TestDoctorDefaultRunsIsolationWithFlags(t *testing.T) {
+	dir := t.TempDir()
+	token := filepath.Join(dir, "hf-token")
+	if err := os.WriteFile(token, []byte("hf_secret_value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	err := runWithArgs(context.Background(), os.Getenv, &stdout, &stderr, []string{
+		"doctor",
+		"--agent-uid", "0",
+		"--token-file", token,
+		"--json",
+	})
+	var exitErr exitError
+	if !errors.As(err, &exitErr) || exitErr.code != 1 {
+		t.Fatalf("runWithArgs() error = %#v, want exit code 1", err)
+	}
+	if strings.Contains(stdout.String(), "hf_secret_value") || strings.Contains(stderr.String(), "hf_secret_value") {
+		t.Fatalf("doctor output leaked token value")
+	}
+	var payload struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("decode doctor JSON: %v\n%s", err, stdout.String())
+	}
+	if payload.Status != "unsafe" {
+		t.Fatalf("status = %q, want unsafe", payload.Status)
+	}
+}
+
 func TestDoctorIsolationRejectsUnknownSubcommand(t *testing.T) {
 	err := runWithArgs(context.Background(), os.Getenv, ioDiscard{}, ioDiscard{}, []string{"doctor", "wat"})
 	var exitErr exitError
 	if !errors.As(err, &exitErr) || exitErr.code != 64 {
 		t.Fatalf("runWithArgs() error = %#v, want usage exit", err)
+	}
+}
+
+func TestDoctorIsolationDoesNotEchoUnknownFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runWithArgs(context.Background(), os.Getenv, &stdout, &stderr, []string{
+		"doctor",
+		"-hf_secret_value",
+	})
+	var exitErr exitError
+	if !errors.As(err, &exitErr) || exitErr.code != 64 {
+		t.Fatalf("runWithArgs() error = %#v, want usage exit", err)
+	}
+	if strings.Contains(stdout.String(), "hf_secret_value") || strings.Contains(stderr.String(), "hf_secret_value") || strings.Contains(exitErr.message, "hf_secret_value") {
+		t.Fatalf("doctor output leaked unknown flag value; stdout=%q stderr=%q message=%q", stdout.String(), stderr.String(), exitErr.message)
 	}
 }
 

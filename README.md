@@ -70,12 +70,14 @@ If the broker and agent share a host, run the isolation doctor before
 trusting the setup:
 
 ```sh
-hf-broker doctor isolation \
+hf-broker doctor \
   --agent-user agent \
   --broker-pid "$(pgrep -x hf-broker)" \
   --token-file /etc/hf-broker/hf-token \
   --socket /run/hf-broker/hf-broker.sock
 ```
+
+`hf-broker doctor isolation` is the explicit form and behaves the same.
 
 The doctor fails closed when the agent is host root, root-equivalent
 through groups such as `sudo`, `wheel`, `docker`, `lxd`, or `incus`, can
@@ -84,7 +86,7 @@ can write/connect to the checked Unix socket, or shares the broker UID.
 It can also emit JSON for deployment checks:
 
 ```sh
-hf-broker doctor isolation --agent-user agent --token-file /etc/hf-broker/hf-token --json
+hf-broker doctor --agent-user agent --token-file /etc/hf-broker/hf-token --json
 ```
 
 Exit codes are `0` for OK, `1` for unsafe, `2` for inconclusive, and

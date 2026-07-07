@@ -58,7 +58,7 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 	case "__doctor-isolation-probe":
 		return runDoctorIsolationProbe(stdout, stderr, args[1:])
 	default:
-		return exitError{code: 64, message: "usage: hf-broker [doctor isolation]"}
+		return exitError{code: 64, message: "usage: hf-broker [doctor [isolation]]"}
 	}
 }
 
