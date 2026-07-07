@@ -41,6 +41,14 @@ cp scope.example.json scope.json         # edit: which repos are reachable
 hf-broker
 ```
 
+For a hardened same-host deployment, prefer a broker-only token file
+over placing the token value in the broker environment:
+
+```sh
+sudo install -o hf-broker -g hf-broker -m 0600 /path/to/hf-token /etc/hf-broker/hf-token
+export HF_BROKER_HF_TOKEN_FILE=/etc/hf-broker/hf-token
+```
+
 `scope.json` lists the only repos the broker will touch:
 
 ```json
@@ -55,6 +63,36 @@ Binding defaults to `127.0.0.1:8080`. Expose it to the agent over a
 Tailnet or equivalent — and run the broker somewhere the agent cannot
 log into, otherwise the isolation is decoration. See the specification
 for all environment variables.
+
+## Check Local Isolation
+
+If the broker and agent share a host, run the isolation doctor before
+trusting the setup:
+
+```sh
+hf-broker doctor isolation \
+  --agent-user agent \
+  --broker-pid "$(pgrep -x hf-broker)" \
+  --token-file /etc/hf-broker/hf-token \
+  --socket /run/hf-broker/hf-broker.sock
+```
+
+The doctor fails closed when the agent is host root, root-equivalent
+through groups such as `sudo`, `wheel`, `docker`, `lxd`, or `incus`, can
+read or modify the token file, can read the broker process environment,
+can write/connect to the checked Unix socket, or shares the broker UID.
+It can also emit JSON for deployment checks:
+
+```sh
+hf-broker doctor isolation --agent-user agent --token-file /etc/hf-broker/hf-token --json
+```
+
+Exit codes are `0` for OK, `1` for unsafe, `2` for inconclusive, and
+`64` for invalid arguments. The doctor does not make an unsafe local
+setup safe; it verifies whether the host matches the broker threat model.
+It does not echo the `--token-file` value in findings. For file-token
+deployments, pass `--token-file`; `--broker-pid` checks broker
+environment reachability but does not verify file permissions by itself.
 
 ## Point the agent at it
 

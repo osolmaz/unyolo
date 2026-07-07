@@ -54,6 +54,8 @@ go:
       allow: []
     - from: internal/auth
       allow: []
+    - from: internal/isolation
+      allow: []
     - from: internal/gitproxy/pktline
       allow: []
     - from: internal/audit

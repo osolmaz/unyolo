@@ -17,7 +17,7 @@ func TestRunFailsClosedWhenRequiredEnvMissing(t *testing.T) {
 	clearBrokerEnv(t)
 	t.Setenv("HF_BROKER_HF_TOKEN", "")
 	t.Setenv("HF_BROKER_SHARED_SECRET", "")
-	err := run()
+	err := runWithContext(context.Background(), os.Getenv, ioDiscard{}, ioDiscard{})
 	if err == nil || !strings.Contains(err.Error(), "HF_BROKER_HF_TOKEN") {
 		t.Fatalf("run() error = %v, want missing token", err)
 	}
@@ -29,7 +29,7 @@ func TestRunFailsOnMissingScopeFileWithoutLeakingToken(t *testing.T) {
 	t.Setenv("HF_BROKER_SHARED_SECRET", "abcdefghijklmnopqrstuvwxyz123456")
 	t.Setenv("HF_BROKER_SCOPE_FILE", "does-not-exist.json")
 	t.Setenv("HF_BROKER_PORT", "65530")
-	err := run()
+	err := runWithContext(context.Background(), os.Getenv, ioDiscard{}, ioDiscard{})
 	if err == nil || !strings.Contains(err.Error(), "read scope file") {
 		t.Fatalf("run() error = %v, want missing scope", err)
 	}
@@ -42,6 +42,7 @@ func clearBrokerEnv(t *testing.T) {
 	t.Helper()
 	suffixes := []string{
 		"HF_TOKEN",
+		"HF_TOKEN_FILE",
 		"SHARED_SECRET",
 		"SECRETS_FILE",
 		"BIND_ADDR",

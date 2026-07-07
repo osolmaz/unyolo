@@ -1,7 +1,7 @@
 // Package config loads broker configuration from the environment.
 //
-// Secrets come only from environment variables (or the secrets file they
-// point at), never from files an agent could reach through the broker.
+// Secrets come from environment variables or operator-configured files,
+// never from files an agent could reach through the broker.
 // Loading fails closed: any invalid value aborts startup with a specific
 // error, and no secret value is ever included in an error message.
 package config
@@ -54,16 +54,19 @@ type Config struct {
 // Load reads and validates configuration from getenv (normally
 // os.Getenv). It reads the secrets file, if configured, from disk.
 func Load(getenv func(string) string) (Config, error) {
+	hfToken, err := loadHFToken(getenv)
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
-		HFToken:   brokerEnv(getenv, "HF_TOKEN"),
+		HFToken:   hfToken,
 		BindAddr:  stringOr(brokerEnv(getenv, "BIND_ADDR"), DefaultBindAddr),
 		ScopeFile: stringOr(brokerEnv(getenv, "SCOPE_FILE"), DefaultScopeFile),
 		StateDir:  stringOr(brokerEnv(getenv, "STATE_DIR"), DefaultStateDir),
 	}
 	if cfg.HFToken == "" {
-		return Config{}, fmt.Errorf("%s is required", brokerEnvName("HF_TOKEN"))
+		return Config{}, fmt.Errorf("%s or %s is required", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))
 	}
-	var err error
 	if cfg.Clients, err = loadClients(getenv); err != nil {
 		return Config{}, err
 	}
@@ -71,6 +74,37 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, loadTelegram(getenv, &cfg)
+}
+
+func loadHFToken(getenv func(string) string) (string, error) {
+	token := brokerEnv(getenv, "HF_TOKEN")
+	path := brokerEnv(getenv, "HF_TOKEN_FILE")
+	if token != "" && path != "" {
+		return "", fmt.Errorf("%s and %s are mutually exclusive", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))
+	}
+	if token != "" || path == "" {
+		return token, nil
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- operator-configured path from the environment.
+	if err != nil {
+		return "", fmt.Errorf("read %s: %s", brokerEnvName("HF_TOKEN_FILE"), secretPathReadFailure(err))
+	}
+	token = strings.TrimSpace(string(data))
+	if token == "" {
+		return "", fmt.Errorf("%s is empty", brokerEnvName("HF_TOKEN_FILE"))
+	}
+	return token, nil
+}
+
+func secretPathReadFailure(err error) string {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return "file does not exist"
+	case errors.Is(err, os.ErrPermission):
+		return "permission denied"
+	default:
+		return "failed"
+	}
 }
 
 func loadNumeric(getenv func(string) string, cfg *Config) error {

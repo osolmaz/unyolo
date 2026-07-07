@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -20,18 +20,49 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
+	os.Exit(exitCodeForRun(run(), os.Stderr))
+}
+
+func exitCodeForRun(err error, stderr io.Writer) int {
+	if err == nil {
+		return 0
 	}
+	var exitErr exitError
+	if errors.As(err, &exitErr) {
+		if exitErr.message != "" {
+			_, _ = fmt.Fprintln(stderr, exitErr.message)
+		}
+		return exitErr.code
+	}
+	_, _ = fmt.Fprintln(stderr, err)
+	return 1
 }
 
 func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return runWithContext(ctx, os.Getenv, os.Stdout, os.Stderr)
+	return runWithArgs(ctx, os.Getenv, os.Stdout, os.Stderr, os.Args[1:])
 }
 
 func runWithContext(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer) error {
+	return runServer(ctx, getenv, stdout, stderr)
+}
+
+func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
+	if len(args) == 0 {
+		return runServer(ctx, getenv, stdout, stderr)
+	}
+	switch args[0] {
+	case "doctor":
+		return runDoctor(ctx, stdout, stderr, args[1:])
+	case "__doctor-isolation-probe":
+		return runDoctorIsolationProbe(stdout, stderr, args[1:])
+	default:
+		return exitError{code: 64, message: "usage: hf-broker [doctor isolation]"}
+	}
+}
+
+func runServer(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer) error {
 	cfg, err := config.Load(getenv)
 	if err != nil {
 		return err
@@ -77,4 +108,13 @@ func serveWithContext(ctx context.Context, server *http.Server, stderr io.Writer
 		}
 		return err
 	}
+}
+
+type exitError struct {
+	code    int
+	message string
+}
+
+func (e exitError) Error() string {
+	return e.message
 }

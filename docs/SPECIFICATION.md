@@ -64,6 +64,16 @@ separate Unix user. A broker running as the same user as the agent is
 decoration. Network reachability is never treated as authorization;
 every request must present a broker secret.
 
+`hf-broker doctor isolation` is the local verification tool for this
+runtime boundary. It checks the configured agent identity, broker
+process, token file, and optional Unix socket and fails closed when the
+agent is host root, root-equivalent through groups such as `sudo`,
+`wheel`, `docker`, `lxd`, or `incus`, can read or modify the token file,
+can read the broker process environment, can write/connect to the
+checked Unix socket, or shares the broker UID. The doctor is a checker,
+not a sandbox: if it reports unsafe, the deployment must be changed; no
+broker policy can protect a local token from host root.
+
 **Not protected against:** exfiltration of anything readable through the
 broker (same residual risk as level 1); junk accumulation within scope
 (spam commits, new branches, new objects — reversible and quota-bounded,
@@ -98,8 +108,10 @@ agent ── shared secret ──> hf-broker ── HF write token ──> huggi
                             └─ health + (later) grant endpoints (level 4)
 ```
 
-Configuration: environment for secrets (`HF_BROKER_SHARED_SECRET`,
-`HF_BROKER_HF_TOKEN`), a hand-edited `scope.json` for what is reachable:
+Configuration: environment for broker secrets (`HF_BROKER_SHARED_SECRET`
+or `HF_BROKER_SECRETS_FILE`), environment or broker-only file for the
+upstream token (`HF_BROKER_HF_TOKEN` or `HF_BROKER_HF_TOKEN_FILE`), and
+a hand-edited `scope.json` for what is reachable:
 
 ```json
 {
@@ -512,6 +524,7 @@ command is importable.
 cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
 internal/config/                 env + scope.json loading and validation
 internal/auth/                   shared-secret extraction and constant-time check
+internal/isolation/              local runtime isolation doctor checks
 internal/scope/                  scope model + allow/deny decision engine
 internal/gitproxy/               receive-pack parsing, enforcement, upstream forward
 internal/gitproxy/pktline/       pkt-line framing reader/writer
@@ -531,11 +544,12 @@ of `net/http` so it is unit-testable without a server.
 
 ## Configuration
 
-### Secrets (environment only, never in files the agent could read)
+### Secrets (never in files the agent could read)
 
 | Variable | Required | Meaning |
 |----------|----------|---------|
-| `HF_BROKER_HF_TOKEN` | yes | upstream Hugging Face write token; used only for outbound Hub requests |
+| `HF_BROKER_HF_TOKEN` | yes unless `HF_BROKER_HF_TOKEN_FILE` set | upstream Hugging Face write token; used only for outbound Hub requests |
+| `HF_BROKER_HF_TOKEN_FILE` | yes unless `HF_BROKER_HF_TOKEN` set | path to a broker-only file containing the upstream Hugging Face write token; preferred for same-host deployments |
 | `HF_BROKER_SHARED_SECRET` | yes unless `HF_BROKER_SECRETS_FILE` set | single client secret; min 32 bytes |
 | `HF_BROKER_SECRETS_FILE` | no | path to a file of `name = secret` lines for per-client secrets (one secret per agent); enables named clients in audit |
 | `HF_BROKER_BIND_ADDR` | no | default `127.0.0.1` |
@@ -547,10 +561,65 @@ of `net/http` so it is unit-testable without a server.
 | `HF_BROKER_TELEGRAM_BOT_TOKEN` | no (M4) | bot token for approval channel |
 | `HF_BROKER_TELEGRAM_CHAT_ID` | no (M4) | the single operator chat id decisions are accepted from |
 
-Startup validation fails closed: missing required secret, unreadable or
-invalid `scope.json`, secret under 32 bytes, or a `snapshot_prefix` that
-overlaps a writable path all abort boot with a specific error. The token
-value is never logged, even at startup.
+Startup validation fails closed: missing required secret, setting both
+`HF_BROKER_HF_TOKEN` and `HF_BROKER_HF_TOKEN_FILE`, unreadable or empty
+token file, unreadable or invalid `scope.json`, secret under 32 bytes,
+or a `snapshot_prefix` that overlaps a writable path all abort boot with
+a specific error. The token value is never logged, even at startup.
+
+### Local isolation doctor
+
+The broker binary includes a local host checker:
+
+```sh
+hf-broker doctor isolation \
+  --agent-user agent \
+  --broker-pid 12345 \
+  --token-file /etc/hf-broker/hf-token \
+  --socket /run/hf-broker/hf-broker.sock
+```
+
+Options:
+
+- `--agent-user` or `--agent-uid`: the agent identity to evaluate. If
+  neither is supplied, the current user is checked.
+- `--agent-pid`: optional running agent process. When supplied, the
+  doctor checks process UID, effective and permitted Linux capabilities,
+  and HF token variable names in the process environment.
+- `--broker-pid`: optional running broker process. When supplied, the
+  doctor checks that the broker UID differs from the agent UID and uses
+  an active probe to verify the agent cannot open
+  `/proc/<broker-pid>/environ`.
+- `--token-file`: optional upstream token file. The doctor checks Unix
+  mode bits, parent-directory writability, POSIX ACL presence, and active
+  read/write open probes when it can run as the agent identity.
+- `--socket`: optional Unix socket path. The doctor checks that the path
+  is a socket, is not world-writable, is not writable/connectable by the
+  agent identity, does not use POSIX ACLs that make mode-bit checks
+  incomplete, and is not under an agent-writable parent directory.
+- `--json`: emits a stable machine-readable report.
+
+Exit codes:
+
+- `0`: isolation checks are OK.
+- `1`: unsafe; the agent can plausibly read or bypass the credential.
+- `2`: inconclusive; a required fact or active probe could not be
+  verified from the current execution context.
+- `64`: invalid arguments.
+
+The doctor never prints secret values. Active probes only attempt
+non-destructive opens of protected files and broker process environment
+files; they do not read, write, or echo contents. Token-file option
+values are not echoed in findings because configuration mistakes can put
+the token value there. POSIX ACLs on token-file or socket paths make
+mode-bit checks incomplete, so the report is inconclusive. Host-root or
+root-equivalent agents are always unsafe because local permissions
+cannot protect a credential from them.
+For file-token deployments, `--token-file` must be supplied for an OK
+result. `--broker-pid` verifies broker environment reachability and is
+sufficient only for broker environment-token deployments; if the broker
+process advertises `HF_BROKER_HF_TOKEN_FILE` and no `--token-file` is
+supplied, the report is inconclusive.
 
 ### scope.json (full schema)
 

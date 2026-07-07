@@ -33,6 +33,29 @@ func TestLoadDefaultsAndSecretsFile(t *testing.T) {
 	}
 }
 
+func TestLoadHFTokenFile(t *testing.T) {
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "hf-token")
+	if err := os.WriteFile(tokenFile, []byte("hf_token_value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secrets := filepath.Join(dir, "secrets")
+	if err := os.WriteFile(secrets, []byte("agent = abcdefghijklmnopqrstuvwxyz123456\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"HF_BROKER_HF_TOKEN_FILE": tokenFile,
+		"HF_BROKER_SECRETS_FILE":  secrets,
+	}
+	cfg, err := Load(func(key string) string { return env[key] })
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.HFToken != "hf_token_value" {
+		t.Fatalf("HFToken = %q, want file token", cfg.HFToken)
+	}
+}
+
 func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 	tests := []struct {
 		name string
@@ -40,11 +63,14 @@ func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 		want string
 	}{
 		{name: "missing token", env: map[string]string{"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN"},
+		{name: "token and token file", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_HF_TOKEN_FILE": "/tmp/hf-token", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "mutually exclusive"},
+		{name: "missing token file", env: map[string]string{"HF_BROKER_HF_TOKEN_FILE": "/tmp/does-not-exist", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN_FILE"},
 		{name: "missing client", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value"}, want: "HF_BROKER_SHARED_SECRET"},
 		{name: "short secret", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "short"}, want: "shorter than"},
 		{name: "bad port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_PORT": "zero"}, want: "HF_BROKER_PORT"},
 		{name: "telegram token without chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value"}, want: "HF_BROKER_TELEGRAM"},
 		{name: "bad telegram chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "HF_BROKER_TELEGRAM_CHAT_ID": "chat"}, want: "HF_BROKER_TELEGRAM_CHAT_ID"},
+		{name: "token pasted into token file", env: map[string]string{"HF_BROKER_HF_TOKEN_FILE": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN_FILE"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
