@@ -143,7 +143,9 @@ ACL handling:
 
 - first milestone: report `unknown` when ACL state cannot be proven from
   mode bits
-- follow-up: inspect macOS ACLs with a dedicated parser if needed
+- follow-up implemented: inspect local macOS ACL listings with a
+  conservative parser; dangerous grants to the checked agent are unsafe,
+  and unparseable ACL state remains `unknown`
 
 ### Unix Socket
 
@@ -263,15 +265,14 @@ Expected results:
 - admin/root agents report `unsafe`
 - non-admin agent with unreadable token file can reach `ok` only when all
   required facts are proven
-- missing process-environment or ACL proof reports `inconclusive`
+- missing process-environment proof or unparseable ACL state reports
+  `inconclusive`
 - no secret values appear in stdout, stderr, JSON, logs, or test failures
 
 ## Open Questions
 
 - Can broker process UID be read on macOS without cgo and without shelling
   out to `ps`?
-- Is macOS ACL inspection needed for the first supported release, or is an
-  `unknown` finding acceptable when mode bits are insufficient?
 - Should macOS support a socket connect probe in Phase 2 or defer it to
   Phase 3?
 - Do we need a documented launchd example later, or should service setup

@@ -103,11 +103,11 @@ environment reachability but does not verify file permissions by itself.
 On macOS, the doctor keeps the same CLI and JSON report shape but is
 intentionally conservative. It treats `admin` and `wheel` membership as
 root-equivalent, checks token files and Unix sockets by ownership, mode
-bits, parent-directory writability, symlink targets, and active
+bits, ACLs, parent-directory writability, symlink targets, and active
 read/connect probes when it can run as the agent identity. Process
-environment and ACL facts that cannot be proven through safe stdlib
-interfaces are reported as `unknown`, which makes the overall result
-`inconclusive` rather than `ok`.
+environment facts and ACL entries that cannot be parsed conservatively
+are reported as `unknown`, which makes the overall result `inconclusive`
+rather than `ok`.
 
 ## Point the agent at it
 

@@ -600,13 +600,12 @@ Options:
   `/proc/<broker-pid>/environ`. On macOS, broker environment
   readability is reported as unknown.
 - `--token-file`: optional upstream token file. The doctor checks Unix
-  mode bits, parent-directory writability, ACL uncertainty, symlink
-  targets, and active read/write open probes when it can run as the agent
-  identity.
+  mode bits, ACL effects, parent-directory writability, symlink targets,
+  and active read/write open probes when it can run as the agent identity.
 - `--socket`: optional Unix socket path. The doctor checks that the path
   is a socket, is not world-writable, is not writable/connectable by the
-  agent identity, does not use POSIX ACLs that make mode-bit checks
-  incomplete, and is not under an agent-writable parent directory.
+  agent identity, does not have ACLs that grant socket access outside
+  mode bits, and is not under an agent-writable parent directory.
 - `--json`: emits a stable machine-readable report.
 
 Exit codes:
@@ -623,9 +622,11 @@ files where the platform exposes them safely, and Unix socket connects;
 they do not read, write, or echo contents. Token-file option values are
 not echoed in findings because configuration mistakes can put the token
 value there. POSIX ACLs on token-file or socket paths make mode-bit
-checks incomplete, so the report is inconclusive. On macOS, ACL state is
-reported as unknown in the first milestone. Host-root or root-equivalent
-agents are always unsafe because local permissions cannot protect a
+checks incomplete, so the report is inconclusive unless the platform
+doctor can inspect the ACL and prove it does not grant access to the
+agent. On macOS, unparseable ACL state is reported as unknown. Host-root
+or root-equivalent agents are always unsafe because local permissions
+cannot protect a
 credential from them; on macOS this includes `admin` and `wheel`.
 For file-token deployments, `--token-file` must be supplied for an OK
 result. `--broker-pid` verifies broker environment reachability and is

@@ -51,6 +51,14 @@ const (
 	pathKindSocket
 )
 
+type aclPathKind int
+
+const (
+	aclTokenEntry aclPathKind = iota
+	aclSocketEntry
+	aclPathParent
+)
+
 type pathMessageSet struct {
 	entryLabel     string
 	resolveUnknown string
@@ -377,7 +385,7 @@ func runTokenFileChecks(report *Report, agent identity, path string) {
 	} else {
 		add(report, CheckPass, "token_file_not_writable", "agent cannot modify the token file by Unix mode bits")
 	}
-	runTokenACLChecks(report)
+	runTokenACLChecks(report, agent, path, stat)
 	runPathEntryReplaceCheck(report, agent, path, "token_file_entry_not_replaceable")
 	runParentWriteChecks(report, agent, filepath.Dir(cleanPath(path)), "token_file_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "token_file_resolved")
@@ -400,8 +408,28 @@ func tokenFileStat(report *Report, path string) (fileStat, bool) {
 	return target, true
 }
 
-func runTokenACLChecks(report *Report) {
-	add(report, CheckUnknown, "token_file_acl", "macOS ACL state was not inspected; Unix mode checks may be incomplete")
+func runTokenACLChecks(report *Report, agent identity, path string, stat fileStat) {
+	runDarwinACLChecks(
+		report,
+		agent,
+		"token_file_acl",
+		tokenACLPaths(path, stat),
+		"token file path ACL grants the agent credential access outside Unix mode bits",
+		"could not determine whether token file path ACLs grant credential access",
+		"token file path ACLs do not grant the agent credential access outside Unix mode bits",
+	)
+}
+
+func tokenACLPaths(path string, stat fileStat) []darwinACLPath {
+	builder := newDarwinACLPathBuilder()
+	builder.addEntryAndParents(path, aclTokenEntry)
+	if cleanPath(stat.path) != cleanPath(path) {
+		builder.addEntryAndParents(stat.path, aclTokenEntry)
+	}
+	if resolved, ok := resolvedCleanPath(path); ok && resolved != cleanPath(path) {
+		builder.addEntryAndParents(resolved, aclTokenEntry)
+	}
+	return builder.paths
 }
 
 func runSocketChecks(report *Report, agent identity, path string) {
@@ -428,13 +456,335 @@ func runSocketChecks(report *Report, agent identity, path string) {
 	} else {
 		add(report, CheckPass, "socket_not_agent_writable", fmt.Sprintf("agent cannot write Unix socket %s by Unix mode bits", path))
 	}
-	runSocketACLChecks(report)
+	runSocketACLChecks(report, agent, path)
 	runParentWriteChecks(report, agent, filepath.Dir(cleanPath(path)), "socket_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "socket_resolved")
 }
 
-func runSocketACLChecks(report *Report) {
-	add(report, CheckUnknown, "socket_acl", "macOS ACL state was not inspected; Unix socket mode checks may be incomplete")
+func runSocketACLChecks(report *Report, agent identity, path string) {
+	runDarwinACLChecks(
+		report,
+		agent,
+		"socket_acl",
+		socketACLPaths(path),
+		"socket path ACL grants the agent socket access outside Unix mode bits",
+		"could not determine whether socket path ACLs grant socket access",
+		"socket path ACLs do not grant the agent socket access outside Unix mode bits",
+	)
+}
+
+func socketACLPaths(path string) []darwinACLPath {
+	builder := newDarwinACLPathBuilder()
+	builder.addEntryAndParents(path, aclSocketEntry)
+	if resolved, ok := resolvedCleanPath(path); ok && resolved != cleanPath(path) {
+		builder.addEntryAndParents(resolved, aclSocketEntry)
+	}
+	return builder.paths
+}
+
+type darwinACLPathBuilder struct {
+	seen  map[string]bool
+	paths []darwinACLPath
+}
+
+func newDarwinACLPathBuilder() darwinACLPathBuilder {
+	return darwinACLPathBuilder{seen: map[string]bool{}}
+}
+
+func (b *darwinACLPathBuilder) addEntryAndParents(path string, entryKind aclPathKind) {
+	b.add(path, entryKind)
+	for _, dir := range parentDirs(filepath.Dir(cleanPath(path))) {
+		b.add(dir, aclPathParent)
+	}
+}
+
+func (b *darwinACLPathBuilder) add(path string, kind aclPathKind) {
+	cleaned := cleanPath(path)
+	key := fmt.Sprintf("%d:%s", kind, cleaned)
+	if b.seen[key] {
+		return
+	}
+	b.seen[key] = true
+	b.paths = append(b.paths, darwinACLPath{path: cleaned, kind: kind})
+}
+
+type aclState int
+
+const (
+	aclAbsent aclState = iota
+	aclPresent
+	aclUnknown
+)
+
+type darwinACLEntry struct {
+	principal string
+	action    string
+	perms     []string
+}
+
+type darwinACLPath struct {
+	path string
+	kind aclPathKind
+}
+
+var darwinEntryACLPerms = map[string]bool{
+	"append":        true,
+	"chown":         true,
+	"delete":        true,
+	"full_control":  true,
+	"read":          true,
+	"readattr":      true,
+	"readextattr":   true,
+	"readsecurity":  true,
+	"write":         true,
+	"writeattr":     true,
+	"writeextattr":  true,
+	"writeowner":    true,
+	"writesecurity": true,
+}
+
+var darwinSocketEntryACLPerms = map[string]bool{
+	"append":        true,
+	"chown":         true,
+	"delete":        true,
+	"full_control":  true,
+	"write":         true,
+	"writeattr":     true,
+	"writeextattr":  true,
+	"writeowner":    true,
+	"writesecurity": true,
+}
+
+var darwinParentACLPerms = map[string]bool{
+	"add_file":         true,
+	"add_subdirectory": true,
+	"append":           true,
+	"chown":            true,
+	"delete":           true,
+	"delete_child":     true,
+	"full_control":     true,
+	"write":            true,
+	"writeattr":        true,
+	"writeextattr":     true,
+	"writeowner":       true,
+	"writesecurity":    true,
+}
+
+var darwinACLFixedPrincipals = map[string]string{
+	"everyone":  "everyone",
+	"everyone@": "everyone",
+	"group@":    "filegroup",
+	"owner@":    "owner",
+}
+
+var darwinACLPrincipalMatchers = map[string]func(string, identity, fileStat) bool{
+	"everyone":  func(_ string, _ identity, _ fileStat) bool { return true },
+	"filegroup": func(_ string, agent identity, stat fileStat) bool { return agent.gids[stat.gid] },
+	"group":     func(value string, agent identity, _ fileStat) bool { return darwinACLGroupApplies(value, agent) },
+	"owner":     func(_ string, agent identity, stat fileStat) bool { return agent.uid == stat.uid },
+	"user":      func(value string, agent identity, _ fileStat) bool { return darwinACLUserApplies(value, agent) },
+}
+
+func runDarwinACLChecks(report *Report, agent identity, checkName string, paths []darwinACLPath, unsafeMsg, unknownMsg, passMsg string) {
+	var unknown bool
+	for _, candidate := range paths {
+		switch darwinACLState(agent, candidate) {
+		case aclPresent:
+			add(report, CheckFail, checkName, unsafeMsg)
+			return
+		case aclUnknown:
+			unknown = true
+		}
+	}
+	if unknown {
+		add(report, CheckUnknown, checkName, unknownMsg)
+		return
+	}
+	add(report, CheckPass, checkName, passMsg)
+}
+
+func darwinACLState(agent identity, candidate darwinACLPath) aclState {
+	stat, ok := lstat(candidate.path)
+	if !ok {
+		return aclUnknown
+	}
+	entries, state := darwinACLEntries(candidate.path)
+	if state != aclAbsent {
+		return state
+	}
+	return darwinACLEntriesState(agent, stat, entries, candidate.kind)
+}
+
+func darwinACLEntriesState(agent identity, stat fileStat, entries []darwinACLEntry, kind aclPathKind) aclState {
+	for _, entry := range entries {
+		if entry.action == "deny" {
+			continue
+		}
+		if !darwinACLEntryHasDangerousGrant(entry, kind) {
+			continue
+		}
+		matches, ok := darwinACLAppliesToAgent(entry.principal, agent, stat)
+		if !ok {
+			return aclUnknown
+		}
+		if matches && entry.action == "allow" {
+			return aclPresent
+		}
+	}
+	return aclAbsent
+}
+
+func darwinACLEntries(path string) ([]darwinACLEntry, aclState) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/bin/ls", "-lde", path)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C"}
+	out, err := cmd.Output()
+	if ctx.Err() != nil || err != nil {
+		return nil, aclUnknown
+	}
+	return parseDarwinACLEntries(string(out))
+}
+
+func parseDarwinACLEntries(output string) ([]darwinACLEntry, aclState) {
+	lines := strings.Split(output, "\n")
+	var entries []darwinACLEntry
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
+		entry, ok := parseDarwinACLEntry(line)
+		if !ok {
+			return nil, aclUnknown
+		}
+		entries = append(entries, entry)
+	}
+	return entries, aclAbsent
+}
+
+func parseDarwinACLEntry(line string) (darwinACLEntry, bool) {
+	body, ok := darwinACLEntryBody(line)
+	if !ok {
+		return darwinACLEntry{}, false
+	}
+	fields := strings.Fields(body)
+	if len(fields) < 3 {
+		return darwinACLEntry{}, false
+	}
+	actionIndex, ok := darwinACLActionIndex(fields)
+	if !ok {
+		return darwinACLEntry{}, false
+	}
+	principal := strings.Join(fields[:actionIndex], " ")
+	perms := splitDarwinACLPerms(fields[actionIndex+1:])
+	if len(perms) == 0 {
+		return darwinACLEntry{}, false
+	}
+	return darwinACLEntry{principal: principal, action: fields[actionIndex], perms: perms}, true
+}
+
+func darwinACLEntryBody(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	indexEnd := strings.Index(trimmed, ":")
+	if indexEnd <= 0 {
+		return "", false
+	}
+	if _, err := strconv.Atoi(trimmed[:indexEnd]); err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(trimmed[indexEnd+1:]), true
+}
+
+func darwinACLActionIndex(fields []string) (int, bool) {
+	for i, field := range fields {
+		if field == "allow" || field == "deny" {
+			return i, i > 0 && i < len(fields)-1
+		}
+	}
+	return 0, false
+}
+
+func splitDarwinACLPerms(fields []string) []string {
+	joined := strings.Join(fields, ",")
+	parts := strings.Split(joined, ",")
+	perms := make([]string, 0, len(parts))
+	for _, part := range parts {
+		perm := normalizeDarwinACLPerm(part)
+		if perm == "" {
+			continue
+		}
+		perms = append(perms, perm)
+	}
+	return perms
+}
+
+func normalizeDarwinACLPerm(perm string) string {
+	perm = strings.TrimSpace(strings.ToLower(perm))
+	perm = strings.ReplaceAll(perm, "-", "_")
+	perm = strings.ReplaceAll(perm, "_security", "security")
+	return perm
+}
+
+func darwinACLAppliesToAgent(principal string, agent identity, stat fileStat) (bool, bool) {
+	kind, value, ok := darwinACLPrincipal(principal)
+	if !ok {
+		return false, false
+	}
+	matches, ok := darwinACLPrincipalMatchers[kind]
+	if !ok {
+		return false, false
+	}
+	return matches(value, agent, stat), true
+}
+
+func darwinACLPrincipal(principal string) (string, string, bool) {
+	principal = strings.TrimSpace(principal)
+	if kind, ok := darwinACLFixedPrincipals[principal]; ok {
+		return kind, "", true
+	}
+	kind, value, ok := strings.Cut(principal, ":")
+	return kind, value, ok && (kind == "user" || kind == "group")
+}
+
+func darwinACLUserApplies(value string, agent identity) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if uid, err := strconv.Atoi(value); err == nil {
+		return uid == agent.uid
+	}
+	return value == agent.user
+}
+
+func darwinACLGroupApplies(value string, agent identity) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if value == "everyone" || value == "everyone@" {
+		return true
+	}
+	if gid, err := strconv.Atoi(value); err == nil {
+		return agent.gids[gid]
+	}
+	return agent.groups[value]
+}
+
+func darwinACLEntryHasDangerousGrant(entry darwinACLEntry, kind aclPathKind) bool {
+	dangerous := darwinEntryACLPerms
+	switch kind {
+	case aclPathParent:
+		dangerous = darwinParentACLPerms
+	case aclSocketEntry:
+		dangerous = darwinSocketEntryACLPerms
+	}
+	for _, perm := range entry.perms {
+		if dangerous[perm] {
+			return true
+		}
+	}
+	return false
 }
 
 func runParentWriteChecks(report *Report, agent identity, dir, name string) {

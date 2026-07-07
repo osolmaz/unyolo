@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -151,8 +152,8 @@ func TestDarwinTokenFileModeChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != StatusInconclusive {
-		t.Fatalf("status = %q checks=%+v, want inconclusive from ACL uncertainty", report.Status, report.Checks)
+	if report.Status != StatusOK {
+		t.Fatalf("status = %q checks=%+v, want ok", report.Status, report.Checks)
 	}
 	if !darwinHasCheck(report, CheckPass, "token_file_not_readable") {
 		t.Fatalf("checks = %+v, want token unreadable pass", report.Checks)
@@ -160,8 +161,79 @@ func TestDarwinTokenFileModeChecks(t *testing.T) {
 	if !darwinHasCheck(report, CheckPass, "token_file_not_writable") {
 		t.Fatalf("checks = %+v, want token unwritable pass", report.Checks)
 	}
-	if !darwinHasCheck(report, CheckUnknown, "token_file_acl") {
-		t.Fatalf("checks = %+v, want ACL unknown", report.Checks)
+	if !darwinHasCheck(report, CheckPass, "token_file_acl") {
+		t.Fatalf("checks = %+v, want ACL pass", report.Checks)
+	}
+}
+
+func TestDarwinTokenFileACLGrantIsUnsafe(t *testing.T) {
+	dir := t.TempDir()
+	token := filepath.Join(dir, "hf-token")
+	if err := os.WriteFile(token, []byte("hf_secret_value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addDarwinACLOrSkip(t, token, "everyone allow read")
+
+	report, err := Run(context.Background(), Options{
+		AgentUID:    syntheticDarwinOtherUID(),
+		AgentUIDSet: true,
+		TokenFile:   token,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != StatusUnsafe {
+		t.Fatalf("status = %q checks=%+v, want unsafe", report.Status, report.Checks)
+	}
+	if !darwinHasCheck(report, CheckFail, "token_file_acl") {
+		t.Fatalf("checks = %+v, want token ACL failure", report.Checks)
+	}
+}
+
+func TestDarwinACLParserAndMatcher(t *testing.T) {
+	entries, state := parseDarwinACLEntries("-rw-------@ 1 owner staff 0 Jan 1 00:00 token\n 0: group:everyone allow read\n")
+	if state != aclAbsent || len(entries) != 1 {
+		t.Fatalf("parseDarwinACLEntries() = entries:%+v state:%v, want one parsed entry", entries, state)
+	}
+	if entries[0].principal != "group:everyone" || entries[0].action != "allow" || len(entries[0].perms) != 1 || entries[0].perms[0] != "read" {
+		t.Fatalf("entry = %+v, want parsed everyone allow read", entries[0])
+	}
+
+	agent := identity{user: "agent", uid: 501, gids: map[int]bool{20: true}, groups: map[string]bool{"staff": true}}
+	stat := fileStat{uid: 502, gid: 20}
+	if got := darwinACLEntriesState(agent, stat, entries, aclTokenEntry); got != aclPresent {
+		t.Fatalf("darwinACLEntriesState(entry read) = %v, want present", got)
+	}
+	if got := darwinACLEntriesState(agent, stat, entries, aclPathParent); got != aclAbsent {
+		t.Fatalf("darwinACLEntriesState(parent read) = %v, want absent", got)
+	}
+
+	deny := []darwinACLEntry{{principal: "group:everyone", action: "deny", perms: []string{"read"}}}
+	if got := darwinACLEntriesState(agent, stat, deny, aclTokenEntry); got != aclAbsent {
+		t.Fatalf("darwinACLEntriesState(deny) = %v, want absent", got)
+	}
+
+	unrelated := []darwinACLEntry{{principal: "user:someoneelse", action: "allow", perms: []string{"read"}}}
+	if got := darwinACLEntriesState(agent, stat, unrelated, aclTokenEntry); got != aclAbsent {
+		t.Fatalf("darwinACLEntriesState(unrelated) = %v, want absent", got)
+	}
+
+	groupWrite := []darwinACLEntry{{principal: "group:staff", action: "allow", perms: []string{"write"}}}
+	if got := darwinACLEntriesState(agent, stat, groupWrite, aclTokenEntry); got != aclPresent {
+		t.Fatalf("darwinACLEntriesState(group write) = %v, want present", got)
+	}
+
+	unknownPrincipal := []darwinACLEntry{{principal: "ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C", action: "allow", perms: []string{"read"}}}
+	if got := darwinACLEntriesState(agent, stat, unknownPrincipal, aclTokenEntry); got != aclUnknown {
+		t.Fatalf("darwinACLEntriesState(unknown principal) = %v, want unknown", got)
+	}
+
+	if got := darwinACLEntriesState(agent, stat, entries, aclSocketEntry); got != aclAbsent {
+		t.Fatalf("darwinACLEntriesState(socket read) = %v, want absent", got)
+	}
+
+	if _, state := parseDarwinACLEntries("-rw-------@ 1 owner staff 0 Jan 1 00:00 token\n inherited mystery\n"); state != aclUnknown {
+		t.Fatalf("parseDarwinACLEntries(malformed) state = %v, want unknown", state)
 	}
 }
 
@@ -299,8 +371,8 @@ func TestDarwinSocketChecksAndProbe(t *testing.T) {
 	if !darwinHasCheck(report, CheckPass, "socket_is_socket") {
 		t.Fatalf("checks = %+v, want socket pass", report.Checks)
 	}
-	if !darwinHasCheck(report, CheckUnknown, "socket_acl") {
-		t.Fatalf("checks = %+v, want socket ACL unknown", report.Checks)
+	if !darwinHasCheck(report, CheckPass, "socket_acl") {
+		t.Fatalf("checks = %+v, want socket ACL pass", report.Checks)
 	}
 
 	result := RunProbe("", 0, socketPath)
@@ -313,6 +385,80 @@ func TestDarwinSocketChecksAndProbe(t *testing.T) {
 	}
 	if strings.Contains(string(data), "hf_secret_value") {
 		t.Fatalf("probe result leaked token")
+	}
+}
+
+func TestDarwinSocketACLGrantIsUnsafe(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "hf-broker-sock-acl-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+	})
+	socketPath := filepath.Join(dir, "broker.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = listener.Close()
+	}()
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addDarwinACLOrSkip(t, socketPath, "everyone allow write")
+
+	report, err := Run(context.Background(), Options{
+		AgentUID:    syntheticDarwinOtherUID(),
+		AgentUIDSet: true,
+		Socket:      socketPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != StatusUnsafe {
+		t.Fatalf("status = %q checks=%+v, want unsafe", report.Status, report.Checks)
+	}
+	if !darwinHasCheck(report, CheckFail, "socket_acl") {
+		t.Fatalf("checks = %+v, want socket ACL failure", report.Checks)
+	}
+}
+
+func TestDarwinReadOnlySocketACLDoesNotGrantConnect(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "hf-broker-sock-read-acl-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+	})
+	socketPath := filepath.Join(dir, "broker.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = listener.Close()
+	}()
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addDarwinACLOrSkip(t, socketPath, "everyone allow read")
+
+	report, err := Run(context.Background(), Options{
+		AgentUID:    syntheticDarwinOtherUID(),
+		AgentUIDSet: true,
+		Socket:      socketPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status == StatusUnsafe {
+		t.Fatalf("status = %q checks=%+v, want not unsafe", report.Status, report.Checks)
+	}
+	if !darwinHasCheck(report, CheckPass, "socket_acl") {
+		t.Fatalf("checks = %+v, want socket ACL pass", report.Checks)
 	}
 }
 
@@ -404,4 +550,14 @@ func syntheticDarwinOtherUID() int {
 		return 100000
 	}
 	return uid
+}
+
+func addDarwinACLOrSkip(t *testing.T, path, acl string) {
+	t.Helper()
+	cmd := exec.Command("/bin/chmod", "+a", acl, path)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C"}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Skipf("chmod +a %q failed: %v %s", acl, err, string(out))
+	}
 }
