@@ -99,6 +99,25 @@ Every brokerkit cutover PR must prove:
 - audit output contains no broker secrets, upstream tokens, request bodies, Git
   pack contents, approval tokens, or Telegram bot tokens
 
+## Implementation Readiness
+
+The brokerkit cutover is ready to implement when the slice can satisfy this
+contract:
+
+- hf-broker imports brokerkit for shared auth, policy, grants, approval state,
+  notification interfaces, Telegram transport, audit helpers, storage/config
+  helpers, and provider-neutral Git parsing
+- hf-broker keeps only Hugging Face operation registration, Git/LFS/API request
+  classification, upstream forwarding, mirror/ancestry checks, audit extension
+  fields, and approval summary text
+- the replaced local runtime is deleted in the same PR as the brokerkit import
+- generated grants are tested through the brokerkit policy decision path, not a
+  second grant-specific allow path
+- Telegram approval is covered with a fake Bot API server or fake notifier in
+  automated tests; CI must not require a live bot token or send real messages
+- end-to-end broker tests use fake upstream Hub servers and fake notifiers by
+  default; live Hub checks are explicit manual or milestone probes
+
 ## Slice 1: Policy Engine Cutover
 
 Build `internal/policy` from `docs/POLICY_RULES_SPEC.md`.
