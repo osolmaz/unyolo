@@ -4,7 +4,10 @@ go 1.25.0
 
 toolchain go1.26.4
 
-require github.com/labstack/echo/v4 v4.15.4
+require (
+	github.com/labstack/echo/v4 v4.15.4
+	github.com/osolmaz/brokerkit v0.0.0-20260708133440-b3cd09e51fa1
+)
 
 require (
 	github.com/labstack/gommon v0.5.0 // indirect

@@ -79,6 +79,20 @@ brokerkit.
    - Keep HF commits-only mirrors, ancestry checks, LFS/Xet behavior, and Hub
      forwarding local.
 
+## Current Cutover Status
+
+`brokerkit/auth` is now adopted. `internal/auth` is only a small hf-broker
+adapter that preserves the existing server API while delegating bearer/basic
+shared-secret authentication to brokerkit with hf-broker's 32-byte secret
+minimum.
+
+The remaining local `policy`, `grants`, `notify`, `audit`, and Git proxy
+packages still contain HF-specific behavior or richer local state than the
+current brokerkit packages. Move them only when the brokerkit API can preserve
+HF repo/bucket targets, numeric attrs, grant modes, reservation recovery,
+notification state, Git push-options handling, pack preservation, and
+HF-specific audit fields without introducing a parallel runtime.
+
 ## Brokerkit Cutover Test Gates
 
 Every brokerkit cutover PR must prove:
