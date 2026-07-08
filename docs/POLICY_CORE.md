@@ -92,8 +92,7 @@ The provider registry defines:
 - valid target kinds
 - required target fields per target kind
 - valid attr names
-- attr type rules
-- which attrs are relevant to which operations
+- each operation's supported attrs
 - which operations may be grantable
 
 The core evaluator should not hard-code provider vocabulary.
@@ -108,7 +107,8 @@ type Registry struct {
 }
 ```
 
-The exact Go API is intentionally not fixed yet.
+The initial Go API is implemented in `brokerkit/policy`. Brokers own the
+registry values they pass into that package.
 
 The registry is the only place provider vocabulary belongs. The shared policy
 core must not ship built-in Hugging Face, GitHub, or Unix operation semantics.
@@ -125,6 +125,7 @@ Common target fields may include:
 - `host`
 
 The provider registry decides which fields are valid and required.
+Some target kinds may be identified by `kind` alone and have no fields.
 
 Examples:
 
@@ -158,8 +159,13 @@ Examples:
 {"command_ids": ["restart-myapp"]}
 ```
 
-The provider registry decides whether each attr is a string, number, boolean,
-or list constraint.
+The initial API treats attrs as string values matched by exact or glob patterns.
+Each operation lists the attrs it supports.
+
+Attrs match by exact registry name. brokerkit does not apply provider aliases
+such as `ref` versus `refs` or `path` versus `paths`. A broker must classify
+and normalize provider input into the attr names it registered before it calls
+the policy core.
 
 ## Grants
 
@@ -172,8 +178,11 @@ matching semantics as static rules, but they also have runtime metadata:
 - use budget
 - status
 - approved attrs
+- decision-token verifier
 
-Generated grant rules must never use wildcard clients.
+Generated grant rules must never use wildcard clients. Raw decision tokens must
+not be stored in grant/status objects or serialized grant JSON; brokers should
+pass the raw token only to the approval notification path.
 
 ## Grant Policy
 
@@ -205,6 +214,7 @@ Policy loading must reject:
 - unsupported operations
 - unsupported target kinds
 - unsupported attrs
+- attrs on a rule that are not supported by every operation listed in that rule
 - invalid glob patterns
 - request rules without `grant_policy`
 - allow or deny rules with `grant_policy`

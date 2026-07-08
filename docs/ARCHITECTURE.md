@@ -33,7 +33,7 @@ provider-specific message wording, and execution.
 
 ## Package Boundaries
 
-Planned package boundaries:
+Current and planned package boundaries:
 
 ```text
 brokerkit/
@@ -47,7 +47,8 @@ brokerkit/
 └── gitx/       # Generic Git smart-HTTP parsing helpers.
 ```
 
-The package names are tentative until the first implementation PR.
+The implemented package names are the initial brokerkit API surface. `httpx`
+remains planned.
 
 The canonical ownership boundary is [OWNERSHIP.md](OWNERSHIP.md).
 
