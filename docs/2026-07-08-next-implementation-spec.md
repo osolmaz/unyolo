@@ -86,6 +86,11 @@ adapter that preserves the existing server API while delegating bearer/basic
 shared-secret authentication to brokerkit with hf-broker's 32-byte secret
 minimum.
 
+`brokerkit/store` is now adopted for the local grant store's durable JSON file.
+hf-broker still owns the HF-specific grant model, notification leases, retained
+reservations, execution/window modes, and API response shape, but JSON reads and
+atomic writes go through the shared brokerkit storage helper.
+
 The remaining local `policy`, `grants`, `notify`, `audit`, and Git proxy
 packages still contain HF-specific behavior or richer local state than the
 current brokerkit packages. Move them only when the brokerkit API can preserve

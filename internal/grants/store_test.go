@@ -597,6 +597,44 @@ func TestGrantRequestStoresAttrsAndIdempotencyIncludesAttrs(t *testing.T) {
 	}
 }
 
+func TestGrantStoreUsesBrokerkitAtomicJSONStorage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state", "grants", "grants.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".tmp", []byte("stale temp"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := New(path, Options{})
+	grant, created, err := store.Request(Request{
+		Client:    "agent",
+		Operation: "git.push.force",
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Reason:    "recover empty state file",
+	})
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	if !created || grant.ID == "" {
+		t.Fatalf("Request() = %+v created=%v, want new grant from empty state", grant, created)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("grant store mode = %o, want 0600", info.Mode().Perm())
+	}
+	if _, err := os.Stat(path + ".tmp"); err != nil {
+		t.Fatalf("stale temp file should be ignored, not removed: %v", err)
+	}
+}
+
 func TestLegacyUsedGrantLoadsConsumed(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grants.json")
 	raw := `{"grants":[{

@@ -12,11 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/osolmaz/brokerkit/store"
 )
 
 const (
@@ -848,15 +848,8 @@ func (s *Store) update(fn func(*fileData) error) error {
 }
 
 func (s *Store) load() (fileData, error) {
-	raw, err := os.ReadFile(s.path) // #nosec G304 -- operator-configured state path.
-	if errors.Is(err, os.ErrNotExist) {
-		return fileData{}, nil
-	}
-	if err != nil {
-		return fileData{}, fmt.Errorf("read grants store: %w", err)
-	}
 	var data fileData
-	if err := json.Unmarshal(raw, &data); err != nil {
+	if err := store.ReadJSON(s.path, &data); err != nil {
 		return fileData{}, fmt.Errorf("parse grants store: %w", err)
 	}
 	for i := range data.Grants {
@@ -904,19 +897,8 @@ func normalizeLegacyUsedGrantStatus(grant *Grant, legacyUseBudget bool) {
 }
 
 func (s *Store) save(data fileData) error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
-		return fmt.Errorf("create grants store parent: %w", err)
-	}
-	raw, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode grants store: %w", err)
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
+	if err := store.WriteJSONAtomic(s.path, data, 0o600); err != nil {
 		return fmt.Errorf("write grants store: %w", err)
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		return fmt.Errorf("replace grants store: %w", err)
 	}
 	return nil
 }
