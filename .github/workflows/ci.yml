@@ -27,5 +27,5 @@ jobs:
       - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
       - run: slophammer-go dry .
       - run: slophammer-go crap .
-      - run: ./scripts/check-mutation.sh
+      - run: slophammer-go mutate . --scan
       - run: slophammer-go check .
