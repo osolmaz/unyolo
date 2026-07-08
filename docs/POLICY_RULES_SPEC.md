@@ -15,7 +15,9 @@ converter for old files.
 Long term, the generic parts of this policy model move into
 `github.com/osolmaz/brokerkit/policy`. hf-broker keeps only the Hugging
 Face-specific operation registry, target definitions, attrs, and request
-classification.
+classification. Generic grant lifecycle, approval workflow, Telegram transport,
+audit helpers, storage helpers, and provider-neutral Git parsing should move to
+brokerkit instead of remaining duplicated in hf-broker.
 
 ## Smallest Valid File
 

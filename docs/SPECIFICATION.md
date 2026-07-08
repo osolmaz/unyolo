@@ -51,14 +51,18 @@ degrades to an append-only capability downstream.
 
 hf-broker keeps Hugging Face-specific behavior local: Git/LFS parsing,
 commits-only mirrors, append-only enforcement, Hub token forwarding, bucket
-snapshot behavior, and Telegram delivery. Shared control-plane code should move
-to brokerkit:
+snapshot behavior, and HF-specific approval wording. Shared control-plane code
+should move to brokerkit:
 
 - auth
 - policy core
 - grant lifecycle
+- approval workflow
 - audit-safe metadata helpers
 - notifier interfaces
+- reusable Telegram transport and callback handling
+- strict config/storage helpers
+- provider-neutral Git parsing helpers where shared cleanly with `gh-broker`
 
 This is a cutover, not a compatibility migration. When hf-broker adopts a
 brokerkit package, the local duplicate is deleted in the same change.
@@ -403,8 +407,8 @@ multi-use settings/admin grant.
 
 Grant requests may include `client_request_id`. The tuple
 `client + client_request_id` is idempotent: retrying the same request
-returns the original pending, active, denied, expired, consumed, or
-revoked grant instead of creating a duplicate Telegram prompt.
+returns the original pending, active, denied, expired, consumed, or revoked
+grant instead of creating a duplicate brokerkit notification prompt.
 
 The broker locks the relevant target while validating and executing a
 grant use. Window grants are durably reserved, with a `reserved_at`
@@ -424,11 +428,12 @@ and refuses retries until an operator resolves it.
 
 ### Notification state
 
-Notifier message metadata (`chat_id`, `message_id`, notifier kind) is
-stored with the grant so restarts can still update operator messages.
-Telegram messages are updated when a request is approved, denied, used,
-expired, revoked, or fails during execution. Buttons are removed after
-the first terminal decision.
+Notifier message metadata (`chat_id`, `message_id`, notifier kind) is stored
+with the grant so restarts can still update operator messages. The generic
+approval, notifier metadata, and Telegram transport belong in brokerkit after
+cutover; hf-broker keeps the HF-specific message summary. Telegram messages are
+updated when a request is approved, denied, used, expired, revoked, or fails
+during execution. Buttons are removed after the first terminal decision.
 
 Operator prompts must show:
 
@@ -500,7 +505,9 @@ Two channels are specified:
    inbound exposure. Deny requires no action: unapproved requests expire
    on their own (default 10 minutes pending, then auto-denied).
 
-   The notifier is an interface, Telegram its first implementation.
+   The notifier is an interface, and the reusable Telegram adapter belongs in
+   brokerkit after cutover. hf-broker owns only the HF-specific prompt text and
+   request summary.
    Noted for later behind the same interface, not in scope for v1:
 
    - **ntfy** — one-way unless self-hosted with auth; would pair a
@@ -550,15 +557,15 @@ internal/config/                 env + scope.json loading and validation
 internal/auth/                   temporary; cut over to brokerkit/auth
 internal/isolation/              local runtime isolation doctor checks
 internal/policy/                 temporary; cut over to brokerkit/policy + HF registry
-internal/gitproxy/               receive-pack parsing, enforcement, upstream forward
-internal/gitproxy/pktline/       pkt-line framing reader/writer
+internal/gitproxy/               HF enforcement and upstream forward; generic parsing moves to brokerkit/gitx
+internal/gitproxy/pktline/       temporary; cut over to brokerkit generic Git helpers
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
 internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
 internal/grants/                 temporary; cut over to brokerkit/grants
-internal/notify/                 telegram impl; notifier interface moves to brokerkit
+internal/notify/                 temporary; Telegram transport moves to brokerkit/notify
 internal/jsend/                  JSON API response envelopes
 internal/httpapi/                Echo router, handlers, refusal responses, audit
-internal/audit/                  structured slog wiring
+internal/audit/                  temporary generic helpers; HF audit extensions stay local
 ```
 
 Boundaries (enforced by Slophammer `dependency_boundaries`): `httpapi`
@@ -899,9 +906,14 @@ Acceptance criteria:
 
 ### M4 — Telegram approvals
 
-Scope: `Notifier` interface + Telegram implementation; grant requests
-sent as messages with inline Approve/Deny buttons; decisions read via
-outbound Bot API long-polling; pending-request expiry.
+Scope before brokerkit cutover: `Notifier` interface plus Telegram
+implementation; grant requests sent as messages with inline Approve/Deny
+buttons; decisions read via outbound Bot API long-polling; pending-request
+expiry.
+
+Long-term scope after brokerkit cutover: brokerkit owns the notifier interface,
+Telegram adapter, callback validation, status updates, and token safety.
+hf-broker owns only the HF-specific message contents.
 
 Acceptance criteria:
 - A request produces a Telegram message with working buttons.

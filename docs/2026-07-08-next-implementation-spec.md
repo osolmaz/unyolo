@@ -14,10 +14,11 @@ migration. Each slice should be merged only with tests that prove the broker
 still fails closed and does not leak credentials.
 
 Update: brokerkit is now the long-term shared base for broker-family control
-plane code. hf-broker should treat its current auth, policy, grant, audit, and
-notification code as the reference implementation to cut into brokerkit, then
-cut back over to the brokerkit packages. There is no backward-compatibility
-requirement for old internal APIs or old policy formats.
+plane code. hf-broker should treat its current auth, policy, grant, approval,
+audit, notification, Telegram transport, shared storage/config, and generic Git
+parsing code as reference material to cut into brokerkit, then cut back over to
+the brokerkit packages. There is no backward-compatibility requirement for old
+internal APIs or old policy formats.
 
 ## Ground Rules
 
@@ -27,8 +28,10 @@ requirement for old internal APIs or old policy formats.
   delete, or create operations until the project rule forbidding them is
   deliberately changed.
 - Do not keep old and new policy runtimes alive together after policy cutover.
-- Do not keep local and brokerkit policy, grant, auth, or audit runtimes alive
-  together after brokerkit cutover.
+- Do not keep local and brokerkit policy, grant, auth, approval, notify,
+  Telegram, storage, or audit runtimes alive together after brokerkit cutover.
+- Do not keep a broker-local Telegram transport once the shared brokerkit
+  Telegram adapter exists.
 - Do not add converters or compatibility loaders for old `scope.json` formats.
   Operators should edit the new rule file directly.
 - Keep Git smart-HTTP responses Git-shaped. Use JSend only for `/api/*`.
@@ -60,8 +63,21 @@ brokerkit.
    - Delete `internal/policy` once hf-broker uses the brokerkit policy core.
 
 4. Extract and adopt `brokerkit/audit` and `brokerkit/notify`.
-   - Move secret-safe audit field helpers and notifier interfaces to brokerkit.
-   - Keep Telegram delivery and HF-specific audit event construction local.
+   - Move secret-safe audit field helpers, notifier interfaces, approval
+     workflow, and Telegram transport/callback handling to brokerkit.
+   - Keep HF-specific audit extension fields and approval message wording local.
+
+5. Extract and adopt shared storage/config helpers.
+   - Move atomic file writes, lock handling, strict config decoding, test
+     clocks, and deterministic ids to brokerkit where they are generic.
+   - Keep HF-specific config fields and token loading local.
+
+6. Extract generic Git helpers only where provider-neutral.
+   - Move pkt-line parsing, receive-pack command parsing, ref update
+     classification, request-size limits, and Git body redaction helpers to
+     brokerkit if `gh-broker` can use the same API.
+   - Keep HF commits-only mirrors, ancestry checks, LFS/Xet behavior, and Hub
+     forwarding local.
 
 ## Slice 1: Policy Engine Cutover
 
