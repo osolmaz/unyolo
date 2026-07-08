@@ -27,6 +27,15 @@ jobs:
       - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
       - run: slophammer-go dry .
       - run: slophammer-go crap .
-      - name: mutate4go scan
-        run: slophammer-go mutate . --scan
+      - name: mutate4go gate
+        run: |
+          tmp="$(mktemp)"
+          cp doc.go "$tmp"
+          cleanup() {
+            cp "$tmp" doc.go
+            rm -f "$tmp"
+            rm -rf target
+          }
+          trap cleanup EXIT
+          slophammer-go mutate . --target doc.go
       - run: slophammer-go check .
