@@ -335,9 +335,10 @@ go test -race ./...
 go build ./cmd/hf-broker
 golangci-lint run
 govulncheck ./...
-/home/bob/go/bin/slophammer-go dry .
-/home/bob/go/bin/slophammer-go crap .
-/home/bob/go/bin/slophammer-go check .
+slophammer-go dry .
+slophammer-go crap .
+./scripts/check-mutation.sh
+slophammer-go check .
 ```
 
 When a tool is installed outside `PATH`, use its absolute path and say so in
