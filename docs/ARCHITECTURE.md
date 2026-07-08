@@ -4,6 +4,11 @@ brokerkit is the shared layer for broker-style access-control services. It
 should make the repeated broker machinery reusable without hiding the dangerous
 provider-specific boundary.
 
+`hf-broker`, `gh-broker`, and `sudo-broker` should all depend on brokerkit for
+the shared control plane. The migration model is cutover, not backward
+compatibility: once a broker adopts a brokerkit package, the old local copy of
+that behavior should be removed.
+
 ## Broker Shape
 
 Every broker using brokerkit should follow this request path:
@@ -88,6 +93,7 @@ Each broker must register its own vocabulary.
 - operations such as `exec.command` and `session.shell`
 - target kinds such as `user`, `group`, and `host`
 - attrs such as `command_id`, `cwd`, `tty`, and `timeout_seconds`
+- command catalogs, shell sessions, and OS-specific execution backends
 
 ## Security Invariants
 
@@ -108,3 +114,7 @@ brokerkit must preserve these invariants:
 Do not extract a package because two repositories have similar names or files.
 Extract only when the same behavior has the same tests in at least two brokers
 and the third broker design can use the same API without special cases.
+
+When extraction happens, do not keep compatibility layers indefinitely. The
+consumer broker should move to the brokerkit API, delete its local duplicate,
+and keep provider-specific adapters at the edge.

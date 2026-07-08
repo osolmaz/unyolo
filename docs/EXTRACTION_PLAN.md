@@ -3,6 +3,10 @@
 This plan keeps brokerkit small while `hf-broker`, `gh-broker`, and
 `sudo-broker` prove the shared shape.
 
+The migration strategy is cutover. We do not need backward compatibility between
+local broker internals and brokerkit internals. If brokerkit owns a behavior,
+the consuming broker should delete its local copy and use brokerkit directly.
+
 ## Goal
 
 Create a shared Go module for repeated broker primitives without turning it
@@ -10,10 +14,9 @@ into a broad framework.
 
 The first implementation should reduce duplication, not hide domain logic.
 
-## Phase 1: Copy Nothing Yet
+## Phase 1: Lock The Shared Contract
 
-Keep this repository mostly documentation until the package boundaries are
-clear.
+Define the shared API from the three broker designs before moving code.
 
 Use this phase to compare:
 
@@ -22,12 +25,13 @@ Use this phase to compare:
 - `hf-broker/internal/policy`
 - `gh-broker/internal/policy`
 - `hf-broker/internal/grants`
-- planned `sudo-broker` grants and command catalog behavior
+- `sudo-broker` grants and command catalog behavior
 
 Exit criteria:
 
-- same behavior is identified in at least two brokers
-- the third broker can use the same API without special cases
+- same behavior is needed by all three brokers, or by two brokers with a clear
+  third-broker path
+- the API has no provider-specific vocabulary baked into brokerkit
 - tests can be moved with the behavior
 
 ## Phase 2: Extract Auth
@@ -44,6 +48,9 @@ The package should support:
 
 It should not depend on Echo, net/http middleware, or provider code. Brokers can
 wrap it in their own HTTP middleware.
+
+Cutover rule: after a broker imports `brokerkit/auth`, delete its local
+duplicate auth package.
 
 ## Phase 3: Extract Grant Records
 
@@ -64,6 +71,9 @@ The package should support:
 
 It should not own notification delivery or provider execution.
 
+Cutover rule: after a broker imports `brokerkit/grants`, grant storage and state
+transitions should have one runtime implementation.
+
 ## Phase 4: Extract Policy Core
 
 Extract policy only after the provider registry API is clear.
@@ -77,6 +87,10 @@ The first policy package should provide:
 - audit-safe decision objects
 
 It should not include built-in Hugging Face, GitHub, or Unix operations.
+
+Cutover rule: after a broker imports `brokerkit/policy`, remove its local policy
+engine and keep only provider registry, request classification, and tests for
+provider-specific behavior.
 
 ## Phase 5: Extract HTTP Helpers
 

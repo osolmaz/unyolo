@@ -2,7 +2,8 @@
 
 This document defines the shared policy model brokerkit should provide.
 Provider-specific brokers register their own operations, target kinds, attrs,
-and validation rules.
+and validation rules. The intended migration is cutover: brokers should use this
+core directly instead of keeping local compatibility policy engines alive.
 
 ## Minimal Policy File
 
@@ -107,6 +108,9 @@ type Registry struct {
 
 The exact Go API is intentionally not fixed yet.
 
+The registry is the only place provider vocabulary belongs. The shared policy
+core must not ship built-in Hugging Face, GitHub, or Unix operation semantics.
+
 ## Targets
 
 Targets are objects with a required `kind` field.
@@ -127,7 +131,7 @@ Examples:
 ```
 
 ```json
-{"kind": "repo", "owner": "dutifuldev", "name": "gh-broker"}
+{"kind": "repo", "owner": "osolmaz", "name": "gh-broker"}
 ```
 
 ```json

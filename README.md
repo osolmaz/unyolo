@@ -6,6 +6,10 @@ broker secret while the service keeps the real credential or privilege boundary
 server-side.
 
 The first intended users are `hf-broker`, `gh-broker`, and `sudo-broker`.
+brokerkit is the long-term shared base for those projects. Each broker should
+cut over to brokerkit for shared auth, policy, grants, audit, and notification
+behavior instead of maintaining a parallel compatibility runtime.
+
 brokerkit should stay small: it is not a full broker framework, and it should
 not contain provider-specific Hugging Face, GitHub, or Unix privilege logic.
 
@@ -55,8 +59,9 @@ Provider-specific execution code does not belong in brokerkit.
 ## Status
 
 This repository currently contains the design documents for extracting shared
-broker primitives. Implementation should begin only after the docs describe a
-boundary that works for `hf-broker`, `gh-broker`, and `sudo-broker`.
+broker primitives. Implementation should begin with package boundaries that work
+for `hf-broker`, `gh-broker`, and `sudo-broker`; once a package lands, brokers
+should cut over to it directly rather than preserving old and new runtimes.
 
 ## License
 
