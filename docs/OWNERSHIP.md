@@ -264,7 +264,8 @@ sudo-broker owns:
 
 Each broker cutover should prove:
 
-- old local auth, policy, grants, audit, and notification runtimes were removed
+- old local auth, policy, grants, approval, Telegram, audit, storage, and
+  notification runtimes were removed
 - the broker registers only its provider vocabulary
 - valid requests go through brokerkit decisions
 - malformed or unclassified requests fail closed before execution

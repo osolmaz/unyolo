@@ -57,29 +57,7 @@ wrap it in their own HTTP middleware.
 Cutover rule: after a broker imports `brokerkit/auth`, delete its local
 duplicate auth package.
 
-## Phase 3: Extract Grant Records
-
-Extract grant lifecycle types and store behavior after `sudo-broker` confirms
-the same states are useful.
-
-The package should support:
-
-- pending
-- active
-- expired
-- consumed
-- denied
-- revoked
-- expiry
-- use budget
-- idempotency key
-
-It should not own notification delivery or provider execution.
-
-Cutover rule: after a broker imports `brokerkit/grants`, grant storage and state
-transitions should have one runtime implementation.
-
-## Phase 4: Extract Policy Core
+## Phase 3: Extract Policy Core
 
 Extract policy only after the provider registry API is clear.
 
@@ -96,6 +74,31 @@ It should not include built-in Hugging Face, GitHub, or Unix operations.
 Cutover rule: after a broker imports `brokerkit/policy`, remove its local policy
 engine and keep only provider registry, request classification, and tests for
 provider-specific behavior.
+
+## Phase 4: Extract Grant Records
+
+Extract grant lifecycle types and store behavior after the policy request,
+decision, and generated-rule overlay model is clear.
+
+The package should support:
+
+- pending
+- active
+- expired
+- consumed
+- denied
+- revoked
+- request TTL
+- approved access duration
+- use budget
+- reservation, commit, and release of uses
+- idempotency key
+- generated temporary allow rules
+
+It should not own notification delivery or provider execution.
+
+Cutover rule: after a broker imports `brokerkit/grants`, grant storage and state
+transitions should have one runtime implementation.
 
 ## Phase 5: Extract HTTP Helpers
 
@@ -178,6 +181,87 @@ gh release create v0.1.0 --generate-notes
 ```
 
 Until then, keep the repository at pre-release design stage.
+
+## Implementation Order
+
+Implement brokerkit in this order:
+
+1. `brokerkit/auth`
+2. `brokerkit/policy`
+3. `brokerkit/grants`
+4. approval workflow
+5. `brokerkit/notify` and the Telegram adapter
+6. `brokerkit/audit`
+7. storage and config helpers
+8. generic Git helpers, only after comparing `hf-broker` and `gh-broker`
+9. cut over `hf-broker`
+10. cut over `gh-broker`
+11. implement `sudo-broker`
+
+The first brokerkit implementation should stop after auth and policy if the
+grant overlay API is not yet clean. Do not add a grants package that cannot be
+evaluated by the same policy engine.
+
+## Test Matrix
+
+Auth tests:
+
+- bearer auth succeeds for the configured client
+- basic auth succeeds for Git clients when the password is the client secret
+- missing auth is distinguishable from invalid auth
+- invalid auth fails closed
+- multiple named clients are supported
+- secret comparison uses constant-time comparison where practical
+
+Policy tests:
+
+- unknown operation is rejected
+- unknown target kind is rejected
+- unknown attr is rejected
+- duplicate rule ids are rejected
+- deny beats allow
+- deny beats active grant
+- active grant beats static allow
+- request rules do not allow execution
+- no match denies
+- generated grants cannot use wildcard clients
+- attrs match exactly according to registry rules
+
+Grant tests:
+
+- request creates a pending grant
+- same idempotency key and body returns the same grant
+- same idempotency key with a different body conflicts
+- approve activates a grant
+- deny denies a grant
+- expiry closes a grant
+- use budget reserves, commits, and releases correctly
+- ambiguous use fails closed
+
+Approval tests:
+
+- approval token matches only one grant
+- replayed decision is rejected
+- wrong approver is rejected
+- expired pending request is rejected
+- revoke closes an active grant
+
+Telegram tests:
+
+- approval send builds the expected generic Bot API payload
+- buttons carry the correct grant id and decision token
+- callback from the wrong chat is rejected
+- callback with the wrong token is rejected
+- stale or replayed callback is rejected
+- status update edits the expected message
+- bot token is never included in errors, logs, or audit metadata
+
+Audit tests:
+
+- JSONL shape is stable
+- secret fields are redacted
+- request bodies, Git pack bodies, command output, and approval tokens are absent
+- grant id and matched rule ids are present when available
 
 ## Non-Goals
 
