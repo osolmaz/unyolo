@@ -202,6 +202,27 @@ The first brokerkit implementation should stop after auth and policy if the
 grant overlay API is not yet clean. Do not add a grants package that cannot be
 evaluated by the same policy engine.
 
+## Implementation Readiness
+
+brokerkit is ready to implement when the first slice can satisfy these
+conditions:
+
+- shared auth, policy, grants, notify, Telegram, audit, storage, and Git helper
+  APIs stay provider-neutral
+- every provider-specific operation, target, attr, classifier, executor, audit
+  extension, and approval summary remains in the consuming broker
+- every package has pure unit tests with deterministic clocks and ids where
+  time or generated values matter
+- Telegram is tested with a fake Bot API server or in-memory notifier in
+  automated tests; CI must not require a live bot token or send real messages
+- generated grants are evaluated by the same policy decision path as static
+  rules
+- no package exposes upstream credentials, approval tokens, Git pack contents,
+  command input, command output, or Telegram bot tokens in errors, logs, audit
+  records, or test failures
+- at least one consuming broker can delete its local duplicate in the same
+  cutover PR that imports the brokerkit package
+
 ## Test Matrix
 
 Auth tests:
@@ -218,6 +239,7 @@ Policy tests:
 - unknown operation is rejected
 - unknown target kind is rejected
 - unknown attr is rejected
+- attrs on multi-operation rules must be supported by every operation in the rule
 - duplicate rule ids are rejected
 - deny beats allow
 - deny beats active grant
@@ -230,6 +252,8 @@ Policy tests:
 Grant tests:
 
 - request creates a pending grant
+- request returns the raw decision token separately from the durable grant
+- serialized grants and grant state files do not contain raw decision tokens
 - same idempotency key and body returns the same grant
 - same idempotency key with a different body conflicts
 - approve activates a grant
@@ -262,6 +286,26 @@ Audit tests:
 - secret fields are redacted
 - request bodies, Git pack bodies, command output, and approval tokens are absent
 - grant id and matched rule ids are present when available
+
+## Merge Gates
+
+Every brokerkit implementation slice must pass:
+
+```sh
+go fmt ./...
+go vet ./...
+go test -race ./...
+./scripts/check-go-coverage.sh
+golangci-lint run
+slophammer-go dry .
+slophammer-go crap .
+./scripts/check-mutation.sh
+slophammer-go check .
+```
+
+Slophammer is mandatory for brokerkit and for every broker that cuts over to
+brokerkit. Keep DRY, CRAP, mutation, and check gates in CI, not just in local
+developer notes.
 
 ## Non-Goals
 

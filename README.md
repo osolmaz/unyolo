@@ -47,9 +47,9 @@ domain boundary:
 
 The canonical ownership boundary is in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 
-## Planned Packages
+## Packages
 
-The first stable package candidates are:
+Implemented package candidates are:
 
 - `auth`: shared-secret bearer/basic authentication for named clients
 - `policy`: generic rule evaluation with broker-owned operation registries
@@ -64,12 +64,15 @@ The first stable package candidates are:
 
 Provider-specific execution code does not belong in brokerkit.
 
+`httpx` is still planned; the other packages above have initial Go
+implementations.
+
 ## Status
 
-This repository currently contains the design documents for extracting shared
-broker primitives. Implementation should begin with package boundaries that work
-for `hf-broker`, `gh-broker`, and `sudo-broker`; once a package lands, brokers
-should cut over to it directly rather than preserving old and new runtimes.
+This repository now contains the first brokerkit Go packages plus the design
+documents that define the cutover boundary. The next step is cutting
+`hf-broker`, `gh-broker`, and `sudo-broker` over to these packages directly
+rather than preserving old and new runtimes.
 
 ## License
 
