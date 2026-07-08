@@ -79,6 +79,26 @@ brokerkit.
    - Keep HF commits-only mirrors, ancestry checks, LFS/Xet behavior, and Hub
      forwarding local.
 
+## Brokerkit Cutover Test Gates
+
+Every brokerkit cutover PR must prove:
+
+- the replaced local implementation is deleted in the same change
+- all valid auth, policy, grant, approval, and audit decisions go through
+  brokerkit
+- HF-specific code only registers operations, targets, attrs, request
+  classifiers, upstream execution, audit extensions, and approval wording
+- malformed or unclassified HF Git/LFS/API requests fail closed before upstream
+  forwarding
+- deny still overrides active grants
+- active grants match only the approved client, operation, target, attrs,
+  duration, and use budget
+- Telegram approval uses the brokerkit adapter once it exists
+- a force-push grant flow is tested end to end with a fake notifier and fake
+  upstream
+- audit output contains no broker secrets, upstream tokens, request bodies, Git
+  pack contents, approval tokens, or Telegram bot tokens
+
 ## Slice 1: Policy Engine Cutover
 
 Build `internal/policy` from `docs/POLICY_RULES_SPEC.md`.

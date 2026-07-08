@@ -67,6 +67,12 @@ should move to brokerkit:
 This is a cutover, not a compatibility migration. When hf-broker adopts a
 brokerkit package, the local duplicate is deleted in the same change.
 
+Cutover tests must show that brokerkit handles auth, policy decisions, grants,
+approval state, Telegram transport, and audit-safe metadata. hf-broker tests
+must keep covering Hugging Face request classification, append-only enforcement,
+mirror behavior, LFS/Xet forwarding, HF-specific approval wording, and the
+representative force-push approval flow.
+
 Reversibility, not review, is the safety property: every accepted git
 operation is undoable with `git revert`; every accepted bucket overwrite
 leaves a snapshot; deletions are refused outright (or explicitly granted,
