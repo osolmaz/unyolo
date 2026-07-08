@@ -31,7 +31,10 @@ brokerkit should provide:
 - generated grant rules
 - grant lifecycle and expiry
 - audit-safe decision metadata
+- approval workflow
 - notifier interfaces
+- reusable Telegram approval transport
+- common config, storage, and HTTP safety helpers
 
 ## sudo-broker Responsibilities
 
@@ -44,6 +47,7 @@ sudo-broker should provide:
 - TTY handling
 - Linux and macOS executor backends
 - local isolation doctor checks
+- sudo-specific approval wording
 
 ## Initial Policy Vocabulary
 

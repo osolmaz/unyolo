@@ -25,6 +25,11 @@ Use this phase to compare:
 - `hf-broker/internal/policy`
 - `gh-broker/internal/policy`
 - `hf-broker/internal/grants`
+- `hf-broker/internal/audit`
+- `hf-broker/internal/notify`
+- `gh-broker` audit helpers inside HTTP handlers
+- `gh-broker/internal/shared`
+- generic Git receive-pack parsing in `hf-broker` and `gh-broker`
 - `sudo-broker` grants and command catalog behavior
 
 Exit criteria:
@@ -104,7 +109,66 @@ Extract only tiny helpers:
 Do not extract a generic reverse proxy. Each broker needs provider-specific
 forwarding behavior.
 
-## Phase 6: Add Versioned Releases
+## Phase 6: Extract Approval, Notify, And Telegram
+
+Extract the generic approval workflow after grants are stable.
+
+The package should support:
+
+- approval request and decision models
+- decision tokens
+- callback verification
+- approve, deny, cancel, and revoke actions
+- status updates
+- generic notifier interfaces
+- reusable Telegram Bot API adapter
+- Telegram inline approve/deny buttons
+- Telegram chat/user allowlists
+- Telegram callback-token validation
+
+It should not own broker-specific message text. `hf-broker`, `gh-broker`, and
+`sudo-broker` should compose their own approval summaries and pass them to the
+shared notification adapter.
+
+Cutover rule: after a broker imports `brokerkit/notify` and the Telegram
+adapter, delete its local Telegram transport and callback implementation.
+
+## Phase 7: Extract Audit, Config, And Store Helpers
+
+Extract shared durability and audit support when it is used by grants and at
+least one broker.
+
+The packages should support:
+
+- JSONL audit writer
+- secret-safe audit fields
+- grant/request/approval audit records
+- strict config decoding helpers
+- secret-safe validation errors
+- atomic file writes
+- lock handling
+- test clocks and deterministic ids
+
+They should not own provider-specific audit extension fields or broker-specific
+config structs.
+
+## Phase 8: Extract Generic Git Helpers
+
+Extract only Git behavior that is provider-neutral across `hf-broker` and
+`gh-broker`.
+
+The package may support:
+
+- pkt-line parsing
+- receive-pack command parsing
+- ref update classification
+- safe Git request limits
+- Git body and pack redaction helpers
+
+It should not own Hugging Face mirror management, Hugging Face ancestry checks,
+GitHub branch protection checks, GitHub App credentials, or provider forwarding.
+
+## Phase 9: Add Versioned Releases
 
 After at least one broker depends on brokerkit, use normal Go module releases:
 
@@ -124,9 +188,8 @@ brokerkit should not provide:
 - a generic broker server
 - provider SDK wrappers
 - sudo wrappers
-- Telegram-specific approval logic
+- broker-specific Telegram message text
 - command execution
-- Git packet parsing
 - GitHub API proxying
 
 Those belong in the consuming brokers.

@@ -7,8 +7,10 @@ server-side.
 
 The first intended users are `hf-broker`, `gh-broker`, and `sudo-broker`.
 brokerkit is the long-term shared base for those projects. Each broker should
-cut over to brokerkit for shared auth, policy, grants, audit, and notification
-behavior instead of maintaining a parallel compatibility runtime.
+cut over to brokerkit for shared auth, policy, grants, approval workflow,
+audit, notification, Telegram approval transport, common storage/config
+helpers, and generic Git parsing helpers instead of maintaining a parallel
+compatibility runtime.
 
 brokerkit should stay small: it is not a full broker framework, and it should
 not contain provider-specific Hugging Face, GitHub, or Unix privilege logic.
@@ -33,8 +35,8 @@ provider-specific executor
 audit log
 ```
 
-brokerkit owns only the reusable middle pieces. Each broker still owns its
-dangerous domain boundary:
+brokerkit owns the reusable control plane. Each broker still owns its dangerous
+domain boundary:
 
 - `hf-broker` owns Hugging Face Git/LFS, mirrors, append-only checks, and Hub
   token use.
@@ -42,6 +44,8 @@ dangerous domain boundary:
   GitHub ruleset compatibility.
 - `sudo-broker` should own Unix user switching, command catalogs, TTY sessions,
   and sudo/systemd/launchd integration.
+
+The canonical ownership boundary is in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 
 ## Planned Packages
 
@@ -52,7 +56,11 @@ The first stable package candidates are:
 - `grants`: short-lived pending/active/expired/revoked grants
 - `audit`: secret-safe structured audit helpers
 - `httpx`: proxy-safe header filtering and bounded body helpers
-- `notify`: approval notification interfaces
+- `notify`: approval notification interfaces and reusable approval-channel
+  adapters such as Telegram
+- `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
+  `hf-broker` and `gh-broker`
+- `store`: atomic file storage and lock helpers, if needed by grants/audit
 
 Provider-specific execution code does not belong in brokerkit.
 

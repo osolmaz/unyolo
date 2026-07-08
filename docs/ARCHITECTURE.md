@@ -24,9 +24,12 @@ write audit entry
 ```
 
 The shared code should help with authentication, policy decisions, grant
-lifecycle, audit-safe metadata, and HTTP safety helpers.
+lifecycle, approval workflow, reusable notification transports, audit-safe
+metadata, storage/config primitives, generic Git parsing helpers, and HTTP
+safety helpers.
 
-The consuming broker should own request classification and execution.
+The consuming broker should own request classification, provider credentials,
+provider-specific message wording, and execution.
 
 ## Package Boundaries
 
@@ -39,10 +42,14 @@ brokerkit/
 ├── grants/     # Durable short-lived grant records.
 ├── audit/      # Secret-safe audit event helpers.
 ├── httpx/      # Header filtering and body-limit helpers.
-└── notify/     # Approval notification interfaces.
+├── notify/     # Approval notification interfaces and adapters.
+├── store/      # Atomic local stores and locks.
+└── gitx/       # Generic Git smart-HTTP parsing helpers.
 ```
 
 The package names are tentative until the first implementation PR.
+
+The canonical ownership boundary is [OWNERSHIP.md](OWNERSHIP.md).
 
 ## What Belongs Here
 
@@ -51,12 +58,20 @@ brokerkit may contain:
 - bearer/basic shared-secret authentication for named clients
 - minimum secret length checks
 - policy rule parsing and matching
+- operation, target, and attr registry mechanics
 - effect ordering: deny, active grant, allow, request, no match
 - grant policy bounds
 - pending, active, expired, consumed, denied, and revoked grant states
+- grant idempotency, expiry, use budgets, and reservations
+- approval request, decision-token, callback, and revocation workflow
 - approval notifier interfaces
+- reusable Telegram transport and callback handling
 - safe audit field helpers
+- strict config decoding helpers
+- atomic file storage and lock helpers
 - proxy-safe HTTP header filters
+- generic Git pkt-line, receive-pack command, ref update classification, and
+  pack/body redaction helpers
 
 ## What Does Not Belong Here
 
@@ -67,6 +82,7 @@ brokerkit must not contain:
 - sudo, systemd, launchd, PAM, or TTY execution behavior
 - provider-specific operation names as built-in global behavior
 - provider-specific target kinds as built-in global behavior
+- provider-specific approval wording
 - command parsing for Unix shells
 - broad framework wiring that makes simple brokers harder to understand
 
@@ -80,6 +96,7 @@ Each broker must register its own vocabulary.
   `repo.contents.read`
 - target kinds such as `repo` and `bucket`
 - attrs such as `ref`, `path`, `max_bytes`, and object keys
+- Hugging Face-specific approval text
 
 `gh-broker` owns:
 
@@ -87,6 +104,7 @@ Each broker must register its own vocabulary.
   `git.push.fast_forward`
 - target kinds such as `repo` and `installation`
 - attrs such as `ref`, `base_ref`, `head_ref`, and `path`
+- GitHub-specific approval text
 
 `sudo-broker` owns:
 
@@ -94,6 +112,7 @@ Each broker must register its own vocabulary.
 - target kinds such as `user`, `group`, and `host`
 - attrs such as `command_id`, `cwd`, `tty`, and `timeout_seconds`
 - command catalogs, shell sessions, and OS-specific execution backends
+- Unix-specific approval text
 
 ## Security Invariants
 

@@ -4,6 +4,8 @@ This document defines the shared policy model brokerkit should provide.
 Provider-specific brokers register their own operations, target kinds, attrs,
 and validation rules. The intended migration is cutover: brokers should use this
 core directly instead of keeping local compatibility policy engines alive.
+See [OWNERSHIP.md](OWNERSHIP.md) for the broader brokerkit versus broker
+boundary.
 
 ## Minimal Policy File
 
@@ -222,5 +224,6 @@ The policy core does not:
 - decide whether a Git push is a fast-forward
 - inspect shell commands
 - write audit logs by itself
+- compose provider-specific approval messages
 
 Those responsibilities stay with the broker using brokerkit.
