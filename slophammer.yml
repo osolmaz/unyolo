@@ -1,0 +1,19 @@
+go:
+  targets:
+    - .
+  dry:
+    max_findings: 0
+    paths:
+      - .
+    exclude:
+      - "**/*_test.go"
+    structural:
+      enabled: true
+      threshold: 0.82
+      min_lines: 4
+      min_nodes: 20
+    copied_blocks:
+      enabled: true
+      min_tokens: 100
+  crap:
+    max_score: 8
