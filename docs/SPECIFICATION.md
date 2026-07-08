@@ -44,6 +44,25 @@ does not offer — non-fast-forward rejection for git refs and
 versioning/soft-delete for buckets — so that a full write token upstream
 degrades to an append-only capability downstream.
 
+## brokerkit Cutover
+
+`github.com/osolmaz/brokerkit` is the shared base for the broker family:
+`hf-broker`, `gh-broker`, and `sudo-broker`.
+
+hf-broker keeps Hugging Face-specific behavior local: Git/LFS parsing,
+commits-only mirrors, append-only enforcement, Hub token forwarding, bucket
+snapshot behavior, and Telegram delivery. Shared control-plane code should move
+to brokerkit:
+
+- auth
+- policy core
+- grant lifecycle
+- audit-safe metadata helpers
+- notifier interfaces
+
+This is a cutover, not a compatibility migration. When hf-broker adopts a
+brokerkit package, the local duplicate is deleted in the same change.
+
 Reversibility, not review, is the safety property: every accepted git
 operation is undoable with `git revert`; every accepted bucket overwrite
 leaves a snapshot; deletions are refused outright (or explicitly granted,
@@ -528,15 +547,15 @@ toolchain `go1.26.4`. One binary (`cmd/hf-broker`), business logic in
 ```text
 cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
 internal/config/                 env + scope.json loading and validation
-internal/auth/                   shared-secret extraction and constant-time check
+internal/auth/                   temporary; cut over to brokerkit/auth
 internal/isolation/              local runtime isolation doctor checks
-internal/policy/                 rule-based policy parser and decision engine
+internal/policy/                 temporary; cut over to brokerkit/policy + HF registry
 internal/gitproxy/               receive-pack parsing, enforcement, upstream forward
 internal/gitproxy/pktline/       pkt-line framing reader/writer
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
 internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
-internal/grants/                 grant store, expiry, decision (M3)
-internal/notify/                 Notifier interface + telegram impl (M4)
+internal/grants/                 temporary; cut over to brokerkit/grants
+internal/notify/                 telegram impl; notifier interface moves to brokerkit
 internal/jsend/                  JSON API response envelopes
 internal/httpapi/                Echo router, handlers, refusal responses, audit
 internal/audit/                  structured slog wiring

@@ -13,6 +13,12 @@ This document specifies the next implementation slices after the Echo router
 migration. Each slice should be merged only with tests that prove the broker
 still fails closed and does not leak credentials.
 
+Update: brokerkit is now the long-term shared base for broker-family control
+plane code. hf-broker should treat its current auth, policy, grant, audit, and
+notification code as the reference implementation to cut into brokerkit, then
+cut back over to the brokerkit packages. There is no backward-compatibility
+requirement for old internal APIs or old policy formats.
+
 ## Ground Rules
 
 - Do not give agents the upstream Hugging Face token.
@@ -21,13 +27,49 @@ still fails closed and does not leak credentials.
   delete, or create operations until the project rule forbidding them is
   deliberately changed.
 - Do not keep old and new policy runtimes alive together after policy cutover.
+- Do not keep local and brokerkit policy, grant, auth, or audit runtimes alive
+  together after brokerkit cutover.
+- Do not add converters or compatibility loaders for old `scope.json` formats.
+  Operators should edit the new rule file directly.
 - Keep Git smart-HTTP responses Git-shaped. Use JSend only for `/api/*`.
 - Keep policy, grant matching, path normalization, and ancestry logic free of
   Echo types.
 
+## Brokerkit Cutover Slices
+
+These slices replace local generic code with brokerkit packages. Each cutover
+should remove the old local implementation in the same PR that adopts
+brokerkit.
+
+1. Extract and adopt `brokerkit/auth`.
+   - Move named-client bearer/basic shared-secret auth to brokerkit.
+   - Keep hf-broker HTTP middleware local.
+   - Delete the old local auth implementation after cutover.
+
+2. Extract and adopt `brokerkit/grants`.
+   - Move durable grant status, expiry, use budgets, and idempotency to
+     brokerkit.
+   - Keep HF operation classification and grant request API shape local.
+   - Delete the old local grant store after cutover.
+
+3. Extract and adopt `brokerkit/policy`.
+   - Move generic rule parsing, registry validation, matching, and decision
+     ordering to brokerkit.
+   - Keep HF operation registry, repo/bucket targets, attrs, and request
+     classification in hf-broker.
+   - Delete `internal/policy` once hf-broker uses the brokerkit policy core.
+
+4. Extract and adopt `brokerkit/audit` and `brokerkit/notify`.
+   - Move secret-safe audit field helpers and notifier interfaces to brokerkit.
+   - Keep Telegram delivery and HF-specific audit event construction local.
+
 ## Slice 1: Policy Engine Cutover
 
 Build `internal/policy` from `docs/POLICY_RULES_SPEC.md`.
+
+This slice is the reference implementation for `brokerkit/policy`. After the
+brokerkit policy core lands, hf-broker should cut over and delete this local
+engine rather than maintaining both.
 
 Scope:
 

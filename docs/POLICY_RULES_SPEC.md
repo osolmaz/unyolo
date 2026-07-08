@@ -9,8 +9,13 @@ generated temporary grants.
 
 The old `repos[]` and `buckets[]` schema is not accepted after cutover.
 `scope.json` is now a rules file: runtime policy loading accepts the new
-`rules` format only. A one-shot converter may translate old files, but
-the broker does not keep dual runtime formats.
+`rules` format only. The broker does not ship a compatibility loader or
+converter for old files.
+
+Long term, the generic parts of this policy model move into
+`github.com/osolmaz/brokerkit/policy`. hf-broker keeps only the Hugging
+Face-specific operation registry, target definitions, attrs, and request
+classification.
 
 ## Smallest Valid File
 
@@ -1083,9 +1088,9 @@ rule ids per category plus a count:
 ## Legacy Scope Migration
 
 This is a cutover migration. After the policy engine is implemented, the
-broker runtime accepts only the rule-based `scope.json`. The project may
-provide a one-shot converter for old v1 `scope.json`, but the server must
-not keep both old and new runtime policy loaders.
+broker runtime accepts only the rule-based `scope.json`. There is no one-shot
+converter in the product plan and no dual runtime policy loader. Operators must
+write the new rule file explicitly.
 
 A v1 repo entry:
 
@@ -1139,6 +1144,9 @@ The old `internal/scope` package is replaced by `internal/policy`.
 Handlers classify requests into `policy.Request`; only `internal/policy`
 decides allow/request/deny. Do not compile rule policy into the old scope
 model.
+
+After brokerkit policy lands, `internal/policy` is replaced by the brokerkit
+policy core plus an hf-broker provider registry. Do not keep both engines.
 
 ## Canonical Test Fixtures
 
