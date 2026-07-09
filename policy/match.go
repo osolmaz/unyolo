@@ -2,6 +2,7 @@ package policy
 
 import (
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -92,6 +93,8 @@ func valuesMatch(mode MatchMode, patterns []string, value string) bool {
 		return patternsMatch(patterns, value)
 	case MatchPathGlob:
 		return pathPatternsMatch(patterns, value)
+	case MatchRecursivePathGlob:
+		return recursivePathPatternsMatch(patterns, value)
 	case MatchPathOutsidePrefix:
 		return pathOutsidePrefixes(patterns, value)
 	case MatchIntegerMaximum:
@@ -99,6 +102,23 @@ func valuesMatch(mode MatchMode, patterns []string, value string) bool {
 	default:
 		return false
 	}
+}
+
+func recursivePathPatternsMatch(patterns []string, value string) bool {
+	if strings.TrimSpace(value) == "" || len(value) > maxPathValueBytes || strings.Count(value, "/") >= maxPathSegments {
+		return false
+	}
+	for _, pattern := range patterns {
+		expression := regexp.QuoteMeta(pattern)
+		expression = strings.ReplaceAll(expression, `\*\*`, `.*`)
+		expression = strings.ReplaceAll(expression, `\*`, `[^/]*`)
+		expression = strings.ReplaceAll(expression, `\?`, `[^/]`)
+		matched, err := regexp.MatchString("^"+expression+"$", value)
+		if err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 func pathOutsidePrefixes(prefixes []string, value string) bool {
@@ -200,17 +220,40 @@ func integerMaximumMatches(ceilings []string, value string) bool {
 	return false
 }
 
-func grantMatches(grant Grant, request Request) bool {
+func grantMatches(registry Registry, grant Grant, request Request) bool {
 	if grant.Client != request.Client || grant.Operation != request.Operation {
 		return false
 	}
 	if !targetEqual(grant.Target, request.Target) {
 		return false
 	}
-	if !stringMapsEqual(grant.Attrs, request.Attrs) {
+	if !grantAttrsMatch(registry, grant.Attrs, request.Attrs) {
 		return false
 	}
 	return grant.UsesLeft > 0
+}
+
+func grantAttrsMatch(registry Registry, constraints map[string][]string, attrs map[string][]string) bool {
+	if len(constraints) != len(attrs) {
+		return false
+	}
+	for name, allowed := range constraints {
+		values, ok := attrs[name]
+		if !ok {
+			return false
+		}
+		mode := registry.Attrs[name].GrantMatch
+		if mode == "" {
+			if !copyx.StringSlicesEqual(allowed, values) {
+				return false
+			}
+			continue
+		}
+		if !allValuesMatch(mode, allowed, values) {
+			return false
+		}
+	}
+	return true
 }
 
 func targetEqual(left Target, right Target) bool {

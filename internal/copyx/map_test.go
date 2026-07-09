@@ -44,4 +44,10 @@ func TestCanonicalStringSliceMap(t *testing.T) {
 	if StringSliceMapsEqual(source, map[string][]string{"refs": {"other"}}) {
 		t.Fatal("StringSliceMapsEqual() = true for different sets")
 	}
+	if !StringSlicesEqual([]string{"dev", "main", "dev"}, []string{"main", "dev"}) {
+		t.Fatal("StringSlicesEqual() = false for equivalent sets")
+	}
+	if StringSlicesEqual([]string{"dev"}, []string{"main"}) {
+		t.Fatal("StringSlicesEqual() = true for different sets")
+	}
 }

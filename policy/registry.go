@@ -18,6 +18,8 @@ const (
 	MatchAnyGlob MatchMode = "any_glob"
 	// MatchPathGlob additionally permits a complete "**" path segment.
 	MatchPathGlob MatchMode = "path_glob"
+	// MatchRecursivePathGlob permits "**" anywhere and lets it cross '/'.
+	MatchRecursivePathGlob MatchMode = "recursive_path_glob"
 	// MatchPathOutsidePrefix accepts paths outside every configured prefix.
 	MatchPathOutsidePrefix MatchMode = "path_outside_prefix"
 	// MatchIntegerMaximum treats policy values as inclusive integer ceilings.
@@ -61,7 +63,8 @@ type FieldSpec struct {
 
 // AttrSpec describes one request attr.
 type AttrSpec struct {
-	Match MatchMode
+	Match      MatchMode
+	GrantMatch MatchMode
 }
 
 func (r Registry) validate() error {
@@ -174,6 +177,9 @@ func (r Registry) validateAttrSpecs() error {
 		if !validMatchMode(defaultedMatchMode(spec.Match)) {
 			return fmt.Errorf("registry attr %q has unsupported match mode %q", attr, spec.Match)
 		}
+		if spec.GrantMatch != "" && !validMatchMode(spec.GrantMatch) {
+			return fmt.Errorf("registry attr %q has unsupported grant match mode %q", attr, spec.GrantMatch)
+		}
 	}
 	return nil
 }
@@ -186,7 +192,7 @@ func defaultedMatchMode(mode MatchMode) MatchMode {
 }
 
 func validMatchMode(mode MatchMode) bool {
-	return mode == MatchGlob || mode == MatchAnyGlob || mode == MatchPathGlob ||
+	return mode == MatchGlob || mode == MatchAnyGlob || mode == MatchPathGlob || mode == MatchRecursivePathGlob ||
 		mode == MatchPathOutsidePrefix || mode == MatchIntegerMaximum
 }
 
@@ -272,7 +278,7 @@ func validateRequestValue(value string, mode MatchMode) error {
 	switch defaultedMatchMode(mode) {
 	case MatchGlob, MatchAnyGlob:
 		return nil
-	case MatchPathGlob, MatchPathOutsidePrefix:
+	case MatchPathGlob, MatchRecursivePathGlob, MatchPathOutsidePrefix:
 		return validatePathRequestValue(value)
 	case MatchIntegerMaximum:
 		return validateIntegerRequestValue(value)

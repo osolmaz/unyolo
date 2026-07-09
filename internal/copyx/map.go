@@ -59,9 +59,14 @@ func StringSliceMapsEqual(left, right map[string][]string) bool {
 	}
 	for key, leftValues := range left {
 		rightValues, ok := right[key]
-		if !ok || !slices.Equal(CanonicalStringSlice(leftValues), CanonicalStringSlice(rightValues)) {
+		if !ok || !StringSlicesEqual(leftValues, rightValues) {
 			return false
 		}
 	}
 	return true
+}
+
+// StringSlicesEqual compares slice values as unordered sets.
+func StringSlicesEqual(left, right []string) bool {
+	return slices.Equal(CanonicalStringSlice(left), CanonicalStringSlice(right))
 }
