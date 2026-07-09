@@ -110,7 +110,7 @@ func recursivePathPatternsMatch(patterns []string, value string) bool {
 	}
 	for _, pattern := range patterns {
 		expression := regexp.QuoteMeta(pattern)
-		expression = strings.ReplaceAll(expression, `\*\*`, `.*`)
+		expression = strings.ReplaceAll(expression, `\*\*`, `(?s:.*)`)
 		expression = strings.ReplaceAll(expression, `\*`, `[^/]*`)
 		expression = strings.ReplaceAll(expression, `\?`, `[^/]`)
 		matched, err := regexp.MatchString("^"+expression+"$", value)
