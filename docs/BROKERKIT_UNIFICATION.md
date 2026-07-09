@@ -15,6 +15,8 @@ Implemented today:
 
 - global Go binary can be built and installed manually
 - `gh-broker --version`
+- `install.sh`
+- release tarballs and checksums through `scripts/release.sh`
 - `gh-broker setup client`
 - Echo HTTP server
 - named client id through `GH_BROKER_CLIENT_ID`
@@ -30,8 +32,6 @@ Implemented today:
 
 Not implemented yet:
 
-- `install.sh`
-- release tarballs and checksums
 - `gh-broker setup systemd`
 - service user and systemd unit generation
 - brokerkit audit helpers

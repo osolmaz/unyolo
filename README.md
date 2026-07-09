@@ -37,6 +37,20 @@ make check
 make run
 ```
 
+## Install
+
+Install the latest release globally:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/gh-broker/main/install.sh | sh
+```
+
+Pinned install:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/gh-broker/main/install.sh | VERSION=v0.1.0 sh
+```
+
 Write a client config file from a broker secrets file:
 
 ```sh
@@ -164,3 +178,7 @@ pending grant with `POST /api/grants`; gh-broker sends the approval request to
 Telegram when Telegram is configured. Approval creates a short-lived brokerkit
 grant that is evaluated by the same policy path as static rules. Deny rules
 still win over approved grants.
+
+## License
+
+[MIT](LICENSE)
