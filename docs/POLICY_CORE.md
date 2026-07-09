@@ -164,9 +164,11 @@ Examples:
 The policy core uses canonical string lists at its boundary. Singleton fields
 still contain a one-element list. Multi-value provider fields such as Git refs,
 repository paths, and bucket keys stay as lists instead of being joined into an
-ambiguous delimiter-based string. Every concrete value must satisfy the rule's
-constraint, and an empty list never matches. The provider registry declares how
-each target field and attr is interpreted:
+ambiguous delimiter-based string. For `allow` and `request` rules, every
+concrete value must satisfy the rule's constraint. For `deny` rules, any
+matching concrete value denies the batch so a forbidden ref or path cannot be
+hidden beside an allowed one. An empty list never matches. The provider
+registry declares how each target field and attr is interpreted:
 
 - `glob` uses segment-safe glob matching; `*` does not cross `/`
 - `path_glob` additionally accepts a complete `**` path segment

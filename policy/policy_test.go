@@ -220,6 +220,32 @@ func TestProviderDeclaredMatcherSemantics(t *testing.T) {
 	}
 }
 
+func TestDenyMatchesAnyForbiddenValueInBatch(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"push": {TargetKinds: []string{"repo"}, Attrs: []string{"refs"}},
+		},
+		Targets: map[string]TargetSpec{
+			"repo": {Fields: map[string]FieldSpec{"name": {Required: true}}},
+		},
+		Attrs: map[string]AttrSpec{"refs": {}},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[
+		{"id":"deny-main","effect":"deny","clients":["*"],"operations":["push"],"targets":[{"kind":"repo","name":"*"}],"attrs":{"refs":["refs/heads/main"]}},
+		{"id":"allow-heads","effect":"allow","clients":["bob"],"operations":["push"],"targets":[{"kind":"repo","name":"*"}],"attrs":{"refs":["refs/heads/*"]}}
+	]}`, registry)
+	request := Request{
+		Client:    "bob",
+		Operation: "push",
+		Target:    Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}},
+		Attrs:     map[string][]string{"refs": {"refs/heads/main", "refs/heads/feature"}},
+	}
+	decision := policy.Decide(request, DecisionOptions{})
+	if decision.Allowed || decision.Effect != EffectDeny || decision.Reason != "policy_denied" {
+		t.Fatalf("mixed forbidden batch decision = %+v, want deny", decision)
+	}
+}
+
 func TestProviderMatcherValidation(t *testing.T) {
 	registry := Registry{
 		Operations: map[string]OperationSpec{

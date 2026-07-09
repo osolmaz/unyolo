@@ -16,42 +16,58 @@ const (
 func ruleMatches(registry Registry, rule Rule, request Request) bool {
 	return patternsMatch(rule.Clients, request.Client) &&
 		patternsMatch(rule.Operations, request.Operation) &&
-		targetsMatch(registry, rule.Targets, request.Target) &&
-		attrsMatch(registry, rule.Attrs, request.Operation, request.Attrs)
+		targetsMatch(registry, rule.Effect, rule.Targets, request.Target) &&
+		attrsMatch(registry, rule.Effect, rule.Attrs, request.Operation, request.Attrs)
 }
 
-func targetsMatch(registry Registry, matchers []TargetMatcher, target Target) bool {
+func targetsMatch(registry Registry, effect Effect, matchers []TargetMatcher, target Target) bool {
 	for _, matcher := range matchers {
 		if matcher.Kind != target.Kind {
 			continue
 		}
-		if targetFieldsMatch(registry.Targets[target.Kind], matcher.Fields, target.Fields) {
+		if targetFieldsMatch(registry.Targets[target.Kind], effect, matcher.Fields, target.Fields) {
 			return true
 		}
 	}
 	return false
 }
 
-func targetFieldsMatch(spec TargetSpec, patterns map[string][]string, fields map[string][]string) bool {
+func targetFieldsMatch(spec TargetSpec, effect Effect, patterns map[string][]string, fields map[string][]string) bool {
 	for name, allowed := range patterns {
-		if !allValuesMatch(spec.Fields[name].Match, allowed, fields[name]) {
+		if !effectValuesMatch(effect, spec.Fields[name].Match, allowed, fields[name]) {
 			return false
 		}
 	}
 	return true
 }
 
-func attrsMatch(registry Registry, patterns map[string][]string, operation string, attrs map[string][]string) bool {
+func attrsMatch(registry Registry, effect Effect, patterns map[string][]string, operation string, attrs map[string][]string) bool {
 	for name, allowed := range patterns {
 		if !attrRelevantToOperation(registry, name, operation) {
 			continue
 		}
 		values, ok := attrs[name]
-		if !ok || !allValuesMatch(registry.Attrs[name].Match, allowed, values) {
+		if !ok || !effectValuesMatch(effect, registry.Attrs[name].Match, allowed, values) {
 			return false
 		}
 	}
 	return true
+}
+
+func effectValuesMatch(effect Effect, mode MatchMode, patterns []string, values []string) bool {
+	if effect == EffectDeny {
+		return anyValueMatches(mode, patterns, values)
+	}
+	return allValuesMatch(mode, patterns, values)
+}
+
+func anyValueMatches(mode MatchMode, patterns []string, values []string) bool {
+	for _, value := range values {
+		if valuesMatch(mode, patterns, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func allValuesMatch(mode MatchMode, patterns []string, values []string) bool {
