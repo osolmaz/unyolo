@@ -244,6 +244,26 @@ func TestRecursivePathGlobMatchesEmbeddedDoubleStar(t *testing.T) {
 	}
 }
 
+func TestRecursivePathGlobPreservesZeroSegmentDoubleStar(t *testing.T) {
+	tests := []struct {
+		pattern string
+		value   string
+	}{
+		{pattern: "foo/**/bar", value: "foo/bar"},
+		{pattern: "foo/**/bar", value: "foo/nested/bar"},
+		{pattern: "**/foo", value: "foo"},
+		{pattern: "**/foo", value: "nested/foo"},
+		{pattern: "foo/**", value: "foo"},
+		{pattern: "foo/**", value: "foo/nested"},
+		{pattern: "foo/**/**/bar", value: "foo/bar"},
+	}
+	for _, test := range tests {
+		if !MatchAll(MatchRecursivePathGlob, []string{test.pattern}, []string{test.value}) {
+			t.Fatalf("recursive pattern %q did not match %q", test.pattern, test.value)
+		}
+	}
+}
+
 func TestRecursivePathGlobValidation(t *testing.T) {
 	if err := validateMatchValue("artifacts/**.json", MatchRecursivePathGlob); err != nil {
 		t.Fatalf("valid recursive path glob error = %v", err)
