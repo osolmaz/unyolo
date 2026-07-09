@@ -554,7 +554,7 @@ direct writes.
 ## Repository Layout
 
 Go module `github.com/osolmaz/hf-broker`, Go language version 1.25 with
-toolchain `go1.26.4`. One binary (`cmd/hf-broker`), business logic in
+toolchain `go1.26.5`. One binary (`cmd/hf-broker`), business logic in
 `internal/` so nothing but the command is importable.
 
 ```text

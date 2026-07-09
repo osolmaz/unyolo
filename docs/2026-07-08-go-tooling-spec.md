@@ -14,7 +14,7 @@ toolchain.
 | Tool | Version | Reason |
 |------|---------|--------|
 | Go language version | `go.mod` `go 1.25.0` | Required by current Echo and `golang.org/x/*` modules. |
-| Go toolchain | `go1.26.4` | Patched toolchain for standard-library vulnerability fixes. |
+| Go toolchain | `go1.26.5` | Patched toolchain for standard-library vulnerability fixes. |
 | Echo | `v4.15.4` | HTTP routing framework. |
 | `golangci-lint` | `v2.12.2` | Pinned CI linter version. |
 | `govulncheck` | `v1.5.0` | Pinned vulnerability scanner version. |
@@ -25,7 +25,7 @@ commit with a note about the required Go version.
 
 The Go language version and toolchain are intentionally separate. The code
 uses Go 1.25 language/module semantics, while CI and local auto-toolchain use
-Go 1.26.4 for patched standard-library builds and `govulncheck` results.
+Go 1.26.5 for patched standard-library builds and `govulncheck` results.
 
 ## Local Merge Gate
 
@@ -55,7 +55,7 @@ that in the final note.
 
 The main CI workflow must:
 
-- set up Go toolchain `1.26.4`
+- set up Go toolchain `1.26.5`
 - run `go mod download`
 - run `go mod tidy` and fail if `go.mod` or `go.sum` changes
 - run `go mod verify`
