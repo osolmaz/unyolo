@@ -777,6 +777,17 @@ func TestPolicyDoesNotExposeMutableInternals(t *testing.T) {
 	}
 }
 
+func TestEscapedLiteralClientsAreNotAmbiguous(t *testing.T) {
+	registry := testRegistry()
+	_, err := Parse([]byte(`{"rules":[
+		{"id":"first","effect":"request","clients":["agent-\\*"],"operations":["git.push.fast_forward"],"targets":[{"kind":"repo","owner":"osolmaz","name":"demo"}],"grant_policy":{"default_minutes":5,"max_minutes":5}},
+		{"id":"second","effect":"request","clients":["agent-\\*x"],"operations":["git.push.fast_forward"],"targets":[{"kind":"repo","owner":"osolmaz","name":"demo"}],"grant_policy":{"default_minutes":10,"max_minutes":10}}
+	]}`), registry)
+	if err != nil {
+		t.Fatalf("Parse() error = %v, want disjoint literal client names", err)
+	}
+}
+
 func TestAttrNamesAreMatchedLiterally(t *testing.T) {
 	policy := mustParse(t, `{"rules":[{
 		"id":"plural-ref-rule",

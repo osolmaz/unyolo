@@ -37,10 +37,10 @@ type Field struct {
 
 // MessageRef identifies an editable notification.
 type MessageRef struct {
-	Kind      string
-	ChatID    int64
-	MessageID int
-	Text      string
+	Kind      string `json:"kind"`
+	ChatID    int64  `json:"chat_id"`
+	MessageID int    `json:"message_id"`
+	Text      string `json:"text"`
 }
 
 // Decision is a parsed operator decision.
