@@ -94,9 +94,30 @@ func matchValuesMayOverlap(left []string, right []string, mode MatchMode) bool {
 		return true
 	case MatchPathGlob:
 		return valueListsMayOverlap(left, right, pathValuesMayOverlap)
+	case MatchRecursivePathGlob:
+		return valueListsMayOverlap(left, right, recursivePathValuesMayOverlap)
 	default:
 		return valueListsMayOverlap(left, right, patternsMayOverlap)
 	}
+}
+
+func recursivePathValuesMayOverlap(left string, right string) bool {
+	return pathMatcherValuesMayOverlap(left, right, recursivePathPatternsMatch)
+}
+
+func pathMatcherValuesMayOverlap(left string, right string, match func([]string, string) bool) bool {
+	if left == right {
+		return true
+	}
+	leftGlob := hasGlobMeta(left)
+	rightGlob := hasGlobMeta(right)
+	if !leftGlob {
+		return match([]string{right}, left)
+	}
+	if !rightGlob {
+		return match([]string{left}, right)
+	}
+	return true
 }
 
 func valueListsMayOverlap(left []string, right []string, match func(string, string) bool) bool {
@@ -111,18 +132,7 @@ func valueListsMayOverlap(left []string, right []string, match func(string, stri
 }
 
 func pathValuesMayOverlap(left string, right string) bool {
-	if left == right {
-		return true
-	}
-	leftGlob := hasGlobMeta(left)
-	rightGlob := hasGlobMeta(right)
-	if !leftGlob {
-		return pathPatternsMatch([]string{right}, left)
-	}
-	if !rightGlob {
-		return pathPatternsMatch([]string{left}, right)
-	}
-	return true
+	return pathMatcherValuesMayOverlap(left, right, pathPatternsMatch)
 }
 
 func patternsMayOverlap(left string, right string) bool {

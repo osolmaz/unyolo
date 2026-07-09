@@ -183,8 +183,124 @@ func TestGrantMatchesValueSetsWithoutOrder(t *testing.T) {
 		}},
 		Attrs: map[string][]string{"paths": {"go.mod", "README.md"}},
 	}
-	if !grantMatches(grant, request) {
+	if !grantMatches(Registry{}, grant, request) {
 		t.Fatal("grantMatches() = false for equivalent reordered value sets")
+	}
+}
+
+func TestGeneratedGrantUsesProviderAttributeMatcher(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"object.read": {TargetKinds: []string{"object"}, Attrs: []string{"max_bytes"}},
+		},
+		Targets: map[string]TargetSpec{
+			"object": {Fields: map[string]FieldSpec{"key": {Required: true}}},
+		},
+		Attrs: map[string]AttrSpec{
+			"max_bytes": {Match: MatchIntegerMaximum, GrantMatch: MatchIntegerMaximum},
+		},
+	}
+	policy := &Policy{registry: registry}
+	grant := Grant{
+		ID:        "grant",
+		Client:    "bob",
+		Operation: "object.read",
+		Target:    Target{Kind: "object", Fields: map[string][]string{"key": {"data.json"}}},
+		Attrs:     map[string][]string{"max_bytes": {"10"}},
+		ExpiresAt: time.Now().Add(time.Minute),
+		UsesLeft:  1,
+	}
+	request := Request{
+		Client:    "bob",
+		Operation: "object.read",
+		Target:    grant.Target,
+		Attrs:     map[string][]string{"max_bytes": {"5"}},
+	}
+	if decision := policy.Decide(request, DecisionOptions{ActiveGrants: []Grant{grant}}); !decision.Allowed || decision.GrantID != "grant" {
+		t.Fatalf("bounded grant decision = %+v, want grant_allowed", decision)
+	}
+	request.Attrs["max_bytes"] = []string{"11"}
+	if decision := policy.Decide(request, DecisionOptions{ActiveGrants: []Grant{grant}}); decision.Allowed {
+		t.Fatalf("over-limit grant decision = %+v, want denied", decision)
+	}
+}
+
+func TestRecursivePathGlobMatchesEmbeddedDoubleStar(t *testing.T) {
+	patterns := []string{"artifacts/**.json", "prefix**suffix"}
+	matching := []string{"artifacts/result.json", "artifacts/nested/result.json", "artifacts/nested\n/result.json", "prefix/a/suffix"}
+	for _, value := range matching {
+		if !MatchAll(MatchRecursivePathGlob, patterns, []string{value}) {
+			t.Fatalf("recursive path patterns did not match %q", value)
+		}
+	}
+	if !MatchAll(MatchRecursivePathGlob, patterns, matching) {
+		t.Fatal("recursive path patterns did not match the full value batch")
+	}
+	if !anyValueMatches(MatchRecursivePathGlob, patterns, []string{"artifacts/result.txt", "artifacts/result.json"}) {
+		t.Fatal("recursive path patterns did not match the allowed value in an any-value batch")
+	}
+	if MatchAll(MatchRecursivePathGlob, patterns, []string{"artifacts/result.txt"}) {
+		t.Fatal("recursive path patterns matched result.txt")
+	}
+}
+
+func TestRecursivePathGlobPreservesZeroSegmentDoubleStar(t *testing.T) {
+	tests := []struct {
+		pattern string
+		value   string
+	}{
+		{pattern: "foo/**/bar", value: "foo/bar"},
+		{pattern: "foo/**/bar", value: "foo/nested/bar"},
+		{pattern: "**/foo", value: "foo"},
+		{pattern: "**/foo", value: "nested/foo"},
+		{pattern: "foo/**", value: "foo"},
+		{pattern: "foo/**", value: "foo/nested"},
+		{pattern: "foo/**/**/bar", value: "foo/bar"},
+	}
+	for _, test := range tests {
+		if !MatchAll(MatchRecursivePathGlob, []string{test.pattern}, []string{test.value}) {
+			t.Fatalf("recursive pattern %q did not match %q", test.pattern, test.value)
+		}
+	}
+}
+
+func TestRecursivePathGlobValidation(t *testing.T) {
+	if err := validateMatchValue("artifacts/**.json", MatchRecursivePathGlob); err != nil {
+		t.Fatalf("valid recursive path glob error = %v", err)
+	}
+	invalid := []string{
+		"/absolute/**",
+		"bad[syntax",
+		strings.Repeat("a", maxPathPatternBytes+1),
+		strings.Repeat("a/", maxPathSegments) + "end",
+		"empty//segment",
+		"parent/../segment",
+	}
+	for _, pattern := range invalid {
+		if err := validateRecursivePathGlob(pattern); err == nil {
+			t.Fatalf("validateRecursivePathGlob(%q) succeeded", pattern)
+		}
+	}
+}
+
+func TestRecursivePathOverlapChecks(t *testing.T) {
+	for _, test := range []struct {
+		left  string
+		right string
+		want  bool
+	}{
+		{left: "same", right: "same", want: true},
+		{left: "artifacts/result.json", right: "artifacts/**.json", want: true},
+		{left: "artifacts/**.json", right: "artifacts/result.json", want: true},
+		{left: "artifacts/*.txt", right: "artifacts/**.json", want: true},
+		{left: "artifacts/result.txt", right: "artifacts/**.json", want: false},
+	} {
+		if got := recursivePathValuesMayOverlap(test.left, test.right); got != test.want {
+			t.Fatalf("recursivePathValuesMayOverlap(%q, %q) = %v, want %v", test.left, test.right, got, test.want)
+		}
+	}
+	if !matchValuesMayOverlap([]string{"artifacts/**.json"}, []string{"artifacts/result.json"}, MatchRecursivePathGlob) {
+		t.Fatal("recursive match values should overlap")
 	}
 }
 

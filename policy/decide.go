@@ -15,7 +15,7 @@ func (p *Policy) Decide(request Request, opts DecisionOptions) Decision {
 	if ids := p.matchingRuleIDs(request, EffectDeny); len(ids) > 0 {
 		return Decision{Effect: EffectDeny, Reason: "policy_denied", MatchedDenyRuleIDs: ids}
 	}
-	if grant, ok := firstMatchingGrant(request, opts); ok {
+	if grant, ok := p.firstMatchingGrant(request, opts); ok {
 		return Decision{
 			Effect:              EffectAllow,
 			Allowed:             true,
@@ -51,7 +51,7 @@ func (p *Policy) matchingRuleIDs(request Request, effect Effect) []string {
 	return ids
 }
 
-func firstMatchingGrant(request Request, opts DecisionOptions) (Grant, bool) {
+func (p *Policy) firstMatchingGrant(request Request, opts DecisionOptions) (Grant, bool) {
 	now := opts.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -60,7 +60,7 @@ func firstMatchingGrant(request Request, opts DecisionOptions) (Grant, bool) {
 		if grant.ExpiresAt.IsZero() || !now.Before(grant.ExpiresAt) {
 			continue
 		}
-		if grantMatches(grant, request) {
+		if grantMatches(p.registry, grant, request) {
 			return grant, true
 		}
 	}

@@ -179,6 +179,8 @@ schema.
 - `glob` uses segment-safe glob matching; `*` does not cross `/`
 - `any_glob` uses the same syntax but accepts a list when any value matches
 - `path_glob` additionally accepts a complete `**` path segment
+- `recursive_path_glob` accepts `**` anywhere in a relative path pattern and
+  lets it cross `/`
 - `path_outside_prefix` accepts concrete paths only when they remain outside
   every configured relative prefix
 - `integer_maximum` treats policy values as inclusive non-negative integer
@@ -187,6 +189,12 @@ schema.
 For predictable resource use, `path_glob` policy values are limited to 1,024
 bytes and 256 path segments. Request values are limited to 4,096 bytes and 256
 segments. Values beyond those limits fail closed and do not match a rule.
+
+Generated grants compare attributes exactly by default. A provider may set an
+attribute's `GrantMatch` mode when an approved value is a constraint rather
+than an exact value. For example, `integer_maximum` lets an approved
+`max_bytes: 10` grant authorize requests up to 10 bytes without changing exact
+matching for other attributes.
 
 This keeps typed provider parsing in the broker while making the decision
 semantics reusable. For example, hf-broker parses a JSON byte count, validates

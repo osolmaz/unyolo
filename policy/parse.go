@@ -446,6 +446,8 @@ func validateMatchValue(value string, mode MatchMode) error {
 		return validateGlob(value)
 	case MatchPathGlob:
 		return validatePathGlob(value)
+	case MatchRecursivePathGlob:
+		return validateRecursivePathGlob(value)
 	case MatchPathOutsidePrefix:
 		return validatePathPrefix(value)
 	case MatchIntegerMaximum:
@@ -460,6 +462,28 @@ func validateMatchValue(value string, mode MatchMode) error {
 	default:
 		return fmt.Errorf("unsupported match mode %q", mode)
 	}
+}
+
+func validateRecursivePathGlob(value string) error {
+	if strings.HasPrefix(value, "/") {
+		return errors.New("must be relative")
+	}
+	if strings.ContainsAny(value, `[]\`) {
+		return errors.New("character classes and escapes are not supported")
+	}
+	if len(value) > maxPathPatternBytes {
+		return fmt.Errorf("must not exceed %d bytes", maxPathPatternBytes)
+	}
+	segments := strings.Split(value, "/")
+	if len(segments) > maxPathSegments {
+		return fmt.Errorf("must not exceed %d segments", maxPathSegments)
+	}
+	for _, segment := range segments {
+		if segment == "" || segment == ".." {
+			return errors.New("must contain non-empty relative segments")
+		}
+	}
+	return nil
 }
 
 func validatePathPrefix(prefix string) error {

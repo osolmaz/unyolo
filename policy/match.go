@@ -2,6 +2,7 @@ package policy
 
 import (
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -63,6 +64,9 @@ func effectValuesMatch(effect Effect, mode MatchMode, patterns []string, values 
 }
 
 func anyValueMatches(mode MatchMode, patterns []string, values []string) bool {
+	if defaultedMatchMode(mode) == MatchRecursivePathGlob {
+		return recursivePathValuesMatch(patterns, values, false)
+	}
 	for _, value := range values {
 		if valuesMatch(mode, patterns, value) {
 			return true
@@ -74,6 +78,9 @@ func anyValueMatches(mode MatchMode, patterns []string, values []string) bool {
 func allValuesMatch(mode MatchMode, patterns []string, values []string) bool {
 	if len(values) == 0 {
 		return false
+	}
+	if defaultedMatchMode(mode) == MatchRecursivePathGlob {
+		return recursivePathValuesMatch(patterns, values, true)
 	}
 	if defaultedMatchMode(mode) == MatchAnyGlob {
 		return anyValueMatches(mode, patterns, values)
@@ -92,6 +99,8 @@ func valuesMatch(mode MatchMode, patterns []string, value string) bool {
 		return patternsMatch(patterns, value)
 	case MatchPathGlob:
 		return pathPatternsMatch(patterns, value)
+	case MatchRecursivePathGlob:
+		return recursivePathPatternsMatch(patterns, value)
 	case MatchPathOutsidePrefix:
 		return pathOutsidePrefixes(patterns, value)
 	case MatchIntegerMaximum:
@@ -99,6 +108,98 @@ func valuesMatch(mode MatchMode, patterns []string, value string) bool {
 	default:
 		return false
 	}
+}
+
+func recursivePathPatternsMatch(patterns []string, value string) bool {
+	if !validPathValue(value) {
+		return false
+	}
+	return compiledRecursivePathPatternsMatch(compileRecursivePathPatterns(patterns), value)
+}
+
+func recursivePathValuesMatch(patterns []string, values []string, requireAll bool) bool {
+	compiled := compileRecursivePathPatterns(patterns)
+	for _, value := range values {
+		matched := validPathValue(value) && compiledRecursivePathPatternsMatch(compiled, value)
+		if requireAll != matched {
+			return !requireAll
+		}
+	}
+	return requireAll && len(values) > 0
+}
+
+func compileRecursivePathPatterns(patterns []string) []*regexp.Regexp {
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
+	for _, pattern := range patterns {
+		expression := recursivePathExpression(pattern)
+		if matcher, err := regexp.Compile("^" + expression + "$"); err == nil {
+			compiled = append(compiled, matcher)
+		}
+	}
+	return compiled
+}
+
+func recursivePathExpression(pattern string) string {
+	segments := compactRecursiveSegments(strings.Split(pattern, "/"))
+	var expression strings.Builder
+	separatorBeforeNext := false
+	for index, segment := range segments {
+		if segment == "**" {
+			appendCompleteDoubleStar(&expression, index, len(segments))
+			separatorBeforeNext = false
+			continue
+		}
+		if separatorBeforeNext {
+			expression.WriteByte('/')
+		}
+		expression.WriteString(recursiveSegmentExpression(segment))
+		separatorBeforeNext = true
+	}
+	return expression.String()
+}
+
+func compactRecursiveSegments(segments []string) []string {
+	out := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if segment == "**" && len(out) > 0 && out[len(out)-1] == "**" {
+			continue
+		}
+		out = append(out, segment)
+	}
+	return out
+}
+
+func appendCompleteDoubleStar(expression *strings.Builder, index int, count int) {
+	switch {
+	case count == 1:
+		expression.WriteString(`(?s:.*)`)
+	case index == 0:
+		expression.WriteString(`(?s:(?:.*/)?)`)
+	case index == count-1:
+		expression.WriteString(`(?s:(?:/.*)?)`)
+	default:
+		expression.WriteString(`(?s:(?:/.*)?/)`)
+	}
+}
+
+func recursiveSegmentExpression(segment string) string {
+	expression := regexp.QuoteMeta(segment)
+	expression = strings.ReplaceAll(expression, `\*\*`, `(?s:.*)`)
+	expression = strings.ReplaceAll(expression, `\*`, `[^/]*`)
+	return strings.ReplaceAll(expression, `\?`, `[^/]`)
+}
+
+func compiledRecursivePathPatternsMatch(patterns []*regexp.Regexp, value string) bool {
+	for _, pattern := range patterns {
+		if pattern.MatchString(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func validPathValue(value string) bool {
+	return strings.TrimSpace(value) != "" && len(value) <= maxPathValueBytes && strings.Count(value, "/") < maxPathSegments
 }
 
 func pathOutsidePrefixes(prefixes []string, value string) bool {
@@ -200,17 +301,40 @@ func integerMaximumMatches(ceilings []string, value string) bool {
 	return false
 }
 
-func grantMatches(grant Grant, request Request) bool {
+func grantMatches(registry Registry, grant Grant, request Request) bool {
 	if grant.Client != request.Client || grant.Operation != request.Operation {
 		return false
 	}
 	if !targetEqual(grant.Target, request.Target) {
 		return false
 	}
-	if !stringMapsEqual(grant.Attrs, request.Attrs) {
+	if !grantAttrsMatch(registry, grant.Attrs, request.Attrs) {
 		return false
 	}
 	return grant.UsesLeft > 0
+}
+
+func grantAttrsMatch(registry Registry, constraints map[string][]string, attrs map[string][]string) bool {
+	if len(constraints) != len(attrs) {
+		return false
+	}
+	for name, allowed := range constraints {
+		values, ok := attrs[name]
+		if !ok {
+			return false
+		}
+		mode := registry.Attrs[name].GrantMatch
+		if mode == "" {
+			if !copyx.StringSlicesEqual(allowed, values) {
+				return false
+			}
+			continue
+		}
+		if !allValuesMatch(mode, allowed, values) {
+			return false
+		}
+	}
+	return true
 }
 
 func targetEqual(left Target, right Target) bool {
