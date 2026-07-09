@@ -115,6 +115,141 @@ func TestApprovedIdempotentRetryKeepsOriginalDuration(t *testing.T) {
 	}
 }
 
+func TestIdempotentRetryIgnoresValueOrder(t *testing.T) {
+	ids := []string{"grant-1", "token-1", "token-2"}
+	store := newDeterministicStore(t, time.Now, &ids)
+	request := Request{
+		Client:          "bob",
+		ClientRequestID: "multi-ref",
+		Operation:       "git.push",
+		Target: policy.Target{Kind: "repo", Fields: map[string][]string{
+			"refs": {"refs/heads/main", "refs/heads/dev"},
+		}},
+		Attrs:  map[string][]string{"paths": {"README.md", "go.mod"}},
+		Reason: "push two refs",
+	}
+	first, created, err := store.Request(request)
+	if err != nil || !created {
+		t.Fatalf("first Request() = %+v created=%v err=%v", first, created, err)
+	}
+	request.Target.Fields["refs"] = []string{"refs/heads/dev", "refs/heads/main"}
+	request.Attrs["paths"] = []string{"go.mod", "README.md"}
+	retry, created, err := store.Request(request)
+	if err != nil || created || retry.Grant.ID != first.Grant.ID {
+		t.Fatalf("reordered Request() = %+v created=%v err=%v", retry, created, err)
+	}
+}
+
+func TestLoadMigratesScalarGrantValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grants.json")
+	data := `{"grants":[{
+		"id":"grant-1",
+		"decision_token_verifier":"verifier",
+		"client":"bob",
+		"operation":"git.push",
+		"target":{"Kind":"repo","Fields":{"owner":"osolmaz","name":"demo"}},
+		"attrs":{"ref":"refs/heads/main"},
+		"reason":"migration",
+		"status":"active",
+		"created_at":"2026-07-08T00:00:00Z",
+		"pending_expires_at":"2026-07-08T00:05:00Z",
+		"expires_at":"2026-07-08T01:00:00Z",
+		"duration":300000000000,
+		"pending_timeout":300000000000,
+		"max_uses":1
+	}]}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := New(path, Options{Now: nowFunc(time.Date(2026, 7, 8, 0, 30, 0, 0, time.UTC))})
+	loaded, err := store.List()
+	if err != nil || len(loaded) != 1 {
+		t.Fatalf("List() = %+v err=%v", loaded, err)
+	}
+	if got := loaded[0].Attrs["ref"]; len(got) != 1 || got[0] != "refs/heads/main" {
+		t.Fatalf("migrated attrs = %+v", loaded[0].Attrs)
+	}
+	assertCanonicalGrantFile(t, path)
+}
+
+func TestNormalizeStoredValueMapCompatibility(t *testing.T) {
+	fields := map[string]json.RawMessage{}
+	legacy, err := normalizeStoredValueMap(fields, "attrs")
+	assertLegacyResult(t, "missing map", legacy, err, false)
+	fields["attrs"] = json.RawMessage(`null`)
+	legacy, err = normalizeStoredValueMap(fields, "attrs")
+	assertLegacyResult(t, "null map", legacy, err, false)
+	fields["attrs"] = json.RawMessage(`{"ref":"main","paths":["b","a","b"]}`)
+	legacy, err = normalizeStoredValueMap(fields, "attrs")
+	assertLegacyResult(t, "compatible map", legacy, err, true)
+	var normalized map[string][]string
+	if err := json.Unmarshal(fields["attrs"], &normalized); err != nil {
+		t.Fatal(err)
+	}
+	if got := normalized["paths"]; len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("normalized paths = %v", got)
+	}
+	fields["attrs"] = json.RawMessage(`[]`)
+	if _, err := normalizeStoredValueMap(fields, "attrs"); err == nil {
+		t.Fatal("array value map error = nil")
+	}
+	fields["attrs"] = json.RawMessage(`{"ref":1}`)
+	if _, err := normalizeStoredValueMap(fields, "attrs"); err == nil {
+		t.Fatal("non-string value error = nil")
+	}
+}
+
+func assertLegacyResult(t *testing.T, name string, got bool, err error, want bool) {
+	t.Helper()
+	if err != nil || got != want {
+		t.Fatalf("%s = legacy %v, err %v; want legacy %v", name, got, err, want)
+	}
+}
+
+func TestNormalizeStoredTargetCompatibility(t *testing.T) {
+	fields := map[string]json.RawMessage{}
+	legacy, err := normalizeStoredTarget(fields)
+	assertLegacyResult(t, "missing target", legacy, err, false)
+	fields["target"] = json.RawMessage(`null`)
+	legacy, err = normalizeStoredTarget(fields)
+	assertLegacyResult(t, "null target", legacy, err, false)
+	fields["target"] = json.RawMessage(`{"kind":"repo","fields":{"name":"demo"}}`)
+	legacy, err = normalizeStoredTarget(fields)
+	assertLegacyResult(t, "lowercase target", legacy, err, true)
+	fields["target"] = json.RawMessage(`[]`)
+	if _, err := normalizeStoredTarget(fields); err == nil {
+		t.Fatal("array target error = nil")
+	}
+	fields["target"] = json.RawMessage(`{"Fields":[]}`)
+	if _, err := normalizeStoredTarget(fields); err == nil {
+		t.Fatal("invalid target fields error = nil")
+	}
+}
+
+func assertCanonicalGrantFile(t *testing.T, path string) {
+	t.Helper()
+	rewritten, err := os.ReadFile(path) // #nosec G304 -- path belongs to this test's temporary directory.
+	if err != nil {
+		t.Fatal(err)
+	}
+	var canonical struct {
+		Grants []struct {
+			Target policy.Target
+			Attrs  map[string][]string `json:"attrs"`
+		} `json:"grants"`
+	}
+	if err := json.Unmarshal(rewritten, &canonical); err != nil {
+		t.Fatalf("rewritten grant is not canonical array schema: %v\n%s", err, rewritten)
+	}
+	if len(canonical.Grants) != 1 {
+		t.Fatalf("rewritten canonical grants = %+v", canonical)
+	}
+	grant := canonical.Grants[0]
+	if grant.Attrs["ref"][0] != "refs/heads/main" || grant.Target.Fields["owner"][0] != "osolmaz" {
+		t.Fatalf("rewritten canonical grant = %+v", canonical)
+	}
+}
+
 func TestPendingIdempotentRetryRefreshesDecisionToken(t *testing.T) {
 	ids := []string{"grant-1", "token-1", "token-2"}
 	store := newDeterministicStore(t, time.Now, &ids)

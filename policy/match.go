@@ -2,9 +2,10 @@ package policy
 
 import (
 	"path"
-	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/internal/copyx"
 )
 
 const (
@@ -217,18 +218,5 @@ func targetEqual(left Target, right Target) bool {
 }
 
 func stringMapsEqual(left, right map[string][]string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	return stringMapsContain(left, right)
-}
-
-func stringMapsContain(container, want map[string][]string) bool {
-	for key, value := range want {
-		got, ok := container[key]
-		if !ok || !slices.Equal(got, value) {
-			return false
-		}
-	}
-	return true
+	return copyx.StringSliceMapsEqual(left, right)
 }

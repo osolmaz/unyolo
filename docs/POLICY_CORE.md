@@ -170,6 +170,12 @@ matching concrete value denies the batch so a forbidden ref or path cannot be
 hidden beside an allowed one. An empty list never matches. The provider
 registry declares how each target field and attr is interpreted:
 
+List values are sets for exact grant and idempotency comparisons: ordering and
+duplicates do not change the classified authorization unit. Durable grants are
+written as sorted, duplicate-free arrays. The grant store accepts the earlier
+scalar representation when loading and rewrites it to the canonical array
+schema.
+
 - `glob` uses segment-safe glob matching; `*` does not cross `/`
 - `any_glob` uses the same syntax but accepts a list when any value matches
 - `path_glob` additionally accepts a complete `**` path segment

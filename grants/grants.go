@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -99,10 +100,120 @@ type Grant struct {
 	UsedCount             int                 `json:"used_count"`
 	ReservedCount         int                 `json:"reserved_count,omitempty"`
 	MaxUses               int                 `json:"max_uses"`
+	legacySchema          bool
 }
 
 type fileData struct {
 	Grants []Grant `json:"grants"`
+}
+
+type compatibleValues struct {
+	values []string
+	legacy bool
+}
+
+func (g *Grant) UnmarshalJSON(data []byte) error {
+	type grantJSON Grant
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	legacyAttrs, err := normalizeStoredValueMap(fields, "attrs")
+	if err != nil {
+		return fmt.Errorf("attrs: %w", err)
+	}
+	legacyTarget, err := normalizeStoredTarget(fields)
+	if err != nil {
+		return fmt.Errorf("target: %w", err)
+	}
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var decoded grantJSON
+	if err := json.Unmarshal(normalized, &decoded); err != nil {
+		return err
+	}
+	*g = Grant(decoded)
+	g.legacySchema = legacyAttrs || legacyTarget
+	return nil
+}
+
+func normalizeStoredTarget(fields map[string]json.RawMessage) (bool, error) {
+	raw, ok := fields["target"]
+	if !ok || string(raw) == "null" {
+		return false, nil
+	}
+	var targetFields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &targetFields); err != nil {
+		return false, err
+	}
+	legacy, err := normalizeStoredValueMap(targetFields, "Fields")
+	if err != nil {
+		return false, fmt.Errorf("fields: %w", err)
+	}
+	if !legacy {
+		legacy, err = normalizeStoredValueMap(targetFields, "fields")
+		if err != nil {
+			return false, fmt.Errorf("fields: %w", err)
+		}
+	}
+	return legacy, replaceJSONField(fields, "target", targetFields)
+}
+
+func normalizeStoredValueMap(fields map[string]json.RawMessage, name string) (bool, error) {
+	raw, ok := fields[name]
+	if !ok || string(raw) == "null" {
+		return false, nil
+	}
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &encoded); err != nil {
+		return false, err
+	}
+	legacy := false
+	values := make(map[string][]string, len(encoded))
+	for key, value := range encoded {
+		decoded, err := decodeCompatibleValues(value)
+		if err != nil {
+			return false, fmt.Errorf("%s: %w", key, err)
+		}
+		values[key] = copyx.CanonicalStringSlice(decoded.values)
+		legacy = legacy || decoded.legacy || !slices.Equal(values[key], decoded.values)
+	}
+	return legacy, replaceJSONField(fields, name, values)
+}
+
+func replaceJSONField(fields map[string]json.RawMessage, name string, value any) error {
+	normalized, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	fields[name] = normalized
+	return nil
+}
+
+func decodeCompatibleValues(data []byte) (compatibleValues, error) {
+	var scalar string
+	if err := json.Unmarshal(data, &scalar); err == nil {
+		return compatibleValues{values: []string{scalar}, legacy: true}, nil
+	}
+	var values []string
+	if err := json.Unmarshal(data, &values); err != nil {
+		return compatibleValues{}, errors.New("must be a string or string array")
+	}
+	return compatibleValues{values: values}, nil
+}
+
+func canonicalizeLoadedGrants(grants []Grant) bool {
+	changed := false
+	for index := range grants {
+		grant := &grants[index]
+		changed = changed || grant.legacySchema
+		grant.legacySchema = false
+		grant.Target.Fields = copyx.CanonicalStringSliceMap(grant.Target.Fields)
+		grant.Attrs = copyx.CanonicalStringSliceMap(grant.Attrs)
+	}
+	return changed
 }
 
 // Store owns one durable grant file.
@@ -411,8 +522,8 @@ func (s *Store) normalizeRequest(req Request) (Request, error) {
 	if err != nil {
 		return Request{}, err
 	}
-	normalized.Target.Fields = copyx.StringSliceMap(normalized.Target.Fields)
-	normalized.Attrs = copyx.StringSliceMap(normalized.Attrs)
+	normalized.Target.Fields = copyx.CanonicalStringSliceMap(normalized.Target.Fields)
+	normalized.Attrs = copyx.CanonicalStringSliceMap(normalized.Attrs)
 	return normalized, nil
 }
 
@@ -501,6 +612,11 @@ func (s *Store) load() (fileData, error) {
 	if err := store.ReadJSON(s.path, &data); err != nil {
 		return fileData{}, err
 	}
+	if canonicalizeLoadedGrants(data.Grants) {
+		if err := s.save(data); err != nil {
+			return fileData{}, err
+		}
+	}
 	return data, nil
 }
 
@@ -583,9 +699,7 @@ func targetEqual(left policy.Target, right policy.Target) bool {
 }
 
 func mapsEqual(left, right map[string][]string) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
+	return copyx.StringSliceMapsEqual(left, right)
 }
 
 func randomID(bytesCount int) (string, error) {

@@ -165,6 +165,29 @@ func TestGrantOverlayRequiresExactAttrs(t *testing.T) {
 	}
 }
 
+func TestGrantMatchesValueSetsWithoutOrder(t *testing.T) {
+	grant := Grant{
+		Client:    "bob",
+		Operation: "git.push",
+		Target: Target{Kind: "repo", Fields: map[string][]string{
+			"refs": {"refs/heads/main", "refs/heads/dev"},
+		}},
+		Attrs:    map[string][]string{"paths": {"README.md", "go.mod"}},
+		UsesLeft: 1,
+	}
+	request := Request{
+		Client:    "bob",
+		Operation: "git.push",
+		Target: Target{Kind: "repo", Fields: map[string][]string{
+			"refs": {"refs/heads/dev", "refs/heads/main"},
+		}},
+		Attrs: map[string][]string{"paths": {"go.mod", "README.md"}},
+	}
+	if !grantMatches(grant, request) {
+		t.Fatal("grantMatches() = false for equivalent reordered value sets")
+	}
+}
+
 func TestProviderDeclaredMatcherSemantics(t *testing.T) {
 	registry := Registry{
 		Operations: map[string]OperationSpec{
