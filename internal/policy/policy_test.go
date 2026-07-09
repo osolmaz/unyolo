@@ -428,7 +428,7 @@ func TestActiveGrantAllowsExactRequestAndDenyStillWins(t *testing.T) {
 		Client:    "bob",
 		Operation: string(OperationGitPushForce),
 		Target:    CoreTarget(request.Target),
-		Attrs:     request.Attrs,
+		Attrs:     corepolicy.SingletonValues(request.Attrs),
 		ExpiresAt: time.Now().Add(time.Hour),
 		UsesLeft:  1,
 	}
@@ -529,7 +529,8 @@ func TestRegistryDeclaresGitHubPolicyCapabilities(t *testing.T) {
 func TestLoadFileRejectsUnsafeOrUnknownScope(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"empty rules":       `{"rules":[]}`,
+		"missing rules":     `{}`,
+		"null rules":        `{"rules":null}`,
 		"unknown operation": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["repo.delete"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}]}]}`,
 		"unknown attr":      `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"attrs":{"unknown":["x"]}}]}`,
 		"incompatible attr": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["contents.read"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"attrs":{"base_refs":["refs/heads/main"]}}]}`,
@@ -541,6 +542,22 @@ func TestLoadFileRejectsUnsafeOrUnknownScope(t *testing.T) {
 		if _, err := LoadFile(writeScopeFile(t, body)); err == nil {
 			t.Fatalf("%s LoadFile() error = nil, want error", name)
 		}
+	}
+}
+
+func TestLoadFileAcceptsExplicitDenyAllScope(t *testing.T) {
+	t.Parallel()
+	policy, err := LoadFile(writeScopeFile(t, `{"rules":[]}`))
+	if err != nil {
+		t.Fatalf("LoadFile(empty rules) error = %v", err)
+	}
+	decision := policy.Evaluate(Request{
+		Client:    "bob",
+		Operation: OperationGitFetch,
+		Target:    Target{Kind: "repo", Owner: "dutifuldev", Name: "demo"},
+	})
+	if decision.Allowed || decision.Effect != EffectNoMatch {
+		t.Fatalf("empty rules decision = %+v, want deny-all no-match", decision)
 	}
 }
 

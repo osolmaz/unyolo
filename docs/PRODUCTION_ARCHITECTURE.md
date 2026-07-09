@@ -245,6 +245,10 @@ The current `github-access.json` format is allowed only as temporary seed
 code. The cutover should replace it rather than keep both runtimes alive.
 No converter or compatibility loader is required.
 
+An explicit `{"rules":[]}` is a valid deny-all policy for staged setup and
+emergency shutdown. Missing or null `rules` is invalid and prevents startup, so
+an incomplete file cannot silently become a deny-all configuration.
+
 Example:
 
 ```json

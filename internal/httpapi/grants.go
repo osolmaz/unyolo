@@ -110,7 +110,7 @@ func (p grantCreatePlan) storeRequest() grants.Request {
 		ClientRequestID: p.payload.ClientRequestID,
 		Operation:       string(p.request.Operation),
 		Target:          policy.CoreTarget(p.request.Target),
-		Attrs:           p.request.Attrs,
+		Attrs:           corepolicy.SingletonValues(p.request.Attrs),
 		Reason:          strings.TrimSpace(p.payload.Reason),
 		Duration:        p.duration,
 		PendingTimeout:  p.pendingTimeout,
@@ -271,7 +271,7 @@ func apiGrantFromStore(grant grants.Grant) apiGrant {
 		Status:          string(grant.Status),
 		Operation:       grant.Operation,
 		Target:          apiTarget(grant.Target),
-		Attrs:           cloneStringMap(grant.Attrs),
+		Attrs:           flattenCoreValues(grant.Attrs),
 		Reason:          grant.Reason,
 		Minutes:         int(grant.Duration / time.Minute),
 		MaxUses:         grant.MaxUses,
@@ -305,8 +305,8 @@ func timePointer(value time.Time) *time.Time {
 func apiTarget(target corepolicy.Target) policy.Target {
 	return policy.Target{
 		Kind:  target.Kind,
-		Owner: target.Fields["owner"],
-		Name:  target.Fields["name"],
+		Owner: corepolicy.FirstValue(target.Fields["owner"]),
+		Name:  corepolicy.FirstValue(target.Fields["name"]),
 	}
 }
 
@@ -345,7 +345,7 @@ func grantApprovalText(grant grants.Grant) string {
 
 func targetSummary(target corepolicy.Target) string {
 	if target.Kind == "repo" {
-		return target.Fields["owner"] + "/" + target.Fields["name"]
+		return corepolicy.FirstValue(target.Fields["owner"]) + "/" + corepolicy.FirstValue(target.Fields["name"])
 	}
 	return target.Kind
 }
@@ -356,8 +356,8 @@ func approvalFields(grant grants.Grant) []notify.Field {
 		{Name: "target", Value: targetSummary(grant.Target)},
 	}
 	for _, key := range []string{"ref", "base_ref", "head_ref", "path"} {
-		if value := grant.Attrs[key]; value != "" {
-			fields = append(fields, notify.Field{Name: key, Value: value})
+		if values := grant.Attrs[key]; len(values) > 0 {
+			fields = append(fields, notify.Field{Name: key, Value: strings.Join(values, ", ")})
 		}
 	}
 	if grant.MaxUses > 0 {
@@ -366,13 +366,13 @@ func approvalFields(grant grants.Grant) []notify.Field {
 	return fields
 }
 
-func cloneStringMap(values map[string]string) map[string]string {
+func flattenCoreValues(values map[string][]string) map[string]string {
 	if len(values) == 0 {
 		return nil
 	}
 	out := make(map[string]string, len(values))
 	for key, value := range values {
-		out[key] = value
+		out[key] = strings.Join(value, ",")
 	}
 	return out
 }

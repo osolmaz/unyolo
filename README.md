@@ -15,7 +15,8 @@ The shared broker-family install and setup cutover is tracked in
 - `gh-broker setup systemd` for Linux service file/config generation
 - Shared-secret authentication for one configured client id
 - Server-side named client secrets through `GH_BROKER_SECRETS_FILE`
-- Rule-based `scope.json` policy engine
+- Rule-based `scope.json` with GitHub classification delegated to the shared
+  brokerkit policy engine
 - Git smart HTTP fetch and push route shape
 - Narrow GitHub API routes for repository listing, content reads, and pull request creation
 - Server-side GitHub token forwarding as a development credential path

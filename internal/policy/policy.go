@@ -59,6 +59,10 @@ type Scope struct {
 	Rules []Rule `json:"rules"`
 }
 
+type scopeFile struct {
+	Rules *[]Rule `json:"rules"`
+}
+
 type Request struct {
 	Client    string
 	Operation Operation
@@ -87,8 +91,8 @@ func LoadFile(file string) (*Policy, error) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	var scope Scope
-	if err := decoder.Decode(&scope); err != nil {
+	var raw scopeFile
+	if err := decoder.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("parse scope file: %w", err)
 	}
 	var trailing json.RawMessage
@@ -97,7 +101,10 @@ func LoadFile(file string) (*Policy, error) {
 	} else if !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parse scope file: %w", err)
 	}
-	return New(scope)
+	if raw.Rules == nil {
+		return nil, errors.New("parse scope file: rules is required")
+	}
+	return New(Scope{Rules: *raw.Rules})
 }
 
 func New(scope Scope) (*Policy, error) {
@@ -148,5 +155,5 @@ func incompleteRequest(request Request) bool {
 }
 
 // mutate4go-manifest-begin
-// {"version":1,"tested_at":"2026-07-09T22:59:11+08:00","module_hash":"2abf421be0292da21a97addc093cb7d36599b594d5d134c68b0fae0d87895b69","functions":[{"id":"func/LoadFile","name":"LoadFile","line":82,"end_line":101,"hash":"60bcdba03d22ae5ab20ad1b0ebe5891258343feb8247231f96abb57c01393ac8"},{"id":"func/New","name":"New","line":103,"end_line":113,"hash":"07ab226979cbc416c37054fcd313ec566f90795c6461293691f15d54681b74e5"},{"id":"func/Policy.Evaluate","name":"Policy.Evaluate","line":115,"end_line":117,"hash":"7f06074ef61e81654643ff53781a019aae51386534cacb8f6650161c4f6a1689"},{"id":"func/Policy.EvaluateGrantRequest","name":"Policy.EvaluateGrantRequest","line":119,"end_line":121,"hash":"4d911af78e46b4ac6fda5b344c8da01721bc61d2a66f208d62a99dbf41ee608a"},{"id":"func/Policy.evaluate","name":"Policy.evaluate","line":123,"end_line":130,"hash":"323f2780291d85d67fdcf73aa832e185f1271f1d47b9936b8c4591978fce234d"},{"id":"func/Policy.Allows","name":"Policy.Allows","line":132,"end_line":134,"hash":"a43075cda047810dd1c13616ae8d4258ba4f4324459f465193d7a4860ab3252e"},{"id":"func/CoreTarget","name":"CoreTarget","line":136,"end_line":141,"hash":"430b5e52dc1ef176e1a9626d751310c3ebe6849259d7754c261e90a824f70ca4"},{"id":"func/incompleteRequest","name":"incompleteRequest","line":143,"end_line":148,"hash":"f7ea8eefc87286081a534447cf06e5eea08725bb764f9bad65ca511b6356ad97"}]}
+// {"version":1,"tested_at":"2026-07-10T06:09:38+08:00","module_hash":"aae030be0715bc675d6c13bb72ffb351d53e381947e7a8538130fa547dc188db","functions":[{"id":"func/LoadFile","name":"LoadFile","line":86,"end_line":108,"hash":"7629b958d391e28549c126632c2697060a12e9ae3f9a81f4f0ce8421e25823f1"},{"id":"func/New","name":"New","line":110,"end_line":120,"hash":"07ab226979cbc416c37054fcd313ec566f90795c6461293691f15d54681b74e5"},{"id":"func/Policy.Evaluate","name":"Policy.Evaluate","line":122,"end_line":124,"hash":"7f06074ef61e81654643ff53781a019aae51386534cacb8f6650161c4f6a1689"},{"id":"func/Policy.EvaluateGrantRequest","name":"Policy.EvaluateGrantRequest","line":126,"end_line":128,"hash":"4d911af78e46b4ac6fda5b344c8da01721bc61d2a66f208d62a99dbf41ee608a"},{"id":"func/Policy.evaluate","name":"Policy.evaluate","line":130,"end_line":137,"hash":"323f2780291d85d67fdcf73aa832e185f1271f1d47b9936b8c4591978fce234d"},{"id":"func/Policy.Allows","name":"Policy.Allows","line":139,"end_line":141,"hash":"a43075cda047810dd1c13616ae8d4258ba4f4324459f465193d7a4860ab3252e"},{"id":"func/CoreTarget","name":"CoreTarget","line":143,"end_line":148,"hash":"430b5e52dc1ef176e1a9626d751310c3ebe6849259d7754c261e90a824f70ca4"},{"id":"func/incompleteRequest","name":"incompleteRequest","line":150,"end_line":155,"hash":"f7ea8eefc87286081a534447cf06e5eea08725bb764f9bad65ca511b6356ad97"}]}
 // mutate4go-manifest-end
