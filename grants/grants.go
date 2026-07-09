@@ -68,6 +68,7 @@ type Request struct {
 	Operation       string
 	Target          policy.Target
 	Attrs           map[string][]string
+	Metadata        map[string]string
 	Reason          string
 	Duration        time.Duration
 	PendingTimeout  time.Duration
@@ -91,6 +92,7 @@ type Grant struct {
 	Operation              string              `json:"operation"`
 	Target                 policy.Target       `json:"target"`
 	Attrs                  map[string][]string `json:"attrs,omitempty"`
+	Metadata               map[string]string   `json:"metadata,omitempty"`
 	Reason                 string              `json:"reason"`
 	Status                 Status              `json:"status"`
 	CreatedAt              time.Time           `json:"created_at"`
@@ -231,6 +233,7 @@ func canonicalizeLoadedGrants(grants []Grant) bool {
 		grant.legacySchema = false
 		grant.Target.Fields = copyx.CanonicalStringSliceMap(grant.Target.Fields)
 		grant.Attrs = copyx.CanonicalStringSliceMap(grant.Attrs)
+		grant.Metadata = copyx.StringMap(grant.Metadata)
 		reservationChanged := normalizeLoadedReservation(grant)
 		revisionChanged := normalizeLoadedRevisions(grant)
 		changed = reservationChanged || revisionChanged || grantChanged || changed
@@ -602,6 +605,14 @@ func (s *Store) changeUse(id string, mutate func(Grant) (Grant, error)) (Grant, 
 }
 
 func (s *Store) normalizeRequest(req Request) (Request, error) {
+	normalized, err := normalizeRequestValues(req)
+	if err != nil {
+		return Request{}, err
+	}
+	return s.normalizeRequestBounds(normalized)
+}
+
+func normalizeRequestValues(req Request) (Request, error) {
 	if req.Client == "" || req.Operation == "" || req.Target.Kind == "" {
 		return Request{}, errors.New("client, operation, and target are required")
 	}
@@ -614,13 +625,13 @@ func (s *Store) normalizeRequest(req Request) (Request, error) {
 	if err := validateValueMap("attr", req.Attrs); err != nil {
 		return Request{}, err
 	}
-	normalized, err := s.normalizeRequestBounds(req)
-	if err != nil {
+	if err := validateMetadata(req.Metadata); err != nil {
 		return Request{}, err
 	}
-	normalized.Target.Fields = copyx.CanonicalStringSliceMap(normalized.Target.Fields)
-	normalized.Attrs = copyx.CanonicalStringSliceMap(normalized.Attrs)
-	return normalized, nil
+	req.Target.Fields = copyx.CanonicalStringSliceMap(req.Target.Fields)
+	req.Attrs = copyx.CanonicalStringSliceMap(req.Attrs)
+	req.Metadata = copyx.StringMap(req.Metadata)
+	return req, nil
 }
 
 func validateValueMap(kind string, values map[string][]string) error {
@@ -677,6 +688,7 @@ func (s *Store) newGrant(req Request) (Grant, string, error) {
 		Operation:             req.Operation,
 		Target:                req.Target,
 		Attrs:                 req.Attrs,
+		Metadata:              req.Metadata,
 		Reason:                req.Reason,
 		Status:                StatusPending,
 		CreatedAt:             now,
@@ -847,6 +859,7 @@ func sameRequest(grant Grant, req Request) bool {
 	return grant.Operation == req.Operation &&
 		targetEqual(grant.Target, req.Target) &&
 		mapsEqual(grant.Attrs, req.Attrs) &&
+		stringMapsEqual(grant.Metadata, req.Metadata) &&
 		grant.Reason == req.Reason &&
 		grant.MaxUses == req.MaxUses &&
 		grant.Duration == req.Duration &&

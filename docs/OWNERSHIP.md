@@ -87,6 +87,9 @@ The registry mechanism is shared. The registered vocabulary is broker-local.
 - durable store interface
 - default local durable store
 - clock injection for tests
+- bounded opaque provider metadata that is persisted and included in
+  idempotency, but never interpreted by brokerkit policy or lifecycle code;
+  metadata must not contain credentials, decision tokens, or other secrets
 
 Generated grants must never use wildcard clients.
 
