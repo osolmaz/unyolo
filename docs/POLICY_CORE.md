@@ -161,8 +161,12 @@ Examples:
 {"command_ids": ["restart-myapp"]}
 ```
 
-The policy core uses canonical string values at its boundary. The provider
-registry declares how each target field and attr is interpreted:
+The policy core uses canonical string lists at its boundary. Singleton fields
+still contain a one-element list. Multi-value provider fields such as Git refs,
+repository paths, and bucket keys stay as lists instead of being joined into an
+ambiguous delimiter-based string. Every concrete value must satisfy the rule's
+constraint, and an empty list never matches. The provider registry declares how
+each target field and attr is interpreted:
 
 - `glob` uses segment-safe glob matching; `*` does not cross `/`
 - `path_glob` additionally accepts a complete `**` path segment
@@ -175,8 +179,8 @@ segments. Values beyond those limits fail closed and do not match a rule.
 
 This keeps typed provider parsing in the broker while making the decision
 semantics reusable. For example, hf-broker parses a JSON byte count, validates
-it as an integer, and passes its canonical base-10 form to brokerkit. Each
-operation lists the attrs it supports.
+it as an integer, and passes a one-element list containing its canonical
+base-10 form to brokerkit. Each operation lists the attrs it supports.
 
 Attrs match by exact registry name. brokerkit does not apply provider aliases
 such as `ref` versus `refs` or `path` versus `paths`. A broker must classify

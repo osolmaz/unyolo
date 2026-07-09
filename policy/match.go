@@ -2,6 +2,7 @@ package policy
 
 import (
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -31,22 +32,34 @@ func targetsMatch(registry Registry, matchers []TargetMatcher, target Target) bo
 	return false
 }
 
-func targetFieldsMatch(spec TargetSpec, patterns map[string][]string, fields map[string]string) bool {
+func targetFieldsMatch(spec TargetSpec, patterns map[string][]string, fields map[string][]string) bool {
 	for name, allowed := range patterns {
-		if !valuesMatch(spec.Fields[name].Match, allowed, fields[name]) {
+		if !allValuesMatch(spec.Fields[name].Match, allowed, fields[name]) {
 			return false
 		}
 	}
 	return true
 }
 
-func attrsMatch(registry Registry, patterns map[string][]string, operation string, attrs map[string]string) bool {
+func attrsMatch(registry Registry, patterns map[string][]string, operation string, attrs map[string][]string) bool {
 	for name, allowed := range patterns {
 		if !attrRelevantToOperation(registry, name, operation) {
 			continue
 		}
-		value, ok := attrs[name]
-		if !ok || !valuesMatch(registry.Attrs[name].Match, allowed, value) {
+		values, ok := attrs[name]
+		if !ok || !allValuesMatch(registry.Attrs[name].Match, allowed, values) {
+			return false
+		}
+	}
+	return true
+}
+
+func allValuesMatch(mode MatchMode, patterns []string, values []string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, value := range values {
+		if !valuesMatch(mode, patterns, value) {
 			return false
 		}
 	}
@@ -172,17 +185,17 @@ func targetEqual(left Target, right Target) bool {
 	return left.Kind == right.Kind && stringMapsEqual(left.Fields, right.Fields)
 }
 
-func stringMapsEqual(left, right map[string]string) bool {
+func stringMapsEqual(left, right map[string][]string) bool {
 	if len(left) != len(right) {
 		return false
 	}
 	return stringMapsContain(left, right)
 }
 
-func stringMapsContain(container, want map[string]string) bool {
+func stringMapsContain(container, want map[string][]string) bool {
 	for key, value := range want {
 		got, ok := container[key]
-		if !ok || got != value {
+		if !ok || !slices.Equal(got, value) {
 			return false
 		}
 	}

@@ -3,6 +3,8 @@ package policy
 import (
 	"maps"
 	"slices"
+
+	"github.com/osolmaz/brokerkit/internal/copyx"
 )
 
 func cloneRegistry(registry Registry) Registry {
@@ -84,14 +86,7 @@ func cloneTargetMatchers(values []TargetMatcher) []TargetMatcher {
 }
 
 func clonePatternMap(values map[string][]string) map[string][]string {
-	if len(values) == 0 {
-		return nil
-	}
-	out := make(map[string][]string, len(values))
-	for name, patterns := range values {
-		out[name] = slices.Clone(patterns)
-	}
-	return out
+	return copyx.StringSliceMap(values)
 }
 
 func cloneGrantPolicy(grantPolicy *GrantPolicy) *GrantPolicy {

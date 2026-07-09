@@ -62,7 +62,7 @@ type Request struct {
 	ClientRequestID string
 	Operation       string
 	Target          policy.Target
-	Attrs           map[string]string
+	Attrs           map[string][]string
 	Reason          string
 	Duration        time.Duration
 	PendingTimeout  time.Duration
@@ -79,26 +79,26 @@ type RequestResult struct {
 
 // Grant is one durable approval record.
 type Grant struct {
-	ID                    string            `json:"id"`
-	DecisionTokenVerifier string            `json:"decision_token_verifier"`
-	Client                string            `json:"client"`
-	ClientRequestID       string            `json:"client_request_id,omitempty"`
-	Operation             string            `json:"operation"`
-	Target                policy.Target     `json:"target"`
-	Attrs                 map[string]string `json:"attrs,omitempty"`
-	Reason                string            `json:"reason"`
-	Status                Status            `json:"status"`
-	CreatedAt             time.Time         `json:"created_at"`
-	PendingExpiresAt      time.Time         `json:"pending_expires_at"`
-	ExpiresAt             time.Time         `json:"expires_at,omitzero"`
-	Duration              time.Duration     `json:"duration"`
-	PendingTimeout        time.Duration     `json:"pending_timeout"`
-	DecidedAt             time.Time         `json:"decided_at,omitzero"`
-	DecidedBy             string            `json:"decided_by,omitempty"`
-	UsedAt                time.Time         `json:"used_at,omitzero"`
-	UsedCount             int               `json:"used_count"`
-	ReservedCount         int               `json:"reserved_count,omitempty"`
-	MaxUses               int               `json:"max_uses"`
+	ID                    string              `json:"id"`
+	DecisionTokenVerifier string              `json:"decision_token_verifier"`
+	Client                string              `json:"client"`
+	ClientRequestID       string              `json:"client_request_id,omitempty"`
+	Operation             string              `json:"operation"`
+	Target                policy.Target       `json:"target"`
+	Attrs                 map[string][]string `json:"attrs,omitempty"`
+	Reason                string              `json:"reason"`
+	Status                Status              `json:"status"`
+	CreatedAt             time.Time           `json:"created_at"`
+	PendingExpiresAt      time.Time           `json:"pending_expires_at"`
+	ExpiresAt             time.Time           `json:"expires_at,omitzero"`
+	Duration              time.Duration       `json:"duration"`
+	PendingTimeout        time.Duration       `json:"pending_timeout"`
+	DecidedAt             time.Time           `json:"decided_at,omitzero"`
+	DecidedBy             string              `json:"decided_by,omitempty"`
+	UsedAt                time.Time           `json:"used_at,omitzero"`
+	UsedCount             int                 `json:"used_count"`
+	ReservedCount         int                 `json:"reserved_count,omitempty"`
+	MaxUses               int                 `json:"max_uses"`
 }
 
 type fileData struct {
@@ -411,8 +411,8 @@ func (s *Store) normalizeRequest(req Request) (Request, error) {
 	if err != nil {
 		return Request{}, err
 	}
-	normalized.Target.Fields = copyx.StringMap(normalized.Target.Fields)
-	normalized.Attrs = copyx.StringMap(normalized.Attrs)
+	normalized.Target.Fields = copyx.StringSliceMap(normalized.Target.Fields)
+	normalized.Attrs = copyx.StringSliceMap(normalized.Attrs)
 	return normalized, nil
 }
 
@@ -537,8 +537,11 @@ func (g Grant) toPolicyGrant() policy.Grant {
 		ID:        g.ID,
 		Client:    g.Client,
 		Operation: g.Operation,
-		Target:    g.Target,
-		Attrs:     copyx.StringMap(g.Attrs),
+		Target: policy.Target{
+			Kind:   g.Target.Kind,
+			Fields: copyx.StringSliceMap(g.Target.Fields),
+		},
+		Attrs:     copyx.StringSliceMap(g.Attrs),
 		ExpiresAt: g.ExpiresAt,
 		UsesLeft:  g.MaxUses - g.UsedCount - g.ReservedCount,
 	}
@@ -579,7 +582,7 @@ func targetEqual(left policy.Target, right policy.Target) bool {
 	return left.Kind == right.Kind && mapsEqual(left.Fields, right.Fields)
 }
 
-func mapsEqual(left, right map[string]string) bool {
+func mapsEqual(left, right map[string][]string) bool {
 	leftJSON, leftErr := json.Marshal(left)
 	rightJSON, rightErr := json.Marshal(right)
 	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)

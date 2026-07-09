@@ -189,24 +189,24 @@ func (r Registry) validateRequest(request Request) error {
 
 func validateRequestTarget(target Target, spec TargetSpec) error {
 	for name, fieldSpec := range spec.Fields {
-		if fieldSpec.Required && strings.TrimSpace(target.Fields[name]) == "" {
+		if fieldSpec.Required && len(target.Fields[name]) == 0 {
 			return fmt.Errorf("target kind %q requires field %q", target.Kind, name)
 		}
 	}
-	for name, value := range target.Fields {
+	for name, values := range target.Fields {
 		fieldSpec, ok := spec.Fields[name]
 		if !ok {
 			return fmt.Errorf("target kind %q does not support field %q", target.Kind, name)
 		}
-		if err := validateRequestValue(value, fieldSpec.Match); err != nil {
+		if err := validateRequestValues(values, fieldSpec.Match); err != nil {
 			return fmt.Errorf("target kind %q field %q: %w", target.Kind, name, err)
 		}
 	}
 	return nil
 }
 
-func validateRequestAttrs(operation string, attrs map[string]string, op OperationSpec, registryAttrs map[string]AttrSpec) error {
-	for name, value := range attrs {
+func validateRequestAttrs(operation string, attrs map[string][]string, op OperationSpec, registryAttrs map[string]AttrSpec) error {
+	for name, values := range attrs {
 		attrSpec, ok := registryAttrs[name]
 		if !ok {
 			return fmt.Errorf("unknown attr %q", name)
@@ -214,8 +214,20 @@ func validateRequestAttrs(operation string, attrs map[string]string, op Operatio
 		if !slices.Contains(op.Attrs, name) {
 			return fmt.Errorf("operation %q does not support attr %q", operation, name)
 		}
-		if err := validateRequestValue(value, attrSpec.Match); err != nil {
+		if err := validateRequestValues(values, attrSpec.Match); err != nil {
 			return fmt.Errorf("attr %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func validateRequestValues(values []string, mode MatchMode) error {
+	if len(values) == 0 {
+		return errors.New("values must not be empty")
+	}
+	for _, value := range values {
+		if err := validateRequestValue(value, mode); err != nil {
+			return err
 		}
 	}
 	return nil

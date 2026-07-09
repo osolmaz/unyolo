@@ -62,7 +62,9 @@ duplicate auth package.
 Status: implemented. The provider registry owns operation/target/attr
 vocabulary, field and attr matcher semantics, grantability, and grant mode.
 The core owns strict parsing, validation, ambiguity checks, precedence, and
-active-grant overlays.
+active-grant overlays. Classified target fields and attrs use canonical string
+lists so providers do not need a second matcher for multi-ref or multi-path
+requests.
 
 Extract policy only after the provider registry API is clear.
 

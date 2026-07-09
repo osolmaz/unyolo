@@ -83,9 +83,9 @@ func normalizeRequest(request Request) Request {
 		Operation: request.Operation,
 		Target: Target{
 			Kind:   request.Target.Kind,
-			Fields: copyx.StringMap(request.Target.Fields),
+			Fields: copyx.StringSliceMap(request.Target.Fields),
 		},
-		Attrs: copyx.StringMap(request.Attrs),
+		Attrs: copyx.StringSliceMap(request.Attrs),
 	}
 }
 

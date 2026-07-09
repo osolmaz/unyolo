@@ -21,7 +21,7 @@ func TestLifecycleIdempotencyAndUseBudget(t *testing.T) {
 		ClientRequestID: "push-main",
 		Operation:       "git.push.fast_forward",
 		Target:          repoTarget("demo"),
-		Attrs:           map[string]string{"ref": "refs/heads/main"},
+		Attrs:           map[string][]string{"ref": {"refs/heads/main"}},
 		Reason:          "fix production",
 		MaxUses:         1,
 	}
@@ -56,7 +56,7 @@ func TestListForClientExpiresAndFiltersGrants(t *testing.T) {
 		ClientRequestID: "push-main",
 		Operation:       "git.push.force",
 		Target:          repoTarget("demo"),
-		Attrs:           map[string]string{"ref": "refs/heads/main"},
+		Attrs:           map[string][]string{"ref": {"refs/heads/main"}},
 		Reason:          "fix production",
 	}
 	first, _, err := store.Request(firstReq)
@@ -97,7 +97,7 @@ func TestApprovedIdempotentRetryKeepsOriginalDuration(t *testing.T) {
 		ClientRequestID: "push-main",
 		Operation:       "git.push.fast_forward",
 		Target:          repoTarget("demo"),
-		Attrs:           map[string]string{"ref": "refs/heads/main"},
+		Attrs:           map[string][]string{"ref": {"refs/heads/main"}},
 		Reason:          "fix production",
 	}
 	result, _, err := store.Request(req)
@@ -122,7 +122,7 @@ func TestPendingIdempotentRetryRefreshesDecisionToken(t *testing.T) {
 		Client:          "bob",
 		ClientRequestID: "shell-debug",
 		Operation:       "session.shell",
-		Target:          policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:          policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:          "debug deploy",
 	}
 	first, created, err := store.Request(req)
@@ -147,7 +147,7 @@ func TestDecisionTokenExpiryAndRevoke(t *testing.T) {
 	result, _, err := store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "debug deploy",
 	})
 	if err != nil {
@@ -172,7 +172,7 @@ func TestDecisionTokenRequiresExactMatch(t *testing.T) {
 	result, _, err := store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "debug deploy",
 	})
 	if err != nil {
@@ -193,7 +193,7 @@ func TestApproveSetsExpiryFromApprovalTime(t *testing.T) {
 	result, _, err := store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "debug deploy",
 		Duration:  10 * time.Minute,
 	})
@@ -220,7 +220,7 @@ func TestRequestDefaultsPendingTimeoutToPolicyTTL(t *testing.T) {
 	result, _, err := store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "debug deploy",
 	})
 	if err != nil {
@@ -247,7 +247,7 @@ func TestDecisionTokenIsNotSerialized(t *testing.T) {
 	result, _, err := store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "debug deploy",
 	})
 	if err != nil {
@@ -276,7 +276,7 @@ func TestLateDecisionPersistsExpiredStatus(t *testing.T) {
 	expiring, _, err := store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "expire",
 	})
 	if err != nil {
@@ -305,7 +305,7 @@ func TestGetExpiresPendingGrant(t *testing.T) {
 	result, _, err := store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "debug deploy",
 	})
 	if err != nil {
@@ -330,7 +330,7 @@ func TestRequestValidation(t *testing.T) {
 	_, _, err = store.Request(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "too many uses",
 		MaxUses:   26,
 	})
@@ -345,7 +345,7 @@ func TestReleaseUseRestoresOverlay(t *testing.T) {
 		Client:    "bob",
 		Operation: "git.push.fast_forward",
 		Target:    repoTarget("demo"),
-		Attrs:     map[string]string{"ref": "refs/heads/main"},
+		Attrs:     map[string][]string{"ref": {"refs/heads/main"}},
 		Reason:    "test release",
 	})
 	if err != nil {
@@ -371,7 +371,7 @@ func TestReleaseUseRestoresOverlay(t *testing.T) {
 }
 
 func repoTarget(name string) policy.Target {
-	return policy.Target{Kind: "repo", Fields: map[string]string{"owner": "osolmaz", "name": name}}
+	return policy.Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {name}}}
 }
 
 func newDeterministicStore(t *testing.T, now func() time.Time, ids *[]string) *Store {
