@@ -105,7 +105,6 @@ GET  /healthz
 GET  /api/repos
 GET  /api/repos/{owner}/{repo}/contents/{path}
 POST /api/repos/{owner}/{repo}/pulls
-POST /repos/{owner}/{repo}/pulls
 
 GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
 POST /{owner}/{repo}.git/git-upload-pack
@@ -118,7 +117,6 @@ POST /{owner}/{repo}.git/git-receive-pack
 
 - brokerkit cutover for audit helpers and remaining storage/config helpers.
 - Runtime branch-ruleset inspection in `doctor`.
-- Removal of compatibility route aliases such as `POST /repos/{owner}/{repo}/pulls`.
 
 ## Brokerkit Cutover Tests
 
@@ -193,6 +191,8 @@ Implemented in the current brokerkit cutover slice:
   Bot API server
 - repo-scoped GitHub App installation tokens are minted only after broker policy
   allows the request and are not written to disk, returned to clients, or logged
+- compatibility route aliases such as `POST /repos/{owner}/{repo}/pulls` are
+  removed; JSON APIs live under `/api/*` and Git keeps Git smart-HTTP routes
 
 The next cutover slices should move audit helpers and remaining storage/config
 helpers to brokerkit, then add doctor checks.

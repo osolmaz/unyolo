@@ -97,7 +97,6 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	protected.GET("/api/repos/:owner/:repo/contents", server.readContents)
 	protected.GET("/api/repos/:owner/:repo/contents/*", server.readContents)
 	protected.POST("/api/repos/:owner/:repo/pulls", server.createPullRequest)
-	protected.POST("/repos/:owner/:repo/pulls", server.createPullRequest)
 	protected.GET("/:owner/:repoGit/info/refs", server.gitInfoRefs)
 	protected.POST("/:owner/:repoGit/git-upload-pack", server.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", server.gitReceivePack)

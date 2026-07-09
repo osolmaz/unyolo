@@ -672,9 +672,9 @@ installation tokens, JWTs, Authorization headers, or token metadata.
    - policy filtering after GitHub visibility filtering
    - still add app installation cache invalidation if a cache is introduced
 
-8. Remove compatibility route aliases:
+8. Compatibility route aliases are removed:
    - keep `/api/repos/{owner}/{repo}/pulls`
-   - remove the GitHub-shaped `POST /repos/{owner}/{repo}/pulls` route
+   - removed the GitHub-shaped `POST /repos/{owner}/{repo}/pulls` route
    - do not preserve old local route contracts
 
 9. Add installer and release workflow:

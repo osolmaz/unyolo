@@ -624,6 +624,29 @@ func TestPullRequestRouteValidatesPolicyAndUsesGitHubShape(t *testing.T) {
 	}
 }
 
+func TestPullRequestGitHubShapedAliasIsNotRegistered(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusCreated)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/repos/dutifuldev/gh-broker/pulls",
+		bearerAuth(),
+		[]byte(`{"title":"work","head":"bob/work","base":"main"}`),
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
 func TestCreatePullRequestDirect(t *testing.T) {
 	t.Parallel()
 	var gotPath string
@@ -655,7 +678,7 @@ func TestPullRequestRejectsForkHeadSyntax(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/repos/dutifuldev/gh-broker/pulls",
+		"/api/repos/dutifuldev/gh-broker/pulls",
 		bearerAuth(),
 		[]byte(`{"title":"work","head":"evil:bob/work","base":"main"}`),
 	)
