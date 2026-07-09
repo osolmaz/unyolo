@@ -228,7 +228,7 @@ Common rule shape:
   "rules": [
     {
       "id": "example",
-      "effect": "allow",
+      "effect": "request",
       "clients": ["bob"],
       "operations": ["operation.name"],
       "targets": [{"kind": "target-kind"}],
