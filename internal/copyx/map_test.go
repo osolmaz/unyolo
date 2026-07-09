@@ -1,6 +1,9 @@
 package copyx
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestStringMap(t *testing.T) {
 	if got := StringMap(nil); got != nil {
@@ -11,5 +14,34 @@ func TestStringMap(t *testing.T) {
 	copied["a"] = "changed"
 	if source["a"] != "b" {
 		t.Fatalf("StringMap returned alias, source = %+v", source)
+	}
+}
+
+func TestStringSliceMap(t *testing.T) {
+	if got := StringSliceMap(nil); got != nil {
+		t.Fatalf("StringSliceMap(nil) = %+v, want nil", got)
+	}
+	source := map[string][]string{"a": {"b"}}
+	copied := StringSliceMap(source)
+	copied["a"][0] = "changed"
+	if source["a"][0] != "b" {
+		t.Fatalf("StringSliceMap returned alias, source = %+v", source)
+	}
+}
+
+func TestCanonicalStringSliceMap(t *testing.T) {
+	source := map[string][]string{"refs": {"dev", "main", "dev"}}
+	got := CanonicalStringSliceMap(source)
+	if !slices.Equal(got["refs"], []string{"dev", "main"}) {
+		t.Fatalf("CanonicalStringSliceMap() = %+v", got)
+	}
+	if !slices.Equal(source["refs"], []string{"dev", "main", "dev"}) {
+		t.Fatalf("CanonicalStringSliceMap() mutated source = %+v", source)
+	}
+	if !StringSliceMapsEqual(source, map[string][]string{"refs": {"main", "dev"}}) {
+		t.Fatal("StringSliceMapsEqual() = false for equivalent sets")
+	}
+	if StringSliceMapsEqual(source, map[string][]string{"refs": {"other"}}) {
+		t.Fatal("StringSliceMapsEqual() = true for different sets")
 	}
 }

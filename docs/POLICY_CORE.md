@@ -161,11 +161,26 @@ Examples:
 {"command_ids": ["restart-myapp"]}
 ```
 
-The policy core uses canonical string values at its boundary. The provider
+The policy core uses canonical string lists at its boundary. Singleton fields
+still contain a one-element list. Multi-value provider fields such as Git refs,
+repository paths, and bucket keys stay as lists instead of being joined into an
+ambiguous delimiter-based string. For `allow` and `request` rules, every
+concrete value must satisfy the rule's constraint. For `deny` rules, any
+matching concrete value denies the batch so a forbidden ref or path cannot be
+hidden beside an allowed one. An empty list never matches. The provider
 registry declares how each target field and attr is interpreted:
 
+List values are sets for exact grant and idempotency comparisons: ordering and
+duplicates do not change the classified authorization unit. Durable grants are
+written as sorted, duplicate-free arrays. The grant store accepts the earlier
+scalar representation when loading and rewrites it to the canonical array
+schema.
+
 - `glob` uses segment-safe glob matching; `*` does not cross `/`
+- `any_glob` uses the same syntax but accepts a list when any value matches
 - `path_glob` additionally accepts a complete `**` path segment
+- `path_outside_prefix` accepts concrete paths only when they remain outside
+  every configured relative prefix
 - `integer_maximum` treats policy values as inclusive non-negative integer
   ceilings
 
@@ -175,8 +190,8 @@ segments. Values beyond those limits fail closed and do not match a rule.
 
 This keeps typed provider parsing in the broker while making the decision
 semantics reusable. For example, hf-broker parses a JSON byte count, validates
-it as an integer, and passes its canonical base-10 form to brokerkit. Each
-operation lists the attrs it supports.
+it as an integer, and passes a one-element list containing its canonical
+base-10 form to brokerkit. Each operation lists the attrs it supports.
 
 Attrs match by exact registry name. brokerkit does not apply provider aliases
 such as `ref` versus `refs` or `path` versus `paths`. A broker must classify
@@ -204,11 +219,12 @@ pass the raw token only to the approval notification path.
 
 `request` rules must include `grant_policy`.
 
-Each grantable operation declares a provider-owned grant mode. `window` grants
-authorize an exact classified request for a bounded time and use budget.
-`execution` grants approve one exact provider-built action and are always
-single-use. A request rule may contain several operations only when they use
-the same grant mode.
+Each grantable operation declares a provider-owned default grant mode and may
+declare a bounded set of allowed modes. `window` grants authorize an exact
+classified request for a bounded time and use budget. `execution` grants
+approve one exact provider-built action and are always single-use. A request
+rule may contain several operations only when they resolve to one mode that
+every operation allows.
 
 Minimal example:
 
@@ -227,9 +243,10 @@ budget. Execution-plan grants can come later.
 
 ## Validation
 
-Policy loading must reject:
+An explicitly empty `rules` array is a valid deny-all policy. Policy loading
+must reject:
 
-- missing `rules`
+- missing or null `rules`
 - unknown fields
 - duplicate rule ids
 - unsupported effects

@@ -2,6 +2,7 @@
 package grants
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -9,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,7 +65,7 @@ type Request struct {
 	ClientRequestID string
 	Operation       string
 	Target          policy.Target
-	Attrs           map[string]string
+	Attrs           map[string][]string
 	Reason          string
 	Duration        time.Duration
 	PendingTimeout  time.Duration
@@ -79,30 +82,146 @@ type RequestResult struct {
 
 // Grant is one durable approval record.
 type Grant struct {
-	ID                    string            `json:"id"`
-	DecisionTokenVerifier string            `json:"decision_token_verifier"`
-	Client                string            `json:"client"`
-	ClientRequestID       string            `json:"client_request_id,omitempty"`
-	Operation             string            `json:"operation"`
-	Target                policy.Target     `json:"target"`
-	Attrs                 map[string]string `json:"attrs,omitempty"`
-	Reason                string            `json:"reason"`
-	Status                Status            `json:"status"`
-	CreatedAt             time.Time         `json:"created_at"`
-	PendingExpiresAt      time.Time         `json:"pending_expires_at"`
-	ExpiresAt             time.Time         `json:"expires_at,omitzero"`
-	Duration              time.Duration     `json:"duration"`
-	PendingTimeout        time.Duration     `json:"pending_timeout"`
-	DecidedAt             time.Time         `json:"decided_at,omitzero"`
-	DecidedBy             string            `json:"decided_by,omitempty"`
-	UsedAt                time.Time         `json:"used_at,omitzero"`
-	UsedCount             int               `json:"used_count"`
-	ReservedCount         int               `json:"reserved_count,omitempty"`
-	MaxUses               int               `json:"max_uses"`
+	ID                    string              `json:"id"`
+	DecisionTokenVerifier string              `json:"decision_token_verifier"`
+	Client                string              `json:"client"`
+	ClientRequestID       string              `json:"client_request_id,omitempty"`
+	Operation             string              `json:"operation"`
+	Target                policy.Target       `json:"target"`
+	Attrs                 map[string][]string `json:"attrs,omitempty"`
+	Reason                string              `json:"reason"`
+	Status                Status              `json:"status"`
+	CreatedAt             time.Time           `json:"created_at"`
+	PendingExpiresAt      time.Time           `json:"pending_expires_at"`
+	ExpiresAt             time.Time           `json:"expires_at,omitzero"`
+	Duration              time.Duration       `json:"duration"`
+	PendingTimeout        time.Duration       `json:"pending_timeout"`
+	DecidedAt             time.Time           `json:"decided_at,omitzero"`
+	DecidedBy             string              `json:"decided_by,omitempty"`
+	UsedAt                time.Time           `json:"used_at,omitzero"`
+	UsedCount             int                 `json:"used_count"`
+	ReservedCount         int                 `json:"reserved_count,omitempty"`
+	MaxUses               int                 `json:"max_uses"`
+	legacySchema          bool
 }
 
 type fileData struct {
 	Grants []Grant `json:"grants"`
+}
+
+type compatibleValues struct {
+	values []string
+	legacy bool
+}
+
+func (g *Grant) UnmarshalJSON(data []byte) error {
+	type grantJSON Grant
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	legacyAttrs, err := normalizeStoredValueMap(fields, "attrs")
+	if err != nil {
+		return fmt.Errorf("attrs: %w", err)
+	}
+	legacyTarget, err := normalizeStoredTarget(fields)
+	if err != nil {
+		return fmt.Errorf("target: %w", err)
+	}
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var decoded grantJSON
+	if err := json.Unmarshal(normalized, &decoded); err != nil {
+		return err
+	}
+	*g = Grant(decoded)
+	g.legacySchema = legacyAttrs || legacyTarget
+	return nil
+}
+
+func normalizeStoredTarget(fields map[string]json.RawMessage) (bool, error) {
+	raw, ok := fields["target"]
+	if !ok || string(raw) == "null" {
+		return false, nil
+	}
+	var targetFields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &targetFields); err != nil {
+		return false, err
+	}
+	legacy, err := normalizeStoredValueMap(targetFields, "Fields")
+	if err != nil {
+		return false, fmt.Errorf("fields: %w", err)
+	}
+	if !legacy {
+		legacy, err = normalizeStoredValueMap(targetFields, "fields")
+		if err != nil {
+			return false, fmt.Errorf("fields: %w", err)
+		}
+	}
+	return legacy, replaceJSONField(fields, "target", targetFields)
+}
+
+func normalizeStoredValueMap(fields map[string]json.RawMessage, name string) (bool, error) {
+	raw, ok := fields[name]
+	if !ok || string(raw) == "null" {
+		return false, nil
+	}
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &encoded); err != nil {
+		return false, err
+	}
+	legacy := false
+	values := make(map[string][]string, len(encoded))
+	for key, value := range encoded {
+		decoded, err := decodeCompatibleValues(value)
+		if err != nil {
+			return false, fmt.Errorf("%s: %w", key, err)
+		}
+		values[key] = copyx.CanonicalStringSlice(decoded.values)
+		legacy = legacy || decoded.legacy || !slices.Equal(values[key], decoded.values)
+	}
+	return legacy, replaceJSONField(fields, name, values)
+}
+
+func replaceJSONField(fields map[string]json.RawMessage, name string, value any) error {
+	normalized, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	fields[name] = normalized
+	return nil
+}
+
+func decodeCompatibleValues(data []byte) (compatibleValues, error) {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return compatibleValues{}, errors.New("must be a string or string array")
+	}
+	var scalar string
+	if err := json.Unmarshal(data, &scalar); err == nil {
+		return compatibleValues{values: []string{scalar}, legacy: true}, nil
+	}
+	var values []string
+	if err := json.Unmarshal(data, &values); err != nil {
+		return compatibleValues{}, errors.New("must be a string or string array")
+	}
+	if len(values) == 0 {
+		return compatibleValues{}, errors.New("string array must not be empty")
+	}
+	return compatibleValues{values: values}, nil
+}
+
+func canonicalizeLoadedGrants(grants []Grant) bool {
+	changed := false
+	for index := range grants {
+		grant := &grants[index]
+		changed = changed || grant.legacySchema
+		grant.legacySchema = false
+		grant.Target.Fields = copyx.CanonicalStringSliceMap(grant.Target.Fields)
+		grant.Attrs = copyx.CanonicalStringSliceMap(grant.Attrs)
+	}
+	return changed
 }
 
 // Store owns one durable grant file.
@@ -407,13 +526,36 @@ func (s *Store) normalizeRequest(req Request) (Request, error) {
 	if req.Reason == "" {
 		return Request{}, errors.New("grant reason is required")
 	}
+	if err := validateValueMap("target field", req.Target.Fields); err != nil {
+		return Request{}, err
+	}
+	if err := validateValueMap("attr", req.Attrs); err != nil {
+		return Request{}, err
+	}
 	normalized, err := s.normalizeRequestBounds(req)
 	if err != nil {
 		return Request{}, err
 	}
-	normalized.Target.Fields = copyx.StringMap(normalized.Target.Fields)
-	normalized.Attrs = copyx.StringMap(normalized.Attrs)
+	normalized.Target.Fields = copyx.CanonicalStringSliceMap(normalized.Target.Fields)
+	normalized.Attrs = copyx.CanonicalStringSliceMap(normalized.Attrs)
 	return normalized, nil
+}
+
+func validateValueMap(kind string, values map[string][]string) error {
+	for name, list := range values {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("%s name is required", kind)
+		}
+		if len(list) == 0 {
+			return fmt.Errorf("%s %q values must not be empty", kind, name)
+		}
+		for _, value := range list {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("%s %q contains an empty value", kind, name)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) normalizeRequestBounds(req Request) (Request, error) {
@@ -501,6 +643,11 @@ func (s *Store) load() (fileData, error) {
 	if err := store.ReadJSON(s.path, &data); err != nil {
 		return fileData{}, err
 	}
+	if canonicalizeLoadedGrants(data.Grants) {
+		if err := s.save(data); err != nil {
+			return fileData{}, err
+		}
+	}
 	return data, nil
 }
 
@@ -537,8 +684,11 @@ func (g Grant) toPolicyGrant() policy.Grant {
 		ID:        g.ID,
 		Client:    g.Client,
 		Operation: g.Operation,
-		Target:    g.Target,
-		Attrs:     copyx.StringMap(g.Attrs),
+		Target: policy.Target{
+			Kind:   g.Target.Kind,
+			Fields: copyx.StringSliceMap(g.Target.Fields),
+		},
+		Attrs:     copyx.StringSliceMap(g.Attrs),
 		ExpiresAt: g.ExpiresAt,
 		UsesLeft:  g.MaxUses - g.UsedCount - g.ReservedCount,
 	}
@@ -579,10 +729,8 @@ func targetEqual(left policy.Target, right policy.Target) bool {
 	return left.Kind == right.Kind && mapsEqual(left.Fields, right.Fields)
 }
 
-func mapsEqual(left, right map[string]string) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
+func mapsEqual(left, right map[string][]string) bool {
+	return copyx.StringSliceMapsEqual(left, right)
 }
 
 func randomID(bytesCount int) (string, error) {

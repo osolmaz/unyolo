@@ -67,8 +67,8 @@ func TestDecisionOrder(t *testing.T) {
 		ID:        "grant-1",
 		Client:    "bob",
 		Operation: "git.push.fast_forward",
-		Target:    Target{Kind: "repo", Fields: map[string]string{"owner": "osolmaz", "name": "demo"}},
-		Attrs:     map[string]string{"ref": "refs/heads/main"},
+		Target:    Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"demo"}}},
+		Attrs:     map[string][]string{"ref": {"refs/heads/main"}},
 		ExpiresAt: time.Now().Add(time.Minute),
 		UsesLeft:  1,
 	}
@@ -92,7 +92,7 @@ func TestRequestRuleAndGrantOverlay(t *testing.T) {
 		"targets":[{"kind":"user","name":"deploy"}],
 		"grant_policy":{"default_minutes":5,"max_minutes":10,"default_max_uses":1,"max_uses":1}
 	}]}`)
-	req := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string]string{"name": "deploy"}}}
+	req := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}
 	execDecision := policy.Decide(req, DecisionOptions{})
 	if execDecision.Effect != EffectDeny || execDecision.Reason != "approval_required" {
 		t.Fatalf("execution decision = %+v", execDecision)
@@ -105,7 +105,7 @@ func TestRequestRuleAndGrantOverlay(t *testing.T) {
 		ID:        "grant-shell",
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		ExpiresAt: time.Now().Add(time.Minute),
 		UsesLeft:  1,
 	}}})
@@ -116,12 +116,12 @@ func TestRequestRuleAndGrantOverlay(t *testing.T) {
 
 func TestGrantOverlayRequiresRemainingUseBudget(t *testing.T) {
 	policy := requestShellPolicy(t)
-	req := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string]string{"name": "deploy"}}}
+	req := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}
 	exhaustedDecision := policy.Decide(req, DecisionOptions{ActiveGrants: []Grant{{
 		ID:        "grant-shell",
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		ExpiresAt: time.Now().Add(time.Minute),
 		UsesLeft:  0,
 	}}})
@@ -132,12 +132,12 @@ func TestGrantOverlayRequiresRemainingUseBudget(t *testing.T) {
 
 func TestGrantOverlayRequiresExpiry(t *testing.T) {
 	policy := requestShellPolicy(t)
-	req := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string]string{"name": "deploy"}}}
+	req := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}
 	decision := policy.Decide(req, DecisionOptions{ActiveGrants: []Grant{{
 		ID:        "grant-shell",
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		UsesLeft:  1,
 	}}})
 	if decision.Allowed || decision.Reason == "grant_allowed" {
@@ -150,18 +150,41 @@ func TestGrantOverlayRequiresExactAttrs(t *testing.T) {
 	extraAttrDecision := policy.Decide(Request{
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
-		Attrs:     map[string]string{"tty": "true"},
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		Attrs:     map[string][]string{"tty": {"true"}},
 	}, DecisionOptions{ActiveGrants: []Grant{{
 		ID:        "grant-shell",
 		Client:    "bob",
 		Operation: "session.shell",
-		Target:    Target{Kind: "user", Fields: map[string]string{"name": "deploy"}},
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		ExpiresAt: time.Now().Add(time.Minute),
 		UsesLeft:  1,
 	}}})
 	if extraAttrDecision.Allowed || extraAttrDecision.Reason == "grant_allowed" {
 		t.Fatalf("extra attr grant decision = %+v, want denied", extraAttrDecision)
+	}
+}
+
+func TestGrantMatchesValueSetsWithoutOrder(t *testing.T) {
+	grant := Grant{
+		Client:    "bob",
+		Operation: "git.push",
+		Target: Target{Kind: "repo", Fields: map[string][]string{
+			"refs": {"refs/heads/main", "refs/heads/dev"},
+		}},
+		Attrs:    map[string][]string{"paths": {"README.md", "go.mod"}},
+		UsesLeft: 1,
+	}
+	request := Request{
+		Client:    "bob",
+		Operation: "git.push",
+		Target: Target{Kind: "repo", Fields: map[string][]string{
+			"refs": {"refs/heads/dev", "refs/heads/main"},
+		}},
+		Attrs: map[string][]string{"paths": {"go.mod", "README.md"}},
+	}
+	if !grantMatches(grant, request) {
+		t.Fatal("grantMatches() = false for equivalent reordered value sets")
 	}
 }
 
@@ -195,23 +218,82 @@ func TestProviderDeclaredMatcherSemantics(t *testing.T) {
 	request := Request{
 		Client:    "bob",
 		Operation: "bucket.object.write",
-		Target: Target{Kind: "bucket", Fields: map[string]string{
-			"owner": "osolmaz",
-			"name":  "artifacts",
-			"key":   "runs/2026/day/out.json",
+		Target: Target{Kind: "bucket", Fields: map[string][]string{
+			"owner": {"osolmaz"},
+			"name":  {"artifacts"},
+			"key":   {"runs/2026/day/out.json", "runs/2026/night/out.json"},
 		}},
-		Attrs: map[string]string{"max_bytes": "9"},
+		Attrs: map[string][]string{"max_bytes": {"9"}},
 	}
 	if decision := policy.Decide(request, DecisionOptions{}); !decision.Allowed {
 		t.Fatalf("bounded path decision = %+v, want allowed", decision)
 	}
-	request.Target.Fields["key"] = "runs/out.json"
+	request.Target.Fields["key"] = []string{"runs/out.json"}
 	if decision := policy.Decide(request, DecisionOptions{}); !decision.Allowed {
 		t.Fatalf("zero-segment ** decision = %+v, want allowed", decision)
 	}
-	request.Attrs["max_bytes"] = "11"
+	request.Target.Fields["key"] = []string{"runs/out.json", "other/out.json"}
+	if decision := policy.Decide(request, DecisionOptions{}); decision.Allowed {
+		t.Fatalf("partially matching path set decision = %+v, want refused", decision)
+	}
+	request.Target.Fields["key"] = []string{"runs/out.json"}
+	request.Attrs["max_bytes"] = []string{"11"}
 	if decision := policy.Decide(request, DecisionOptions{}); decision.Allowed {
 		t.Fatalf("over-limit decision = %+v, want refused", decision)
+	}
+}
+
+func TestDenyMatchesAnyForbiddenValueInBatch(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"push": {TargetKinds: []string{"repo"}, Attrs: []string{"refs"}},
+		},
+		Targets: map[string]TargetSpec{
+			"repo": {Fields: map[string]FieldSpec{"name": {Required: true}}},
+		},
+		Attrs: map[string]AttrSpec{"refs": {}},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[
+		{"id":"deny-main","effect":"deny","clients":["*"],"operations":["push"],"targets":[{"kind":"repo","name":"*"}],"attrs":{"refs":["refs/heads/main"]}},
+		{"id":"allow-heads","effect":"allow","clients":["bob"],"operations":["push"],"targets":[{"kind":"repo","name":"*"}],"attrs":{"refs":["refs/heads/*"]}}
+	]}`, registry)
+	request := Request{
+		Client:    "bob",
+		Operation: "push",
+		Target:    Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}},
+		Attrs:     map[string][]string{"refs": {"refs/heads/main", "refs/heads/feature"}},
+	}
+	decision := policy.Decide(request, DecisionOptions{})
+	if decision.Allowed || decision.Effect != EffectDeny || decision.Reason != "policy_denied" {
+		t.Fatalf("mixed forbidden batch decision = %+v, want deny", decision)
+	}
+}
+
+func TestProviderDeclaredSetMatcherSemantics(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{"write": {TargetKinds: []string{"object"}}},
+		Targets: map[string]TargetSpec{"object": {Fields: map[string]FieldSpec{
+			"name":        {Required: true},
+			"visibility":  {Match: MatchAnyGlob},
+			"mutable_key": {Match: MatchPathOutsidePrefix},
+		}}},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[{
+		"id":"mutable-public","effect":"allow","clients":["bob"],"operations":["write"],
+		"targets":[{"kind":"object","name":"one","visibility":"public","mutable_key":"snapshots"}]
+	}]}`, registry)
+	request := Request{
+		Client: "bob", Operation: "write",
+		Target: Target{Kind: "object", Fields: map[string][]string{
+			"name": {"one"}, "visibility": {"private", "public"}, "mutable_key": {"runs/out.json"},
+		}},
+	}
+	if decision := policy.Decide(request, DecisionOptions{}); !decision.Allowed {
+		t.Fatalf("set matcher decision = %+v, want allowed", decision)
+	}
+	request.Target.Fields["mutable_key"] = []string{"snapshots/model.bin"}
+	if decision := policy.Decide(request, DecisionOptions{}); decision.Allowed {
+		t.Fatalf("protected prefix decision = %+v, want refused", decision)
 	}
 }
 
@@ -257,6 +339,31 @@ func TestPathGlobValidationBounds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := validatePathGlob(tc.pattern); err == nil {
 				t.Fatal("validatePathGlob() error = nil, want size limit error")
+			}
+		})
+	}
+}
+
+func TestPathPrefixValidation(t *testing.T) {
+	cases := []struct {
+		name    string
+		prefix  string
+		wantErr bool
+	}{
+		{name: "relative", prefix: "snapshots/models"},
+		{name: "trailing slash", prefix: "snapshots/"},
+		{name: "absolute", prefix: "/snapshots", wantErr: true},
+		{name: "glob", prefix: "snap*", wantErr: true},
+		{name: "oversized", prefix: strings.Repeat("a", maxPathPatternBytes+1), wantErr: true},
+		{name: "too many segments", prefix: strings.Repeat("a/", maxPathSegments) + "a", wantErr: true},
+		{name: "empty segment", prefix: "snapshots//models", wantErr: true},
+		{name: "parent segment", prefix: "snapshots/../models", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePathPrefix(tc.prefix)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validatePathPrefix(%q) error = %v, wantErr %t", tc.prefix, err, tc.wantErr)
 			}
 		})
 	}
@@ -319,14 +426,14 @@ func TestRequestMatcherValuesFailClosedBeforeRuleMatching(t *testing.T) {
 	cases := []Request{
 		{
 			Client: "bob", Operation: "read",
-			Target: Target{Kind: "object", Fields: map[string]string{
-				"name": "one", "key": strings.Repeat("a", maxPathValueBytes+1),
+			Target: Target{Kind: "object", Fields: map[string][]string{
+				"name": {"one"}, "key": {strings.Repeat("a", maxPathValueBytes+1)},
 			}},
 		},
 		{
 			Client: "bob", Operation: "read",
-			Target: Target{Kind: "object", Fields: map[string]string{"name": "one"}},
-			Attrs:  map[string]string{"max_bytes": "invalid"},
+			Target: Target{Kind: "object", Fields: map[string][]string{"name": {"one"}}},
+			Attrs:  map[string][]string{"max_bytes": {"invalid"}},
 		},
 	}
 	for _, request := range cases {
@@ -397,7 +504,7 @@ func TestProviderDeclaredExecutionGrantMode(t *testing.T) {
 	decision := policy.Decide(Request{
 		Client:    "bob",
 		Operation: "bucket.object.delete",
-		Target:    Target{Kind: "bucket", Fields: map[string]string{"name": "artifacts"}},
+		Target:    Target{Kind: "bucket", Fields: map[string][]string{"name": {"artifacts"}}},
 	}, DecisionOptions{ForGrantRequest: true})
 	if decision.GrantPolicy == nil || decision.GrantPolicy.Mode != string(GrantModeExecution) || decision.GrantPolicy.MaxUses != 1 {
 		t.Fatalf("execution grant policy = %+v", decision.GrantPolicy)
@@ -424,6 +531,29 @@ func TestProviderDeclaredGrantModeValidation(t *testing.T) {
 	}
 }
 
+func TestProviderAllowsExplicitNonDefaultGrantMode(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"write": {
+				TargetKinds: []string{"object"}, Grantable: true,
+				GrantModes: []GrantMode{GrantModeWindow, GrantModeExecution},
+			},
+		},
+		Targets: map[string]TargetSpec{"object": {Fields: map[string]FieldSpec{"name": {Required: true}}}},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[{
+		"id":"execute-write","effect":"request","clients":["bob"],"operations":["write"],
+		"targets":[{"kind":"object","name":"one"}],"grant_policy":{"mode":"execution"}
+	}]}`, registry)
+	decision := policy.Decide(Request{
+		Client: "bob", Operation: "write",
+		Target: Target{Kind: "object", Fields: map[string][]string{"name": {"one"}}},
+	}, DecisionOptions{ForGrantRequest: true})
+	if decision.GrantPolicy == nil || decision.GrantPolicy.Mode != "execution" {
+		t.Fatalf("explicit execution decision = %+v", decision)
+	}
+}
+
 func TestGrantOverlayDistinguishesEmptyAttrKeys(t *testing.T) {
 	policy := mustParse(t, `{"rules":[{
 		"id":"request-push",
@@ -436,14 +566,14 @@ func TestGrantOverlayDistinguishesEmptyAttrKeys(t *testing.T) {
 	decision := policy.Decide(Request{
 		Client:    "bob",
 		Operation: "git.push.fast_forward",
-		Target:    Target{Kind: "repo", Fields: map[string]string{"owner": "osolmaz", "name": "demo"}},
-		Attrs:     map[string]string{"refs": ""},
+		Target:    Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"demo"}}},
+		Attrs:     map[string][]string{"refs": {""}},
 	}, DecisionOptions{ActiveGrants: []Grant{{
 		ID:        "grant-push",
 		Client:    "bob",
 		Operation: "git.push.fast_forward",
-		Target:    Target{Kind: "repo", Fields: map[string]string{"owner": "osolmaz", "name": "demo"}},
-		Attrs:     map[string]string{"ref": ""},
+		Target:    Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"demo"}}},
+		Attrs:     map[string][]string{"ref": {""}},
 		ExpiresAt: time.Now().Add(time.Minute),
 		UsesLeft:  1,
 	}}})
@@ -559,7 +689,7 @@ func TestRejectsGeneratedGrantWildcardByConstruction(t *testing.T) {
 		ID:        "bad-grant",
 		Client:    "*",
 		Operation: "git.fetch",
-		Target:    Target{Kind: "repo", Fields: map[string]string{"owner": "osolmaz", "name": "demo"}},
+		Target:    Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"demo"}}},
 		ExpiresAt: time.Now().Add(time.Minute),
 		UsesLeft:  1,
 	}}})
@@ -625,6 +755,45 @@ func TestParseRejectsAmbiguousRequestGrantPolicies(t *testing.T) {
 	}
 }
 
+func TestParseRejectsDisjointAnyGlobRequestGrantPolicies(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"update": {
+				TargetKinds: []string{"repo"},
+				Grantable:   true,
+				GrantMode:   GrantModeWindow,
+			},
+		},
+		Targets: map[string]TargetSpec{
+			"repo": {Fields: map[string]FieldSpec{
+				"name":       {Required: true},
+				"visibility": {Match: MatchAnyGlob},
+			}},
+		},
+	}
+	_, err := Parse([]byte(`{"rules":[
+		{
+			"id":"public",
+			"effect":"request",
+			"clients":["bob"],
+			"operations":["update"],
+			"targets":[{"kind":"repo","name":"demo","visibility":"public"}],
+			"grant_policy":{"default_minutes":5,"max_minutes":5}
+		},
+		{
+			"id":"private",
+			"effect":"request",
+			"clients":["bob"],
+			"operations":["update"],
+			"targets":[{"kind":"repo","name":"demo","visibility":"private"}],
+			"grant_policy":{"default_minutes":10,"max_minutes":10}
+		}
+	]}`), registry)
+	if err == nil || !strings.Contains(err.Error(), "overlap with different grant policies") {
+		t.Fatalf("Parse(any-glob request policies) error = %v, want overlap error", err)
+	}
+}
+
 func TestParseAllowsDisjointRequestGrantPolicies(t *testing.T) {
 	_, err := Parse([]byte(`{"rules":[
 		{
@@ -678,9 +847,17 @@ func TestParseAllowsDisjointGlobRequestGrantPolicies(t *testing.T) {
 }
 
 func TestParseRejectsInvalidRulesAndRequests(t *testing.T) {
-	_, err := Parse([]byte(`{"rules":[]}`), testRegistry())
-	if err == nil || !strings.Contains(err.Error(), "rules must not be empty") {
-		t.Fatalf("Parse(empty rules) error = %v, want empty rules error", err)
+	empty, err := Parse([]byte(`{"rules":[]}`), testRegistry())
+	if err != nil {
+		t.Fatalf("Parse(empty rules) error = %v", err)
+	}
+	emptyDecision := empty.Decide(repoReq("bob", "git.fetch", "demo", ""), DecisionOptions{})
+	if emptyDecision.Allowed || emptyDecision.Reason != "no_matching_rule" {
+		t.Fatalf("empty policy decision = %+v", emptyDecision)
+	}
+	_, err = Parse([]byte(`{}`), testRegistry())
+	if err == nil || !strings.Contains(err.Error(), "rules is required") {
+		t.Fatalf("Parse(missing rules) error = %v", err)
 	}
 	_, err = Parse([]byte(`{"rules":[{
 		"id":"",
@@ -699,7 +876,7 @@ func TestParseRejectsInvalidRulesAndRequests(t *testing.T) {
 		"operations":["git.fetch"],
 		"targets":[{"kind":"repo","owner":"osolmaz","name":"demo"}]
 	}]}`)
-	decision := pol.Decide(Request{Client: "bob", Operation: "git.fetch", Target: Target{Kind: "repo", Fields: map[string]string{"owner": "osolmaz"}}}, DecisionOptions{})
+	decision := pol.Decide(Request{Client: "bob", Operation: "git.fetch", Target: Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}}}}, DecisionOptions{})
 	if decision.Effect != EffectNoMatch || !strings.Contains(decision.Reason, "requires field") {
 		t.Fatalf("missing target field decision = %+v", decision)
 	}
@@ -770,6 +947,9 @@ func TestRegistryValidationErrors(t *testing.T) {
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, Attrs: []string{"missing"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, GrantMode: GrantModeExecution}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, GrantModes: []GrantMode{GrantModeWindow}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, Grantable: true, GrantModes: []GrantMode{"bad"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, Grantable: true, GrantMode: GrantModeExecution, GrantModes: []GrantMode{GrantModeWindow}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {Match: MatchMode("bad")}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}, Attrs: map[string]AttrSpec{"bad": {Match: MatchMode("bad")}}},
 	}
@@ -796,6 +976,22 @@ func TestFieldlessTargetKind(t *testing.T) {
 	decision := policy.Decide(Request{Client: "bob", Operation: "installation.repos.list", Target: Target{Kind: "installation"}}, DecisionOptions{})
 	if !decision.Allowed {
 		t.Fatalf("fieldless target decision = %+v, want allowed", decision)
+	}
+}
+
+func TestSingletonValues(t *testing.T) {
+	if SingletonValues(nil) != nil {
+		t.Fatal("SingletonValues(nil) must return nil")
+	}
+	values := SingletonValues(map[string]string{"ref": "refs/heads/main"})
+	if len(values["ref"]) != 1 || values["ref"][0] != "refs/heads/main" {
+		t.Fatalf("SingletonValues() = %+v", values)
+	}
+	if FirstValue(nil) != "" || FirstValue(values["ref"]) != "refs/heads/main" {
+		t.Fatalf("FirstValue() did not preserve singleton value")
+	}
+	if !MatchAll(MatchGlob, []string{"refs/heads/*"}, values["ref"]) || MatchAll(MatchGlob, []string{"refs/tags/*"}, values["ref"]) {
+		t.Fatal("MatchAll() did not apply shared matcher semantics")
 	}
 }
 
@@ -826,20 +1022,20 @@ func requestShellPolicy(t *testing.T) *Policy {
 }
 
 func repoReq(client string, operation string, name string, ref string) Request {
-	attrs := map[string]string{}
+	attrs := map[string][]string{}
 	if ref != "" {
-		attrs["ref"] = ref
+		attrs["ref"] = []string{ref}
 	}
 	if operation == "pr.create" {
-		attrs["base_ref"] = "refs/heads/main"
-		attrs["head_ref"] = "refs/heads/bob/change"
+		attrs["base_ref"] = []string{"refs/heads/main"}
+		attrs["head_ref"] = []string{"refs/heads/bob/change"}
 	}
 	return Request{
 		Client:    client,
 		Operation: operation,
 		Target: Target{
 			Kind:   "repo",
-			Fields: map[string]string{"owner": "osolmaz", "name": name},
+			Fields: map[string][]string{"owner": {"osolmaz"}, "name": {name}},
 		},
 		Attrs: attrs,
 	}

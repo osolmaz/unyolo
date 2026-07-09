@@ -4,6 +4,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/internal/copyx"
 )
 
 const (
@@ -15,38 +17,69 @@ const (
 func ruleMatches(registry Registry, rule Rule, request Request) bool {
 	return patternsMatch(rule.Clients, request.Client) &&
 		patternsMatch(rule.Operations, request.Operation) &&
-		targetsMatch(registry, rule.Targets, request.Target) &&
-		attrsMatch(registry, rule.Attrs, request.Operation, request.Attrs)
+		targetsMatch(registry, rule.Effect, rule.Targets, request.Target) &&
+		attrsMatch(registry, rule.Effect, rule.Attrs, request.Operation, request.Attrs)
 }
 
-func targetsMatch(registry Registry, matchers []TargetMatcher, target Target) bool {
+func targetsMatch(registry Registry, effect Effect, matchers []TargetMatcher, target Target) bool {
 	for _, matcher := range matchers {
 		if matcher.Kind != target.Kind {
 			continue
 		}
-		if targetFieldsMatch(registry.Targets[target.Kind], matcher.Fields, target.Fields) {
+		if targetFieldsMatch(registry.Targets[target.Kind], effect, matcher.Fields, target.Fields) {
 			return true
 		}
 	}
 	return false
 }
 
-func targetFieldsMatch(spec TargetSpec, patterns map[string][]string, fields map[string]string) bool {
+func targetFieldsMatch(spec TargetSpec, effect Effect, patterns map[string][]string, fields map[string][]string) bool {
 	for name, allowed := range patterns {
-		if !valuesMatch(spec.Fields[name].Match, allowed, fields[name]) {
+		if !effectValuesMatch(effect, spec.Fields[name].Match, allowed, fields[name]) {
 			return false
 		}
 	}
 	return true
 }
 
-func attrsMatch(registry Registry, patterns map[string][]string, operation string, attrs map[string]string) bool {
+func attrsMatch(registry Registry, effect Effect, patterns map[string][]string, operation string, attrs map[string][]string) bool {
 	for name, allowed := range patterns {
 		if !attrRelevantToOperation(registry, name, operation) {
 			continue
 		}
-		value, ok := attrs[name]
-		if !ok || !valuesMatch(registry.Attrs[name].Match, allowed, value) {
+		values, ok := attrs[name]
+		if !ok || !effectValuesMatch(effect, registry.Attrs[name].Match, allowed, values) {
+			return false
+		}
+	}
+	return true
+}
+
+func effectValuesMatch(effect Effect, mode MatchMode, patterns []string, values []string) bool {
+	if effect == EffectDeny {
+		return anyValueMatches(mode, patterns, values)
+	}
+	return allValuesMatch(mode, patterns, values)
+}
+
+func anyValueMatches(mode MatchMode, patterns []string, values []string) bool {
+	for _, value := range values {
+		if valuesMatch(mode, patterns, value) {
+			return true
+		}
+	}
+	return false
+}
+
+func allValuesMatch(mode MatchMode, patterns []string, values []string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	if defaultedMatchMode(mode) == MatchAnyGlob {
+		return anyValueMatches(mode, patterns, values)
+	}
+	for _, value := range values {
+		if !valuesMatch(mode, patterns, value) {
 			return false
 		}
 	}
@@ -55,15 +88,27 @@ func attrsMatch(registry Registry, patterns map[string][]string, operation strin
 
 func valuesMatch(mode MatchMode, patterns []string, value string) bool {
 	switch defaultedMatchMode(mode) {
-	case MatchGlob:
+	case MatchGlob, MatchAnyGlob:
 		return patternsMatch(patterns, value)
 	case MatchPathGlob:
 		return pathPatternsMatch(patterns, value)
+	case MatchPathOutsidePrefix:
+		return pathOutsidePrefixes(patterns, value)
 	case MatchIntegerMaximum:
 		return integerMaximumMatches(patterns, value)
 	default:
 		return false
 	}
+}
+
+func pathOutsidePrefixes(prefixes []string, value string) bool {
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSuffix(prefix, "/")
+		if value == prefix || strings.HasPrefix(value, prefix+"/") {
+			return false
+		}
+	}
+	return true
 }
 
 func attrRelevantToOperation(registry Registry, name string, operation string) bool {
@@ -172,19 +217,6 @@ func targetEqual(left Target, right Target) bool {
 	return left.Kind == right.Kind && stringMapsEqual(left.Fields, right.Fields)
 }
 
-func stringMapsEqual(left, right map[string]string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	return stringMapsContain(left, right)
-}
-
-func stringMapsContain(container, want map[string]string) bool {
-	for key, value := range want {
-		got, ok := container[key]
-		if !ok || got != value {
-			return false
-		}
-	}
-	return true
+func stringMapsEqual(left, right map[string][]string) bool {
+	return copyx.StringSliceMapsEqual(left, right)
 }

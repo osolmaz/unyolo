@@ -18,13 +18,13 @@ type Request struct {
 	Client    string
 	Operation string
 	Target    Target
-	Attrs     map[string]string
+	Attrs     map[string][]string
 }
 
 // Target identifies one provider resource.
 type Target struct {
 	Kind   string
-	Fields map[string]string
+	Fields map[string][]string
 }
 
 // Rule is one normalized policy rule.
@@ -61,7 +61,7 @@ type Grant struct {
 	Client    string
 	Operation string
 	Target    Target
-	Attrs     map[string]string
+	Attrs     map[string][]string
 	ExpiresAt time.Time
 	UsesLeft  int
 }
