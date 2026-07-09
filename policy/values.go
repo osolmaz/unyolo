@@ -11,3 +11,11 @@ func SingletonValues(values map[string]string) map[string][]string {
 	}
 	return out
 }
+
+// FirstValue returns the first canonical value or an empty string.
+func FirstValue(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}

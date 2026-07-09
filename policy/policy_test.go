@@ -812,6 +812,9 @@ func TestSingletonValues(t *testing.T) {
 	if len(values["ref"]) != 1 || values["ref"][0] != "refs/heads/main" {
 		t.Fatalf("SingletonValues() = %+v", values)
 	}
+	if FirstValue(nil) != "" || FirstValue(values["ref"]) != "refs/heads/main" {
+		t.Fatalf("FirstValue() did not preserve singleton value")
+	}
 }
 
 func mustParse(t *testing.T, data string) *Policy {
