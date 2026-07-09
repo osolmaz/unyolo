@@ -97,7 +97,7 @@ func runSetupClient(stdout io.Writer, opts setupClientOptions) error {
 	if err != nil {
 		return err
 	}
-	path, err := clientconfig.Write(clientconfig.Config{
+	path, err := clientconfig.WriteForHomeOwner(clientconfig.Config{
 		BrokerName: "gh-broker",
 		EnvPrefix:  "GH_BROKER",
 		URL:        opts.URL,
