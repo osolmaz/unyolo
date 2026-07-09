@@ -165,6 +165,182 @@ func TestGrantOverlayRequiresExactAttrs(t *testing.T) {
 	}
 }
 
+func TestProviderDeclaredMatcherSemantics(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"bucket.object.write": {
+				TargetKinds: []string{"bucket"},
+				Attrs:       []string{"max_bytes"},
+			},
+		},
+		Targets: map[string]TargetSpec{
+			"bucket": {Fields: map[string]FieldSpec{
+				"owner": {Required: true},
+				"name":  {Required: true},
+				"key":   {Required: true, Match: MatchPathGlob},
+			}},
+		},
+		Attrs: map[string]AttrSpec{
+			"max_bytes": {Match: MatchIntegerMaximum},
+		},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[{
+		"id":"bounded-write",
+		"effect":"allow",
+		"clients":["bob"],
+		"operations":["bucket.object.write"],
+		"targets":[{"kind":"bucket","owner":"osolmaz","name":"artifacts","key":"runs/**/*.json"}],
+		"attrs":{"max_bytes":"10"}
+	}]}`, registry)
+	request := Request{
+		Client:    "bob",
+		Operation: "bucket.object.write",
+		Target: Target{Kind: "bucket", Fields: map[string]string{
+			"owner": "osolmaz",
+			"name":  "artifacts",
+			"key":   "runs/2026/day/out.json",
+		}},
+		Attrs: map[string]string{"max_bytes": "9"},
+	}
+	if decision := policy.Decide(request, DecisionOptions{}); !decision.Allowed {
+		t.Fatalf("bounded path decision = %+v, want allowed", decision)
+	}
+	request.Target.Fields["key"] = "runs/out.json"
+	if decision := policy.Decide(request, DecisionOptions{}); !decision.Allowed {
+		t.Fatalf("zero-segment ** decision = %+v, want allowed", decision)
+	}
+	request.Attrs["max_bytes"] = "11"
+	if decision := policy.Decide(request, DecisionOptions{}); decision.Allowed {
+		t.Fatalf("over-limit decision = %+v, want refused", decision)
+	}
+}
+
+func TestProviderMatcherValidation(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"write": {TargetKinds: []string{"object"}, Attrs: []string{"max_bytes"}},
+		},
+		Targets: map[string]TargetSpec{
+			"object": {Fields: map[string]FieldSpec{"key": {Required: true, Match: MatchPathGlob}}},
+		},
+		Attrs: map[string]AttrSpec{"max_bytes": {Match: MatchIntegerMaximum}},
+	}
+	cases := []struct {
+		name   string
+		target string
+		limit  string
+	}{
+		{name: "embedded double star", target: "runs/a**/out", limit: "10"},
+		{name: "bad path glob", target: "runs/[a/out", limit: "10"},
+		{name: "negative maximum", target: "runs/**/out", limit: "-1"},
+		{name: "non-integer maximum", target: "runs/**/out", limit: "ten"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["write"],"targets":[{"kind":"object","key":"` + tc.target + `"}],"attrs":{"max_bytes":"` + tc.limit + `"}}]}`
+			if _, err := Parse([]byte(body), registry); err == nil {
+				t.Fatal("Parse() error = nil, want invalid provider matcher value")
+			}
+		})
+	}
+}
+
+func TestPathMatcherEdgeCases(t *testing.T) {
+	cases := []struct {
+		patterns []string
+		values   []string
+		want     bool
+	}{
+		{patterns: nil, values: nil, want: true},
+		{patterns: []string{"**"}, values: nil, want: true},
+		{patterns: []string{"**"}, values: []string{"a", "b"}, want: true},
+		{patterns: []string{"a"}, values: nil, want: false},
+		{patterns: []string{"a"}, values: []string{"b"}, want: false},
+		{patterns: []string{"a"}, values: []string{"a"}, want: true},
+	}
+	for _, tc := range cases {
+		if got := pathSegmentsMatch(tc.patterns, tc.values); got != tc.want {
+			t.Fatalf("pathSegmentsMatch(%v, %v) = %t, want %t", tc.patterns, tc.values, got, tc.want)
+		}
+	}
+	if pathPatternsMatch([]string{"a"}, "") {
+		t.Fatal("pathPatternsMatch() matched an empty value")
+	}
+	if integerMaximumMatches([]string{"bad"}, "1") || integerMaximumMatches([]string{"1"}, "bad") || integerMaximumMatches([]string{"1"}, "-1") {
+		t.Fatal("integerMaximumMatches() accepted malformed input")
+	}
+}
+
+func TestPathMatcherOverlapIsConservative(t *testing.T) {
+	cases := []struct {
+		left  string
+		right string
+		want  bool
+	}{
+		{left: "a", right: "a", want: true},
+		{left: "a", right: "b", want: false},
+		{left: "a", right: "*", want: true},
+		{left: "*", right: "a", want: true},
+		{left: "a/*", right: "b/*", want: true},
+	}
+	for _, tc := range cases {
+		if got := pathValuesMayOverlap(tc.left, tc.right); got != tc.want {
+			t.Fatalf("pathValuesMayOverlap(%q, %q) = %t, want %t", tc.left, tc.right, got, tc.want)
+		}
+	}
+}
+
+func TestProviderDeclaredExecutionGrantMode(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"bucket.object.delete": {
+				TargetKinds: []string{"bucket"},
+				Grantable:   true,
+				GrantMode:   GrantModeExecution,
+			},
+		},
+		Targets: map[string]TargetSpec{
+			"bucket": {Fields: map[string]FieldSpec{"name": {Required: true}}},
+		},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[{
+		"id":"request-delete",
+		"effect":"request",
+		"clients":["bob"],
+		"operations":["bucket.object.delete"],
+		"targets":[{"kind":"bucket","name":"artifacts"}],
+		"grant_policy":{"default_minutes":5,"max_minutes":5}
+	}]}`, registry)
+	decision := policy.Decide(Request{
+		Client:    "bob",
+		Operation: "bucket.object.delete",
+		Target:    Target{Kind: "bucket", Fields: map[string]string{"name": "artifacts"}},
+	}, DecisionOptions{ForGrantRequest: true})
+	if decision.GrantPolicy == nil || decision.GrantPolicy.Mode != string(GrantModeExecution) || decision.GrantPolicy.MaxUses != 1 {
+		t.Fatalf("execution grant policy = %+v", decision.GrantPolicy)
+	}
+}
+
+func TestProviderDeclaredGrantModeValidation(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"window":    {TargetKinds: []string{"object"}, Grantable: true},
+			"execution": {TargetKinds: []string{"object"}, Grantable: true, GrantMode: GrantModeExecution},
+		},
+		Targets: map[string]TargetSpec{"object": {Fields: map[string]FieldSpec{"name": {Required: true}}}},
+	}
+	cases := []string{
+		`{"rules":[{"id":"bad","effect":"request","clients":["bob"],"operations":["execution"],"targets":[{"kind":"object","name":"one"}],"grant_policy":{"mode":"window"}}]}`,
+		`{"rules":[{"id":"bad","effect":"request","clients":["bob"],"operations":["execution"],"targets":[{"kind":"object","name":"one"}],"grant_policy":{"default_max_uses":2,"max_uses":2}}]}`,
+		`{"rules":[{"id":"bad","effect":"request","clients":["bob"],"operations":["window","execution"],"targets":[{"kind":"object","name":"one"}],"grant_policy":{}}]}`,
+	}
+	for _, body := range cases {
+		if _, err := Parse([]byte(body), registry); err == nil {
+			t.Fatal("Parse() error = nil, want incompatible grant mode")
+		}
+	}
+}
+
 func TestGrantOverlayDistinguishesEmptyAttrKeys(t *testing.T) {
 	policy := mustParse(t, `{"rules":[{
 		"id":"request-push",
@@ -510,6 +686,9 @@ func TestRegistryValidationErrors(t *testing.T) {
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"missing"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, Attrs: []string{"missing"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, GrantMode: GrantModeExecution}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {Match: MatchMode("bad")}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}, Attrs: map[string]AttrSpec{"bad": {Match: MatchMode("bad")}}},
 	}
 	for index, registry := range registries {
 		if _, err := Parse([]byte(`{"rules":[]}`), registry); err == nil {

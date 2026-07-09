@@ -7,6 +7,26 @@ import (
 	"strings"
 )
 
+// MatchMode selects how a provider-owned policy field is matched.
+type MatchMode string
+
+const (
+	// MatchGlob applies path.Match semantics. Wildcards do not cross '/'.
+	MatchGlob MatchMode = "glob"
+	// MatchPathGlob additionally permits a complete "**" path segment.
+	MatchPathGlob MatchMode = "path_glob"
+	// MatchIntegerMaximum treats policy values as inclusive integer ceilings.
+	MatchIntegerMaximum MatchMode = "integer_maximum"
+)
+
+// GrantMode identifies the execution shape approved by a request rule.
+type GrantMode string
+
+const (
+	GrantModeWindow    GrantMode = "window"
+	GrantModeExecution GrantMode = "execution"
+)
+
 // Registry is provider-owned vocabulary for policy validation.
 type Registry struct {
 	Operations map[string]OperationSpec
@@ -19,6 +39,7 @@ type OperationSpec struct {
 	TargetKinds []string
 	Attrs       []string
 	Grantable   bool
+	GrantMode   GrantMode
 }
 
 // TargetSpec describes one target kind.
@@ -29,10 +50,13 @@ type TargetSpec struct {
 // FieldSpec describes one target field.
 type FieldSpec struct {
 	Required bool
+	Match    MatchMode
 }
 
 // AttrSpec describes one request attr.
-type AttrSpec struct{}
+type AttrSpec struct {
+	Match MatchMode
+}
 
 func (r Registry) validate() error {
 	if len(r.Operations) == 0 {
@@ -73,16 +97,75 @@ func (r Registry) validateOperation(name string, op OperationSpec) error {
 			return fmt.Errorf("registry operation %q references unknown attr %q", name, attr)
 		}
 	}
+	return validateOperationGrantMode(name, op)
+}
+
+func validateOperationGrantMode(name string, op OperationSpec) error {
+	if !op.Grantable && op.GrantMode != "" {
+		return fmt.Errorf("registry operation %q is not grantable but declares grant mode %q", name, op.GrantMode)
+	}
+	if op.Grantable && !validGrantMode(defaultedGrantMode(op.GrantMode)) {
+		return fmt.Errorf("registry operation %q has unsupported grant mode %q", name, op.GrantMode)
+	}
 	return nil
 }
 
 func (r Registry) validateTargets() error {
-	for kind := range r.Targets {
+	if err := r.validateTargetSpecs(); err != nil {
+		return err
+	}
+	return r.validateAttrSpecs()
+}
+
+func (r Registry) validateTargetSpecs() error {
+	for kind, target := range r.Targets {
 		if strings.TrimSpace(kind) == "" {
 			return errors.New("registry target kind is required")
 		}
+		for field, spec := range target.Fields {
+			if strings.TrimSpace(field) == "" {
+				return fmt.Errorf("registry target kind %q field name is required", kind)
+			}
+			if !validMatchMode(defaultedMatchMode(spec.Match)) {
+				return fmt.Errorf("registry target kind %q field %q has unsupported match mode %q", kind, field, spec.Match)
+			}
+		}
 	}
 	return nil
+}
+
+func (r Registry) validateAttrSpecs() error {
+	for attr, spec := range r.Attrs {
+		if strings.TrimSpace(attr) == "" {
+			return errors.New("registry attr name is required")
+		}
+		if !validMatchMode(defaultedMatchMode(spec.Match)) {
+			return fmt.Errorf("registry attr %q has unsupported match mode %q", attr, spec.Match)
+		}
+	}
+	return nil
+}
+
+func defaultedMatchMode(mode MatchMode) MatchMode {
+	if mode == "" {
+		return MatchGlob
+	}
+	return mode
+}
+
+func validMatchMode(mode MatchMode) bool {
+	return mode == MatchGlob || mode == MatchPathGlob || mode == MatchIntegerMaximum
+}
+
+func defaultedGrantMode(mode GrantMode) GrantMode {
+	if mode == "" {
+		return GrantModeWindow
+	}
+	return mode
+}
+
+func validGrantMode(mode GrantMode) bool {
+	return mode == GrantModeWindow || mode == GrantModeExecution
 }
 
 func (r Registry) validateRequest(request Request) error {

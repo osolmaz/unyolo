@@ -94,6 +94,8 @@ The provider registry defines:
 - valid attr names
 - each operation's supported attrs
 - which operations may be grantable
+- the grant mode for each grantable operation
+- the match semantics for each target field and attr
 
 The core evaluator should not hard-code provider vocabulary.
 
@@ -159,8 +161,18 @@ Examples:
 {"command_ids": ["restart-myapp"]}
 ```
 
-The initial API treats attrs as string values matched by exact or glob patterns.
-Each operation lists the attrs it supports.
+The policy core uses canonical string values at its boundary. The provider
+registry declares how each target field and attr is interpreted:
+
+- `glob` uses segment-safe glob matching; `*` does not cross `/`
+- `path_glob` additionally accepts a complete `**` path segment
+- `integer_maximum` treats policy values as inclusive non-negative integer
+  ceilings
+
+This keeps typed provider parsing in the broker while making the decision
+semantics reusable. For example, hf-broker parses a JSON byte count, validates
+it as an integer, and passes its canonical base-10 form to brokerkit. Each
+operation lists the attrs it supports.
 
 Attrs match by exact registry name. brokerkit does not apply provider aliases
 such as `ref` versus `refs` or `path` versus `paths`. A broker must classify
@@ -187,6 +199,12 @@ pass the raw token only to the approval notification path.
 ## Grant Policy
 
 `request` rules must include `grant_policy`.
+
+Each grantable operation declares a provider-owned grant mode. `window` grants
+authorize an exact classified request for a bounded time and use budget.
+`execution` grants approve one exact provider-built action and are always
+single-use. A request rule may contain several operations only when they use
+the same grant mode.
 
 Minimal example:
 
