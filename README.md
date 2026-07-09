@@ -64,8 +64,7 @@ Implemented package candidates are:
 
 Provider-specific execution code does not belong in brokerkit.
 
-`httpx` is still planned; the other packages above have initial Go
-implementations.
+The packages above have initial Go implementations.
 
 ## Status
 

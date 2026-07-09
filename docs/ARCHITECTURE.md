@@ -47,8 +47,7 @@ brokerkit/
 └── gitx/       # Generic Git smart-HTTP parsing helpers.
 ```
 
-The implemented package names are the initial brokerkit API surface. `httpx`
-remains planned.
+The implemented package names are the initial brokerkit API surface.
 
 The canonical ownership boundary is [OWNERSHIP.md](OWNERSHIP.md).
 

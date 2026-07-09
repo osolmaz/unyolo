@@ -102,6 +102,10 @@ transitions should have one runtime implementation.
 
 ## Phase 5: Extract HTTP Helpers
 
+Status: initial `brokerkit/httpx` package is implemented for provider-neutral
+header filtering, bounded body reads, and no-store response headers. Brokers
+still own provider-specific credential metadata names and upstream behavior.
+
 Extract only tiny helpers:
 
 - hop-by-hop header filtering

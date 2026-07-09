@@ -2,13 +2,24 @@
 
 set -euo pipefail
 
-tmp="$(mktemp)"
-cp doc.go "$tmp"
+targets=(
+	doc.go
+	httpx/httpx.go
+)
+backup_dir="$(mktemp -d)"
+for target in "${targets[@]}"; do
+	mkdir -p "$backup_dir/$(dirname "$target")"
+	cp "$target" "$backup_dir/$target"
+done
 cleanup() {
-	cp "$tmp" doc.go
-	rm -f "$tmp"
+	for target in "${targets[@]}"; do
+		cp "$backup_dir/$target" "$target"
+	done
+	rm -rf "$backup_dir"
 	rm -rf target
 }
 trap cleanup EXIT
 
-slophammer-go mutate . --target doc.go
+for target in "${targets[@]}"; do
+	slophammer-go mutate . --target "$target"
+done
