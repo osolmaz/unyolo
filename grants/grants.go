@@ -729,7 +729,7 @@ func (s *Store) update(mutator func(*fileData) error) error {
 	changed := s.prepareLifecycle(&data)
 	if err := mutator(&data); err != nil {
 		if changed {
-			_ = s.save(data)
+			return errors.Join(err, s.save(data))
 		}
 		return err
 	}

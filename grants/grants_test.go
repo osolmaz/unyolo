@@ -498,6 +498,35 @@ func TestLateDecisionPersistsExpiredStatus(t *testing.T) {
 	}
 }
 
+func TestLifecyclePreparationReportsPersistenceFailure(t *testing.T) {
+	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
+	dir := t.TempDir()
+	store := New(filepath.Join(dir, "grants.json"), Options{Now: func() time.Time { return now }})
+	result, _, err := store.Request(Request{
+		Client:    "bob",
+		Operation: "session.shell",
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		Reason:    "expire",
+		Duration:  time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "telegram:1"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Minute)
+	if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- test intentionally blocks directory writes.
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) // #nosec G302 -- private test directory restore.
+
+	_, err = store.ReserveUse(result.Grant.ID)
+	if !errors.Is(err, ErrNotActive) || !strings.Contains(err.Error(), "create temp file") {
+		t.Fatalf("ReserveUse() error = %v, want joined lifecycle and persistence errors", err)
+	}
+}
+
 func TestGetExpiresPendingGrant(t *testing.T) {
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
