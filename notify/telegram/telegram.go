@@ -35,6 +35,8 @@ type Options struct {
 	IgnoredAnswer       string
 	PendingExpired      string
 	ActiveExpired       string
+	ApproveText         string
+	DenyText            string
 	StatusByAnswer      map[string]string
 	TerminalStatuses    []string
 	TerminalStatusStart []string
@@ -59,6 +61,8 @@ type Client struct {
 	ignoredAnswer      string
 	pendingExpired     string
 	activeExpired      string
+	approveText        string
+	denyText           string
 	statusByAnswer     map[string]string
 	terminalStatuses   []string
 	terminalStarts     []string
@@ -95,6 +99,8 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 		ignoredAnswer:      opts.IgnoredAnswer,
 		pendingExpired:     opts.PendingExpired,
 		activeExpired:      opts.ActiveExpired,
+		approveText:        opts.ApproveText,
+		denyText:           opts.DenyText,
 		statusByAnswer:     copyx.StringMap(opts.StatusByAnswer),
 		terminalStatuses:   append([]string(nil), opts.TerminalStatuses...),
 		terminalStarts:     append([]string(nil), opts.TerminalStatusStart...),
@@ -118,6 +124,12 @@ func normalizeOptions(opts Options) Options {
 	if opts.ActiveExpired == "" {
 		opts.ActiveExpired = defaultActiveExpired
 	}
+	if opts.ApproveText == "" {
+		opts.ApproveText = "Approve"
+	}
+	if opts.DenyText == "" {
+		opts.DenyText = "Deny"
+	}
 	return opts
 }
 
@@ -129,8 +141,8 @@ func (c *Client) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (
 		"text":    text,
 		"reply_markup": map[string]any{
 			"inline_keyboard": [][]map[string]string{{
-				{"text": "Approve", "callback_data": CallbackData(notify.ActionApprove, msg.GrantID, msg.DecisionToken)},
-				{"text": "Deny", "callback_data": CallbackData(notify.ActionDeny, msg.GrantID, msg.DecisionToken)},
+				{"text": c.approveText, "callback_data": CallbackData(notify.ActionApprove, msg.GrantID, msg.DecisionToken)},
+				{"text": c.denyText, "callback_data": CallbackData(notify.ActionDeny, msg.GrantID, msg.DecisionToken)},
 			}},
 		},
 	}
@@ -347,6 +359,9 @@ func hasAnyPrefix(value string, prefixes []string) bool {
 
 // RenderApproval returns generic approval message text.
 func RenderApproval(msg notify.ApprovalMessage) string {
+	if strings.TrimSpace(msg.Text) != "" {
+		return strings.TrimSpace(msg.Text)
+	}
 	var builder strings.Builder
 	builder.WriteString("Approval requested\n")
 	builder.WriteString("Client: " + msg.Client + "\n")
