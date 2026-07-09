@@ -59,6 +59,8 @@ Implemented package candidates are:
 - `grants`: short-lived pending/active/expired/revoked grants
 - `audit`: secret-safe structured audit helpers
 - `httpx`: proxy-safe header filtering and bounded body helpers
+- `clientconfig`: shared client env rendering for
+  `~/.config/<broker>/client.env`
 - `notify`: approval notification interfaces and reusable approval-channel
   adapters such as Telegram
 - `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
