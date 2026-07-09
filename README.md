@@ -13,6 +13,8 @@ propose-only): use hf-auth-helper for everything, and a broker remote for
 the specific repos that need direct writes. The full design, threat
 model, and roadmap (bucket proxy, time-boxed grants) are in
 [docs/SPECIFICATION.md](docs/SPECIFICATION.md).
+The broker-family install and setup cutover is tracked in
+[docs/BROKERKIT_UNIFICATION.md](docs/BROKERKIT_UNIFICATION.md).
 
 ## How it works
 

@@ -4,6 +4,12 @@ Goal: make `hf-broker` installable globally without requiring Go, Homebrew, apt,
 or npm, then provide an explicit Linux service setup path for same-host broker
 deployments.
 
+Broker-family unification is tracked in
+[BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md). hf-broker's current
+installer and `setup systemd` UX are the baseline, but the reusable installer,
+service setup, client setup, policy, grant, approval, audit, and doctor pieces
+should move to the shared brokerkit contract instead of remaining bespoke.
+
 ## User Experience
 
 Primary install:
