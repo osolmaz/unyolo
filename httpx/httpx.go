@@ -69,8 +69,9 @@ func CopyHeaders(dst http.Header, src http.Header, drop HeaderDropper) {
 	if dst == nil {
 		return
 	}
+	connectionNominated := connectionNominatedHeaders(src, drop)
 	for key, values := range src {
-		if drop != nil && drop(key) {
+		if shouldDropHeader(key, drop, connectionNominated) {
 			continue
 		}
 		for _, value := range values {
@@ -131,4 +132,37 @@ func NoStore(header http.Header) {
 func headerIn(key string, values map[string]struct{}) bool {
 	_, ok := values[strings.ToLower(key)]
 	return ok
+}
+
+func shouldDropHeader(key string, drop HeaderDropper, connectionNominated map[string]struct{}) bool {
+	if drop != nil && drop(key) {
+		return true
+	}
+	_, ok := connectionNominated[strings.ToLower(key)]
+	return ok
+}
+
+func connectionNominatedHeaders(src http.Header, drop HeaderDropper) map[string]struct{} {
+	if drop == nil || !drop("Connection") {
+		return nil
+	}
+	out := map[string]struct{}{}
+	for key, values := range src {
+		if !strings.EqualFold(key, "Connection") {
+			continue
+		}
+		for _, value := range values {
+			addConnectionTokens(out, value)
+		}
+	}
+	return out
+}
+
+func addConnectionTokens(out map[string]struct{}, value string) {
+	for _, token := range strings.Split(value, ",") {
+		token = strings.TrimSpace(token)
+		if token != "" {
+			out[strings.ToLower(token)] = struct{}{}
+		}
+	}
 }

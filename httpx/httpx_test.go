@@ -48,6 +48,66 @@ func TestCopyHeaders(t *testing.T) {
 	CopyHeaders(nil, src, nil)
 }
 
+func TestCopyHeadersDropsConnectionNominatedRequestHeaders(t *testing.T) {
+	t.Parallel()
+	src := http.Header{}
+	src.Add("Connection", "X-Hop, X-Also-Hop")
+	src.Set("X-Hop", "one")
+	src.Set("X-Also-Hop", "two")
+	src.Set("X-Keep", "safe")
+	dst := http.Header{}
+
+	CopyHeaders(dst, src, ProxyRequestHeader)
+
+	for _, key := range []string{"Connection", "X-Hop", "X-Also-Hop"} {
+		if got := dst.Values(key); len(got) != 0 {
+			t.Fatalf("%s copied as %v, want dropped", key, got)
+		}
+	}
+	if got := dst.Get("X-Keep"); got != "safe" {
+		t.Fatalf("X-Keep = %q, want safe", got)
+	}
+}
+
+func TestCopyHeadersDropsConnectionNominatedResponseHeaders(t *testing.T) {
+	t.Parallel()
+	src := http.Header{}
+	src.Add("connection", "X-Hop")
+	src.Add("Connection", " X-Second-Hop , ")
+	src.Set("x-hop", "one")
+	src.Set("X-Second-Hop", "two")
+	src.Set("X-RateLimit-Remaining", "1")
+	dst := http.Header{}
+
+	CopyHeaders(dst, src, ProxyResponseHeader)
+
+	for _, key := range []string{"Connection", "X-Hop", "X-Second-Hop"} {
+		if got := dst.Values(key); len(got) != 0 {
+			t.Fatalf("%s copied as %v, want dropped", key, got)
+		}
+	}
+	if got := dst.Get("X-RateLimit-Remaining"); got != "1" {
+		t.Fatalf("X-RateLimit-Remaining = %q, want 1", got)
+	}
+}
+
+func TestCopyHeadersKeepsConnectionNominatedHeadersWhenConnectionIsCopied(t *testing.T) {
+	t.Parallel()
+	src := http.Header{}
+	src.Set("Connection", "X-Forwarded")
+	src.Set("X-Forwarded", "kept")
+	dst := http.Header{}
+
+	CopyHeaders(dst, src, nil)
+
+	if got := dst.Get("Connection"); got != "X-Forwarded" {
+		t.Fatalf("Connection = %q, want X-Forwarded", got)
+	}
+	if got := dst.Get("X-Forwarded"); got != "kept" {
+		t.Fatalf("X-Forwarded = %q, want kept", got)
+	}
+}
+
 func TestHeaderDroppers(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
