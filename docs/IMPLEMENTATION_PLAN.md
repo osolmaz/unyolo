@@ -1,6 +1,10 @@
 # Implementation Plan
 
-This document tracks the implemented broker shape. The longer-term GitHub App and service-account target is specified in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
+This document tracks the implemented broker shape. The longer-term GitHub App
+and service-account target is specified in
+[PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md). The shared
+broker-family install and setup cutover is specified in
+[BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md).
 
 Cutover direction: gh-broker now lives at `github.com/osolmaz/gh-broker` and
 should use `github.com/osolmaz/brokerkit` for shared auth, policy, grants,
@@ -115,6 +119,8 @@ POST /{owner}/{repo}.git/git-receive-pack
   helpers, notifier interfaces, Telegram approval transport, storage/config
   helpers, and generic Git parsing helpers.
 - Service-account installer and systemd unit.
+- Shared brokerkit-aligned installer, service setup, and client setup contract
+  described in [BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md).
 - Verified GitHub webhook endpoint for installation cache invalidation and audit context.
 - Generated temporary grants.
 - Runtime branch-ruleset inspection in `doctor`.

@@ -4,6 +4,9 @@ gh-broker is a small GitHub credential broker for coding agents. It gives an age
 
 The central invariant is strict: gh-broker must not provide an API, log path, error path, or helper that returns original GitHub credential material.
 
+The shared broker-family install and setup cutover is tracked in
+[docs/BROKERKIT_UNIFICATION.md](docs/BROKERKIT_UNIFICATION.md).
+
 ## Current Shape
 
 - Echo HTTP server

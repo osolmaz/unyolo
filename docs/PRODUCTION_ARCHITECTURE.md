@@ -681,6 +681,8 @@ installation tokens, JWTs, Authorization headers, or token metadata.
    - `scripts/release.sh`
    - `gh-broker --version`
    - GitHub release assets for Linux/macOS amd64/arm64
+   - brokerkit-aligned `setup systemd` and `setup client` behavior described
+     in [BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md)
 
 10. Add grants only after static policy and request classification are
    well-tested.
