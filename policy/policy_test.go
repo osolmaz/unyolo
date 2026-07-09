@@ -804,6 +804,16 @@ func TestFieldlessTargetKind(t *testing.T) {
 	}
 }
 
+func TestSingletonValues(t *testing.T) {
+	if SingletonValues(nil) != nil {
+		t.Fatal("SingletonValues(nil) must return nil")
+	}
+	values := SingletonValues(map[string]string{"ref": "refs/heads/main"})
+	if len(values["ref"]) != 1 || values["ref"][0] != "refs/heads/main" {
+		t.Fatalf("SingletonValues() = %+v", values)
+	}
+}
+
 func mustParse(t *testing.T, data string) *Policy {
 	t.Helper()
 	return mustParseWithRegistry(t, data, testRegistry())
