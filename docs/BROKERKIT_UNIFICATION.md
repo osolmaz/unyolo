@@ -35,11 +35,12 @@ Implemented today:
 - brokerkit-backed generated grants and `/api/grants`
 - Git smart-HTTP fetch and receive-pack route shape
 - narrow GitHub REST routes for repo listing, content reads, and PR creation
+- verified `POST /webhooks/github` with GitHub HMAC signature checks
 
 Not implemented yet:
 
 - brokerkit audit helpers
-- verified GitHub webhook endpoint for installation cache invalidation
+- webhook-driven installation cache invalidation once a cache is introduced
 - runtime GitHub branch ruleset doctor checks
 
 ## What Moves To brokerkit

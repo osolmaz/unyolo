@@ -191,6 +191,18 @@ installations and then filters visible installation repositories through
 `GH_BROKER_GITHUB_TOKEN_FILE` remains available as a local development
 fallback.
 
+GitHub App webhooks are accepted at:
+
+```text
+POST /webhooks/github
+```
+
+The webhook route requires `X-Hub-Signature-256`, `X-GitHub-Event`, and
+`X-GitHub-Delivery`. It verifies the payload with
+`GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE`, accepts bodies up to 1 MiB, and logs only
+audit-safe metadata such as event, delivery id, action, installation id, and
+repository name.
+
 Deployment safety defaults:
 
 - `GH_BROKER_BIND_ADDR` defaults to `127.0.0.1`.
@@ -200,8 +212,8 @@ Deployment safety defaults:
 - `GH_BROKER_TELEGRAM_BOT_TOKEN` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
   Telegram approval for requestable grants.
 - Audit logs record client, operation, owner, repo, method, path, outcome,
-  status, reason, matched rule ids, and GitHub installation id when one was
-  minted for the request.
+  status, reason, matched rule ids, GitHub installation id when one was minted
+  for the request, and verified webhook event metadata.
 - Audit logs do not include tokens, cookies, request bodies, PR bodies, pack
   contents, diffs, raw upstream bodies, JWTs, installation tokens, or private
   keys.

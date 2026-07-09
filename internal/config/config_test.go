@@ -99,15 +99,20 @@ func TestLoadReadsGitHubAppCredentialFiles(t *testing.T) {
 	dir := t.TempDir()
 	appIDFile := filepath.Join(dir, "app-id")
 	privateKeyFile := filepath.Join(dir, "private-key.pem")
+	webhookSecretFile := filepath.Join(dir, "webhook-secret")
 	if err := os.WriteFile(appIDFile, []byte("12345\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile(app id) error = %v", err)
 	}
 	if err := os.WriteFile(privateKeyFile, []byte("-----BEGIN RSA PRIVATE KEY-----\nfixture\n-----END RSA PRIVATE KEY-----\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile(private key) error = %v", err)
 	}
+	if err := os.WriteFile(webhookSecretFile, []byte(" webhook-secret-from-file\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(webhook secret) error = %v", err)
+	}
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
 	t.Setenv("GH_BROKER_GITHUB_APP_ID_FILE", appIDFile)
 	t.Setenv("GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE", privateKeyFile)
+	t.Setenv("GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE", webhookSecretFile)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -117,6 +122,9 @@ func TestLoadReadsGitHubAppCredentialFiles(t *testing.T) {
 	}
 	if string(cfg.GitHubAppPrivateKey) == "" {
 		t.Fatal("GitHubAppPrivateKey is empty")
+	}
+	if cfg.GitHubWebhookSecret != "webhook-secret-from-file" {
+		t.Fatalf("GitHubWebhookSecret = %q, want file value", cfg.GitHubWebhookSecret)
 	}
 }
 

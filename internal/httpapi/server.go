@@ -36,6 +36,7 @@ type Server struct {
 	telegram            *bktelegram.Client
 	githubToken         string
 	githubApp           *githubapp.Source
+	githubWebhookSecret string
 	githubClient        *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
@@ -79,6 +80,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		telegram:            telegram,
 		githubToken:         cfg.GitHubToken,
 		githubApp:           appSource,
+		githubWebhookSecret: cfg.GitHubWebhookSecret,
 		githubClient:        githubClient,
 		githubGitBaseURL:    gitBaseURL,
 		githubAPIBaseURL:    apiBaseURL,
@@ -99,6 +101,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	protected.GET("/:owner/:repoGit/info/refs", server.gitInfoRefs)
 	protected.POST("/:owner/:repoGit/git-upload-pack", server.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", server.gitReceivePack)
+	e.POST("/webhooks/github", server.githubWebhook)
 	return server, nil
 }
 

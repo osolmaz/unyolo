@@ -3,9 +3,12 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -57,6 +60,78 @@ func TestHealth(t *testing.T) {
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+}
+
+func TestGitHubWebhookVerifiesSignatureAndAuditsMetadata(t *testing.T) {
+	t.Parallel()
+	var logs bytes.Buffer
+	server := newTestServer(t)
+	server.githubWebhookSecret = "webhook-secret"
+	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	body := []byte(`{"action":"added","installation":{"id":42},"repository":{"full_name":"dutifuldev/gh-broker"}}`)
+	response := doWebhook(t, server, body, map[string]string{
+		"X-GitHub-Event":      "installation_repositories",
+		"X-GitHub-Delivery":   "delivery-1",
+		"X-Hub-Signature-256": webhookSignature("webhook-secret", body),
+		"Authorization":       "Bearer wrong-agent-secret",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	logText := logs.String()
+	for _, want := range []string{`"event":"installation_repositories"`, `"delivery":"delivery-1"`, `"action":"added"`, `"github_installation_id":"42"`, `"repository":"dutifuldev/gh-broker"`} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("webhook audit missing %s: %s", want, logText)
+		}
+	}
+	if strings.Contains(logText, "webhook-secret") || strings.Contains(logText, string(body)) {
+		t.Fatalf("webhook audit leaked secret or raw body: %s", logText)
+	}
+}
+
+func TestGitHubWebhookRejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"action":"created"}`)
+	cases := map[string]struct {
+		secret  string
+		headers map[string]string
+		body    []byte
+		want    int
+	}{
+		"not configured": {secret: "", headers: signedWebhookHeaders("webhook-secret", body), body: body, want: http.StatusNotFound},
+		"missing event": {secret: "webhook-secret", headers: map[string]string{
+			"X-GitHub-Delivery":   "delivery-1",
+			"X-Hub-Signature-256": webhookSignature("webhook-secret", body),
+		}, body: body, want: http.StatusBadRequest},
+		"bad signature": {secret: "webhook-secret", headers: map[string]string{
+			"X-GitHub-Event":      "installation",
+			"X-GitHub-Delivery":   "delivery-1",
+			"X-Hub-Signature-256": webhookSignature("wrong-secret", body),
+		}, body: body, want: http.StatusUnauthorized},
+		"bad json": {secret: "webhook-secret", headers: signedWebhookHeaders("webhook-secret", []byte(`{`)), body: []byte(`{`), want: http.StatusBadRequest},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			server := newTestServer(t)
+			server.githubWebhookSecret = tc.secret
+			response := doWebhook(t, server, tc.body, tc.headers)
+			if response.Code != tc.want {
+				t.Fatalf("status = %d, body = %s, want %d", response.Code, response.Body.String(), tc.want)
+			}
+		})
+	}
+}
+
+func TestGitHubWebhookRejectsOversizedBody(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	server.githubWebhookSecret = "webhook-secret"
+	body := bytes.Repeat([]byte("x"), int(maxWebhookBodyBytes)+1)
+	response := doWebhook(t, server, body, signedWebhookHeaders("webhook-secret", body))
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", response.Code)
 	}
 }
 
@@ -2303,6 +2378,31 @@ func doWithHeaders(
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	return response
+}
+
+func doWebhook(t *testing.T, server *Server, body []byte, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/webhooks/github", bytes.NewReader(body))
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	return response
+}
+
+func signedWebhookHeaders(secret string, body []byte) map[string]string {
+	return map[string]string{
+		"X-GitHub-Event":      "installation",
+		"X-GitHub-Delivery":   "delivery-1",
+		"X-Hub-Signature-256": webhookSignature(secret, body),
+	}
+}
+
+func webhookSignature(secret string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func newGitContext(t *testing.T, server *Server, method string, path string, body []byte) echo.Context {

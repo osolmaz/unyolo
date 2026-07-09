@@ -666,11 +666,11 @@ installation tokens, JWTs, Authorization headers, or token metadata.
    - remove hardcoded "protected branch" authorization from handlers after
      policy covers the same behavior
 
-7. Add installation-scoped repo listing and webhook support:
+7. Installation-scoped repo listing and verified webhook support are implemented:
    - `GET /api/repos`
    - verified `POST /webhooks/github`
-   - app installation cache invalidation
    - policy filtering after GitHub visibility filtering
+   - still add app installation cache invalidation if a cache is introduced
 
 8. Remove compatibility route aliases:
    - keep `/api/repos/{owner}/{repo}/pulls`

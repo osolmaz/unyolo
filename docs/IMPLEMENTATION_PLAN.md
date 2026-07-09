@@ -117,7 +117,6 @@ POST /{owner}/{repo}.git/git-receive-pack
 ## Not Yet Implemented
 
 - brokerkit cutover for audit helpers and remaining storage/config helpers.
-- Verified GitHub webhook endpoint for installation cache invalidation and audit context.
 - Runtime branch-ruleset inspection in `doctor`.
 - Removal of compatibility route aliases such as `POST /repos/{owner}/{repo}/pulls`.
 
@@ -177,6 +176,10 @@ Implemented in the current brokerkit cutover slice:
 - repo-scoped installation resolution through GitHub's repository installation
   endpoint
 - App installation repository listing with policy filtering
+- verified `POST /webhooks/github` with `X-Hub-Signature-256`,
+  `X-GitHub-Event`, and `X-GitHub-Delivery` checks
+- webhook audit metadata for event, delivery id, action, installation id, and
+  repository name
 - server-side named client secrets through `GH_BROKER_SECRETS_FILE`
 - `POST /api/grants`
 - `GET /api/grants`
@@ -192,7 +195,7 @@ Implemented in the current brokerkit cutover slice:
   allows the request and are not written to disk, returned to clients, or logged
 
 The next cutover slices should move audit helpers and remaining storage/config
-helpers to brokerkit, then add verified webhooks and doctor checks.
+helpers to brokerkit, then add doctor checks.
 
 ## Non-Goals
 

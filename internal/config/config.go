@@ -27,6 +27,8 @@ type Config struct {
 	GitHubAppIDFile         string
 	GitHubAppPrivateKey     []byte
 	GitHubAppPrivateKeyFile string
+	GitHubWebhookSecret     string
+	GitHubWebhookSecretFile string
 	ScopeFile               string
 	StateDir                string
 	TelegramBotToken        string
@@ -52,6 +54,8 @@ func Load() (Config, error) {
 		GitHubAppID:             getEnv("", "GH_BROKER_GITHUB_APP_ID"),
 		GitHubAppIDFile:         getEnv("", "GH_BROKER_GITHUB_APP_ID_FILE"),
 		GitHubAppPrivateKeyFile: getEnv("", "GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"),
+		GitHubWebhookSecret:     getEnv("", "GH_BROKER_GITHUB_WEBHOOK_SECRET"),
+		GitHubWebhookSecretFile: getEnv("", "GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"),
 		ScopeFile:               getEnv("scope.json", "GH_BROKER_SCOPE_FILE", "CBA_GITHUB_ACCESS_FILE"),
 		StateDir:                getEnv("./state", "GH_BROKER_STATE_DIR", "CBA_STATE_DIR"),
 		TelegramBotToken:        getEnv("", "GH_BROKER_TELEGRAM_BOT_TOKEN"),
@@ -67,6 +71,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if err := cfg.loadGitHubAppFiles(); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.loadGitHubWebhookSecretFile(); err != nil {
 		return Config{}, err
 	}
 	if err := cfg.loadBrokerSecretFile(); err != nil {
@@ -118,6 +125,10 @@ func (c *Config) loadGitHubAppPrivateKeyFile() error {
 	}
 	c.GitHubAppPrivateKey = data
 	return nil
+}
+
+func (c *Config) loadGitHubWebhookSecretFile() error {
+	return loadOptionalSecretFile(&c.GitHubWebhookSecret, c.GitHubWebhookSecretFile, "github webhook secret file")
 }
 
 func (c *Config) loadBrokerSecretFile() error {
