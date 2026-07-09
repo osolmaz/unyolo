@@ -49,6 +49,34 @@ func TestSendApprovalAndUpdateStatus(t *testing.T) {
 	}
 }
 
+func TestSendApprovalUsesBrokerTextAndButtonLabels(t *testing.T) {
+	calls := make([]map[string]any, 0)
+	server := httptest.NewServer(telegramTestHandler(t, &calls))
+	defer server.Close()
+
+	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{
+		ApproveText: "Yes",
+		DenyText:    "No",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.SendApproval(context.Background(), notify.ApprovalMessage{
+		GrantID:       "grant-1",
+		DecisionToken: "decision-token",
+		Text:          "broker-specific approval text",
+	}); err != nil {
+		t.Fatalf("SendApproval() error = %v", err)
+	}
+	if calls[0]["text"] != "broker-specific approval text" {
+		t.Fatalf("message text = %q", calls[0]["text"])
+	}
+	row := calls[0]["reply_markup"].(map[string]any)["inline_keyboard"].([]any)[0].([]any)
+	if row[0].(map[string]any)["text"] != "Yes" || row[1].(map[string]any)["text"] != "No" {
+		t.Fatalf("button row = %+v", row)
+	}
+}
+
 func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	state := &pollServerState{}
 	server := newPollServer(t, state)

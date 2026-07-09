@@ -18,6 +18,7 @@ const (
 type ApprovalMessage struct {
 	GrantID          string
 	DecisionToken    string
+	Text             string
 	Client           string
 	Operation        string
 	Target           string
