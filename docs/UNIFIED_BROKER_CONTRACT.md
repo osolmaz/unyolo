@@ -209,8 +209,8 @@ That command should write a client-owned config file under:
 The file should contain only:
 
 ```text
-<PREFIX>_BROKER_URL=<url>
-<PREFIX>_BROKER_SHARED_SECRET=<client-secret>
+<PREFIX>_URL=<url>
+<PREFIX>_SHARED_SECRET=<client-secret>
 ```
 
 It may also write Git credential helper snippets when the broker speaks Git.
