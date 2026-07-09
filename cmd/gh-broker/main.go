@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -15,15 +17,36 @@ import (
 	"github.com/osolmaz/gh-broker/internal/policy"
 )
 
+var version = "dev"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx); err != nil {
+	if err := runWithArgs(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		log.Fatalf("gh-broker: %v", err)
 	}
 }
 
 func run(ctx context.Context) error {
+	return runServer(ctx)
+}
+
+func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
+	if len(args) == 0 {
+		return runServer(ctx)
+	}
+	switch args[0] {
+	case "--version", "version":
+		_, err := fmt.Fprintln(stdout, version)
+		return err
+	case "setup":
+		return runSetup(stdout, stderr, args[1:])
+	default:
+		return fmt.Errorf("usage: gh-broker [--version|version|setup]")
+	}
+}
+
+func runServer(ctx context.Context) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err

@@ -10,6 +10,8 @@ The shared broker-family install and setup cutover is tracked in
 ## Current Shape
 
 - Echo HTTP server
+- `gh-broker --version`
+- `gh-broker setup client`
 - Shared-secret authentication for one configured client id
 - Rule-based `scope.json` policy engine
 - Git smart HTTP fetch and push route shape
@@ -34,6 +36,19 @@ source .env
 make check
 make run
 ```
+
+Write a client config file from a broker secrets file:
+
+```sh
+gh-broker setup client \
+  --client bob \
+  --url http://127.0.0.1:8081 \
+  --secret-file /etc/gh-broker/secrets \
+  --home-dir /home/bob
+```
+
+The generated `client.env` contains only `GH_BROKER_URL` and
+`GH_BROKER_SHARED_SECRET`; it does not contain GitHub credentials.
 
 Health check:
 

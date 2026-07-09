@@ -14,6 +14,8 @@ github.com/osolmaz/brokerkit/docs/UNIFIED_BROKER_CONTRACT.md
 Implemented today:
 
 - global Go binary can be built and installed manually
+- `gh-broker --version`
+- `gh-broker setup client`
 - Echo HTTP server
 - named client id through `GH_BROKER_CLIENT_ID`
 - shared secret through `GH_BROKER_SHARED_SECRET`
@@ -26,9 +28,7 @@ Not implemented yet:
 
 - `install.sh`
 - release tarballs and checksums
-- `gh-broker --version`
 - `gh-broker setup systemd`
-- `gh-broker setup client`
 - service user and systemd unit generation
 - brokerkit-backed grants, approval state, Telegram transport, and audit
   helpers
@@ -108,7 +108,8 @@ Client setup should converge on:
 gh-broker setup client \
   --client bob \
   --url http://127.0.0.1:8081 \
-  --secret-file /etc/gh-broker/secrets
+  --secret-file /etc/gh-broker/secrets \
+  --home-dir /home/bob
 ```
 
 The client setup command should write only broker URL and broker client secret.

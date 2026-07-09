@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"os"
@@ -11,6 +12,54 @@ import (
 
 	"github.com/osolmaz/gh-broker/internal/config"
 )
+
+func TestRunWithArgsVersion(t *testing.T) {
+	oldVersion := version
+	version = "v1.2.3-test"
+	t.Cleanup(func() { version = oldVersion })
+	var stdout bytes.Buffer
+	if err := runWithArgs(t.Context(), []string{"--version"}, &stdout, ioDiscard{}); err != nil {
+		t.Fatalf("runWithArgs(version) error = %v", err)
+	}
+	if strings.TrimSpace(stdout.String()) != "v1.2.3-test" {
+		t.Fatalf("version output = %q", stdout.String())
+	}
+}
+
+func TestRunSetupClientWritesClientEnv(t *testing.T) {
+	dir := t.TempDir()
+	secretFile := filepath.Join(dir, "secrets")
+	secret := strings.Repeat("s", 32)
+	if err := os.WriteFile(secretFile, []byte("bob = "+secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	err := runWithArgs(t.Context(), []string{
+		"setup", "client",
+		"--client", "bob",
+		"--url", "http://127.0.0.1:8081",
+		"--secret-file", secretFile,
+		"--home-dir", dir,
+	}, &stdout, ioDiscard{})
+	if err != nil {
+		t.Fatalf("runWithArgs(setup client) error = %v", err)
+	}
+	path := filepath.Join(dir, ".config", "gh-broker", "client.env")
+	data, err := os.ReadFile(path) // #nosec G304 -- path is in a test temp directory.
+	if err != nil {
+		t.Fatalf("read client env: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "GH_BROKER_URL='http://127.0.0.1:8081'") {
+		t.Fatalf("client env missing URL: %q", text)
+	}
+	if !strings.Contains(text, "GH_BROKER_SHARED_SECRET='"+secret+"'") {
+		t.Fatalf("client env missing secret: %q", text)
+	}
+	if strings.Contains(stdout.String(), secret) {
+		t.Fatalf("setup client stdout leaked secret: %q", stdout.String())
+	}
+}
 
 func TestRunReturnsConfigError(t *testing.T) {
 	t.Setenv("GH_BROKER_SHARED_SECRET", "short")
@@ -106,4 +155,10 @@ func writeScopeFile(t *testing.T) string {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	return path
+}
+
+type ioDiscard struct{}
+
+func (ioDiscard) Write(p []byte) (int, error) {
+	return len(p), nil
 }
