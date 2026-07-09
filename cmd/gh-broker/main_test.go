@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dutifuldev/gitcba/internal/config"
+	"github.com/osolmaz/gh-broker/internal/config"
 )
 
 func TestRunReturnsConfigError(t *testing.T) {
-	t.Setenv("CBA_SHARED_SECRET", "short")
+	t.Setenv("GH_BROKER_SHARED_SECRET", "short")
 	err := run(t.Context())
 	if err == nil {
 		t.Fatal("run() error = nil, want config error")
@@ -21,11 +21,12 @@ func TestRunReturnsConfigError(t *testing.T) {
 }
 
 func TestRunStopsWhenContextIsCancelled(t *testing.T) {
-	t.Setenv("CBA_BIND_ADDR", "127.0.0.1")
-	t.Setenv("CBA_PORT", "0")
-	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("a", 32))
-	t.Setenv("CBA_GITHUB_TOKEN", "github-token")
-	t.Setenv("CBA_GITHUB_ACCESS_FILE", writeGitHubAccessFile(t))
+	t.Setenv("GH_BROKER_BIND_ADDR", "127.0.0.1")
+	t.Setenv("GH_BROKER_PORT", "0")
+	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
+	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
+	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_SCOPE_FILE", writeScopeFile(t))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := run(ctx); err != nil {
@@ -33,15 +34,16 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 	}
 }
 
-func TestRunReturnsGitHubAccessFileError(t *testing.T) {
-	t.Setenv("CBA_BIND_ADDR", "127.0.0.1")
-	t.Setenv("CBA_PORT", "0")
-	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("a", 32))
-	t.Setenv("CBA_GITHUB_TOKEN", "github-token")
-	t.Setenv("CBA_GITHUB_ACCESS_FILE", filepath.Join(t.TempDir(), "missing.json"))
+func TestRunReturnsScopeFileError(t *testing.T) {
+	t.Setenv("GH_BROKER_BIND_ADDR", "127.0.0.1")
+	t.Setenv("GH_BROKER_PORT", "0")
+	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
+	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
+	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_SCOPE_FILE", filepath.Join(t.TempDir(), "missing.json"))
 	err := run(t.Context())
 	if err == nil {
-		t.Fatal("run() error = nil, want github access file error")
+		t.Fatal("run() error = nil, want scope file error")
 	}
 }
 
@@ -86,19 +88,20 @@ func configForBuildTest(t *testing.T) config.Config {
 	return config.Config{
 		BindAddr:            "127.0.0.2",
 		Port:                "9090",
+		ClientID:            "bob",
 		SharedSecret:        strings.Repeat("a", 32),
 		GitHubToken:         "github-token",
-		GitHubAccessFile:    writeGitHubAccessFile(t),
+		ScopeFile:           writeScopeFile(t),
 		GitHubHTTPTimeout:   time.Second,
 		MaxReceivePackBytes: 1,
 		ReadHeaderTimeout:   time.Second,
 	}
 }
 
-func writeGitHubAccessFile(t *testing.T) string {
+func writeScopeFile(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "github-access.json")
-	body := []byte(`{"owners":["dutifuldev"],"repositories":[{"owner":"openclaw","name":"openclaw"}]}`)
+	path := filepath.Join(t.TempDir(), "scope.json")
+	body := []byte(`{"rules":[{"id":"bob-read","effect":"allow","clients":["bob"],"operations":["git.fetch","repo.metadata.read","contents.read","installation.repos.list"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"},{"kind":"installation"}]}]}`)
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}

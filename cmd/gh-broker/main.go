@@ -10,16 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dutifuldev/gitcba/internal/config"
-	"github.com/dutifuldev/gitcba/internal/githubaccess"
-	"github.com/dutifuldev/gitcba/internal/httpapi"
+	"github.com/osolmaz/gh-broker/internal/config"
+	"github.com/osolmaz/gh-broker/internal/httpapi"
+	"github.com/osolmaz/gh-broker/internal/policy"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx); err != nil {
-		log.Fatalf("cba-server: %v", err)
+		log.Fatalf("gh-broker: %v", err)
 	}
 }
 
@@ -36,11 +36,11 @@ func run(ctx context.Context) error {
 }
 
 func buildServer(cfg config.Config) (*http.Server, error) {
-	access, err := githubaccess.LoadFile(cfg.GitHubAccessFile)
+	brokerPolicy, err := policy.LoadFile(cfg.ScopeFile)
 	if err != nil {
 		return nil, err
 	}
-	api, err := httpapi.New(cfg, access)
+	api, err := httpapi.New(cfg, brokerPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func buildServer(cfg config.Config) (*http.Server, error) {
 func serve(ctx context.Context, server *http.Server, bindAddr string, port string) error {
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("cba-server listening on %s:%s", bindAddr, port)
+		log.Printf("gh-broker listening on %s:%s", bindAddr, port)
 		errCh <- server.ListenAndServe()
 	}()
 	select {

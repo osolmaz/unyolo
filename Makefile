@@ -1,5 +1,5 @@
-BINARY_NAME := cba-server
-MAIN_PATH := ./cmd/cba-server
+BINARY_NAME := gh-broker
+MAIN_PATH := ./cmd/gh-broker
 BUILD_DIR := bin
 
 .DEFAULT_GOAL := help

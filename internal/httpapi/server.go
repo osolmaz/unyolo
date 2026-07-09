@@ -14,16 +14,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dutifuldev/gitcba/internal/config"
-	"github.com/dutifuldev/gitcba/internal/githubaccess"
-	"github.com/dutifuldev/gitcba/internal/security"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/gh-broker/internal/config"
+	"github.com/osolmaz/gh-broker/internal/policy"
+	"github.com/osolmaz/gh-broker/internal/security"
 )
+
+const maxPullRequestBodyBytes int64 = 64 * 1024
 
 type Server struct {
 	echo                *echo.Echo
-	githubAccess        githubaccess.Config
+	policy              *policy.Policy
 	githubToken         string
 	githubClient        *http.Client
 	githubGitBaseURL    *url.URL
@@ -32,8 +35,11 @@ type Server struct {
 	maxReceivePackBytes int64
 }
 
-func New(cfg config.Config, githubAccess githubaccess.Config) (*Server, error) {
-	auth, err := security.NewTokenAuth(cfg.SharedSecret)
+func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
+	if brokerPolicy == nil {
+		return nil, errors.New("policy is required")
+	}
+	auth, err := security.NewTokenAuthForClient(cfg.SharedSecret, cfg.ClientID)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +48,6 @@ func New(cfg config.Config, githubAccess githubaccess.Config) (*Server, error) {
 	e.HidePort = true
 	e.Use(middleware.Recover())
 	e.Use(noStore)
-	e.Use(middleware.BodyLimit("32K"))
 	e.GET("/healthz", health)
 	gitBaseURL, err := url.Parse("https://github.com")
 	if err != nil {
@@ -62,9 +67,9 @@ func New(cfg config.Config, githubAccess githubaccess.Config) (*Server, error) {
 	}
 	server := &Server{
 		echo:                e,
-		githubAccess:        githubAccess,
+		policy:              brokerPolicy,
 		githubToken:         cfg.GitHubToken,
-		githubClient:        &http.Client{Timeout: githubHTTPTimeout},
+		githubClient:        newGitHubClient(githubHTTPTimeout),
 		githubGitBaseURL:    gitBaseURL,
 		githubAPIBaseURL:    apiBaseURL,
 		logger:              slog.Default(),
@@ -72,11 +77,27 @@ func New(cfg config.Config, githubAccess githubaccess.Config) (*Server, error) {
 	}
 	protected := e.Group("")
 	protected.Use(auth.Middleware)
+	protected.Use(validateRouteParams)
+	protected.GET("/api/repos", server.listRepos)
+	protected.GET("/api/repos/:owner/:repo/contents", server.readContents)
+	protected.GET("/api/repos/:owner/:repo/contents/*", server.readContents)
+	protected.POST("/api/repos/:owner/:repo/pulls", server.createPullRequest)
+	protected.POST("/repos/:owner/:repo/pulls", server.createPullRequest)
 	protected.GET("/:owner/:repoGit/info/refs", server.gitInfoRefs)
 	protected.POST("/:owner/:repoGit/git-upload-pack", server.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", server.gitReceivePack)
-	protected.POST("/repos/:owner/:repo/pulls", server.createPullRequest)
 	return server, nil
+}
+
+func newGitHubClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: stopGitHubRedirect,
+	}
+}
+
+func stopGitHubRedirect(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func (s *Server) Handler() http.Handler {
@@ -92,60 +113,153 @@ func (s *Server) gitInfoRefs(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.authorizeBrokerOperation(c, operation, s.proxyGit)
+	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), s.proxyGit)
 }
 
 func (s *Server) gitUploadPack(c echo.Context) error {
-	return s.authorizeBrokerOperation(c, githubaccess.OperationGitUploadPack, s.proxyGit)
+	return s.authorizeBrokerRequest(c, s.repoRequest(c, policy.OperationGitFetch, nil), s.proxyGit)
 }
 
 func (s *Server) gitReceivePack(c echo.Context) error {
-	return s.authorizeBrokerOperation(c, githubaccess.OperationGitReceivePack, s.proxyGitReceivePack)
-}
-
-func (s *Server) createPullRequest(c echo.Context) error {
-	return s.authorizeBrokerOperation(c, githubaccess.OperationCreatePullRequest, s.proxyGitHubAPI)
-}
-
-func (s *Server) authorizeBrokerOperation(
-	c echo.Context,
-	operation githubaccess.Operation,
-	run func(echo.Context) error,
-) error {
-	if decision := s.decide(c, operation); !decision.Allowed {
-		s.audit(c, operation, "denied", decision.Reason, 0)
-		return echo.NewHTTPError(http.StatusForbidden, decision.Reason)
-	}
-	err := run(c)
+	body, commands, err := s.readReceivePackBody(c)
 	if err != nil {
-		s.audit(c, operation, errorOutcome(err), errorString(err), errorStatus(c, err))
 		return err
 	}
-	s.audit(c, operation, "proxied", "", responseStatus(c))
+	if len(commands) == 0 {
+		c.Request().Body = io.NopCloser(bytes.NewReader(body))
+		c.Request().ContentLength = int64(len(body))
+		return s.authorizeBrokerRequest(c, s.repoRequest(c, policy.OperationGitPushAdvertise, nil), s.proxyGit)
+	}
+	authorized, err := s.authorizeReceivePackCommands(c, commands)
+	if err != nil {
+		return err
+	}
+	return s.proxyAuthorizedReceivePack(c, body, authorized)
+}
+
+func (s *Server) readReceivePackBody(c echo.Context) ([]byte, []receivePackCommand, error) {
+	body, err := httpx.ReadLimited(c.Request().Body, s.maxReceivePackBytes)
+	if err != nil {
+		return nil, nil, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "git receive-pack request is too large")
+	}
+	commands, err := receivePackCommandsFromBody(body)
+	if err != nil {
+		return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "parse git receive-pack request")
+	}
+	return body, commands, nil
+}
+
+func (s *Server) authorizeReceivePackCommands(c echo.Context, commands []receivePackCommand) ([]authorizedReceivePackRequest, error) {
+	authorized := make([]authorizedReceivePackRequest, 0, len(commands))
+	for _, command := range commands {
+		operation, err := s.classifyReceivePackCommand(c, command)
+		if err != nil {
+			return nil, err
+		}
+		request := s.repoRequest(c, operation, map[string]string{"ref": command.Ref})
+		decision := s.policy.Evaluate(request)
+		if !decision.Allowed {
+			s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
+			return nil, echo.NewHTTPError(statusForDecision(decision), decision.Reason)
+		}
+		authorized = append(authorized, authorizedReceivePackRequest{Request: request, Decision: decision})
+	}
+	return authorized, nil
+}
+
+func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authorized []authorizedReceivePackRequest) error {
+	c.Request().Body = io.NopCloser(bytes.NewReader(body))
+	c.Request().ContentLength = int64(len(body))
+	err := s.proxyGit(c)
+	if err != nil {
+		s.auditAuthorizedReceivePack(c, authorized, errorOutcome(err), errorString(err), errorStatus(c, err))
+		return err
+	}
+	s.auditAuthorizedReceivePack(c, authorized, "proxied", "", responseStatus(c))
 	return nil
 }
 
-func (s *Server) decide(c echo.Context, operation githubaccess.Operation) githubaccess.Decision {
+func (s *Server) createPullRequest(c echo.Context) error {
+	body, err := httpx.ReadLimited(c.Request().Body, maxPullRequestBodyBytes)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "pull request body is too large")
+	}
+	attrs, err := pullRequestAttrs(body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	request := s.repoRequest(c, policy.OperationPullRequestCreate, attrs)
+	return s.authorizeBrokerRequest(c, request, func(c echo.Context) error {
+		c.Request().Body = io.NopCloser(bytes.NewReader(body))
+		c.Request().ContentLength = int64(len(body))
+		return s.proxyPullRequest(c)
+	})
+}
+
+func (s *Server) listRepos(c echo.Context) error {
+	request := policy.Request{
+		Client:    security.ClientFromContext(c),
+		Operation: policy.OperationInstallationReposList,
+		Target:    policy.Target{Kind: "installation"},
+	}
+	return s.authorizeBrokerRequest(c, request, s.fetchAndFilterRepos)
+}
+
+func (s *Server) readContents(c echo.Context) error {
+	contentPath, err := contentPathParam(c)
+	if err != nil {
+		return err
+	}
+	attrs := map[string]string{"path": contentPath}
+	if ref := c.QueryParam("ref"); ref != "" {
+		attrs["ref"] = ref
+	}
+	request := s.repoRequest(c, policy.OperationContentsRead, attrs)
+	return s.authorizeBrokerRequest(c, request, s.proxyContents)
+}
+
+func (s *Server) authorizeBrokerRequest(
+	c echo.Context,
+	request policy.Request,
+	run func(echo.Context) error,
+) error {
+	decision := s.policy.Evaluate(request)
+	if !decision.Allowed {
+		s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
+		return echo.NewHTTPError(statusForDecision(decision), decision.Reason)
+	}
+	err := run(c)
+	if err != nil {
+		s.audit(c, request, errorOutcome(err), errorString(err), errorStatus(c, err), decision.MatchedRuleIDs)
+		return err
+	}
+	s.audit(c, request, "proxied", "", responseStatus(c), decision.MatchedRuleIDs)
+	return nil
+}
+
+func (s *Server) repoRequest(c echo.Context, operation policy.Operation, attrs map[string]string) policy.Request {
 	repo := c.Param("repo")
 	if repo == "" {
 		repo = c.Param("repoGit")
 	}
-	return s.githubAccess.Decide(githubaccess.DecisionInput{
+	return policy.Request{
+		Client:    security.ClientFromContext(c),
 		Operation: operation,
-		Repository: githubaccess.RepositoryRef{
+		Target: policy.Target{
+			Kind:  "repo",
 			Owner: c.Param("owner"),
 			Name:  strings.TrimSuffix(repo, ".git"),
 		},
-		TargetOwner: c.Param("owner"),
-	})
+		Attrs: attrs,
+	}
 }
 
-func operationFromGitService(service string) (githubaccess.Operation, error) {
+func operationFromGitService(service string) (policy.Operation, error) {
 	switch service {
 	case "git-upload-pack":
-		return githubaccess.OperationGitUploadPack, nil
+		return policy.OperationGitFetch, nil
 	case "git-receive-pack":
-		return githubaccess.OperationGitReceivePack, nil
+		return policy.OperationGitPushAdvertise, nil
 	default:
 		return "", echo.NewHTTPError(http.StatusBadRequest, "unsupported git service")
 	}
@@ -153,11 +267,36 @@ func operationFromGitService(service string) (githubaccess.Operation, error) {
 
 func noStore(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
-		c.Response().Header().Set("Pragma", "no-cache")
-		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+		httpx.NoStore(c.Response().Header())
 		return next(c)
 	}
+}
+
+func validateRouteParams(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		for _, key := range []string{"owner", "repo", "repoGit"} {
+			if value := c.Param(key); value != "" {
+				if err := validateRouteSegment(value); err != nil {
+					return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+				}
+			}
+		}
+		return next(c)
+	}
+}
+
+func validateRouteSegment(value string) error {
+	segment, err := url.PathUnescape(value)
+	if err != nil {
+		return errors.New("route parameter contains invalid escaping")
+	}
+	if strings.Contains(segment, "/") {
+		return errors.New("route parameter contains escaped path separator")
+	}
+	if segment == "." || segment == ".." {
+		return errors.New("route parameter contains unsupported path segment")
+	}
+	return nil
 }
 
 func (s *Server) proxyGit(c echo.Context) error {
@@ -172,131 +311,355 @@ func gitRepoPrefix(c echo.Context) string {
 	return fmt.Sprintf("/%s/%s/", c.Param("owner"), c.Param("repoGit"))
 }
 
-func (s *Server) proxyGitReceivePack(c echo.Context) error {
-	body, err := readLimited(c.Request().Body, s.maxReceivePackBytes)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "git receive-pack request is too large")
+func (s *Server) classifyReceivePackCommand(c echo.Context, command receivePackCommand) (policy.Operation, error) {
+	switch {
+	case isZeroOID(command.NewOID):
+		return policy.OperationGitRefDelete, nil
+	case strings.HasPrefix(command.Ref, "refs/tags/"):
+		return policy.OperationGitTagUpdate, nil
+	case !strings.HasPrefix(command.Ref, "refs/heads/"):
+		return "", echo.NewHTTPError(http.StatusForbidden, "unsupported git ref update")
+	case isZeroOID(command.OldOID):
+		return policy.OperationGitPushBranchCreate, nil
+	default:
+		return policy.OperationGitPushForce, nil
 	}
-	updatedRefs, err := receivePackUpdatedRefs(body)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "parse git receive-pack request")
+}
+
+func isZeroOID(value string) bool {
+	if len(value) != 40 && len(value) != 64 {
+		return false
 	}
-	if len(updatedRefs) > 0 {
-		defaultBranch, err := s.fetchDefaultBranch(c, c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git"))
-		if err != nil {
+	for _, char := range value {
+		if char != '0' {
+			return false
+		}
+	}
+	return true
+}
+
+func pullRequestAttrs(body []byte) (map[string]string, error) {
+	var payload struct {
+		Title               string `json:"title"`
+		Body                string `json:"body"`
+		Head                string `json:"head"`
+		Base                string `json:"base"`
+		Draft               bool   `json:"draft"`
+		MaintainerCanModify *bool  `json:"maintainer_can_modify"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		return nil, errors.New("invalid pull request json")
+	}
+	if strings.TrimSpace(payload.Title) == "" {
+		return nil, errors.New("pull request title is required")
+	}
+	if len(payload.Title) > 256 {
+		return nil, errors.New("pull request title is too long")
+	}
+	if len(payload.Body) > 60000 {
+		return nil, errors.New("pull request body is too long")
+	}
+	baseRef, err := branchNameToRef(payload.Base)
+	if err != nil {
+		return nil, fmt.Errorf("invalid pull request base: %w", err)
+	}
+	headRef, err := headNameToRef(payload.Head)
+	if err != nil {
+		return nil, fmt.Errorf("invalid pull request head: %w", err)
+	}
+	return map[string]string{"base_ref": baseRef, "head_ref": headRef, "ref": headRef}, nil
+}
+
+func headNameToRef(head string) (string, error) {
+	if strings.Contains(head, ":") {
+		return "", errors.New("fork-qualified pull request heads are not supported")
+	}
+	return branchNameToRef(head)
+}
+
+func branchNameToRef(branch string) (string, error) {
+	branch = strings.TrimSpace(branch)
+	if err := validateBranchName(branch); err != nil {
+		return "", err
+	}
+	return "refs/heads/" + branch, nil
+}
+
+func validateBranchName(branch string) error {
+	for _, validate := range []func(string) error{
+		requireBranchName,
+		validateBranchPath,
+		validateBranchGitSyntax,
+		validateBranchChars,
+	} {
+		if err := validate(branch); err != nil {
 			return err
 		}
-		if protectedRef := protectedBranchUpdate(updatedRefs, defaultBranch); protectedRef != "" {
-			return echo.NewHTTPError(http.StatusForbidden, "push to default branch is denied: "+protectedRef)
-		}
 	}
-	c.Request().Body = io.NopCloser(bytes.NewReader(body))
-	c.Request().ContentLength = int64(len(body))
-	return s.proxyGit(c)
+	return nil
 }
 
-func readLimited(reader io.Reader, limit int64) ([]byte, error) {
-	limited := io.LimitReader(reader, limit+1)
-	body, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
+func requireBranchName(branch string) error {
+	if branch == "" {
+		return errors.New("branch is required")
 	}
-	if int64(len(body)) > limit {
-		return nil, errors.New("body too large")
-	}
-	return body, nil
+	return nil
 }
 
-func receivePackUpdatedRefs(body []byte) ([]string, error) {
-	var refs []string
-	for offset := 0; offset < len(body); {
-		line, nextOffset, flush, err := nextPktLine(body, offset)
+func validateBranchPath(branch string) error {
+	if strings.HasPrefix(branch, "/") || strings.HasSuffix(branch, "/") || strings.Contains(branch, "//") {
+		return errors.New("branch path is malformed")
+	}
+	return nil
+}
+
+func validateBranchGitSyntax(branch string) error {
+	if strings.Contains(branch, "..") || strings.Contains(branch, "@{") {
+		return errors.New("branch contains unsupported git syntax")
+	}
+	return nil
+}
+
+func validateBranchChars(branch string) error {
+	if strings.ContainsAny(branch, " \t\r\n~^:?*[\\") {
+		return errors.New("branch contains unsupported characters")
+	}
+	return nil
+}
+
+func contentPathParam(c echo.Context) (string, error) {
+	contentPath := c.Param("*")
+	if contentPath == "" {
+		return ".", nil
+	}
+	if err := validateContentPath(contentPath); err != nil {
+		return "", echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return contentPath, nil
+}
+
+func validateContentPath(contentPath string) error {
+	for _, rawSegment := range strings.Split(contentPath, "/") {
+		segment, err := url.PathUnescape(rawSegment)
 		if err != nil {
-			return nil, err
+			segment = rawSegment
 		}
-		if flush {
-			break
+		if escapedPathSeparator(rawSegment) || strings.Contains(segment, "/") {
+			return errors.New("content path contains escaped path separator")
 		}
-		offset = nextOffset
-		command := strings.SplitN(strings.TrimSuffix(line, "\n"), "\x00", 2)[0]
-		fields := strings.Fields(command)
-		if len(fields) >= 3 && strings.HasPrefix(fields[2], "refs/heads/") {
-			refs = append(refs, fields[2])
+		if segment == "" || segment == "." || segment == ".." {
+			return errors.New("content path contains unsupported path segment")
 		}
 	}
-	return refs, nil
+	return nil
 }
 
-func nextPktLine(body []byte, offset int) (line string, nextOffset int, flush bool, err error) {
-	if len(body)-offset < 4 {
-		return "", 0, false, errors.New("short pkt-line")
-	}
-	size, err := strconv.ParseInt(string(body[offset:offset+4]), 16, 32)
-	if err != nil {
-		return "", 0, false, err
-	}
-	if size == 0 {
-		return "", 0, true, nil
-	}
-	if size < 4 || int64(len(body)-offset-4) < size-4 {
-		return "", 0, false, errors.New("invalid pkt-line size")
-	}
-	start := offset + 4
-	end := start + int(size) - 4
-	return string(body[start:end]), end, false, nil
+func escapedPathSeparator(segment string) bool {
+	return strings.Contains(strings.ToLower(segment), "%2f")
 }
 
-func protectedBranchUpdate(refs []string, defaultBranch string) string {
-	protected := map[string]struct{}{
-		"refs/heads/main": {},
-	}
-	if defaultBranch != "" {
-		protected["refs/heads/"+defaultBranch] = struct{}{}
-	}
-	for _, ref := range refs {
-		if _, exists := protected[ref]; exists {
-			return ref
-		}
-	}
-	return ""
+func (s *Server) proxyPullRequest(c echo.Context) error {
+	upstreamURL := s.githubAPIBaseURL.JoinPath("repos", c.Param("owner"), c.Param("repo"), "pulls")
+	return s.proxyTo(c, upstreamURL, func(request *http.Request) {
+		s.configureGitHubAPIRequest(request)
+	})
 }
 
-func (s *Server) fetchDefaultBranch(c echo.Context, owner string, repo string) (string, error) {
-	upstreamURL := s.githubAPIBaseURL.JoinPath("repos", owner, repo)
-	request, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, upstreamURL.String(), http.NoBody)
+func (s *Server) proxyContents(c echo.Context) error {
+	segments := []string{"repos", c.Param("owner"), c.Param("repo"), "contents"}
+	contentPath, err := contentPathParam(c)
 	if err != nil {
-		return "", echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
+		return err
 	}
-	request.Header.Set("Authorization", "Bearer "+s.githubToken)
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL and file-policy-gated owner/repo params.
-	response, err := s.githubClient.Do(request)
+	if contentPath != "." {
+		segments = append(segments, escapedJoinPathSegments(contentPath)...)
+	}
+	upstreamURL := s.githubAPIBaseURL.JoinPath(segments...)
+	query := url.Values{}
+	if ref := c.QueryParam("ref"); ref != "" {
+		query.Set("ref", ref)
+	}
+	upstreamURL.RawQuery = query.Encode()
+	return s.proxyTo(c, upstreamURL, func(request *http.Request) {
+		s.configureGitHubAPIRequest(request)
+	})
+}
+
+func escapedJoinPathSegments(pathValue string) []string {
+	segments := strings.Split(pathValue, "/")
+	for index, segment := range segments {
+		segments[index] = strings.ReplaceAll(segment, "%", "%25")
+	}
+	return segments
+}
+
+func (s *Server) fetchAndFilterRepos(c echo.Context) error {
+	response, err := s.fetchRepoList(c)
 	if err != nil {
-		return "", echo.NewHTTPError(http.StatusBadGateway, "fetch default branch")
+		return err
 	}
 	defer func() {
 		_ = response.Body.Close()
 	}()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return "", echo.NewHTTPError(http.StatusBadGateway, "fetch default branch")
+	if !successfulStatus(response.StatusCode) {
+		httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
+		return copyUpstreamResponse(c, response)
 	}
-	var payload struct {
-		DefaultBranch string `json:"default_branch"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		return "", echo.NewHTTPError(http.StatusBadGateway, "decode default branch")
-	}
-	return payload.DefaultBranch, nil
+	httpx.CopyHeaders(c.Response().Header(), response.Header, githubFilteredResponseHeader)
+	return s.writeFilteredRepoList(c, response)
 }
 
-func (s *Server) proxyGitHubAPI(c echo.Context) error {
-	upstreamURL := s.githubAPIBaseURL.JoinPath("repos", c.Param("owner"), c.Param("repo"), "pulls")
-	return s.proxyTo(c, upstreamURL, func(request *http.Request) {
-		request.Header.Set("Authorization", "Bearer "+s.githubToken)
-		request.Header.Set("Accept", "application/vnd.github+json")
-		request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	})
+func (s *Server) fetchRepoList(c echo.Context) (*http.Response, error) {
+	upstreamURLs := s.repoListURLs(c)
+	var response *http.Response
+	var err error
+	for index, upstreamURL := range upstreamURLs {
+		response, err = s.fetchRepoListURL(c, upstreamURL)
+		if err != nil {
+			return nil, err
+		}
+		if index == 0 && repoListShouldFallback(response.StatusCode) {
+			_ = response.Body.Close()
+			continue
+		}
+		return response, nil
+	}
+	return response, nil
+}
+
+func (s *Server) fetchRepoListURL(c echo.Context, upstreamURL *url.URL) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, upstreamURL.String(), http.NoBody)
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
+	}
+	s.configureGitHubAPIRequest(request)
+	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL.
+	response, err := s.githubClient.Do(request)
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
+	}
+	return response, nil
+}
+
+func (s *Server) repoListURLs(c echo.Context) []*url.URL {
+	userURL := s.repoListURL(c, "user", "repos")
+	installationURL := s.repoListURL(c, "installation", "repositories")
+	if looksLikeInstallationToken(s.githubToken) {
+		return []*url.URL{installationURL, userURL}
+	}
+	return []*url.URL{userURL, installationURL}
+}
+
+func (s *Server) repoListURL(c echo.Context, pathSegments ...string) *url.URL {
+	upstreamURL := s.githubAPIBaseURL.JoinPath(pathSegments...)
+	query := url.Values{}
+	query.Set("per_page", boundedQueryInt(c.QueryParam("per_page"), 100, 1, 100))
+	if page := boundedQueryInt(c.QueryParam("page"), 0, 1, 100000); page != "0" {
+		query.Set("page", page)
+	}
+	upstreamURL.RawQuery = query.Encode()
+	return upstreamURL
+}
+
+func looksLikeInstallationToken(token string) bool {
+	return strings.HasPrefix(token, "ghs_")
+}
+
+func repoListShouldFallback(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
+}
+
+func successfulStatus(status int) bool {
+	return status >= http.StatusOK && status < http.StatusMultipleChoices
+}
+
+func copyUpstreamResponse(c echo.Context, response *http.Response) error {
+	c.Response().WriteHeader(response.StatusCode)
+	_, err := io.Copy(c.Response(), response.Body)
+	return err
+}
+
+func (s *Server) writeFilteredRepoList(c echo.Context, response *http.Response) error {
+	body, err := httpx.ReadLimited(response.Body, 10*1024*1024)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, "github repo list response is too large")
+	}
+	filtered, err := s.filterRepos(c, body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, "decode github repo list")
+	}
+	return c.JSONBlob(response.StatusCode, filtered)
+}
+
+func (s *Server) filterRepos(c echo.Context, body []byte) ([]byte, error) {
+	var repos []json.RawMessage
+	if err := json.Unmarshal(body, &repos); err != nil {
+		var installationPayload struct {
+			Repositories []json.RawMessage `json:"repositories"`
+		}
+		if objectErr := json.Unmarshal(body, &installationPayload); objectErr != nil || installationPayload.Repositories == nil {
+			return nil, err
+		}
+		repos = installationPayload.Repositories
+		filtered := s.filterRepoArray(c, repos)
+		return json.Marshal(map[string][]json.RawMessage{"repositories": filtered})
+	}
+	return json.Marshal(s.filterRepoArray(c, repos))
+}
+
+func (s *Server) filterRepoArray(c echo.Context, repos []json.RawMessage) []json.RawMessage {
+	filtered := make([]json.RawMessage, 0, len(repos))
+	for _, raw := range repos {
+		owner, name, ok := repoIdentity(raw)
+		if !ok {
+			continue
+		}
+		request := policy.Request{
+			Client:    security.ClientFromContext(c),
+			Operation: policy.OperationRepoMetadataRead,
+			Target:    policy.Target{Kind: "repo", Owner: owner, Name: name},
+		}
+		if s.policy.Allows(request) {
+			filtered = append(filtered, raw)
+		}
+	}
+	return filtered
+}
+
+func repoIdentity(raw json.RawMessage) (string, string, bool) {
+	var repo struct {
+		Name     string `json:"name"`
+		FullName string `json:"full_name"`
+		Owner    struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+	}
+	if err := json.Unmarshal(raw, &repo); err != nil {
+		return "", "", false
+	}
+	owner := strings.TrimSpace(repo.Owner.Login)
+	name := strings.TrimSpace(repo.Name)
+	if owner == "" || name == "" {
+		fullOwner, fullName, ok := strings.Cut(repo.FullName, "/")
+		if ok {
+			owner = strings.TrimSpace(fullOwner)
+			name = strings.TrimSpace(fullName)
+		}
+	}
+	return owner, name, owner != "" && name != ""
+}
+
+func boundedQueryInt(value string, fallback int, minValue int, maxValue int) string {
+	if value == "" {
+		return strconv.Itoa(fallback)
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < minValue || parsed > maxValue {
+		return strconv.Itoa(fallback)
+	}
+	return strconv.Itoa(parsed)
 }
 
 func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*http.Request)) error {
@@ -309,13 +672,13 @@ func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*h
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
 	}
-	copyRequestHeaders(request.Header, c.Request().Header)
+	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
 	configure(request)
 	return s.doProxy(c, request)
 }
 
 func (s *Server) doProxy(c echo.Context, request *http.Request) error {
-	// #nosec G704 -- upstream URLs are built from fixed GitHub base URLs and file-policy-gated owner/repo params.
+	// #nosec G704 -- upstream URLs are built from fixed GitHub base URLs and policy-gated route params.
 	response, err := s.githubClient.Do(request)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
@@ -323,41 +686,35 @@ func (s *Server) doProxy(c echo.Context, request *http.Request) error {
 	defer func() {
 		_ = response.Body.Close()
 	}()
-	copyResponseHeaders(c.Response().Header(), response.Header)
+	httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
 	c.Response().WriteHeader(response.StatusCode)
 	_, err = io.Copy(c.Response(), response.Body)
 	return err
 }
 
-func copyRequestHeaders(dst http.Header, src http.Header) {
-	copyHeaders(dst, src, dropRequestHeader)
+func (s *Server) configureGitHubAPIRequest(request *http.Request) {
+	request.Header.Set("Authorization", "Bearer "+s.githubToken)
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 }
 
-func copyResponseHeaders(dst http.Header, src http.Header) {
-	copyHeaders(dst, src, hopByHopHeader)
-}
+var githubProxyResponseHeader = httpx.DropAny(
+	httpx.HopByHopHeader,
+	httpx.ResponseCredentialHeader,
+	githubCredentialMetadataHeader,
+)
 
-func copyHeaders(dst http.Header, src http.Header, drop func(string) bool) {
-	for key, values := range src {
-		if drop(key) {
-			continue
-		}
-		for _, value := range values {
-			dst.Add(key, value)
-		}
-	}
-}
+var githubFilteredResponseHeader = httpx.DropAny(githubProxyResponseHeader, httpx.RewrittenBodyHeader)
 
-func dropRequestHeader(key string) bool {
-	return hopByHopHeader(key) ||
-		strings.EqualFold(key, "Authorization") ||
-		strings.EqualFold(key, "Cookie")
-}
-
-func hopByHopHeader(key string) bool {
+func githubCredentialMetadataHeader(key string) bool {
 	switch strings.ToLower(key) {
-	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-		"te", "trailer", "transfer-encoding", "upgrade":
+	case "authentication-info",
+		"github-authentication-token-expiration",
+		"www-authenticate",
+		"x-accepted-oauth-scopes",
+		"x-github-authentication-token-expiration",
+		"x-github-sso",
+		"x-oauth-scopes":
 		return true
 	default:
 		return false
@@ -369,16 +726,17 @@ func githubGitAuthorization(token string) string {
 	return "Basic " + credential
 }
 
-func (s *Server) audit(c echo.Context, operation githubaccess.Operation, outcome string, reason string, status int) {
-	repo := c.Param("repo")
+func (s *Server) audit(c echo.Context, request policy.Request, outcome string, reason string, status int, matchedRuleIDs []string) {
+	repo := request.Target.Name
 	if repo == "" {
-		repo = c.Param("repoGit")
+		repo = strings.TrimSuffix(c.Param("repoGit"), ".git")
 	}
 	attrs := []any{
-		"operation", string(operation),
+		"client", request.Client,
+		"operation", string(request.Operation),
 		"outcome", outcome,
-		"owner", c.Param("owner"),
-		"repo", strings.TrimSuffix(repo, ".git"),
+		"owner", request.Target.Owner,
+		"repo", repo,
 		"method", c.Request().Method,
 		"path", c.Request().URL.Path,
 	}
@@ -388,7 +746,16 @@ func (s *Server) audit(c echo.Context, operation githubaccess.Operation, outcome
 	if reason != "" {
 		attrs = append(attrs, "reason", reason)
 	}
+	if len(matchedRuleIDs) > 0 {
+		attrs = append(attrs, "matched_rules", matchedRuleIDs)
+	}
 	s.logger.Info("broker operation", attrs...)
+}
+
+func (s *Server) auditAuthorizedReceivePack(c echo.Context, authorized []authorizedReceivePackRequest, outcome string, reason string, status int) {
+	for _, item := range authorized {
+		s.audit(c, item.Request, outcome, reason, status, item.Decision.MatchedRuleIDs)
+	}
 }
 
 func errorString(err error) string {
@@ -404,6 +771,22 @@ func errorOutcome(err error) string {
 		return "denied"
 	}
 	return "error"
+}
+
+func outcomeForDecision(decision policy.Decision) string {
+	switch decision.Effect {
+	case policy.EffectRequest:
+		return "requires_grant"
+	default:
+		return "denied"
+	}
+}
+
+func statusForDecision(decision policy.Decision) int {
+	if decision.Effect == policy.EffectRequest {
+		return http.StatusConflict
+	}
+	return http.StatusForbidden
 }
 
 func responseStatus(c echo.Context) int {

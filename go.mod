@@ -1,8 +1,11 @@
-module github.com/dutifuldev/gitcba
+module github.com/osolmaz/gh-broker
 
-go 1.24
+go 1.25.0
 
-require github.com/labstack/echo/v4 v4.13.4
+require (
+	github.com/labstack/echo/v4 v4.13.4
+	github.com/osolmaz/brokerkit v0.0.0-20260709074317-15681412c4b1
+)
 
 require (
 	github.com/labstack/gommon v0.4.2 // indirect

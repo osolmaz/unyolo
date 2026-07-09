@@ -25,5 +25,5 @@ go:
     max_score: 8
   mutation:
     targets:
-      - internal/githubaccess
+      - internal/policy
       - internal/security

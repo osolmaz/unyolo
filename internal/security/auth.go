@@ -1,68 +1,51 @@
 package security
 
 import (
-	"crypto/subtle"
-	"encoding/base64"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/auth"
 )
 
-const (
-	basicPrefix  = "Basic "
-	bearerPrefix = "Bearer "
-)
+const clientContextKey = "gh-broker.client"
 
 type TokenAuth struct {
-	token string
+	authenticator *auth.Authenticator
 }
 
 func NewTokenAuth(token string) (TokenAuth, error) {
-	if strings.TrimSpace(token) == "" {
-		return TokenAuth{}, errors.New("shared secret is required")
+	return NewTokenAuthForClient(token, "default")
+}
+
+func NewTokenAuthForClient(token string, client string) (TokenAuth, error) {
+	client = strings.TrimSpace(client)
+	if client == "" {
+		return TokenAuth{}, errors.New("client id is required")
 	}
-	return TokenAuth{token: token}, nil
+	authenticator, err := auth.New(map[string]string{client: token}, auth.Options{})
+	if err != nil {
+		return TokenAuth{}, err
+	}
+	return TokenAuth{authenticator: authenticator}, nil
+}
+
+func ClientFromContext(c echo.Context) string {
+	client, _ := c.Get(clientContextKey).(string)
+	return client
 }
 
 func (a TokenAuth) Middleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		header := c.Request().Header.Get(echo.HeaderAuthorization)
-		if header == "" {
+		client, err := a.authenticator.AuthenticateRequest(c.Request())
+		if errors.Is(err, auth.ErrMissing) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "missing authorization")
 		}
-		candidate, ok := credentialFromAuthorization(header)
-		if !ok {
-			return echo.NewHTTPError(http.StatusUnauthorized, "unsupported authorization")
-		}
-		if !constantTimeEqual(candidate, a.token) {
+		if err != nil {
 			return echo.NewHTTPError(http.StatusForbidden, "invalid authorization")
 		}
+		c.Set(clientContextKey, client)
 		return next(c)
 	}
-}
-
-func credentialFromAuthorization(header string) (string, bool) {
-	switch {
-	case strings.HasPrefix(header, bearerPrefix):
-		return strings.TrimPrefix(header, bearerPrefix), true
-	case strings.HasPrefix(header, basicPrefix):
-		payload := strings.TrimPrefix(header, basicPrefix)
-		decoded, err := base64.StdEncoding.DecodeString(payload)
-		if err != nil {
-			return "", false
-		}
-		_, password, ok := strings.Cut(string(decoded), ":")
-		return password, ok
-	default:
-		return "", false
-	}
-}
-
-func constantTimeEqual(candidate string, expected string) bool {
-	if len(candidate) != len(expected) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(candidate), []byte(expected)) == 1
 }

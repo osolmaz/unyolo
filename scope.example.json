@@ -1,0 +1,83 @@
+{
+  "rules": [
+    {
+      "id": "deny-gh-broker-main-force",
+      "effect": "deny",
+      "clients": ["*"],
+      "operations": ["git.push.force"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "gh-broker"}],
+      "attrs": {
+        "refs": ["refs/heads/main"]
+      }
+    },
+    {
+      "id": "deny-ref-delete",
+      "effect": "deny",
+      "clients": ["*"],
+      "operations": ["git.ref.delete"],
+      "targets": [{"kind": "repo", "owner": "*", "name": "*"}]
+    },
+    {
+      "id": "bob-list-repos",
+      "effect": "allow",
+      "clients": ["bob"],
+      "operations": ["installation.repos.list"],
+      "targets": [{"kind": "installation"}]
+    },
+    {
+      "id": "bob-repo-read-osolmaz",
+      "effect": "allow",
+      "clients": ["bob"],
+      "operations": ["git.fetch", "repo.metadata.read"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}]
+    },
+    {
+      "id": "bob-contents-read-osolmaz",
+      "effect": "allow",
+      "clients": ["bob"],
+      "operations": ["contents.read"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
+      "attrs": {
+        "paths": ["*", "docs/*", "."]
+      }
+    },
+    {
+      "id": "bob-push-advertise",
+      "effect": "allow",
+      "clients": ["bob"],
+      "operations": ["git.push.advertise"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}]
+    },
+    {
+      "id": "bob-push-branches",
+      "effect": "allow",
+      "clients": ["bob"],
+      "operations": ["git.push.branch_create", "git.push.force"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
+      "attrs": {
+        "refs": ["refs/heads/bob/*", "refs/heads/agent/*"]
+      }
+    },
+    {
+      "id": "bob-pr-create-main",
+      "effect": "allow",
+      "clients": ["bob"],
+      "operations": ["pr.create"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
+      "attrs": {
+        "refs": ["refs/heads/bob/*", "refs/heads/agent/*"],
+        "base_refs": ["refs/heads/main"]
+      }
+    },
+    {
+      "id": "direct-main-example",
+      "effect": "allow",
+      "clients": ["bob"],
+      "operations": ["git.push.force"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "direct-main"}],
+      "attrs": {
+        "refs": ["refs/heads/main"]
+      }
+    }
+  ]
+}

@@ -1,68 +1,173 @@
 # Implementation Plan
 
-## Security Invariants
+This document tracks the implemented broker shape. The longer-term GitHub App and service-account target is specified in [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md).
 
-- Original credentials are never returned by HTTP handlers, service methods, logs, errors, audit records, or API responses.
-- GitCBA exposes no credential listing, registration, lookup, export, decrypt, or introspection API.
-- GitHub access must be configured in a manually edited file before a credential-backed operation can run.
-- GitHub access config is only a PAT-like selection of owners and explicit repositories.
-- GitHub access config cannot be changed or read through the API.
+Cutover direction: gh-broker now lives at `github.com/osolmaz/gh-broker` and
+should use `github.com/osolmaz/brokerkit` for shared auth, policy, grants,
+approval workflow, audit helpers, notification interfaces, Telegram approval
+transport, shared storage/config helpers, and generic Git parsing helpers.
+There is no backward-compatibility requirement for old import paths, old route
+aliases, old policy formats, or local duplicate control-plane runtimes.
+
+## Implemented Security Invariants
+
+- Original GitHub credentials are never returned by HTTP handlers, service methods, logs, errors, audit records, or API responses.
+- gh-broker exposes no credential listing, registration, lookup, export, decrypt, or introspection API.
 - Clients authenticate with a manually configured shared secret.
-- GitCBA uses a manually configured server-side GitHub token for outbound GitHub requests.
+- The authenticated request is assigned one configured client id, currently `GH_BROKER_CLIENT_ID`.
+- `scope.json` is the authorization source of truth.
+- Policy decisions are centralized in `internal/policy` until the brokerkit
+  cutover, then in `brokerkit/policy`.
+- Handlers may reject malformed requests, but valid broker operations are authorized through the policy engine.
+- gh-broker uses a manually configured server-side GitHub token for outbound GitHub requests as the development fallback credential path.
 - Tailnet reachability is a network boundary only; every broker endpoint still requires auth.
-- GitCBA binds to localhost by default and should only be exposed through a Tailnet or local-only proxy.
+- gh-broker binds to localhost by default and should only be exposed through a Tailnet or local-only proxy.
 - `git-receive-pack` requests are capped before buffering.
 - Outbound GitHub requests use explicit timeouts.
-- Audit logs must not contain tokens, cookies, request bodies, pack contents, or raw credentials.
-- GitCBA never exposes generic shell execution, arbitrary GitHub API proxying, token introspection, or token export.
+- Audit logs must not contain tokens, cookies, request bodies, PR bodies, pack contents, diffs, raw upstream bodies, or raw credentials.
+- gh-broker never exposes generic shell execution, arbitrary GitHub API proxying, token introspection, token export, organization administration, workflow administration, member management, or repository deletion operations.
 
-## Current Scope
+## Implemented Scope
 
 - Run as a Tailnet-oriented HTTP service.
-- Bind to `CBA_BIND_ADDR`, defaulting to `127.0.0.1`.
-- Accept `Authorization: Bearer <CBA_SHARED_SECRET>`.
-- Accept Git-friendly Basic auth where the password is `CBA_SHARED_SECRET`.
-- Load `CBA_GITHUB_TOKEN` at startup and use it only for outbound GitHub requests.
-- Cap `git-receive-pack` request bodies with `CBA_MAX_RECEIVE_PACK_BYTES`.
-- Use `CBA_GITHUB_HTTP_TIMEOUT` for outbound GitHub requests.
+- Bind to `GH_BROKER_BIND_ADDR`, defaulting to `127.0.0.1`.
+- Accept `Authorization: Bearer <GH_BROKER_SHARED_SECRET>`.
+- Accept Git-friendly Basic auth where the password is `GH_BROKER_SHARED_SECRET`.
+- Load `GH_BROKER_GITHUB_TOKEN` or `GH_BROKER_GITHUB_TOKEN_FILE` at startup and use it only for outbound GitHub requests.
+- Load rule-based `GH_BROKER_SCOPE_FILE`, defaulting to `scope.json`.
+- Cap `git-receive-pack` request bodies with `GH_BROKER_MAX_RECEIVE_PACK_BYTES`.
+- Use `GH_BROKER_GITHUB_HTTP_TIMEOUT` for outbound GitHub requests.
 - Emit structured audit logs for broker operations.
-- Configure GitHub access in `github-access.json` with:
-  - `owners`: blanket owner/org/user accounts, like selecting all repos under an owner for a PAT.
-  - `repositories`: explicit `owner/name` repositories.
-- Keep everything else hardcoded in code.
 - Mimic Git smart HTTP route shape for fetch and push.
-- Mimic GitHub REST route shape for pull request creation.
-- `git-upload-pack` is allowed for configured owners or repositories.
-- `git-receive-pack` is allowed only when the target account is in scope.
-- `git-receive-pack` rejects updates to `refs/heads/main` and to the repository's default branch.
-- Pull request creation is allowed for configured owners or repositories.
-- A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
+- Expose narrow `/api/repos`, `/api/repos/{owner}/{repo}/contents/{path}`, and `/api/repos/{owner}/{repo}/pulls` routes.
+- List repositories through the GitHub user repositories endpoint for PAT-like tokens and the installation repositories endpoint for GitHub App installation-token-shaped credentials.
+- Filter repository list responses through `repo.metadata.read` policy decisions.
+- Authorize content reads through `contents.read` policy decisions, including the forwarded `ref` query when present.
+- Validate pull request creation payloads and authorize through `pr.create` with head/base refs. Fork-qualified PR heads such as `owner:branch` are not forwarded; broker-managed branches must live in the target repository.
+- Drop upstream credential metadata and pagination headers from filtered repository list responses.
+- Parse `git-receive-pack` commands before forwarding.
+- Authorize `git-receive-pack` discovery through `git.push.advertise`, not `git.fetch`.
+- Classify branch creates, existing branch updates, ref deletes, tag updates, and unsupported ref updates before forwarding.
+- Authorize existing branch updates as `git.push.force` unless the broker can prove fast-forward before forwarding. The seed implementation does not call GitHub compare before upload because new commits often exist only inside the pack at that point, so it must not claim fast-forward.
+- Deny ref deletes and unsupported ref updates before forwarding.
+- Deny default-branch pushes by absence of a matching allow rule, while allowing explicit direct-main rules for selected repositories.
+- Keep GitHub branch protections or rulesets as the upstream enforcement layer that rejects actual non-fast-forward updates after GitHub receives the pack.
+
+## Policy Model
+
+A request is classified as:
+
+```text
+client + operation + target + attrs -> allow | request | deny | no_match
+```
+
+Decision precedence is:
+
+```text
+deny > active generated grant > allow > request > no_match
+```
+
+A rule matches only when the same rule matches the client, operation, target, and operation-relevant attributes. The broker does not combine an operation from one rule with a target from another rule. Attrs are operation-specific; a rule with attrs must only contain operations that support all of those attrs.
+
+Supported initial operations:
+
+```text
+git.fetch
+git.push.advertise
+git.push.branch_create
+git.push.fast_forward
+git.push.force
+git.ref.delete
+git.tag.update
+pr.create
+pr.update
+pr.merge
+checks.read
+repo.metadata.read
+contents.read
+installation.repos.list
+webhook.github.receive
+```
+
+The default example profile in `scope.example.json` allows Bob to list repos, read contents, fetch repositories, push feature branches, update existing feature branches under the broker's conservative `git.push.force` classification, and open pull requests into `main`. It denies ref deletion everywhere and denies protected `gh-broker` main-branch updates before forwarding, while still showing a repository-specific direct-main branch-update exception that is not shadowed by the deny rule. GitHub rulesets or branch protections remain the upstream layer that rejects actual non-fast-forward pushes.
 
 ## Broker Routes
 
 ```text
 GET  /healthz
 
+GET  /api/repos
+GET  /api/repos/{owner}/{repo}/contents/{path}
+POST /api/repos/{owner}/{repo}/pulls
+POST /repos/{owner}/{repo}/pulls
+
 GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
 POST /{owner}/{repo}.git/git-upload-pack
 
 GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
 POST /{owner}/{repo}.git/git-receive-pack
-
-POST /repos/{owner}/{repo}/pulls
 ```
 
-## Hardcoded For Now
+## Not Yet Implemented
 
-- One shared client secret.
-- Approval behavior.
-- Path restrictions.
-- Rate limits and audit detail.
+- GitHub App private-key authentication and installation token minting.
+- brokerkit cutover for shared auth, policy, grants, approval workflow, audit
+  helpers, notifier interfaces, Telegram approval transport, storage/config
+  helpers, and generic Git parsing helpers.
+- Service-account installer and systemd unit.
+- Verified GitHub webhook endpoint for installation cache invalidation and audit context.
+- Generated temporary grants.
+- Runtime branch-ruleset inspection in `doctor`.
+- Removal of compatibility route aliases such as `POST /repos/{owner}/{repo}/pulls`.
 
-## Next Work
+## Brokerkit Cutover Tests
 
-- Detect and audit non-fast-forward updates inside `git-receive-pack`.
-- Add richer audit event identifiers and correlation ids.
+The brokerkit cutover is complete only when tests prove:
+
+- old local auth, policy, grants, approval, Telegram, audit, and storage
+  runtimes are gone
+- all authorization decisions use brokerkit
+- GitHub request classification stays local and fails closed
+- a protected or dangerous Git operation grant can be approved through a fake
+  brokerkit notifier
+- generated grants are evaluated by the brokerkit policy decision path, not a
+  second grant-specific allow path
+- Telegram approval is covered with a fake Bot API server or fake notifier in
+  automated tests; CI must not require a live bot token or send real messages
+- end-to-end broker tests use fake GitHub upstreams, fake installation-token
+  minting, and fake notifiers by default; live GitHub checks are explicit
+  manual or milestone probes
+- audit never contains GitHub credentials, request bodies, pack contents,
+  approval tokens, or Telegram bot tokens
+
+## Implementation Readiness
+
+The brokerkit cutover is ready to implement when the slice can satisfy this
+contract:
+
+- gh-broker imports brokerkit for shared auth, policy, grants, approval state,
+  notification interfaces, Telegram transport, audit helpers, storage/config
+  helpers, and provider-neutral Git parsing
+- gh-broker keeps only GitHub operation registration, Git/API request
+  classification, GitHub App or PAT credential use, upstream forwarding,
+  ruleset/branch-protection checks, audit extension fields, and approval
+  summary text
+- the replaced local runtime is deleted in the same PR as the brokerkit import
+- GitHub-native behavior remains local: brokerkit must not learn GitHub App,
+  installation token, PR, webhook, branch protection, or ruleset semantics
+
+## Current Cutover Status
+
+gh-broker now imports brokerkit for shared authentication, broker policy
+evaluation, and provider-neutral Git receive-pack parsing. The remaining
+`internal/security`, `internal/policy`, and `internal/httpapi/receive_pack.go`
+code is GitHub-specific adapter code: Echo middleware wiring, GitHub operation
+registration, target and attr normalization, request classification, and
+audit-facing rule-id mapping.
+
+The next cutover slices should move generated grants, approval state,
+notification interfaces, Telegram transport, audit helpers, and storage helpers
+to brokerkit as those features land in gh-broker.
 
 ## Non-Goals
 

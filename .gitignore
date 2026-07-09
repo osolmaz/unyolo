@@ -1,9 +1,9 @@
 .env
 .env.*
 !.env.example
-github-access.json
+scope.json
 bin/
-/cba-server
+/gh-broker
 coverage.out
 dist/
 tmp/

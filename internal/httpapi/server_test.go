@@ -3,19 +3,20 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/dutifuldev/gitcba/internal/config"
-	"github.com/dutifuldev/gitcba/internal/githubaccess"
+	"github.com/osolmaz/gh-broker/internal/config"
+	"github.com/osolmaz/gh-broker/internal/policy"
 )
 
 const testSharedSecret = "0123456789abcdef0123456789abcdef"
@@ -27,7 +28,7 @@ func TestGitCompatibleRoutesRequireAuth(t *testing.T) {
 	request := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodGet,
-		"/dutifuldev/gitcba.git/info/refs?service=git-upload-pack",
+		"/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack",
 		http.NoBody,
 	)
 	response := httptest.NewRecorder()
@@ -48,11 +49,11 @@ func TestHealth(t *testing.T) {
 	}
 }
 
-func TestGitRoutesUseGitHubAccessPolicy(t *testing.T) {
+func TestGitFetchUsesPolicy(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	allowed := do(t, server, http.MethodGet, "/dutifuldev/gitcba.git/info/refs?service=git-upload-pack", bearerAuth())
+	allowed := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if allowed.Code != http.StatusOK {
 		t.Fatalf("allowed status = %d, body = %s", allowed.Code, allowed.Body.String())
 	}
@@ -63,100 +64,128 @@ func TestGitRoutesUseGitHubAccessPolicy(t *testing.T) {
 	}
 }
 
-func TestGitReceivePackAllowsExplicitRepositoryOwner(t *testing.T) {
+func TestGitReceivePackDiscoveryUsesPushPolicy(t *testing.T) {
 	t.Parallel()
-	server := newTestServer(t)
-	response := do(t, server, http.MethodPost, "/openclaw/openclaw.git/git-receive-pack", basicAuth())
+	fetchOnlyPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
+		{
+			ID:         "fetch-only",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitFetch},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("policy.New() error = %v", err)
+	}
+	server := newTestServerWithPolicyAndHandler(t, fetchOnlyPolicy, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	fetch := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	if fetch.Code != http.StatusOK {
+		t.Fatalf("fetch discovery status = %d, body = %s", fetch.Code, fetch.Body.String())
+	}
+	push := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	if push.Code != http.StatusForbidden {
+		t.Fatalf("receive-pack discovery status = %d, want %d", push.Code, http.StatusForbidden)
+	}
+}
+
+func TestGitUploadPackPostRouteUsesPolicy(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-upload-pack", bearerAuth(), []byte("want refs"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
+	if gotPath != "/dutifuldev/gh-broker.git/git-upload-pack" {
+		t.Fatalf("upstream path = %q, want upload-pack path", gotPath)
+	}
 }
 
-func TestGitReceivePackRejectsMainBranchUpdate(t *testing.T) {
+func TestGitReceivePackRejectsBadOID(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
+		"/dutifuldev/gh-broker.git/git-receive-pack",
 		bearerAuth(),
-		receivePackBody("refs/heads/main"),
+		receivePackPayload("not-an-oid", oid("2"), "refs/heads/bob/work"),
 	)
-	if response.Code != http.StatusForbidden {
+	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
-func TestGitReceivePackRejectsDeleteOfMainBranch(t *testing.T) {
+func TestGitReceivePackRejectsTagUpdateByDefault(t *testing.T) {
 	t.Parallel()
-	server := newTestServer(t)
-	response := doWithBody(
-		t,
-		server,
-		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
-		bearerAuth(),
-		receivePackCommand("1111111111111111111111111111111111111111", zeroOID(), "refs/heads/main"),
-	)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-}
-
-func TestGitReceivePackRejectsDefaultBranchUpdate(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithDefaultBranch(t, "trunk")
-	response := doWithBody(
-		t,
-		server,
-		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
-		bearerAuth(),
-		receivePackBody("refs/heads/trunk"),
-	)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-}
-
-func TestGitReceivePackRejectsMultiRefUpdateContainingDefaultBranch(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithDefaultBranch(t, "trunk")
-	response := doWithBody(
-		t,
-		server,
-		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
-		bearerAuth(),
-		receivePackCommands(
-			commandLine(zeroOID(), "1111111111111111111111111111111111111111", "refs/heads/feature"),
-			commandLine(zeroOID(), "2222222222222222222222222222222222222222", "refs/heads/trunk"),
-		),
-	)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-}
-
-func TestGitReceivePackAllowsFeatureBranchUpdate(t *testing.T) {
-	t.Parallel()
-	var gotGitPush bool
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/dutifuldev/gitcba" {
-			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
-			return
-		}
-		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
+		"/dutifuldev/gh-broker.git/git-receive-pack",
 		bearerAuth(),
-		receivePackBody("refs/heads/gitcba-smoke"),
+		receivePackPayload(zeroOID(), oid("1"), "refs/tags/v0.1.0"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestGitReceivePackEmptyRequestStillUsesPolicy(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gh-broker.git/git-receive-pack",
+		bearerAuth(),
+		[]byte("0000"),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !gotGitPush {
+		t.Fatal("empty receive-pack was not proxied after policy allow")
+	}
+}
+
+func TestGitReceivePackAllowsFeatureBranchCreate(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/compare/") {
+			t.Fatal("branch creation should not compare ancestry")
+		}
+		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gh-broker.git/git-receive-pack",
+		bearerAuth(),
+		receivePackCreate("refs/heads/bob/work"),
 	)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
@@ -166,23 +195,50 @@ func TestGitReceivePackAllowsFeatureBranchUpdate(t *testing.T) {
 	}
 }
 
-func TestGitReceivePackAllowsTagUpdateWithoutDefaultBranchLookup(t *testing.T) {
+func TestGitReceivePackAllowsShallowFeatureBranchCreate(t *testing.T) {
 	t.Parallel()
 	var gotGitPush bool
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/dutifuldev/gitcba" {
-			t.Fatal("default branch lookup should not run for tag-only updates")
+		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	body := append(
+		pktLine("shallow "+oid("3")+"\n"),
+		receivePackPayload(zeroOID(), oid("1"), "refs/heads/bob/work")...,
+	)
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gh-broker.git/git-receive-pack",
+		bearerAuth(),
+		body,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !gotGitPush {
+		t.Fatal("shallow receive-pack was not proxied")
+	}
+}
+
+func TestGitReceivePackAllowsFeatureBranchUpdateWithForcePolicy(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/compare/") {
+			t.Fatal("branch update should not compare ancestry before upload")
 		}
-		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
+		"/dutifuldev/gh-broker.git/git-receive-pack",
 		bearerAuth(),
-		receivePackBody("refs/tags/v0.0.1"),
+		receivePackPayload(oid("1"), oid("2"), "refs/heads/agent/work"),
 	)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
@@ -192,57 +248,130 @@ func TestGitReceivePackAllowsTagUpdateWithoutDefaultBranchLookup(t *testing.T) {
 	}
 }
 
-func TestGitReceivePackFailsClosedWhenDefaultBranchFetchFails(t *testing.T) {
+func TestGitReceivePackExistingBranchUpdateRequiresForcePolicy(t *testing.T) {
 	t.Parallel()
-	var gotGitPush bool
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/dutifuldev/gitcba" {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+	fastForwardOnlyPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
+		{
+			ID:         "fast-forward-only",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitPushFastForward},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/agent/*"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("policy.New() error = %v", err)
+	}
+	var upstreamCalls int
+	server := newTestServerWithPolicyAndHandler(t, fastForwardOnlyPolicy, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
+		"/dutifuldev/gh-broker.git/git-receive-pack",
 		bearerAuth(),
-		receivePackBody("refs/heads/feature"),
+		receivePackPayload(oid("1"), oid("2"), "refs/heads/agent/work"),
 	)
-	if response.Code != http.StatusBadGateway {
+	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if gotGitPush {
-		t.Fatal("git receive-pack proxied after default branch lookup failure")
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
 	}
 }
 
-func TestGitReceivePackFailsClosedWhenDefaultBranchResponseIsInvalid(t *testing.T) {
+func TestGitReceivePackRejectsMainBranchByPolicy(t *testing.T) {
 	t.Parallel()
 	var gotGitPush bool
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/dutifuldev/gitcba" {
-			_, _ = w.Write([]byte(`not json`))
-			return
+		if strings.Contains(r.URL.Path, "/compare/") {
+			t.Fatal("denied branch update should not compare ancestry")
 		}
-		gotGitPush = r.URL.Path == "/dutifuldev/gitcba.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
+		"/dutifuldev/gh-broker.git/git-receive-pack",
 		bearerAuth(),
-		receivePackBody("refs/heads/feature"),
+		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
 	)
-	if response.Code != http.StatusBadGateway {
+	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 	if gotGitPush {
-		t.Fatal("git receive-pack proxied after invalid default branch response")
+		t.Fatal("git receive-pack proxied after policy denial")
+	}
+}
+
+func TestGitReceivePackAllowsDirectMainForSpecificRepo(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/compare/") {
+			t.Fatal("direct branch update should not compare ancestry before upload")
+		}
+		gotGitPush = r.URL.Path == "/dutifuldev/direct-main.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/direct-main.git/git-receive-pack",
+		bearerAuth(),
+		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !gotGitPush {
+		t.Fatal("direct main push was not proxied")
+	}
+}
+
+func TestGitReceivePackDeniesUnsupportedRefUpdate(t *testing.T) {
+	t.Parallel()
+	var gotGitPush bool
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gh-broker.git/git-receive-pack",
+		bearerAuth(),
+		receivePackPayload(oid("1"), oid("2"), "refs/notes/commits"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotGitPush {
+		t.Fatal("unsupported ref update was proxied")
+	}
+}
+
+func TestGitReceivePackRejectsRefDelete(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gh-broker.git/git-receive-pack",
+		bearerAuth(),
+		receivePackPayload(oid("1"), zeroOID(), "refs/heads/bob/work"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
@@ -253,7 +382,7 @@ func TestGitReceivePackRejectsMalformedRequest(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
+		"/dutifuldev/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		[]byte("bad"),
 	)
@@ -276,7 +405,7 @@ func TestGitReceivePackRejectsMalformedPktLines(t *testing.T) {
 			t,
 			server,
 			http.MethodPost,
-			"/dutifuldev/gitcba.git/git-receive-pack",
+			"/dutifuldev/gh-broker.git/git-receive-pack",
 			bearerAuth(),
 			body,
 		)
@@ -294,7 +423,7 @@ func TestGitReceivePackRejectsOversizedRequest(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gitcba.git/git-receive-pack",
+		"/dutifuldev/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		[]byte("0000extra"),
 	)
@@ -316,13 +445,463 @@ func TestGitReceivePackPolicyDenialDoesNotCallUpstream(t *testing.T) {
 		http.MethodPost,
 		"/outside/repo.git/git-receive-pack",
 		bearerAuth(),
-		receivePackBody("refs/heads/feature"),
+		receivePackCreate("refs/heads/bob/work"),
 	)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
 	if upstreamCalls != 0 {
 		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestGitReceivePackDeniedBranchUpdateDoesNotCompare(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/outside/repo.git/git-receive-pack",
+		bearerAuth(),
+		receivePackPayload(oid("1"), oid("2"), "refs/heads/bob/work"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestPullRequestRouteValidatesPolicyAndUsesGitHubShape(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusCreated)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/api/repos/dutifuldev/gh-broker/pulls",
+		bearerAuth(),
+		[]byte(`{"title":"work","head":"bob/work","base":"main","body":"ready"}`),
+	)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/repos/dutifuldev/gh-broker/pulls" {
+		t.Fatalf("upstream path = %q, want GitHub pulls path", gotPath)
+	}
+}
+
+func TestPullRequestRejectsForkHeadSyntax(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusCreated)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/repos/dutifuldev/gh-broker/pulls",
+		bearerAuth(),
+		[]byte(`{"title":"work","head":"evil:bob/work","base":"main"}`),
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestPullRequestRejectsLongTitle(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	body := []byte(`{"title":"` + strings.Repeat("a", 257) + `","head":"bob/work","base":"main"}`)
+	response := doWithBody(t, server, http.MethodPost, "/api/repos/dutifuldev/gh-broker/pulls", bearerAuth(), body)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestPullRequestPolicyDenialDoesNotCallUpstream(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusCreated)
+	})
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/api/repos/dutifuldev/gh-broker/pulls",
+		bearerAuth(),
+		[]byte(`{"title":"work","head":"bob/work","base":"develop"}`),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestPullRequestRejectsMalformedBody(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/api/repos/dutifuldev/gh-broker/pulls",
+		bearerAuth(),
+		[]byte(`{"head":"bad branch","base":"main"}`),
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestListReposFiltersByPolicy(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.URL.Query().Get("per_page") != "100" {
+			t.Fatalf("per_page = %q, want 100", r.URL.Query().Get("per_page"))
+		}
+		_, _ = w.Write([]byte(`[
+			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}},
+			{"name":"repo","full_name":"outside/repo","owner":{"login":"outside"}}
+		]`))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/user/repos" {
+		t.Fatalf("upstream path = %q, want /user/repos", gotPath)
+	}
+	var repos []struct {
+		FullName string `json:"full_name"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &repos); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if len(repos) != 1 || repos[0].FullName != "dutifuldev/gh-broker" {
+		t.Fatalf("repos = %+v, want only policy-allowed repo", repos)
+	}
+}
+
+func TestListReposUsesInstallationEndpointForInstallationToken(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"repositories":[
+			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}
+		]}`))
+	})
+	server.githubToken = "ghs_installation_token"
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/installation/repositories" {
+		t.Fatalf("upstream path = %q, want installation repositories endpoint", gotPath)
+	}
+}
+
+func TestListReposFallsBackBetweenUserAndInstallationEndpoints(t *testing.T) {
+	t.Parallel()
+	var gotPaths []string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		if r.URL.Path == "/user/repos" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"repositories":[
+			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}
+		]}`))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if strings.Join(gotPaths, ",") != "/user/repos,/installation/repositories" {
+		t.Fatalf("upstream paths = %v, want user then installation fallback", gotPaths)
+	}
+}
+
+func TestListReposDropsStaleContentLength(t *testing.T) {
+	t.Parallel()
+	upstreamBody := `[
+		{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}},
+		{"name":"repo","full_name":"outside/repo","owner":{"login":"outside"}}
+	]`
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(upstreamBody)))
+		w.Header().Set("Link", `<https://api.github.com/user/repos?page=2>; rel="next"`)
+		_, _ = w.Write([]byte(upstreamBody))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Content-Length") == strconv.Itoa(len(upstreamBody)) {
+		t.Fatalf("Content-Length copied from unfiltered upstream response")
+	}
+	if values := response.Header().Values("Link"); len(values) > 0 {
+		t.Fatalf("Link copied from unfiltered upstream response: %v", values)
+	}
+	var repos []struct {
+		FullName string `json:"full_name"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &repos); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if len(repos) != 1 || repos[0].FullName != "dutifuldev/gh-broker" {
+		t.Fatalf("repos = %+v, want filtered response body", repos)
+	}
+}
+
+func TestListReposDropsCredentialMetadataHeaders(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		setCredentialMetadataHeaders(w.Header())
+		w.Header().Set("X-RateLimit-Remaining", "42")
+		_, _ = w.Write([]byte(`[
+			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}
+		]`))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	assertCredentialMetadataHeadersDropped(t, response.Header())
+	if got := response.Header().Get("X-RateLimit-Remaining"); got != "42" {
+		t.Fatalf("X-RateLimit-Remaining = %q, want forwarded rate-limit header", got)
+	}
+}
+
+func TestListReposSupportsInstallationPayload(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"repositories":[
+			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}},
+			{"full_name":"outside/repo"}
+		]}`))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos?per_page=500&page=2", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Repositories []struct {
+			FullName string `json:"full_name"`
+		} `json:"repositories"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if len(payload.Repositories) != 1 || payload.Repositories[0].FullName != "dutifuldev/gh-broker" {
+		t.Fatalf("payload = %+v, want filtered installation repositories", payload)
+	}
+}
+
+func TestListReposForwardsUpstreamError(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		setCredentialMetadataHeaders(w.Header())
+		w.Header().Set("X-RateLimit-Remaining", "42")
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("upstream error"))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusTeapot || !strings.Contains(response.Body.String(), "upstream error") {
+		t.Fatalf("status/body = %d %q, want upstream error", response.Code, response.Body.String())
+	}
+	assertCredentialMetadataHeadersDropped(t, response.Header())
+	if got := response.Header().Get("X-RateLimit-Remaining"); got != "42" {
+		t.Fatalf("X-RateLimit-Remaining = %q, want forwarded rate-limit header", got)
+	}
+}
+
+func TestListReposRejectsInvalidUpstreamJSON(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"unexpected":true}`))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestReadContentsRootUsesContentsEndpoint(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	})
+	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/repos/dutifuldev/gh-broker/contents" {
+		t.Fatalf("upstream path = %q, want root contents path", gotPath)
+	}
+}
+
+func TestReadContentsRouteUsesGitHubContentsPath(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	var gotQuery string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"name":"README.md"}`))
+	})
+	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/docs/README.md?ref=main", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/repos/dutifuldev/gh-broker/contents/docs/README.md" {
+		t.Fatalf("upstream path = %q, want contents path", gotPath)
+	}
+	if gotQuery != "ref=main" {
+		t.Fatalf("upstream query = %q, want ref=main", gotQuery)
+	}
+}
+
+func TestReadContentsDoesNotFollowGitHubRedirects(t *testing.T) {
+	t.Parallel()
+	var paths []string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/repos/dutifuldev/gh-broker/contents/README.md" {
+			http.Redirect(w, r, "/repos/outside/private/contents/README.md", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md", bearerAuth())
+	if response.Code != http.StatusFound {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if strings.Join(paths, ",") != "/repos/dutifuldev/gh-broker/contents/README.md" {
+		t.Fatalf("upstream paths = %v, want only original policy-checked contents request", paths)
+	}
+}
+
+func TestReadContentsAllowsLiteralPercentPath(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	})
+	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/100%25.md", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/repos/dutifuldev/gh-broker/contents/100%.md" {
+		t.Fatalf("upstream path = %q, want literal percent path", gotPath)
+	}
+}
+
+func TestReadContentsRejectsDotSegments(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
+	})
+	for _, path := range []string{
+		"/api/repos/dutifuldev/gh-broker/contents/../issues",
+		"/api/repos/dutifuldev/gh-broker/contents/docs/%2e%2e/issues",
+		"/api/repos/dutifuldev/gh-broker/contents/docs/./README.md",
+		"/api/repos/dutifuldev/gh-broker/contents/docs%2Fsecret",
+		"/api/repos/dutifuldev/gh-broker/contents/docs%2F..%2Fissues",
+	} {
+		response := do(t, server, http.MethodGet, path, bearerAuth())
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, body = %s", path, response.Code, response.Body.String())
+		}
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestRepoRoutesRejectUnsafeRouteSegments(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
+	})
+	for _, path := range []string{
+		"/api/repos/dutifuldev/%2e%2e/contents/README.md",
+		"/api/repos/dutifuldev/foo%2Fbar/contents/README.md",
+		"/api/repos/%2e%2e/gh-broker/contents/README.md",
+		"/dutifuldev/foo%2Fbar.git/info/refs?service=git-upload-pack",
+		"/dutifuldev/../info/refs?service=git-upload-pack",
+	} {
+		response := do(t, server, http.MethodGet, path, bearerAuth())
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, body = %s", path, response.Code, response.Body.String())
+		}
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
+	}
+}
+
+func TestReadContentsRefUsesPolicy(t *testing.T) {
+	t.Parallel()
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
+		{
+			ID:         "bob-main-contents",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationContentsRead},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"paths": {"*"}, "refs": {"main"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("policy.New() error = %v", err)
+	}
+	var upstreamCalls int
+	server := newTestServerWithPolicyAndHandler(t, brokerPolicy, func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
+	})
+	allowed := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md?ref=main", bearerAuth())
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("allowed status = %d, body = %s", allowed.Code, allowed.Body.String())
+	}
+	denied := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md?ref=private-branch", bearerAuth())
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("denied status = %d, body = %s", denied.Code, denied.Body.String())
+	}
+	if upstreamCalls != 1 {
+		t.Fatalf("upstream calls = %d, want only the allowed contents read", upstreamCalls)
 	}
 }
 
@@ -343,8 +922,8 @@ func TestAuditLogDoesNotExposeClientSecretsOrBodies(t *testing.T) {
 		},
 		rawBody,
 	)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 	logText := logs.String()
 	for _, forbidden := range []string{testSharedSecret, "do-not-log-cookie", string(rawBody)} {
@@ -352,21 +931,71 @@ func TestAuditLogDoesNotExposeClientSecretsOrBodies(t *testing.T) {
 			t.Fatalf("audit log exposed %q: %s", forbidden, logText)
 		}
 	}
-	for _, expected := range []string{`"operation":"git_receive_pack"`, `"outcome":"denied"`, `"owner":"outside"`, `"repo":"repo"`} {
+}
+
+func TestAuditLogRecordsPolicyDenialWithoutSecrets(t *testing.T) {
+	t.Parallel()
+	var logs bytes.Buffer
+	server := newTestServer(t)
+	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/outside/repo.git/git-receive-pack",
+		bearerAuth(),
+		receivePackCreate("refs/heads/bob/work"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	logText := logs.String()
+	for _, expected := range []string{`"operation":"git.push.branch_create"`, `"outcome":"denied"`, `"client":"bob"`, `"owner":"outside"`, `"repo":"repo"`} {
 		if !strings.Contains(logText, expected) {
 			t.Fatalf("audit log missing %s: %s", expected, logText)
 		}
+	}
+	if strings.Contains(logText, testSharedSecret) {
+		t.Fatalf("audit log exposed shared secret: %s", logText)
+	}
+}
+
+func TestAuditLogRecordsActualReceivePackOperation(t *testing.T) {
+	t.Parallel()
+	var logs bytes.Buffer
+	server := newTestServer(t)
+	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gh-broker.git/git-receive-pack",
+		bearerAuth(),
+		receivePackCreate("refs/heads/bob/work"),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	logText := logs.String()
+	for _, expected := range []string{`"operation":"git.push.branch_create"`, `"outcome":"proxied"`, `"matched_rules":["bob-push-branches"]`} {
+		if !strings.Contains(logText, expected) {
+			t.Fatalf("audit log missing %s: %s", expected, logText)
+		}
+	}
+	if strings.Contains(logText, `"operation":"git.push.fast_forward"`) {
+		t.Fatalf("audit log used wrong operation: %s", logText)
 	}
 }
 
 func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 	t.Parallel()
 	server, err := New(config.Config{
+		ClientID:            "bob",
 		SharedSecret:        testSharedSecret,
 		GitHubToken:         testGitHubToken,
 		GitHubHTTPTimeout:   7 * time.Second,
 		MaxReceivePackBytes: 99,
-	}, testGitHubAccess())
+	}, testBrokerPolicy(t))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -378,38 +1007,6 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 	}
 }
 
-func TestPullRequestRouteUsesGitHubShape(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusCreated)
-	})
-	response := do(t, server, http.MethodPost, "/repos/dutifuldev/gitcba/pulls", bearerAuth())
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if gotPath != "/repos/dutifuldev/gitcba/pulls" {
-		t.Fatalf("upstream path = %q, want GitHub pulls path", gotPath)
-	}
-}
-
-func TestPullRequestPolicyDenialDoesNotCallUpstream(t *testing.T) {
-	t.Parallel()
-	var upstreamCalls int
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		upstreamCalls++
-		w.WriteHeader(http.StatusCreated)
-	})
-	response := do(t, server, http.MethodPost, "/repos/outside/repo/pulls", bearerAuth())
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
-	}
-	if upstreamCalls != 0 {
-		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
-	}
-}
-
 func TestGitProxyUsesServerSideCredential(t *testing.T) {
 	t.Parallel()
 	var gotAuthorization string
@@ -417,7 +1014,7 @@ func TestGitProxyUsesServerSideCredential(t *testing.T) {
 		gotAuthorization = r.Header.Get("Authorization")
 		w.WriteHeader(http.StatusOK)
 	})
-	response := do(t, server, http.MethodGet, "/dutifuldev/gitcba.git/info/refs?service=git-upload-pack", bearerAuth())
+	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -439,7 +1036,7 @@ func TestProxyDoesNotForwardClientCredentialHeaders(t *testing.T) {
 		t,
 		server,
 		http.MethodGet,
-		"/dutifuldev/gitcba.git/info/refs?service=git-upload-pack",
+		"/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack",
 		map[string]string{
 			"Authorization": bearerAuth(),
 			"Cookie":        "session=client-secret",
@@ -463,6 +1060,7 @@ func TestProxyDropsHopByHopHeaders(t *testing.T) {
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		gotConnection = r.Header.Get("Connection")
 		w.Header().Set("Connection", "close")
+		setCredentialMetadataHeaders(w.Header())
 		w.Header().Set("X-Test-Upstream", "kept")
 		w.WriteHeader(http.StatusOK)
 	})
@@ -470,7 +1068,7 @@ func TestProxyDropsHopByHopHeaders(t *testing.T) {
 		t,
 		server,
 		http.MethodGet,
-		"/dutifuldev/gitcba.git/info/refs?service=git-upload-pack",
+		"/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack",
 		map[string]string{
 			"Authorization": bearerAuth(),
 			"Connection":    "keep-alive",
@@ -486,6 +1084,7 @@ func TestProxyDropsHopByHopHeaders(t *testing.T) {
 	if response.Header().Get("Connection") != "" {
 		t.Fatalf("response connection header = %q, want stripped", response.Header().Get("Connection"))
 	}
+	assertCredentialMetadataHeadersDropped(t, response.Header())
 	if response.Header().Get("X-Test-Upstream") != "kept" {
 		t.Fatalf("response header missing non-hop upstream header")
 	}
@@ -494,7 +1093,7 @@ func TestProxyDropsHopByHopHeaders(t *testing.T) {
 func TestUnsupportedGitServiceIsRejected(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	response := do(t, server, http.MethodGet, "/dutifuldev/gitcba.git/info/refs?service=bad-service", bearerAuth())
+	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=bad-service", bearerAuth())
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
@@ -520,33 +1119,28 @@ func TestNoGitHubAccessEndpoint(t *testing.T) {
 	}
 }
 
-func TestReceivePackUpdatedRefsParsesMultipleBranchRefs(t *testing.T) {
+func TestReceivePackCommandsFromBodyParsesMultipleRefs(t *testing.T) {
 	t.Parallel()
-	refs, err := receivePackUpdatedRefs(receivePackCommands(
-		commandLine(zeroOID(), "1111111111111111111111111111111111111111", "refs/heads/a"),
-		commandLine(zeroOID(), "2222222222222222222222222222222222222222", "refs/tags/v1"),
-		commandLine(zeroOID(), "3333333333333333333333333333333333333333", "refs/heads/b"),
+	commands, err := receivePackCommandsFromBody(receivePackCommands(
+		commandLine(zeroOID(), oid("1"), "refs/heads/a"),
+		commandLine(zeroOID(), oid("2"), "refs/tags/v1"),
+		commandLine(oid("3"), zeroOID(), "refs/heads/b"),
 	))
 	if err != nil {
-		t.Fatalf("receivePackUpdatedRefs() error = %v", err)
+		t.Fatalf("receivePackCommandsFromBody() error = %v", err)
 	}
-	if strings.Join(refs, ",") != "refs/heads/a,refs/heads/b" {
-		t.Fatalf("refs = %v, want branch refs only", refs)
+	var refs []string
+	for _, command := range commands {
+		refs = append(refs, command.Ref)
+	}
+	if strings.Join(refs, ",") != "refs/heads/a,refs/tags/v1,refs/heads/b" {
+		t.Fatalf("refs = %v, want all refs", refs)
 	}
 }
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return newTestServerWithDefaultBranch(t, "main")
-}
-
-func newTestServerWithDefaultBranch(t *testing.T, defaultBranch string) *Server {
-	t.Helper()
-	return newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/repos/dutifuldev/gitcba" || r.URL.Path == "/repos/openclaw/openclaw" {
-			_, _ = w.Write([]byte(`{"default_branch":"` + defaultBranch + `"}`))
-			return
-		}
+	return newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("proxied"))
 	})
@@ -554,12 +1148,18 @@ func newTestServerWithDefaultBranch(t *testing.T, defaultBranch string) *Server 
 
 func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 	t.Helper()
+	return newTestServerWithPolicyAndHandler(t, testBrokerPolicy(t), handler)
+}
+
+func newTestServerWithPolicyAndHandler(t *testing.T, brokerPolicy *policy.Policy, handler http.HandlerFunc) *Server {
+	t.Helper()
 	upstream := httptest.NewServer(handler)
 	t.Cleanup(upstream.Close)
 	server, err := New(config.Config{
+		ClientID:     "bob",
 		SharedSecret: testSharedSecret,
 		GitHubToken:  testGitHubToken,
-	}, testGitHubAccess())
+	}, brokerPolicy)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -568,18 +1168,90 @@ func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	server.githubClient = upstream.Client()
+	server.githubClient.CheckRedirect = stopGitHubRedirect
 	server.githubGitBaseURL = upstreamURL
 	server.githubAPIBaseURL = upstreamURL
 	return server
 }
 
-func testGitHubAccess() githubaccess.Config {
-	return githubaccess.Config{
-		Owners: []string{"dutifuldev", "osolmaz"},
-		Repositories: []githubaccess.RepositoryRef{
-			{Owner: "openclaw", Name: "openclaw"},
+func testBrokerPolicy(t *testing.T) *policy.Policy {
+	t.Helper()
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
+		{
+			ID:         "deny-dangerous",
+			Effect:     policy.EffectDeny,
+			Clients:    []string{"*"},
+			Operations: []policy.Operation{policy.OperationGitPushForce, policy.OperationGitRefDelete},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
+		{
+			ID:         "bob-repo-read",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitFetch, policy.OperationRepoMetadataRead},
+			Targets: []policy.Target{
+				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
+				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
+			},
+		},
+		{
+			ID:         "bob-contents-read",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationContentsRead},
+			Targets: []policy.Target{
+				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
+				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
+			},
+			Attrs: map[string][]string{"paths": {"*", "docs/*"}},
+		},
+		{
+			ID:         "bob-list-repos",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationInstallationReposList},
+			Targets:    []policy.Target{{Kind: "installation"}},
+		},
+		{
+			ID:         "bob-push-advertise",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitPushAdvertise},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+		},
+		{
+			ID:         "bob-push-branches",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitPushBranchCreate, policy.OperationGitPushForce},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/bob/*", "refs/heads/agent/*"}},
+		},
+		{
+			ID:         "bob-pr-create",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationPullRequestCreate},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Attrs: map[string][]string{
+				"refs":      {"refs/heads/bob/*", "refs/heads/agent/*"},
+				"base_refs": {"refs/heads/main"},
+			},
+		},
+		{
+			ID:         "direct-main",
+			Effect:     policy.EffectAllow,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitPushForce},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "direct-main"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("policy.New() error = %v", err)
 	}
+	return brokerPolicy
 }
 
 func do(t *testing.T, server *Server, method string, path string, authorization string) *httptest.ResponseRecorder {
@@ -621,20 +1293,46 @@ func doWithHeaders(
 	return response
 }
 
+func setCredentialMetadataHeaders(header http.Header) {
+	header.Set("Authentication-Info", "token-meta")
+	header.Set("GitHub-Authentication-Token-Expiration", "2026-07-08T00:00:00Z")
+	header.Add("Set-Cookie", "server-side-session=secret")
+	header.Add("Set-Cookie2", "server-side-legacy=secret")
+	header.Set("WWW-Authenticate", "Bearer")
+	header.Set("X-Accepted-OAuth-Scopes", "repo")
+	header.Set("X-GitHub-Authentication-Token-Expiration", "2026-07-08T00:00:00Z")
+	header.Set("X-GitHub-SSO", "required")
+	header.Set("X-OAuth-Scopes", "repo, workflow")
+}
+
+func assertCredentialMetadataHeadersDropped(t *testing.T, header http.Header) {
+	t.Helper()
+	for _, name := range []string{
+		"Authentication-Info",
+		"GitHub-Authentication-Token-Expiration",
+		"Set-Cookie",
+		"Set-Cookie2",
+		"WWW-Authenticate",
+		"X-Accepted-OAuth-Scopes",
+		"X-GitHub-Authentication-Token-Expiration",
+		"X-GitHub-SSO",
+		"X-OAuth-Scopes",
+	} {
+		if values := header.Values(name); len(values) > 0 {
+			t.Fatalf("%s forwarded credential metadata values %v", name, values)
+		}
+	}
+}
+
 func bearerAuth() string {
 	return "Bearer " + testSharedSecret
 }
 
-func basicAuth() string {
-	encoded := base64.StdEncoding.EncodeToString([]byte("git:" + testSharedSecret))
-	return "Basic " + encoded
+func receivePackCreate(ref string) []byte {
+	return receivePackPayload(zeroOID(), oid("1"), ref)
 }
 
-func receivePackBody(ref string) []byte {
-	return receivePackCommand(zeroOID(), "1111111111111111111111111111111111111111", ref)
-}
-
-func receivePackCommand(oldOID string, newOID string, ref string) []byte {
+func receivePackPayload(oldOID string, newOID string, ref string) []byte {
 	return receivePackCommands(commandLine(oldOID, newOID, ref))
 }
 
@@ -655,6 +1353,10 @@ func commandLine(oldOID string, newOID string, ref string) string {
 
 func pktLine(line string) []byte {
 	return []byte(fmt.Sprintf("%04x%s", len(line)+4, line))
+}
+
+func oid(char string) string {
+	return strings.Repeat(char, 40)
 }
 
 func zeroOID() string {

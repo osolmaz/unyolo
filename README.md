@@ -1,33 +1,32 @@
-# GitCBA
+# gh-broker
 
-GitCBA is a small Git-compatible credential broker for agents. It is intended to run on a private Tailnet and broker a very limited set of GitHub operations without exposing the underlying GitHub credential to clients.
+gh-broker is a small GitHub credential broker for coding agents. It gives an agent a broker secret, keeps the real GitHub credential server-side, and allows only the Git and GitHub API operations matched by `scope.json`.
 
-The central invariant is strict: GitCBA must not provide any API or internal service method that retrieves original credential material.
+The central invariant is strict: gh-broker must not provide an API, log path, error path, or helper that returns original GitHub credential material.
 
-## Current Seed
+## Current Shape
 
 - Echo HTTP server
-- Shared-secret authentication for all broker endpoints
-- Git smart HTTP route shape
-- GitHub REST-compatible pull request route shape
-- Server-side GitHub token forwarding
+- Shared-secret authentication for one configured client id
+- Rule-based `scope.json` policy engine
+- Git smart HTTP fetch and push route shape
+- Narrow GitHub API routes for repository listing, content reads, and pull request creation
+- Server-side GitHub token forwarding as a development credential path
 - Localhost bind by default for Tailnet-oriented deployment
 - Conservative receive-pack size cap and upstream GitHub timeouts
-- Structured audit logs without secrets
-- GitHub access loaded from a manually edited JSON file
+- Structured audit logs without secrets, request bodies, diffs, or pack contents
 - No credential API
-- No GitHub access config API
-- Tests for auth, route shape, and access decisions
-- Slophammer-oriented quality gates
+- No policy read/write API
+- Tests for auth, route shape, policy decisions, and receive-pack classification
 
 ## Local Development
 
 ```sh
 cp .env.example .env
-cp github-access.example.json github-access.json
-# edit CBA_SHARED_SECRET to a generated value with at least 32 bytes
-# set CBA_GITHUB_TOKEN to a GitHub token with the repo access GitCBA should broker
-# edit github-access.json by hand
+cp scope.example.json scope.json
+# edit GH_BROKER_SHARED_SECRET to a generated value with at least 32 bytes
+# set GH_BROKER_GITHUB_TOKEN to a GitHub token with the repo access gh-broker should broker
+# edit scope.json by hand
 source .env
 make check
 make run
@@ -39,67 +38,97 @@ Health check:
 curl http://localhost:8080/healthz
 ```
 
-GitCBA accepts either Bearer auth:
+Fetch through the broker:
 
 ```sh
-curl -H "Authorization: Bearer $CBA_SHARED_SECRET" \
-  "http://localhost:8080/dutifuldev/gitcba.git/info/refs?service=git-upload-pack"
+git -c http.extraHeader="Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
+  ls-remote http://localhost:8080/osolmaz/gh-broker.git
 ```
 
-Or Git-friendly Basic auth where the password is `CBA_SHARED_SECRET`:
+List policy-visible repositories:
 
 ```sh
-git -c http.extraHeader="Authorization: Bearer $CBA_SHARED_SECRET" \
-  ls-remote http://localhost:8080/dutifuldev/gitcba.git
+curl -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
+  http://localhost:8080/api/repos
 ```
 
-The broker routes enforce auth and access policy before forwarding to GitHub with the server-side `CBA_GITHUB_TOKEN`.
+Read repository contents:
 
-## GitHub Access
+```sh
+curl -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
+  http://localhost:8080/api/repos/osolmaz/gh-broker/contents/README.md?ref=main
+```
 
-Configure which GitHub owners or repositories are in scope by manually editing `github-access.json`. There is no API endpoint for changing or reading this file.
+Open a pull request:
+
+```sh
+curl -X POST -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."}' \
+  http://localhost:8080/api/repos/osolmaz/gh-broker/pulls
+```
+
+## Policy
+
+`scope.json` is the authorization source of truth. A request is classified into:
+
+```text
+client + operation + target + attrs -> allow | request | deny | no_match
+```
+
+Deny rules win over allow rules. A rule matches only when the same rule matches the client, operation, target, and operation-relevant attributes. If a rule has attrs, every operation in that rule must support every attr; split rules when operations need different attrs.
+
+The default production-oriented workflow is:
+
+- allow fetch, repository listing, and content reads for scoped repositories
+- allow agents to push feature branches such as `refs/heads/bob/*`
+- allow agents to open pull requests into `refs/heads/main`
+- deny ref deletion and unsupported ref updates before forwarding
+- deny default-branch pushes unless a repository has an explicit direct-main allow rule
+- classify existing branch updates as `git.push.force` unless the broker can prove fast-forward
+- rely on GitHub rulesets or branch protections as the upstream enforcement layer after GitHub receives the pack
+
+Example direct-main exception:
 
 ```json
 {
-  "owners": ["dutifuldev", "osolmaz"],
-  "repositories": [{"owner": "openclaw", "name": "openclaw"}]
+  "id": "direct-main-example",
+  "effect": "allow",
+  "clients": ["bob"],
+  "operations": ["git.push.force"],
+  "targets": [{"kind": "repo", "owner": "osolmaz", "name": "direct-main"}],
+  "attrs": {"refs": ["refs/heads/main"]}
 }
 ```
-
-Hardcoded operation rules for now:
-
-- `git-upload-pack` is allowed only for configured owners or repositories.
-- `git-receive-pack` is allowed only when the target account is in scope.
-- `git-receive-pack` rejects updates to `refs/heads/main` and to the repository's default branch.
-- `POST /repos/{owner}/{repo}/pulls` is allowed only for configured owners or repositories.
-- A target account is in scope when it is listed in `owners`, or when it owns the explicitly configured repository being operated on.
 
 ## Broker Routes
 
 ```text
 GET  /healthz
 
+GET  /api/repos
+GET  /api/repos/{owner}/{repo}/contents/{path}
+POST /api/repos/{owner}/{repo}/pulls
+
 GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
 POST /{owner}/{repo}.git/git-upload-pack
 
 GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
 POST /{owner}/{repo}.git/git-receive-pack
-
-POST /repos/{owner}/{repo}/pulls
 ```
 
-There are intentionally no credential endpoints.
+The long-term route shape is `/api/*` for JSON APIs and Git smart-HTTP routes for Git. Compatibility aliases are not part of the production plan.
 
 ## Security Model
 
-GitCBA should run behind Tailnet-only reachability, but Tailnet access is not treated as authorization. Clients must still submit the configured shared secret on every broker request.
+gh-broker should run behind Tailnet-only reachability, but Tailnet access is not authorization. Every broker endpoint still requires the configured shared secret.
 
-The server-side GitHub credential is configured manually with `CBA_GITHUB_TOKEN` and is used only by narrow Git/GitHub adapters. Clients must never receive raw credentials, decrypted credentials, reversible encrypted credential blobs, token metadata, or credential identifiers.
+The server-side GitHub credential is configured manually with `GH_BROKER_GITHUB_TOKEN` or `GH_BROKER_GITHUB_TOKEN_FILE`. This is a development fallback. Production should use GitHub App installation tokens as described in `docs/PRODUCTION_ARCHITECTURE.md`.
 
 Deployment safety defaults:
 
-- `CBA_BIND_ADDR` defaults to `127.0.0.1`; expose it through Tailscale or a local-only proxy.
-- `CBA_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
-- `CBA_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
-- Audit logs record operation, owner, repo, method, path, outcome, and status. They do not log tokens, cookies, request bodies, or pack contents.
-- Use a fine-grained GitHub token limited to the selected owners/repositories and only the permissions needed for Git push/fetch and pull request creation.
+- `GH_BROKER_BIND_ADDR` defaults to `127.0.0.1`.
+- `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
+- `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
+- Audit logs record client, operation, owner, repo, method, path, outcome, status, reason, and matched rule ids.
+- Audit logs do not include tokens, cookies, request bodies, PR bodies, pack contents, diffs, or raw upstream bodies.
