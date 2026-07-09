@@ -171,7 +171,10 @@ hidden beside an allowed one. An empty list never matches. The provider
 registry declares how each target field and attr is interpreted:
 
 - `glob` uses segment-safe glob matching; `*` does not cross `/`
+- `any_glob` uses the same syntax but accepts a list when any value matches
 - `path_glob` additionally accepts a complete `**` path segment
+- `path_outside_prefix` accepts concrete paths only when they remain outside
+  every configured relative prefix
 - `integer_maximum` treats policy values as inclusive non-negative integer
   ceilings
 

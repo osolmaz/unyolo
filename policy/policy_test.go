@@ -246,6 +246,34 @@ func TestDenyMatchesAnyForbiddenValueInBatch(t *testing.T) {
 	}
 }
 
+func TestProviderDeclaredSetMatcherSemantics(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{"write": {TargetKinds: []string{"object"}}},
+		Targets: map[string]TargetSpec{"object": {Fields: map[string]FieldSpec{
+			"name":        {Required: true},
+			"visibility":  {Match: MatchAnyGlob},
+			"mutable_key": {Match: MatchPathOutsidePrefix},
+		}}},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[{
+		"id":"mutable-public","effect":"allow","clients":["bob"],"operations":["write"],
+		"targets":[{"kind":"object","name":"one","visibility":"public","mutable_key":"snapshots"}]
+	}]}`, registry)
+	request := Request{
+		Client: "bob", Operation: "write",
+		Target: Target{Kind: "object", Fields: map[string][]string{
+			"name": {"one"}, "visibility": {"private", "public"}, "mutable_key": {"runs/out.json"},
+		}},
+	}
+	if decision := policy.Decide(request, DecisionOptions{}); !decision.Allowed {
+		t.Fatalf("set matcher decision = %+v, want allowed", decision)
+	}
+	request.Target.Fields["mutable_key"] = []string{"snapshots/model.bin"}
+	if decision := policy.Decide(request, DecisionOptions{}); decision.Allowed {
+		t.Fatalf("protected prefix decision = %+v, want refused", decision)
+	}
+}
+
 func TestProviderMatcherValidation(t *testing.T) {
 	registry := Registry{
 		Operations: map[string]OperationSpec{
@@ -288,6 +316,31 @@ func TestPathGlobValidationBounds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := validatePathGlob(tc.pattern); err == nil {
 				t.Fatal("validatePathGlob() error = nil, want size limit error")
+			}
+		})
+	}
+}
+
+func TestPathPrefixValidation(t *testing.T) {
+	cases := []struct {
+		name    string
+		prefix  string
+		wantErr bool
+	}{
+		{name: "relative", prefix: "snapshots/models"},
+		{name: "trailing slash", prefix: "snapshots/"},
+		{name: "absolute", prefix: "/snapshots", wantErr: true},
+		{name: "glob", prefix: "snap*", wantErr: true},
+		{name: "oversized", prefix: strings.Repeat("a", maxPathPatternBytes+1), wantErr: true},
+		{name: "too many segments", prefix: strings.Repeat("a/", maxPathSegments) + "a", wantErr: true},
+		{name: "empty segment", prefix: "snapshots//models", wantErr: true},
+		{name: "parent segment", prefix: "snapshots/../models", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePathPrefix(tc.prefix)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validatePathPrefix(%q) error = %v, wantErr %t", tc.prefix, err, tc.wantErr)
 			}
 		})
 	}

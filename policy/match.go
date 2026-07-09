@@ -74,6 +74,9 @@ func allValuesMatch(mode MatchMode, patterns []string, values []string) bool {
 	if len(values) == 0 {
 		return false
 	}
+	if defaultedMatchMode(mode) == MatchAnyGlob {
+		return anyValueMatches(mode, patterns, values)
+	}
 	for _, value := range values {
 		if !valuesMatch(mode, patterns, value) {
 			return false
@@ -84,15 +87,27 @@ func allValuesMatch(mode MatchMode, patterns []string, values []string) bool {
 
 func valuesMatch(mode MatchMode, patterns []string, value string) bool {
 	switch defaultedMatchMode(mode) {
-	case MatchGlob:
+	case MatchGlob, MatchAnyGlob:
 		return patternsMatch(patterns, value)
 	case MatchPathGlob:
 		return pathPatternsMatch(patterns, value)
+	case MatchPathOutsidePrefix:
+		return pathOutsidePrefixes(patterns, value)
 	case MatchIntegerMaximum:
 		return integerMaximumMatches(patterns, value)
 	default:
 		return false
 	}
+}
+
+func pathOutsidePrefixes(prefixes []string, value string) bool {
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSuffix(prefix, "/")
+		if value == prefix || strings.HasPrefix(value, prefix+"/") {
+			return false
+		}
+	}
+	return true
 }
 
 func attrRelevantToOperation(registry Registry, name string, operation string) bool {

@@ -439,10 +439,12 @@ func normalizePatternsWithoutValidation(values []string, field string) ([]string
 
 func validateMatchValue(value string, mode MatchMode) error {
 	switch mode {
-	case MatchGlob:
+	case MatchGlob, MatchAnyGlob:
 		return validateGlob(value)
 	case MatchPathGlob:
 		return validatePathGlob(value)
+	case MatchPathOutsidePrefix:
+		return validatePathPrefix(value)
 	case MatchIntegerMaximum:
 		number, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -455,6 +457,28 @@ func validateMatchValue(value string, mode MatchMode) error {
 	default:
 		return fmt.Errorf("unsupported match mode %q", mode)
 	}
+}
+
+func validatePathPrefix(prefix string) error {
+	if strings.HasPrefix(prefix, "/") {
+		return errors.New("must be relative")
+	}
+	if strings.ContainsAny(prefix, `*?[\`) {
+		return errors.New("must be a literal prefix")
+	}
+	if len(prefix) > maxPathPatternBytes {
+		return fmt.Errorf("must not exceed %d bytes", maxPathPatternBytes)
+	}
+	segments := strings.Split(strings.TrimSuffix(prefix, "/"), "/")
+	if len(segments) > maxPathSegments {
+		return fmt.Errorf("must not exceed %d segments", maxPathSegments)
+	}
+	for _, segment := range segments {
+		if segment == "" || segment == ".." {
+			return errors.New("must contain non-empty relative segments")
+		}
+	}
+	return nil
 }
 
 func validatePathGlob(pattern string) error {

@@ -14,8 +14,12 @@ type MatchMode string
 const (
 	// MatchGlob applies path.Match semantics. Wildcards do not cross '/'.
 	MatchGlob MatchMode = "glob"
+	// MatchAnyGlob accepts a value set when any concrete value matches.
+	MatchAnyGlob MatchMode = "any_glob"
 	// MatchPathGlob additionally permits a complete "**" path segment.
 	MatchPathGlob MatchMode = "path_glob"
+	// MatchPathOutsidePrefix accepts paths outside every configured prefix.
+	MatchPathOutsidePrefix MatchMode = "path_outside_prefix"
 	// MatchIntegerMaximum treats policy values as inclusive integer ceilings.
 	MatchIntegerMaximum MatchMode = "integer_maximum"
 )
@@ -155,7 +159,8 @@ func defaultedMatchMode(mode MatchMode) MatchMode {
 }
 
 func validMatchMode(mode MatchMode) bool {
-	return mode == MatchGlob || mode == MatchPathGlob || mode == MatchIntegerMaximum
+	return mode == MatchGlob || mode == MatchAnyGlob || mode == MatchPathGlob ||
+		mode == MatchPathOutsidePrefix || mode == MatchIntegerMaximum
 }
 
 func defaultedGrantMode(mode GrantMode) GrantMode {
@@ -238,9 +243,9 @@ func validateRequestValue(value string, mode MatchMode) error {
 		return errors.New("value must not be empty")
 	}
 	switch defaultedMatchMode(mode) {
-	case MatchGlob:
+	case MatchGlob, MatchAnyGlob:
 		return nil
-	case MatchPathGlob:
+	case MatchPathGlob, MatchPathOutsidePrefix:
 		return validatePathRequestValue(value)
 	case MatchIntegerMaximum:
 		return validateIntegerRequestValue(value)
