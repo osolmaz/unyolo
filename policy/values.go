@@ -19,3 +19,8 @@ func FirstValue(values []string) string {
 	}
 	return values[0]
 }
+
+// MatchAll reports whether every concrete value satisfies a matcher.
+func MatchAll(mode MatchMode, patterns []string, values []string) bool {
+	return allValuesMatch(mode, patterns, values)
+}

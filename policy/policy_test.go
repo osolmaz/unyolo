@@ -508,6 +508,29 @@ func TestProviderDeclaredGrantModeValidation(t *testing.T) {
 	}
 }
 
+func TestProviderAllowsExplicitNonDefaultGrantMode(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"write": {
+				TargetKinds: []string{"object"}, Grantable: true,
+				GrantModes: []GrantMode{GrantModeWindow, GrantModeExecution},
+			},
+		},
+		Targets: map[string]TargetSpec{"object": {Fields: map[string]FieldSpec{"name": {Required: true}}}},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[{
+		"id":"execute-write","effect":"request","clients":["bob"],"operations":["write"],
+		"targets":[{"kind":"object","name":"one"}],"grant_policy":{"mode":"execution"}
+	}]}`, registry)
+	decision := policy.Decide(Request{
+		Client: "bob", Operation: "write",
+		Target: Target{Kind: "object", Fields: map[string][]string{"name": {"one"}}},
+	}, DecisionOptions{ForGrantRequest: true})
+	if decision.GrantPolicy == nil || decision.GrantPolicy.Mode != "execution" {
+		t.Fatalf("explicit execution decision = %+v", decision)
+	}
+}
+
 func TestGrantOverlayDistinguishesEmptyAttrKeys(t *testing.T) {
 	policy := mustParse(t, `{"rules":[{
 		"id":"request-push",
@@ -762,9 +785,17 @@ func TestParseAllowsDisjointGlobRequestGrantPolicies(t *testing.T) {
 }
 
 func TestParseRejectsInvalidRulesAndRequests(t *testing.T) {
-	_, err := Parse([]byte(`{"rules":[]}`), testRegistry())
-	if err == nil || !strings.Contains(err.Error(), "rules must not be empty") {
-		t.Fatalf("Parse(empty rules) error = %v, want empty rules error", err)
+	empty, err := Parse([]byte(`{"rules":[]}`), testRegistry())
+	if err != nil {
+		t.Fatalf("Parse(empty rules) error = %v", err)
+	}
+	emptyDecision := empty.Decide(repoReq("bob", "git.fetch", "demo", ""), DecisionOptions{})
+	if emptyDecision.Allowed || emptyDecision.Reason != "no_matching_rule" {
+		t.Fatalf("empty policy decision = %+v", emptyDecision)
+	}
+	_, err = Parse([]byte(`{}`), testRegistry())
+	if err == nil || !strings.Contains(err.Error(), "rules is required") {
+		t.Fatalf("Parse(missing rules) error = %v", err)
 	}
 	_, err = Parse([]byte(`{"rules":[{
 		"id":"",
@@ -854,6 +885,9 @@ func TestRegistryValidationErrors(t *testing.T) {
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, Attrs: []string{"missing"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, GrantMode: GrantModeExecution}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, GrantModes: []GrantMode{GrantModeWindow}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, Grantable: true, GrantModes: []GrantMode{"bad"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
+		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}, Grantable: true, GrantMode: GrantModeExecution, GrantModes: []GrantMode{GrantModeWindow}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {Match: MatchMode("bad")}}}}},
 		{Operations: map[string]OperationSpec{"op": {TargetKinds: []string{"repo"}}}, Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"name": {}}}}, Attrs: map[string]AttrSpec{"bad": {Match: MatchMode("bad")}}},
 	}
@@ -893,6 +927,9 @@ func TestSingletonValues(t *testing.T) {
 	}
 	if FirstValue(nil) != "" || FirstValue(values["ref"]) != "refs/heads/main" {
 		t.Fatalf("FirstValue() did not preserve singleton value")
+	}
+	if !MatchAll(MatchGlob, []string{"refs/heads/*"}, values["ref"]) || MatchAll(MatchGlob, []string{"refs/tags/*"}, values["ref"]) {
+		t.Fatal("MatchAll() did not apply shared matcher semantics")
 	}
 }
 

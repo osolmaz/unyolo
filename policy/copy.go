@@ -26,6 +26,7 @@ func cloneOperations(values map[string]OperationSpec) map[string]OperationSpec {
 			Attrs:       slices.Clone(spec.Attrs),
 			Grantable:   spec.Grantable,
 			GrantMode:   spec.GrantMode,
+			GrantModes:  slices.Clone(spec.GrantModes),
 		}
 	}
 	return out

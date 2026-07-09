@@ -213,11 +213,12 @@ pass the raw token only to the approval notification path.
 
 `request` rules must include `grant_policy`.
 
-Each grantable operation declares a provider-owned grant mode. `window` grants
-authorize an exact classified request for a bounded time and use budget.
-`execution` grants approve one exact provider-built action and are always
-single-use. A request rule may contain several operations only when they use
-the same grant mode.
+Each grantable operation declares a provider-owned default grant mode and may
+declare a bounded set of allowed modes. `window` grants authorize an exact
+classified request for a bounded time and use budget. `execution` grants
+approve one exact provider-built action and are always single-use. A request
+rule may contain several operations only when they resolve to one mode that
+every operation allows.
 
 Minimal example:
 
@@ -236,9 +237,10 @@ budget. Execution-plan grants can come later.
 
 ## Validation
 
-Policy loading must reject:
+An explicitly empty `rules` array is a valid deny-all policy. Policy loading
+must reject:
 
-- missing `rules`
+- missing or null `rules`
 - unknown fields
 - duplicate rule ids
 - unsupported effects

@@ -22,7 +22,7 @@ const (
 )
 
 type rawPolicy struct {
-	Rules []rawRule `json:"rules"`
+	Rules *[]rawRule `json:"rules"`
 }
 
 type rawRule struct {
@@ -56,10 +56,10 @@ func Parse(data []byte, registry Registry) (*Policy, error) {
 	if err := decodeStrict(data, &raw); err != nil {
 		return nil, fmt.Errorf("parse policy: %w", err)
 	}
-	if len(raw.Rules) == 0 {
-		return nil, errors.New("rules must not be empty")
+	if raw.Rules == nil {
+		return nil, errors.New("rules is required")
 	}
-	rules, err := normalizeRules(raw.Rules, registry)
+	rules, err := normalizeRules(*raw.Rules, registry)
 	if err != nil {
 		return nil, err
 	}
@@ -298,15 +298,18 @@ func validateGrantableOperations(operations []string, registry Registry) error {
 }
 
 func normalizeGrantPolicyMode(grantPolicy *GrantPolicy, operations []string, registry Registry) error {
-	mode, err := operationGrantMode(operations, registry)
-	if err != nil {
-		return err
-	}
 	if grantPolicy.Mode == "" {
+		mode, err := operationGrantMode(operations, registry)
+		if err != nil {
+			return err
+		}
 		grantPolicy.Mode = string(mode)
 	}
-	if grantPolicy.Mode != string(mode) {
-		return fmt.Errorf("grant mode %q does not match operation grant mode %q", grantPolicy.Mode, mode)
+	mode := GrantMode(grantPolicy.Mode)
+	for _, operation := range operations {
+		if !registry.Operations[operation].allowsGrantMode(mode) {
+			return fmt.Errorf("grant mode %q is not allowed for operation %q", mode, operation)
+		}
 	}
 	return nil
 }
