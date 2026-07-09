@@ -6,7 +6,7 @@ toolchain go1.26.5
 
 require (
 	github.com/labstack/echo/v4 v4.15.4
-	github.com/osolmaz/brokerkit v0.0.0-20260708133440-b3cd09e51fa1
+	github.com/osolmaz/brokerkit v0.0.0-20260709140341-c341ddb79678
 )
 
 require (

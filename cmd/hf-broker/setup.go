@@ -14,7 +14,9 @@ import (
 	"strings"
 )
 
-const setupUsage = "usage: hf-broker setup systemd --hf-token-file <path> --repo <owner/name> --repo-type <model|dataset|space> [flags]"
+const setupUsage = `usage:
+  hf-broker setup systemd --hf-token-file <path> --repo <owner/name> --repo-type <model|dataset|space> [flags]
+  hf-broker setup client --client <name> --url <url> --secret-file <path> [--home-dir <path>]`
 
 var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
@@ -48,15 +50,23 @@ func runSetup(ctx context.Context, stdout, stderr io.Writer, args []string) erro
 	if len(args) == 0 {
 		return exitError{code: 64, message: setupUsage}
 	}
-	if args[0] != "systemd" {
+	switch args[0] {
+	case "systemd":
+		opts, err := parseSetupSystemd(stderr, args[1:])
+		if err != nil {
+			return err
+		}
+		opts.CommandRunner = osCommandRunner{}
+		return runSetupSystemd(ctx, stdout, opts)
+	case "client":
+		opts, err := parseSetupClient(stderr, args[1:])
+		if err != nil {
+			return err
+		}
+		return runSetupClient(stdout, opts)
+	default:
 		return exitError{code: 64, message: setupUsage}
 	}
-	opts, err := parseSetupSystemd(stderr, args[1:])
-	if err != nil {
-		return err
-	}
-	opts.CommandRunner = osCommandRunner{}
-	return runSetupSystemd(ctx, stdout, opts)
 }
 
 func parseSetupSystemd(stderr io.Writer, args []string) (setupSystemdOptions, error) {

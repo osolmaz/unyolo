@@ -17,6 +17,7 @@ Implemented in hf-broker today:
 - release binary install documented through `install.sh`
 - `hf-broker --version`
 - `hf-broker setup systemd`
+- `hf-broker setup client`
 - dedicated `hf-broker` service user and group
 - `/etc/hf-broker` config directory
 - `/etc/hf-broker/secrets` named-client secret file
@@ -90,7 +91,8 @@ Client setup should converge on the shared shape:
 hf-broker setup client \
   --client bob \
   --url http://127.0.0.1:8080 \
-  --secret-file /etc/hf-broker/secrets
+  --secret-file /etc/hf-broker/secrets \
+  --home-dir /home/bob
 ```
 
 The client setup command should write only broker client material for bob. It

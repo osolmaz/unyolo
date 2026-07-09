@@ -140,6 +140,20 @@ starts the service, then prints the broker URL and generated broker
 client secret. The real Hugging Face token stays readable only by the
 service. The agent receives only the broker client secret.
 
+Write a client config file for an agent account with:
+
+```sh
+sudo hf-broker setup client \
+  --client bob \
+  --url http://127.0.0.1:8080 \
+  --secret-file /etc/hf-broker/secrets \
+  --home-dir /home/bob
+```
+
+This writes `/home/bob/.config/hf-broker/client.env` with only the broker
+URL and broker shared secret. It does not write or print the Hugging Face
+token.
+
 Use `--dry-run` to preview the service setup without writing files:
 
 ```sh
