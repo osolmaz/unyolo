@@ -47,6 +47,47 @@ func TestLifecycleIdempotencyAndUseBudget(t *testing.T) {
 	assertUseBudget(t, store, grant.ID)
 }
 
+func TestListForClientExpiresAndFiltersGrants(t *testing.T) {
+	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
+	ids := []string{"grant-1", "token-1", "grant-2", "token-2"}
+	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
+	firstReq := Request{
+		Client:          "bob",
+		ClientRequestID: "push-main",
+		Operation:       "git.push.force",
+		Target:          repoTarget("demo"),
+		Attrs:           map[string]string{"ref": "refs/heads/main"},
+		Reason:          "fix production",
+	}
+	first, _, err := store.Request(firstReq)
+	if err != nil {
+		t.Fatalf("Request(first) error = %v", err)
+	}
+	secondReq := firstReq
+	secondReq.Client = "other"
+	secondReq.ClientRequestID = "push-main-other"
+	if _, _, err := store.Request(secondReq); err != nil {
+		t.Fatalf("Request(second) error = %v", err)
+	}
+	now = first.Grant.PendingExpiresAt.Add(time.Second)
+
+	grants, err := store.ListForClient(first.Grant.Client)
+	if err != nil {
+		t.Fatalf("ListForClient() error = %v", err)
+	}
+	if len(grants) != 1 || grants[0].ID != first.Grant.ID || grants[0].Status != StatusExpired {
+		t.Fatalf("ListForClient() = %+v, want expired first grant only", grants)
+	}
+
+	all, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("List() len = %d, want both grants", len(all))
+	}
+}
+
 func TestApprovedIdempotentRetryKeepsOriginalDuration(t *testing.T) {
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
 	ids := []string{"grant-1", "token-1"}
