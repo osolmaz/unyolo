@@ -165,6 +165,30 @@ func TestGrantOverlayRequiresExactAttrs(t *testing.T) {
 	}
 }
 
+func TestGrantOverlayAllowsProviderOptionalConstraint(t *testing.T) {
+	policy := requestShellPolicy(t)
+	operation := policy.registry.Operations["session.shell"]
+	operation.Attrs = []string{"tty"}
+	policy.registry.Operations["session.shell"] = operation
+	policy.registry.Attrs["tty"] = AttrSpec{GrantMayOmit: true}
+	decision := policy.Decide(Request{
+		Client:    "bob",
+		Operation: "session.shell",
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		Attrs:     map[string][]string{"tty": {"true"}},
+	}, DecisionOptions{ActiveGrants: []Grant{{
+		ID:        "grant-shell",
+		Client:    "bob",
+		Operation: "session.shell",
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		ExpiresAt: time.Now().Add(time.Minute),
+		UsesLeft:  1,
+	}}})
+	if !decision.Allowed || decision.Reason != "grant_allowed" {
+		t.Fatalf("optional attr grant decision = %+v, want grant allow", decision)
+	}
+}
+
 func TestGrantMatchesValueSetsWithoutOrder(t *testing.T) {
 	grant := Grant{
 		Client:    "bob",
