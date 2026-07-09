@@ -197,6 +197,10 @@ func TestNormalizeStoredValueMapCompatibility(t *testing.T) {
 	if _, err := normalizeStoredValueMap(fields, "attrs"); err == nil {
 		t.Fatal("non-string value error = nil")
 	}
+	fields["attrs"] = json.RawMessage(`{"ref":null}`)
+	if _, err := normalizeStoredValueMap(fields, "attrs"); err == nil {
+		t.Fatal("null value error = nil")
+	}
 }
 
 func assertLegacyResult(t *testing.T, name string, got bool, err error, want bool) {

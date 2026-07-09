@@ -2,6 +2,7 @@
 package grants
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -193,6 +194,9 @@ func replaceJSONField(fields map[string]json.RawMessage, name string, value any)
 }
 
 func decodeCompatibleValues(data []byte) (compatibleValues, error) {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return compatibleValues{}, errors.New("must be a string or string array")
+	}
 	var scalar string
 	if err := json.Unmarshal(data, &scalar); err == nil {
 		return compatibleValues{values: []string{scalar}, legacy: true}, nil
