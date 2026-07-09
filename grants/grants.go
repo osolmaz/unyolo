@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -522,6 +523,12 @@ func (s *Store) normalizeRequest(req Request) (Request, error) {
 	if req.Reason == "" {
 		return Request{}, errors.New("grant reason is required")
 	}
+	if err := validateValueMap("target field", req.Target.Fields); err != nil {
+		return Request{}, err
+	}
+	if err := validateValueMap("attr", req.Attrs); err != nil {
+		return Request{}, err
+	}
 	normalized, err := s.normalizeRequestBounds(req)
 	if err != nil {
 		return Request{}, err
@@ -529,6 +536,23 @@ func (s *Store) normalizeRequest(req Request) (Request, error) {
 	normalized.Target.Fields = copyx.CanonicalStringSliceMap(normalized.Target.Fields)
 	normalized.Attrs = copyx.CanonicalStringSliceMap(normalized.Attrs)
 	return normalized, nil
+}
+
+func validateValueMap(kind string, values map[string][]string) error {
+	for name, list := range values {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("%s name is required", kind)
+		}
+		if len(list) == 0 {
+			return fmt.Errorf("%s %q values must not be empty", kind, name)
+		}
+		for _, value := range list {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("%s %q contains an empty value", kind, name)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) normalizeRequestBounds(req Request) (Request, error) {

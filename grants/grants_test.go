@@ -476,6 +476,17 @@ func TestRequestValidation(t *testing.T) {
 	if err == nil {
 		t.Fatal("Request(too many uses) error = nil, want error")
 	}
+	invalidValues := []Request{
+		{Client: "bob", Operation: "op", Target: policy.Target{Kind: "repo", Fields: map[string][]string{"refs": nil}}, Reason: "empty target list"},
+		{Client: "bob", Operation: "op", Target: policy.Target{Kind: "repo", Fields: map[string][]string{"": {"main"}}}, Reason: "empty target name"},
+		{Client: "bob", Operation: "op", Target: repoTarget("demo"), Attrs: map[string][]string{"refs": {" "}}, Reason: "blank attr value"},
+		{Client: "bob", Operation: "op", Target: repoTarget("demo"), Attrs: map[string][]string{"": {"main"}}, Reason: "empty attr name"},
+	}
+	for _, request := range invalidValues {
+		if _, _, err := store.Request(request); err == nil {
+			t.Fatalf("Request(%s) error = nil, want error", request.Reason)
+		}
+	}
 }
 
 func TestReleaseUseRestoresOverlay(t *testing.T) {
