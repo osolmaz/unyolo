@@ -84,33 +84,34 @@ type RequestResult struct {
 
 // Grant is one durable approval record.
 type Grant struct {
-	ID                    string              `json:"id"`
-	DecisionTokenVerifier string              `json:"decision_token_verifier"`
-	Client                string              `json:"client"`
-	ClientRequestID       string              `json:"client_request_id,omitempty"`
-	Operation             string              `json:"operation"`
-	Target                policy.Target       `json:"target"`
-	Attrs                 map[string][]string `json:"attrs,omitempty"`
-	Reason                string              `json:"reason"`
-	Status                Status              `json:"status"`
-	CreatedAt             time.Time           `json:"created_at"`
-	PendingExpiresAt      time.Time           `json:"pending_expires_at"`
-	ExpiresAt             time.Time           `json:"expires_at,omitzero"`
-	Duration              time.Duration       `json:"duration"`
-	PendingTimeout        time.Duration       `json:"pending_timeout"`
-	DecidedAt             time.Time           `json:"decided_at,omitzero"`
-	DecidedBy             string              `json:"decided_by,omitempty"`
-	UsedAt                time.Time           `json:"used_at,omitzero"`
-	UsedCount             int                 `json:"used_count"`
-	ReservedCount         int                 `json:"reserved_count,omitempty"`
-	ReservedAt            time.Time           `json:"reserved_at,omitzero"`
-	ReservationRetained   bool                `json:"reservation_retained,omitempty"`
-	MaxUses               int                 `json:"max_uses"`
-	ExpiredFrom           Status              `json:"expired_from,omitempty"`
-	Notification          *MessageRef         `json:"notification,omitempty"`
-	NotificationStatus    string              `json:"notification_status,omitempty"`
-	NotificationClaimedAt time.Time           `json:"notification_claimed_at,omitzero"`
-	legacySchema          bool
+	ID                     string              `json:"id"`
+	DecisionTokenVerifier  string              `json:"decision_token_verifier"`
+	Client                 string              `json:"client"`
+	ClientRequestID        string              `json:"client_request_id,omitempty"`
+	Operation              string              `json:"operation"`
+	Target                 policy.Target       `json:"target"`
+	Attrs                  map[string][]string `json:"attrs,omitempty"`
+	Reason                 string              `json:"reason"`
+	Status                 Status              `json:"status"`
+	CreatedAt              time.Time           `json:"created_at"`
+	PendingExpiresAt       time.Time           `json:"pending_expires_at"`
+	ExpiresAt              time.Time           `json:"expires_at,omitzero"`
+	Duration               time.Duration       `json:"duration"`
+	PendingTimeout         time.Duration       `json:"pending_timeout"`
+	DecidedAt              time.Time           `json:"decided_at,omitzero"`
+	DecidedBy              string              `json:"decided_by,omitempty"`
+	UsedAt                 time.Time           `json:"used_at,omitzero"`
+	UsedCount              int                 `json:"used_count"`
+	ReservedCount          int                 `json:"reserved_count,omitempty"`
+	ReservedAt             time.Time           `json:"reserved_at,omitzero"`
+	ReservationRetained    bool                `json:"reservation_retained,omitempty"`
+	MaxUses                int                 `json:"max_uses"`
+	ExpiredFrom            Status              `json:"expired_from,omitempty"`
+	Notification           *MessageRef         `json:"notification,omitempty"`
+	NotificationStatus     string              `json:"notification_status,omitempty"`
+	NotificationClaimedAt  time.Time           `json:"notification_claimed_at,omitzero"`
+	NotificationClaimUntil time.Time           `json:"notification_claim_until,omitzero"`
+	legacySchema           bool
 }
 
 type fileData struct {

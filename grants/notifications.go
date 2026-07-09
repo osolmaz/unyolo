@@ -2,6 +2,7 @@ package grants
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/osolmaz/brokerkit/notify"
@@ -62,6 +63,7 @@ func (s *Store) Cancel(id string) error {
 		grant.Status = StatusCanceled
 		grant.DecidedAt = s.opts.Now().UTC()
 		grant.NotificationClaimedAt = time.Time{}
+		grant.NotificationClaimUntil = time.Time{}
 		data.Grants[index] = grant
 		return nil
 	})
@@ -86,6 +88,7 @@ func (s *Store) CancelIfNotificationClaimed(id string, claimedAt time.Time) (Gra
 		grant.Status = StatusCanceled
 		grant.DecidedAt = s.opts.Now().UTC()
 		grant.NotificationClaimedAt = time.Time{}
+		grant.NotificationClaimUntil = time.Time{}
 		data.Grants[index] = grant
 		out = grant
 		canceled = true
@@ -117,6 +120,7 @@ func (s *Store) ClaimNotification(id string, lease time.Duration) (NotificationC
 			return err
 		}
 		grant.NotificationClaimedAt = now
+		grant.NotificationClaimUntil = now.Add(lease)
 		data.Grants[index] = grant
 		out = NotificationClaim{Grant: grant, DecisionToken: decisionToken}
 		claimed = true
@@ -129,7 +133,14 @@ func notificationClaimIsAvailable(grant Grant, now time.Time, lease time.Duratio
 	if grant.Status != StatusPending || grant.Notification != nil {
 		return false
 	}
-	return grant.NotificationClaimedAt.IsZero() || !now.Before(grant.NotificationClaimedAt.Add(lease))
+	if grant.NotificationClaimedAt.IsZero() {
+		return true
+	}
+	claimedUntil := grant.NotificationClaimUntil
+	if claimedUntil.IsZero() {
+		claimedUntil = grant.NotificationClaimedAt.Add(lease)
+	}
+	return !now.Before(claimedUntil)
 }
 
 // SetNotification records the editable operator notification for a grant.
@@ -164,6 +175,7 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 		grant.Notification = &ref
 		grant.NotificationStatus = string(StatusPending)
 		grant.NotificationClaimedAt = time.Time{}
+		grant.NotificationClaimUntil = time.Time{}
 		data.Grants[index] = grant
 		out = grant
 		recorded = true
@@ -238,7 +250,7 @@ func retainedReservationUpdate(grant Grant) (StatusUpdate, bool) {
 		!reservationCanSettle(grant.Status) {
 		return StatusUpdate{}, false
 	}
-	key := NotificationStatusReserved + ":" + string(grant.Status)
+	key := NotificationStatusReserved + ":" + string(grant.Status) + ":" + useRevision(grant)
 	return newStatusUpdate(grant, StatusUpdateRetainedReservation, grant.Status, key), true
 }
 
@@ -246,14 +258,20 @@ func usedExpiredUpdate(grant Grant) (StatusUpdate, bool) {
 	if grant.Status != StatusExpired || grant.UsedCount <= 0 || grant.ReservedCount != 0 {
 		return StatusUpdate{}, false
 	}
-	return newStatusUpdate(grant, StatusUpdateUsedExpired, StatusConsumed, NotificationStatusUsedExpired), true
+	key := NotificationStatusUsedExpired + ":" + strconv.Itoa(grant.UsedCount)
+	return newStatusUpdate(grant, StatusUpdateUsedExpired, StatusConsumed, key), true
 }
 
 func usedUpdate(grant Grant) (StatusUpdate, bool) {
 	if grant.Status != StatusActive || grant.UsedCount <= 0 {
 		return StatusUpdate{}, false
 	}
-	return newStatusUpdate(grant, StatusUpdateUsed, grant.Status, NotificationStatusUsed), true
+	key := NotificationStatusUsed + ":" + strconv.Itoa(grant.UsedCount)
+	return newStatusUpdate(grant, StatusUpdateUsed, grant.Status, key), true
+}
+
+func useRevision(grant Grant) string {
+	return strconv.Itoa(grant.UsedCount) + ":" + strconv.Itoa(grant.ReservedCount)
 }
 
 func lifecycleUpdate(grant Grant) (StatusUpdate, bool) {

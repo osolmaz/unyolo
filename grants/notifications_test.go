@@ -64,6 +64,29 @@ func TestNotificationClaimRecoveryAndConditionalCancel(t *testing.T) {
 	}
 }
 
+func TestNotificationClaimHonorsOriginalLease(t *testing.T) {
+	now := time.Date(2026, 7, 10, 2, 30, 0, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	request := testGrantRequest("claim-lease", 1)
+	request.PendingTimeout = 20 * time.Minute
+	result, created, err := store.Request(request)
+	if err != nil || !created {
+		t.Fatalf("Request() = %+v created=%v err=%v", result, created, err)
+	}
+	first, claimed, err := store.ClaimNotification(result.Grant.ID, 10*time.Minute)
+	if err != nil || !claimed || !first.Grant.NotificationClaimUntil.Equal(now.Add(10*time.Minute)) {
+		t.Fatalf("first claim = %+v claimed=%v err=%v", first, claimed, err)
+	}
+	now = now.Add(2 * time.Minute)
+	if _, claimed, err := store.ClaimNotification(result.Grant.ID, time.Minute); err != nil || claimed {
+		t.Fatalf("shorter competing lease claimed=%v err=%v", claimed, err)
+	}
+	now = now.Add(8 * time.Minute)
+	if _, claimed, err := store.ClaimNotification(result.Grant.ID, time.Minute); err != nil || !claimed {
+		t.Fatalf("expired original lease claimed=%v err=%v", claimed, err)
+	}
+}
+
 func TestCancelPendingGrantAndIgnoreTerminalGrant(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "cancel", 1)
@@ -152,15 +175,21 @@ func claimNotification(t *testing.T, store *Store, id string) NotificationClaim 
 
 func setClaimedNotification(t *testing.T, store *Store, id string, claimTime time.Time, ref notify.MessageRef) {
 	t.Helper()
-	if _, recorded, err := store.SetNotificationIfClaimed(id, claimTime, notify.MessageRef{Kind: "telegram"}); err == nil || recorded {
-		t.Fatalf("SetNotificationIfClaimed(invalid ref) recorded=%v err=%v", recorded, err)
-	}
+	assertInvalidNotificationRejected(t, store, id, claimTime)
 	if _, recorded, err := store.SetNotificationIfClaimed(id, claimTime.Add(time.Second), ref); err != nil || recorded {
 		t.Fatalf("SetNotificationIfClaimed(stale) recorded=%v err=%v", recorded, err)
 	}
 	stored, recorded, err := store.SetNotificationIfClaimed(id, claimTime, ref)
-	if err != nil || !recorded || stored.Notification == nil || *stored.Notification != ref {
+	if err != nil || !recorded || stored.Notification == nil || *stored.Notification != ref ||
+		!stored.NotificationClaimedAt.IsZero() || !stored.NotificationClaimUntil.IsZero() {
 		t.Fatalf("SetNotificationIfClaimed() = %+v recorded=%v err=%v", stored, recorded, err)
+	}
+}
+
+func assertInvalidNotificationRejected(t *testing.T, store *Store, id string, claimTime time.Time) {
+	t.Helper()
+	if _, recorded, err := store.SetNotificationIfClaimed(id, claimTime, notify.MessageRef{Kind: "telegram"}); err == nil || recorded {
+		t.Fatalf("SetNotificationIfClaimed(invalid ref) recorded=%v err=%v", recorded, err)
 	}
 }
 
@@ -188,7 +217,7 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 		t.Fatalf("ReserveUse() = %+v err=%v", reserved, err)
 	}
 	now = now.Add(2 * time.Minute)
-	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active")
+	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:0:1")
 	if !update.Grant.ReservationRetained {
 		t.Fatalf("retained update = %+v, want retained reservation", update)
 	}
@@ -197,12 +226,12 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 	}
 
 	now = result.Grant.CreatedAt.Add(10 * time.Minute)
-	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusExpired, "reserved:expired")
+	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusExpired, "reserved:expired:0:1")
 	committed, err := store.CommitUse(result.Grant.ID)
 	if err != nil || committed.UsedCount != 1 || committed.ReservedCount != 0 || committed.ReservationRetained {
 		t.Fatalf("CommitUse(expired reservation) = %+v err=%v", committed, err)
 	}
-	assertSingleDueUpdate(t, store, StatusUpdateUsedExpired, StatusConsumed, NotificationStatusUsedExpired)
+	assertSingleDueUpdate(t, store, StatusUpdateUsedExpired, StatusConsumed, NotificationStatusUsedExpired+":1")
 }
 
 func TestRetainUseAndReleaseClearReservationState(t *testing.T) {
@@ -248,7 +277,7 @@ func TestRevokedReservationCanBeSettled(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Minute)
-	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusRevoked, "reserved:revoked")
+	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusRevoked, "reserved:revoked:0:1")
 	if !update.Grant.ReservationRetained {
 		t.Fatalf("revoked stale reservation = %+v, want retained", update.Grant)
 	}
@@ -275,7 +304,28 @@ func TestCommittedUseRemainsDueAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := New(path, Options{})
-	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed)
+	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":1")
+}
+
+func TestSuccessiveUsesHaveDistinctDeliveryKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grants.json")
+	store := New(path, Options{})
+	result := requestTestGrant(t, store, "successive-uses", 3)
+	setTestNotification(t, store, result.Grant.ID)
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkNotificationStatus(result.Grant.ID, string(StatusActive)); err != nil {
+		t.Fatal(err)
+	}
+	commitTestUse(t, store, result.Grant.ID)
+	first := assertSingleDueUpdate(t, store, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":1")
+	if err := store.MarkNotificationStatus(result.Grant.ID, first.NotificationStatusKey()); err != nil {
+		t.Fatal(err)
+	}
+	commitTestUse(t, store, result.Grant.ID)
+	restarted := New(path, Options{})
+	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":2")
 }
 
 func requestTestGrant(t *testing.T, store *Store, requestID string, maxUses int) RequestResult {
@@ -318,6 +368,16 @@ func approvedReservedGrant(t *testing.T, store *Store, requestID string) Grant {
 		t.Fatal(err)
 	}
 	return reserved
+}
+
+func commitTestUse(t *testing.T, store *Store, id string) {
+	t.Helper()
+	if _, err := store.ReserveUse(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitUse(id); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func assertSingleDueUpdate(t *testing.T, store *Store, kind StatusUpdateKind, status Status, key string) StatusUpdate {
