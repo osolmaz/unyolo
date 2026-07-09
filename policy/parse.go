@@ -9,11 +9,11 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 )
 
 const (
-	defaultGrantMode       = "window"
 	defaultGrantMinutes    = 5
 	defaultMaxGrantMinutes = 60
 	defaultRequestTTL      = 5
@@ -156,26 +156,7 @@ func validateEffect(effect Effect) error {
 }
 
 func normalizePatterns(values []string, field string) ([]string, error) {
-	if len(values) == 0 {
-		return nil, fmt.Errorf("%s must not be empty", field)
-	}
-	out := make([]string, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return nil, fmt.Errorf("%s contains an empty value", field)
-		}
-		if err := validateGlob(value); err != nil {
-			return nil, fmt.Errorf("%s contains invalid pattern %q: %w", field, value, err)
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out, nil
+	return normalizeMatchValues(values, field, MatchGlob)
 }
 
 func normalizeOperations(values []string, registry Registry) ([]string, error) {
@@ -234,10 +215,11 @@ func validateRequiredTargetFields(target TargetMatcher, spec TargetSpec) error {
 
 func validateSupportedTargetFields(target TargetMatcher, spec TargetSpec) error {
 	for field, patterns := range target.Fields {
-		if _, ok := spec.Fields[field]; !ok {
+		fieldSpec, ok := spec.Fields[field]
+		if !ok {
 			return fmt.Errorf("target kind %q does not support field %q", target.Kind, field)
 		}
-		normalized, err := normalizePatterns(patterns, "target."+field)
+		normalized, err := normalizeMatchValues(patterns, "target."+field, fieldSpec.Match)
 		if err != nil {
 			return err
 		}
@@ -267,7 +249,7 @@ func normalizeAttrs(raw map[string]patternList, operations []string, registry Re
 		if unsupportedOperation, ok := attrUnsupportedOperation(name, operations, registry); ok {
 			return nil, fmt.Errorf("operation %q does not support attr %q", unsupportedOperation, name)
 		}
-		normalized, err := normalizePatterns(values, "attrs."+name)
+		normalized, err := normalizeMatchValues(values, "attrs."+name, registry.Attrs[name].Match)
 		if err != nil {
 			return nil, err
 		}
@@ -292,17 +274,53 @@ func normalizeGrantPolicy(effect Effect, raw *GrantPolicy, operations []string, 
 	if raw == nil {
 		return nil, nil
 	}
-	for _, op := range operations {
-		if !registry.Operations[op].Grantable {
-			return nil, fmt.Errorf("operation %q is not grantable", op)
-		}
+	if err := validateGrantableOperations(operations, registry); err != nil {
+		return nil, err
 	}
 	grantPolicy := *raw
+	if err := normalizeGrantPolicyMode(&grantPolicy, operations, registry); err != nil {
+		return nil, err
+	}
 	defaultGrantPolicy(&grantPolicy)
 	if err := validateGrantPolicyValues(grantPolicy); err != nil {
 		return nil, err
 	}
 	return &grantPolicy, nil
+}
+
+func validateGrantableOperations(operations []string, registry Registry) error {
+	for _, op := range operations {
+		if !registry.Operations[op].Grantable {
+			return fmt.Errorf("operation %q is not grantable", op)
+		}
+	}
+	return nil
+}
+
+func normalizeGrantPolicyMode(grantPolicy *GrantPolicy, operations []string, registry Registry) error {
+	mode, err := operationGrantMode(operations, registry)
+	if err != nil {
+		return err
+	}
+	if grantPolicy.Mode == "" {
+		grantPolicy.Mode = string(mode)
+	}
+	if grantPolicy.Mode != string(mode) {
+		return fmt.Errorf("grant mode %q does not match operation grant mode %q", grantPolicy.Mode, mode)
+	}
+	return nil
+}
+
+func operationGrantMode(operations []string, registry Registry) (GrantMode, error) {
+	var mode GrantMode
+	for _, operation := range operations {
+		candidate := defaultedGrantMode(registry.Operations[operation].GrantMode)
+		if mode != "" && candidate != mode {
+			return "", errors.New("request rule operations must use the same grant mode")
+		}
+		mode = candidate
+	}
+	return mode, nil
 }
 
 func validateGrantPolicyPresence(effect Effect, raw *GrantPolicy) error {
@@ -316,9 +334,6 @@ func validateGrantPolicyPresence(effect Effect, raw *GrantPolicy) error {
 }
 
 func defaultGrantPolicy(grantPolicy *GrantPolicy) {
-	if grantPolicy.Mode == "" {
-		grantPolicy.Mode = defaultGrantMode
-	}
 	if grantPolicy.DefaultMinutes == 0 {
 		grantPolicy.DefaultMinutes = defaultGrantMinutes
 	}
@@ -332,12 +347,16 @@ func defaultGrantPolicy(grantPolicy *GrantPolicy) {
 		grantPolicy.DefaultMaxUses = defaultGrantUses
 	}
 	if grantPolicy.MaxUses == 0 {
-		grantPolicy.MaxUses = defaultMaxGrantUses
+		if GrantMode(grantPolicy.Mode) == GrantModeExecution {
+			grantPolicy.MaxUses = defaultGrantUses
+		} else {
+			grantPolicy.MaxUses = defaultMaxGrantUses
+		}
 	}
 }
 
 func validateGrantPolicyValues(grantPolicy GrantPolicy) error {
-	if grantPolicy.Mode != defaultGrantMode {
+	if !validGrantMode(GrantMode(grantPolicy.Mode)) {
 		return fmt.Errorf("unsupported grant mode %q", grantPolicy.Mode)
 	}
 	if err := validateGrantPolicyMinutes(grantPolicy); err != nil {
@@ -345,6 +364,9 @@ func validateGrantPolicyValues(grantPolicy GrantPolicy) error {
 	}
 	if err := validateGrantPolicyUses(grantPolicy); err != nil {
 		return err
+	}
+	if GrantMode(grantPolicy.Mode) == GrantModeExecution && (grantPolicy.DefaultMaxUses != 1 || grantPolicy.MaxUses != 1) {
+		return errors.New("execution grants must be single-use")
 	}
 	return nil
 }
@@ -379,6 +401,81 @@ func validateGlob(pattern string) error {
 	}
 	_, err := path.Match(pattern, "value")
 	return err
+}
+
+func normalizeMatchValues(values []string, field string, mode MatchMode) ([]string, error) {
+	normalized, err := normalizePatternsWithoutValidation(values, field)
+	if err != nil {
+		return nil, err
+	}
+	mode = defaultedMatchMode(mode)
+	for _, value := range normalized {
+		if err := validateMatchValue(value, mode); err != nil {
+			return nil, fmt.Errorf("%s contains invalid %s value %q: %w", field, mode, value, err)
+		}
+	}
+	return normalized, nil
+}
+
+func normalizePatternsWithoutValidation(values []string, field string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%s must not be empty", field)
+	}
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, fmt.Errorf("%s contains an empty value", field)
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out, nil
+}
+
+func validateMatchValue(value string, mode MatchMode) error {
+	switch mode {
+	case MatchGlob:
+		return validateGlob(value)
+	case MatchPathGlob:
+		return validatePathGlob(value)
+	case MatchIntegerMaximum:
+		number, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return errors.New("must be an integer")
+		}
+		if number < 0 {
+			return errors.New("must not be negative")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported match mode %q", mode)
+	}
+}
+
+func validatePathGlob(pattern string) error {
+	if len(pattern) > maxPathPatternBytes {
+		return fmt.Errorf("must not exceed %d bytes", maxPathPatternBytes)
+	}
+	if strings.Count(pattern, "/") >= maxPathSegments {
+		return fmt.Errorf("must not exceed %d segments", maxPathSegments)
+	}
+	for _, segment := range strings.Split(pattern, "/") {
+		if strings.Contains(segment, "**") && segment != "**" {
+			return errors.New("** must be a complete path segment")
+		}
+		if segment == "**" {
+			continue
+		}
+		if _, err := path.Match(segment, "value"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UnmarshalJSON decodes arbitrary string or string-array target fields.

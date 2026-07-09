@@ -32,13 +32,13 @@ func validateRequestRuleAgainstLaterRules(left Rule, later []Rule, registry Regi
 }
 
 func requestRulesMayOverlap(left Rule, right Rule, registry Registry) bool {
-	if !patternListsMayOverlap(left.Clients, right.Clients) {
+	if !valueListsMayOverlap(left.Clients, right.Clients, patternsMayOverlap) {
 		return false
 	}
 	for _, operation := range left.Operations {
 		if slices.Contains(right.Operations, operation) &&
-			targetMatchersMayOverlap(left.Targets, right.Targets) &&
-			attrsMayOverlap(left.Attrs, right.Attrs, registry.Operations[operation].Attrs) {
+			targetMatchersMayOverlap(left.Targets, right.Targets, registry) &&
+			attrsMayOverlap(left.Attrs, right.Attrs, registry.Operations[operation].Attrs, registry) {
 			return true
 		}
 	}
@@ -52,10 +52,10 @@ func grantPoliciesEqual(left *GrantPolicy, right *GrantPolicy) bool {
 	return *left == *right
 }
 
-func targetMatchersMayOverlap(left []TargetMatcher, right []TargetMatcher) bool {
+func targetMatchersMayOverlap(left []TargetMatcher, right []TargetMatcher, registry Registry) bool {
 	for _, leftTarget := range left {
 		for _, rightTarget := range right {
-			if leftTarget.Kind == rightTarget.Kind && patternMapsMayOverlap(leftTarget.Fields, rightTarget.Fields) {
+			if leftTarget.Kind == rightTarget.Kind && patternMapsMayOverlap(leftTarget.Fields, rightTarget.Fields, registry.Targets[leftTarget.Kind]) {
 				return true
 			}
 		}
@@ -63,36 +63,62 @@ func targetMatchersMayOverlap(left []TargetMatcher, right []TargetMatcher) bool 
 	return false
 }
 
-func attrsMayOverlap(left map[string][]string, right map[string][]string, relevantAttrs []string) bool {
+func attrsMayOverlap(left map[string][]string, right map[string][]string, relevantAttrs []string, registry Registry) bool {
 	for _, attr := range relevantAttrs {
 		leftValues, leftOK := left[attr]
 		rightValues, rightOK := right[attr]
-		if leftOK && rightOK && !patternListsMayOverlap(leftValues, rightValues) {
+		if leftOK && rightOK && !matchValuesMayOverlap(leftValues, rightValues, registry.Attrs[attr].Match) {
 			return false
 		}
 	}
 	return true
 }
 
-func patternMapsMayOverlap(left map[string][]string, right map[string][]string) bool {
+func patternMapsMayOverlap(left map[string][]string, right map[string][]string, spec TargetSpec) bool {
 	for field, leftValues := range left {
 		rightValues, ok := right[field]
-		if ok && !patternListsMayOverlap(leftValues, rightValues) {
+		if ok && !matchValuesMayOverlap(leftValues, rightValues, spec.Fields[field].Match) {
 			return false
 		}
 	}
 	return true
 }
 
-func patternListsMayOverlap(left []string, right []string) bool {
-	for _, leftPattern := range left {
-		for _, rightPattern := range right {
-			if patternsMayOverlap(leftPattern, rightPattern) {
+func matchValuesMayOverlap(left []string, right []string, mode MatchMode) bool {
+	switch defaultedMatchMode(mode) {
+	case MatchIntegerMaximum:
+		return true
+	case MatchPathGlob:
+		return valueListsMayOverlap(left, right, pathValuesMayOverlap)
+	default:
+		return valueListsMayOverlap(left, right, patternsMayOverlap)
+	}
+}
+
+func valueListsMayOverlap(left []string, right []string, match func(string, string) bool) bool {
+	for _, leftValue := range left {
+		for _, rightValue := range right {
+			if match(leftValue, rightValue) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func pathValuesMayOverlap(left string, right string) bool {
+	if left == right {
+		return true
+	}
+	leftGlob := hasGlobMeta(left)
+	rightGlob := hasGlobMeta(right)
+	if !leftGlob {
+		return pathPatternsMatch([]string{right}, left)
+	}
+	if !rightGlob {
+		return pathPatternsMatch([]string{left}, right)
+	}
+	return true
 }
 
 func patternsMayOverlap(left string, right string) bool {
@@ -114,7 +140,7 @@ func patternsMayOverlap(left string, right string) bool {
 }
 
 func hasGlobMeta(value string) bool {
-	return strings.ContainsAny(value, "*?[")
+	return strings.ContainsAny(value, `*?[\`)
 }
 
 func globPrefixesMayOverlap(left string, right string) bool {

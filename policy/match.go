@@ -2,31 +2,38 @@ package policy
 
 import (
 	"path"
+	"strconv"
 	"strings"
+)
+
+const (
+	maxPathPatternBytes = 1024
+	maxPathValueBytes   = 4096
+	maxPathSegments     = 256
 )
 
 func ruleMatches(registry Registry, rule Rule, request Request) bool {
 	return patternsMatch(rule.Clients, request.Client) &&
 		patternsMatch(rule.Operations, request.Operation) &&
-		targetsMatch(rule.Targets, request.Target) &&
+		targetsMatch(registry, rule.Targets, request.Target) &&
 		attrsMatch(registry, rule.Attrs, request.Operation, request.Attrs)
 }
 
-func targetsMatch(matchers []TargetMatcher, target Target) bool {
+func targetsMatch(registry Registry, matchers []TargetMatcher, target Target) bool {
 	for _, matcher := range matchers {
 		if matcher.Kind != target.Kind {
 			continue
 		}
-		if targetFieldsMatch(matcher.Fields, target.Fields) {
+		if targetFieldsMatch(registry.Targets[target.Kind], matcher.Fields, target.Fields) {
 			return true
 		}
 	}
 	return false
 }
 
-func targetFieldsMatch(patterns map[string][]string, fields map[string]string) bool {
+func targetFieldsMatch(spec TargetSpec, patterns map[string][]string, fields map[string]string) bool {
 	for name, allowed := range patterns {
-		if !patternsMatch(allowed, fields[name]) {
+		if !valuesMatch(spec.Fields[name].Match, allowed, fields[name]) {
 			return false
 		}
 	}
@@ -39,11 +46,24 @@ func attrsMatch(registry Registry, patterns map[string][]string, operation strin
 			continue
 		}
 		value, ok := attrs[name]
-		if !ok || !patternsMatch(allowed, value) {
+		if !ok || !valuesMatch(registry.Attrs[name].Match, allowed, value) {
 			return false
 		}
 	}
 	return true
+}
+
+func valuesMatch(mode MatchMode, patterns []string, value string) bool {
+	switch defaultedMatchMode(mode) {
+	case MatchGlob:
+		return patternsMatch(patterns, value)
+	case MatchPathGlob:
+		return pathPatternsMatch(patterns, value)
+	case MatchIntegerMaximum:
+		return integerMaximumMatches(patterns, value)
+	default:
+		return false
+	}
 }
 
 func attrRelevantToOperation(registry Registry, name string, operation string) bool {
@@ -65,6 +85,70 @@ func patternsMatch(patterns []string, value string) bool {
 	}
 	for _, patternValue := range patterns {
 		if ok, err := path.Match(patternValue, value); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+func pathPatternsMatch(patterns []string, value string) bool {
+	if strings.TrimSpace(value) == "" || len(value) > maxPathValueBytes || strings.Count(value, "/") >= maxPathSegments {
+		return false
+	}
+	valueSegments := strings.Split(value, "/")
+	for _, patternValue := range patterns {
+		if pathSegmentsMatch(strings.Split(patternValue, "/"), valueSegments) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathSegmentsMatch(patterns []string, values []string) bool {
+	states := make([]bool, len(patterns)+1)
+	states[0] = true
+	closeDoubleStarStates(states, patterns)
+	for _, value := range values {
+		states = advancePathStates(states, patterns, value)
+	}
+	return states[len(patterns)]
+}
+
+func advancePathStates(states []bool, patterns []string, value string) []bool {
+	next := make([]bool, len(states))
+	for patternIndex := range patterns {
+		if !states[patternIndex] {
+			continue
+		}
+		if patterns[patternIndex] == "**" {
+			next[patternIndex] = true
+			continue
+		}
+		matched, err := path.Match(patterns[patternIndex], value)
+		if err == nil && matched {
+			next[patternIndex+1] = true
+		}
+	}
+	closeDoubleStarStates(next, patterns)
+	return next
+}
+
+func closeDoubleStarStates(states []bool, patterns []string) {
+	for patternIndex, pattern := range patterns {
+		if states[patternIndex] && pattern == "**" {
+			states[patternIndex+1] = true
+		}
+	}
+}
+
+func integerMaximumMatches(ceilings []string, value string) bool {
+	actual, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || actual < 0 {
+		return false
+	}
+	for _, raw := range ceilings {
+		ceiling, err := strconv.ParseInt(raw, 10, 64)
+		if err == nil && actual <= ceiling {
 			return true
 		}
 	}

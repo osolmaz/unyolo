@@ -59,6 +59,11 @@ duplicate auth package.
 
 ## Phase 3: Extract Policy Core
 
+Status: implemented. The provider registry owns operation/target/attr
+vocabulary, field and attr matcher semantics, grantability, and grant mode.
+The core owns strict parsing, validation, ambiguity checks, precedence, and
+active-grant overlays.
+
 Extract policy only after the provider registry API is clear.
 
 The first policy package should provide:
@@ -76,6 +81,12 @@ engine and keep only provider registry, request classification, and tests for
 provider-specific behavior.
 
 ## Phase 4: Extract Grant Records
+
+Status: implemented for the shared pending/active/denied/expired/consumed/
+revoked/canceled lifecycle, idempotency, decision tokens, expiry, use
+reservation, and policy overlays. Provider-specific recovery metadata and
+notification presentation remain in consuming brokers until represented by a
+provider-neutral extension contract.
 
 Extract grant lifecycle types and store behavior after the policy request,
 decision, and generated-rule overlay model is clear.
