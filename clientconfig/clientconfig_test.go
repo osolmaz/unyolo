@@ -144,6 +144,36 @@ bob = second-secret
 	}
 }
 
+func TestSecretsFromData(t *testing.T) {
+	secrets, err := SecretsFromData([]byte(`
+# comment
+alice = first-secret
+bob = second-secret
+`))
+	if err != nil {
+		t.Fatalf("SecretsFromData() error = %v", err)
+	}
+	if secrets["alice"] != "first-secret" || secrets["bob"] != "second-secret" || len(secrets) != 2 {
+		t.Fatalf("SecretsFromData() = %#v, want alice and bob", secrets)
+	}
+}
+
+func TestSecretsFromDataValidation(t *testing.T) {
+	cases := map[string]string{
+		"bad line":         "bob secret\n",
+		"empty secret":     "bob = \n",
+		"duplicate client": "bob = first\nbob = second\n",
+		"empty file":       "# comment only\n\n",
+	}
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := SecretsFromData([]byte(data)); err == nil {
+				t.Fatal("SecretsFromData() error = nil, want validation error")
+			}
+		})
+	}
+}
+
 func TestSecretFromDataValidation(t *testing.T) {
 	cases := map[string]struct {
 		data   string

@@ -35,6 +35,15 @@ func SecretFromFile(path string, client string) (string, error) {
 	return SecretFromData(data, client)
 }
 
+// SecretsFromFile reads path and returns all configured client secrets.
+func SecretsFromFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is operator supplied setup input.
+	if err != nil {
+		return nil, fmt.Errorf("read client secret file: %w", err)
+	}
+	return SecretsFromData(data)
+}
+
 // SecretFromData parses `name = secret` data and returns client's secret.
 func SecretFromData(data []byte, client string) (string, error) {
 	name := strings.TrimSpace(client)
@@ -51,6 +60,28 @@ func SecretFromData(data []byte, client string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("client %q was not found in secret file", name)
+}
+
+// SecretsFromData parses `name = secret` data and returns all configured client secrets.
+func SecretsFromData(data []byte) (map[string]string, error) {
+	out := map[string]string{}
+	for lineNumber, line := range strings.Split(string(data), "\n") {
+		name, secret, ok, err := parseSecretLine(line)
+		if err != nil {
+			return nil, fmt.Errorf("client secret file line %d: %w", lineNumber+1, err)
+		}
+		if !ok {
+			continue
+		}
+		if _, exists := out[name]; exists {
+			return nil, fmt.Errorf("client secret file line %d: duplicate client %q", lineNumber+1, name)
+		}
+		out[name] = secret
+	}
+	if len(out) == 0 {
+		return nil, errors.New("client secret file has no clients")
+	}
+	return out, nil
 }
 
 // Path returns the default client.env path for cfg.
