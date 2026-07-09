@@ -46,6 +46,9 @@ domain boundary:
   and sudo/systemd/launchd integration.
 
 The canonical ownership boundary is in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
+The shared install, setup, policy, grant, approval, audit, doctor, and release
+contract is in
+[docs/UNIFIED_BROKER_CONTRACT.md](docs/UNIFIED_BROKER_CONTRACT.md).
 
 ## Packages
 
