@@ -732,6 +732,45 @@ func TestParseRejectsAmbiguousRequestGrantPolicies(t *testing.T) {
 	}
 }
 
+func TestParseRejectsDisjointAnyGlobRequestGrantPolicies(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"update": {
+				TargetKinds: []string{"repo"},
+				Grantable:   true,
+				GrantMode:   GrantModeWindow,
+			},
+		},
+		Targets: map[string]TargetSpec{
+			"repo": {Fields: map[string]FieldSpec{
+				"name":       {Required: true},
+				"visibility": {Match: MatchAnyGlob},
+			}},
+		},
+	}
+	_, err := Parse([]byte(`{"rules":[
+		{
+			"id":"public",
+			"effect":"request",
+			"clients":["bob"],
+			"operations":["update"],
+			"targets":[{"kind":"repo","name":"demo","visibility":"public"}],
+			"grant_policy":{"default_minutes":5,"max_minutes":5}
+		},
+		{
+			"id":"private",
+			"effect":"request",
+			"clients":["bob"],
+			"operations":["update"],
+			"targets":[{"kind":"repo","name":"demo","visibility":"private"}],
+			"grant_policy":{"default_minutes":10,"max_minutes":10}
+		}
+	]}`), registry)
+	if err == nil || !strings.Contains(err.Error(), "overlap with different grant policies") {
+		t.Fatalf("Parse(any-glob request policies) error = %v, want overlap error", err)
+	}
+}
+
 func TestParseAllowsDisjointRequestGrantPolicies(t *testing.T) {
 	_, err := Parse([]byte(`{"rules":[
 		{

@@ -88,6 +88,8 @@ func matchValuesMayOverlap(left []string, right []string, mode MatchMode) bool {
 	switch defaultedMatchMode(mode) {
 	case MatchIntegerMaximum:
 		return true
+	case MatchAnyGlob:
+		return true
 	case MatchPathOutsidePrefix:
 		return true
 	case MatchPathGlob:
