@@ -37,6 +37,8 @@ aliases, old policy formats, or local duplicate control-plane runtimes.
 - Bind to `GH_BROKER_BIND_ADDR`, defaulting to `127.0.0.1`.
 - Accept `Authorization: Bearer <GH_BROKER_SHARED_SECRET>`.
 - Accept Git-friendly Basic auth where the password is `GH_BROKER_SHARED_SECRET`.
+- Load `GH_BROKER_SECRETS_FILE` for the configured client id so service installs
+  do not need to place broker client secrets in the env file.
 - Load `GH_BROKER_GITHUB_TOKEN` or `GH_BROKER_GITHUB_TOKEN_FILE` at startup and use it only for outbound GitHub requests.
 - Load rule-based `GH_BROKER_SCOPE_FILE`, defaulting to `scope.json`.
 - Cap `git-receive-pack` request bodies with `GH_BROKER_MAX_RECEIVE_PACK_BYTES`.
@@ -115,14 +117,8 @@ POST /{owner}/{repo}.git/git-receive-pack
 ## Not Yet Implemented
 
 - GitHub App private-key authentication and installation token minting.
-- brokerkit cutover for shared auth, policy, grants, approval workflow, audit
-  helpers, notifier interfaces, Telegram approval transport, storage/config
-  helpers, and generic Git parsing helpers.
-- Service-account installer and systemd unit.
-- Shared brokerkit-aligned installer, service setup, and client setup contract
-  described in [BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md).
+- brokerkit cutover for audit helpers and remaining storage/config helpers.
 - Verified GitHub webhook endpoint for installation cache invalidation and audit context.
-- Generated temporary grants.
 - Runtime branch-ruleset inspection in `doctor`.
 - Removal of compatibility route aliases such as `POST /repos/{owner}/{repo}/pulls`.
 
@@ -174,6 +170,11 @@ request classification, and audit-facing rule-id mapping.
 
 Implemented in the current brokerkit cutover slice:
 
+- `install.sh`
+- release tarballs and checksums through `scripts/release.sh`
+- `gh-broker setup client`
+- `gh-broker setup systemd --dev-token-fallback`
+- server-side named client secrets through `GH_BROKER_SECRETS_FILE`
 - `POST /api/grants`
 - `GET /api/grants`
 - `GET /api/grants/{id}`
@@ -186,8 +187,8 @@ Implemented in the current brokerkit cutover slice:
   Bot API server
 
 The next cutover slices should move audit helpers and remaining storage/config
-helpers to brokerkit, then add installer/service setup, GitHub App
-installation-token support, webhooks, and doctor checks.
+helpers to brokerkit, then add GitHub App installation-token runtime, webhooks,
+and doctor checks.
 
 ## Non-Goals
 

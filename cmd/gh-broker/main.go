@@ -40,7 +40,7 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		_, err := fmt.Fprintln(stdout, version)
 		return err
 	case "setup":
-		return runSetup(stdout, stderr, args[1:])
+		return runSetupWithContext(ctx, stdout, stderr, args[1:])
 	default:
 		return fmt.Errorf("usage: gh-broker [--version|version|setup]")
 	}

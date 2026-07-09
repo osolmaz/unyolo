@@ -12,7 +12,9 @@ The shared broker-family install and setup cutover is tracked in
 - Echo HTTP server
 - `gh-broker --version`
 - `gh-broker setup client`
+- `gh-broker setup systemd` for Linux service file/config generation
 - Shared-secret authentication for one configured client id
+- Server-side named client secrets through `GH_BROKER_SECRETS_FILE`
 - Rule-based `scope.json` policy engine
 - Git smart HTTP fetch and push route shape
 - Narrow GitHub API routes for repository listing, content reads, and pull request creation
@@ -63,6 +65,20 @@ gh-broker setup client \
 
 The generated `client.env` contains only `GH_BROKER_URL` and
 `GH_BROKER_SHARED_SECRET`; it does not contain GitHub credentials.
+
+Linux service setup with the current token-file runtime:
+
+```sh
+sudo gh-broker setup systemd \
+  --dev-token-fallback \
+  --github-token-file ./github-token \
+  --scope-file ./scope.json
+```
+
+Use `--no-start` to write files without enabling or starting the service.
+The setup command writes `/etc/gh-broker/secrets` and configures the service
+with `GH_BROKER_SECRETS_FILE`; it does not place the broker client secret or
+GitHub token value directly in the env file.
 
 Health check:
 
@@ -158,7 +174,10 @@ The long-term route shape is `/api/*` for JSON APIs and Git smart-HTTP routes fo
 
 gh-broker should run behind Tailnet-only reachability, but Tailnet access is not authorization. Every broker endpoint still requires the configured shared secret.
 
-The server-side GitHub credential is configured manually with `GH_BROKER_GITHUB_TOKEN` or `GH_BROKER_GITHUB_TOKEN_FILE`. This is a development fallback. Production should use GitHub App installation tokens as described in `docs/PRODUCTION_ARCHITECTURE.md`.
+The server-side GitHub credential is configured with
+`GH_BROKER_GITHUB_TOKEN_FILE` for the current runnable service setup. This is a
+development fallback. Production GitHub App installation-token runtime is still
+tracked in `docs/PRODUCTION_ARCHITECTURE.md`.
 
 Deployment safety defaults:
 

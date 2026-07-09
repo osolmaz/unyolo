@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/osolmaz/brokerkit/clientconfig"
 )
 
 const minimumSharedSecretBytes = 32
@@ -18,6 +20,7 @@ type Config struct {
 	Port                string
 	ClientID            string
 	SharedSecret        string
+	SecretsFile         string
 	GitHubToken         string
 	GitHubTokenFile     string
 	ScopeFile           string
@@ -39,6 +42,7 @@ func Load() (Config, error) {
 		Port:                getEnv("8080", "GH_BROKER_PORT", "CBA_PORT"),
 		ClientID:            getEnv("bob", "GH_BROKER_CLIENT_ID", "CBA_CLIENT_ID"),
 		SharedSecret:        getEnv("", "GH_BROKER_SHARED_SECRET", "CBA_SHARED_SECRET"),
+		SecretsFile:         getEnv("", "GH_BROKER_SECRETS_FILE"),
 		GitHubToken:         getEnv("", "GH_BROKER_GITHUB_TOKEN", "CBA_GITHUB_TOKEN"),
 		GitHubTokenFile:     getEnv("", "GH_BROKER_GITHUB_TOKEN_FILE", "CBA_GITHUB_TOKEN_FILE"),
 		ScopeFile:           getEnv("scope.json", "GH_BROKER_SCOPE_FILE", "CBA_GITHUB_ACCESS_FILE"),
@@ -52,17 +56,40 @@ func Load() (Config, error) {
 		WriteTimeout:        durationEnv(15*time.Second, "GH_BROKER_WRITE_TIMEOUT", "CBA_WRITE_TIMEOUT"),
 		IdleTimeout:         durationEnv(60*time.Second, "GH_BROKER_IDLE_TIMEOUT", "CBA_IDLE_TIMEOUT"),
 	}
-	if cfg.GitHubToken == "" && cfg.GitHubTokenFile != "" {
-		token, err := readSecretFile(cfg.GitHubTokenFile)
-		if err != nil {
-			return Config{}, err
-		}
-		cfg.GitHubToken = token
+	if err := cfg.loadGitHubTokenFile(); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.loadBrokerSecretFile(); err != nil {
+		return Config{}, err
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func (c *Config) loadGitHubTokenFile() error {
+	if c.GitHubToken != "" || c.GitHubTokenFile == "" {
+		return nil
+	}
+	token, err := readSecretFile(c.GitHubTokenFile)
+	if err != nil {
+		return err
+	}
+	c.GitHubToken = token
+	return nil
+}
+
+func (c *Config) loadBrokerSecretFile() error {
+	if c.SharedSecret != "" || c.SecretsFile == "" {
+		return nil
+	}
+	secret, err := clientconfig.SecretFromFile(c.SecretsFile, c.ClientID)
+	if err != nil {
+		return fmt.Errorf("read broker secret file: %w", err)
+	}
+	c.SharedSecret = secret
+	return nil
 }
 
 func (c Config) Validate() error {

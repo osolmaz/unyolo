@@ -18,9 +18,11 @@ Implemented today:
 - `install.sh`
 - release tarballs and checksums through `scripts/release.sh`
 - `gh-broker setup client`
+- `gh-broker setup systemd --dev-token-fallback`
 - Echo HTTP server
 - named client id through `GH_BROKER_CLIENT_ID`
 - shared secret through `GH_BROKER_SHARED_SECRET`
+- named client secret file through `GH_BROKER_SECRETS_FILE`
 - server-side GitHub token through `GH_BROKER_GITHUB_TOKEN_FILE`
 - policy file through `GH_BROKER_SCOPE_FILE`
 - state directory through `GH_BROKER_STATE_DIR`
@@ -32,10 +34,8 @@ Implemented today:
 
 Not implemented yet:
 
-- `gh-broker setup systemd`
-- service user and systemd unit generation
 - brokerkit audit helpers
-- production GitHub App installation-token setup
+- production GitHub App installation-token runtime
 
 ## What Moves To brokerkit
 
@@ -119,6 +119,11 @@ The client setup command should write only broker URL and broker client secret.
 It must not write or print a GitHub token, GitHub App private key, webhook
 secret, installation token, or token metadata.
 
+Today, the runnable Linux service setup is the explicit `--dev-token-fallback`
+mode. App credential files are rendered in dry-run output for the target
+production layout, but non-dry-run App setup stays disabled until the runtime
+can mint GitHub App installation tokens.
+
 ## Default Linux Layout
 
 Target files:
@@ -148,6 +153,9 @@ development fallback.
   secret, read it from a file or stdin, never from a raw command-line argument.
 - Keep GitHub request classification and execution local.
 - Keep `install.sh` binary-only. It must not create services or credentials.
+- Keep broker client secrets in `/etc/gh-broker/secrets` and configure the
+  server through `GH_BROKER_SECRETS_FILE`; do not place raw broker secrets or
+  GitHub tokens in `/etc/gh-broker/env`.
 - CI must use fake GitHub upstreams, fake installation-token minting, and fake
   notifiers. It must not mutate real GitHub repositories or send real Telegram
   messages.

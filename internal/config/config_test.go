@@ -95,6 +95,28 @@ func TestLoadReadsGitHubTokenFile(t *testing.T) {
 	}
 }
 
+func TestLoadReadsBrokerSecretFile(t *testing.T) {
+	dir := t.TempDir()
+	secretFile := filepath.Join(dir, "secrets")
+	secret := strings.Repeat("s", minimumSharedSecretBytes)
+	if err := os.WriteFile(secretFile, []byte("bob = "+secret+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
+	t.Setenv("GH_BROKER_SECRETS_FILE", secretFile)
+	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.SharedSecret != secret {
+		t.Fatalf("SharedSecret = %q, want secret from file", cfg.SharedSecret)
+	}
+	if cfg.SecretsFile != secretFile {
+		t.Fatalf("SecretsFile = %q, want %q", cfg.SecretsFile, secretFile)
+	}
+}
+
 func TestReadSecretFile(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
