@@ -206,6 +206,9 @@ func decodeCompatibleValues(data []byte) (compatibleValues, error) {
 	if err := json.Unmarshal(data, &values); err != nil {
 		return compatibleValues{}, errors.New("must be a string or string array")
 	}
+	if len(values) == 0 {
+		return compatibleValues{}, errors.New("string array must not be empty")
+	}
 	return compatibleValues{values: values}, nil
 }
 
