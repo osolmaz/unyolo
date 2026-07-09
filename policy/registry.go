@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -192,22 +193,63 @@ func validateRequestTarget(target Target, spec TargetSpec) error {
 			return fmt.Errorf("target kind %q requires field %q", target.Kind, name)
 		}
 	}
-	for name := range target.Fields {
-		if _, ok := spec.Fields[name]; !ok {
+	for name, value := range target.Fields {
+		fieldSpec, ok := spec.Fields[name]
+		if !ok {
 			return fmt.Errorf("target kind %q does not support field %q", target.Kind, name)
+		}
+		if err := validateRequestValue(value, fieldSpec.Match); err != nil {
+			return fmt.Errorf("target kind %q field %q: %w", target.Kind, name, err)
 		}
 	}
 	return nil
 }
 
 func validateRequestAttrs(operation string, attrs map[string]string, op OperationSpec, registryAttrs map[string]AttrSpec) error {
-	for name := range attrs {
-		if _, ok := registryAttrs[name]; !ok {
+	for name, value := range attrs {
+		attrSpec, ok := registryAttrs[name]
+		if !ok {
 			return fmt.Errorf("unknown attr %q", name)
 		}
 		if !slices.Contains(op.Attrs, name) {
 			return fmt.Errorf("operation %q does not support attr %q", operation, name)
 		}
+		if err := validateRequestValue(value, attrSpec.Match); err != nil {
+			return fmt.Errorf("attr %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func validateRequestValue(value string, mode MatchMode) error {
+	if strings.TrimSpace(value) == "" {
+		return errors.New("value must not be empty")
+	}
+	switch defaultedMatchMode(mode) {
+	case MatchGlob:
+		return nil
+	case MatchPathGlob:
+		return validatePathRequestValue(value)
+	case MatchIntegerMaximum:
+		return validateIntegerRequestValue(value)
+	}
+	return nil
+}
+
+func validatePathRequestValue(value string) error {
+	if len(value) > maxPathValueBytes {
+		return fmt.Errorf("value must not exceed %d bytes", maxPathValueBytes)
+	}
+	if strings.Count(value, "/") >= maxPathSegments {
+		return fmt.Errorf("value must not exceed %d segments", maxPathSegments)
+	}
+	return nil
+}
+
+func validateIntegerRequestValue(value string) error {
+	number, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || number < 0 {
+		return errors.New("value must be a non-negative integer")
 	}
 	return nil
 }

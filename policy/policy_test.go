@@ -299,6 +299,44 @@ func TestPathMatcherBoundsRequestValues(t *testing.T) {
 	}
 }
 
+func TestRequestMatcherValuesFailClosedBeforeRuleMatching(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{
+			"read": {TargetKinds: []string{"object"}, Attrs: []string{"max_bytes"}},
+		},
+		Targets: map[string]TargetSpec{
+			"object": {Fields: map[string]FieldSpec{
+				"name": {Required: true},
+				"key":  {Match: MatchPathGlob},
+			}},
+		},
+		Attrs: map[string]AttrSpec{"max_bytes": {Match: MatchIntegerMaximum}},
+	}
+	policy := mustParseWithRegistry(t, `{"rules":[{
+		"id":"unconstrained","effect":"allow","clients":["bob"],
+		"operations":["read"],"targets":[{"kind":"object","name":"one"}]
+	}]}`, registry)
+	cases := []Request{
+		{
+			Client: "bob", Operation: "read",
+			Target: Target{Kind: "object", Fields: map[string]string{
+				"name": "one", "key": strings.Repeat("a", maxPathValueBytes+1),
+			}},
+		},
+		{
+			Client: "bob", Operation: "read",
+			Target: Target{Kind: "object", Fields: map[string]string{"name": "one"}},
+			Attrs:  map[string]string{"max_bytes": "invalid"},
+		},
+	}
+	for _, request := range cases {
+		decision := policy.Decide(request, DecisionOptions{})
+		if decision.Allowed || decision.Effect != EffectNoMatch {
+			t.Fatalf("invalid concrete value decision = %+v, want fail-closed no match", decision)
+		}
+	}
+}
+
 func TestPathMatcherOverlapIsConservative(t *testing.T) {
 	cases := []struct {
 		left  string
