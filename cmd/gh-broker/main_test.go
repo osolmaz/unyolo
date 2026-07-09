@@ -61,6 +61,35 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 	}
 }
 
+func TestSetupClientParsingAndValidation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	opts, err := parseSetupClient(ioDiscard{}, []string{
+		"--client", "bob",
+		"--url", "http://127.0.0.1:8081",
+		"--secret-file", filepath.Join(t.TempDir(), "secrets"),
+	})
+	if err != nil {
+		t.Fatalf("parseSetupClient() error = %v", err)
+	}
+	if opts.HomeDir != home {
+		t.Fatalf("HomeDir = %q, want HOME", opts.HomeDir)
+	}
+	explicit := setupClientOptions{HomeDir: "/tmp/custom"}
+	if err := defaultSetupClientHome(&explicit); err != nil {
+		t.Fatalf("defaultSetupClientHome(explicit) error = %v", err)
+	}
+	if explicit.HomeDir != "/tmp/custom" {
+		t.Fatalf("explicit HomeDir = %q, want unchanged", explicit.HomeDir)
+	}
+	if err := validateSetupClientOptions(setupClientOptions{}); err == nil {
+		t.Fatal("validateSetupClientOptions(empty) error = nil, want validation error")
+	}
+	if err := runSetup(ioDiscard{}, ioDiscard{}, []string{"bad"}); err == nil {
+		t.Fatal("runSetup(bad) error = nil, want usage error")
+	}
+}
+
 func TestRunReturnsConfigError(t *testing.T) {
 	t.Setenv("GH_BROKER_SHARED_SECRET", "short")
 	err := run(t.Context())

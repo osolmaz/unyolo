@@ -95,6 +95,29 @@ func TestLoadReadsGitHubTokenFile(t *testing.T) {
 	}
 }
 
+func TestReadSecretFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "github-token")
+	if err := os.WriteFile(path, []byte(" token-from-file\n"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	secret, err := readSecretFile(path)
+	if err != nil {
+		t.Fatalf("readSecretFile() error = %v", err)
+	}
+	if secret != "token-from-file" {
+		t.Fatalf("readSecretFile() = %q, want trimmed token", secret)
+	}
+	emptyPath := filepath.Join(dir, "empty")
+	if err := os.WriteFile(emptyPath, []byte(" \n"), 0600); err != nil {
+		t.Fatalf("WriteFile(empty) error = %v", err)
+	}
+	if _, err := readSecretFile(emptyPath); err == nil {
+		t.Fatal("readSecretFile(empty) error = nil, want empty secret error")
+	}
+}
+
 func TestValidateRejectsWeakSharedSecret(t *testing.T) {
 	t.Parallel()
 	cfg := Config{

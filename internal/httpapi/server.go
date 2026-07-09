@@ -210,15 +210,23 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 	}
 	c.Request().Body = io.NopCloser(bytes.NewReader(body))
 	c.Request().ContentLength = int64(len(body))
-	err = s.proxyGit(c)
+	response, err := s.forwardGit(c)
 	if err != nil {
 		s.releaseGrantUses(reserved)
 		s.auditAuthorizedReceivePack(c, authorized, errorOutcome(err), errorString(err), errorStatus(c, err))
 		return err
 	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if err := s.commitGrantUses(reserved); err != nil {
-		s.auditAuthorizedReceivePack(c, authorized, "error", "grant use commit failed", responseStatus(c))
+		s.auditAuthorizedReceivePack(c, authorized, "error", "grant use commit failed", response.StatusCode)
 		return echo.NewHTTPError(http.StatusInternalServerError, "could not commit grant use")
+	}
+	httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
+	if err := copyUpstreamResponse(c, response); err != nil {
+		s.auditAuthorizedReceivePack(c, authorized, "error", err.Error(), responseStatus(c))
+		return err
 	}
 	s.auditAuthorizedReceivePack(c, authorized, "proxied", "", responseStatus(c))
 	return nil
@@ -359,15 +367,9 @@ func validateRouteSegment(value string) error {
 }
 
 func (s *Server) proxyGit(c echo.Context) error {
-	upstreamURL := s.githubGitBaseURL.JoinPath(c.Param("owner"), c.Param("repoGit"), strings.TrimPrefix(c.Request().URL.Path, gitRepoPrefix(c)))
-	upstreamURL.RawQuery = c.Request().URL.RawQuery
-	return s.proxyTo(c, upstreamURL, func(request *http.Request) {
+	return s.proxyTo(c, s.gitUpstreamURL(c), func(request *http.Request) {
 		request.Header.Set("Authorization", githubGitAuthorization(s.githubToken))
 	})
-}
-
-func gitRepoPrefix(c echo.Context) string {
-	return fmt.Sprintf("/%s/%s/", c.Param("owner"), c.Param("repoGit"))
 }
 
 func (s *Server) classifyReceivePackCommand(c echo.Context, command receivePackCommand) (policy.Operation, error) {

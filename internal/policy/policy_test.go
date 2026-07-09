@@ -229,6 +229,87 @@ func TestNormalizeRequestAttrsIgnoresUnknownKeys(t *testing.T) {
 	}
 }
 
+func TestIncompleteRequest(t *testing.T) {
+	t.Parallel()
+	if !incompleteRequest(Request{}) {
+		t.Fatal("incompleteRequest(empty) = false, want true")
+	}
+	if !incompleteRequest(Request{Client: "bob", Operation: OperationGitFetch, Target: Target{Kind: "repo", Owner: "dutifuldev"}}) {
+		t.Fatal("incompleteRequest(missing repo name) = false, want true")
+	}
+	if incompleteRequest(Request{Client: "bob", Operation: OperationInstallationReposList, Target: Target{Kind: "installation"}}) {
+		t.Fatal("incompleteRequest(installation list) = true, want false")
+	}
+	if incompleteRequest(repoRequest(OperationGitFetch, "dutifuldev", "gh-broker", nil)) {
+		t.Fatal("incompleteRequest(repo fetch) = true, want false")
+	}
+}
+
+func TestRegistryHelpers(t *testing.T) {
+	t.Parallel()
+	ops := allOperations()
+	if !slices.Contains(ops, OperationGitFetch) || !slices.Contains(ops, OperationWebhookGitHubReceive) {
+		t.Fatalf("allOperations() = %v, want known GitHub operations", ops)
+	}
+	if !slices.IsSorted(ops) {
+		t.Fatalf("allOperations() = %v, want sorted operations", ops)
+	}
+	if attrs := operationAttrs(OperationPullRequestCreate); !slices.Equal(attrs, []string{"ref", "base_ref", "head_ref"}) {
+		t.Fatalf("operationAttrs(pr.create) = %v, want PR refs", attrs)
+	}
+	if got := targetKindForOperation(OperationInstallationReposList); got != "installation" {
+		t.Fatalf("targetKindForOperation(installation.repos.list) = %q, want installation", got)
+	}
+	if got := targetKindForOperation(OperationGitFetch); got != "repo" {
+		t.Fatalf("targetKindForOperation(git.fetch) = %q, want repo", got)
+	}
+}
+
+func TestCoreTargetsForOperation(t *testing.T) {
+	t.Parallel()
+	targets, err := coreTargetsForOperation([]Target{{Kind: "*", Owner: "dutifuldev", Name: "gh-broker"}}, OperationGitFetch)
+	if err != nil {
+		t.Fatalf("coreTargetsForOperation(repo) error = %v", err)
+	}
+	if len(targets) != 1 || targets[0]["kind"] != "repo" || targets[0]["owner"] != "dutifuldev" {
+		t.Fatalf("repo targets = %+v, want repo target", targets)
+	}
+	installTargets, err := coreTargetsForOperation([]Target{{Kind: "*"}}, OperationInstallationReposList)
+	if err != nil {
+		t.Fatalf("coreTargetsForOperation(installation) error = %v", err)
+	}
+	if len(installTargets) != 1 || installTargets[0]["kind"] != "installation" {
+		t.Fatalf("installation targets = %+v, want installation target", installTargets)
+	}
+	if _, err := coreTargetsForOperation([]Target{{Kind: "installation"}}, OperationGitFetch); err == nil {
+		t.Fatal("coreTargetsForOperation(incompatible) error = nil, want error")
+	}
+}
+
+func TestAttrsForOperation(t *testing.T) {
+	t.Parallel()
+	attrs, err := attrsForOperation(map[string][]string{"refs": {"refs/heads/main"}}, OperationGitPushForce)
+	if err != nil {
+		t.Fatalf("attrsForOperation() error = %v", err)
+	}
+	if !slices.Equal(attrs["ref"], []string{"refs/heads/main"}) {
+		t.Fatalf("attrs = %+v, want canonical ref", attrs)
+	}
+	if _, err := attrsForOperation(map[string][]string{"path": {"README.md"}}, OperationGitFetch); err == nil {
+		t.Fatal("attrsForOperation(unsupported attr) error = nil, want error")
+	}
+}
+
+func TestExpandedRuleID(t *testing.T) {
+	t.Parallel()
+	if got := expandedRuleID("rule", OperationGitFetch, 2); got != "rule.git.fetch" {
+		t.Fatalf("expandedRuleID() = %q, want operation suffix", got)
+	}
+	if got := expandedRuleID("rule", OperationGitFetch, 1); got != "rule" {
+		t.Fatalf("expandedRuleID(single) = %q, want original id", got)
+	}
+}
+
 func TestPolicyListReposUsesInstallationTarget(t *testing.T) {
 	t.Parallel()
 	p := testPolicy(t)
@@ -383,6 +464,30 @@ func TestFromCoreDecisionUsesGrantRuleIDsWhenAllowIDsEmpty(t *testing.T) {
 	})
 	if !decision.Allowed || !slices.Equal(decision.MatchedRuleIDs, []string{"request-main-update"}) {
 		t.Fatalf("decision = %+v, want original grant rule id", decision)
+	}
+	if got := originalRuleID("request-main-update.git.push.force"); got != "request-main-update" {
+		t.Fatalf("originalRuleID() = %q, want stripped operation suffix", got)
+	}
+	if got := originalRuleID("already-original"); got != "already-original" {
+		t.Fatalf("originalRuleID(plain) = %q, want unchanged id", got)
+	}
+}
+
+func TestDecisionReasons(t *testing.T) {
+	t.Parallel()
+	if got := allowReason(corepolicy.Decision{}); got != "allowed by policy" {
+		t.Fatalf("allowReason(policy) = %q, want policy reason", got)
+	}
+	if got := allowReason(corepolicy.Decision{GrantID: "grant-1"}); got != "allowed by grant" {
+		t.Fatalf("allowReason(grant) = %q, want grant reason", got)
+	}
+	for _, reason := range []string{"", "policy_denied"} {
+		if got := denyReason(corepolicy.Decision{Reason: reason}); got != "denied by policy" {
+			t.Fatalf("denyReason(%q) = %q, want policy denial", reason, got)
+		}
+	}
+	if got := denyReason(corepolicy.Decision{Reason: "custom reason"}); got != "custom reason" {
+		t.Fatalf("denyReason(custom) = %q, want custom reason", got)
 	}
 }
 
