@@ -8,11 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/osolmaz/brokerkit/store"
 )
 
 const clientEnvFileMode os.FileMode = 0o600
+
+var chownPath = os.Chown
 
 // Config describes one broker client environment file.
 type Config struct {
@@ -88,6 +91,23 @@ func Write(cfg Config) (string, error) {
 	return path, nil
 }
 
+// WriteForHomeOwner writes cfg and, when running as root, makes the generated
+// client config paths owned by the owner of cfg.HomeDir.
+func WriteForHomeOwner(cfg Config) (string, error) {
+	path, err := Write(cfg)
+	if err != nil {
+		return "", err
+	}
+	if os.Geteuid() != 0 {
+		return path, nil
+	}
+	uid, gid, err := homeOwner(cfg.HomeDir)
+	if err != nil {
+		return "", err
+	}
+	return path, chownClientPaths(cfg.HomeDir, cfg.BrokerName, path, uid, gid)
+}
+
 func (cfg Config) validate() error {
 	if err := validateBrokerName(cfg.BrokerName); err != nil {
 		return err
@@ -161,6 +181,31 @@ func validateURL(value string) error {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func homeOwner(homeDir string) (int, int, error) {
+	info, err := os.Stat(homeDir)
+	if err != nil {
+		return 0, 0, fmt.Errorf("stat home directory: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, errors.New("home directory owner is unavailable")
+	}
+	return int(stat.Uid), int(stat.Gid), nil
+}
+
+func chownClientPaths(homeDir string, brokerName string, envPath string, uid int, gid int) error {
+	for _, path := range []string{
+		filepath.Join(homeDir, ".config"),
+		filepath.Join(homeDir, ".config", brokerName),
+		envPath,
+	} {
+		if err := chownPath(path, uid, gid); err != nil {
+			return fmt.Errorf("chown %s: %w", path, err)
+		}
+	}
+	return nil
 }
 
 func parseSecretLine(line string) (string, string, bool, error) {
