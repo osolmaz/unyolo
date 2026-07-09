@@ -152,6 +152,9 @@ func claimNotification(t *testing.T, store *Store, id string) NotificationClaim 
 
 func setClaimedNotification(t *testing.T, store *Store, id string, claimTime time.Time, ref notify.MessageRef) {
 	t.Helper()
+	if _, recorded, err := store.SetNotificationIfClaimed(id, claimTime, notify.MessageRef{Kind: "telegram"}); err == nil || recorded {
+		t.Fatalf("SetNotificationIfClaimed(invalid ref) recorded=%v err=%v", recorded, err)
+	}
 	if _, recorded, err := store.SetNotificationIfClaimed(id, claimTime.Add(time.Second), ref); err != nil || recorded {
 		t.Fatalf("SetNotificationIfClaimed(stale) recorded=%v err=%v", recorded, err)
 	}
@@ -224,6 +227,36 @@ func TestRetainUseAndReleaseClearReservationState(t *testing.T) {
 	}
 }
 
+func TestRevokedReservationCanBeSettled(t *testing.T) {
+	now := time.Date(2026, 7, 10, 4, 0, 0, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{
+		Now:                func() time.Time { return now },
+		ReservationTimeout: time.Minute,
+	})
+	committed := approvedReservedGrant(t, store, "revoked-commit")
+	if _, err := store.Revoke(committed.ID, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	settled, err := store.CommitUse(committed.ID)
+	if err != nil || settled.Status != StatusRevoked || settled.UsedCount != 1 || settled.ReservedCount != 0 {
+		t.Fatalf("CommitUse(revoked) = %+v err=%v", settled, err)
+	}
+
+	retained := approvedReservedGrant(t, store, "revoked-retain")
+	setTestNotification(t, store, retained.ID)
+	if _, err := store.Revoke(retained.ID, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusRevoked, "reserved:revoked")
+	if !update.Grant.ReservationRetained {
+		t.Fatalf("revoked stale reservation = %+v, want retained", update.Grant)
+	}
+	if _, err := store.ReleaseUse(retained.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCommittedUseRemainsDueAfterRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grants.json")
 	store := New(path, Options{})
@@ -271,6 +304,20 @@ func setTestNotification(t *testing.T, store *Store, id string) {
 	if _, err := store.SetNotification(id, notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func approvedReservedGrant(t *testing.T, store *Store, requestID string) Grant {
+	t.Helper()
+	result := requestTestGrant(t, store, requestID, 1)
+	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserved, err := store.ReserveUse(approved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reserved
 }
 
 func assertSingleDueUpdate(t *testing.T, store *Store, kind StatusUpdateKind, status Status, key string) StatusUpdate {

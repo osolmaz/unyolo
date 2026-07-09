@@ -147,6 +147,9 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 	if requireClaim && claimedAt.IsZero() {
 		return Grant{}, false, nil
 	}
+	if ref.MessageID <= 0 {
+		return Grant{}, false, errors.New("notification message id must be positive")
+	}
 	var out Grant
 	recorded := false
 	err := s.update(func(data *fileData) error {
@@ -232,7 +235,7 @@ func statusUpdateNeedingDelivery(grant Grant) (StatusUpdate, bool) {
 
 func retainedReservationUpdate(grant Grant) (StatusUpdate, bool) {
 	if !grant.ReservationRetained || grant.ReservedCount <= 0 ||
-		(grant.Status != StatusActive && grant.Status != StatusExpired) {
+		!reservationCanSettle(grant.Status) {
 		return StatusUpdate{}, false
 	}
 	key := NotificationStatusReserved + ":" + string(grant.Status)

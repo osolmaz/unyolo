@@ -393,8 +393,10 @@ func (s *Store) CommitUse(id string) (Grant, error) {
 			grant.ReservationRetained = false
 		}
 		if grant.UsedCount >= grant.MaxUses {
-			grant.Status = StatusConsumed
-			grant.ExpiredFrom = ""
+			if grant.Status != StatusRevoked {
+				grant.Status = StatusConsumed
+				grant.ExpiredFrom = ""
+			}
 		}
 		return grant, nil
 	})
@@ -765,7 +767,7 @@ func (s *Store) retainStaleReservations(data *fileData) bool {
 
 func reservationIsStale(grant Grant, now time.Time, timeout time.Duration) bool {
 	if grant.ReservationRetained || grant.ReservedCount <= 0 ||
-		(grant.Status != StatusActive && grant.Status != StatusExpired) {
+		!reservationCanSettle(grant.Status) {
 		return false
 	}
 	return grant.ReservedAt.IsZero() || !now.Before(grant.ReservedAt.Add(timeout))
@@ -778,7 +780,11 @@ func grantCanUse(grant Grant, now time.Time) bool {
 }
 
 func grantCanCommitUse(grant Grant) bool {
-	return grant.ReservedCount > 0 && (grant.Status == StatusActive || grant.Status == StatusExpired)
+	return grant.ReservedCount > 0 && reservationCanSettle(grant.Status)
+}
+
+func reservationCanSettle(status Status) bool {
+	return status == StatusActive || status == StatusExpired || status == StatusRevoked
 }
 
 func (g Grant) toPolicyGrant() policy.Grant {
