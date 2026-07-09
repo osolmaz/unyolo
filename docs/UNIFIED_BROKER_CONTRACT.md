@@ -149,7 +149,7 @@ The default Linux layout should be:
 ```text
 /etc/<broker>/env
 /etc/<broker>/secrets
-/etc/<broker>/scope.json
+/etc/<broker>/<policy-file>
 /var/lib/<broker>/
 /etc/systemd/system/<broker>.service
 ```
@@ -163,6 +163,9 @@ Rules:
   required, mode `0600`.
 - `/var/lib/<broker>` is owned by the service user.
 - Agents receive only broker client config, never upstream credentials.
+
+The policy file name is broker-local. `hf-broker` and `gh-broker` currently use
+`scope.json`; `sudo-broker` uses `policy.json`.
 
 The named client secret file format is shared:
 
@@ -180,7 +183,7 @@ Common environment names should follow each broker prefix:
 ```text
 <PREFIX>_BIND_ADDR
 <PREFIX>_PORT
-<PREFIX>_SCOPE_FILE
+<PREFIX>_SCOPE_FILE or <PREFIX>_POLICY_FILE
 <PREFIX>_SECRETS_FILE
 <PREFIX>_STATE_DIR
 ```
