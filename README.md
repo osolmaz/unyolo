@@ -61,8 +61,9 @@ Implemented package candidates are:
 - `httpx`: proxy-safe header filtering and bounded body helpers
 - `clientconfig`: shared client env rendering for
   `~/.config/<broker>/client.env`
-- `notify`: approval notification interfaces and reusable approval-channel
-  adapters such as Telegram
+- `notify`: approval notification interfaces, generic decision results, and a
+  reusable Telegram adapter with send, status edit, long-poll callback, and
+  tracked expiry support
 - `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
   `hf-broker` and `gh-broker`
 - `store`: atomic file storage and lock helpers, if needed by grants/audit

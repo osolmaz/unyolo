@@ -128,6 +128,11 @@ brokerkit should own:
 - transport errors
 - shared tests for callback and token safety
 
+Status: brokerkit now owns the reusable Telegram client, inline callback data,
+long polling, configured-chat filtering, callback answering, status edits, and
+pending/active expiry tracking. Brokers still own the domain-specific approval
+summary and the final grant approve/deny/revoke calls.
+
 brokerkit should not own text such as "approve this force-push" or "approve
 this shell as deploy." Brokers compose those summaries.
 

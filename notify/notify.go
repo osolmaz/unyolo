@@ -51,6 +51,19 @@ type Decision struct {
 	ChatID        int64
 	CallbackID    string
 	MessageID     int
+	MessageText   string
+	OperatorID    int64
+	OperatorTag   string
+}
+
+// DecisionResult is the visible result of an operator decision.
+type DecisionResult struct {
+	// Answer is the short callback answer shown by the approval channel.
+	Answer string
+	// Status is the message status line. If empty, Answer is used.
+	Status string
+	// ActiveExpiresAt tracks an approved access window for a later expiry edit.
+	ActiveExpiresAt time.Time
 }
 
 // Notifier sends approval requests and status updates.

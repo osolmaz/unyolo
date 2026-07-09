@@ -120,6 +120,13 @@ forwarding behavior.
 
 Extract the generic approval workflow after grants are stable.
 
+Status: initial `brokerkit/notify` and `brokerkit/notify/telegram` packages are
+implemented. They provide provider-neutral approval messages, decision results,
+Telegram send/status-edit behavior, inline approve/deny callback data, long
+polling for callback queries, configured-chat filtering, and tracked pending or
+active expiry edits. Consuming brokers still need to cut over and delete local
+Telegram transports.
+
 The package should support:
 
 - approval request and decision models
