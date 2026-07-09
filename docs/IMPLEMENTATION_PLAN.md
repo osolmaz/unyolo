@@ -165,15 +165,29 @@ contract:
 ## Current Cutover Status
 
 gh-broker now imports brokerkit for shared authentication, broker policy
-evaluation, and provider-neutral Git receive-pack parsing. The remaining
-`internal/security`, `internal/policy`, and `internal/httpapi/receive_pack.go`
-code is GitHub-specific adapter code: Echo middleware wiring, GitHub operation
-registration, target and attr normalization, request classification, and
-audit-facing rule-id mapping.
+evaluation, generated grants, approval state, notification interfaces, Telegram
+approval transport, local durable grant storage, and provider-neutral Git
+receive-pack parsing. The remaining `internal/security`, `internal/policy`, and
+`internal/httpapi/receive_pack.go` code is GitHub-specific adapter code: Echo
+middleware wiring, GitHub operation registration, target and attr normalization,
+request classification, and audit-facing rule-id mapping.
 
-The next cutover slices should move generated grants, approval state,
-notification interfaces, Telegram transport, audit helpers, and storage helpers
-to brokerkit as those features land in gh-broker.
+Implemented in the current brokerkit cutover slice:
+
+- `POST /api/grants`
+- `GET /api/grants`
+- `GET /api/grants/{id}`
+- requestable operations create brokerkit pending grants
+- active grants are evaluated through brokerkit policy overlays
+- grant use is reserved before upstream forwarding and committed after the
+  proxy accepts the request
+- deny rules still override active grants
+- Telegram approval uses the shared brokerkit adapter and is tested with a fake
+  Bot API server
+
+The next cutover slices should move audit helpers and remaining storage/config
+helpers to brokerkit, then add installer/service setup, GitHub App
+installation-token support, webhooks, and doctor checks.
 
 ## Non-Goals
 

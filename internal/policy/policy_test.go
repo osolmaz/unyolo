@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
@@ -296,6 +297,81 @@ func TestRequestGrantPolicyIsSingleUse(t *testing.T) {
 	grantPolicy := doc.Rules[0].GrantPolicy
 	if grantPolicy.DefaultMaxUses != 1 || grantPolicy.MaxUses != 1 {
 		t.Fatalf("grant uses = default %d max %d, want 1/1", grantPolicy.DefaultMaxUses, grantPolicy.MaxUses)
+	}
+}
+
+func TestRequestRulesRequireGrantForExecution(t *testing.T) {
+	t.Parallel()
+	p, err := New(Scope{Rules: []Rule{
+		{
+			ID:         "request-main-update",
+			Effect:     EffectRequest,
+			Clients:    []string{"bob"},
+			Operations: []Operation{OperationGitPushForce},
+			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	request := repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/main"})
+	execute := p.Evaluate(request)
+	if execute.Allowed || execute.Effect != EffectRequest || execute.GrantPolicy != nil {
+		t.Fatalf("Evaluate() = %+v, want approval required but not executable", execute)
+	}
+	grantRequest := p.EvaluateGrantRequest(request)
+	if grantRequest.Allowed || grantRequest.Effect != EffectRequest || grantRequest.GrantPolicy == nil {
+		t.Fatalf("EvaluateGrantRequest() = %+v, want requestable grant policy", grantRequest)
+	}
+}
+
+func TestActiveGrantAllowsExactRequestAndDenyStillWins(t *testing.T) {
+	t.Parallel()
+	p, err := New(Scope{Rules: []Rule{
+		{
+			ID:         "deny-main",
+			Effect:     EffectDeny,
+			Clients:    []string{"*"},
+			Operations: []Operation{OperationGitPushForce},
+			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	request := repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/main"})
+	grant := corepolicy.Grant{
+		ID:        "grant-1",
+		Client:    "bob",
+		Operation: string(OperationGitPushForce),
+		Target:    CoreTarget(request.Target),
+		Attrs:     request.Attrs,
+		ExpiresAt: time.Now().Add(time.Hour),
+		UsesLeft:  1,
+	}
+	if decision := p.Evaluate(request, grant); decision.Allowed || decision.Effect != EffectDeny {
+		t.Fatalf("deny-over-grant decision = %+v, want deny", decision)
+	}
+
+	empty, err := New(Scope{Rules: []Rule{{
+		ID:         "unrelated",
+		Effect:     EffectAllow,
+		Clients:    []string{"alice"},
+		Operations: []Operation{OperationGitFetch},
+		Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+	}}})
+	if err != nil {
+		t.Fatalf("New(empty) error = %v", err)
+	}
+	allowed := empty.Evaluate(request, grant)
+	if !allowed.Allowed || allowed.GrantID != grant.ID || !slices.Equal(allowed.MatchedRuleIDs, []string{grant.ID}) {
+		t.Fatalf("active grant decision = %+v, want grant allow", allowed)
+	}
+	other := empty.Evaluate(repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/other"}), grant)
+	if other.Allowed {
+		t.Fatalf("other ref decision = %+v, want no grant match", other)
 	}
 }
 

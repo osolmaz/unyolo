@@ -98,7 +98,7 @@ func TestRunReturnsScopeFileError(t *testing.T) {
 
 func TestBuildServerUsesConfiguredBindAddress(t *testing.T) {
 	t.Parallel()
-	server, err := buildServer(configForBuildTest(t))
+	server, err := buildServer(t.Context(), configForBuildTest(t))
 	if err != nil {
 		t.Fatalf("buildServer() error = %v", err)
 	}

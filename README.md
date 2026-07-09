@@ -125,6 +125,9 @@ Example direct-main exception:
 GET  /healthz
 
 GET  /api/repos
+POST /api/grants
+GET  /api/grants
+GET  /api/grants/{id}
 GET  /api/repos/{owner}/{repo}/contents/{path}
 POST /api/repos/{owner}/{repo}/pulls
 
@@ -146,7 +149,18 @@ The server-side GitHub credential is configured manually with `GH_BROKER_GITHUB_
 Deployment safety defaults:
 
 - `GH_BROKER_BIND_ADDR` defaults to `127.0.0.1`.
+- `GH_BROKER_STATE_DIR` defaults to `./state`.
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
 - `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
+- `GH_BROKER_TELEGRAM_BOT_TOKEN` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
+  Telegram approval for requestable grants.
 - Audit logs record client, operation, owner, repo, method, path, outcome, status, reason, and matched rule ids.
 - Audit logs do not include tokens, cookies, request bodies, PR bodies, pack contents, diffs, or raw upstream bodies.
+
+## Grants
+
+Request rules do not execute directly. An authenticated client creates a
+pending grant with `POST /api/grants`; gh-broker sends the approval request to
+Telegram when Telegram is configured. Approval creates a short-lived brokerkit
+grant that is evaluated by the same policy path as static rules. Deny rules
+still win over approved grants.

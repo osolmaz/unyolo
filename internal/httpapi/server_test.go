@@ -15,6 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/notify"
+	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/gh-broker/internal/config"
 	"github.com/osolmaz/gh-broker/internal/policy"
 )
@@ -557,6 +560,270 @@ func TestPullRequestPolicyDenialDoesNotCallUpstream(t *testing.T) {
 	}
 }
 
+func TestGrantRequestApproveAndUsePullRequestGrant(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusCreated)
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+
+	assertPullRequestNeedsGrant(t, server, "work")
+	grant := createPullRequestGrant(t, server, notifier, "pr-1")
+	approveGrant(t, server, grant.ID, notifier.token)
+	assertGrantBackedPullRequestConsumed(t, server, grant.ID, &upstreamCalls)
+}
+
+func TestDenyOverridesActiveGrant(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithPolicyAndHandler(t, denyMainWithRequestPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
+	})
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	response := doWithBody(
+		t,
+		server,
+		http.MethodPost,
+		"/dutifuldev/gh-broker.git/git-receive-pack",
+		bearerAuth(),
+		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
+	)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s, want deny despite grant", response.Code, response.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want none", upstreamCalls)
+	}
+}
+
+func TestTelegramApprovalActivatesGrant(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	telegramState := &fakeTelegramState{chatID: 123, messageID: 77}
+	telegramAPI := httptest.NewServer(fakeTelegramHandler(t, telegramState))
+	t.Cleanup(telegramAPI.Close)
+	telegram, err := bktelegram.NewWithOptions("bot-token", telegramState.chatID, telegramAPI.Client(), telegramAPI.URL, bktelegram.Options{
+		PollTimeoutSeconds: 1,
+		ApproveText:        "Approve",
+		DenyText:           "Deny",
+	})
+	if err != nil {
+		t.Fatalf("NewWithOptions() error = %v", err)
+	}
+	server.notifier = telegram
+	server.telegram = telegram
+
+	created := createTelegramPullRequestGrant(t, server, telegramState)
+	pollTelegramApproval(t, telegram, server)
+	assertGrantActiveAfterTelegram(t, server, created.ID, telegramState)
+}
+
+func assertPullRequestNeedsGrant(t *testing.T, server *Server, title string) {
+	t.Helper()
+	response := createPullRequest(t, server, title)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("pull request status = %d, body = %s, want grant required", response.Code, response.Body.String())
+	}
+}
+
+func createPullRequestGrant(t *testing.T, server *Server, notifier *captureNotifier, requestID string) apiGrant {
+	t.Helper()
+	response := createGrant(t, server, requestID, "open the work PR")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("grant create status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), notifier.token) || strings.Contains(response.Body.String(), "decision_token") {
+		t.Fatalf("grant create response leaked decision token: %s", response.Body.String())
+	}
+	if len(notifier.messages) != 1 || notifier.token == "" {
+		t.Fatalf("notifier messages = %+v token=%q, want one approval with token", notifier.messages, notifier.token)
+	}
+	return decodeGrantResponse(t, response)
+}
+
+func approveGrant(t *testing.T, server *Server, grantID string, token string) {
+	t.Helper()
+	decision := server.handleTelegramDecision(context.Background(), notify.Decision{
+		Action:        notify.ActionApprove,
+		GrantID:       grantID,
+		DecisionToken: token,
+		OperatorID:    42,
+	})
+	if decision.Answer != "Grant approved" {
+		t.Fatalf("telegram decision = %+v, want approval", decision)
+	}
+}
+
+func assertGrantBackedPullRequestConsumed(t *testing.T, server *Server, grantID string, upstreamCalls *int) {
+	t.Helper()
+	after := createPullRequest(t, server, "work")
+	if after.Code != http.StatusCreated {
+		t.Fatalf("after approval status = %d, body = %s", after.Code, after.Body.String())
+	}
+	if *upstreamCalls != 1 {
+		t.Fatalf("upstream calls = %d, want one grant-backed request", *upstreamCalls)
+	}
+	list := do(t, server, http.MethodGet, "/api/grants", bearerAuth())
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), grantID) || strings.Contains(list.Body.String(), "decision_token") {
+		t.Fatalf("grant list response = %d %s, want grant without decision token", list.Code, list.Body.String())
+	}
+	get := do(t, server, http.MethodGet, "/api/grants/"+grantID, bearerAuth())
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"status":"consumed"`) {
+		t.Fatalf("grant get after use = %d %s, want consumed", get.Code, get.Body.String())
+	}
+	assertPullRequestNeedsGrant(t, server, "again")
+}
+
+func createTelegramPullRequestGrant(t *testing.T, server *Server, state *fakeTelegramState) apiGrant {
+	t.Helper()
+	response := createGrant(t, server, "telegram-pr-1", "telegram approval")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("grant create status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if state.callbackData == "" {
+		t.Fatal("fake Telegram did not capture callback data")
+	}
+	return decodeGrantResponse(t, response)
+}
+
+func pollTelegramApproval(t *testing.T, telegram *bktelegram.Client, server *Server) {
+	t.Helper()
+	nextOffset, err := telegram.PollOnce(context.Background(), 0, server.handleTelegramDecision)
+	if err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+	if nextOffset != 2 {
+		t.Fatalf("next offset = %d, want 2", nextOffset)
+	}
+}
+
+func assertGrantActiveAfterTelegram(t *testing.T, server *Server, grantID string, state *fakeTelegramState) {
+	t.Helper()
+	get := do(t, server, http.MethodGet, "/api/grants/"+grantID, bearerAuth())
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"status":"active"`) {
+		t.Fatalf("grant get after telegram = %d %s, want active", get.Code, get.Body.String())
+	}
+	if !state.answered {
+		t.Fatal("fake Telegram callback was not answered")
+	}
+	if !strings.Contains(strings.Join(state.edits, "\n"), "Approved. Access is active.") {
+		t.Fatalf("telegram edits = %q, want approval status edit", state.edits)
+	}
+}
+
+func createPullRequest(t *testing.T, server *Server, title string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := fmt.Sprintf(`{"title":%q,"head":"bob/work","base":"main"}`, title)
+	return doWithBody(t, server, http.MethodPost, "/api/repos/dutifuldev/gh-broker/pulls", bearerAuth(), []byte(body))
+}
+
+func createGrant(t *testing.T, server *Server, requestID string, reason string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := fmt.Sprintf(
+		`{"client_request_id":%q,"operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":%q,"minutes":5}`,
+		requestID,
+		reason,
+	)
+	return doWithBody(t, server, http.MethodPost, "/api/grants", bearerAuth(), []byte(body))
+}
+
+func decodeGrantResponse(t *testing.T, response *httptest.ResponseRecorder) apiGrant {
+	t.Helper()
+	var payload struct {
+		Grant apiGrant `json:"grant"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode grant response: %v", err)
+	}
+	return payload.Grant
+}
+
+func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	noNotifier := createGrant(t, server, "missing-notifier", "reason")
+	if noNotifier.Code != http.StatusServiceUnavailable {
+		t.Fatalf("no notifier status = %d, want service unavailable", noNotifier.Code)
+	}
+	server.notifier = &captureNotifier{}
+	cases := map[string]struct {
+		body string
+		want int
+	}{
+		"bad json":        {body: `{`, want: http.StatusBadRequest},
+		"missing reason":  {body: `{"client_request_id":"bad","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"}}`, want: http.StatusBadRequest},
+		"not requestable": {body: `{"client_request_id":"bad","operation":"git.fetch","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"reason":"fetch"}`, want: http.StatusForbidden},
+		"too long":        {body: `{"client_request_id":"bad","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"too long","minutes":99}`, want: http.StatusBadRequest},
+	}
+	for name, tc := range cases {
+		response := doWithBody(t, server, http.MethodPost, "/api/grants", bearerAuth(), []byte(tc.body))
+		if response.Code != tc.want {
+			t.Fatalf("%s status = %d, body = %s, want %d", name, response.Code, response.Body.String(), tc.want)
+		}
+	}
+}
+
+func TestTelegramDecisionDenyAndErrors(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	result, _, err := server.grants.Request(grants.Request{
+		Client:          "bob",
+		ClientRequestID: "deny-pr",
+		Operation:       string(policy.OperationPullRequestCreate),
+		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
+		Attrs:           map[string]string{"ref": "refs/heads/bob/work", "head_ref": "refs/heads/bob/work", "base_ref": "refs/heads/main"},
+		Reason:          "deny test",
+		Duration:        5 * time.Minute,
+		PendingTimeout:  time.Minute,
+		MaxUses:         1,
+	})
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	denied := server.handleTelegramDecision(context.Background(), notify.Decision{
+		Action:        notify.ActionDeny,
+		GrantID:       result.Grant.ID,
+		DecisionToken: result.DecisionToken,
+		OperatorTag:   "operator",
+	})
+	if denied.Answer != "Grant denied" {
+		t.Fatalf("deny decision = %+v, want denied", denied)
+	}
+	replay := server.handleTelegramDecision(context.Background(), notify.Decision{
+		Action:        notify.ActionApprove,
+		GrantID:       result.Grant.ID,
+		DecisionToken: result.DecisionToken,
+	})
+	if replay.Answer != "Grant is no longer pending" {
+		t.Fatalf("replay decision = %+v, want no longer pending", replay)
+	}
+	if got := grantDecisionAnswer(grants.ErrInvalidDecisionToken); got != "Grant decision token did not match" {
+		t.Fatalf("invalid token answer = %q", got)
+	}
+	if got := grantDecisionAnswer(grants.ErrNotFound); got != "Grant not found" {
+		t.Fatalf("not found answer = %q", got)
+	}
+	if got := grantDecisionAnswer(context.Canceled); got != "Grant decision failed" {
+		t.Fatalf("generic answer = %q", got)
+	}
+}
+
 func TestPullRequestRejectsMalformedBody(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
@@ -993,6 +1260,9 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 		ClientID:            "bob",
 		SharedSecret:        testSharedSecret,
 		GitHubToken:         testGitHubToken,
+		StateDir:            t.TempDir(),
+		TelegramBotToken:    "bot-token",
+		TelegramChatID:      123,
 		GitHubHTTPTimeout:   7 * time.Second,
 		MaxReceivePackBytes: 99,
 	}, testBrokerPolicy(t))
@@ -1004,6 +1274,9 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 	}
 	if server.maxReceivePackBytes != 99 {
 		t.Fatalf("max receive-pack bytes = %d, want 99", server.maxReceivePackBytes)
+	}
+	if server.notifier == nil || server.telegram == nil {
+		t.Fatal("telegram notifier was not configured")
 	}
 }
 
@@ -1159,6 +1432,7 @@ func newTestServerWithPolicyAndHandler(t *testing.T, brokerPolicy *policy.Policy
 		ClientID:     "bob",
 		SharedSecret: testSharedSecret,
 		GitHubToken:  testGitHubToken,
+		StateDir:     t.TempDir(),
 	}, brokerPolicy)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -1172,6 +1446,186 @@ func newTestServerWithPolicyAndHandler(t *testing.T, brokerPolicy *policy.Policy
 	server.githubGitBaseURL = upstreamURL
 	server.githubAPIBaseURL = upstreamURL
 	return server
+}
+
+func requestPRPolicy(t *testing.T) *policy.Policy {
+	t.Helper()
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
+		{
+			ID:         "bob-can-request-pr-create",
+			Effect:     policy.EffectRequest,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationPullRequestCreate},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs: map[string][]string{
+				"refs":      {"refs/heads/bob/work"},
+				"head_refs": {"refs/heads/bob/work"},
+				"base_refs": {"refs/heads/main"},
+			},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("policy.New(requestPRPolicy) error = %v", err)
+	}
+	return brokerPolicy
+}
+
+func denyMainWithRequestPolicy(t *testing.T) *policy.Policy {
+	t.Helper()
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
+		{
+			ID:         "deny-main",
+			Effect:     policy.EffectDeny,
+			Clients:    []string{"*"},
+			Operations: []policy.Operation{policy.OperationGitPushForce},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
+		},
+		{
+			ID:         "request-main",
+			Effect:     policy.EffectRequest,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitPushForce},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("policy.New(denyMainWithRequestPolicy) error = %v", err)
+	}
+	return brokerPolicy
+}
+
+func grantsRequestForMainPush(t *testing.T) grants.Request {
+	t.Helper()
+	return grants.Request{
+		Client:          "bob",
+		ClientRequestID: "main-push",
+		Operation:       string(policy.OperationGitPushForce),
+		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
+		Attrs:           map[string]string{"ref": "refs/heads/main"},
+		Reason:          "test deny over grant",
+		Duration:        5 * time.Minute,
+		PendingTimeout:  time.Minute,
+		MaxUses:         1,
+	}
+}
+
+type captureNotifier struct {
+	messages []notify.ApprovalMessage
+	statuses []string
+	token    string
+}
+
+func (n *captureNotifier) SendApproval(_ context.Context, msg notify.ApprovalMessage) (notify.MessageRef, error) {
+	n.token = msg.DecisionToken
+	stored := msg
+	stored.DecisionToken = ""
+	n.messages = append(n.messages, stored)
+	return notify.MessageRef{Kind: "test", ChatID: 1, MessageID: len(n.messages), Text: msg.Text}, nil
+}
+
+func (n *captureNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status string) error {
+	n.statuses = append(n.statuses, status)
+	return nil
+}
+
+type fakeTelegramState struct {
+	chatID       int64
+	messageID    int
+	callbackData string
+	messageText  string
+	updateSent   bool
+	answered     bool
+	edits        []string
+}
+
+func fakeTelegramHandler(t *testing.T, state *fakeTelegramState) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
+			payload := decodeJSONMap(t, r)
+			state.messageText, _ = payload["text"].(string)
+			state.callbackData = firstCallbackData(t, payload)
+			writeTelegramJSON(t, w, map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"message_id": state.messageID,
+					"chat":       map[string]any{"id": state.chatID},
+				},
+			})
+		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
+			result := []map[string]any{}
+			if state.callbackData != "" && !state.updateSent {
+				state.updateSent = true
+				result = append(result, map[string]any{
+					"update_id": 1,
+					"callback_query": map[string]any{
+						"id":   "callback-1",
+						"data": state.callbackData,
+						"from": map[string]any{"id": 42, "username": "operator"},
+						"message": map[string]any{
+							"message_id": state.messageID,
+							"text":       state.messageText,
+							"chat":       map[string]any{"id": state.chatID},
+						},
+					},
+				})
+			}
+			writeTelegramJSON(t, w, map[string]any{"ok": true, "result": result})
+		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
+			state.answered = true
+			writeTelegramJSON(t, w, map[string]any{"ok": true, "result": true})
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			payload := decodeJSONMap(t, r)
+			if text, _ := payload["text"].(string); text != "" {
+				state.edits = append(state.edits, text)
+			}
+			writeTelegramJSON(t, w, map[string]any{"ok": true, "result": true})
+		default:
+			t.Fatalf("unexpected Telegram path %s", r.URL.Path)
+		}
+	}
+}
+
+func decodeJSONMap(t *testing.T, r *http.Request) map[string]any {
+	t.Helper()
+	var payload map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode Telegram payload: %v", err)
+	}
+	return payload
+}
+
+func firstCallbackData(t *testing.T, payload map[string]any) string {
+	t.Helper()
+	replyMarkup, ok := payload["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatalf("reply_markup missing from payload: %+v", payload)
+	}
+	keyboard, ok := replyMarkup["inline_keyboard"].([]any)
+	if !ok || len(keyboard) == 0 {
+		t.Fatalf("inline_keyboard missing from payload: %+v", payload)
+	}
+	row, ok := keyboard[0].([]any)
+	if !ok || len(row) == 0 {
+		t.Fatalf("inline_keyboard row missing from payload: %+v", payload)
+	}
+	button, ok := row[0].(map[string]any)
+	if !ok {
+		t.Fatalf("button missing from payload: %+v", payload)
+	}
+	callbackData, _ := button["callback_data"].(string)
+	return callbackData
+}
+
+func writeTelegramJSON(t *testing.T, w http.ResponseWriter, payload map[string]any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		t.Fatalf("write Telegram response: %v", err)
+	}
 }
 
 func testBrokerPolicy(t *testing.T) *policy.Policy {

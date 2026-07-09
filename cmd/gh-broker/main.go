@@ -51,14 +51,14 @@ func runServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	server, err := buildServer(cfg)
+	server, err := buildServer(ctx, cfg)
 	if err != nil {
 		return err
 	}
 	return serve(ctx, server, cfg.BindAddr, cfg.Port)
 }
 
-func buildServer(cfg config.Config) (*http.Server, error) {
+func buildServer(ctx context.Context, cfg config.Config) (*http.Server, error) {
 	brokerPolicy, err := policy.LoadFile(cfg.ScopeFile)
 	if err != nil {
 		return nil, err
@@ -67,6 +67,7 @@ func buildServer(cfg config.Config) (*http.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	api.Start(ctx)
 	return &http.Server{
 		Addr:              cfg.BindAddr + ":" + cfg.Port,
 		Handler:           api.Handler(),

@@ -225,11 +225,8 @@ func coreRequest(request Request) corepolicy.Request {
 	return corepolicy.Request{
 		Client:    request.Client,
 		Operation: string(request.Operation),
-		Target: corepolicy.Target{
-			Kind:   request.Target.Kind,
-			Fields: targetFields(request.Target),
-		},
-		Attrs: request.Attrs,
+		Target:    CoreTarget(request.Target),
+		Attrs:     request.Attrs,
 	}
 }
 
@@ -243,14 +240,42 @@ func targetFields(target Target) map[string]string {
 func fromCoreDecision(decision corepolicy.Decision) Decision {
 	switch decision.Effect {
 	case corepolicy.EffectAllow:
-		return Decision{Effect: EffectAllow, Allowed: true, Reason: "allowed by policy", MatchedRuleIDs: matchedAllowIDs(decision)}
+		return Decision{
+			Effect:         EffectAllow,
+			Allowed:        true,
+			Reason:         allowReason(decision),
+			MatchedRuleIDs: matchedAllowIDs(decision),
+			GrantID:        decision.GrantID,
+		}
 	case corepolicy.EffectDeny:
-		return Decision{Effect: EffectDeny, Reason: "denied by policy", MatchedRuleIDs: originalRuleIDs(decision.MatchedDenyRuleIDs)}
+		if decision.Reason == "approval_required" {
+			return Decision{Effect: EffectRequest, Reason: "grant required by policy", MatchedRuleIDs: originalRuleIDs(decision.MatchedRequestRuleIDs)}
+		}
+		return Decision{Effect: EffectDeny, Reason: denyReason(decision), MatchedRuleIDs: originalRuleIDs(decision.MatchedDenyRuleIDs)}
 	case corepolicy.EffectRequest:
-		return Decision{Effect: EffectRequest, Reason: "grant required by policy", MatchedRuleIDs: originalRuleIDs(decision.MatchedRequestRuleIDs)}
+		return Decision{
+			Effect:         EffectRequest,
+			Reason:         "grant required by policy",
+			MatchedRuleIDs: originalRuleIDs(decision.MatchedRequestRuleIDs),
+			GrantPolicy:    decision.GrantPolicy,
+		}
 	default:
 		return Decision{Effect: EffectNoMatch, Reason: "no matching policy rule"}
 	}
+}
+
+func allowReason(decision corepolicy.Decision) string {
+	if decision.GrantID != "" {
+		return "allowed by grant"
+	}
+	return "allowed by policy"
+}
+
+func denyReason(decision corepolicy.Decision) string {
+	if decision.Reason == "" || decision.Reason == "policy_denied" {
+		return "denied by policy"
+	}
+	return decision.Reason
 }
 
 func matchedAllowIDs(decision corepolicy.Decision) []string {

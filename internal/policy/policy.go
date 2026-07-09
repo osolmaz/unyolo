@@ -71,6 +71,8 @@ type Decision struct {
 	Allowed        bool
 	Reason         string
 	MatchedRuleIDs []string
+	GrantID        string
+	GrantPolicy    *corepolicy.GrantPolicy
 }
 
 type Policy struct {
@@ -110,17 +112,32 @@ func New(scope Scope) (*Policy, error) {
 	return &Policy{core: core}, nil
 }
 
-func (p *Policy) Evaluate(request Request) Decision {
+func (p *Policy) Evaluate(request Request, activeGrants ...corepolicy.Grant) Decision {
+	return p.evaluate(request, corepolicy.DecisionOptions{ActiveGrants: activeGrants})
+}
+
+func (p *Policy) EvaluateGrantRequest(request Request) Decision {
+	return p.evaluate(request, corepolicy.DecisionOptions{ForGrantRequest: true})
+}
+
+func (p *Policy) evaluate(request Request, opts corepolicy.DecisionOptions) Decision {
 	request = normalizeRequest(request)
 	if incompleteRequest(request) {
 		return Decision{Effect: EffectNoMatch, Reason: "request is incomplete"}
 	}
-	decision := p.core.Decide(coreRequest(request), corepolicy.DecisionOptions{ForGrantRequest: true})
+	decision := p.core.Decide(coreRequest(request), opts)
 	return fromCoreDecision(decision)
 }
 
 func (p *Policy) Allows(request Request) bool {
 	return p.Evaluate(request).Allowed
+}
+
+func CoreTarget(target Target) corepolicy.Target {
+	return corepolicy.Target{
+		Kind:   target.Kind,
+		Fields: targetFields(target),
+	}
 }
 
 func incompleteRequest(request Request) bool {

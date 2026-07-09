@@ -16,6 +16,9 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", "/tmp/scope.json")
+	t.Setenv("GH_BROKER_STATE_DIR", "/tmp/gh-state")
+	t.Setenv("GH_BROKER_TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("GH_BROKER_TELEGRAM_CHAT_ID", "123456")
 	t.Setenv("GH_BROKER_GITHUB_HTTP_TIMEOUT", "11")
 	t.Setenv("GH_BROKER_MAX_RECEIVE_PACK_BYTES", "12345")
 	t.Setenv("GH_BROKER_READ_TIMEOUT", "3")
@@ -23,14 +26,25 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Environment != "test" || cfg.BindAddr != "127.0.0.2" || cfg.Port != "9090" {
-		t.Fatalf("Load() = %+v, want configured values", cfg)
-	}
-	if cfg.ClientID != "bob" {
-		t.Fatalf("ClientID = %q, want bob", cfg.ClientID)
-	}
-	if cfg.ScopeFile != "/tmp/scope.json" {
-		t.Fatalf("ScopeFile = %q, want configured path", cfg.ScopeFile)
+	assertLoadedConfigStrings(t, cfg)
+	assertLoadedConfigNumbers(t, cfg)
+}
+
+func assertLoadedConfigStrings(t *testing.T, cfg Config) {
+	t.Helper()
+	assertString(t, "Environment", cfg.Environment, "test")
+	assertString(t, "BindAddr", cfg.BindAddr, "127.0.0.2")
+	assertString(t, "Port", cfg.Port, "9090")
+	assertString(t, "ClientID", cfg.ClientID, "bob")
+	assertString(t, "ScopeFile", cfg.ScopeFile, "/tmp/scope.json")
+	assertString(t, "StateDir", cfg.StateDir, "/tmp/gh-state")
+	assertString(t, "TelegramBotToken", cfg.TelegramBotToken, "telegram-token")
+}
+
+func assertLoadedConfigNumbers(t *testing.T, cfg Config) {
+	t.Helper()
+	if cfg.TelegramChatID != 123456 {
+		t.Fatalf("TelegramChatID = %d, want 123456", cfg.TelegramChatID)
 	}
 	if cfg.ReadTimeout != 3*time.Second {
 		t.Fatalf("ReadTimeout = %s, want 3s", cfg.ReadTimeout)
@@ -40,6 +54,13 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 	if cfg.MaxReceivePackBytes != 12345 {
 		t.Fatalf("MaxReceivePackBytes = %d, want 12345", cfg.MaxReceivePackBytes)
+	}
+}
+
+func assertString(t *testing.T, name string, got string, want string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %q, want %q", name, got, want)
 	}
 }
 
@@ -83,6 +104,7 @@ func TestValidateRejectsWeakSharedSecret(t *testing.T) {
 		SharedSecret:        "short",
 		GitHubToken:         "github-token",
 		ScopeFile:           "scope.json",
+		StateDir:            "state",
 		GitHubHTTPTimeout:   time.Second,
 		MaxReceivePackBytes: 1,
 	}
@@ -99,6 +121,7 @@ func TestValidateRejectsMissingGitHubToken(t *testing.T) {
 		ClientID:            "bob",
 		SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
 		ScopeFile:           "scope.json",
+		StateDir:            "state",
 		GitHubHTTPTimeout:   time.Second,
 		MaxReceivePackBytes: 1,
 	}
@@ -116,6 +139,7 @@ func TestValidateRejectsBadDeploySafetyConfig(t *testing.T) {
 			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
 			GitHubToken:         "github-token",
 			ScopeFile:           "scope.json",
+			StateDir:            "state",
 			GitHubHTTPTimeout:   time.Second,
 			MaxReceivePackBytes: 1,
 		},
@@ -125,6 +149,7 @@ func TestValidateRejectsBadDeploySafetyConfig(t *testing.T) {
 			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
 			GitHubToken:         "github-token",
 			ScopeFile:           "scope.json",
+			StateDir:            "state",
 			GitHubHTTPTimeout:   time.Second,
 			MaxReceivePackBytes: 1,
 		},
@@ -135,6 +160,7 @@ func TestValidateRejectsBadDeploySafetyConfig(t *testing.T) {
 			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
 			GitHubToken:         "github-token",
 			ScopeFile:           "scope.json",
+			StateDir:            "state",
 			MaxReceivePackBytes: 1,
 		},
 		"bad receive pack limit": {
@@ -144,7 +170,30 @@ func TestValidateRejectsBadDeploySafetyConfig(t *testing.T) {
 			SharedSecret:      strings.Repeat("a", minimumSharedSecretBytes),
 			GitHubToken:       "github-token",
 			ScopeFile:         "scope.json",
+			StateDir:          "state",
 			GitHubHTTPTimeout: time.Second,
+		},
+		"missing state dir": {
+			Port:                "8080",
+			BindAddr:            "127.0.0.1",
+			ClientID:            "bob",
+			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
+			GitHubToken:         "github-token",
+			ScopeFile:           "scope.json",
+			GitHubHTTPTimeout:   time.Second,
+			MaxReceivePackBytes: 1,
+		},
+		"half telegram config": {
+			Port:                "8080",
+			BindAddr:            "127.0.0.1",
+			ClientID:            "bob",
+			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
+			GitHubToken:         "github-token",
+			ScopeFile:           "scope.json",
+			StateDir:            "state",
+			TelegramBotToken:    "token",
+			GitHubHTTPTimeout:   time.Second,
+			MaxReceivePackBytes: 1,
 		},
 	}
 	for name, cfg := range cases {

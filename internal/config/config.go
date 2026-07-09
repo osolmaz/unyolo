@@ -21,6 +21,9 @@ type Config struct {
 	GitHubToken         string
 	GitHubTokenFile     string
 	ScopeFile           string
+	StateDir            string
+	TelegramBotToken    string
+	TelegramChatID      int64
 	GitHubHTTPTimeout   time.Duration
 	MaxReceivePackBytes int64
 	ReadHeaderTimeout   time.Duration
@@ -39,6 +42,9 @@ func Load() (Config, error) {
 		GitHubToken:         getEnv("", "GH_BROKER_GITHUB_TOKEN", "CBA_GITHUB_TOKEN"),
 		GitHubTokenFile:     getEnv("", "GH_BROKER_GITHUB_TOKEN_FILE", "CBA_GITHUB_TOKEN_FILE"),
 		ScopeFile:           getEnv("scope.json", "GH_BROKER_SCOPE_FILE", "CBA_GITHUB_ACCESS_FILE"),
+		StateDir:            getEnv("./state", "GH_BROKER_STATE_DIR", "CBA_STATE_DIR"),
+		TelegramBotToken:    getEnv("", "GH_BROKER_TELEGRAM_BOT_TOKEN"),
+		TelegramChatID:      int64Env(0, "GH_BROKER_TELEGRAM_CHAT_ID"),
 		GitHubHTTPTimeout:   durationEnv(30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT", "CBA_GITHUB_HTTP_TIMEOUT"),
 		MaxReceivePackBytes: int64Env(25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES", "CBA_MAX_RECEIVE_PACK_BYTES"),
 		ReadHeaderTimeout:   durationEnv(5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT", "CBA_READ_HEADER_TIMEOUT"),
@@ -67,6 +73,8 @@ func (c Config) Validate() error {
 		minimumBytes(c.SharedSecret, minimumSharedSecretBytes, "GH_BROKER_SHARED_SECRET"),
 		required(c.GitHubToken, "GH_BROKER_GITHUB_TOKEN or GH_BROKER_GITHUB_TOKEN_FILE is required"),
 		required(c.ScopeFile, "GH_BROKER_SCOPE_FILE is required"),
+		required(c.StateDir, "GH_BROKER_STATE_DIR is required"),
+		telegramPair(c.TelegramBotToken, c.TelegramChatID),
 		positiveDuration(c.GitHubHTTPTimeout, "GH_BROKER_GITHUB_HTTP_TIMEOUT must be positive"),
 		positiveInt64(c.MaxReceivePackBytes, "GH_BROKER_MAX_RECEIVE_PACK_BYTES must be positive"),
 	)
@@ -105,6 +113,16 @@ func positiveDuration(value time.Duration, message string) error {
 func positiveInt64(value int64, message string) error {
 	if value <= 0 {
 		return errors.New(message)
+	}
+	return nil
+}
+
+func telegramPair(token string, chatID int64) error {
+	if token == "" && chatID == 0 {
+		return nil
+	}
+	if token == "" || chatID == 0 {
+		return errors.New("GH_BROKER_TELEGRAM_BOT_TOKEN and GH_BROKER_TELEGRAM_CHAT_ID must be set together")
 	}
 	return nil
 }

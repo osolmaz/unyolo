@@ -10,13 +10,17 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/notify"
+	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/gh-broker/internal/config"
 	"github.com/osolmaz/gh-broker/internal/policy"
 	"github.com/osolmaz/gh-broker/internal/security"
@@ -27,6 +31,9 @@ const maxPullRequestBodyBytes int64 = 64 * 1024
 type Server struct {
 	echo                *echo.Echo
 	policy              *policy.Policy
+	grants              *grants.Store
+	notifier            notify.Notifier
+	telegram            *bktelegram.Client
 	githubToken         string
 	githubClient        *http.Client
 	githubGitBaseURL    *url.URL
@@ -39,7 +46,12 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if brokerPolicy == nil {
 		return nil, errors.New("policy is required")
 	}
+	grantStore := grants.New(filepath.Join(stateDir(cfg.StateDir), "grants.json"), grants.Options{})
 	auth, err := security.NewTokenAuthForClient(cfg.SharedSecret, cfg.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	notifier, telegram, err := configuredNotifier(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -49,36 +61,30 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	e.Use(middleware.Recover())
 	e.Use(noStore)
 	e.GET("/healthz", health)
-	gitBaseURL, err := url.Parse("https://github.com")
+	gitBaseURL, apiBaseURL, err := githubBaseURLs()
 	if err != nil {
 		return nil, err
-	}
-	apiBaseURL, err := url.Parse("https://api.github.com")
-	if err != nil {
-		return nil, err
-	}
-	githubHTTPTimeout := cfg.GitHubHTTPTimeout
-	if githubHTTPTimeout <= 0 {
-		githubHTTPTimeout = 30 * time.Second
-	}
-	maxReceivePackBytes := cfg.MaxReceivePackBytes
-	if maxReceivePackBytes <= 0 {
-		maxReceivePackBytes = 25 * 1024 * 1024
 	}
 	server := &Server{
 		echo:                e,
 		policy:              brokerPolicy,
+		grants:              grantStore,
+		notifier:            notifier,
+		telegram:            telegram,
 		githubToken:         cfg.GitHubToken,
-		githubClient:        newGitHubClient(githubHTTPTimeout),
+		githubClient:        newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second)),
 		githubGitBaseURL:    gitBaseURL,
 		githubAPIBaseURL:    apiBaseURL,
 		logger:              slog.Default(),
-		maxReceivePackBytes: maxReceivePackBytes,
+		maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 	}
 	protected := e.Group("")
 	protected.Use(auth.Middleware)
 	protected.Use(validateRouteParams)
 	protected.GET("/api/repos", server.listRepos)
+	protected.POST("/api/grants", server.createGrant)
+	protected.GET("/api/grants", server.listGrants)
+	protected.GET("/api/grants/:id", server.getGrant)
 	protected.GET("/api/repos/:owner/:repo/contents", server.readContents)
 	protected.GET("/api/repos/:owner/:repo/contents/*", server.readContents)
 	protected.POST("/api/repos/:owner/:repo/pulls", server.createPullRequest)
@@ -87,6 +93,32 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	protected.POST("/:owner/:repoGit/git-upload-pack", server.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", server.gitReceivePack)
 	return server, nil
+}
+
+func githubBaseURLs() (*url.URL, *url.URL, error) {
+	gitBaseURL, err := url.Parse("https://github.com")
+	if err != nil {
+		return nil, nil, err
+	}
+	apiBaseURL, err := url.Parse("https://api.github.com")
+	if err != nil {
+		return nil, nil, err
+	}
+	return gitBaseURL, apiBaseURL, nil
+}
+
+func defaultDuration(value time.Duration, fallback time.Duration) time.Duration {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func defaultInt64(value int64, fallback int64) int64 {
+	if value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func newGitHubClient(timeout time.Duration) *http.Client {
@@ -157,7 +189,10 @@ func (s *Server) authorizeReceivePackCommands(c echo.Context, commands []receive
 			return nil, err
 		}
 		request := s.repoRequest(c, operation, map[string]string{"ref": command.Ref})
-		decision := s.policy.Evaluate(request)
+		decision, err := s.evaluateBrokerRequest(request)
+		if err != nil {
+			return nil, echo.NewHTTPError(http.StatusInternalServerError, "could not inspect grants")
+		}
 		if !decision.Allowed {
 			s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
 			return nil, echo.NewHTTPError(statusForDecision(decision), decision.Reason)
@@ -168,12 +203,22 @@ func (s *Server) authorizeReceivePackCommands(c echo.Context, commands []receive
 }
 
 func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authorized []authorizedReceivePackRequest) error {
+	reserved, err := s.reserveAuthorizedGrants(authorized)
+	if err != nil {
+		s.releaseGrantUses(reserved)
+		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
+	}
 	c.Request().Body = io.NopCloser(bytes.NewReader(body))
 	c.Request().ContentLength = int64(len(body))
-	err := s.proxyGit(c)
+	err = s.proxyGit(c)
 	if err != nil {
+		s.releaseGrantUses(reserved)
 		s.auditAuthorizedReceivePack(c, authorized, errorOutcome(err), errorString(err), errorStatus(c, err))
 		return err
+	}
+	if err := s.commitGrantUses(reserved); err != nil {
+		s.auditAuthorizedReceivePack(c, authorized, "error", "grant use commit failed", responseStatus(c))
+		return echo.NewHTTPError(http.StatusInternalServerError, "could not commit grant use")
 	}
 	s.auditAuthorizedReceivePack(c, authorized, "proxied", "", responseStatus(c))
 	return nil
@@ -223,15 +268,29 @@ func (s *Server) authorizeBrokerRequest(
 	request policy.Request,
 	run func(echo.Context) error,
 ) error {
-	decision := s.policy.Evaluate(request)
+	decision, err := s.evaluateBrokerRequest(request)
+	if err != nil {
+		s.audit(c, request, "error", "could not inspect grants", 0, nil)
+		return echo.NewHTTPError(http.StatusInternalServerError, "could not inspect grants")
+	}
 	if !decision.Allowed {
 		s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
 		return echo.NewHTTPError(statusForDecision(decision), decision.Reason)
 	}
-	err := run(c)
+	reserved, err := s.reserveGrantUse(decision.GrantID)
 	if err != nil {
+		s.audit(c, request, "error", "grant is no longer active", 0, decision.MatchedRuleIDs)
+		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
+	}
+	err = run(c)
+	if err != nil {
+		s.releaseGrantUses(reserved)
 		s.audit(c, request, errorOutcome(err), errorString(err), errorStatus(c, err), decision.MatchedRuleIDs)
 		return err
+	}
+	if err := s.commitGrantUses(reserved); err != nil {
+		s.audit(c, request, "error", "grant use commit failed", responseStatus(c), decision.MatchedRuleIDs)
+		return echo.NewHTTPError(http.StatusInternalServerError, "could not commit grant use")
 	}
 	s.audit(c, request, "proxied", "", responseStatus(c), decision.MatchedRuleIDs)
 	return nil

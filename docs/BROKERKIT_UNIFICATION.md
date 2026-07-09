@@ -21,6 +21,10 @@ Implemented today:
 - shared secret through `GH_BROKER_SHARED_SECRET`
 - server-side GitHub token through `GH_BROKER_GITHUB_TOKEN_FILE`
 - policy file through `GH_BROKER_SCOPE_FILE`
+- state directory through `GH_BROKER_STATE_DIR`
+- optional Telegram approval through `GH_BROKER_TELEGRAM_BOT_TOKEN` and
+  `GH_BROKER_TELEGRAM_CHAT_ID`
+- brokerkit-backed generated grants and `/api/grants`
 - Git smart-HTTP fetch and receive-pack route shape
 - narrow GitHub REST routes for repo listing, content reads, and PR creation
 
@@ -30,8 +34,7 @@ Not implemented yet:
 - release tarballs and checksums
 - `gh-broker setup systemd`
 - service user and systemd unit generation
-- brokerkit-backed grants, approval state, Telegram transport, and audit
-  helpers
+- brokerkit audit helpers
 - production GitHub App installation-token setup
 
 ## What Moves To brokerkit
@@ -161,6 +164,7 @@ The brokerkit install/setup cutover is complete only when tests prove:
 - generated client config contains only broker URL and broker client secret
 - policy decisions use brokerkit and GitHub classification fails closed
 - requestable operations can be approved through a fake brokerkit notifier
+- Telegram approval is covered with a fake Bot API server and no live bot token
 - audit output contains no GitHub token, GitHub App private key, installation
   token, webhook secret, broker secret, approval token, Telegram bot token,
   request body, PR body, pack contents, or raw upstream response
