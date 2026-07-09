@@ -295,6 +295,18 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 	if err := validateSetupSystemdOptions(valid); err != nil {
 		t.Fatalf("validateSetupSystemdOptions() error = %v", err)
 	}
+	validApp := setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
+		ScopeFile:               "/tmp/scope.json",
+		GitHubAppIDFile:         "/tmp/app-id",
+		GitHubAppPrivateKeyFile: "/tmp/key",
+		GitHubWebhookSecretFile: "/tmp/webhook",
+		ClientName:              "bob",
+		SharedSecret:            strings.Repeat("s", 32),
+		Port:                    8081,
+	}
+	if err := validateSetupSystemdOptions(validApp); err != nil {
+		t.Fatalf("validateSetupSystemdOptions(app) error = %v", err)
+	}
 	cases := []setupSystemdOptions{
 		{GitHubTokenFile: valid.GitHubTokenFile, ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, Port: valid.Port, DevTokenFallback: true},
 		{ScopeFile: valid.ScopeFile, ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, Port: valid.Port, DevTokenFallback: true},
@@ -302,7 +314,7 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		{ScopeFile: valid.ScopeFile, GitHubTokenFile: valid.GitHubTokenFile, ClientName: "bad=name", SharedSecret: valid.SharedSecret, Port: valid.Port, DevTokenFallback: true},
 		{ScopeFile: valid.ScopeFile, GitHubTokenFile: valid.GitHubTokenFile, ClientName: valid.ClientName, SharedSecret: "short", Port: valid.Port, DevTokenFallback: true},
 		{ScopeFile: valid.ScopeFile, GitHubTokenFile: valid.GitHubTokenFile, ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, DevTokenFallback: true},
-		{ScopeFile: valid.ScopeFile, GitHubAppIDFile: "/tmp/app-id", GitHubAppPrivateKeyFile: "/tmp/key", GitHubWebhookSecretFile: "/tmp/webhook", ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, Port: valid.Port}, // #nosec G101 -- test fixture paths are not credentials.
+		{ScopeFile: valid.ScopeFile, GitHubAppPrivateKeyFile: "/tmp/key", GitHubWebhookSecretFile: "/tmp/webhook", ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, Port: valid.Port}, // #nosec G101 -- test fixture paths and generated secrets are not credentials.
 	}
 	for _, opts := range cases {
 		if err := validateSetupSystemdOptions(opts); err == nil {

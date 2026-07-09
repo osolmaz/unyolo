@@ -21,7 +21,9 @@ func (s *Server) forwardGit(c echo.Context) (*http.Response, error) {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
 	}
 	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
-	request.Header.Set("Authorization", githubGitAuthorization(s.githubToken))
+	if err := s.configureGitHubGitRequest(c, request, c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git")); err != nil {
+		return nil, err
+	}
 	// #nosec G704 -- upstream URL is built from a fixed GitHub base URL and policy-gated route params.
 	response, err := s.githubClient.Do(request)
 	if err != nil {

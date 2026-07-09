@@ -301,9 +301,6 @@ func validateGitHubAppSetup(opts setupSystemdOptions) error {
 	if opts.GitHubAppIDFile == "" || opts.GitHubAppPrivateKeyFile == "" || opts.GitHubWebhookSecretFile == "" {
 		return errors.New("GitHub App credential files are required unless --dev-token-fallback is set")
 	}
-	if !opts.DryRun {
-		return errors.New("GitHub App runtime is not implemented yet; use --dev-token-fallback for runnable setup")
-	}
 	return nil
 }
 

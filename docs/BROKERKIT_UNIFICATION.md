@@ -24,6 +24,10 @@ Implemented today:
 - shared secret through `GH_BROKER_SHARED_SECRET`
 - named client secret file through `GH_BROKER_SECRETS_FILE`
 - server-side GitHub token through `GH_BROKER_GITHUB_TOKEN_FILE`
+- GitHub App credentials through `GH_BROKER_GITHUB_APP_ID_FILE` and
+  `GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE`
+- GitHub App installation-token minting for repo-scoped upstream requests
+- GitHub App installation repository listing for `/api/repos`
 - policy file through `GH_BROKER_SCOPE_FILE`
 - state directory through `GH_BROKER_STATE_DIR`
 - optional Telegram approval through `GH_BROKER_TELEGRAM_BOT_TOKEN` and
@@ -35,7 +39,8 @@ Implemented today:
 Not implemented yet:
 
 - brokerkit audit helpers
-- production GitHub App installation-token runtime
+- verified GitHub webhook endpoint for installation cache invalidation
+- runtime GitHub branch ruleset doctor checks
 
 ## What Moves To brokerkit
 
@@ -119,10 +124,9 @@ The client setup command should write only broker URL and broker client secret.
 It must not write or print a GitHub token, GitHub App private key, webhook
 secret, installation token, or token metadata.
 
-Today, the runnable Linux service setup is the explicit `--dev-token-fallback`
-mode. App credential files are rendered in dry-run output for the target
-production layout, but non-dry-run App setup stays disabled until the runtime
-can mint GitHub App installation tokens.
+Production Linux service setup should use GitHub App credential files. The
+explicit `--dev-token-fallback` mode remains available for local development
+and smoke tests with a narrowly scoped token file.
 
 ## Default Linux Layout
 

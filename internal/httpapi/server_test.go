@@ -3,7 +3,11 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +26,7 @@ import (
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/gh-broker/internal/config"
+	"github.com/osolmaz/gh-broker/internal/githubapp"
 	"github.com/osolmaz/gh-broker/internal/policy"
 )
 
@@ -1173,6 +1178,58 @@ func TestListReposUsesInstallationEndpointForInstallationToken(t *testing.T) {
 	}
 }
 
+func TestListReposUsesGitHubAppInstallationTokens(t *testing.T) {
+	t.Parallel()
+	var installationRepoAuths []string
+	server := newTestServerWithHandler(t, githubAppRepoListHandler(t, &installationRepoAuths))
+	server.githubApp = newTestGitHubAppSource(t, server)
+	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !slices.Equal(installationRepoAuths, []string{"Bearer ghs_installation_42", "Bearer ghs_installation_77"}) {
+		t.Fatalf("installation repo auths = %v", installationRepoAuths)
+	}
+	var body struct {
+		Repositories []struct {
+			FullName string `json:"full_name"`
+		} `json:"repositories"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if len(body.Repositories) != 1 || body.Repositories[0].FullName != "dutifuldev/gh-broker" {
+		t.Fatalf("repositories = %+v, want only policy-allowed repo", body.Repositories)
+	}
+}
+
+func githubAppRepoListHandler(t *testing.T, installationRepoAuths *[]string) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app/installations":
+			writeRawJSON(w, `[{"id":42},{"id":77}]`)
+		case "/app/installations/42/access_tokens":
+			writeRawJSON(w, `{"token":"ghs_installation_42"}`)
+		case "/app/installations/77/access_tokens":
+			writeRawJSON(w, `{"token":"ghs_installation_77"}`)
+		case "/installation/repositories":
+			writeGitHubAppRepoListResponse(w, installationRepoAuths, r.Header.Get("Authorization"))
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	}
+}
+
+func writeGitHubAppRepoListResponse(w http.ResponseWriter, installationRepoAuths *[]string, authorization string) {
+	*installationRepoAuths = append(*installationRepoAuths, authorization)
+	if authorization == "Bearer ghs_installation_42" {
+		writeRawJSON(w, `{"repositories":[{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}]}`)
+		return
+	}
+	writeRawJSON(w, `{"repositories":[{"name":"outside","full_name":"outside/outside","owner":{"login":"outside"}}]}`)
+}
+
 func TestLooksLikeInstallationTokenAndRepoListURLOrder(t *testing.T) {
 	t.Parallel()
 	if !looksLikeInstallationToken("ghs_installation_token") {
@@ -1659,6 +1716,58 @@ func TestGitProxyUsesServerSideCredential(t *testing.T) {
 	}
 	if gotAuthorization != githubGitAuthorization(testGitHubToken) {
 		t.Fatalf("upstream authorization was not server-side GitHub auth")
+	}
+}
+
+func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
+	t.Parallel()
+	var gotAuthorization string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/dutifuldev/gh-broker/installation":
+			writeRawJSON(w, `{"id":42}`)
+		case "/app/installations/42/access_tokens":
+			writeRawJSON(w, `{"token":"ghs_repo_token"}`)
+		case "/dutifuldev/gh-broker.git/info/refs":
+			gotAuthorization = r.Header.Get("Authorization")
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	})
+	server.githubApp = newTestGitHubAppSource(t, server)
+	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotAuthorization != githubGitAuthorization("ghs_repo_token") {
+		t.Fatalf("authorization = %q, want GitHub App installation git auth", gotAuthorization)
+	}
+}
+
+func TestContentsProxyUsesGitHubAppInstallationToken(t *testing.T) {
+	t.Parallel()
+	var gotAuthorization string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/dutifuldev/gh-broker/installation":
+			writeRawJSON(w, `{"id":42}`)
+		case "/app/installations/42/access_tokens":
+			writeRawJSON(w, `{"token":"ghs_contents_token"}`)
+		case "/repos/dutifuldev/gh-broker/contents/README.md":
+			gotAuthorization = r.Header.Get("Authorization")
+			writeRawJSON(w, `{"name":"README.md"}`)
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	})
+	server.githubApp = newTestGitHubAppSource(t, server)
+	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotAuthorization != "Bearer ghs_contents_token" {
+		t.Fatalf("authorization = %q, want GitHub App installation bearer token", gotAuthorization)
 	}
 }
 
@@ -2308,6 +2417,35 @@ func oid(char string) string {
 
 func zeroOID() string {
 	return "0000000000000000000000000000000000000000"
+}
+
+func newTestGitHubAppSource(t *testing.T, server *Server) *githubapp.Source {
+	t.Helper()
+	source, err := githubapp.New(githubapp.Config{
+		AppID:         "12345",
+		PrivateKeyPEM: testGitHubAppPrivateKey(t),
+		APIBaseURL:    server.githubAPIBaseURL,
+		HTTPClient:    server.githubClient,
+		Now:           func() time.Time { return time.Date(2026, 7, 9, 17, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatalf("githubapp.New() error = %v", err)
+	}
+	return source
+}
+
+func testGitHubAppPrivateKey(t *testing.T) []byte {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+}
+
+func writeRawJSON(w http.ResponseWriter, body string) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(body))
 }
 
 type errorRoundTripper struct{}

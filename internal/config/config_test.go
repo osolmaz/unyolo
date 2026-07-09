@@ -95,6 +95,31 @@ func TestLoadReadsGitHubTokenFile(t *testing.T) {
 	}
 }
 
+func TestLoadReadsGitHubAppCredentialFiles(t *testing.T) {
+	dir := t.TempDir()
+	appIDFile := filepath.Join(dir, "app-id")
+	privateKeyFile := filepath.Join(dir, "private-key.pem")
+	if err := os.WriteFile(appIDFile, []byte("12345\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(app id) error = %v", err)
+	}
+	if err := os.WriteFile(privateKeyFile, []byte("-----BEGIN RSA PRIVATE KEY-----\nfixture\n-----END RSA PRIVATE KEY-----\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(private key) error = %v", err)
+	}
+	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
+	t.Setenv("GH_BROKER_GITHUB_APP_ID_FILE", appIDFile)
+	t.Setenv("GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE", privateKeyFile)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.GitHubAppID != "12345" {
+		t.Fatalf("GitHubAppID = %q, want file value", cfg.GitHubAppID)
+	}
+	if string(cfg.GitHubAppPrivateKey) == "" {
+		t.Fatal("GitHubAppPrivateKey is empty")
+	}
+}
+
 func TestLoadReadsBrokerSecretFile(t *testing.T) {
 	dir := t.TempDir()
 	secretFile := filepath.Join(dir, "secrets")
@@ -124,7 +149,7 @@ func TestReadSecretFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(" token-from-file\n"), 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	secret, err := readSecretFile(path)
+	secret, err := readSecretFile(path, "github token file")
 	if err != nil {
 		t.Fatalf("readSecretFile() error = %v", err)
 	}
@@ -135,7 +160,7 @@ func TestReadSecretFile(t *testing.T) {
 	if err := os.WriteFile(emptyPath, []byte(" \n"), 0600); err != nil {
 		t.Fatalf("WriteFile(empty) error = %v", err)
 	}
-	if _, err := readSecretFile(emptyPath); err == nil {
+	if _, err := readSecretFile(emptyPath, "github token file"); err == nil {
 		t.Fatal("readSecretFile(empty) error = nil, want empty secret error")
 	}
 }
@@ -158,7 +183,26 @@ func TestValidateRejectsWeakSharedSecret(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsMissingGitHubToken(t *testing.T) {
+func TestValidateAcceptsGitHubAppCredential(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Port:                "8080",
+		BindAddr:            "127.0.0.1",
+		ClientID:            "bob",
+		SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
+		GitHubAppID:         "12345",
+		GitHubAppPrivateKey: []byte("private-key"),
+		ScopeFile:           "scope.json",
+		StateDir:            "state",
+		GitHubHTTPTimeout:   time.Second,
+		MaxReceivePackBytes: 1,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateRejectsMissingGitHubCredential(t *testing.T) {
 	t.Parallel()
 	cfg := Config{
 		Port:                "8080",

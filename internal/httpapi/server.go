@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +21,7 @@ import (
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/gh-broker/internal/config"
+	"github.com/osolmaz/gh-broker/internal/githubapp"
 	"github.com/osolmaz/gh-broker/internal/policy"
 	"github.com/osolmaz/gh-broker/internal/security"
 )
@@ -35,6 +35,7 @@ type Server struct {
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
 	githubToken         string
+	githubApp           *githubapp.Source
 	githubClient        *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
@@ -65,6 +66,11 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	githubClient := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
+	appSource, err := configuredGitHubApp(cfg, apiBaseURL, githubClient)
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{
 		echo:                e,
 		policy:              brokerPolicy,
@@ -72,7 +78,8 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		notifier:            notifier,
 		telegram:            telegram,
 		githubToken:         cfg.GitHubToken,
-		githubClient:        newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second)),
+		githubApp:           appSource,
+		githubClient:        githubClient,
 		githubGitBaseURL:    gitBaseURL,
 		githubAPIBaseURL:    apiBaseURL,
 		logger:              slog.Default(),
@@ -367,8 +374,8 @@ func validateRouteSegment(value string) error {
 }
 
 func (s *Server) proxyGit(c echo.Context) error {
-	return s.proxyTo(c, s.gitUpstreamURL(c), func(request *http.Request) {
-		request.Header.Set("Authorization", githubGitAuthorization(s.githubToken))
+	return s.proxyTo(c, s.gitUpstreamURL(c), func(request *http.Request) error {
+		return s.configureGitHubGitRequest(c, request, c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git"))
 	})
 }
 
@@ -523,8 +530,8 @@ func escapedPathSeparator(segment string) bool {
 
 func (s *Server) proxyPullRequest(c echo.Context) error {
 	upstreamURL := s.githubAPIBaseURL.JoinPath("repos", c.Param("owner"), c.Param("repo"), "pulls")
-	return s.proxyTo(c, upstreamURL, func(request *http.Request) {
-		s.configureGitHubAPIRequest(request)
+	return s.proxyTo(c, upstreamURL, func(request *http.Request) error {
+		return s.configureGitHubAPIRequest(c, request, c.Param("owner"), c.Param("repo"))
 	})
 }
 
@@ -543,8 +550,8 @@ func (s *Server) proxyContents(c echo.Context) error {
 		query.Set("ref", ref)
 	}
 	upstreamURL.RawQuery = query.Encode()
-	return s.proxyTo(c, upstreamURL, func(request *http.Request) {
-		s.configureGitHubAPIRequest(request)
+	return s.proxyTo(c, upstreamURL, func(request *http.Request) error {
+		return s.configureGitHubAPIRequest(c, request, c.Param("owner"), c.Param("repo"))
 	})
 }
 
@@ -573,6 +580,9 @@ func (s *Server) fetchAndFilterRepos(c echo.Context) error {
 }
 
 func (s *Server) fetchRepoList(c echo.Context) (*http.Response, error) {
+	if s.githubApp != nil {
+		return s.fetchGitHubAppRepoList(c)
+	}
 	upstreamURLs := s.repoListURLs(c)
 	var response *http.Response
 	var err error
@@ -595,7 +605,9 @@ func (s *Server) fetchRepoListURL(c echo.Context, upstreamURL *url.URL) (*http.R
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
 	}
-	s.configureGitHubAPIRequest(request)
+	if err := s.configureGitHubAPIRequest(c, request, "", ""); err != nil {
+		return nil, err
+	}
 	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL.
 	response, err := s.githubClient.Do(request)
 	if err != nil {
@@ -723,7 +735,7 @@ func boundedQueryInt(value string, fallback int, minValue int, maxValue int) str
 	return strconv.Itoa(parsed)
 }
 
-func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*http.Request)) error {
+func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*http.Request) error) error {
 	request, err := http.NewRequestWithContext(
 		c.Request().Context(),
 		c.Request().Method,
@@ -734,7 +746,9 @@ func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*h
 		return echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
 	}
 	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
-	configure(request)
+	if err := configure(request); err != nil {
+		return err
+	}
 	return s.doProxy(c, request)
 }
 
@@ -751,40 +765,6 @@ func (s *Server) doProxy(c echo.Context, request *http.Request) error {
 	c.Response().WriteHeader(response.StatusCode)
 	_, err = io.Copy(c.Response(), response.Body)
 	return err
-}
-
-func (s *Server) configureGitHubAPIRequest(request *http.Request) {
-	request.Header.Set("Authorization", "Bearer "+s.githubToken)
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-}
-
-var githubProxyResponseHeader = httpx.DropAny(
-	httpx.HopByHopHeader,
-	httpx.ResponseCredentialHeader,
-	githubCredentialMetadataHeader,
-)
-
-var githubFilteredResponseHeader = httpx.DropAny(githubProxyResponseHeader, httpx.RewrittenBodyHeader)
-
-func githubCredentialMetadataHeader(key string) bool {
-	switch strings.ToLower(key) {
-	case "authentication-info",
-		"github-authentication-token-expiration",
-		"www-authenticate",
-		"x-accepted-oauth-scopes",
-		"x-github-authentication-token-expiration",
-		"x-github-sso",
-		"x-oauth-scopes":
-		return true
-	default:
-		return false
-	}
-}
-
-func githubGitAuthorization(token string) string {
-	credential := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
-	return "Basic " + credential
 }
 
 func (s *Server) audit(c echo.Context, request policy.Request, outcome string, reason string, status int, matchedRuleIDs []string) {
@@ -809,6 +789,9 @@ func (s *Server) audit(c echo.Context, request policy.Request, outcome string, r
 	}
 	if len(matchedRuleIDs) > 0 {
 		attrs = append(attrs, "matched_rules", matchedRuleIDs)
+	}
+	if installationID, ok := c.Get("github_installation_id").(int64); ok && installationID > 0 {
+		attrs = append(attrs, "github_installation_id", installationID)
 	}
 	s.logger.Info("broker operation", attrs...)
 }

@@ -116,7 +116,6 @@ POST /{owner}/{repo}.git/git-receive-pack
 
 ## Not Yet Implemented
 
-- GitHub App private-key authentication and installation token minting.
 - brokerkit cutover for audit helpers and remaining storage/config helpers.
 - Verified GitHub webhook endpoint for installation cache invalidation and audit context.
 - Runtime branch-ruleset inspection in `doctor`.
@@ -174,6 +173,10 @@ Implemented in the current brokerkit cutover slice:
 - release tarballs and checksums through `scripts/release.sh`
 - `gh-broker setup client`
 - `gh-broker setup systemd --dev-token-fallback`
+- GitHub App private-key authentication and installation token minting
+- repo-scoped installation resolution through GitHub's repository installation
+  endpoint
+- App installation repository listing with policy filtering
 - server-side named client secrets through `GH_BROKER_SECRETS_FILE`
 - `POST /api/grants`
 - `GET /api/grants`
@@ -185,10 +188,11 @@ Implemented in the current brokerkit cutover slice:
 - deny rules still override active grants
 - Telegram approval uses the shared brokerkit adapter and is tested with a fake
   Bot API server
+- repo-scoped GitHub App installation tokens are minted only after broker policy
+  allows the request and are not written to disk, returned to clients, or logged
 
 The next cutover slices should move audit helpers and remaining storage/config
-helpers to brokerkit, then add GitHub App installation-token runtime, webhooks,
-and doctor checks.
+helpers to brokerkit, then add verified webhooks and doctor checks.
 
 ## Non-Goals
 

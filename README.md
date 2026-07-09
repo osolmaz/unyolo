@@ -174,10 +174,22 @@ The long-term route shape is `/api/*` for JSON APIs and Git smart-HTTP routes fo
 
 gh-broker should run behind Tailnet-only reachability, but Tailnet access is not authorization. Every broker endpoint still requires the configured shared secret.
 
-The server-side GitHub credential is configured with
-`GH_BROKER_GITHUB_TOKEN_FILE` for the current runnable service setup. This is a
-development fallback. Production GitHub App installation-token runtime is still
-tracked in `docs/PRODUCTION_ARCHITECTURE.md`.
+Production should use GitHub App credentials:
+
+```text
+GH_BROKER_GITHUB_APP_ID_FILE=/etc/gh-broker/github-app-id
+GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE=/etc/gh-broker/github-app-private-key.pem
+GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE=/etc/gh-broker/github-webhook-secret
+```
+
+For repo-scoped requests, gh-broker resolves the GitHub App installation for
+the target repository and mints a short-lived installation token after broker
+policy allows the request. For repository listing, gh-broker lists App
+installations and then filters visible installation repositories through
+`scope.json`.
+
+`GH_BROKER_GITHUB_TOKEN_FILE` remains available as a local development
+fallback.
 
 Deployment safety defaults:
 
@@ -187,8 +199,12 @@ Deployment safety defaults:
 - `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
 - `GH_BROKER_TELEGRAM_BOT_TOKEN` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
   Telegram approval for requestable grants.
-- Audit logs record client, operation, owner, repo, method, path, outcome, status, reason, and matched rule ids.
-- Audit logs do not include tokens, cookies, request bodies, PR bodies, pack contents, diffs, or raw upstream bodies.
+- Audit logs record client, operation, owner, repo, method, path, outcome,
+  status, reason, matched rule ids, and GitHub installation id when one was
+  minted for the request.
+- Audit logs do not include tokens, cookies, request bodies, PR bodies, pack
+  contents, diffs, raw upstream bodies, JWTs, installation tokens, or private
+  keys.
 
 ## Grants
 

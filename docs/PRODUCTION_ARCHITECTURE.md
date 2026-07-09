@@ -642,12 +642,13 @@ installation tokens, JWTs, Authorization headers, or token metadata.
    - protected GitHub App credentials, webhook secret, broker secrets, scope,
      and systemd unit files
 
-4. Add GitHub App installation-token support:
+4. GitHub App installation-token support is implemented:
    - sign GitHub App JWTs
    - resolve installation ids by repo
    - mint short-lived installation tokens
    - keep PAT fallback for local development only
-   - include GitHub request ids and installation ids in audit metadata
+   - include installation ids in audit metadata
+   - still add GitHub request ids from upstream responses to audit metadata
 
 5. Cut over to rule-based scope:
    - request classifier
