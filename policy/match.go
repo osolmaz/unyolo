@@ -64,6 +64,9 @@ func effectValuesMatch(effect Effect, mode MatchMode, patterns []string, values 
 }
 
 func anyValueMatches(mode MatchMode, patterns []string, values []string) bool {
+	if defaultedMatchMode(mode) == MatchRecursivePathGlob {
+		return recursivePathValuesMatch(patterns, values, false)
+	}
 	for _, value := range values {
 		if valuesMatch(mode, patterns, value) {
 			return true
@@ -75,6 +78,9 @@ func anyValueMatches(mode MatchMode, patterns []string, values []string) bool {
 func allValuesMatch(mode MatchMode, patterns []string, values []string) bool {
 	if len(values) == 0 {
 		return false
+	}
+	if defaultedMatchMode(mode) == MatchRecursivePathGlob {
+		return recursivePathValuesMatch(patterns, values, true)
 	}
 	if defaultedMatchMode(mode) == MatchAnyGlob {
 		return anyValueMatches(mode, patterns, values)
@@ -105,20 +111,48 @@ func valuesMatch(mode MatchMode, patterns []string, value string) bool {
 }
 
 func recursivePathPatternsMatch(patterns []string, value string) bool {
-	if strings.TrimSpace(value) == "" || len(value) > maxPathValueBytes || strings.Count(value, "/") >= maxPathSegments {
+	if !validPathValue(value) {
 		return false
 	}
+	return compiledRecursivePathPatternsMatch(compileRecursivePathPatterns(patterns), value)
+}
+
+func recursivePathValuesMatch(patterns []string, values []string, requireAll bool) bool {
+	compiled := compileRecursivePathPatterns(patterns)
+	for _, value := range values {
+		matched := validPathValue(value) && compiledRecursivePathPatternsMatch(compiled, value)
+		if requireAll != matched {
+			return !requireAll
+		}
+	}
+	return requireAll && len(values) > 0
+}
+
+func compileRecursivePathPatterns(patterns []string) []*regexp.Regexp {
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
 	for _, pattern := range patterns {
 		expression := regexp.QuoteMeta(pattern)
 		expression = strings.ReplaceAll(expression, `\*\*`, `(?s:.*)`)
 		expression = strings.ReplaceAll(expression, `\*`, `[^/]*`)
 		expression = strings.ReplaceAll(expression, `\?`, `[^/]`)
-		matched, err := regexp.MatchString("^"+expression+"$", value)
-		if err == nil && matched {
+		if matcher, err := regexp.Compile("^" + expression + "$"); err == nil {
+			compiled = append(compiled, matcher)
+		}
+	}
+	return compiled
+}
+
+func compiledRecursivePathPatternsMatch(patterns []*regexp.Regexp, value string) bool {
+	for _, pattern := range patterns {
+		if pattern.MatchString(value) {
 			return true
 		}
 	}
 	return false
+}
+
+func validPathValue(value string) bool {
+	return strings.TrimSpace(value) != "" && len(value) <= maxPathValueBytes && strings.Count(value, "/") < maxPathSegments
 }
 
 func pathOutsidePrefixes(prefixes []string, value string) bool {

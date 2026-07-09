@@ -227,10 +227,17 @@ func TestGeneratedGrantUsesProviderAttributeMatcher(t *testing.T) {
 
 func TestRecursivePathGlobMatchesEmbeddedDoubleStar(t *testing.T) {
 	patterns := []string{"artifacts/**.json", "prefix**suffix"}
-	for _, value := range []string{"artifacts/result.json", "artifacts/nested/result.json", "artifacts/nested\n/result.json", "prefix/a/suffix"} {
+	matching := []string{"artifacts/result.json", "artifacts/nested/result.json", "artifacts/nested\n/result.json", "prefix/a/suffix"}
+	for _, value := range matching {
 		if !MatchAll(MatchRecursivePathGlob, patterns, []string{value}) {
 			t.Fatalf("recursive path patterns did not match %q", value)
 		}
+	}
+	if !MatchAll(MatchRecursivePathGlob, patterns, matching) {
+		t.Fatal("recursive path patterns did not match the full value batch")
+	}
+	if !anyValueMatches(MatchRecursivePathGlob, patterns, []string{"artifacts/result.txt", "artifacts/result.json"}) {
+		t.Fatal("recursive path patterns did not match the allowed value in an any-value batch")
 	}
 	if MatchAll(MatchRecursivePathGlob, patterns, []string{"artifacts/result.txt"}) {
 		t.Fatal("recursive path patterns matched result.txt")
