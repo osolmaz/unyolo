@@ -110,7 +110,8 @@ Common flags:
 --systemd-dir <path>   default: /etc/systemd/system
 --binary <path>        default: resolved current binary
 --client <name>        default: bob or broker-specific default
---shared-secret <s>    optional; generated when omitted
+--shared-secret-file <path> optional; read client secret from a file
+--shared-secret-stdin       optional; read client secret from stdin
 --bind-addr <addr>     default: 127.0.0.1
 --port <port>          broker-specific default
 --dry-run
@@ -124,11 +125,15 @@ Common flags:
 - create root-owned config directories
 - create service-owned private secret files
 - create service-owned state directories
+- generate a client secret when no secret file or stdin input is supplied
 - write an env file
 - write the broker policy file
 - write the systemd unit
 - enable and start the service unless `--no-start` is set
 - print the broker URL and client setup instructions
+
+`setup systemd` must never accept raw secret values as command-line arguments.
+Those leak through shell history and process listings.
 
 The exact broker-specific secret files stay broker-local. Examples:
 
