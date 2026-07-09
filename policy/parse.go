@@ -458,6 +458,12 @@ func validateMatchValue(value string, mode MatchMode) error {
 }
 
 func validatePathGlob(pattern string) error {
+	if len(pattern) > maxPathPatternBytes {
+		return fmt.Errorf("must not exceed %d bytes", maxPathPatternBytes)
+	}
+	if strings.Count(pattern, "/") >= maxPathSegments {
+		return fmt.Errorf("must not exceed %d segments", maxPathSegments)
+	}
 	for _, segment := range strings.Split(pattern, "/") {
 		if strings.Contains(segment, "**") && segment != "**" {
 			return errors.New("** must be a complete path segment")

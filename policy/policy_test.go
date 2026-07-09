@@ -245,6 +245,23 @@ func TestProviderMatcherValidation(t *testing.T) {
 	}
 }
 
+func TestPathGlobValidationBounds(t *testing.T) {
+	cases := []struct {
+		name    string
+		pattern string
+	}{
+		{name: "oversized pattern", pattern: strings.Repeat("a", maxPathPatternBytes+1)},
+		{name: "too many segments", pattern: strings.Repeat("a/", maxPathSegments) + "a"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validatePathGlob(tc.pattern); err == nil {
+				t.Fatal("validatePathGlob() error = nil, want size limit error")
+			}
+		})
+	}
+}
+
 func TestPathMatcherEdgeCases(t *testing.T) {
 	cases := []struct {
 		patterns []string
@@ -271,23 +288,14 @@ func TestPathMatcherEdgeCases(t *testing.T) {
 	}
 }
 
-func TestPathMatcherMemoizesDoubleStarStates(t *testing.T) {
-	patterns := make([]string, 21)
-	for index := range patterns[:20] {
-		patterns[index] = "**"
+func TestPathMatcherBoundsRequestValues(t *testing.T) {
+	value := strings.Repeat("a/", maxPathSegments) + "a"
+	if pathPatternsMatch([]string{"**"}, value) {
+		t.Fatal("pathPatternsMatch() accepted too many request path segments")
 	}
-	patterns[20] = "missing"
-	values := make([]string, 20)
-	for index := range values {
-		values[index] = "segment"
-	}
-	memo := make(map[pathMatchState]pathMatchResult)
-	if pathSegmentsMatchFrom(patterns, values, 0, 0, memo) {
-		t.Fatal("pathSegmentsMatchFrom() matched a missing final segment")
-	}
-	maximumStates := (len(patterns) + 1) * (len(values) + 1)
-	if len(memo) > maximumStates {
-		t.Fatalf("memoized states = %d, want at most %d", len(memo), maximumStates)
+	value = strings.Repeat("a", maxPathValueBytes+1)
+	if pathPatternsMatch([]string{"*"}, value) {
+		t.Fatal("pathPatternsMatch() accepted an oversized request path")
 	}
 }
 
@@ -302,11 +310,28 @@ func TestPathMatcherOverlapIsConservative(t *testing.T) {
 		{left: "a", right: "*", want: true},
 		{left: "*", right: "a", want: true},
 		{left: "a/*", right: "b/*", want: true},
+		{left: `a\b`, right: "ab", want: true},
 	}
 	for _, tc := range cases {
 		if got := pathValuesMayOverlap(tc.left, tc.right); got != tc.want {
 			t.Fatalf("pathValuesMayOverlap(%q, %q) = %t, want %t", tc.left, tc.right, got, tc.want)
 		}
+	}
+}
+
+func TestEscapedPathPatternsCannotEvadeAmbiguityValidation(t *testing.T) {
+	registry := Registry{
+		Operations: map[string]OperationSpec{"read": {TargetKinds: []string{"object"}, Grantable: true}},
+		Targets: map[string]TargetSpec{
+			"object": {Fields: map[string]FieldSpec{"key": {Required: true, Match: MatchPathGlob}}},
+		},
+	}
+	_, err := Parse([]byte(`{"rules":[
+		{"id":"escaped","effect":"request","clients":["bob"],"operations":["read"],"targets":[{"kind":"object","key":"a\\b"}],"grant_policy":{"default_minutes":60,"max_minutes":60}},
+		{"id":"literal","effect":"request","clients":["bob"],"operations":["read"],"targets":[{"kind":"object","key":"ab"}],"grant_policy":{"default_minutes":5,"max_minutes":5}}
+	]}`), registry)
+	if err == nil || !strings.Contains(err.Error(), "overlap with different grant policies") {
+		t.Fatalf("Parse() error = %v, want escaped-pattern overlap", err)
 	}
 }
 

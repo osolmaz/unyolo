@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+const (
+	maxPathPatternBytes = 1024
+	maxPathValueBytes   = 4096
+	maxPathSegments     = 256
+)
+
 func ruleMatches(registry Registry, rule Rule, request Request) bool {
 	return patternsMatch(rule.Clients, request.Client) &&
 		patternsMatch(rule.Operations, request.Operation) &&
@@ -86,7 +92,7 @@ func patternsMatch(patterns []string, value string) bool {
 }
 
 func pathPatternsMatch(patterns []string, value string) bool {
-	if strings.TrimSpace(value) == "" {
+	if strings.TrimSpace(value) == "" || len(value) > maxPathValueBytes || strings.Count(value, "/") >= maxPathSegments {
 		return false
 	}
 	valueSegments := strings.Split(value, "/")
@@ -99,42 +105,40 @@ func pathPatternsMatch(patterns []string, value string) bool {
 }
 
 func pathSegmentsMatch(patterns []string, values []string) bool {
-	memo := make(map[pathMatchState]pathMatchResult)
-	return pathSegmentsMatchFrom(patterns, values, 0, 0, memo)
+	states := make([]bool, len(patterns)+1)
+	states[0] = true
+	closeDoubleStarStates(states, patterns)
+	for _, value := range values {
+		states = advancePathStates(states, patterns, value)
+	}
+	return states[len(patterns)]
 }
 
-type pathMatchState struct {
-	pattern int
-	value   int
+func advancePathStates(states []bool, patterns []string, value string) []bool {
+	next := make([]bool, len(states))
+	for patternIndex := range patterns {
+		if !states[patternIndex] {
+			continue
+		}
+		if patterns[patternIndex] == "**" {
+			next[patternIndex] = true
+			continue
+		}
+		matched, err := path.Match(patterns[patternIndex], value)
+		if err == nil && matched {
+			next[patternIndex+1] = true
+		}
+	}
+	closeDoubleStarStates(next, patterns)
+	return next
 }
 
-type pathMatchResult struct {
-	matched bool
-}
-
-func pathSegmentsMatchFrom(patterns []string, values []string, patternIndex int, valueIndex int, memo map[pathMatchState]pathMatchResult) bool {
-	state := pathMatchState{pattern: patternIndex, value: valueIndex}
-	if result, ok := memo[state]; ok {
-		return result.matched
+func closeDoubleStarStates(states []bool, patterns []string) {
+	for patternIndex, pattern := range patterns {
+		if states[patternIndex] && pattern == "**" {
+			states[patternIndex+1] = true
+		}
 	}
-	matched := pathSegmentsMatchUncached(patterns, values, patternIndex, valueIndex, memo)
-	memo[state] = pathMatchResult{matched: matched}
-	return matched
-}
-
-func pathSegmentsMatchUncached(patterns []string, values []string, patternIndex int, valueIndex int, memo map[pathMatchState]pathMatchResult) bool {
-	if patternIndex == len(patterns) {
-		return valueIndex == len(values)
-	}
-	if patterns[patternIndex] == "**" {
-		return pathSegmentsMatchFrom(patterns, values, patternIndex+1, valueIndex, memo) ||
-			(valueIndex < len(values) && pathSegmentsMatchFrom(patterns, values, patternIndex, valueIndex+1, memo))
-	}
-	if valueIndex == len(values) {
-		return false
-	}
-	matched, err := path.Match(patterns[patternIndex], values[valueIndex])
-	return err == nil && matched && pathSegmentsMatchFrom(patterns, values, patternIndex+1, valueIndex+1, memo)
 }
 
 func integerMaximumMatches(ceilings []string, value string) bool {

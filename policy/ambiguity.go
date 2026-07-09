@@ -140,7 +140,7 @@ func patternsMayOverlap(left string, right string) bool {
 }
 
 func hasGlobMeta(value string) bool {
-	return strings.ContainsAny(value, "*?[")
+	return strings.ContainsAny(value, `*?[\`)
 }
 
 func globPrefixesMayOverlap(left string, right string) bool {

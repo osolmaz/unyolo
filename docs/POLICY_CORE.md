@@ -169,6 +169,10 @@ registry declares how each target field and attr is interpreted:
 - `integer_maximum` treats policy values as inclusive non-negative integer
   ceilings
 
+For predictable resource use, `path_glob` policy values are limited to 1,024
+bytes and 256 path segments. Request values are limited to 4,096 bytes and 256
+segments. Values beyond those limits fail closed and do not match a rule.
+
 This keeps typed provider parsing in the broker while making the decision
 semantics reusable. For example, hf-broker parses a JSON byte count, validates
 it as an integer, and passes its canonical base-10 form to brokerkit. Each
