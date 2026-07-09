@@ -2,7 +2,7 @@ module github.com/osolmaz/hf-broker
 
 go 1.25.0
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	github.com/labstack/echo/v4 v4.15.4
