@@ -271,6 +271,26 @@ func TestPathMatcherEdgeCases(t *testing.T) {
 	}
 }
 
+func TestPathMatcherMemoizesDoubleStarStates(t *testing.T) {
+	patterns := make([]string, 21)
+	for index := range patterns[:20] {
+		patterns[index] = "**"
+	}
+	patterns[20] = "missing"
+	values := make([]string, 20)
+	for index := range values {
+		values[index] = "segment"
+	}
+	memo := make(map[pathMatchState]pathMatchResult)
+	if pathSegmentsMatchFrom(patterns, values, 0, 0, memo) {
+		t.Fatal("pathSegmentsMatchFrom() matched a missing final segment")
+	}
+	maximumStates := (len(patterns) + 1) * (len(values) + 1)
+	if len(memo) > maximumStates {
+		t.Fatalf("memoized states = %d, want at most %d", len(memo), maximumStates)
+	}
+}
+
 func TestPathMatcherOverlapIsConservative(t *testing.T) {
 	cases := []struct {
 		left  string

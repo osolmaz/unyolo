@@ -99,17 +99,42 @@ func pathPatternsMatch(patterns []string, value string) bool {
 }
 
 func pathSegmentsMatch(patterns []string, values []string) bool {
-	if len(patterns) == 0 {
-		return len(values) == 0
+	memo := make(map[pathMatchState]pathMatchResult)
+	return pathSegmentsMatchFrom(patterns, values, 0, 0, memo)
+}
+
+type pathMatchState struct {
+	pattern int
+	value   int
+}
+
+type pathMatchResult struct {
+	matched bool
+}
+
+func pathSegmentsMatchFrom(patterns []string, values []string, patternIndex int, valueIndex int, memo map[pathMatchState]pathMatchResult) bool {
+	state := pathMatchState{pattern: patternIndex, value: valueIndex}
+	if result, ok := memo[state]; ok {
+		return result.matched
 	}
-	if patterns[0] == "**" {
-		return pathSegmentsMatch(patterns[1:], values) || (len(values) > 0 && pathSegmentsMatch(patterns, values[1:]))
+	matched := pathSegmentsMatchUncached(patterns, values, patternIndex, valueIndex, memo)
+	memo[state] = pathMatchResult{matched: matched}
+	return matched
+}
+
+func pathSegmentsMatchUncached(patterns []string, values []string, patternIndex int, valueIndex int, memo map[pathMatchState]pathMatchResult) bool {
+	if patternIndex == len(patterns) {
+		return valueIndex == len(values)
 	}
-	if len(values) == 0 {
+	if patterns[patternIndex] == "**" {
+		return pathSegmentsMatchFrom(patterns, values, patternIndex+1, valueIndex, memo) ||
+			(valueIndex < len(values) && pathSegmentsMatchFrom(patterns, values, patternIndex, valueIndex+1, memo))
+	}
+	if valueIndex == len(values) {
 		return false
 	}
-	matched, err := path.Match(patterns[0], values[0])
-	return err == nil && matched && pathSegmentsMatch(patterns[1:], values[1:])
+	matched, err := path.Match(patterns[patternIndex], values[valueIndex])
+	return err == nil && matched && pathSegmentsMatchFrom(patterns, values, patternIndex+1, valueIndex+1, memo)
 }
 
 func integerMaximumMatches(ceilings []string, value string) bool {
