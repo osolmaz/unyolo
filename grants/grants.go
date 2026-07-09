@@ -282,6 +282,40 @@ func (s *Store) Get(id string) (Grant, error) {
 	return grant, nil
 }
 
+// List returns all durable grants after expiring stale records.
+func (s *Store) List() ([]Grant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	changed := s.expireDue(&data)
+	out := make([]Grant, len(data.Grants))
+	copy(out, data.Grants)
+	if changed {
+		if err := s.save(data); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// ListForClient returns all durable grants for one broker client.
+func (s *Store) ListForClient(client string) ([]Grant, error) {
+	grants, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Grant, 0, len(grants))
+	for _, grant := range grants {
+		if grant.Client == client {
+			out = append(out, grant)
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) decide(id string, token string, approver string, status Status) (Grant, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
