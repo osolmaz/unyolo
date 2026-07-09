@@ -102,9 +102,11 @@ type Grant struct {
 	DecidedBy              string              `json:"decided_by,omitempty"`
 	UsedAt                 time.Time           `json:"used_at,omitzero"`
 	UsedCount              int                 `json:"used_count"`
+	UseRevision            int                 `json:"use_revision,omitempty"`
 	ReservedCount          int                 `json:"reserved_count,omitempty"`
 	ReservedAt             time.Time           `json:"reserved_at,omitzero"`
 	ReservationRetained    bool                `json:"reservation_retained,omitempty"`
+	ReservationRevision    int                 `json:"reservation_revision,omitempty"`
 	MaxUses                int                 `json:"max_uses"`
 	ExpiredFrom            Status              `json:"expired_from,omitempty"`
 	Notification           *MessageRef         `json:"notification,omitempty"`
@@ -229,7 +231,22 @@ func canonicalizeLoadedGrants(grants []Grant) bool {
 		grant.legacySchema = false
 		grant.Target.Fields = copyx.CanonicalStringSliceMap(grant.Target.Fields)
 		grant.Attrs = copyx.CanonicalStringSliceMap(grant.Attrs)
-		changed = normalizeLoadedReservation(grant) || grantChanged || changed
+		reservationChanged := normalizeLoadedReservation(grant)
+		revisionChanged := normalizeLoadedRevisions(grant)
+		changed = reservationChanged || revisionChanged || grantChanged || changed
+	}
+	return changed
+}
+
+func normalizeLoadedRevisions(grant *Grant) bool {
+	changed := false
+	if grant.UseRevision < grant.UsedCount {
+		grant.UseRevision = grant.UsedCount
+		changed = true
+	}
+	if grant.ReservedCount > 0 && grant.ReservationRevision <= 0 {
+		grant.ReservationRevision = 1
+		changed = true
 	}
 	return changed
 }
@@ -359,6 +376,7 @@ func (s *Store) ReserveUse(id string) (Grant, error) {
 		}
 		if grant.ReservedCount == 0 {
 			grant.ReservedAt = s.opts.Now().UTC()
+			grant.ReservationRevision++
 		}
 		grant.ReservedCount++
 		return grant, nil
@@ -388,6 +406,7 @@ func (s *Store) CommitUse(id string) (Grant, error) {
 		}
 		grant.ReservedCount--
 		grant.UsedCount++
+		grant.UseRevision++
 		grant.UsedAt = s.opts.Now().UTC()
 		if grant.ReservedCount == 0 {
 			grant.ReservedAt = time.Time{}

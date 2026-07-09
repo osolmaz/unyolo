@@ -217,7 +217,7 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 		t.Fatalf("ReserveUse() = %+v err=%v", reserved, err)
 	}
 	now = now.Add(2 * time.Minute)
-	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:0:1")
+	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:1:0:1")
 	if !update.Grant.ReservationRetained {
 		t.Fatalf("retained update = %+v, want retained reservation", update)
 	}
@@ -226,7 +226,7 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 	}
 
 	now = result.Grant.CreatedAt.Add(10 * time.Minute)
-	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusExpired, "reserved:expired:0:1")
+	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusExpired, "reserved:expired:1:0:1")
 	committed, err := store.CommitUse(result.Grant.ID)
 	if err != nil || committed.UsedCount != 1 || committed.ReservedCount != 0 || committed.ReservationRetained {
 		t.Fatalf("CommitUse(expired reservation) = %+v err=%v", committed, err)
@@ -277,7 +277,7 @@ func TestRevokedReservationCanBeSettled(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Minute)
-	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusRevoked, "reserved:revoked:0:1")
+	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusRevoked, "reserved:revoked:1:0:1")
 	if !update.Grant.ReservationRetained {
 		t.Fatalf("revoked stale reservation = %+v, want retained", update.Grant)
 	}
@@ -304,7 +304,7 @@ func TestCommittedUseRemainsDueAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := New(path, Options{})
-	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":1")
+	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":active:1")
 }
 
 func TestSuccessiveUsesHaveDistinctDeliveryKeys(t *testing.T) {
@@ -319,13 +319,61 @@ func TestSuccessiveUsesHaveDistinctDeliveryKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	commitTestUse(t, store, result.Grant.ID)
-	first := assertSingleDueUpdate(t, store, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":1")
+	first := assertSingleDueUpdate(t, store, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":active:1")
 	if err := store.MarkNotificationStatus(result.Grant.ID, first.NotificationStatusKey()); err != nil {
 		t.Fatal(err)
 	}
 	commitTestUse(t, store, result.Grant.ID)
 	restarted := New(path, Options{})
-	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":2")
+	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":active:2")
+}
+
+func TestRepeatedRetainedReservationsHaveDistinctDeliveryKeys(t *testing.T) {
+	now := time.Date(2026, 7, 10, 5, 0, 0, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{
+		Now:                func() time.Time { return now },
+		ReservationTimeout: time.Minute,
+	})
+	result := requestTestGrant(t, store, "repeated-reservations", 2)
+	setTestNotification(t, store, result.Grant.ID)
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkNotificationStatus(result.Grant.ID, string(StatusActive)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	first := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:1:0:1")
+	if err := store.MarkNotificationStatus(result.Grant.ID, first.NotificationStatusKey()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReleaseUse(result.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:2:0:1")
+}
+
+func TestRevokedLateCommitProducesUseUpdate(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	grant := approvedReservedGrant(t, store, "revoked-late-use")
+	setTestNotification(t, store, grant.ID)
+	if _, err := store.Revoke(grant.ID, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkNotificationStatus(grant.ID, string(StatusRevoked)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitUse(grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertSingleDueUpdate(t, store, StatusUpdateUsed, StatusRevoked, NotificationStatusUsed+":revoked:1")
 }
 
 func requestTestGrant(t *testing.T, store *Store, requestID string, maxUses int) RequestResult {

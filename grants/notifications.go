@@ -250,7 +250,7 @@ func retainedReservationUpdate(grant Grant) (StatusUpdate, bool) {
 		!reservationCanSettle(grant.Status) {
 		return StatusUpdate{}, false
 	}
-	key := NotificationStatusReserved + ":" + string(grant.Status) + ":" + useRevision(grant)
+	key := NotificationStatusReserved + ":" + string(grant.Status) + ":" + reservationRevision(grant)
 	return newStatusUpdate(grant, StatusUpdateRetainedReservation, grant.Status, key), true
 }
 
@@ -258,20 +258,20 @@ func usedExpiredUpdate(grant Grant) (StatusUpdate, bool) {
 	if grant.Status != StatusExpired || grant.UsedCount <= 0 || grant.ReservedCount != 0 {
 		return StatusUpdate{}, false
 	}
-	key := NotificationStatusUsedExpired + ":" + strconv.Itoa(grant.UsedCount)
+	key := NotificationStatusUsedExpired + ":" + strconv.Itoa(grant.UseRevision)
 	return newStatusUpdate(grant, StatusUpdateUsedExpired, StatusConsumed, key), true
 }
 
 func usedUpdate(grant Grant) (StatusUpdate, bool) {
-	if grant.Status != StatusActive || grant.UsedCount <= 0 {
+	if (grant.Status != StatusActive && grant.Status != StatusRevoked) || grant.UsedCount <= 0 {
 		return StatusUpdate{}, false
 	}
-	key := NotificationStatusUsed + ":" + strconv.Itoa(grant.UsedCount)
+	key := NotificationStatusUsed + ":" + string(grant.Status) + ":" + strconv.Itoa(grant.UseRevision)
 	return newStatusUpdate(grant, StatusUpdateUsed, grant.Status, key), true
 }
 
-func useRevision(grant Grant) string {
-	return strconv.Itoa(grant.UsedCount) + ":" + strconv.Itoa(grant.ReservedCount)
+func reservationRevision(grant Grant) string {
+	return strconv.Itoa(grant.ReservationRevision) + ":" + strconv.Itoa(grant.UsedCount) + ":" + strconv.Itoa(grant.ReservedCount)
 }
 
 func lifecycleUpdate(grant Grant) (StatusUpdate, bool) {
