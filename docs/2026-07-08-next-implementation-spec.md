@@ -91,12 +91,17 @@ hf-broker still owns the HF-specific grant model, notification leases, retained
 reservations, execution/window modes, and API response shape, but JSON reads and
 atomic writes go through the shared brokerkit storage helper.
 
-The remaining local `policy`, `grants`, `notify`, `audit`, and Git proxy
+`brokerkit/notify/telegram` is now adopted for Telegram send, callback polling,
+configured-chat filtering, status editing, and tracked pending/active expiry.
+`internal/notify` keeps only HF-specific approval message text and the small
+adapter that maps brokerkit callback decisions to hf-broker's grant store.
+
+The remaining local `policy`, `grants`, `audit`, and Git proxy
 packages still contain HF-specific behavior or richer local state than the
 current brokerkit packages. Move them only when the brokerkit API can preserve
 HF repo/bucket targets, numeric attrs, grant modes, reservation recovery,
-notification state, Git push-options handling, pack preservation, and
-HF-specific audit fields without introducing a parallel runtime.
+Git push-options handling, pack preservation, and HF-specific audit fields
+without introducing a parallel runtime.
 
 ## Brokerkit Cutover Test Gates
 

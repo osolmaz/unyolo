@@ -233,8 +233,8 @@ exception, add a request rule for the repo in `scope.json` and
 configure the broker host with a Telegram bot token and the single
 operator chat id:
 
-Long term, the reusable Telegram transport and callback handling live in
-`github.com/osolmaz/brokerkit`; hf-broker keeps only the Hugging Face-specific
+Telegram transport and callback handling come from
+`github.com/osolmaz/brokerkit`; hf-broker keeps the Hugging Face-specific
 approval message text and request classification.
 
 ```json

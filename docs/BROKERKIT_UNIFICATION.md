@@ -26,7 +26,7 @@ Implemented in hf-broker today:
 - `/var/lib/hf-broker`
 - `/etc/systemd/system/hf-broker.service`
 - `hf-broker doctor isolation`
-- Telegram-backed grant requests
+- Telegram-backed grant requests through brokerkit's reusable Telegram adapter
 
 That UX should stay, but the implementation should stop being bespoke where the
 behavior is shared by gh-broker and sudo-broker.
@@ -48,7 +48,9 @@ template:
 - broker client auth
 - policy parsing and registry mechanics
 - grants, approval state, idempotency, and use budgets
-- shared Telegram transport and callback handling
+- shared Telegram transport and callback handling: implemented through
+  brokerkit's reusable Telegram adapter; hf-broker now keeps only HF approval
+  message composition and grant-decision application
 - audit event schema and no-secret helpers
 - common doctor checks for user separation, root-equivalent groups, secret file
   permissions, process environment reachability, socket access, and service
