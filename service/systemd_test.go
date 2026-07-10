@@ -76,8 +76,12 @@ func TestRenderSystemdHomeAccessPolicies(t *testing.T) {
 	}
 	base.HomeAccess = HomeAccessAllow
 	base.ExecStart = "/home/bob/bin/test"
-	if _, err := RenderSystemd(base); err != nil {
+	body, err := RenderSystemd(base)
+	if err != nil {
 		t.Fatalf("home-enabled service: %v", err)
+	}
+	if !strings.Contains(body, "ReadWritePaths=/var/lib/test -/home -/root -/run/user") {
+		t.Fatalf("home-enabled service lacks writable home paths:\n%s", body)
 	}
 }
 
@@ -112,6 +116,7 @@ func TestRenderSystemdRejectsWritableInputOverlap(t *testing.T) {
 		func(unit *SystemdUnit) { unit.ConfigDir = unit.StateDir },
 		func(unit *SystemdUnit) { unit.ConfigDir = unit.StateDir + "/config" },
 		func(unit *SystemdUnit) { unit.StateDir = unit.ConfigDir + "/state" },
+		func(unit *SystemdUnit) { unit.ConfigDir = "/" },
 		func(unit *SystemdUnit) { unit.EnvironmentFile = unit.StateDir + "/env" },
 		func(unit *SystemdUnit) { unit.ExecStart = unit.StateDir + "/broker serve" },
 	} {

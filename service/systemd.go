@@ -75,6 +75,10 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 		restartSec = 5
 	}
 	protectHome := protectHomeValue(unit.HomeAccess)
+	readWritePaths := unit.StateDir
+	if normalizedHomeAccess(unit.HomeAccess) == HomeAccessAllow {
+		readWritePaths += " -/home -/root -/run/user"
+	}
 	noNewPrivileges := "true"
 	if normalizedPrivilegeEscalation(unit.PrivilegeEscalation) == PrivilegeEscalationAllow {
 		noNewPrivileges = "false"
@@ -99,7 +103,7 @@ ProtectSystem=strict
 ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectHome, unit.StateDir, unit.ConfigDir)
+`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectHome, readWritePaths, unit.ConfigDir)
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
 		body.WriteByte('\n')
@@ -210,6 +214,9 @@ func pathsOverlap(left string, right string) bool {
 }
 
 func pathWithin(parent string, candidate string) bool {
+	if parent == string(filepath.Separator) {
+		return strings.HasPrefix(candidate, string(filepath.Separator))
+	}
 	return candidate == parent || strings.HasPrefix(candidate, parent+string(filepath.Separator))
 }
 

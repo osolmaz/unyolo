@@ -67,7 +67,9 @@ Provider credentials and policy do not enter Brokerkit.
 Home access is an explicit typed policy. The default is `deny`; `read-only` is
 available for read-only integrations; and privileged brokers such as
 sudo-broker select `allow` when approved commands or shells must operate in user
-home directories. The writable state path may never be `/`.
+home directories. On systemd, `allow` adds explicit writable exceptions for
+`/home`, `/root`, and `/run/user`; the rest of the filesystem remains protected
+by `ProtectSystem=strict`. The writable state path may never be `/`.
 
 Privilege escalation is a separate typed policy and is denied by default with
 `NoNewPrivileges=true`. A broker that deliberately delegates through a mature
