@@ -138,33 +138,102 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 
 func TestPollOnceLeavesRetriedDecisionPending(t *testing.T) {
 	answers := 0
-	server := newRetryPollServer(t, &answers)
+	updateCalls := 0
+	var offsets []int64
+	server := newRetryPollServer(t, &answers, &updateCalls, &offsets)
 	defer server.Close()
 	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{PollTimeoutSeconds: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	offset, err := client.PollOnce(context.Background(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
-		return notify.DecisionResult{Retry: true}
-	})
-	if !errors.Is(err, ErrDecisionRetry) || offset != 0 || answers != 0 {
-		t.Fatalf("first PollOnce() offset=%d answers=%d err=%v", offset, answers, err)
-	}
+	offset, err := client.PollOnce(context.Background(), 0, retryGrantOne)
+	assertRetryPollResult(t, offset, answers, err, 5, 1, true)
 	offset, err = client.PollOnce(context.Background(), offset, func(context.Context, notify.Decision) notify.DecisionResult {
 		return notify.DecisionResult{Answer: "saved"}
 	})
-	if err != nil || offset != 6 || answers != 1 {
-		t.Fatalf("retry PollOnce() offset=%d answers=%d err=%v", offset, answers, err)
+	assertRetryPollResult(t, offset, answers, err, 6, 2, false)
+	assertRetryPollOffsets(t, offsets)
+}
+
+func retryGrantOne(_ context.Context, decision notify.Decision) notify.DecisionResult {
+	if decision.GrantID == "g1" {
+		return notify.DecisionResult{Retry: true}
+	}
+	return notify.DecisionResult{Answer: "saved"}
+}
+
+func assertRetryPollResult(t *testing.T, offset int64, answers int, err error, wantOffset int64, wantAnswers int, wantRetry bool) {
+	t.Helper()
+	if wantRetry && !errors.Is(err, ErrDecisionRetry) {
+		t.Fatalf("PollOnce() error = %v, want ErrDecisionRetry", err)
+	}
+	if !wantRetry && err != nil {
+		t.Fatalf("PollOnce() error = %v, want nil", err)
+	}
+	if offset != wantOffset || answers != wantAnswers {
+		t.Fatalf("PollOnce() offset=%d answers=%d, want %d and %d", offset, answers, wantOffset, wantAnswers)
 	}
 }
 
-func newRetryPollServer(t *testing.T, answers *int) *httptest.Server {
+func assertRetryPollOffsets(t *testing.T, offsets []int64) {
+	t.Helper()
+	if len(offsets) != 2 || offsets[0] != 0 || offsets[1] != 5 {
+		t.Fatalf("getUpdates offsets = %v, want [0 5]", offsets)
+	}
+}
+
+func TestPollRetainsCompletedBatchProgressBeforeRetry(t *testing.T) {
+	answers := 0
+	updateCalls := 0
+	var offsets []int64
+	server := newRetryPollServer(t, &answers, &updateCalls, &offsets)
+	defer server.Close()
+	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{PollTimeoutSeconds: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.retryDelay = time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	firstCalls := 0
+	retryCalls := 0
+	client.Poll(ctx, func(_ context.Context, decision notify.Decision) notify.DecisionResult {
+		if decision.GrantID == "g0" {
+			firstCalls++
+			return notify.DecisionResult{Answer: "saved"}
+		}
+		retryCalls++
+		if retryCalls == 1 {
+			return notify.DecisionResult{Retry: true}
+		}
+		cancel()
+		return notify.DecisionResult{Answer: "saved"}
+	})
+	if firstCalls != 1 || retryCalls != 2 {
+		t.Fatalf("handler calls first=%d retry=%d, want 1 and 2", firstCalls, retryCalls)
+	}
+	assertRetryPollOffsets(t, offsets)
+}
+
+func newRetryPollServer(t *testing.T, answers *int, updateCalls *int, offsets *[]int64) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
-			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":5,"callback_query":{"id":"retry","from":{"id":2,"username":"operator"},"message":{"message_id":42,"chat":{"id":123},"text":"Approval requested"},"data":"` + CallbackData(notify.ActionApprove, "g1", "t1") + `"}}]}`))
+			var payload struct {
+				Offset int64 `json:"offset"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode getUpdates payload: %v", err)
+			}
+			*offsets = append(*offsets, payload.Offset)
+			*updateCalls++
+			if *updateCalls == 1 {
+				_, _ = w.Write([]byte(`{"ok":true,"result":[` + retryPollUpdate(4, "saved", "g0") + `,` + retryPollUpdate(5, "retry", "g1") + `]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"result":[` + retryPollUpdate(5, "retry", "g1") + `]}`))
 		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
 			*answers++
 			writeOK(w)
@@ -172,6 +241,10 @@ func newRetryPollServer(t *testing.T, answers *int) *httptest.Server {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
 	}))
+}
+
+func retryPollUpdate(updateID int, callbackID string, grantID string) string {
+	return `{"update_id":` + strconv.Itoa(updateID) + `,"callback_query":{"id":"` + callbackID + `","from":{"id":2,"username":"operator"},"message":{"message_id":42,"chat":{"id":123},"text":"Approval requested"},"data":"` + CallbackData(notify.ActionApprove, grantID, "t1") + `"}}`
 }
 
 func TestCallbackData(t *testing.T) {

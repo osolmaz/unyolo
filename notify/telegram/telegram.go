@@ -41,6 +41,7 @@ type Client struct {
 	baseURL            string
 	client             *http.Client
 	pollTimeoutSeconds int
+	retryDelay         time.Duration
 	ignoredAnswer      string
 	approveText        string
 	denyText           string
@@ -72,6 +73,7 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 		baseURL:            strings.TrimRight(baseURL, "/"),
 		client:             httpClient,
 		pollTimeoutSeconds: opts.PollTimeoutSeconds,
+		retryDelay:         time.Second,
 		ignoredAnswer:      opts.IgnoredAnswer,
 		approveText:        opts.ApproveText,
 		denyText:           opts.DenyText,
@@ -134,12 +136,11 @@ func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status
 func (c *Client) Poll(ctx context.Context, handler func(context.Context, notify.Decision) notify.DecisionResult) {
 	var offset int64
 	for ctx.Err() == nil {
-		nextOffset, err := c.PollOnce(ctx, offset, handler)
+		var err error
+		offset, err = c.PollOnce(ctx, offset, handler)
 		if err != nil {
-			wait(ctx, time.Second)
-			continue
+			wait(ctx, c.retryDelay)
 		}
-		offset = nextOffset
 	}
 }
 
