@@ -195,10 +195,11 @@ func TestSecretFromDataValidation(t *testing.T) {
 
 func TestValidation(t *testing.T) {
 	cases := map[string]Config{
-		"bad broker": {BrokerName: "../bad", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1", Secret: "s"},
-		"bad prefix": {BrokerName: "gh-broker", EnvPrefix: "gh-broker", URL: "http://127.0.0.1", Secret: "s"},
-		"bad url":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "ftp://127.0.0.1", Secret: "s"},
-		"no secret":  {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1"},
+		"bad broker":   {BrokerName: "../bad", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1", Secret: "s"},
+		"bad prefix":   {BrokerName: "gh-broker", EnvPrefix: "gh-broker", URL: "http://127.0.0.1", Secret: "s"},
+		"bad url":      {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "ftp://127.0.0.1", Secret: "s"},
+		"url userinfo": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://user:credential@broker.example", Secret: "s"}, // #nosec G101 -- credential-bearing URL is the rejection fixture.
+		"no secret":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1"},
 	}
 	for name, cfg := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -48,6 +48,7 @@ func TestParseClientHelpAndValidation(t *testing.T) {
 		{"extra"},
 		{"--url", "http://127.0.0.1", "--secret-file", "/tmp/s", "--home-dir", "/tmp", "--client", ""},
 		{"--client", "bob", "--secret-file", "/tmp/s", "--home-dir", "/tmp"},
+		{"--client", "bob", "--url", "https://user:credential@broker.example", "--secret-file", "/tmp/s", "--home-dir", "/tmp"},
 		{"--client", "bob", "--url", "http://127.0.0.1", "--home-dir", "/tmp"},
 	}
 	for _, args := range invalid {

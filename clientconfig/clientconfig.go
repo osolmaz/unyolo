@@ -146,7 +146,7 @@ func (cfg Config) validate() error {
 	if err := validateEnvPrefix(cfg.EnvPrefix); err != nil {
 		return err
 	}
-	if err := validateURL(cfg.URL); err != nil {
+	if err := ValidateURL(cfg.URL); err != nil {
 		return err
 	}
 	if strings.TrimSpace(cfg.Secret) == "" {
@@ -192,7 +192,8 @@ func normalizeEnvPrefix(value string) string {
 	return strings.Trim(strings.TrimSpace(value), "_")
 }
 
-func validateURL(value string) error {
+// ValidateURL validates a broker client URL and rejects embedded credentials.
+func ValidateURL(value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return errors.New("broker URL is required")
@@ -206,6 +207,9 @@ func validateURL(value string) error {
 	}
 	if parsed.Host == "" {
 		return errors.New("broker URL host is required")
+	}
+	if parsed.User != nil {
+		return errors.New("broker URL must not contain user information")
 	}
 	return nil
 }

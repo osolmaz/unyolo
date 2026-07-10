@@ -54,7 +54,10 @@ func TestValidateExtraSystemdDirectives(t *testing.T) {
 	if err := validateExtraDirectives([]string{"ProtectKernelTunables=true"}); err != nil {
 		t.Fatalf("safe extra directive: %v", err)
 	}
-	for _, directive := range []string{"", "bad", " bad=value", "Bad.Key=value", "[Unit]=value", "User=root"} {
+	for _, directive := range []string{
+		"", "bad", " bad=value", "Bad.Key=value", "[Unit]=value", "User=root",
+		"ReadWriteDirectories=/", "ProtectKernelTunables=false", "RootDirectory=/",
+	} {
 		if err := validateExtraDirectives([]string{directive}); err == nil {
 			t.Fatalf("validateExtraDirectives(%q) error = nil", directive)
 		}

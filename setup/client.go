@@ -69,15 +69,26 @@ func ParseClient(stderr io.Writer, args []string, defaults ClientDefaults) (opts
 
 // Validate validates one setup client request.
 func (opts ClientOptions) Validate() error {
+	if err := validateClientIdentity(opts); err != nil {
+		return err
+	}
+	if err := clientconfig.ValidateURL(opts.URL); err != nil {
+		return err
+	}
+	return validateClientLocations(opts)
+}
+
+func validateClientIdentity(opts ClientOptions) error {
 	if strings.TrimSpace(opts.BrokerName) == "" || strings.TrimSpace(opts.EnvPrefix) == "" {
 		return errors.New("broker name and environment prefix are required")
 	}
 	if strings.TrimSpace(opts.ClientName) == "" {
 		return errors.New("--client must not be empty")
 	}
-	if strings.TrimSpace(opts.URL) == "" {
-		return errors.New("--url is required")
-	}
+	return nil
+}
+
+func validateClientLocations(opts ClientOptions) error {
 	if strings.TrimSpace(opts.SecretFile) == "" {
 		return errors.New("--secret-file is required")
 	}

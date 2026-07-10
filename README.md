@@ -66,7 +66,7 @@ Implemented package candidates are:
   systemd setup options
 - `service`: hardened provider-neutral systemd unit rendering
 - `doctor`: portable identity, root-equivalent group, service separation, and
-  secret-file mode checks with secret-safe reports
+  fail-closed secret-path, ACL, and mode checks with secret-safe reports
 - `installer`: the canonical parameterized POSIX binary installer used by
   thin broker repository wrappers
 - `notify`: approval notification interfaces, callback answers, and a stateless

@@ -115,6 +115,9 @@ func RootEquivalentCheck(identity Identity) Check {
 	if identity.UID == 0 {
 		return Check{Status: CheckFail, Name: "agent_not_root_equivalent", Message: "agent uid is root"}
 	}
+	if identity.GID == 0 || slices.Contains(identity.GroupIDs, 0) {
+		return Check{Status: CheckFail, Name: "agent_not_root_equivalent", Message: "agent belongs to root group id 0"}
+	}
 	for _, group := range identity.GroupNames {
 		if RootEquivalentGroup(group) {
 			return Check{Status: CheckFail, Name: "agent_not_root_equivalent", Message: "agent belongs to root-equivalent group " + group}
@@ -178,6 +181,9 @@ func secretPathStabilityCheck(path string, agent Identity) Check {
 		if childInfo.Mode()&os.ModeSymlink != 0 {
 			return Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "secret path contains a symbolic link"}
 		}
+		if aclCheck := secretPathACLCheck(childPath); aclCheck != nil {
+			return *aclCheck
+		}
 		if agentCanReplaceChild(parentInfo, childInfo, agent) {
 			return Check{Status: CheckFail, Name: "secret_path_stable", Message: "agent can replace a secret path component by Unix mode bits"}
 		}
@@ -185,6 +191,19 @@ func secretPathStabilityCheck(path string, agent Identity) Check {
 		parentInfo = childInfo
 	}
 	return Check{Status: CheckPass, Name: "secret_path_stable", Message: "secret path has no symlinks or agent-replaceable components by Unix mode bits"}
+}
+
+func secretPathACLCheck(path string) *Check {
+	var message string
+	switch pathACLState(path) {
+	case aclPresent:
+		message = "secret path contains an access control list"
+	case aclUnknown:
+		message = "secret path access control lists could not be inspected"
+	case aclAbsent:
+		return nil
+	}
+	return &Check{Status: CheckUnknown, Name: "secret_path_stable", Message: message}
 }
 
 func initializeSecretPath(path string) (string, os.FileInfo, *Check) {

@@ -22,6 +22,24 @@ type SystemdUnit struct {
 	ExtraDirectives []string
 }
 
+var allowedExtraSystemdDirectives = map[string]string{
+	"LockPersonality":         "true",
+	"MemoryDenyWriteExecute":  "true",
+	"PrivateDevices":          "true",
+	"ProtectClock":            "true",
+	"ProtectControlGroups":    "true",
+	"ProtectHostname":         "true",
+	"ProtectKernelLogs":       "true",
+	"ProtectKernelModules":    "true",
+	"ProtectKernelTunables":   "true",
+	"RemoveIPC":               "true",
+	"RestrictNamespaces":      "true",
+	"RestrictRealtime":        "true",
+	"RestrictSUIDSGID":        "true",
+	"SystemCallArchitectures": "native",
+	"UMask":                   "0077",
+}
+
 // RenderSystemd renders a hardened systemd unit using the shared broker-family
 // baseline. Broker-specific directives may be appended to the Service section.
 func RenderSystemd(unit SystemdUnit) (string, error) {
@@ -100,23 +118,24 @@ func (unit SystemdUnit) validate() error {
 }
 
 func validateExtraDirectives(directives []string) error {
-	owned := map[string]struct{}{
-		"After": {}, "Description": {}, "EnvironmentFile": {}, "ExecStart": {},
-		"Group": {}, "NoNewPrivileges": {}, "PrivateTmp": {}, "ProtectHome": {},
-		"ProtectSystem": {}, "ReadOnlyPaths": {}, "ReadWritePaths": {}, "Restart": {},
-		"RestartSec": {}, "Type": {}, "User": {}, "WantedBy": {}, "Wants": {},
-	}
 	for _, directive := range directives {
-		if strings.TrimSpace(directive) == "" || strings.ContainsAny(directive, "\r\n") || !strings.Contains(directive, "=") {
-			return errors.New("extra systemd directives must be nonempty key=value lines")
+		if err := validateExtraDirective(directive); err != nil {
+			return err
 		}
-		key, _, _ := strings.Cut(directive, "=")
-		if key != strings.TrimSpace(key) || strings.ContainsAny(key, " \t.[]") {
-			return fmt.Errorf("extra systemd directive key %q is invalid", key)
-		}
-		if _, exists := owned[key]; exists {
-			return fmt.Errorf("extra systemd directive %q overrides the shared baseline", key)
-		}
+	}
+	return nil
+}
+
+func validateExtraDirective(directive string) error {
+	if strings.TrimSpace(directive) == "" || strings.ContainsAny(directive, "\r\n") || !strings.Contains(directive, "=") {
+		return errors.New("extra systemd directives must be nonempty key=value lines")
+	}
+	key, value, _ := strings.Cut(directive, "=")
+	if key != strings.TrimSpace(key) || strings.ContainsAny(key, " \t.[]") {
+		return fmt.Errorf("extra systemd directive key %q is invalid", key)
+	}
+	if allowedValue, exists := allowedExtraSystemdDirectives[key]; !exists || value != allowedValue {
+		return fmt.Errorf("extra systemd directive %q is not an allowed additive hardening setting", directive)
 	}
 	return nil
 }

@@ -15,11 +15,17 @@ func TestRootEquivalentAndSeparationChecks(t *testing.T) {
 	if got := RootEquivalentCheck(Identity{User: "root", UID: 0}); got.Status != CheckFail {
 		t.Fatalf("root check = %+v", got)
 	}
-	if got := RootEquivalentCheck(Identity{User: "bob", UID: 1000, GroupNames: []string{"docker"}}); got.Status != CheckFail {
+	if got := RootEquivalentCheck(Identity{User: "bob", UID: 1000, GID: 1000, GroupNames: []string{"docker"}}); got.Status != CheckFail {
 		t.Fatalf("docker check = %+v", got)
 	}
-	if got := RootEquivalentCheck(Identity{User: "bob", UID: 1000, GroupNames: []string{"users"}}); got.Status != CheckPass {
+	if got := RootEquivalentCheck(Identity{User: "bob", UID: 1000, GID: 1000, GroupNames: []string{"users"}}); got.Status != CheckPass {
 		t.Fatalf("normal check = %+v", got)
+	}
+	if got := RootEquivalentCheck(Identity{User: "bob", UID: 1000, GID: 0}); got.Status != CheckFail {
+		t.Fatalf("primary root gid check = %+v", got)
+	}
+	if got := RootEquivalentCheck(Identity{User: "bob", UID: 1000, GID: 1000, GroupIDs: []int{0}}); got.Status != CheckFail {
+		t.Fatalf("supplementary root gid check = %+v", got)
 	}
 	if !RootEquivalentGroup("wheel") || RootEquivalentGroup("users") {
 		t.Fatal("RootEquivalentGroup() mismatch")
