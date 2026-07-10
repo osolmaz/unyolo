@@ -64,6 +64,11 @@ being rendered ambiguously. Service paths hidden by `ProtectHome=true` are also
 rejected; service binaries must be installed outside home directories.
 Provider credentials and policy do not enter Brokerkit.
 
+Home access is an explicit typed policy. The default is `deny`; `read-only` is
+available for read-only integrations; and privileged brokers such as
+sudo-broker select `allow` when approved commands or shells must operate in user
+home directories. The writable state path may never be `/`.
+
 ## Doctor
 
 Package `doctor` provides portable building blocks for:

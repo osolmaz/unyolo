@@ -20,8 +20,21 @@ type SystemdUnit struct {
 	StateDir        string
 	ConfigDir       string
 	RestartSec      int
+	HomeAccess      HomeAccess
 	ExtraDirectives []string
 }
+
+// HomeAccess controls service visibility into user home directories.
+type HomeAccess string
+
+const (
+	// HomeAccessDeny hides home directories and is the default.
+	HomeAccessDeny HomeAccess = "deny"
+	// HomeAccessReadOnly permits reads but not writes except explicit writable paths.
+	HomeAccessReadOnly HomeAccess = "read-only"
+	// HomeAccessAllow permits broker-specific user-home operations.
+	HomeAccessAllow HomeAccess = "allow"
+)
 
 var allowedExtraSystemdDirectives = map[string]string{
 	"LockPersonality":         "true",
@@ -51,6 +64,7 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 	if restartSec <= 0 {
 		restartSec = 5
 	}
+	protectHome := protectHomeValue(unit.HomeAccess)
 	var body strings.Builder
 	_, _ = fmt.Fprintf(&body, `[Unit]
 Description=%s
@@ -68,10 +82,10 @@ RestartSec=%d
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, unit.StateDir, unit.ConfigDir)
+`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, protectHome, unit.StateDir, unit.ConfigDir)
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
 		body.WriteByte('\n')
@@ -94,6 +108,9 @@ func (unit SystemdUnit) validate() error {
 		return err
 	}
 	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
+		return err
+	}
+	if err := validateHomeAccess(unit.HomeAccess); err != nil {
 		return err
 	}
 	if err := validateSystemdUnitPaths(unit); err != nil {
@@ -137,11 +154,43 @@ func validateProtectedServicePaths(unit SystemdUnit) error {
 		if err := validateSystemdPath(name, value); err != nil {
 			return err
 		}
-		if protectedHomePath(value) {
+		if normalizedHomeAccess(unit.HomeAccess) == HomeAccessDeny && protectedHomePath(value) {
 			return fmt.Errorf("%s must not be under a path hidden by ProtectHome", name)
 		}
 	}
+	if filepath.Clean(unit.StateDir) == string(filepath.Separator) {
+		return errors.New("state directory must not make the filesystem root writable")
+	}
 	return nil
+}
+
+func validateHomeAccess(value HomeAccess) error {
+	switch normalizedHomeAccess(value) {
+	case HomeAccessDeny, HomeAccessReadOnly, HomeAccessAllow:
+		return nil
+	default:
+		return fmt.Errorf("home access %q is invalid", value)
+	}
+}
+
+func normalizedHomeAccess(value HomeAccess) HomeAccess {
+	if value == "" {
+		return HomeAccessDeny
+	}
+	return value
+}
+
+func protectHomeValue(value HomeAccess) string {
+	switch normalizedHomeAccess(value) {
+	case HomeAccessReadOnly:
+		return "read-only"
+	case HomeAccessAllow:
+		return "false"
+	case HomeAccessDeny:
+		return "true"
+	default:
+		return "true"
+	}
 }
 
 func protectedHomePath(value string) bool {

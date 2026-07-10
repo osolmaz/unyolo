@@ -35,6 +35,28 @@ func TestLinuxPathACLState(t *testing.T) {
 	}
 }
 
+func TestWritableParentTakesPrecedenceOverACLUncertainty(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o777); err != nil { // #nosec G302 -- world-writable directory is the isolation failure fixture.
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "secret")
+	if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setfacl, err := exec.LookPath("setfacl")
+	if err != nil {
+		t.Skip("setfacl is unavailable")
+	}
+	if output, runErr := exec.CommandContext(context.Background(), setfacl, "-m", "u:nobody:---", path).CombinedOutput(); runErr != nil { // #nosec G204 -- test executes a fixed system utility and fixture path.
+		t.Skipf("could not create ACL fixture: %v: %s", runErr, output)
+	}
+	checks := SecretFileChecks(path, Identity{User: "nobody", UID: 65534, GID: 65534})
+	if checks[0].Status != CheckFail {
+		t.Fatalf("replaceable ACL path check = %+v", checks[0])
+	}
+}
+
 func TestMergeACLStates(t *testing.T) {
 	for _, test := range []struct {
 		left  aclState

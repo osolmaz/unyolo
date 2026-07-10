@@ -183,19 +183,19 @@ func secretPathStabilityCheck(path string, agent Identity) Check {
 		if statErr != nil {
 			return Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "could not inspect every secret path component"}
 		}
+		if agentCanReplaceChild(parentInfo, childInfo, agent) {
+			return Check{Status: CheckFail, Name: "secret_path_stable", Message: "agent can replace a secret path component by Unix ownership or mode bits"}
+		}
 		if childInfo.Mode()&os.ModeSymlink != 0 {
 			return Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "secret path contains a symbolic link"}
 		}
 		if aclCheck := secretPathACLCheck(childPath); aclCheck != nil {
 			return *aclCheck
 		}
-		if agentCanReplaceChild(parentInfo, childInfo, agent) {
-			return Check{Status: CheckFail, Name: "secret_path_stable", Message: "agent can replace a secret path component by Unix mode bits"}
-		}
 		current = childPath
 		parentInfo = childInfo
 	}
-	return Check{Status: CheckPass, Name: "secret_path_stable", Message: "secret path has no symlinks or agent-replaceable components by Unix mode bits"}
+	return Check{Status: CheckPass, Name: "secret_path_stable", Message: "secret path has no symlinks or agent-replaceable components by Unix ownership or mode bits"}
 }
 
 func secretPathACLCheck(path string) *Check {

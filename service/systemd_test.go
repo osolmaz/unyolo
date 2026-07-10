@@ -44,6 +44,8 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		func(unit *SystemdUnit) { unit.ExecStart = "/home/bob/.local/bin/test" },
 		func(unit *SystemdUnit) { unit.EnvironmentFile = "/run/user/1000/test.env" },
 		func(unit *SystemdUnit) { unit.ConfigDir = "/root/test" },
+		func(unit *SystemdUnit) { unit.StateDir = "/" },
+		func(unit *SystemdUnit) { unit.HomeAccess = "invalid" },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"bad"} },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"User=root"} },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"ProtectSystem=false"} },
@@ -54,6 +56,28 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		if _, err := RenderSystemd(unit); err == nil {
 			t.Fatalf("RenderSystemd(%+v) error = nil", unit)
 		}
+	}
+}
+
+func TestRenderSystemdHomeAccessPolicies(t *testing.T) {
+	base := SystemdUnit{
+		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+	}
+	for policy, want := range map[HomeAccess]string{
+		HomeAccessDeny: "ProtectHome=true", HomeAccessReadOnly: "ProtectHome=read-only", HomeAccessAllow: "ProtectHome=false",
+	} {
+		unit := base
+		unit.HomeAccess = policy
+		body, err := RenderSystemd(unit)
+		if err != nil || !strings.Contains(body, want) {
+			t.Fatalf("RenderSystemd(%q) body=%q err=%v", policy, body, err)
+		}
+	}
+	base.HomeAccess = HomeAccessAllow
+	base.ExecStart = "/home/bob/bin/test"
+	if _, err := RenderSystemd(base); err != nil {
+		t.Fatalf("home-enabled service: %v", err)
 	}
 }
 
