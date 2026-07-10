@@ -245,6 +245,13 @@ state, notification claims and references, expiry, reservation recovery, and
 use accounting. hf-broker only maps HF targets and attrs and renders HF-specific
 operator text.
 
+Telegram callbacks are acknowledged immediately after the durable decision.
+Status edits run through the restart-safe brokerkit grant sweep. A verified
+callback commits the decision and editable message reference in one transaction
+when Telegram delivered the prompt but the original send response was lost. A
+durable write failure is left unanswered and retried from the same Telegram
+update.
+
 ```json
 {
   "rules": [
@@ -271,7 +278,8 @@ export HF_BROKER_TELEGRAM_BOT_TOKEN=...
 export HF_BROKER_TELEGRAM_CHAT_ID=123456789
 ```
 
-An authenticated client can then request a time-boxed grant:
+An authenticated client can then request a time-boxed grant. Every request must
+carry a unique `client_request_id`; retry the same request with the same value.
 
 ```sh
 curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
@@ -302,6 +310,11 @@ and long-polls the Bot API for the answer. There is no inbound Telegram
 callback URL. A grant only covers the requested repo/ref, expires at the
 approved time, is consumed after its use budget is exhausted, and
 decisions from any chat except the configured operator chat are ignored.
+
+If Telegram delivery returns an ambiguous error, the broker keeps the
+notification claim and fails the client request. It does not send a duplicate
+until the original two-minute claim lease expires; that retry uses a fresh
+one-time decision token. This state survives broker restarts.
 
 ## License
 

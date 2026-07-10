@@ -98,8 +98,17 @@ no second state machine.
 `brokerkit/notify/telegram` is now adopted for Telegram send, callback polling,
 configured-chat filtering, and status editing. Durable pending, active, used,
 retained, and expired message updates come from `brokerkit/grants` and survive
-process restart. `internal/notify` keeps only HF-specific approval text and
+process restart. `internal/approval` keeps only HF-specific approval text and
 decision mapping.
+
+Ambiguous Telegram sends retain their durable brokerkit claim. Concurrent and
+post-restart callers fail promptly, retry is blocked until the original lease
+expires, and every reclaimed send uses a fresh one-time decision token. If the
+delivered message is used before a retry, hf-broker commits the verified
+callback reference and decision in one brokerkit transaction. A failed durable
+write leaves the callback unanswered and pending at the same Telegram offset.
+Callback acknowledgement is not blocked on a Telegram message edit; the durable
+sweeper delivers the latest status asynchronously.
 
 `brokerkit/policy` is now adopted. `internal/policy` owns the HF rules-file
 parser and validation, operation/target/attr registry, typed request
@@ -112,7 +121,9 @@ removed.
 Active grants enter the same brokerkit policy decision path as static rules.
 HF code only resolves the returned grant id to reserve, commit, release, or
 retain a use around provider-specific Git and Hub execution. Deny precedence is
-therefore enforced once by the shared policy engine.
+therefore enforced once by the shared policy engine. A retained ambiguous
+reservation quarantines the whole grant and cannot authorize another request,
+even when its configured use budget is greater than one.
 
 The remaining local audit and Git proxy packages contain HF-specific event
 fields, commits-only mirrors, ancestry checks, push-option handling, pack
@@ -253,7 +264,7 @@ Scope:
 - Implement `GET /api/grants`.
 - Implement `GET /api/grants/{id}`.
 - Keep operator decisions out of the agent-authenticated API surface.
-- Use `client + client_request_id` idempotency.
+- Require `client_request_id` and use `client + client_request_id` idempotency.
 - Store grants as generated allow rules evaluated by `internal/policy`.
 - Separate pending request TTL from approved access duration.
 - Start approved access at approval time.

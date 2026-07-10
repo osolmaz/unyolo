@@ -718,7 +718,7 @@ Request body:
   "minutes": 5,
   "max_uses": 1,
   "reason": "need to inspect repo contents before updating policy",
-  "client_request_id": "optional-idempotency-key"
+  "client_request_id": "repo-read-20260710-01"
 }
 ```
 
@@ -732,7 +732,7 @@ Fields:
 | `minutes` | no | Requested approved access duration. Defaults from matching request rule. |
 | `max_uses` | no | Requested use budget for window grants. Defaults from matching request rule. |
 | `reason` | yes | Human-readable reason shown to the operator. Length `1..500`. |
-| `client_request_id` | no | Idempotency key scoped to the authenticated client. Length `1..128` when present. |
+| `client_request_id` | yes | Idempotency key scoped to the authenticated client. Length `1..128`. |
 
 If a matching request rule exists and the requested bounds fit its
 normalized `grant_policy`, the broker creates a pending grant:
@@ -782,7 +782,7 @@ GET /api/grants
 GET /api/grants/{id}
 ```
 
-`GET /api/grants` accepts `status=pending|active|expired|consumed|denied|revoked`
+`GET /api/grants` accepts `status=pending|active|retained|expired|consumed|denied|revoked`
 and returns only grants for the authenticated client on the agent-facing
 API. Operator channels may list all grants.
 
@@ -853,6 +853,7 @@ Approving, denying, or revoking an expired or terminal grant returns
 `409` with the current grant state. Operators may safely retry a decision
 request; repeated identical decisions return the existing grant state.
 
+Every grant request must include `client_request_id`. The tuple
 `client + client_request_id` is idempotent. Repeating the same body
 returns the existing grant. Reusing the same key with a different body
 returns `409` with reason `idempotency_conflict`.
@@ -937,7 +938,7 @@ One grant record:
   "id": "grant_01J...",
   "status": "active",
   "client": "local-agent",
-  "client_request_id": "optional-idempotency-key",
+  "client_request_id": "repo-read-20260710-01",
   "operation": "git.push.force",
   "target": {
     "kind": "repo",
@@ -993,7 +994,9 @@ active  -> retained
 
 Terminal statuses are `consumed`, `denied`, `expired`, and `revoked`.
 `retained` means a use reservation may have reached upstream and requires
-operator review before the broker can safely finalize it.
+operator review before the broker can safely finalize it. Retained grants
+report `uses_remaining: 0` because no further operation is authorized while
+review is pending.
 
 Window grants reserve one use before forwarding the operation upstream.
 The reservation is committed to disk before forwarding. If the operation

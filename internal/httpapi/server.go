@@ -21,6 +21,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	bknotify "github.com/osolmaz/brokerkit/notify"
+	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/hf-broker/internal/approval"
 	"github.com/osolmaz/hf-broker/internal/audit"
 	"github.com/osolmaz/hf-broker/internal/auth"
 	"github.com/osolmaz/hf-broker/internal/config"
@@ -28,7 +31,6 @@ import (
 	"github.com/osolmaz/hf-broker/internal/grants"
 	"github.com/osolmaz/hf-broker/internal/jsend"
 	"github.com/osolmaz/hf-broker/internal/mirror"
-	"github.com/osolmaz/hf-broker/internal/notify"
 	"github.com/osolmaz/hf-broker/internal/policy"
 )
 
@@ -53,6 +55,7 @@ var (
 	errGrantStoreUnavailable        = errors.New("grant store unavailable")
 	errGrantNotificationStillQueued = errors.New("grant notification is still being created")
 	errGrantNotificationCanceled    = errors.New("grant notification was canceled")
+	errGrantNotificationUnresolved  = errors.New("grant notification delivery is unresolved")
 )
 
 // Options configures a broker HTTP server.
@@ -62,7 +65,7 @@ type Options struct {
 	Audit           *audit.Logger
 	UpstreamBaseURL string
 	Context         context.Context
-	GrantNotifier   GrantNotifier
+	GrantNotifier   bknotify.Notifier
 	TelegramBaseURL string
 }
 
@@ -79,19 +82,10 @@ type Server struct {
 	hfToken    string
 	maxBody    int64
 	grants     *grants.Store
-	notifier   GrantNotifier
+	notifier   bknotify.Notifier
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
-}
-
-// GrantNotifier sends pending grants to an operator approval channel.
-type GrantNotifier interface {
-	SendGrantRequest(context.Context, notify.GrantMessage) (notify.MessageRef, error)
-}
-
-type GrantStatusNotifier interface {
-	UpdateGrantStatus(context.Context, notify.MessageRef, string) error
 }
 
 type route struct {
@@ -146,7 +140,9 @@ func New(opts Options) (*Server, error) {
 		auditLogger = audit.New(io.Discard)
 	}
 	server := newServer(opts, upstream, clients, auditLogger)
-	server.startTelegram(ctx, opts)
+	if err := server.startTelegram(ctx, opts); err != nil {
+		return nil, err
+	}
 	if opts.Config.TelegramBotToken != "" {
 		server.startGrantNotificationSweeper(ctx)
 	}
@@ -212,12 +208,21 @@ func grantReservationTimeout(hfTimeout time.Duration) time.Duration {
 	return hfTimeout + grantReservationGrace
 }
 
-func (s *Server) startTelegram(ctx context.Context, opts Options) {
-	if opts.Config.TelegramBotToken != "" {
-		telegram := notify.NewTelegram(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL)
-		s.notifier = telegram
-		go telegram.Poll(ctx, s.handleTelegramDecision)
+func (s *Server) startTelegram(ctx context.Context, opts Options) error {
+	if opts.Config.TelegramBotToken == "" {
+		return nil
 	}
+	telegram, err := bktelegram.NewWithOptions(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL, bktelegram.Options{
+		IgnoredAnswer: "Grant decision ignored",
+		ApproveText:   "✅ Approve",
+		DenyText:      "❌ Deny",
+	})
+	if err != nil {
+		return fmt.Errorf("configure Telegram notifier: %w", err)
+	}
+	s.notifier = telegram
+	go telegram.Poll(ctx, s.handleTelegramDecision)
+	return nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -429,7 +434,7 @@ func (s *Server) writeGrantStoreError(w http.ResponseWriter, client, operation, 
 }
 
 func activeGrantRule(grant grants.Grant) (policy.Rule, bool) {
-	if grant.Status != grants.StatusActive || !runtimeWindowGrant(grant) || grantUsesRemaining(grant) <= 0 {
+	if grant.Status != grants.StatusActive || grant.ReservationRetained || !runtimeWindowGrant(grant) || grantUsesRemaining(grant) <= 0 {
 		return policy.Rule{}, false
 	}
 	target := targetFromGrant(grant)
@@ -504,6 +509,7 @@ func (s *Server) matchActiveGrantIgnoringRef(client string, operation policy.Ope
 
 func activeGrantMatchesIgnoringRef(grant grants.Grant, client string, operation policy.Operation, target string, attrs map[string]any) bool {
 	return grant.Status == grants.StatusActive &&
+		!grant.ReservationRetained &&
 		runtimeWindowGrant(grant) &&
 		grant.Client == client &&
 		grant.Operation == string(operation) &&
@@ -808,22 +814,6 @@ func (s *Server) validateAPIGrantRequest(client string, req apiGrantRequestBody)
 	return apiGrantDecisionResult(req, decision)
 }
 
-func validateAPIGrantRequestShape(req apiGrantRequestBody) (int, string, string) {
-	if req.Minutes < 0 {
-		return http.StatusBadRequest, "validation_failed", "Grant duration must be positive"
-	}
-	if req.MaxUses < 0 {
-		return http.StatusBadRequest, "validation_failed", "Grant max uses must be positive"
-	}
-	if _, err := policy.AttrConstraintsFromValues(req.Attrs); err != nil {
-		return http.StatusBadRequest, "invalid_attrs", "Invalid attrs"
-	}
-	if err := validateGrantTargetForOperation(req.Operation, req.Target); err != nil {
-		return http.StatusBadRequest, "invalid_target", err.Error()
-	}
-	return 0, "", ""
-}
-
 func apiGrantDecisionResult(req apiGrantRequestBody, decision policy.Decision) (*policy.GrantPolicy, int, string, string) {
 	switch decision.Effect {
 	case policy.EffectRequest:
@@ -986,7 +976,7 @@ func parseGrantStatusFilter(r *http.Request) (string, bool) {
 func apiGrantListFromStore(grantsForClient []grants.Grant, statusFilter string) []apiGrantBody {
 	out := make([]apiGrantBody, 0, len(grantsForClient))
 	for _, grant := range grantsForClient {
-		if grantStatusMatchesFilter(grant.Status, statusFilter) {
+		if grantStatusMatchesFilter(grant, statusFilter) {
 			out = append(out, apiGrantFromStore(grant, targetFromGrant(grant)))
 		}
 	}
@@ -1006,23 +996,7 @@ func (s *Server) notifyAPIGrantIfClaimed(w http.ResponseWriter, r *http.Request,
 	return s.notifyAPICreatedGrant(w, r, client, claimedGrant)
 }
 
-func (s *Server) notifyAPICreatedGrant(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant) (grants.Grant, bool) {
-	messageRef, err := s.notifier.SendGrantRequest(r.Context(), grantMessage(grant))
-	if err != nil {
-		return s.rejectAPIGrantNotificationIfClaimed(w, r, client, grant, "could not notify operator")
-	}
-	updated, recorded, err := s.grants.SetNotifierIfClaimed(grant.ID, grant.NotifierClaimedAt, grantNotifierMessage(messageRef))
-	if err != nil {
-		return s.rejectAPIGrantNotificationIfClaimed(w, r, client, grant, "could not record operator notification")
-	}
-	if recorded {
-		return updated, true
-	}
-	s.supersedeGrantMessage(r.Context(), messageRef)
-	return s.resolveAPIPendingGrantNotification(w, r, client, grant, updated)
-}
-
-func (s *Server) rejectAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, reason string) (grants.Grant, bool) {
+func (s *Server) cancelAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, reason string) (grants.Grant, bool) {
 	updated, canceled, err := s.grants.CancelIfNotifierClaimed(grant.ID, grant.NotifierClaimedAt)
 	if err != nil {
 		writeJSendError(w, http.StatusBadGateway, reason, "internal_error")
@@ -1030,6 +1004,21 @@ func (s *Server) rejectAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *h
 		return grants.Grant{}, false
 	}
 	if canceled || updated.Status == grants.StatusCanceled {
+		writeJSendError(w, http.StatusBadGateway, reason, "upstream_error")
+		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
+		return grants.Grant{}, false
+	}
+	return s.resolveAPIPendingGrantNotification(w, r, client, grant, updated)
+}
+
+func (s *Server) retainAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, reason string) (grants.Grant, bool) {
+	updated, retained, err := s.grants.RetainNotifierClaim(grant.ID, grant.NotifierClaimedAt)
+	if err != nil {
+		writeJSendError(w, http.StatusBadGateway, reason, "internal_error")
+		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
+		return grants.Grant{}, false
+	}
+	if retained || updated.NotifierUnresolved {
 		writeJSendError(w, http.StatusBadGateway, reason, "upstream_error")
 		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
 		return grants.Grant{}, false
@@ -1058,6 +1047,8 @@ func (s *Server) waitForAPIGrantNotificationResponse(w http.ResponseWriter, r *h
 func apiGrantNotificationWaitError(err error) (int, string, string) {
 	switch {
 	case errors.Is(err, errGrantNotificationCanceled):
+		return http.StatusBadGateway, "could not notify operator", "upstream_error"
+	case errors.Is(err, errGrantNotificationUnresolved):
 		return http.StatusBadGateway, "could not notify operator", "upstream_error"
 	case errors.Is(err, errGrantNotificationStillQueued):
 		return http.StatusBadGateway, "operator notification is still pending", "internal_error"
@@ -1240,18 +1231,21 @@ func exactRepoTarget(target policy.TargetMatcher) bool {
 
 func validGrantStatusFilter(value string) bool {
 	switch value {
-	case string(grants.StatusPending), string(grants.StatusActive), string(grants.StatusExpired), string(grants.StatusConsumed), string(grants.StatusDenied), string(grants.StatusCanceled), "revoked":
+	case string(grants.StatusPending), string(grants.StatusActive), string(grants.StatusExpired), string(grants.StatusConsumed), string(grants.StatusDenied), string(grants.StatusCanceled), retainedGrantStatus, "revoked":
 		return true
 	default:
 		return false
 	}
 }
 
-func grantStatusMatchesFilter(status grants.Status, filter string) bool {
-	if filter == "revoked" {
-		return status == grants.StatusCanceled
+func grantStatusMatchesFilter(grant grants.Grant, filter string) bool {
+	if matched, handled := retainedGrantMatchesFilter(grant, filter); handled {
+		return matched
 	}
-	return filter == "" || string(status) == filter
+	if filter == "revoked" {
+		return grant.Status == grants.StatusCanceled
+	}
+	return filter == "" || string(grant.Status) == filter
 }
 
 func apiGrantFromStore(grant grants.Grant, target policy.Target) apiGrantBody {
@@ -1259,7 +1253,7 @@ func apiGrantFromStore(grant grants.Grant, target policy.Target) apiGrantBody {
 	expiresAt := grantExpiresAtStringPtr(grant)
 	return apiGrantBody{
 		ID:              grant.ID,
-		Status:          string(grant.Status),
+		Status:          apiGrantStatus(grant),
 		Operation:       grant.Operation,
 		Target:          target,
 		Attrs:           attrsOrEmpty(grant.Attrs),
@@ -1305,7 +1299,7 @@ func attrsOrEmpty(attrs map[string]any) map[string]any {
 }
 
 func grantUsesRemaining(grant grants.Grant) int {
-	if !grantIsActive(grant) {
+	if !grantIsActive(grant) || grantIsRetained(grant) {
 		return 0
 	}
 	return nonNegativeUses(defaultedGrantMaxUses(grant) - grant.UsedCount - grant.ReservedCount)
@@ -1386,7 +1380,7 @@ func grantNeedsNotification(grant grants.Grant) bool {
 	return grant.Status == grants.StatusPending && grant.Notifier == nil
 }
 
-func (s *Server) supersedeGrantMessage(ctx context.Context, ref notify.MessageRef) {
+func (s *Server) supersedeGrantMessage(ctx context.Context, ref bknotify.MessageRef) {
 	if ref.MessageID == 0 {
 		return
 	}
@@ -1407,13 +1401,23 @@ func (s *Server) waitForGrantNotification(ctx context.Context, id string) (grant
 			if err != nil {
 				return grants.Grant{}, err
 			}
-			if grant.Status == grants.StatusCanceled {
-				return grants.Grant{}, errGrantNotificationCanceled
-			}
-			if !grantNeedsNotification(grant) {
-				return grant, nil
+			if state := grantNotificationWaitState(grant); !errors.Is(state, errGrantNotificationStillQueued) {
+				return grant, state
 			}
 		}
+	}
+}
+
+func grantNotificationWaitState(grant grants.Grant) error {
+	switch {
+	case grant.Status == grants.StatusCanceled:
+		return errGrantNotificationCanceled
+	case grant.NotifierUnresolved:
+		return errGrantNotificationUnresolved
+	case grantNeedsNotification(grant):
+		return errGrantNotificationStillQueued
+	default:
+		return nil
 	}
 }
 
@@ -1461,10 +1465,8 @@ func invalidGrantTargetSegment(value string) bool {
 	return value == "" || strings.ContainsAny(value, " \t\r\n/\x00*?")
 }
 
-func grantMessage(grant grants.Grant) notify.GrantMessage {
-	return notify.GrantMessage{
-		ID:               grant.ID,
-		DecisionToken:    grant.DecisionToken,
+func grantApprovalMessage(grant grants.Grant) bknotify.ApprovalMessage {
+	message := approval.Message{
 		Client:           grant.Client,
 		Operation:        grant.Operation,
 		Mode:             grant.Mode,
@@ -1476,55 +1478,16 @@ func grantMessage(grant grants.Grant) notify.GrantMessage {
 		MaxUses:          grant.MaxUses,
 		PendingExpiresAt: grant.PendingExpiresAt,
 	}
-}
-
-func grantNotifierMessage(ref notify.MessageRef) grants.NotifierMessage {
-	return grants.NotifierMessage{Kind: ref.Kind, ChatID: ref.ChatID, MessageID: ref.MessageID, Text: ref.Text}
-}
-
-func notifyMessageRef(message *grants.NotifierMessage) notify.MessageRef {
-	if message == nil {
-		return notify.MessageRef{}
-	}
-	return notify.MessageRef{Kind: message.Kind, ChatID: message.ChatID, MessageID: message.MessageID, Text: message.Text}
-}
-
-func (s *Server) handleTelegramDecision(_ context.Context, decision notify.Decision) notify.DecisionResult {
-	actor := telegramActor(decision)
-	switch decision.Action {
-	case notify.DecisionApprove:
-		approved, err := s.grants.Approve(decision.ID, decision.Token, actor)
-		if err != nil {
-			return notify.DecisionResult{Answer: grantDecisionAnswer(err)}
-		}
-		return notify.DecisionResult{Answer: "Grant approved", ActiveExpiresAt: approved.ExpiresAt}
-	case notify.DecisionDeny:
-		if _, err := s.grants.Deny(decision.ID, decision.Token, actor); err != nil {
-			return notify.DecisionResult{Answer: grantDecisionAnswer(err)}
-		}
-		return notify.DecisionResult{Answer: "Grant denied"}
-	default:
-		return notify.DecisionResult{Answer: "Grant decision ignored"}
-	}
-}
-
-func telegramActor(decision notify.Decision) string {
-	if decision.OperatorTag != "" {
-		return "telegram:@" + decision.OperatorTag
-	}
-	return fmt.Sprintf("telegram:%d", decision.OperatorID)
-}
-
-func grantDecisionAnswer(err error) string {
-	switch {
-	case errors.Is(err, grants.ErrNotFound):
-		return "Grant not found"
-	case errors.Is(err, grants.ErrInvalidDecisionToken):
-		return "Grant decision token did not match"
-	case errors.Is(err, grants.ErrNotPending):
-		return "Grant is no longer pending"
-	default:
-		return "Grant decision failed"
+	return bknotify.ApprovalMessage{
+		GrantID:          grant.ID,
+		DecisionToken:    grant.DecisionToken,
+		Text:             approval.Text(message),
+		Client:           grant.Client,
+		Operation:        grant.Operation,
+		Target:           grant.Target,
+		Reason:           grant.Reason,
+		RequestedMinutes: grant.RequestedMinutes,
+		MaxUses:          grant.MaxUses,
 	}
 }
 
@@ -2233,7 +2196,7 @@ func (s *Server) updateGrantMessages(updated []grants.Grant, update func(grants.
 }
 
 func (s *Server) startGrantNotificationSweeper(ctx context.Context) {
-	if s.grantStatusNotifier() == nil {
+	if s.notifier == nil {
 		return
 	}
 	go func() {
@@ -2311,23 +2274,14 @@ func (s *Server) updateGrantMessage(ctx context.Context, grant grants.Grant, sta
 	if grant.Notifier == nil {
 		return nil
 	}
-	return s.updateNotifierStatus(ctx, notifyMessageRef(grant.Notifier), status)
+	return s.updateNotifierStatus(ctx, *grant.Notifier, status)
 }
 
-func (s *Server) updateNotifierStatus(ctx context.Context, ref notify.MessageRef, status string) error {
-	notifier := s.grantStatusNotifier()
-	if notifier == nil {
+func (s *Server) updateNotifierStatus(ctx context.Context, ref bknotify.MessageRef, status string) error {
+	if s.notifier == nil {
 		return nil
 	}
-	return notifier.UpdateGrantStatus(ctx, ref, status)
-}
-
-func (s *Server) grantStatusNotifier() GrantStatusNotifier {
-	notifier, ok := s.notifier.(GrantStatusNotifier)
-	if !ok {
-		return nil
-	}
-	return notifier
+	return s.notifier.UpdateStatus(ctx, ref, status)
 }
 
 func pendingExpiredStatusForGrant(grant grants.Grant) string {
@@ -2374,14 +2328,13 @@ func retainedGrantReservationStatus(grant grants.Grant) string {
 	if heldUses <= grant.UsedCount {
 		heldUses = grant.UsedCount + 1
 	}
-	remaining := maxUses - heldUses
-	if remaining < 0 {
-		remaining = 0
-	}
 	if maxUses == 1 {
 		return "⚠️ Push result is ambiguous. Access is closed until an operator reviews it."
 	}
-	return fmt.Sprintf("⚠️ Push result is ambiguous. %d of %d uses are held; %d uses remain.", heldUses, maxUses, remaining)
+	if heldUses == 1 {
+		return fmt.Sprintf("⚠️ Push result is ambiguous. 1 of %d uses is held; access is closed until an operator reviews it.", maxUses)
+	}
+	return fmt.Sprintf("⚠️ Push result is ambiguous. %d of %d uses are held; access is closed until an operator reviews it.", heldUses, maxUses)
 }
 
 func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {

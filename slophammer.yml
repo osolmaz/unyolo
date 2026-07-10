@@ -29,6 +29,7 @@ go:
     - from: internal/httpapi
       allow:
         - internal/audit
+        - internal/approval
         - internal/auth
         - internal/config
         - internal/gitproxy
@@ -36,7 +37,6 @@ go:
         - internal/grants
         - internal/jsend
         - internal/mirror
-        - internal/notify
         - internal/policy
     - from: internal/gitproxy
       allow:
@@ -63,5 +63,5 @@ go:
       allow: []
     - from: internal/jsend
       allow: []
-    - from: internal/notify
+    - from: internal/approval
       allow: []

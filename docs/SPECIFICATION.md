@@ -411,7 +411,7 @@ multi-use settings/admin grant.
 
 ### Idempotency and concurrency
 
-Grant requests may include `client_request_id`. The tuple
+Grant requests must include `client_request_id`. The tuple
 `client + client_request_id` is idempotent: retrying the same request
 returns the original pending, active, denied, expired, consumed, or revoked
 grant instead of creating a duplicate brokerkit notification prompt.
@@ -430,7 +430,9 @@ grace, the periodic grant sweep marks it retained and updates the
 operator message for review. Execution grants are consumed after the
 planned upstream mutation succeeds; if an upstream call may have
 partially applied side effects, the broker records the ambiguous result
-and refuses retries until an operator resolves it.
+and refuses retries until an operator resolves it. A retained reservation
+quarantines the entire grant: no remaining use budget can authorize another
+operation until the ambiguous result is resolved.
 
 ### Notification state
 
@@ -439,7 +441,12 @@ with the grant so restarts can still update operator messages. The generic
 approval, notifier metadata, and Telegram transport belong in brokerkit after
 cutover; hf-broker keeps the HF-specific message summary. Telegram messages are
 updated when a request is approved, denied, used, expired, revoked, or fails
-during execution. Buttons are removed after the first terminal decision.
+during execution. A verified callback can atomically recover missing notifier
+metadata after an ambiguous send in the same durable transaction as the grant
+decision. A durable write failure leaves the callback unanswered and its
+Telegram update pending for retry. After a successful transaction, the callback
+is acknowledged before any message edit; restart-safe status delivery then
+removes the buttons after the first terminal decision.
 
 Operator prompts must show:
 
@@ -567,8 +574,8 @@ internal/gitproxy/               HF enforcement and upstream forward; generic pa
 internal/gitproxy/pktline/       temporary; cut over to brokerkit generic Git helpers
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
 internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
-internal/grants/                 temporary; cut over to brokerkit/grants
-internal/notify/                 temporary; Telegram transport moves to brokerkit/notify
+internal/grants/                 HF field adapter over brokerkit/grants
+internal/approval/               HF-specific operator approval wording
 internal/jsend/                  JSON API response envelopes
 internal/httpapi/                Echo router, handlers, refusal responses, audit
 internal/audit/                  temporary generic helpers; HF audit extensions stay local
@@ -904,7 +911,7 @@ Acceptance criteria:
   duration only; expiry is enforced; `revoke` kills it early.
 - `max_uses` defaults to one, decrements after each accepted matching
   push, and closes the grant when exhausted.
-- `client_request_id` retries are idempotent and do not create duplicate
+- `client_request_id` is required; retries are idempotent and do not create duplicate
   operator prompts.
 - Durable notifier metadata lets approve/deny/use/expire/revoke updates
   survive broker restarts.

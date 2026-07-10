@@ -12,6 +12,32 @@ slophammer_go() {
 	fi
 }
 
+mutation_targets="
+internal/approval/message.go
+internal/grants/decisions.go
+internal/httpapi/grant_notification_ref.go
+internal/httpapi/grant_request_validation.go
+internal/httpapi/grant_retained_status.go
+internal/httpapi/telegram_decision.go
+"
+backup_dir="$(mktemp -d)"
+for target in $mutation_targets; do
+	mkdir -p "$backup_dir/$(dirname "$target")"
+	cp "$target" "$backup_dir/$target"
+done
+cleanup() {
+	for target in $mutation_targets; do
+		cp "$backup_dir/$target" "$target"
+	done
+	rm -rf "$backup_dir"
+	rm -rf target
+}
+trap cleanup EXIT
+
+for target in $mutation_targets; do
+	slophammer_go mutate . --target "$target"
+done
+
 full_mutation_gate_for_static_checks() {
 	slophammer-go mutate . --target internal/policy/policy.go
 }

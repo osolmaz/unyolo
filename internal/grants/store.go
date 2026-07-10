@@ -83,12 +83,7 @@ type Request struct {
 }
 
 // NotifierMessage identifies one editable operator notification.
-type NotifierMessage struct {
-	Kind      string `json:"kind"`
-	ChatID    int64  `json:"chat_id"`
-	MessageID int    `json:"message_id"`
-	Text      string `json:"text"`
-}
+type NotifierMessage = bkgrants.MessageRef
 
 // Grant is the HF-facing view of one brokerkit grant.
 type Grant struct {
@@ -119,6 +114,8 @@ type Grant struct {
 	Notifier            *NotifierMessage `json:"notifier,omitempty"`
 	NotifierStatus      string           `json:"notifier_status,omitempty"`
 	NotifierClaimedAt   time.Time        `json:"notifier_claimed_at,omitempty"`
+	NotifierClaimUntil  time.Time        `json:"notifier_claim_until,omitempty"`
+	NotifierUnresolved  bool             `json:"notifier_unresolved,omitempty"`
 }
 
 // ExpiredGrant is one expired grant with a pending notification update.
@@ -378,21 +375,12 @@ func fromCoreGrant(grant bkgrants.Grant, decisionToken string) (Grant, error) {
 		DecidedBy:           grant.DecidedBy,
 		UsedAt:              grant.UsedAt,
 		ExpiredFrom:         grant.ExpiredFrom,
-		Notifier:            fromCoreNotifier(grant.Notification),
+		Notifier:            grant.Notification,
 		NotifierStatus:      grant.NotificationStatus,
 		NotifierClaimedAt:   grant.NotificationClaimedAt,
+		NotifierClaimUntil:  grant.NotificationClaimUntil,
+		NotifierUnresolved:  grant.NotificationDeliveryUnresolved,
 	}, nil
-}
-
-func fromCoreNotifier(ref *bkgrants.MessageRef) *NotifierMessage {
-	if ref == nil {
-		return nil
-	}
-	return &NotifierMessage{Kind: ref.Kind, ChatID: ref.ChatID, MessageID: ref.MessageID, Text: ref.Text}
-}
-
-func toCoreNotifier(message NotifierMessage) bkgrants.MessageRef {
-	return bkgrants.MessageRef{Kind: message.Kind, ChatID: message.ChatID, MessageID: message.MessageID, Text: message.Text}
 }
 
 // Get returns one grant by id.
@@ -434,35 +422,26 @@ func fromCoreGrants(values []bkgrants.Grant) ([]Grant, error) {
 	return out, nil
 }
 
-// Approve activates a pending grant.
-func (s *Store) Approve(id, decisionToken, actor string) (Grant, error) {
-	return s.decide(s.core.Approve, id, decisionToken, actor)
-}
-
-// Deny closes a pending grant without granting access.
-func (s *Store) Deny(id, decisionToken, actor string) (Grant, error) {
-	return s.decide(s.core.Deny, id, decisionToken, actor)
-}
-
-func (s *Store) decide(decider func(string, string, string) (bkgrants.Grant, error), id, token, actor string) (Grant, error) {
-	grant, err := decider(id, token, actor)
-	if err != nil {
-		return Grant{}, err
-	}
-	return fromCoreGrant(grant, "")
-}
-
 // Cancel closes a pending grant after notification failure.
 func (s *Store) Cancel(id string) error { return s.core.Cancel(id) }
 
 // CancelIfNotifierClaimed cancels only the current delivery claim.
 func (s *Store) CancelIfNotifierClaimed(id string, claimedAt time.Time) (Grant, bool, error) {
-	grant, canceled, err := s.core.CancelIfNotificationClaimed(id, claimedAt)
+	return changeNotifierClaim(s.core.CancelIfNotificationClaimed, id, claimedAt)
+}
+
+// RetainNotifierClaim marks the current notification send as ambiguous.
+func (s *Store) RetainNotifierClaim(id string, claimedAt time.Time) (Grant, bool, error) {
+	return changeNotifierClaim(s.core.RetainNotificationClaim, id, claimedAt)
+}
+
+func changeNotifierClaim(change func(string, time.Time) (bkgrants.Grant, bool, error), id string, claimedAt time.Time) (Grant, bool, error) {
+	grant, changed, err := change(id, claimedAt)
 	if err != nil {
 		return Grant{}, false, err
 	}
 	out, err := fromCoreGrant(grant, "")
-	return out, canceled, err
+	return out, changed, err
 }
 
 // ClaimNotifier leases notification delivery and returns a fresh raw token.
@@ -477,7 +456,7 @@ func (s *Store) ClaimNotifier(id string, lease time.Duration) (Grant, bool, erro
 
 // SetNotifier records one editable operator notification.
 func (s *Store) SetNotifier(id string, message NotifierMessage) (Grant, error) {
-	grant, err := s.core.SetNotification(id, toCoreNotifier(message))
+	grant, err := s.core.SetNotification(id, message)
 	if err != nil {
 		return Grant{}, err
 	}
@@ -486,7 +465,7 @@ func (s *Store) SetNotifier(id string, message NotifierMessage) (Grant, error) {
 
 // SetNotifierIfClaimed records a notification only for the current claim.
 func (s *Store) SetNotifierIfClaimed(id string, claimedAt time.Time, message NotifierMessage) (Grant, bool, error) {
-	grant, recorded, err := s.core.SetNotificationIfClaimed(id, claimedAt, toCoreNotifier(message))
+	grant, recorded, err := s.core.SetNotificationIfClaimed(id, claimedAt, message)
 	if err != nil {
 		return Grant{}, false, err
 	}
@@ -552,7 +531,7 @@ func (s *Store) MatchActiveFunc(client, operation, target, ref string, match fun
 }
 
 func activeGrantMatches(grant Grant, operation, target, ref string, match func(Grant) bool) bool {
-	return grant.Status == StatusActive && grant.Operation == operation && grant.Target == target && grant.Ref == ref &&
+	return grant.Status == StatusActive && !grant.ReservationRetained && grant.Operation == operation && grant.Target == target && grant.Ref == ref &&
 		grant.UsedCount+grant.ReservedCount < grant.MaxUses && (match == nil || match(grant))
 }
 
