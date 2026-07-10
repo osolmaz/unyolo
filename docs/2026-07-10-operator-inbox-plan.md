@@ -20,6 +20,31 @@ every broker.
 The operator inbox must remain independent of Hugging Face, GitHub, Unix
 privilege execution, Telegram, and any specific frontend framework.
 
+## Existing Baseline
+
+This work extends the existing Brokerkit grant system. It must not introduce a
+second request or approval state machine.
+
+As of 2026-07-10:
+
+- Brokerkit already owns durable grant states, decision tokens, notification
+  claims and references, callback recovery, status delivery, reservations, use
+  budgets, and expiry;
+- `hf-broker` pull request
+  [#19](https://github.com/osolmaz/hf-broker/pull/19) cuts Telegram transport
+  and durable approval behavior over to Brokerkit commit `5d682c4`;
+- `sudo-broker` pull request
+  [#7](https://github.com/osolmaz/sudo-broker/pull/7) makes approval-message
+  and execution-settlement state durable using Brokerkit;
+- `hf-broker`, `gh-broker`, and `sudo-broker` already use the common
+  `POST/GET /api/grants` shape for agent-facing grant creation and reads;
+- `sudo-broker` already exposes HTTP approve, deny, and revoke routes, while
+  `hf-broker` and `gh-broker` currently make those decisions through Telegram
+  callbacks.
+
+Implementation must land after, or be rebased onto, those durable-lifecycle
+changes. It should extract and extend shared behavior, not replace it.
+
 ## Goal
 
 Provide reusable Go primitives and HTTP handlers for:
@@ -198,21 +223,27 @@ events always recover from durable state.
 Add a small stdlib `net/http` package, tentatively `operatorapi`, that brokers
 can mount only after their own operator authentication and transport boundary.
 
-Routes:
+Keep the established grant route vocabulary. On an operator-authenticated
+listener or socket, expose:
 
 ```text
-GET  /operator/requests
-GET  /operator/requests/{id}
-GET  /operator/events
-POST /operator/requests/{id}/approve
-POST /operator/requests/{id}/deny
-POST /operator/requests/{id}/cancel
-POST /operator/requests/{id}/revoke
+GET  /api/grants
+GET  /api/grants/{id}
+GET  /api/grants/events
+POST /api/grants/{id}/approve
+POST /api/grants/{id}/deny
+POST /api/grants/{id}/cancel
+POST /api/grants/{id}/revoke
 ```
+
+The existing agent listener may continue to expose `POST /api/grants` and
+client-scoped reads. It must not expose operator decisions or cross-client
+history. A broker that deliberately uses one listener must authenticate
+operator routes with a separate authority, as `sudo-broker` already does.
 
 Requirements:
 
-- `/operator/events` uses SSE with event IDs and reconnect support;
+- `/api/grants/events` uses SSE with event IDs and reconnect support;
 - list and history responses are paginated and bounded;
 - mutating requests use strict JSON decoding and small body limits;
 - response headers use `no-store`;
@@ -327,6 +358,11 @@ Never audit:
 - add `operatorapi` handlers and SSE recovery;
 - add a small Go `operatorclient` and fake server;
 - make notification delivery optional rather than request-creation gating;
+- cut `hf-broker`, `gh-broker`, and `sudo-broker` over to the shared inbox
+  query, decision, and event implementation without changing their provider
+  classifiers or executors;
+- delete broker-local duplicate HTTP decision/query logic in the same adoption
+  change where the Brokerkit handler is used;
 - update `ARCHITECTURE.md`, `OWNERSHIP.md`, and
   `UNIFIED_BROKER_CONTRACT.md` after implementation;
 - keep provider-specific operations, plans, wording, and execution out of
@@ -364,6 +400,8 @@ Never audit:
 - Go client covers every route and error code;
 - fake server reproduces query, decision, and SSE behavior;
 - checked-in fixtures round-trip through server and client;
+- HF, GitHub, and Unix sample presenters pass the same list, detail, decision,
+  and event fixtures;
 - a consuming broker can mount the API on an operator-only Unix socket;
 - a non-Go fixture consumer can implement the contract without provider
   knowledge.
