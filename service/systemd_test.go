@@ -257,6 +257,28 @@ func TestRenderSystemdPrivilegeEscalationPolicies(t *testing.T) {
 	}
 }
 
+func TestRenderSystemdHostFilesystemAccessPolicies(t *testing.T) {
+	base := SystemdUnit{
+		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
+	}
+	for access, want := range map[HostFilesystemAccess]string{
+		HostFilesystemAccessDeny:  "ProtectSystem=strict",
+		HostFilesystemAccessAllow: "ProtectSystem=false",
+	} {
+		unit := base
+		unit.HostFilesystemAccess = access
+		body, err := RenderSystemd(unit)
+		if err != nil || !strings.Contains(body, want) {
+			t.Fatalf("RenderSystemd(%q) body=%q err=%v", access, body, err)
+		}
+	}
+	base.HostFilesystemAccess = "invalid"
+	if _, err := RenderSystemd(base); err == nil {
+		t.Fatal("RenderSystemd(invalid host filesystem access) error = nil")
+	}
+}
+
 func TestRenderSystemdRejectsWritableInputOverlap(t *testing.T) {
 	base := SystemdUnit{
 		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",

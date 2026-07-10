@@ -23,18 +23,19 @@ type CommandRunner interface {
 
 // SystemdUnit describes one broker-family systemd service.
 type SystemdUnit struct {
-	Description         string
-	User                string
-	Group               string
-	EnvironmentFile     string
-	ExecStart           string
-	StateDir            string
-	ConfigDir           string
-	RestartSec          int
-	HomeAccess          HomeAccess
-	PrivilegeEscalation PrivilegeEscalation
-	PathValidation      PathValidation
-	ExtraDirectives     []string
+	Description          string
+	User                 string
+	Group                string
+	EnvironmentFile      string
+	ExecStart            string
+	StateDir             string
+	ConfigDir            string
+	RestartSec           int
+	HomeAccess           HomeAccess
+	HostFilesystemAccess HostFilesystemAccess
+	PrivilegeEscalation  PrivilegeEscalation
+	PathValidation       PathValidation
+	ExtraDirectives      []string
 }
 
 // HomeAccess controls service visibility into user home directories.
@@ -47,6 +48,15 @@ const (
 	HomeAccessReadOnly HomeAccess = "read-only"
 	// HomeAccessAllow permits broker-specific user-home operations.
 	HomeAccessAllow HomeAccess = "allow"
+)
+
+// HostFilesystemAccess controls whether the service may write outside its
+// declared state and home paths. The zero value keeps the host read-only.
+type HostFilesystemAccess string
+
+const (
+	HostFilesystemAccessDeny  HostFilesystemAccess = "deny"
+	HostFilesystemAccessAllow HostFilesystemAccess = "allow"
 )
 
 // PathValidation controls filesystem trust checks while rendering a unit.
@@ -103,6 +113,10 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 		restartSec = 5
 	}
 	protectHome := protectHomeValue(unit.HomeAccess)
+	protectSystem := "strict"
+	if normalizedHostFilesystemAccess(unit.HostFilesystemAccess) == HostFilesystemAccessAllow {
+		protectSystem = "false"
+	}
 	readWritePaths := unit.StateDir
 	if normalizedHomeAccess(unit.HomeAccess) == HomeAccessAllow {
 		readWritePaths += " -/home -/root -/run/user"
@@ -127,11 +141,11 @@ Restart=on-failure
 RestartSec=%d
 NoNewPrivileges=%s
 PrivateTmp=true
-ProtectSystem=strict
+ProtectSystem=%s
 ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectHome, readWritePaths, unit.ConfigDir)
+`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
 		body.WriteByte('\n')
@@ -159,19 +173,39 @@ func (unit SystemdUnit) validate() error {
 	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
 		return err
 	}
-	if err := validateHomeAccess(unit.HomeAccess); err != nil {
-		return err
-	}
-	if err := validatePrivilegeEscalation(unit.PrivilegeEscalation); err != nil {
-		return err
-	}
-	if err := validatePathValidation(unit.PathValidation); err != nil {
+	if err := validateSystemdPolicies(unit); err != nil {
 		return err
 	}
 	if err := validateSystemdUnitPaths(unit); err != nil {
 		return err
 	}
 	return validateExtraDirectives(unit.ExtraDirectives)
+}
+
+func validateSystemdPolicies(unit SystemdUnit) error {
+	validators := []func() error{
+		func() error { return validateHomeAccess(unit.HomeAccess) },
+		func() error { return validateHostFilesystemAccess(unit.HostFilesystemAccess) },
+		func() error { return validatePrivilegeEscalation(unit.PrivilegeEscalation) },
+		func() error { return validatePathValidation(unit.PathValidation) },
+	}
+	for _, validate := range validators {
+		if err := validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateHostFilesystemAccess(value HostFilesystemAccess) error {
+	return validatePolicyValue("host filesystem access", string(value), string(normalizedHostFilesystemAccess(value)), string(HostFilesystemAccessDeny), string(HostFilesystemAccessAllow))
+}
+
+func normalizedHostFilesystemAccess(value HostFilesystemAccess) HostFilesystemAccess {
+	if value == "" {
+		return HostFilesystemAccessDeny
+	}
+	return value
 }
 
 func validateDescription(value string) error {
