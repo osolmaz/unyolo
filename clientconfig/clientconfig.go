@@ -4,6 +4,7 @@ package clientconfig
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,7 +14,10 @@ import (
 	"github.com/osolmaz/brokerkit/store"
 )
 
-const clientEnvFileMode os.FileMode = 0o600
+const (
+	clientEnvFileMode     os.FileMode = 0o600
+	maxClientSecretsBytes             = 1024 * 1024
+)
 
 var chownPath = os.Chown
 
@@ -28,18 +32,18 @@ type Config struct {
 
 // SecretFromFile reads path and returns the configured secret for client.
 func SecretFromFile(path string, client string) (string, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is operator supplied setup input.
+	data, err := readSecretsFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read client secret file: %w", err)
+		return "", err
 	}
 	return SecretFromData(data, client)
 }
 
 // SecretsFromFile reads path and returns all configured client secrets.
 func SecretsFromFile(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is operator supplied setup input.
+	data, err := readSecretsFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read client secret file: %w", err)
+		return nil, err
 	}
 	return SecretsFromData(data)
 }
@@ -50,16 +54,33 @@ func SecretFromData(data []byte, client string) (string, error) {
 	if name == "" {
 		return "", errors.New("client name is required")
 	}
-	for lineNumber, line := range strings.Split(string(data), "\n") {
-		foundName, secret, ok, err := parseSecretLine(line)
-		if err != nil {
-			return "", fmt.Errorf("client secret file line %d: %w", lineNumber+1, err)
-		}
-		if ok && foundName == name {
-			return secret, nil
-		}
+	secrets, err := SecretsFromData(data)
+	if err != nil {
+		return "", err
+	}
+	if secret, exists := secrets[name]; exists {
+		return secret, nil
 	}
 	return "", fmt.Errorf("client %q was not found in secret file", name)
+}
+
+func readSecretsFile(path string) ([]byte, error) {
+	file, err := os.Open(path) // #nosec G304 -- path is operator supplied setup input.
+	if err != nil {
+		return nil, fmt.Errorf("read client secret file: %w", err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxClientSecretsBytes+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read client secret file: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close client secret file: %w", closeErr)
+	}
+	if len(data) > maxClientSecretsBytes {
+		return nil, fmt.Errorf("client secret file exceeds %d bytes", maxClientSecretsBytes)
+	}
+	return data, nil
 }
 
 // SecretsFromData parses `name = secret` data and returns all configured client secrets.

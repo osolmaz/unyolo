@@ -182,6 +182,7 @@ func TestSecretFromDataValidation(t *testing.T) {
 		"missing client name": {data: "bob = secret\n"},
 		"bad line":            {data: "bob secret\n", client: "bob"},
 		"empty secret":        {data: "bob = \n", client: "bob"},
+		"duplicate client":    {data: "bob = first\nbob = second\n", client: "bob"},
 		"not found":           {data: "alice = secret\n", client: "bob"},
 	}
 	for name, tc := range cases {
@@ -190,6 +191,16 @@ func TestSecretFromDataValidation(t *testing.T) {
 				t.Fatal("SecretFromData() error = nil, want validation error")
 			}
 		})
+	}
+}
+
+func TestSecretsFromFileRejectsOversizedInput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secrets")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", maxClientSecretsBytes+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SecretsFromFile(path); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("SecretsFromFile(oversized) error = %v", err)
 	}
 }
 
