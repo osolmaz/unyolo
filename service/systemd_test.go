@@ -15,7 +15,7 @@ func TestRenderSystemd(t *testing.T) {
 	body, err := RenderSystemd(SystemdUnit{
 		Description: "test broker", User: "broker", Group: "broker",
 		EnvironmentFile: "/etc/test/env", ExecStart: "/usr/bin/test serve",
-		StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+		StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func TestRenderSystemd(t *testing.T) {
 func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 	base := SystemdUnit{
 		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
-		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
 	}
 	for _, mutate := range []func(*SystemdUnit){
 		func(unit *SystemdUnit) { unit.Description = "" },
@@ -99,6 +99,98 @@ func TestTrustedStateDirectoryRequiresConfiguredServiceOwner(t *testing.T) {
 	}
 }
 
+func TestStrictSystemdExecutableValidation(t *testing.T) {
+	unit := SystemdUnit{
+		Description: "test", User: "root", Group: "root", EnvironmentFile: "/etc/passwd",
+		ExecStart: "/usr/bin", StateDir: "/var/lib/brokerkit-test-missing", ConfigDir: "/etc",
+	}
+	if _, err := RenderSystemd(unit); err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("RenderSystemd(directory executable) error = %v", err)
+	}
+	unit.PathValidation = PathValidationPreview
+	if _, err := RenderSystemd(unit); err != nil {
+		t.Fatalf("RenderSystemd(preview directory executable): %v", err)
+	}
+}
+
+func TestIdentityCanExecute(t *testing.T) {
+	tests := []struct {
+		name       string
+		mode       os.FileMode
+		ownerUID   uint64
+		ownerGID   uint64
+		uid        uint64
+		gid        uint64
+		canExecute bool
+	}{
+		{name: "owner", mode: 0o100, ownerUID: 10, uid: 10, canExecute: true},
+		{name: "owner denied", mode: 0o010, ownerUID: 10, ownerGID: 20, uid: 10, gid: 20},
+		{name: "group", mode: 0o010, ownerUID: 10, ownerGID: 20, uid: 11, gid: 20, canExecute: true},
+		{name: "other", mode: 0o001, ownerUID: 10, ownerGID: 20, uid: 11, gid: 21, canExecute: true},
+		{name: "root any execute", mode: 0o001, ownerUID: 10, ownerGID: 20, canExecute: true},
+		{name: "root no execute", mode: 0o600, ownerUID: 10, ownerGID: 20},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := identityCanExecute(tc.mode, tc.ownerUID, tc.ownerGID, tc.uid, tc.gid); got != tc.canExecute {
+				t.Fatalf("identityCanExecute() = %t, want %t", got, tc.canExecute)
+			}
+		})
+	}
+}
+
+func TestIdentityCanExecuteWithSupplementaryGroup(t *testing.T) {
+	groups := map[uint64]struct{}{30: {}}
+	if !identityCanExecuteWithGroups(0o750, 10, 30, 20, groups) {
+		t.Fatal("supplementary group execute permission rejected")
+	}
+	if identityCanExecuteWithGroups(0o740, 10, 30, 20, groups) {
+		t.Fatal("missing supplementary group execute permission accepted")
+	}
+}
+
+func TestValidateExecutableAncestorAccess(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil { // #nosec G302 -- private executable-ancestor fixture.
+		t.Fatal(err)
+	}
+	info, err := os.Stat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerUID := uint64(info.Sys().(*syscall.Stat_t).Uid)
+	path := filepath.Join(directory, "broker")
+	if err := validateExecutableAncestorAccess(path, ownerUID+1, map[uint64]struct{}{}); err == nil || !strings.Contains(err.Error(), "not searchable") {
+		t.Fatalf("validateExecutableAncestorAccess() error = %v", err)
+	}
+	if err := validateExecutableAncestorAccess(path, 0, map[uint64]struct{}{}); err != nil {
+		t.Fatalf("root ancestor access rejected: %v", err)
+	}
+}
+
+func TestSystemIdentityAccessIDsIncludesSupplementaryGroups(t *testing.T) {
+	oldUser := lookupSystemUser
+	oldGroup := lookupSystemGroup
+	oldGroupIDs := lookupSystemGroupIDs
+	lookupSystemUser = func(string) (*user.User, error) { return &user.User{Username: "broker", Uid: "10"}, nil }
+	lookupSystemGroup = func(string) (*user.Group, error) { return &user.Group{Name: "broker", Gid: "20"}, nil }
+	lookupSystemGroupIDs = func(*user.User) ([]string, error) { return []string{"20", "30"}, nil }
+	t.Cleanup(func() {
+		lookupSystemUser = oldUser
+		lookupSystemGroup = oldGroup
+		lookupSystemGroupIDs = oldGroupIDs
+	})
+	uid, groups, err := systemIdentityAccessIDs("broker", "broker")
+	if err != nil || uid != 10 {
+		t.Fatalf("systemIdentityAccessIDs() uid=%d err=%v", uid, err)
+	}
+	for _, gid := range []uint64{20, 30} {
+		if _, ok := groups[gid]; !ok {
+			t.Fatalf("systemIdentityAccessIDs() missing gid %d", gid)
+		}
+	}
+}
+
 func TestRenderSystemdRejectsUntrustedExistingPathComponents(t *testing.T) {
 	root := t.TempDir()
 	unit := SystemdUnit{
@@ -121,7 +213,7 @@ func TestRenderSystemdRejectsUntrustedExistingPathComponents(t *testing.T) {
 func TestRenderSystemdHomeAccessPolicies(t *testing.T) {
 	base := SystemdUnit{
 		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
-		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
 	}
 	for policy, want := range map[HomeAccess]string{
 		HomeAccessDeny: "ProtectHome=true", HomeAccessReadOnly: "ProtectHome=read-only", HomeAccessAllow: "ProtectHome=false",
@@ -146,7 +238,7 @@ func TestRenderSystemdHomeAccessPolicies(t *testing.T) {
 func TestRenderSystemdPrivilegeEscalationPolicies(t *testing.T) {
 	base := SystemdUnit{
 		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
-		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
 	}
 	for policy, want := range map[PrivilegeEscalation]string{
 		PrivilegeEscalationDeny:  "NoNewPrivileges=true",
@@ -168,7 +260,7 @@ func TestRenderSystemdPrivilegeEscalationPolicies(t *testing.T) {
 func TestRenderSystemdRejectsWritableInputOverlap(t *testing.T) {
 	base := SystemdUnit{
 		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
-		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
 	}
 	for _, mutate := range []func(*SystemdUnit){
 		func(unit *SystemdUnit) { unit.ConfigDir = unit.StateDir },

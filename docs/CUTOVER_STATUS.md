@@ -49,14 +49,18 @@ references, or delivery progress in memory.
 - Done: canonical binary installer runtime with checksum and platform tests.
 - Done: shared client setup, secret input, systemd option/rendering, and local
   doctor primitives.
+- Done: shared privileged systemd installation for account creation,
+  managed files, ownership, atomic unit installation, and service activation.
 - Gate: race tests, coverage, vet, lint, Slophammer checks, mutation checks,
   review, and CI must pass before consumers pin the final API.
 
 ### 2. hf-broker
 
 - Done: final durable Brokerkit Telegram lifecycle pinned and merged.
-- Next: adopt the shared operations runtime and remove the duplicated installer,
-  setup parser, unit renderer, and generic doctor helpers.
+- Done: adopt the first shared operations runtime and remove the duplicated
+  installer, setup parser, unit renderer, and generic doctor helpers.
+- Next: adopt shared privileged systemd installation and remove the remaining
+  account, managed-file, ownership, and systemctl helpers.
 - Next: run live Hugging Face plus Telegram verification from the agent account.
 
 ### 3. gh-broker

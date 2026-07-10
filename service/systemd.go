@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,11 @@ import (
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
+
+// CommandRunner runs provider-neutral host setup commands.
+type CommandRunner interface {
+	Run(context.Context, string, ...string) error
+}
 
 // SystemdUnit describes one broker-family systemd service.
 type SystemdUnit struct {
@@ -80,7 +86,11 @@ var allowedExtraSystemdDirectives = map[string]string{
 	"UMask":                   "0077",
 }
 
-var lookupSystemUser = user.Lookup
+var (
+	lookupSystemUser     = user.Lookup
+	lookupSystemGroup    = user.LookupGroup
+	lookupSystemGroupIDs = func(account *user.User) ([]string, error) { return account.GroupIds() }
+)
 
 // RenderSystemd renders a hardened systemd unit using the shared broker-family
 // baseline. Broker-specific directives may be appended to the Service section.
@@ -244,13 +254,156 @@ func validateTrustedServicePaths(unit SystemdUnit) error {
 			return err
 		}
 	}
+	return validateTrustedExecutableAccess(unit)
+}
+
+func validateTrustedExecutableAccess(unit SystemdUnit) error {
+	path := strings.SplitN(unit.ExecStart, " ", 2)[0]
+	uid, groupIDs, err := systemIdentityAccessIDs(unit.User, unit.Group)
+	if err != nil {
+		return err
+	}
+	return validateExecutableAccessForIdentity(path, unit.User, uid, groupIDs)
+}
+
+func validateExecutableAccessForIdentity(path string, userName string, uid uint64, groupIDs map[uint64]struct{}) error {
+	mode, ownerUID, ownerGID, err := trustedExecutableMetadata(path)
+	if err != nil {
+		return err
+	}
+	if err := validateExecutableAncestorAccess(path, uid, groupIDs); err != nil {
+		return err
+	}
+	if !identityCanExecuteWithGroups(mode, ownerUID, ownerGID, uid, groupIDs) {
+		return fmt.Errorf("executable is not executable by service user %s", userName)
+	}
 	return nil
 }
 
-func validateTrustedServicePath(name string, path string, finalOwner string) error {
-	if validatex.HasParentTraversal(path) {
-		return fmt.Errorf("%s must not contain parent traversal", name)
+func validateExecutableAncestorAccess(path string, uid uint64, groupIDs map[uint64]struct{}) error {
+	components := strings.Split(strings.TrimPrefix(filepath.Dir(path), string(filepath.Separator)), string(filepath.Separator))
+	current := string(filepath.Separator)
+	for _, component := range components {
+		if component != "" {
+			current = filepath.Join(current, component)
+		}
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("inspect executable ancestor: %w", err)
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return fmt.Errorf("executable ancestor ownership is unavailable: %s", current)
+		}
+		if !identityCanSearch(info.Mode().Perm(), uint64(stat.Uid), uint64(stat.Gid), uid, groupIDs) {
+			return fmt.Errorf("executable ancestor is not searchable by service user: %s", current)
+		}
 	}
+	return nil
+}
+
+func trustedExecutableMetadata(path string) (os.FileMode, uint64, uint64, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("inspect executable: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return 0, 0, 0, errors.New("executable must be a regular file")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, 0, errors.New("executable ownership is unavailable")
+	}
+	return info.Mode().Perm(), uint64(stat.Uid), uint64(stat.Gid), nil
+}
+
+func systemIdentityIDs(userName string, groupName string) (uint64, uint64, error) {
+	account, err := lookupSystemUser(userName)
+	if err != nil {
+		return 0, 0, fmt.Errorf("lookup service user %q: %w", userName, err)
+	}
+	group, err := lookupSystemGroup(groupName)
+	if err != nil {
+		return 0, 0, fmt.Errorf("lookup service group %q: %w", groupName, err)
+	}
+	uid, err := parseSystemID("uid", userName, account.Uid)
+	if err != nil {
+		return 0, 0, err
+	}
+	gid, err := parseSystemID("gid", groupName, group.Gid)
+	if err != nil {
+		return 0, 0, err
+	}
+	return uid, gid, nil
+}
+
+func systemIdentityAccessIDs(userName string, groupName string) (uint64, map[uint64]struct{}, error) {
+	uid, primaryGID, err := systemIdentityIDs(userName, groupName)
+	if err != nil {
+		return 0, nil, err
+	}
+	account, err := lookupSystemUser(userName)
+	if err != nil {
+		return 0, nil, fmt.Errorf("lookup service user %q groups: %w", userName, err)
+	}
+	values, err := lookupSystemGroupIDs(account)
+	if err != nil {
+		return 0, nil, fmt.Errorf("lookup supplementary groups for %q: %w", userName, err)
+	}
+	groupIDs := map[uint64]struct{}{primaryGID: {}}
+	for _, value := range values {
+		gid, err := parseSystemID("supplementary gid", userName, value)
+		if err != nil {
+			return 0, nil, err
+		}
+		groupIDs[gid] = struct{}{}
+	}
+	return uid, groupIDs, nil
+}
+
+func parseSystemID(kind string, name string, value string) (uint64, error) {
+	id, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s for %q: %w", kind, name, err)
+	}
+	return id, nil
+}
+
+func identityCanExecute(mode os.FileMode, ownerUID uint64, ownerGID uint64, uid uint64, gid uint64) bool {
+	return identityCanExecuteWithGroups(mode, ownerUID, ownerGID, uid, map[uint64]struct{}{gid: {}})
+}
+
+func identityCanExecuteWithGroups(mode os.FileMode, ownerUID uint64, ownerGID uint64, uid uint64, groupIDs map[uint64]struct{}) bool {
+	if uid == 0 {
+		return mode&0o111 != 0
+	}
+	return identityPermission(mode, ownerUID, ownerGID, uid, groupIDs, 0o100, 0o010, 0o001)
+}
+
+func identityCanSearch(mode os.FileMode, ownerUID uint64, ownerGID uint64, uid uint64, groupIDs map[uint64]struct{}) bool {
+	if uid == 0 {
+		return true
+	}
+	return identityPermission(mode, ownerUID, ownerGID, uid, groupIDs, 0o100, 0o010, 0o001)
+}
+
+func identityPermission(mode os.FileMode, ownerUID uint64, ownerGID uint64, uid uint64, groupIDs map[uint64]struct{}, ownerBit os.FileMode, groupBit os.FileMode, otherBit os.FileMode) bool {
+	switch {
+	case uid == ownerUID:
+		return mode&ownerBit != 0
+	case identityHasGroup(groupIDs, ownerGID):
+		return mode&groupBit != 0
+	default:
+		return mode&otherBit != 0
+	}
+}
+
+func identityHasGroup(groupIDs map[uint64]struct{}, gid uint64) bool {
+	_, ok := groupIDs[gid]
+	return ok
+}
+
+func validateTrustedServicePath(name string, path string, finalOwner string) error {
 	components := strings.Split(strings.TrimPrefix(filepath.Clean(path), string(filepath.Separator)), string(filepath.Separator))
 	current := string(filepath.Separator)
 	for index, component := range components {
@@ -323,6 +476,9 @@ func systemUserUID(name string) (uint64, error) {
 func validateProtectedServicePath(name string, value string) error {
 	if err := validateSystemdPath(name, value); err != nil {
 		return err
+	}
+	if validatex.HasParentTraversal(value) {
+		return fmt.Errorf("%s must not contain parent traversal", name)
 	}
 	if protectedHomePath(value) {
 		return fmt.Errorf("%s must not be under a mutable user-home path", name)
