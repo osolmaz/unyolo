@@ -566,7 +566,7 @@ func (s *Store) decideFound(data *fileData, index int, grant Grant, approver str
 	grant.Status = status
 	grant.DecidedAt = now
 	grant.DecidedBy = approver
-	clearNotificationClaim(&grant)
+	grant.NotificationDeliveryUnresolved = false
 	if status == StatusActive {
 		grant.ExpiresAt = now.Add(s.durationFromGrant(grant))
 	}
@@ -577,7 +577,7 @@ func (s *Store) expireLateDecision(data *fileData, index int, grant Grant) (Gran
 	grant.ExpiredFrom = grant.Status
 	grant.Status = StatusExpired
 	grant.DecidedAt = s.opts.Now().UTC()
-	clearNotificationClaim(&grant)
+	grant.NotificationDeliveryUnresolved = false
 	data.Grants[index] = grant
 	if err := s.save(*data); err != nil {
 		return Grant{}, err
@@ -769,7 +769,7 @@ func (s *Store) expireDue(data *fileData) bool {
 			grant.ExpiredFrom = grant.Status
 			grant.Status = StatusExpired
 			grant.DecidedAt = now
-			clearNotificationClaim(&grant)
+			grant.NotificationDeliveryUnresolved = false
 		case grant.Status == StatusActive && !now.Before(grant.ExpiresAt):
 			grant.ExpiredFrom = grant.Status
 			grant.Status = StatusExpired

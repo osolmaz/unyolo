@@ -234,7 +234,16 @@ func TestPendingExitClearsNotificationClaim(t *testing.T) {
 			retainNotificationClaim(t, store, result.Grant.ID, claim.Grant.NotificationClaimedAt)
 
 			grant := transition.transition(t, store, &now, result, claim)
-			assertNotificationClaimCleared(t, grant)
+			assertNotificationClaimResolved(t, grant, claim.Grant.NotificationClaimedAt)
+			stored, recorded, err := store.SetNotificationIfClaimed(
+				result.Grant.ID,
+				claim.Grant.NotificationClaimedAt,
+				notify.MessageRef{Kind: "telegram", MessageID: 7},
+			)
+			if err != nil || !recorded || stored.Notification == nil {
+				t.Fatalf("SetNotificationIfClaimed(after %s) = %+v recorded=%v err=%v", grant.Status, stored, recorded, err)
+			}
+			assertNotificationClaimCleared(t, stored)
 		})
 	}
 }
@@ -348,6 +357,13 @@ func assertNotificationClaimCleared(t *testing.T, grant Grant) {
 	t.Helper()
 	if !grant.NotificationClaimedAt.IsZero() || !grant.NotificationClaimUntil.IsZero() || grant.NotificationDeliveryUnresolved {
 		t.Fatalf("notification claim remains on %s grant: %+v", grant.Status, grant)
+	}
+}
+
+func assertNotificationClaimResolved(t *testing.T, grant Grant, claimedAt time.Time) {
+	t.Helper()
+	if !grant.NotificationClaimedAt.Equal(claimedAt) || grant.NotificationClaimUntil.IsZero() || grant.NotificationDeliveryUnresolved {
+		t.Fatalf("notification claim identity not preserved on %s grant: %+v", grant.Status, grant)
 	}
 }
 
