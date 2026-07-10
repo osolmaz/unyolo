@@ -234,6 +234,67 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 	assertSingleDueUpdate(t, store, StatusUpdateUsedExpired, StatusConsumed, NotificationStatusUsedExpired+":1")
 }
 
+func TestOverlappingReservationsAdvanceRecoveryClock(t *testing.T) {
+	cases := []struct {
+		name   string
+		settle func(*Store, string) (Grant, error)
+	}{
+		{name: "commit", settle: func(store *Store, id string) (Grant, error) { return store.CommitUse(id) }},
+		{name: "release", settle: func(store *Store, id string) (Grant, error) { return store.ReleaseUse(id) }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			assertOverlappingReservationClock(t, test.name, test.settle)
+		})
+	}
+}
+
+func assertOverlappingReservationClock(t *testing.T, name string, settle func(*Store, string) (Grant, error)) { //nolint:cyclop
+	t.Helper()
+	now := time.Date(2026, 7, 10, 3, 0, 0, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{
+		Now: func() time.Time { return now }, ReservationTimeout: 10 * time.Minute,
+	})
+	request := testGrantRequest("overlap-"+name, 3)
+	request.Duration = time.Hour
+	result, created, err := store.Request(request)
+	if err != nil || !created {
+		t.Fatalf("Request() = %+v created=%v err=%v", result, created, err)
+	}
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(9 * time.Minute)
+	second, err := store.ReserveUse(result.Grant.ID)
+	if err != nil || !second.ReservedAt.Equal(now) || second.ReservationRevision != 2 {
+		t.Fatalf("second ReserveUse() = %+v err=%v", second, err)
+	}
+	now = now.Add(2 * time.Minute)
+	settled, err := settle(store, result.Grant.ID)
+	if err != nil || settled.ReservedCount != 1 || !settled.ReservedAt.Equal(now) {
+		t.Fatalf("%s overlapping reservation = %+v err=%v", name, settled, err)
+	}
+	now = now.Add(9 * time.Minute)
+	if _, err := store.StatusUpdatesDue(); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := store.Get(result.Grant.ID)
+	if err != nil || fresh.ReservationRetained {
+		t.Fatalf("fresh overlapping reservation = %+v err=%v", fresh, err)
+	}
+	now = now.Add(2 * time.Minute)
+	if _, err := store.StatusUpdatesDue(); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := store.Get(result.Grant.ID)
+	if err != nil || !stale.ReservationRetained {
+		t.Fatalf("stale overlapping reservation = %+v err=%v", stale, err)
+	}
+}
+
 func TestRetainUseAndReleaseClearReservationState(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "retain-release", 2)
