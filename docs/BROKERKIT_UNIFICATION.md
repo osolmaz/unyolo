@@ -140,7 +140,14 @@ Implemented:
   generated/file/stdin secret handling.
 - systemd unit rendering uses Brokerkit's hardened service baseline with home
   access denied for hf-broker.
+- privileged systemd installation now delegates service account creation,
+  trusted directory preparation, atomic managed-file writes, ownership,
+  hardened unit installation, and activation to Brokerkit. hf-broker provides
+  only the bounded Hugging Face token, scope, environment, secret payload, and
+  typed unit definition.
 - root-equivalent group classification uses Brokerkit; Hugging Face token,
   process, socket, ACL, and active-probe checks remain provider-specific.
 - the old raw `--shared-secret` argument and all replaced local helpers were
   removed as a direct cutover.
+- the local account, UID/GID, mkdir, write/chmod/chown, command-runner, and
+  `systemctl` helpers were deleted in the same cutover.

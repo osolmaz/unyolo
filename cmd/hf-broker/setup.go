@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
@@ -26,14 +27,8 @@ type setupSystemdOptions struct {
 	Repo          string
 	RepoType      string
 	SharedSecret  string
-	CommandRunner commandRunner
+	CommandRunner bkservice.CommandRunner
 }
-
-type commandRunner interface {
-	Run(ctx context.Context, name string, args ...string) error
-}
-
-type osCommandRunner struct{}
 
 func runSetup(ctx context.Context, stdout, stderr io.Writer, args []string) error {
 	return runSetupInput(ctx, os.Stdin, stdout, stderr, args)
@@ -49,7 +44,6 @@ func runSetupInput(ctx context.Context, stdin io.Reader, stdout, stderr io.Write
 		if err != nil {
 			return err
 		}
-		opts.CommandRunner = osCommandRunner{}
 		return runSetupSystemd(ctx, stdout, opts)
 	case "client":
 		opts, err := parseSetupClient(stderr, args[1:])
@@ -72,7 +66,6 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
 			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080,
 		}),
-		CommandRunner: osCommandRunner{},
 	}
 	var flagOutput strings.Builder
 	fs := flag.NewFlagSet("hf-broker setup systemd", flag.ContinueOnError)

@@ -60,6 +60,10 @@ The setup command creates:
 /etc/systemd/system/hf-broker.service
 ```
 
+Brokerkit performs the privileged host installation. hf-broker supplies the
+Hugging Face-specific file contents and service definition; it does not keep a
+second account, ownership, file-install, or systemctl implementation.
+
 The real Hugging Face token is copied to:
 
 ```text

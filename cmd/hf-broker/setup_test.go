@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
@@ -205,6 +206,17 @@ func TestSetupSystemdDryRunValidatesSharedUnit(t *testing.T) {
 	}
 }
 
+func TestSystemdSetupPreflightDoesNotRequireExistingServiceAccount(t *testing.T) {
+	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: bksetup.SystemdOptions{
+		User: "hf-broker-user-does-not-exist", Group: "hf-broker-group-does-not-exist",
+		ConfigDir: "/etc/hf-broker", StateDir: "/var/lib/hf-broker",
+		SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker",
+	}})
+	if err := validateSystemdSetupPlan(plan); err != nil {
+		t.Fatalf("validateSystemdSetupPlan() error = %v", err)
+	}
+}
+
 func TestRunSetupSystemdDryRunFromArgs(t *testing.T) {
 	tokenFile := filepath.Join(t.TempDir(), "hf-token")
 	if err := os.WriteFile(tokenFile, []byte("hf_xxx\n"), 0o600); err != nil {
@@ -229,6 +241,7 @@ func TestRunSetupSystemdDryRunFromArgs(t *testing.T) {
 func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	currentUser, currentGroup := currentUserAndGroup(t)
 	dir := t.TempDir()
+	runner := &recordingRunner{}
 	tokenFile := filepath.Join(dir, "source-token")
 	if err := os.WriteFile(tokenFile, []byte("hf_xxx\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -245,7 +258,7 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 		Repo:          "osolmaz/scraped-news",
 		RepoType:      "dataset",
 		SharedSecret:  "abcdefghijklmnopqrstuvwxyz123456",
-		CommandRunner: &recordingRunner{},
+		CommandRunner: runner,
 	})
 	if err != nil {
 		t.Fatalf("runSetupSystemd() error = %v", err)
@@ -256,10 +269,17 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	if strings.Contains(stdout.String(), "abcdefghijklmnopqrstuvwxyz123456") {
 		t.Fatalf("setup stdout leaked broker client secret: %q", stdout.String())
 	}
+	if got := strings.Join(runner.calls, "\n"); got != "getent group "+currentGroup.Name+"\nid -u "+currentUser.Username {
+		t.Fatalf("setup runner calls:\n%s", got)
+	}
+	assertSetupFile(t, filepath.Join(dir, "etc", "hf-broker", "hf-token"), "hf_xxx\n", 0o600)
+	assertSetupFile(t, filepath.Join(dir, "etc", "hf-broker", "secrets"), "agent = abcdefghijklmnopqrstuvwxyz123456\n", 0o600)
+	assertSetupFileContains(t, filepath.Join(dir, "etc", "hf-broker", "scope.json"), `"name": "scraped-news"`, 0o644)
+	assertSetupFileContains(t, filepath.Join(dir, "etc", "hf-broker", "env"), "HF_BROKER_STATE_DIR=", 0o640)
+	assertSetupFileContains(t, filepath.Join(dir, "systemd", unitFileName), "ProtectSystem=strict", 0o644)
 }
 
-func TestWriteSystemdSetupFiles(t *testing.T) {
-	currentUser, currentGroup := currentUserAndGroup(t)
+func TestBrokerkitSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 	dir := t.TempDir()
 	tokenFile := filepath.Join(dir, "source-token")
 	if err := os.WriteFile(tokenFile, []byte("hf_xxx\n"), 0o600); err != nil {
@@ -267,142 +287,104 @@ func TestWriteSystemdSetupFiles(t *testing.T) {
 	}
 	opts := setupSystemdOptions{
 		SystemdOptions: bksetup.SystemdOptions{
-			BrokerName: "hf-broker", User: currentUser.Username, Group: currentGroup.Name,
+			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
 			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
-			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, AllowNonRoot: true,
+			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, NoStart: true,
 		},
 		HFTokenFile:  tokenFile,
 		Repo:         "osolmaz/scraped-news",
 		RepoType:     "dataset",
 		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
 	}
-	plan := systemdSetupPlan(opts)
-	if err := writeSystemdSetupFiles(plan); err != nil {
-		t.Fatalf("writeSystemdSetupFiles() error = %v", err)
+	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err != nil {
+		t.Fatalf("brokerkitSystemdInstallPlan() error = %v", err)
 	}
-	for _, path := range []string{
-		filepath.Join(opts.ConfigDir, "hf-token"),
-		filepath.Join(opts.ConfigDir, "secrets"),
-		filepath.Join(opts.ConfigDir, "scope.json"),
-		filepath.Join(opts.ConfigDir, "env"),
-		filepath.Join(opts.SystemdDir, "hf-broker.service"),
-	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected %s: %v", path, err)
+	if plan.UnitName != unitFileName || plan.Unit.EnvironmentFile != filepath.Join(opts.ConfigDir, envFileName) {
+		t.Fatalf("brokerkit install unit = %+v", plan.Unit)
+	}
+	wantOwners := map[string]bkservice.ManagedFileOwner{
+		hfTokenFileName: bkservice.ManagedFileOwnerService, secretsFileName: bkservice.ManagedFileOwnerService,
+		scopeFileName: bkservice.ManagedFileOwnerRoot, envFileName: bkservice.ManagedFileOwnerRoot,
+	}
+	for _, file := range plan.Files {
+		if got := file.Owner; got != wantOwners[file.Name] {
+			t.Fatalf("managed file %s owner = %q, want %q", file.Name, got, wantOwners[file.Name])
 		}
+		delete(wantOwners, file.Name)
+	}
+	if len(wantOwners) != 0 {
+		t.Fatalf("missing managed files: %v", wantOwners)
 	}
 }
 
-func TestWriteSystemdSetupFilesRejectsUnknownUser(t *testing.T) {
+func TestBrokerkitSystemdInstallPlanRejectsMissingToken(t *testing.T) {
 	dir := t.TempDir()
 	opts := setupSystemdOptions{
 		SystemdOptions: bksetup.SystemdOptions{
-			User: "hf-broker-user-does-not-exist", Group: "hf-broker-group-does-not-exist",
+			User: "hf-broker", Group: "hf-broker",
 			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
-			SystemdDir: filepath.Join(dir, "systemd"),
+			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
 		},
-		HFTokenFile: filepath.Join(dir, "token"),
+		HFTokenFile: filepath.Join(dir, "missing"), Repo: "osolmaz/repo", RepoType: "model",
 	}
-	err := writeSystemdSetupFiles(systemdSetupPlan(opts))
-	if err == nil || !strings.Contains(err.Error(), "lookup user") {
-		t.Fatalf("writeSystemdSetupFiles() error = %v, want lookup user", err)
-	}
-}
-
-func TestStartSystemdServiceNoStart(t *testing.T) {
-	runner := &recordingRunner{}
-	err := startSystemdService(context.Background(), setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{NoStart: true},
-		CommandRunner:  runner,
-	})
-	if err != nil {
-		t.Fatalf("startSystemdService() error = %v", err)
-	}
-	if len(runner.calls) != 0 {
-		t.Fatalf("runner calls = %v, want none", runner.calls)
+	_, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err == nil || !strings.Contains(err.Error(), "read --hf-token-file") {
+		t.Fatalf("brokerkitSystemdInstallPlan() error = %v", err)
 	}
 }
 
-func TestStartSystemdServiceRunsSystemctl(t *testing.T) {
-	runner := &recordingRunner{}
-	err := startSystemdService(context.Background(), setupSystemdOptions{
-		CommandRunner: runner,
-	})
-	if err != nil {
-		t.Fatalf("startSystemdService() error = %v", err)
-	}
-	got := strings.Join(runner.calls, "\n")
-	for _, want := range []string{
-		"systemctl daemon-reload",
-		"systemctl enable --now hf-broker.service",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("calls missing %q:\n%s", want, got)
-		}
-	}
-}
-
-func TestEnsureServiceAccountCreatesMissingParts(t *testing.T) {
-	runner := &recordingRunner{fail: map[string]bool{
-		"getent group hf-broker": true,
-		"id -u hf-broker":        true,
-	}}
-	err := ensureServiceAccount(context.Background(), setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{User: "hf-broker", Group: "hf-broker", StateDir: "/var/lib/hf-broker"},
-		CommandRunner:  runner,
-	})
-	if err != nil {
-		t.Fatalf("ensureServiceAccount() error = %v", err)
-	}
-	got := strings.Join(runner.calls, "\n")
-	for _, want := range []string{
-		"groupadd --system hf-broker",
-		"useradd --system --gid hf-broker --home-dir /var/lib/hf-broker --shell /usr/sbin/nologin hf-broker",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("calls missing %q:\n%s", want, got)
-		}
-	}
-}
-
-func TestParseServiceIDs(t *testing.T) {
-	uid, gid, err := parseServiceIDs("user", "1000", "group", "1001")
-	if err != nil {
-		t.Fatalf("parseServiceIDs() error = %v", err)
-	}
-	if uid != 1000 || gid != 1001 {
-		t.Fatalf("parseServiceIDs() = %d, %d", uid, gid)
-	}
-	if _, _, err := parseServiceIDs("user", "bad", "group", "1001"); err == nil {
-		t.Fatal("parseServiceIDs() bad uid error = nil")
-	}
-	if _, _, err := parseServiceIDs("user", "1000", "group", "bad"); err == nil {
-		t.Fatal("parseServiceIDs() bad gid error = nil")
-	}
-}
-
-func TestCopySecretFileRejectsEmptyToken(t *testing.T) {
+func TestReadHFTokenFileRejectsEmptyToken(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "empty")
 	if err := os.WriteFile(source, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := copySecretFile(source, filepath.Join(dir, "dest"))
+	_, err := readHFTokenFile(source)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
-		t.Fatalf("copySecretFile() error = %v, want empty", err)
+		t.Fatalf("readHFTokenFile() error = %v, want empty", err)
 	}
 }
 
-func TestCopySecretFileRejectsOversizedToken(t *testing.T) {
+func TestReadHFTokenFileRejectsOversizedToken(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "large")
 	if err := os.WriteFile(source, []byte(strings.Repeat("x", maxHFTokenBytes+1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := copySecretFile(source, filepath.Join(dir, "dest"))
+	_, err := readHFTokenFile(source)
 	if err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Fatalf("copySecretFile() error = %v, want size limit", err)
+		t.Fatalf("readHFTokenFile() error = %v, want size limit", err)
+	}
+}
+
+func assertSetupFile(t *testing.T, path string, want string, mode os.FileMode) {
+	t.Helper()
+	data, err := os.ReadFile(path) // #nosec G304 -- test fixture path.
+	if err != nil || string(data) != want {
+		t.Fatalf("setup file %s = %q, err=%v", path, data, err)
+	}
+	assertSetupMode(t, path, mode)
+}
+
+func assertSetupFileContains(t *testing.T, path string, want string, mode os.FileMode) {
+	t.Helper()
+	data, err := os.ReadFile(path) // #nosec G304 -- test fixture path.
+	if err != nil || !strings.Contains(string(data), want) {
+		t.Fatalf("setup file %s missing %q, body=%q, err=%v", path, want, data, err)
+	}
+	assertSetupMode(t, path, mode)
+}
+
+func assertSetupMode(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != mode {
+		t.Fatalf("setup file %s mode = %o, want %o", path, info.Mode().Perm(), mode)
 	}
 }
 

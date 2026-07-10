@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,19 +29,17 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 		return err
 	}
 	plan := systemdSetupPlan(opts)
-	if _, err := renderSystemdUnit(plan); err != nil {
+	if err := validateSystemdSetupPlan(plan); err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
 	if opts.DryRun {
 		return printSystemdDryRun(stdout, plan)
 	}
-	if err := ensureServiceAccount(ctx, opts); err != nil {
-		return err
+	installPlan, err := brokerkitSystemdInstallPlan(plan)
+	if err != nil {
+		return exitError{code: 64, message: err.Error()}
 	}
-	if err := writeSystemdSetupFiles(plan); err != nil {
-		return err
-	}
-	if err := startSystemdService(ctx, opts); err != nil {
+	if err := bkservice.InstallSystemd(ctx, installPlan); err != nil {
 		return err
 	}
 	printSystemdSummary(stdout, opts)
@@ -76,221 +73,55 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 	}
 }
 
-func ensureServiceAccount(ctx context.Context, opts setupSystemdOptions) error {
-	if err := ensureServiceGroup(ctx, opts); err != nil {
-		return err
-	}
-	return ensureServiceUser(ctx, opts)
-}
-
-func ensureServiceGroup(ctx context.Context, opts setupSystemdOptions) error {
-	if opts.CommandRunner.Run(ctx, "getent", "group", opts.Group) == nil {
-		return nil
-	}
-	if err := opts.CommandRunner.Run(ctx, "groupadd", "--system", opts.Group); err != nil {
-		return fmt.Errorf("create group %q: %w", opts.Group, err)
-	}
-	return nil
-}
-
-func ensureServiceUser(ctx context.Context, opts setupSystemdOptions) error {
-	if opts.CommandRunner.Run(ctx, "id", "-u", opts.User) == nil {
-		return nil
-	}
-	if err := opts.CommandRunner.Run(ctx, "useradd", "--system", "--gid", opts.Group, "--home-dir", opts.StateDir, "--shell", "/usr/sbin/nologin", opts.User); err != nil {
-		return fmt.Errorf("create user %q: %w", opts.User, err)
-	}
-	return nil
-}
-
-func writeSystemdSetupFiles(plan systemdPlan) error {
-	opts := plan.opts
-	uid, gid, err := serviceIDs(opts.User, opts.Group)
+func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan, error) {
+	token, err := readHFTokenFile(plan.opts.HFTokenFile)
 	if err != nil {
-		return err
+		return bkservice.SystemdInstallPlan{}, err
 	}
-	if err := createSystemdDirs(plan); err != nil {
-		return err
-	}
-	if err := chownSystemdDirs(plan, configOwnerUID(opts), uid, gid); err != nil {
-		return err
-	}
-	if err := writeSystemdConfigFiles(plan); err != nil {
-		return err
-	}
-	if err := chownSystemdConfigFiles(plan, configOwnerUID(opts), uid, gid); err != nil {
-		return err
-	}
-	return writeUnitFile(plan)
-}
-
-func configOwnerUID(opts setupSystemdOptions) int {
-	if opts.AllowNonRoot {
-		return os.Getuid()
-	}
-	return 0
-}
-
-func writeSystemdConfigFiles(plan systemdPlan) error {
-	writers := []func(systemdPlan) error{
-		writeTokenFile,
-		writeSecretsFile,
-		writeScopeFile,
-		writeEnvFile,
-	}
-	for _, write := range writers {
-		if err := write(plan); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func createSystemdDirs(plan systemdPlan) error {
-	if err := os.MkdirAll(plan.opts.ConfigDir, 0o750); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	if err := os.MkdirAll(plan.opts.StateDir, 0o750); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
-	}
-	if err := os.MkdirAll(plan.opts.SystemdDir, 0o755); err != nil {
-		return fmt.Errorf("create systemd dir: %w", err)
-	}
-	return nil
-}
-
-func writeTokenFile(plan systemdPlan) error {
-	return copySecretFile(plan.opts.HFTokenFile, plan.tokenPath)
-}
-
-func writeSecretsFile(plan systemdPlan) error {
-	opts := plan.opts
-	return writeFile(plan.secretsPath, []byte(opts.ClientName+" = "+opts.SharedSecret+"\n"), 0o600)
-}
-
-func writeScopeFile(plan systemdPlan) error {
-	scopeBytes, err := renderScopeJSON(plan.opts.Repo, plan.opts.RepoType)
+	scope, err := renderScopeJSON(plan.opts.Repo, plan.opts.RepoType)
 	if err != nil {
-		return err
+		return bkservice.SystemdInstallPlan{}, err
 	}
-	return writeFile(plan.scopePath, scopeBytes, 0o644)
+	return bkservice.SystemdInstallPlan{
+		User:       plan.opts.User,
+		Group:      plan.opts.Group,
+		ConfigDir:  plan.opts.ConfigDir,
+		StateDir:   plan.opts.StateDir,
+		SystemdDir: plan.opts.SystemdDir,
+		UnitName:   unitFileName,
+		Files: []bkservice.ManagedFile{
+			{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+			{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+			{Area: bkservice.ManagedFileConfig, Name: scopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+			{Area: bkservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+		},
+		Unit:         systemdUnit(plan),
+		NoStart:      plan.opts.NoStart,
+		AllowNonRoot: plan.opts.AllowNonRoot,
+		Runner:       plan.opts.CommandRunner,
+	}, nil
 }
 
-func writeEnvFile(plan systemdPlan) error {
-	return writeFile(plan.envPath, []byte(renderEnvFile(plan)), 0o640)
-}
-
-func writeUnitFile(plan systemdPlan) error {
-	body, err := renderSystemdUnit(plan)
+func readHFTokenFile(path string) ([]byte, error) {
+	file, err := os.Open(path) // #nosec G304 -- operator-supplied setup path.
 	if err != nil {
-		return err
-	}
-	return writeFile(plan.unitPath, []byte(body), 0o644)
-}
-
-func chownSystemdDirs(plan systemdPlan, configUID, serviceUID, serviceGID int) error {
-	opts := plan.opts
-	if err := chownPath(opts.ConfigDir, configUID, serviceGID, "config dir"); err != nil {
-		return err
-	}
-	return chownPath(opts.StateDir, serviceUID, serviceGID, "state dir")
-}
-
-func chownSystemdConfigFiles(plan systemdPlan, configUID, serviceUID, serviceGID int) error {
-	if err := chownPrivateFiles(plan, serviceUID, serviceGID); err != nil {
-		return err
-	}
-	return chownConfigFiles(plan, configUID, serviceGID)
-}
-
-func chownPrivateFiles(plan systemdPlan, uid, gid int) error {
-	return chownPaths([]string{plan.tokenPath, plan.secretsPath}, uid, gid)
-}
-
-func chownConfigFiles(plan systemdPlan, uid, gid int) error {
-	return chownPaths([]string{plan.scopePath, plan.envPath}, uid, gid)
-}
-
-func chownPaths(paths []string, uid, gid int) error {
-	for _, path := range paths {
-		if err := chownPath(path, uid, gid, path); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func chownPath(path string, uid, gid int, label string) error {
-	if err := os.Chown(path, uid, gid); err != nil {
-		return fmt.Errorf("chown %s: %w", label, err)
-	}
-	return nil
-}
-
-func startSystemdService(ctx context.Context, opts setupSystemdOptions) error {
-	if opts.NoStart {
-		return nil
-	}
-	if err := opts.CommandRunner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-		return fmt.Errorf("systemctl daemon-reload: %w", err)
-	}
-	if err := opts.CommandRunner.Run(ctx, "systemctl", "enable", "--now", "hf-broker.service"); err != nil {
-		return fmt.Errorf("systemctl enable --now hf-broker.service: %w", err)
-	}
-	return nil
-}
-
-func serviceIDs(userName, groupName string) (int, int, error) {
-	account, err := user.Lookup(userName)
-	if err != nil {
-		return 0, 0, fmt.Errorf("lookup user %q: %w", userName, err)
-	}
-	group, err := user.LookupGroup(groupName)
-	if err != nil {
-		return 0, 0, fmt.Errorf("lookup group %q: %w", groupName, err)
-	}
-	return parseServiceIDs(userName, account.Uid, groupName, group.Gid)
-}
-
-func parseServiceIDs(userName, rawUID, groupName, rawGID string) (int, int, error) {
-	uid, err := strconv.Atoi(rawUID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse uid for %q: %w", userName, err)
-	}
-	gid, err := strconv.Atoi(rawGID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse gid for %q: %w", groupName, err)
-	}
-	return uid, gid, nil
-}
-
-func copySecretFile(source, dest string) error {
-	file, err := os.Open(source) // #nosec G304 -- operator-supplied setup path.
-	if err != nil {
-		return fmt.Errorf("read --hf-token-file: %w", err)
+		return nil, fmt.Errorf("read --hf-token-file: %w", err)
 	}
 	data, readErr := io.ReadAll(io.LimitReader(file, maxHFTokenBytes+1))
 	closeErr := file.Close()
 	if readErr != nil {
-		return fmt.Errorf("read --hf-token-file: %w", readErr)
+		return nil, fmt.Errorf("read --hf-token-file: %w", readErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("close --hf-token-file: %w", closeErr)
+		return nil, fmt.Errorf("close --hf-token-file: %w", closeErr)
 	}
 	if len(data) > maxHFTokenBytes {
-		return fmt.Errorf("--hf-token-file exceeds %d bytes", maxHFTokenBytes)
+		return nil, fmt.Errorf("--hf-token-file exceeds %d bytes", maxHFTokenBytes)
 	}
 	if len(data) == 0 {
-		return fmt.Errorf("--hf-token-file is empty")
+		return nil, fmt.Errorf("--hf-token-file is empty")
 	}
-	return writeFile(dest, data, 0o600)
-}
-
-func writeFile(path string, data []byte, mode os.FileMode) error {
-	if err := os.WriteFile(path, data, mode); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return os.Chmod(path, mode)
+	return data, nil
 }
 
 func renderScopeJSON(repo, repoType string) ([]byte, error) {
@@ -334,9 +165,9 @@ func renderEnvFile(plan systemdPlan) string {
 		"HF_BROKER_PORT=" + strconv.Itoa(opts.Port) + "\n"
 }
 
-func renderSystemdUnit(plan systemdPlan) (string, error) {
+func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
 	opts := plan.opts
-	return bkservice.RenderSystemd(bkservice.SystemdUnit{
+	return bkservice.SystemdUnit{
 		Description:     "hf-broker Hugging Face credential broker",
 		User:            opts.User,
 		Group:           opts.Group,
@@ -346,7 +177,18 @@ func renderSystemdUnit(plan systemdPlan) (string, error) {
 		ConfigDir:       opts.ConfigDir,
 		HomeAccess:      bkservice.HomeAccessDeny,
 		PathValidation:  setupPathValidation(opts),
-	})
+	}
+}
+
+func renderSystemdUnit(plan systemdPlan) (string, error) {
+	return bkservice.RenderSystemd(systemdUnit(plan))
+}
+
+func validateSystemdSetupPlan(plan systemdPlan) error {
+	unit := systemdUnit(plan)
+	unit.PathValidation = bkservice.PathValidationPreview
+	_, err := bkservice.RenderSystemd(unit)
+	return err
 }
 
 func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {

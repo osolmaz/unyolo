@@ -125,6 +125,13 @@ therefore enforced once by the shared policy engine. A retained ambiguous
 reservation quarantines the whole grant and cannot authorize another request,
 even when its configured use budget is greater than one.
 
+`brokerkit/service` now owns privileged Linux installation. hf-broker renders
+only the bounded Hugging Face token, named-client secret, HF scope, environment,
+and typed unit inputs. Brokerkit creates the account and trusted directories,
+writes and owns the managed files atomically, installs the hardened unit, and
+activates systemd. The former local account, UID/GID, mkdir, write/chmod/chown,
+command-runner, and systemctl implementations have been deleted.
+
 The remaining local audit and Git proxy packages contain HF-specific event
 fields, commits-only mirrors, ancestry checks, push-option handling, pack
 preservation, LFS/Xet behavior, and Hub forwarding. They are not generic grant

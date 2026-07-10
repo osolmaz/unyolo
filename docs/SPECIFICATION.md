@@ -62,6 +62,8 @@ should move to brokerkit:
 - notifier interfaces
 - reusable Telegram transport and callback handling
 - strict config/storage helpers
+- privileged service account, managed-file, ownership, systemd unit, and
+  activation helpers
 - provider-neutral Git parsing helpers where shared cleanly with `gh-broker`
 
 This is a cutover, not a compatibility migration. When hf-broker adopts a
