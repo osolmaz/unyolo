@@ -12,12 +12,12 @@ The old `repos[]` and `buckets[]` schema is not accepted after cutover.
 `rules` format only. The broker does not ship a compatibility loader or
 converter for old files.
 
-Long term, the generic parts of this policy model move into
-`github.com/osolmaz/brokerkit/policy`. hf-broker keeps only the Hugging
-Face-specific operation registry, target definitions, attrs, and request
-classification. Generic grant lifecycle, approval workflow, Telegram transport,
-audit helpers, storage helpers, and provider-neutral Git parsing should move to
-brokerkit instead of remaining duplicated in hf-broker.
+The generic policy engine lives in `github.com/osolmaz/brokerkit/policy`.
+hf-broker keeps only the Hugging Face-specific rules-file parser, operation
+registry, target definitions, attrs, request classification, and adapters into
+the shared engine. Generic grant lifecycle, approval workflow, Telegram
+transport, audit helpers, storage helpers, and provider-neutral Git parsing
+belong in brokerkit instead of remaining duplicated in hf-broker.
 
 ## Smallest Valid File
 
@@ -610,6 +610,7 @@ expressions.
 - Globs in `owner`, `name`, and `type` never match `/`.
 - `..`, empty segments, and absolute paths are invalid.
 - Matching is case-sensitive.
+- Leading or trailing whitespace in a matcher is rejected, not normalized.
 - URL path inputs are decoded exactly once before matching.
 - Invalid percent encoding, NUL bytes, absolute paths, and any `..`
   segment are refused before policy matching.
@@ -1147,8 +1148,10 @@ Handlers classify requests into `policy.Request`; only `internal/policy`
 decides allow/request/deny. Do not compile rule policy into the old scope
 model.
 
-After brokerkit policy lands, `internal/policy` is replaced by the brokerkit
-policy core plus an hf-broker provider registry. Do not keep both engines.
+`internal/policy` now wraps the brokerkit policy core with the hf-broker parser,
+provider registry, and typed request classifiers. It must not contain a second
+generic matcher, precedence implementation, ambiguity checker, or grant
+overlay engine.
 
 ## Canonical Test Fixtures
 

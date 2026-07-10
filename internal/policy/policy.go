@@ -9,10 +9,12 @@ import (
 	"io"
 	"os"
 	"path"
-	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+
+	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
 const (
@@ -101,7 +103,9 @@ type Target struct {
 }
 
 type Policy struct {
-	rules []Rule
+	rules       []Rule
+	core        *corePolicies
+	coreRuleIDs map[string]string
 }
 
 type Rule struct {
@@ -375,7 +379,7 @@ func buildPolicy(raw rawPolicy) (Policy, error) {
 		ids[rule.ID] = true
 		out.rules = append(out.rules, rule)
 	}
-	if err := validateRequestRuleOverlaps(out.rules); err != nil {
+	if err := out.initializeCore(); err != nil {
 		return Policy{}, err
 	}
 	return out, nil
@@ -430,7 +434,7 @@ func parseRuleID(rule *Rule, prefix string, raw rawRule) error {
 }
 
 func validRuleID(id string) bool {
-	return id != "" && len(id) <= MaxRuleIDBytes
+	return id != "" && len(id) <= MaxRuleIDBytes && strings.TrimSpace(id) == id
 }
 
 func parseRuleEffect(rule *Rule, prefix string, raw rawRule) error {
@@ -731,6 +735,7 @@ func validateGlob(pathName, value string, allowDoubleStar bool) error {
 
 func invalidGlobShape(value string) bool {
 	return value == "" ||
+		value != strings.TrimSpace(value) ||
 		len(value) > MaxGlobBytes ||
 		strings.Contains(value, "\x00") ||
 		strings.HasPrefix(value, "/") ||
@@ -826,7 +831,26 @@ func AttrValuesMatch(approved map[string]any, actual map[string]any) bool {
 	if err != nil {
 		return false
 	}
-	return attrsMatch(constraints, actual)
+	for key, constraint := range constraints {
+		value, ok := actual[key]
+		if !ok || !attrConstraintMatchesCore(constraint, value) {
+			return false
+		}
+	}
+	return true
+}
+
+func attrConstraintMatchesCore(constraint AttrConstraint, actual any) bool {
+	if constraint.Number != nil {
+		number, ok := int64Value(actual)
+		return ok && corepolicy.MatchAll(
+			corepolicy.MatchIntegerMaximum,
+			[]string{strconv.FormatInt(*constraint.Number, 10)},
+			[]string{strconv.FormatInt(number, 10)},
+		)
+	}
+	value, ok := actual.(string)
+	return ok && corepolicy.MatchAll(corepolicy.MatchGlob, constraint.Values, []string{value})
 }
 
 // AttrConstraintsFromValues parses attribute values into policy constraints.
@@ -1099,45 +1123,18 @@ func (p Policy) Rules() []Rule {
 
 // Decide evaluates req against static rules and generated grants.
 func (p Policy) Decide(req Request, grants []Rule, now time.Time, grantRequest bool) Decision {
-	return p.decide(req, grants, now, grantRequest, ruleMatches)
+	view := coreViewNormal
+	if req.IgnoreRepoRefs {
+		view = coreViewSupport
+	}
+	return p.decideCore(req, grants, now, grantRequest, view)
 }
 
 // DecideReceivePackDiscovery evaluates the ref-less receive-pack discovery
 // step. The POST body is still classified and enforced per ref before any
 // mutation reaches upstream.
-func (p Policy) DecideReceivePackDiscovery(req Request, now time.Time) Decision {
-	return p.decide(req, nil, now, false, ruleMatchesReceivePackDiscovery)
-}
-
-func (p Policy) decide(req Request, grants []Rule, now time.Time, grantRequest bool, matches ruleMatcher) Decision {
-	if _, ok := operations[req.Operation]; !ok {
-		return Decision{Effect: EffectDeny, Reason: "invalid_operation"}
-	}
-	if err := validateRequestTarget(req.Target); err != nil {
-		return Decision{Effect: EffectDeny, Reason: "invalid_target"}
-	}
-	denyIDs := matchingRuleIDs(p.rules, req, EffectDeny, now, matches)
-	if len(denyIDs) > 0 {
-		return Decision{Effect: EffectDeny, Reason: "policy_denied", MatchedDenyRuleIDs: denyIDs}
-	}
-	grantIDs := matchingGeneratedGrantIDs(grants, req, now, matches)
-	if len(grantIDs) > 0 {
-		return Decision{Effect: EffectAllow, Reason: "grant_allowed", MatchedGrantRuleIDs: grantIDs, GrantID: grantIDs[0]}
-	}
-	allowIDs := matchingRuleIDs(p.rules, req, EffectAllow, now, matches)
-	if len(allowIDs) > 0 {
-		return Decision{Effect: EffectAllow, Reason: "policy_allowed", MatchedAllowRuleIDs: allowIDs}
-	}
-	requestRules := matchingRules(p.rules, req, EffectRequest, now, matches)
-	if len(requestRules) > 0 {
-		ids := ruleIDs(requestRules)
-		policy := requestRules[0].GrantPolicy
-		if grantRequest {
-			return Decision{Effect: EffectRequest, Reason: "requestable", MatchedRequestRuleIDs: ids, GrantPolicy: policy}
-		}
-		return Decision{Effect: EffectDeny, Reason: "approval_required", MatchedRequestRuleIDs: ids, GrantPolicy: policy}
-	}
-	return Decision{Effect: EffectNoMatch, Reason: "no_matching_rule"}
+func (p Policy) DecideReceivePackDiscovery(req Request, grants []Rule, now time.Time) Decision {
+	return p.decideCore(req, grants, now, false, coreViewDiscovery)
 }
 
 func validateRequestTarget(target Target) error {
@@ -1176,267 +1173,6 @@ func validConcreteRepoType(value RepoType) bool {
 	return validRepoType(value) && value != TypeAny
 }
 
-type ruleMatcher func(Rule, Request) bool
-
-func matchingGeneratedGrantIDs(rules []Rule, req Request, now time.Time, matches ruleMatcher) []string {
-	var out []string
-	for _, rule := range rules {
-		if !rule.Generated || rule.Effect != EffectAllow {
-			continue
-		}
-		if !rule.ExpiresAt.IsZero() && !now.Before(rule.ExpiresAt) {
-			continue
-		}
-		if rule.UsesLeft <= 0 {
-			continue
-		}
-		if matches(rule, req) {
-			out = append(out, nonEmpty(rule.GrantID, rule.ID))
-		}
-	}
-	return out
-}
-
-func matchingRuleIDs(rules []Rule, req Request, effect Effect, now time.Time, matches ruleMatcher) []string {
-	return ruleIDs(matchingRules(rules, req, effect, now, matches))
-}
-
-func matchingRules(rules []Rule, req Request, effect Effect, _ time.Time, matches ruleMatcher) []Rule {
-	var out []Rule
-	for _, rule := range rules {
-		if rule.Generated || rule.Effect != effect {
-			continue
-		}
-		if matches(rule, req) {
-			out = append(out, rule)
-		}
-	}
-	return out
-}
-
-func ruleMatches(rule Rule, req Request) bool {
-	return ruleMatchesClientOperation(rule, req) &&
-		anyRuleTargetMatches(rule, req) &&
-		ruleAttrsMatch(rule, req)
-}
-
-func ruleMatchesReceivePackDiscovery(rule Rule, req Request) bool {
-	return ruleMatchesClientOperation(rule, req) &&
-		anyReceivePackDiscoveryTargetMatches(rule, req.Target)
-}
-
-func ruleMatchesClientOperation(rule Rule, req Request) bool {
-	return clientMatches(rule.Clients, req.Client) &&
-		operationMatches(rule.Operations, req.Operation)
-}
-
-func clientMatches(patterns []string, client string) bool {
-	return slices.Contains(patterns, "*") || slices.Contains(patterns, client)
-}
-
-func operationMatches(ops []Operation, op Operation) bool {
-	return slices.Contains(ops, op)
-}
-
-func anyRuleTargetMatches(rule Rule, req Request) bool {
-	for _, matcher := range rule.Targets {
-		if refLessSupportTrafficSkipsMatcher(rule, req, matcher) {
-			continue
-		}
-		if targetMatches(matcher, req) {
-			return true
-		}
-	}
-	return false
-}
-
-func refLessSupportTrafficSkipsMatcher(rule Rule, req Request, matcher TargetMatcher) bool {
-	return req.IgnoreRepoRefs &&
-		rule.Effect == EffectDeny &&
-		matcher.Kind == KindRepo &&
-		len(matcher.Refs) > 0
-}
-
-func anyReceivePackDiscoveryTargetMatches(rule Rule, target Target) bool {
-	for _, matcher := range rule.Targets {
-		if receivePackDiscoveryTargetEligible(rule, matcher) && repoTargetMatchesReceivePackDiscovery(matcher, target) {
-			return true
-		}
-	}
-	return false
-}
-
-func receivePackDiscoveryTargetEligible(rule Rule, matcher TargetMatcher) bool {
-	if rule.Effect != EffectDeny {
-		return true
-	}
-	return len(rule.Attrs) == 0 &&
-		len(matcher.Refs) == 0 &&
-		len(matcher.Paths) == 0 &&
-		len(matcher.Visibility) == 0
-}
-
-func targetMatches(matcher TargetMatcher, req Request) bool {
-	target := req.Target
-	if matcher.Kind != target.Kind {
-		return false
-	}
-	switch target.Kind {
-	case KindRepo:
-		return repoTargetMatches(matcher, target, req.Operation, req.IgnoreRepoRefs)
-	case KindBucket:
-		return bucketTargetMatches(matcher, target, req.Operation)
-	default:
-		return false
-	}
-}
-
-func repoTargetMatches(matcher TargetMatcher, target Target, operation Operation, ignoreRefs bool) bool {
-	return repoTypeMatches(matcher.Type, target.Type) &&
-		namedTargetMatches(matcher, target) &&
-		repoRefsMatch(operation, matcher.Refs, target.Refs, ignoreRefs) &&
-		optionalGlobListMatches(matcher.Paths, target.Paths) &&
-		optionalStringListMatches(matcher.Visibility, target.Visibility)
-}
-
-func repoRefsMatch(operation Operation, patterns, actuals []string, ignoreRefs bool) bool {
-	if ignoreRefs || !operationUsesRefs(operation) {
-		return true
-	}
-	return optionalGlobListMatches(patterns, actuals)
-}
-
-func operationUsesRefs(operation Operation) bool {
-	return refScopedOperations[operation]
-}
-
-func repoTargetMatchesReceivePackDiscovery(matcher TargetMatcher, target Target) bool {
-	return matcher.Kind == KindRepo &&
-		target.Kind == KindRepo &&
-		repoTypeMatches(matcher.Type, target.Type) &&
-		namedTargetMatches(matcher, target)
-}
-
-func bucketTargetMatches(matcher TargetMatcher, target Target, operation Operation) bool {
-	return namedTargetMatches(matcher, target) &&
-		bucketSnapshotPrefixAllows(matcher.SnapshotPrefix, target.Keys, operation) &&
-		optionalGlobListMatches(matcher.Keys, target.Keys)
-}
-
-func bucketSnapshotPrefixAllows(prefix string, keys []string, operation Operation) bool {
-	if prefix == "" || !bucketOperationMutatesObjects(operation) {
-		return true
-	}
-	for _, key := range keys {
-		if keyUnderSnapshotPrefix(key, prefix) {
-			return false
-		}
-	}
-	return true
-}
-
-func bucketOperationMutatesObjects(operation Operation) bool {
-	return operation == OpBucketObjectWrite || operation == OpBucketObjectDel
-}
-
-func keyUnderSnapshotPrefix(key, prefix string) bool {
-	prefix = strings.TrimSuffix(prefix, "/")
-	return key == prefix || strings.HasPrefix(key, prefix+"/")
-}
-
-func namedTargetMatches(matcher TargetMatcher, target Target) bool {
-	if !globMatches(matcher.Owner, target.Owner) {
-		return false
-	}
-	return globMatches(matcher.Name, target.Name)
-}
-
-func repoTypeMatches(pattern RepoType, actual RepoType) bool {
-	return pattern == TypeAny || pattern == actual
-}
-
-func optionalGlobListMatches(patterns, actuals []string) bool {
-	if len(patterns) == 0 {
-		return true
-	}
-	if len(actuals) == 0 {
-		return false
-	}
-	for _, actual := range actuals {
-		matched := false
-		for _, pattern := range patterns {
-			if globMatches(pattern, actual) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
-	}
-	return true
-}
-
-func optionalStringListMatches(patterns, actuals []string) bool {
-	if optionalStringListIsWildcard(patterns) {
-		return true
-	}
-	return anyStringListValueMatches(patterns, actuals)
-}
-
-func optionalStringListIsWildcard(patterns []string) bool {
-	return len(patterns) == 0 || slices.Contains(patterns, "*")
-}
-
-func anyStringListValueMatches(patterns, actuals []string) bool {
-	return anyContained(actuals, patterns)
-}
-
-func attrsMatch(ruleAttrs map[string]AttrConstraint, actual map[string]any) bool {
-	for key, constraint := range ruleAttrs {
-		value, ok := actual[key]
-		if !ok {
-			return false
-		}
-		if !attrMatches(constraint, value) {
-			return false
-		}
-	}
-	return true
-}
-
-func ruleAttrsMatch(rule Rule, req Request) bool {
-	for key, constraint := range rule.Attrs {
-		if refLessSupportTrafficSkipsAttr(rule, req, key) {
-			continue
-		}
-		value, ok := req.Attrs[key]
-		if !ok {
-			return false
-		}
-		if !attrMatches(constraint, value) {
-			return false
-		}
-	}
-	return true
-}
-
-func refLessSupportTrafficSkipsAttr(rule Rule, req Request, key string) bool {
-	return rule.Effect != EffectDeny && req.IgnoreRepoRefs && key == "ref_change"
-}
-
-func attrMatches(constraint AttrConstraint, actual any) bool {
-	if constraint.Number != nil {
-		number, ok := int64Value(actual)
-		return ok && number <= *constraint.Number
-	}
-	value, ok := actual.(string)
-	if !ok {
-		return false
-	}
-	return slices.Contains(constraint.Values, value)
-}
-
 func int64Value(value any) (int64, bool) {
 	switch v := value.(type) {
 	case int:
@@ -1449,210 +1185,6 @@ func int64Value(value any) (int64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-func globMatches(patternValue, value string) bool {
-	if strings.Contains(patternValue, "**") {
-		return doubleStarGlobMatches(patternValue, value)
-	}
-	matched, err := path.Match(patternValue, value)
-	return err == nil && matched
-}
-
-func doubleStarGlobMatches(patternValue, value string) bool {
-	expr := regexp.QuoteMeta(patternValue)
-	expr = strings.ReplaceAll(expr, `\*\*`, ".*")
-	expr = strings.ReplaceAll(expr, `\*`, `[^/]*`)
-	expr = strings.ReplaceAll(expr, `\?`, `[^/]`)
-	matched, err := regexp.MatchString("^"+expr+"$", value)
-	return err == nil && matched
-}
-
-func validateRequestRuleOverlaps(rules []Rule) error {
-	for i := range rules {
-		if rules[i].Effect != EffectRequest {
-			continue
-		}
-		for j := i + 1; j < len(rules); j++ {
-			if rules[j].Effect != EffectRequest {
-				continue
-			}
-			if requestRulesMayOverlap(rules[i], rules[j]) && !grantPoliciesEqual(rules[i].GrantPolicy, rules[j].GrantPolicy) {
-				return fmt.Errorf("scope.json rules[%d]: request rule overlaps rule %s with different grant_policy", j, rules[i].ID)
-			}
-		}
-	}
-	return nil
-}
-
-func requestRulesMayOverlap(a, b Rule) bool {
-	return stringListsMayOverlap(a.Clients, b.Clients) &&
-		operationsMayOverlap(a.Operations, b.Operations) &&
-		targetListsMayOverlap(a.Targets, b.Targets) &&
-		attrsMayOverlap(a.Attrs, b.Attrs)
-}
-
-func stringListsMayOverlap(a, b []string) bool {
-	for _, av := range a {
-		for _, bv := range b {
-			if av == "*" || bv == "*" || av == bv {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func operationsMayOverlap(a, b []Operation) bool {
-	return anyContained(a, b)
-}
-
-func anyContained[T comparable](values, allowed []T) bool {
-	for _, value := range values {
-		if slices.Contains(allowed, value) {
-			return true
-		}
-	}
-	return false
-}
-
-func attrsMayOverlap(a, b map[string]AttrConstraint) bool {
-	for key, av := range a {
-		if bv, ok := b[key]; ok && !attrConstraintsMayOverlap(av, bv) {
-			return false
-		}
-	}
-	return true
-}
-
-func attrConstraintsMayOverlap(a, b AttrConstraint) bool {
-	if a.Number != nil || b.Number != nil {
-		return a.Number != nil && b.Number != nil
-	}
-	return anyContained(a.Values, b.Values)
-}
-
-func targetListsMayOverlap(a, b []TargetMatcher) bool {
-	for _, av := range a {
-		for _, bv := range b {
-			if targetsMayOverlap(av, bv) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func targetsMayOverlap(a, b TargetMatcher) bool {
-	return a.Kind == b.Kind &&
-		targetIdentityMayOverlap(a, b) &&
-		targetConstraintsMayOverlap(a, b)
-}
-
-func targetIdentityMayOverlap(a, b TargetMatcher) bool {
-	return allOverlap(
-		globPatternsMayOverlap(nonEmpty(string(a.Type), "*"), nonEmpty(string(b.Type), "*")),
-		globPatternsMayOverlap(a.Owner, b.Owner),
-		globPatternsMayOverlap(a.Name, b.Name),
-	)
-}
-
-func targetConstraintsMayOverlap(a, b TargetMatcher) bool {
-	switch a.Kind {
-	case KindRepo:
-		return repoTargetConstraintsMayOverlap(a, b)
-	case KindBucket:
-		return bucketTargetConstraintsMayOverlap(a, b)
-	default:
-		return true
-	}
-}
-
-func repoTargetConstraintsMayOverlap(a, b TargetMatcher) bool {
-	return allOverlap(
-		optionalGlobListsMayOverlap(a.Refs, b.Refs),
-		optionalGlobListsMayOverlap(a.Paths, b.Paths),
-		optionalStringListsMayOverlap(a.Visibility, b.Visibility),
-	)
-}
-
-func bucketTargetConstraintsMayOverlap(a, b TargetMatcher) bool {
-	return allOverlap(
-		optionalGlobListsMayOverlap(a.Keys, b.Keys),
-		optionalPrefixesMayOverlap(a.SnapshotPrefix, b.SnapshotPrefix),
-	)
-}
-
-func allOverlap(values ...bool) bool {
-	for _, value := range values {
-		if !value {
-			return false
-		}
-	}
-	return true
-}
-
-func optionalGlobListsMayOverlap(a, b []string) bool {
-	if len(a) == 0 || len(b) == 0 {
-		return true
-	}
-	for _, av := range a {
-		for _, bv := range b {
-			if globPatternsMayOverlap(av, bv) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func optionalStringListsMayOverlap(a, b []string) bool {
-	if len(a) == 0 || len(b) == 0 || slices.Contains(a, "*") || slices.Contains(b, "*") {
-		return true
-	}
-	return anyContained(a, b)
-}
-
-func optionalPrefixesMayOverlap(a, b string) bool {
-	return a == "" || b == "" || strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
-}
-
-func segmentGlobsMayOverlap(a, b string) bool {
-	return globPatternsMayOverlap(a, b)
-}
-
-func globPatternsMayOverlap(a, b string) bool {
-	aWild := strings.ContainsAny(a, "*?")
-	bWild := strings.ContainsAny(b, "*?")
-	if !aWild && !bWild {
-		return a == b
-	}
-	return wildcardPatternsMayOverlap(a, b, aWild, bWild)
-}
-
-func wildcardPatternsMayOverlap(a, b string, aWild, bWild bool) bool {
-	if aWild && !bWild {
-		return globMatches(a, b)
-	}
-	if !aWild && bWild {
-		return globMatches(b, a)
-	}
-	return true
-}
-
-func grantPoliciesEqual(a, b *GrantPolicy) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
-}
-
-func ruleIDs(rules []Rule) []string {
-	out := make([]string, 0, len(rules))
-	for _, rule := range rules {
-		out = append(out, rule.ID)
-	}
-	return out
 }
 
 func nonEmpty(value, fallback string) string {

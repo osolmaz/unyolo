@@ -572,10 +572,13 @@ func TestDenyRuleStopsActiveGrantPushPreflight(t *testing.T) {
 	server := &Server{policy: scp, grants: store}
 	rt := route{repoType: policy.TypeDataset, owner: "acme", name: "repo"}
 
-	ok, reason := server.pushCandidateMayInspect("agent", rt, "dataset/acme/repo", "refs/heads/main", pushPolicyCandidate{
+	ok, reason, err := server.pushCandidateMayInspect("agent", rt, "dataset/acme/repo", "refs/heads/main", pushPolicyCandidate{
 		operation: policy.OpGitPushForce,
 		refChange: "non_fast_forward",
 	}, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ok || reason != "policy denied" {
 		t.Fatalf("pushCandidateMayInspect() = %v, %q; want denied despite active grant", ok, reason)
 	}
@@ -600,20 +603,22 @@ func TestActiveGrantRequiresApprovedAttrs(t *testing.T) {
 	server := &Server{grants: store}
 	used := map[string]grantUse{}
 
-	if server.activeGrantExists("agent", policy.OpGitPushAppend, "dataset/acme/repo", "refs/heads/main", refChangeAttrs("non_fast_forward")) {
-		t.Fatalf("activeGrantExists() matched non-approved attrs")
+	matched, err := server.useActiveGrant("agent", policy.OpGitPushAppend, "dataset/acme/repo", "refs/heads/main", refChangeAttrs("non_fast_forward"), used)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if server.useActiveGrant("agent", policy.OpGitPushAppend, "dataset/acme/repo", "refs/heads/main", refChangeAttrs("non_fast_forward"), used) {
+	if matched {
 		t.Fatalf("useActiveGrant() matched non-approved attrs")
 	}
 	if len(used) != 0 {
 		t.Fatalf("used grants after rejected attr match = %+v, want none", used)
 	}
 
-	if !server.activeGrantExists("agent", policy.OpGitPushAppend, "dataset/acme/repo", "refs/heads/main", refChangeAttrs("fast_forward")) {
-		t.Fatalf("activeGrantExists() did not match approved attrs")
+	matched, err = server.useActiveGrant("agent", policy.OpGitPushAppend, "dataset/acme/repo", "refs/heads/main", refChangeAttrs("fast_forward"), used)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !server.useActiveGrant("agent", policy.OpGitPushAppend, "dataset/acme/repo", "refs/heads/main", refChangeAttrs("fast_forward"), used) {
+	if !matched {
 		t.Fatalf("useActiveGrant() did not match approved attrs")
 	}
 	if used[grant.ID].grant.ID != grant.ID {
@@ -643,21 +648,46 @@ func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	server := &Server{grants: store}
 	attrs := refChangeAttrs("non_fast_forward")
 
-	if server.activeGrantExists("agent", policy.OpGitPushForce, "dataset/acme/repo", "refs/heads/main", attrs) {
-		t.Fatalf("activeGrantExists() matched execution-mode grant")
-	}
-	if server.useActiveGrant("agent", policy.OpGitPushForce, "dataset/acme/repo", "refs/heads/main", attrs, map[string]grantUse{}) {
-		t.Fatalf("useActiveGrant() matched execution-mode grant")
-	}
-	matched, err := server.receivePackDiscoveryActiveGrant("agent", "dataset/acme/repo")
+	matched, err := server.useActiveGrant("agent", policy.OpGitPushForce, "dataset/acme/repo", "refs/heads/main", attrs, map[string]grantUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if matched {
-		t.Fatalf("receivePackDiscoveryActiveGrant() matched execution-mode grant")
+		t.Fatalf("useActiveGrant() matched execution-mode grant")
+	}
+	rules, err := server.activeGrantRules("agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("activeGrantRules() = %+v, want no execution-mode grants", rules)
 	}
 	if activeGrantMatchesIgnoringRef(active, "agent", policy.OpGitPushForce, "dataset/acme/repo", attrs) {
 		t.Fatalf("activeGrantMatchesIgnoringRef() matched execution-mode grant")
+	}
+}
+
+func TestMalformedGrantStoreReturnsInternalServerError(t *testing.T) {
+	dir := t.TempDir()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	broker := newTestBroker(t, dir, upstream.URL, io.Discard, appendOnlyDatasetPolicyJSON("repo"))
+	defer broker.Close()
+
+	grantDir := filepath.Join(dir, "state", "grants")
+	if err := os.MkdirAll(grantDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(grantDir, "grants.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, service := range []string{"git-upload-pack", "git-receive-pack"} {
+		resp, body := doRequest(t, http.MethodGet, broker.URL+"/datasets/acme/repo.git/info/refs?service="+service, "Bearer "+testSecret, nil)
+		if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(body, "could not inspect grants") {
+			t.Fatalf("malformed grant store %s response = %d %q, want 500", service, resp.StatusCode, body)
+		}
 	}
 }
 
@@ -841,6 +871,7 @@ func TestReceivePackDiscoveryChecksLaterActiveGrant(t *testing.T) {
 		Operation: string(policy.OpGitRefDelete),
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/feature",
+		Attrs:     map[string]any{"max_bytes": int64(1024), "ref_change": "delete"},
 		Reason:    "delete stale branch",
 		MaxUses:   1,
 	})
@@ -2281,13 +2312,16 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := handler.grants.Request(grants.Request{
-		Client:          "agent",
-		ClientRequestID: "retry-missing-message",
-		Operation:       string(policy.OpGitPushForce),
-		Target:          "dataset/acme/repo",
-		Ref:             "refs/heads/main",
-		Reason:          "recover",
-		MaxUses:         1,
+		Client:            "agent",
+		ClientRequestID:   "retry-missing-message",
+		Operation:         string(policy.OpGitPushForce),
+		Target:            "dataset/acme/repo",
+		Ref:               "refs/heads/main",
+		Reason:            "recover",
+		Mode:              grants.ModeWindow,
+		RequestedDuration: 5 * time.Minute,
+		PendingTimeout:    5 * time.Minute,
+		MaxUses:           1,
 	}); err != nil {
 		t.Fatalf("preseed Request() error = %v", err)
 	}
@@ -2525,7 +2559,7 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 	}
 }
 
-func TestGrantRequestWithNonEditableNotifierIsIdempotent(t *testing.T) {
+func TestGrantRequestRejectsNonEditableNotifier(t *testing.T) {
 	dir := t.TempDir()
 	notifier := &zeroMessageGrantNotifier{}
 	scp, err := policy.Parse([]byte(datasetPolicyJSON(grantableDataset("repo", policy.OpGitPushForce))))
@@ -2552,15 +2586,15 @@ func TestGrantRequestWithNonEditableNotifierIsIdempotent(t *testing.T) {
 	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "non-editable-notifier", 0, 0)
 
 	resp, bodyText := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("grant request status=%d body=%q, want 202", resp.StatusCode, bodyText)
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("grant request status=%d body=%q, want 502", resp.StatusCode, bodyText)
 	}
 	resp, bodyText = doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("retry grant status=%d body=%q, want 202", resp.StatusCode, bodyText)
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("retry grant status=%d body=%q, want 502", resp.StatusCode, bodyText)
 	}
-	if notifier.calls != 1 {
-		t.Fatalf("notifier calls = %d, want one", notifier.calls)
+	if notifier.calls != 2 {
+		t.Fatalf("notifier calls = %d, want one failed delivery per request", notifier.calls)
 	}
 }
 
@@ -2722,7 +2756,7 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Get(%q) error = %v", grant.ID, err)
 	}
-	if updated.Status != grants.StatusExpired || !updated.ReservationRetained || updated.NotifierStatus != "reserved:expired" {
+	if updated.Status != grants.StatusExpired || !updated.ReservationRetained || !strings.HasPrefix(updated.NotifierStatus, "reserved:expired:") {
 		t.Fatalf("grant after retained reservation update = %+v, want expired retained grant with reserved notifier status", updated)
 	}
 }

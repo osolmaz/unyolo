@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,17 @@ func TestParseRejectsLegacyScopeFormat(t *testing.T) {
 	_, err := Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset"}]}`))
 	if err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("Parse() error = %v, want unknown field", err)
+	}
+}
+
+func TestParseRejectsBoundaryWhitespaceRuleID(t *testing.T) {
+	_, err := Parse([]byte(`{"rules":[{
+		"id":" rule","effect":"allow","clients":["agent"],
+		"operations":["repo.contents.read"],
+		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}]
+	}]}`))
+	if err == nil || !strings.Contains(err.Error(), ".id") {
+		t.Fatalf("Parse(boundary whitespace id) error = %v, want id validation error", err)
 	}
 }
 
@@ -71,6 +83,67 @@ func TestRequestableDoesNotMeanExecutable(t *testing.T) {
 	request := pol.Decide(repoReq("agent", OpRepoContentsRead, "dataset", "acme", "repo", ""), nil, time.Now(), true)
 	if request.Effect != EffectRequest || request.Reason != "requestable" || request.GrantPolicy == nil || request.GrantPolicy.MaxMinutes != 15 {
 		t.Fatalf("grant-request decision = %+v", request)
+	}
+}
+
+func TestClientNamesAreLiteralExceptWildcard(t *testing.T) {
+	pol := mustParse(t, `{"rules":[{
+		"id":"literal-client",
+		"effect":"allow",
+		"clients":["agent-*"],
+		"operations":["repo.contents.read"],
+		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}]
+	}]}`)
+	if got := pol.Decide(repoReq("agent-*", OpRepoContentsRead, "dataset", "acme", "repo", ""), nil, time.Now(), false); got.Effect != EffectAllow {
+		t.Fatalf("literal client decision = %+v, want allow", got)
+	}
+	if got := pol.Decide(repoReq("agent-prod", OpRepoContentsRead, "dataset", "acme", "repo", ""), nil, time.Now(), false); got.Effect != EffectNoMatch {
+		t.Fatalf("glob-like client decision = %+v, want no_match", got)
+	}
+}
+
+func TestDistinctLiteralClientNamesDoNotOverlap(t *testing.T) {
+	pol := mustParse(t, `{"rules":[
+		{
+			"id":"first-literal-client",
+			"effect":"request",
+			"clients":["agent-*"],
+			"operations":["repo.contents.read"],
+			"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}],
+			"grant_policy":{"default_minutes":5,"max_minutes":5}
+		},
+		{
+			"id":"second-literal-client",
+			"effect":"request",
+			"clients":["agent-*x"],
+			"operations":["repo.contents.read"],
+			"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}],
+			"grant_policy":{"default_minutes":5,"max_minutes":5}
+		}
+	]}`)
+
+	first := pol.Decide(repoReq("agent-*", OpRepoContentsRead, "dataset", "acme", "repo", ""), nil, time.Now(), true)
+	if first.Effect != EffectRequest || strings.Join(first.MatchedRequestRuleIDs, ",") != "first-literal-client" {
+		t.Fatalf("first literal client decision = %+v, want first request rule", first)
+	}
+	second := pol.Decide(repoReq("agent-*x", OpRepoContentsRead, "dataset", "acme", "repo", ""), nil, time.Now(), true)
+	if second.Effect != EffectRequest || strings.Join(second.MatchedRequestRuleIDs, ",") != "second-literal-client" {
+		t.Fatalf("second literal client decision = %+v, want second request rule", second)
+	}
+}
+
+func TestEmbeddedDoubleStarPathGrammarIsPreserved(t *testing.T) {
+	pol := mustParse(t, `{"rules":[{
+		"id":"json-paths",
+		"effect":"allow",
+		"clients":["agent"],
+		"operations":["repo.contents.read"],
+		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo","paths":["artifacts/**.json"]}]
+	}]}`)
+	request := repoReq("agent", OpRepoContentsRead, "dataset", "acme", "repo", "")
+	request.Target.Paths = []string{"artifacts/nested/result.json"}
+	if got := pol.Decide(request, nil, time.Now(), false); got.Effect != EffectAllow {
+		t.Fatalf("embedded ** decision = %+v, want allow", got)
 	}
 }
 
@@ -135,6 +208,57 @@ func TestRepoRefsOnlyConstrainPushOperations(t *testing.T) {
 	}
 }
 
+func TestRefLessRequestKeepsOriginalGrantPolicy(t *testing.T) {
+	pol := mustParse(t, `{"rules":[{
+		"id":"request-main",
+		"effect":"request",
+		"clients":["agent"],
+		"operations":["git.push.append"],
+		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo","refs":["refs/heads/main"]}],
+		"grant_policy":{"mode":"execution","default_minutes":3,"max_minutes":13,"request_ttl_minutes":4,"default_max_uses":1,"max_uses":1}
+	}]}`)
+	req := repoReq("agent", OpGitPushAppend, "dataset", "acme", "repo", "")
+	req.IgnoreRepoRefs = true
+	decision := pol.Decide(req, nil, time.Now(), true)
+	if decision.Effect != EffectRequest || decision.GrantPolicy == nil {
+		t.Fatalf("ref-less request decision = %+v, want requestable", decision)
+	}
+	if decision.GrantPolicy.Mode != GrantModeExecution ||
+		decision.GrantPolicy.DefaultMinutes != 3 ||
+		decision.GrantPolicy.MaxMinutes != 13 ||
+		decision.GrantPolicy.RequestTTLMinutes != 4 {
+		t.Fatalf("ref-less grant policy = %+v, want original rule bounds", decision.GrantPolicy)
+	}
+}
+
+func TestRefLessSupportRequestMatchesActiveGrant(t *testing.T) {
+	pol := mustParse(t, `{"rules":[]}`)
+	expires := time.Now().Add(time.Minute)
+	target := Target{Kind: KindRepo, Type: TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"}}
+	grant := GeneratedGrantRule("grant", "agent", OpGitPushAppend, target, expires, 1)
+	grant.Attrs = map[string]AttrConstraint{"ref_change": {Values: []string{"fast_forward"}}}
+	request := repoReq("agent", OpGitPushAppend, "dataset", "acme", "repo", "")
+	request.IgnoreRepoRefs = true
+	decision := pol.Decide(request, []Rule{grant}, time.Now(), false)
+	if decision.Effect != EffectAllow || decision.GrantID != "grant" {
+		t.Fatalf("ref-less support decision = %+v, want active grant", decision)
+	}
+}
+
+func TestActiveGrantRefChangeValuesUseOrSemantics(t *testing.T) {
+	pol := mustParse(t, `{"rules":[]}`)
+	target := Target{Kind: KindRepo, Type: TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"}}
+	grant := GeneratedGrantRule("grant", "agent", OpGitPushAppend, target, time.Now().Add(time.Minute), 1)
+	grant.Attrs = map[string]AttrConstraint{"ref_change": {Values: []string{"create", "fast_forward"}}}
+	request := repoReq("agent", OpGitPushAppend, "dataset", "acme", "repo", "refs/heads/main")
+	request.Attrs = map[string]any{"ref_change": "fast_forward"}
+
+	decision := pol.Decide(request, []Rule{grant}, time.Now(), false)
+	if decision.Effect != EffectAllow || decision.GrantID != "grant" {
+		t.Fatalf("multi-value ref-change grant decision = %+v, want grant allow", decision)
+	}
+}
+
 func TestReceivePackDiscoveryDecision(t *testing.T) {
 	pol := mustParse(t, `{
 		"rules": [
@@ -163,7 +287,7 @@ func TestReceivePackDiscoveryDecision(t *testing.T) {
 		]
 	}`)
 	req := repoReq("agent", OpGitPushAppend, "dataset", "acme", "repo", "")
-	if got := pol.DecideReceivePackDiscovery(req, time.Now()); got.Effect != EffectAllow {
+	if got := pol.DecideReceivePackDiscovery(req, nil, time.Now()); got.Effect != EffectAllow {
 		t.Fatalf("discovery with ref-scoped deny and allow = %+v, want allow", got)
 	}
 
@@ -174,8 +298,21 @@ func TestReceivePackDiscoveryDecision(t *testing.T) {
 		"operations":["git.push.append"],
 		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}]
 	}]}`)
-	if got := broadDeny.DecideReceivePackDiscovery(req, time.Now()); got.Effect != EffectDeny {
+	if got := broadDeny.DecideReceivePackDiscovery(req, nil, time.Now()); got.Effect != EffectDeny {
 		t.Fatalf("broad deny discovery = %+v, want deny", got)
+	}
+
+	empty := mustParse(t, `{"rules":[]}`)
+	grant := GeneratedGrantRule("grant", "agent", OpGitPushAppend, Target{
+		Kind: KindRepo, Type: TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"},
+	}, time.Now().Add(time.Minute), 1)
+	maxBytes := int64(10)
+	grant.Attrs = map[string]AttrConstraint{
+		"max_bytes":  {Number: &maxBytes},
+		"ref_change": {Values: []string{"fast_forward"}},
+	}
+	if got := empty.DecideReceivePackDiscovery(req, []Rule{grant}, time.Now()); got.Effect != EffectAllow || got.Reason != "grant_allowed" {
+		t.Fatalf("discovery with constrained active grant = %+v, want grant allow", got)
 	}
 }
 
@@ -316,6 +453,22 @@ func TestGeneratedGrantAllowsOnlyExactClientAndDenyStillWins(t *testing.T) {
 	}
 }
 
+func TestGeneratedGrantPreservesNumericCeiling(t *testing.T) {
+	pol := mustParse(t, `{"rules":[]}`)
+	request := repoReq("agent", OpRepoContentsRead, "dataset", "acme", "repo", "")
+	request.Attrs = map[string]any{"max_bytes": int64(5)}
+	grant := GeneratedGrantRule("grant_max", "agent", OpRepoContentsRead, request.Target, time.Now().Add(time.Minute), 1)
+	maximum := int64(10)
+	grant.Attrs = map[string]AttrConstraint{"max_bytes": {Number: &maximum}}
+	if got := pol.Decide(request, []Rule{grant}, time.Now(), false); got.Effect != EffectAllow || got.GrantID != "grant_max" {
+		t.Fatalf("bounded grant decision = %+v, want grant allow", got)
+	}
+	request.Attrs["max_bytes"] = int64(11)
+	if got := pol.Decide(request, []Rule{grant}, time.Now(), false); got.Effect != EffectNoMatch {
+		t.Fatalf("over-limit grant decision = %+v, want no_match", got)
+	}
+}
+
 func TestOverlappingRequestRules(t *testing.T) {
 	samePolicy := `{
 		"rules": [
@@ -342,7 +495,7 @@ func TestOverlappingRequestRules(t *testing.T) {
 	}
 
 	differentPolicy := strings.Replace(samePolicy, `"max_minutes": 15}`, `"max_minutes": 20}`, 1)
-	if _, err := Parse([]byte(differentPolicy)); err == nil || !strings.Contains(err.Error(), "overlaps") {
+	if _, err := Parse([]byte(differentPolicy)); err == nil || !strings.Contains(err.Error(), "overlap") {
 		t.Fatalf("Parse(differentPolicy) error = %v, want overlap", err)
 	}
 
@@ -397,7 +550,7 @@ func TestOverlappingRequestRules(t *testing.T) {
 	}
 
 	overlappingAttrs := strings.Replace(disjointAttrs, `"ref_change": "create"`, `"ref_change": ["create", "fast_forward"]`, 1)
-	if _, err := Parse([]byte(overlappingAttrs)); err == nil || !strings.Contains(err.Error(), "overlaps") {
+	if _, err := Parse([]byte(overlappingAttrs)); err == nil || !strings.Contains(err.Error(), "overlap") {
 		t.Fatalf("Parse(overlappingAttrs) error = %v, want overlap", err)
 	}
 }
@@ -948,38 +1101,17 @@ func TestNumberAttrsAcceptJSONNumberAndInt(t *testing.T) {
 	}
 }
 
-func TestSegmentGlobOverlapCases(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want bool
-	}{
-		{a: "repo", b: "repo", want: true},
-		{a: "repo", b: "other", want: false},
-		{a: "repo-*", b: "repo-one", want: true},
-		{a: "repo-one", b: "repo-*", want: true},
-		{a: "repo-*", b: "data-*", want: true},
-	}
-	for _, tc := range cases {
-		if got := segmentGlobsMayOverlap(tc.a, tc.b); got != tc.want {
-			t.Fatalf("segmentGlobsMayOverlap(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
-		}
-	}
-}
-
-func TestOptionalPrefixesMayOverlap(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want bool
-	}{
-		{a: "", b: "runs/", want: true},
-		{a: "runs/", b: "", want: true},
-		{a: "runs/", b: "runs/2026/", want: true},
-		{a: "runs/2026/", b: "runs/", want: true},
-		{a: "runs/2025/", b: "runs/2026/", want: false},
-	}
-	for _, tc := range cases {
-		if got := optionalPrefixesMayOverlap(tc.a, tc.b); got != tc.want {
-			t.Fatalf("optionalPrefixesMayOverlap(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+func TestRejectsMatcherBoundaryWhitespace(t *testing.T) {
+	for _, matcher := range []string{" docs/file", "docs/file "} {
+		body := fmt.Sprintf(`{"rules":[{
+			"id":"read-path",
+			"effect":"allow",
+			"clients":["agent"],
+			"operations":["repo.contents.read"],
+			"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo","paths":[%q]}]
+		}]}`, matcher)
+		if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), "malformed glob") {
+			t.Fatalf("Parse(path %q) error = %v, want malformed glob", matcher, err)
 		}
 	}
 }

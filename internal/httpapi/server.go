@@ -50,6 +50,7 @@ const maxLFSBatchBytes = 1 << 20
 
 var (
 	errInvalidLFSAction             = errors.New("LFS action is no longer valid")
+	errGrantStoreUnavailable        = errors.New("grant store unavailable")
 	errGrantNotificationStillQueued = errors.New("grant notification is still being created")
 	errGrantNotificationCanceled    = errors.New("grant notification was canceled")
 )
@@ -259,17 +260,27 @@ func (s *Server) serveAuthenticated(w http.ResponseWriter, r *http.Request, clie
 		s.handleReceivePackDiscovery(w, r, client, classified, target)
 		return
 	}
-	decision := s.decideForwardRepo(client, r, classified)
-	if decision.Effect != policy.EffectAllow {
-		consumeGrantUse := consumeForwardGrantUse(r, classified)
-		if s.handleForwardWithActiveGrant(w, r, client, classified, target, decision, consumeGrantUse) {
-			return
-		}
-		writePlain(w, http.StatusForbidden, "hf-broker: "+decision.Reason+"\n")
-		s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, decision.Reason, 0, decision)
+	decision, err := s.decideForwardRepo(client, r, classified)
+	if err != nil {
+		s.writeGrantStoreError(w, client, string(classified.operation), target)
 		return
 	}
+	if s.forwardAllowedDecision(w, r, client, classified, target, decision) {
+		return
+	}
+	writePlain(w, http.StatusForbidden, "hf-broker: "+decision.Reason+"\n")
+	s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, decision.Reason, 0, decision)
+}
+
+func (s *Server) forwardAllowedDecision(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target string, decision policy.Decision) bool {
+	if decision.Effect != policy.EffectAllow {
+		return false
+	}
+	if decision.Reason == "grant_allowed" {
+		return s.handleForwardWithActiveGrant(w, r, client, classified, target, decision, consumeForwardGrantUse(r, classified))
+	}
 	s.handleForward(w, r, client, classified, target, decision)
+	return true
 }
 
 func receivePackDiscoveryRequest(r *http.Request, classified classifiedRequest) bool {
@@ -308,19 +319,13 @@ func gitServiceDiscoveryRequest(r *http.Request, classified classifiedRequest, o
 }
 
 func (s *Server) handleReceivePackDiscovery(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target string) {
-	decision := s.decideReceivePackDiscovery(client, classified.route)
+	decision, err := s.decideReceivePackDiscovery(client, classified.route)
+	if err != nil {
+		s.writeGrantStoreError(w, client, string(classified.operation), target)
+		return
+	}
 	if receivePackDiscoveryPermitted(decision) {
 		s.handleForward(w, r, client, classified, target, decision)
-		return
-	}
-	matched, err := s.receivePackDiscoveryActiveGrant(client, target)
-	if err != nil {
-		writePlain(w, http.StatusInternalServerError, "hf-broker: could not inspect grants\n")
-		s.record(client, string(classified.operation), target, audit.DecisionRefused, "could not inspect grants", 0)
-		return
-	}
-	if matched && !policyDenyRefusesGrant(decision) {
-		s.forwardWithMatchedGrant(w, r, client, classified, target)
 		return
 	}
 	writePlain(w, http.StatusForbidden, "hf-broker: "+decision.Reason+"\n")
@@ -331,55 +336,29 @@ func receivePackDiscoveryPermitted(decision policy.Decision) bool {
 	return decision.Effect == policy.EffectAllow
 }
 
-func (s *Server) receivePackDiscoveryActiveGrant(client, target string) (bool, error) {
-	grantsForClient, err := s.grants.ListForClient(client)
-	if err != nil {
-		return false, err
-	}
-	for _, grant := range grantsForClient {
-		if receivePackDiscoveryGrantMatches(grant, target) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func receivePackDiscoveryGrantMatches(grant grants.Grant, target string) bool {
-	return grant.Status == grants.StatusActive &&
-		runtimeWindowGrant(grant) &&
-		grant.Target == target &&
-		receivePackDiscoveryGrantOperation(grant.Operation) &&
-		grantUsesRemaining(grant) > 0
-}
-
-func receivePackDiscoveryGrantOperation(operation string) bool {
-	for _, allowed := range receivePackDiscoveryOperations() {
-		if operation == string(allowed) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Server) decideReceivePackDiscovery(client string, rt route) policy.Decision {
+func (s *Server) decideReceivePackDiscovery(client string, rt route) (policy.Decision, error) {
 	target := routeTarget(rt, nil)
 	now := time.Now().UTC()
+	activeGrants, err := s.activeGrantRules(client)
+	if err != nil {
+		return policy.Decision{}, err
+	}
 	var fallback policy.Decision
 	for _, operation := range receivePackDiscoveryOperations() {
 		decision := s.policy.DecideReceivePackDiscovery(policy.Request{
 			Client:    client,
 			Operation: operation,
 			Target:    target,
-		}, now)
+		}, activeGrants, now)
 		if receivePackDiscoveryPermitted(decision) {
-			return decision
+			return decision, nil
 		}
 		fallback = receivePackDiscoveryFallback(fallback, decision)
 	}
 	if fallback.Reason == "" {
-		return policy.Decision{Effect: policy.EffectNoMatch, Reason: "no_matching_rule"}
+		return policy.Decision{Effect: policy.EffectNoMatch, Reason: "no_matching_rule"}, nil
 	}
-	return fallback
+	return fallback, nil
 }
 
 func receivePackDiscoveryFallback(current, next policy.Decision) policy.Decision {
@@ -407,22 +386,65 @@ func receivePackDiscoveryOperations() []policy.Operation {
 	}
 }
 
-func (s *Server) decideRepo(client string, operation policy.Operation, rt route, refs []string, attrs map[string]any, grantRequest bool) policy.Decision {
+func (s *Server) decideRepo(client string, operation policy.Operation, rt route, refs []string, attrs map[string]any, grantRequest bool) (policy.Decision, error) {
 	return s.decideRepoWithOptions(client, operation, rt, refs, attrs, grantRequest, false)
 }
 
-func (s *Server) decideForwardRepo(client string, r *http.Request, classified classifiedRequest) policy.Decision {
+func (s *Server) decideForwardRepo(client string, r *http.Request, classified classifiedRequest) (policy.Decision, error) {
 	return s.decideRepoWithOptions(client, classified.operation, classified.route, nil, classified.attrs, false, lfsUploadRequest(r, classified))
 }
 
-func (s *Server) decideRepoWithOptions(client string, operation policy.Operation, rt route, refs []string, attrs map[string]any, grantRequest bool, ignoreRefs bool) policy.Decision {
+func (s *Server) decideRepoWithOptions(client string, operation policy.Operation, rt route, refs []string, attrs map[string]any, grantRequest bool, ignoreRefs bool) (policy.Decision, error) {
+	activeGrants, err := s.activeGrantRules(client)
+	if err != nil {
+		return policy.Decision{}, err
+	}
 	return s.policy.Decide(policy.Request{
 		Client:         client,
 		Operation:      operation,
 		Target:         routeTarget(rt, refs),
 		Attrs:          attrs,
 		IgnoreRepoRefs: ignoreRefs,
-	}, nil, time.Now().UTC(), grantRequest)
+	}, activeGrants, time.Now().UTC(), grantRequest), nil
+}
+
+func (s *Server) activeGrantRules(client string) ([]policy.Rule, error) {
+	values, err := s.grants.ListForClient(client)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errGrantStoreUnavailable, err)
+	}
+	out := make([]policy.Rule, 0, len(values))
+	for _, grant := range values {
+		rule, ok := activeGrantRule(grant)
+		if ok {
+			out = append(out, rule)
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) writeGrantStoreError(w http.ResponseWriter, client, operation, target string) {
+	writePlain(w, http.StatusInternalServerError, "hf-broker: could not inspect grants\n")
+	s.record(client, operation, target, audit.DecisionRefused, "could not inspect grants", 0)
+}
+
+func activeGrantRule(grant grants.Grant) (policy.Rule, bool) {
+	if grant.Status != grants.StatusActive || !runtimeWindowGrant(grant) || grantUsesRemaining(grant) <= 0 {
+		return policy.Rule{}, false
+	}
+	target := targetFromGrant(grant)
+	if target.Kind == "" {
+		return policy.Rule{}, false
+	}
+	attrs, err := policy.AttrConstraintsFromValues(grant.Attrs)
+	if err != nil {
+		return policy.Rule{}, false
+	}
+	rule := policy.GeneratedGrantRule(
+		grant.ID, grant.Client, policy.Operation(grant.Operation), target, grant.ExpiresAt, grantUsesRemaining(grant),
+	)
+	rule.Attrs = attrs
+	return rule, true
 }
 
 func routeTarget(rt route, refs []string) policy.Target {
@@ -1678,7 +1700,7 @@ func isDecimal(value string) bool {
 }
 
 func (s *Server) handleReceivePack(w http.ResponseWriter, r *http.Request, client string, rt route, target string) {
-	if status, operation, reason, ok := s.receivePackMayRead(client, rt, target); !ok {
+	if status, operation, reason, ok := s.receivePackMayRead(client, rt); !ok {
 		writePlain(w, status, "hf-broker: "+reason+"\n")
 		s.record(client, operation, target, audit.DecisionRefused, reason, 0)
 		return
@@ -1687,7 +1709,12 @@ func (s *Server) handleReceivePack(w http.ResponseWriter, r *http.Request, clien
 	if !ok {
 		return
 	}
-	if operation, reason, ok := s.receivePackMayInspect(client, rt, target, req); !ok {
+	operation, reason, ok, inspectErr := s.receivePackMayInspect(client, rt, target, req)
+	if inspectErr != nil {
+		s.writeGrantStoreError(w, client, operation, target)
+		return
+	}
+	if !ok {
 		writePlain(w, http.StatusForbidden, "hf-broker: "+reason+"\n")
 		s.record(client, operation, target, audit.DecisionRefused, reason, 0)
 		return
@@ -1695,77 +1722,82 @@ func (s *Server) handleReceivePack(w http.ResponseWriter, r *http.Request, clien
 	repo := mirror.Repo{Kind: string(rt.repoType), Owner: rt.owner, Name: rt.name, UpstreamURL: s.upstreamRepoURL(rt)}
 	upstreamStatus, lockErr := s.withLockedPush(w, r, rt, repo, req, body, client, target)
 	if lockErr != nil {
-		if upstreamStatus == 0 {
-			writePlain(w, http.StatusForbidden, "hf-broker: push refused\n")
-		}
-		s.record(client, string(policy.OpGitPushAppend), target, audit.DecisionRefused, "push enforcement failed: "+lockErr.Error(), upstreamStatus)
+		s.handleReceivePackError(w, client, target, upstreamStatus, lockErr)
 	}
 }
 
-func (s *Server) receivePackMayRead(client string, rt route, target string) (int, string, string, bool) {
-	decision := s.decideReceivePackDiscovery(client, rt)
+func (s *Server) handleReceivePackError(w http.ResponseWriter, client, target string, upstreamStatus int, err error) {
+	if upstreamStatus == 0 {
+		status, message := receivePackErrorResponse(err)
+		writePlain(w, status, message)
+	}
+	s.record(client, string(policy.OpGitPushAppend), target, audit.DecisionRefused, "push enforcement failed: "+err.Error(), upstreamStatus)
+}
+
+func receivePackErrorResponse(err error) (int, string) {
+	if errors.Is(err, errGrantStoreUnavailable) {
+		return http.StatusInternalServerError, "hf-broker: could not inspect grants\n"
+	}
+	return http.StatusForbidden, "hf-broker: push refused\n"
+}
+
+func (s *Server) receivePackMayRead(client string, rt route) (int, string, string, bool) {
+	decision, err := s.decideReceivePackDiscovery(client, rt)
+	if err != nil {
+		return http.StatusInternalServerError, "git.push", "could not inspect grants", false
+	}
 	if receivePackDiscoveryPermitted(decision) {
 		return 0, "", "", true
-	}
-	if !policyDenyRefusesGrant(decision) {
-		matched, err := s.receivePackDiscoveryActiveGrant(client, target)
-		if err != nil {
-			return http.StatusInternalServerError, "git.push", "could not inspect grants", false
-		}
-		if matched {
-			return 0, "", "", true
-		}
 	}
 	return http.StatusForbidden, "git.push", pushFailureReason(decision), false
 }
 
-func (s *Server) receivePackMayInspect(client string, rt route, target string, req gitproxy.ReceivePackRequest) (string, string, bool) {
+func (s *Server) receivePackMayInspect(client string, rt route, target string, req gitproxy.ReceivePackRequest) (string, string, bool, error) {
 	packSize := int64(len(req.Pack))
 	for _, command := range req.Commands {
-		if operation, reason, ok := s.commandMayInspect(client, rt, target, command, packSize); !ok {
-			return operation, reason, false
+		operation, reason, ok, err := s.commandMayInspect(client, rt, target, command, packSize)
+		if err != nil || !ok {
+			return operation, reason, false, err
 		}
 	}
-	return "", "", true
+	return "", "", true, nil
 }
 
-func (s *Server) commandMayInspect(client string, rt route, target string, command gitproxy.Command, packSize int64) (string, string, bool) {
+func (s *Server) commandMayInspect(client string, rt route, target string, command gitproxy.Command, packSize int64) (string, string, bool, error) {
 	candidates := preflightPushCandidates(command)
 	if len(candidates) == 0 {
-		return "", "", true
+		return "", "", true, nil
 	}
 	operation := preflightAuditOperation(candidates)
 	reason := "no matching policy rule"
 	for _, candidate := range candidates {
-		ok, candidateReason := s.pushCandidateMayInspect(client, rt, target, command.Ref, candidate, packSize)
+		ok, candidateReason, err := s.pushCandidateMayInspect(client, rt, target, command.Ref, candidate, packSize)
+		if err != nil {
+			return operation, "could not inspect grants", false, err
+		}
 		if ok {
-			return "", "", true
+			return "", "", true, nil
 		}
 		if candidateReason != "" {
 			reason = candidateReason
 		}
 	}
-	return operation, reason, false
+	return operation, reason, false, nil
 }
 
-func (s *Server) pushCandidateMayInspect(client string, rt route, target, ref string, candidate pushPolicyCandidate, packSize int64) (bool, string) {
+func (s *Server) pushCandidateMayInspect(client string, rt route, target, ref string, candidate pushPolicyCandidate, packSize int64) (bool, string, error) {
 	attrs := pushAttrsForChange(candidate.refChange, packSize)
-	decision := s.decideRepo(client, candidate.operation, rt, []string{ref}, attrs, false)
+	decision, err := s.decideRepo(client, candidate.operation, rt, []string{ref}, attrs, false)
+	if err != nil {
+		return false, "could not inspect grants", err
+	}
 	if policyDenyRefusesGrant(decision) {
-		return false, pushFailureReason(decision)
+		return false, pushFailureReason(decision), nil
 	}
 	if decision.Effect == policy.EffectAllow || decision.Reason == "approval_required" {
-		return true, ""
+		return true, "", nil
 	}
-	if s.activeGrantExists(client, candidate.operation, target, ref, attrs) {
-		return true, ""
-	}
-	return false, pushFailureReason(decision)
-}
-
-func (s *Server) activeGrantExists(client string, operation policy.Operation, target, ref string, attrs map[string]any) bool {
-	_, matched, err := s.matchActiveGrant(client, operation, target, ref, attrs)
-	return err == nil && matched
+	return false, pushFailureReason(decision), nil
 }
 
 func preflightPushCandidates(command gitproxy.Command) []pushPolicyCandidate {
@@ -1916,7 +1948,7 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 	used := map[string]grantUse{}
 	classes, failures, err := gitproxy.ClassifyPush(r.Context(), req, mir)
 	if err == nil && len(failures) == 0 {
-		failures = s.refusePolicyDeniedPush(classes, client, target, int64(len(req.Pack)), used)
+		failures, err = s.refusePolicyDeniedPush(classes, client, target, int64(len(req.Pack)), used)
 	}
 	if len(failures) > 0 {
 		w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
@@ -1931,34 +1963,49 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 	return false, grantUses(used), classes, nil
 }
 
-func (s *Server) refusePolicyDeniedPush(classes []gitproxy.ClassifiedCommand, client, target string, packSize int64, used map[string]grantUse) []gitproxy.RefFailure {
+func (s *Server) refusePolicyDeniedPush(classes []gitproxy.ClassifiedCommand, client, target string, packSize int64, used map[string]grantUse) ([]gitproxy.RefFailure, error) {
 	rt, ok := parseGrantTarget(target)
 	if !ok {
-		return refFailuresForClasses(classes, "invalid target")
+		return refFailuresForClasses(classes, "invalid target"), nil
 	}
 	var failures []gitproxy.RefFailure
 	for _, class := range classes {
-		if failure, refused := s.refusalForClassifiedPush(class, client, rt, target, packSize, used); refused {
+		failure, refused, err := s.refusalForClassifiedPush(class, client, rt, target, packSize, used)
+		if err != nil {
+			return nil, err
+		}
+		if refused {
 			failures = append(failures, failure)
 		}
 	}
-	return failures
+	return failures, nil
 }
 
-func (s *Server) refusalForClassifiedPush(class gitproxy.ClassifiedCommand, client string, rt route, target string, packSize int64, used map[string]grantUse) (gitproxy.RefFailure, bool) {
+func (s *Server) refusalForClassifiedPush(class gitproxy.ClassifiedCommand, client string, rt route, target string, packSize int64, used map[string]grantUse) (gitproxy.RefFailure, bool, error) {
 	operation := operationForRefUpdate(class.Kind)
 	attrs := pushAttrs(class, packSize)
-	decision := s.decideRepo(client, operation, rt, []string{class.Command.Ref}, attrs, false)
-	if decision.Effect == policy.EffectAllow {
-		return gitproxy.RefFailure{}, false
+	decision, err := s.decideRepo(client, operation, rt, []string{class.Command.Ref}, attrs, false)
+	if err != nil {
+		return gitproxy.RefFailure{}, false, err
+	}
+	if decision.Effect == policy.EffectAllow && decision.Reason != "grant_allowed" {
+		return gitproxy.RefFailure{}, false, nil
 	}
 	if policyDenyRefusesGrant(decision) {
-		return refFailureForDecision(class.Command.Ref, decision), true
+		return refFailureForDecision(class.Command.Ref, decision), true, nil
 	}
-	if s.useActiveGrant(client, operation, target, class.Command.Ref, attrs, used) {
-		return gitproxy.RefFailure{}, false
+	matched, err := s.useGrantAllowedDecision(decision, client, operation, target, class.Command.Ref, attrs, used)
+	if err != nil || matched {
+		return gitproxy.RefFailure{}, false, err
 	}
-	return refFailureForDecision(class.Command.Ref, decision), true
+	return refFailureForDecision(class.Command.Ref, decision), true, nil
+}
+
+func (s *Server) useGrantAllowedDecision(decision policy.Decision, client string, operation policy.Operation, target, ref string, attrs map[string]any, used map[string]grantUse) (bool, error) {
+	if decision.Reason != "grant_allowed" {
+		return false, nil
+	}
+	return s.useActiveGrant(client, operation, target, ref, attrs, used)
 }
 
 func pushAttrs(class gitproxy.ClassifiedCommand, packSize int64) map[string]any {
@@ -2028,13 +2075,16 @@ func policyDenyRefusesGrant(decision policy.Decision) bool {
 	return decision.Effect == policy.EffectDeny && decision.Reason == "policy_denied"
 }
 
-func (s *Server) useActiveGrant(client string, operation policy.Operation, target, ref string, attrs map[string]any, used map[string]grantUse) bool {
+func (s *Server) useActiveGrant(client string, operation policy.Operation, target, ref string, attrs map[string]any, used map[string]grantUse) (bool, error) {
 	grant, matched, err := s.matchActiveGrant(client, operation, target, ref, attrs)
-	if err != nil || !matched {
-		return false
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", errGrantStoreUnavailable, err)
+	}
+	if !matched {
+		return false, nil
 	}
 	used[grant.ID] = grantUse{grant: grant, ref: ref}
-	return true
+	return true, nil
 }
 
 func (s *Server) matchActiveGrant(client string, operation policy.Operation, target, ref string, attrs map[string]any) (grants.Grant, bool, error) {
@@ -2230,22 +2280,30 @@ func grantStatusUpdateText(update grants.StatusUpdate) string {
 }
 
 func (s *Server) updateGrantUseMessage(grant grants.Grant) {
-	if grant.Notifier == nil {
-		return
-	}
-	status := grantUseStatus(grant)
-	if err := s.updateGrantMessage(context.Background(), grant, status); err == nil {
-		_ = s.grants.MarkNotifierStatus(grant.ID, grantMessageStatusKey(grant))
-	}
+	s.deliverGrantStatusUpdate(context.Background(), grant.ID)
 }
 
 func (s *Server) updateRetainedGrantReservationMessage(grant grants.Grant) {
 	current, err := s.grants.RetainUse(grant.ID)
-	if err != nil || current.Notifier == nil {
+	if err != nil {
 		return
 	}
-	if err := s.updateGrantMessage(context.Background(), current, retainedGrantReservationStatus(current)); err == nil {
-		_ = s.grants.MarkNotifierStatus(current.ID, (grants.StatusUpdate{Grant: current, Status: grants.NotifierStatusReserved}).NotifierStatusKey())
+	s.deliverGrantStatusUpdate(context.Background(), current.ID)
+}
+
+func (s *Server) deliverGrantStatusUpdate(ctx context.Context, id string) {
+	updates, err := s.grants.StatusUpdatesDue()
+	if err != nil {
+		return
+	}
+	for _, update := range updates {
+		if update.Grant.ID != id {
+			continue
+		}
+		if err := s.updateGrantMessage(ctx, update.Grant, grantStatusUpdateText(update)); err == nil {
+			_ = s.grants.MarkNotifierStatus(id, update.NotifierStatusKey())
+		}
+		return
 	}
 }
 
@@ -2324,16 +2382,6 @@ func retainedGrantReservationStatus(grant grants.Grant) string {
 		return "⚠️ Push result is ambiguous. Access is closed until an operator reviews it."
 	}
 	return fmt.Sprintf("⚠️ Push result is ambiguous. %d of %d uses are held; %d uses remain.", heldUses, maxUses, remaining)
-}
-
-func grantMessageStatusKey(grant grants.Grant) string {
-	if grant.Status == grants.StatusConsumed {
-		return string(grants.StatusConsumed)
-	}
-	if grant.Status == grants.StatusExpired {
-		return string(grants.NotifierStatusUsedExpired)
-	}
-	return string(grants.NotifierStatusUsed)
 }
 
 func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {

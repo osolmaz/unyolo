@@ -237,6 +237,14 @@ Telegram transport and callback handling come from
 `github.com/osolmaz/brokerkit`; hf-broker keeps the Hugging Face-specific
 approval message text and request classification.
 
+Policy decisions also run through `github.com/osolmaz/brokerkit/policy`.
+hf-broker keeps the Hugging Face rules-file parser, provider vocabulary, and
+request classifiers; brokerkit owns matching, precedence, ambiguity checks,
+grant bounds, and active-grant overlays. Brokerkit also owns durable grant
+state, notification claims and references, expiry, reservation recovery, and
+use accounting. hf-broker only maps HF targets and attrs and renders HF-specific
+operator text.
+
 ```json
 {
   "rules": [

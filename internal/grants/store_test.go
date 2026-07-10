@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -414,10 +415,10 @@ func TestExpiredReservedUseKeepsUsedStatusUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StatusUpdatesDue() error = %v", err)
 	}
-	if len(updates) != 1 || updates[0].Status != StatusConsumed || updates[0].NotifierStatusKey() != string(NotifierStatusUsedExpired) {
+	if len(updates) != 1 || updates[0].Status != StatusConsumed || !strings.HasPrefix(updates[0].NotifierStatusKey(), string(NotifierStatusUsedExpired)+":") {
 		t.Fatalf("updates = %+v, want expired used status update", updates)
 	}
-	if err := store.MarkNotifierStatus(grant.ID, string(NotifierStatusUsedExpired)); err != nil {
+	if err := store.MarkNotifierStatus(grant.ID, updates[0].NotifierStatusKey()); err != nil {
 		t.Fatalf("MarkNotifierStatus(used:expired) error = %v", err)
 	}
 	updates, err = store.StatusUpdatesDue()
@@ -459,7 +460,7 @@ func TestPartialUsedGrantExpirationUpdatesClosedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StatusUpdatesDue() error = %v", err)
 	}
-	if len(updates) != 1 || updates[0].Status != StatusConsumed || updates[0].NotifierStatusKey() != string(NotifierStatusUsedExpired) {
+	if len(updates) != 1 || updates[0].Status != StatusConsumed || !strings.HasPrefix(updates[0].NotifierStatusKey(), string(NotifierStatusUsedExpired)+":") {
 		t.Fatalf("updates = %+v, want expired used status update", updates)
 	}
 }
@@ -533,7 +534,10 @@ func TestGrantMultiUseAndNotifierMetadata(t *testing.T) {
 	if err := store.MarkNotifierStatus(grant.ID, "sent"); err != nil {
 		t.Fatalf("MarkNotifierStatus() error = %v", err)
 	}
-	if _, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1"); err != nil {
+	if again.DecisionToken == "" {
+		t.Fatal("idempotent pending retry did not return a fresh decision token")
+	}
+	if _, err := store.Approve(grant.ID, again.DecisionToken, "telegram:1"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	used, err := store.RecordUse(grant.ID)
@@ -635,33 +639,6 @@ func TestGrantStoreUsesBrokerkitAtomicJSONStorage(t *testing.T) {
 	}
 }
 
-func TestLegacyUsedGrantLoadsConsumed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "grants.json")
-	raw := `{"grants":[{
-		"id":"grant-id",
-		"decision_token":"decision-token",
-		"client":"agent",
-		"operation":"git.push.force",
-		"target":"dataset/acme/repo",
-		"ref":"refs/heads/main",
-		"reason":"legacy use",
-		"requested_minutes":5,
-		"status":"active",
-		"created_at":"2026-07-06T01:02:03Z",
-		"pending_expires_at":"2026-07-06T01:12:03Z",
-		"expires_at":"2099-01-01T00:00:00Z",
-		"used_at":"2026-07-06T01:03:03Z"
-	}]}`
-	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	store := New(path, Options{})
-
-	if grant, ok, err := store.MatchActive("agent", "git.push.force", "dataset/acme/repo", "refs/heads/main"); err != nil || ok {
-		t.Fatalf("legacy used MatchActive() = %+v ok=%v err=%v, want no active grant", grant, ok, err)
-	}
-}
-
 func TestConsumedGrantStatusUpdateDue(t *testing.T) {
 	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
@@ -739,8 +716,8 @@ func TestRetainedReservationStatusUpdateDue(t *testing.T) {
 		t.Fatalf("updates = %+v, want retained reservation update", updates)
 	}
 	activeRetainedStatus := updates[0].NotifierStatusKey()
-	if activeRetainedStatus != "reserved:active" {
-		t.Fatalf("active retained status key = %q, want reserved:active", activeRetainedStatus)
+	if !strings.HasPrefix(activeRetainedStatus, "reserved:active:") {
+		t.Fatalf("active retained status key = %q, want versioned reserved:active key", activeRetainedStatus)
 	}
 	if err := store.MarkNotifierStatus(grant.ID, activeRetainedStatus); err != nil {
 		t.Fatalf("MarkNotifierStatus(reserved) error = %v", err)
@@ -755,7 +732,7 @@ func TestRetainedReservationStatusUpdateDue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expired reserved StatusUpdatesDue() error = %v", err)
 	}
-	if len(updates) != 1 || updates[0].Grant.ID != grant.ID || updates[0].Status != NotifierStatusReserved || updates[0].NotifierStatusKey() != "reserved:expired" {
+	if len(updates) != 1 || updates[0].Grant.ID != grant.ID || updates[0].Status != NotifierStatusReserved || !strings.HasPrefix(updates[0].NotifierStatusKey(), "reserved:expired:") {
 		t.Fatalf("expired reserved StatusUpdatesDue() = %+v, want expired retained reservation update", updates)
 	}
 	if err := store.MarkNotifierStatus(grant.ID, updates[0].NotifierStatusKey()); err != nil {
@@ -769,7 +746,7 @@ func TestRetainedReservationStatusUpdateDue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(%q) error = %v", grant.ID, err)
 	}
-	if expired.Status != StatusExpired || expired.ReservedCount != 1 || expired.NotifierStatus != "reserved:expired" {
+	if expired.Status != StatusExpired || expired.ReservedCount != 1 || !strings.HasPrefix(expired.NotifierStatus, "reserved:expired:") {
 		t.Fatalf("expired reserved grant = %+v, want expired held reservation with reserved notifier status", expired)
 	}
 }
@@ -857,7 +834,7 @@ func TestStaleReservationStatusUpdateDue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stale StatusUpdatesDue() error = %v", err)
 	}
-	if len(updates) != 1 || updates[0].Status != NotifierStatusReserved || updates[0].NotifierStatusKey() != "reserved:active" {
+	if len(updates) != 1 || updates[0].Status != NotifierStatusReserved || !strings.HasPrefix(updates[0].NotifierStatusKey(), "reserved:active:") {
 		t.Fatalf("stale StatusUpdatesDue() = %+v, want retained reservation update", updates)
 	}
 	current, err := store.Get(grant.ID)

@@ -60,7 +60,9 @@ brokerkit.
      ordering to brokerkit.
    - Keep HF operation registry, repo/bucket targets, attrs, and request
      classification in hf-broker.
-   - Delete `internal/policy` once hf-broker uses the brokerkit policy core.
+   - Delete the generic matcher, precedence, ambiguity, and grant-overlay
+     implementation from `internal/policy`; keep only the HF parser, provider
+     registry, typed classifiers, and brokerkit adapter.
 
 4. Extract and adopt `brokerkit/audit` and `brokerkit/notify`.
    - Move secret-safe audit field helpers, notifier interfaces, approval
@@ -86,22 +88,36 @@ adapter that preserves the existing server API while delegating bearer/basic
 shared-secret authentication to brokerkit with hf-broker's 32-byte secret
 minimum.
 
-`brokerkit/store` is now adopted for the local grant store's durable JSON file.
-hf-broker still owns the HF-specific grant model, notification leases, retained
-reservations, execution/window modes, and API response shape, but JSON reads and
-atomic writes go through the shared brokerkit storage helper.
+`brokerkit/grants` is now adopted for the durable grant lifecycle. Pending and
+active state, expiry, use budgets, reservation recovery, idempotency, decision
+token verification, notification claims, editable message references, and
+delivery revisions all run through brokerkit. `internal/grants` is an HF-only
+field adapter for target, attr, mode, and API response conversion; it contains
+no second state machine.
 
 `brokerkit/notify/telegram` is now adopted for Telegram send, callback polling,
-configured-chat filtering, status editing, and tracked pending/active expiry.
-`internal/notify` keeps only HF-specific approval message text and the small
-adapter that maps brokerkit callback decisions to hf-broker's grant store.
+configured-chat filtering, and status editing. Durable pending, active, used,
+retained, and expired message updates come from `brokerkit/grants` and survive
+process restart. `internal/notify` keeps only HF-specific approval text and
+decision mapping.
 
-The remaining local `policy`, `grants`, `audit`, and Git proxy
-packages still contain HF-specific behavior or richer local state than the
-current brokerkit packages. Move them only when the brokerkit API can preserve
-HF repo/bucket targets, numeric attrs, grant modes, reservation recovery,
-Git push-options handling, pack preservation, and HF-specific audit fields
-without introducing a parallel runtime.
+`brokerkit/policy` is now adopted. `internal/policy` owns the HF rules-file
+parser and validation, operation/target/attr registry, typed request
+classification, and the adapters for normal requests, ref-less support
+traffic, and receive-pack discovery. All matching, request-rule ambiguity,
+deny/allow/request precedence, grant bounds, and active-grant overlays run
+through brokerkit. The old generic matcher and decision engine have been
+removed.
+
+Active grants enter the same brokerkit policy decision path as static rules.
+HF code only resolves the returned grant id to reserve, commit, release, or
+retain a use around provider-specific Git and Hub execution. Deny precedence is
+therefore enforced once by the shared policy engine.
+
+The remaining local audit and Git proxy packages contain HF-specific event
+fields, commits-only mirrors, ancestry checks, push-option handling, pack
+preservation, LFS/Xet behavior, and Hub forwarding. They are not generic grant
+or notification runtimes.
 
 ## Brokerkit Cutover Test Gates
 

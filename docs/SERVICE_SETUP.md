@@ -14,6 +14,14 @@ hf-broker = service account that can read the real Hugging Face token
 The agent should not read or store the real Hugging Face token. It should
 only know a broker client secret.
 
+## Grant State Cutover
+
+The brokerkit grant cutover intentionally replaces the old hf-broker grant
+file format. Before the first start of this version, stop hf-broker and archive
+or remove `<state-dir>/grants/grants.json`. Existing grants are short-lived and
+must be requested again; raw approval tokens from the old store are not
+migrated.
+
 ## Install the Binary
 
 Install the latest release globally:
