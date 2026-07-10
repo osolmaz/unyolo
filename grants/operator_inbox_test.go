@@ -181,6 +181,7 @@ func TestQueryFiltersStatusGroupsAndValidation(t *testing.T) { //nolint:cyclop,g
 		{grantsQueryAlias{StatusGroup: StatusGroupActive}, active.ID},
 		{grantsQueryAlias{StatusGroup: StatusGroupHistory}, historyResult.Grant.ID},
 		{grantsQueryAlias{Client: "bob", Operation: "git.push.fast_forward", Target: &pending.Grant.Target}, pending.Grant.ID},
+		{grantsQueryAlias{Target: &policy.Target{Kind: pending.Grant.Target.Kind}}, pending.Grant.ID},
 	}
 	for _, test := range queries {
 		page, err := store.QueryGrants(Query(test.query))
@@ -209,6 +210,20 @@ func TestQueryFiltersStatusGroupsAndValidation(t *testing.T) { //nolint:cyclop,g
 	}
 	if _, err := store.QueryGrants(Query{Cursor: strings.Repeat("x", 513)}); !errors.Is(err, ErrInvalidGrantCursor) {
 		t.Fatalf("long cursor error = %v", err)
+	}
+}
+
+func TestTargetFilterMatchesOnlySuppliedFields(t *testing.T) {
+	target := policy.Target{Kind: "repository", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"demo"}}}
+	if !targetMatchesFilter(target, policy.Target{Kind: "repository"}) {
+		t.Fatal("kind-only filter did not match")
+	}
+	if !targetMatchesFilter(target, policy.Target{Kind: "repository", Fields: map[string][]string{"owner": {"osolmaz"}}}) {
+		t.Fatal("partial field filter did not match")
+	}
+	if targetMatchesFilter(target, policy.Target{Kind: "repository", Fields: map[string][]string{"owner": {"other"}}}) ||
+		targetMatchesFilter(target, policy.Target{Kind: "model"}) {
+		t.Fatal("target filter accepted a mismatch")
 	}
 }
 

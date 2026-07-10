@@ -153,6 +153,8 @@ func TestOperatorAPIRouteAndErrorContract(t *testing.T) { //nolint:cyclop // Rou
 		{http.MethodGet, "/api/grants/events?cursor=bad", "", "", 400, "invalid_cursor"},
 		{http.MethodPost, "/api/grants/" + grant.ID + "/deny", "", `{}`, 415, "unsupported_media_type"},
 		{http.MethodPost, "/api/grants/" + grant.ID + "/deny", "application/json", `{"expected_revision":0}`, 400, "invalid_command"},
+		{http.MethodPost, "/api/grants/" + grant.ID + "/deny", "application/json", `{"expected_revision":1,"duration_seconds":60}`, 400, "invalid_command"},
+		{http.MethodPost, "/api/grants/" + grant.ID + "/cancel", "application/json", `{"expected_revision":1,"max_uses":1}`, 400, "invalid_command"},
 		{http.MethodPost, "/api/grants/" + grant.ID + "/unknown", "application/json", `{"expected_revision":1}`, 404, "not_found"},
 		{http.MethodGet, "/api/grants/" + grant.ID + "/deny", "", "", 405, "method_not_allowed"},
 		{http.MethodPost, "/api/grants", "application/json", `{}`, 405, "method_not_allowed"},

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -154,7 +153,19 @@ func grantMatchesQuery(grant Grant, query Query) bool {
 func grantMatchesIdentity(grant Grant, query Query) bool {
 	return (query.Client == "" || grant.Client == query.Client) &&
 		(query.Operation == "" || grant.Operation == query.Operation) &&
-		(query.Target == nil || reflect.DeepEqual(grant.Target, *query.Target))
+		(query.Target == nil || targetMatchesFilter(grant.Target, *query.Target))
+}
+
+func targetMatchesFilter(target policy.Target, filter policy.Target) bool {
+	if target.Kind != filter.Kind {
+		return false
+	}
+	for key, values := range filter.Fields {
+		if !slices.Equal(target.Fields[key], values) {
+			return false
+		}
+	}
+	return true
 }
 
 func grantMatchesStatus(status Status, group StatusGroup) bool {

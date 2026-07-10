@@ -200,14 +200,12 @@ func (h *handler) readDecisionBody(writer http.ResponseWriter, request *http.Req
 }
 
 func (h *handler) executeDecision(action string, command grants.DecisionCommand, body decisionBody) (grants.Grant, error) {
+	if actionRejectsNarrowing(action, body) {
+		return grants.Grant{}, grants.ErrInvalidCommand
+	}
 	switch action {
 	case "approve":
-		if body.DurationSeconds < 0 || body.DurationSeconds > math.MaxInt64/int64(time.Second) {
-			return grants.Grant{}, grants.ErrInvalidCommand
-		}
-		return h.inbox.Store().OperatorApprove(grants.ApproveCommand{
-			DecisionCommand: command, Duration: time.Duration(body.DurationSeconds) * time.Second, MaxUses: body.MaxUses,
-		})
+		return h.executeApproval(command, body)
 	case "deny":
 		return h.inbox.Store().OperatorDeny(command)
 	case "cancel":
@@ -216,6 +214,26 @@ func (h *handler) executeDecision(action string, command grants.DecisionCommand,
 		return h.inbox.Store().OperatorRevoke(command)
 	default:
 		return grants.Grant{}, errUnknownAction
+	}
+}
+
+func (h *handler) executeApproval(command grants.DecisionCommand, body decisionBody) (grants.Grant, error) {
+	if body.DurationSeconds < 0 || body.DurationSeconds > math.MaxInt64/int64(time.Second) {
+		return grants.Grant{}, grants.ErrInvalidCommand
+	}
+	return h.inbox.Store().OperatorApprove(grants.ApproveCommand{
+		DecisionCommand: command, Duration: time.Duration(body.DurationSeconds) * time.Second, MaxUses: body.MaxUses,
+	})
+}
+
+func actionRejectsNarrowing(action string, body decisionBody) bool {
+	switch action {
+	case "deny", "cancel", "revoke":
+		return body.DurationSeconds != 0 || body.MaxUses != 0
+	case "approve":
+		return false
+	default:
+		return false
 	}
 }
 
