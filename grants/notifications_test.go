@@ -154,6 +154,89 @@ func TestRetainNotificationClaimRejectsTerminalGrant(t *testing.T) {
 	if _, retained, err := store.RetainNotificationClaim(result.Grant.ID, claim.Grant.NotificationClaimedAt); err != nil || retained {
 		t.Fatalf("RetainNotificationClaim(terminal) retained=%v err=%v", retained, err)
 	}
+
+	legacy := requestTestGrant(t, store, "legacy-terminal-retain", 1)
+	legacyClaim := claimNotification(t, store, legacy.Grant.ID)
+	data, err := store.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, stored, err := findGrant(data.Grants, legacy.Grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored.Status = StatusDenied
+	stored.NotificationDeliveryUnresolved = true
+	data.Grants[index] = stored
+	if err := store.save(data); err != nil {
+		t.Fatal(err)
+	}
+	if _, retained, err := store.RetainNotificationClaim(legacy.Grant.ID, legacyClaim.Grant.NotificationClaimedAt); err != nil || retained {
+		t.Fatalf("RetainNotificationClaim(legacy terminal) retained=%v err=%v", retained, err)
+	}
+}
+
+func TestPendingExitClearsNotificationClaim(t *testing.T) {
+	transitions := []struct {
+		name       string
+		transition func(*testing.T, *Store, *time.Time, RequestResult, NotificationClaim) Grant
+	}{
+		{
+			name: "approve",
+			transition: func(t *testing.T, store *Store, _ *time.Time, result RequestResult, claim NotificationClaim) Grant {
+				grant, err := store.Approve(result.Grant.ID, claim.DecisionToken, "operator")
+				if err != nil {
+					t.Fatal(err)
+				}
+				return grant
+			},
+		},
+		{
+			name: "deny",
+			transition: func(t *testing.T, store *Store, _ *time.Time, result RequestResult, claim NotificationClaim) Grant {
+				grant, err := store.Deny(result.Grant.ID, claim.DecisionToken, "operator")
+				if err != nil {
+					t.Fatal(err)
+				}
+				return grant
+			},
+		},
+		{
+			name: "expiry during read",
+			transition: func(t *testing.T, store *Store, now *time.Time, result RequestResult, _ NotificationClaim) Grant {
+				*now = result.Grant.PendingExpiresAt
+				grant, err := store.Get(result.Grant.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return grant
+			},
+		},
+		{
+			name: "expiry during decision",
+			transition: func(t *testing.T, store *Store, now *time.Time, result RequestResult, claim NotificationClaim) Grant {
+				*now = result.Grant.PendingExpiresAt
+				grant, err := store.Approve(result.Grant.ID, claim.DecisionToken, "operator")
+				if !errors.Is(err, ErrNotPending) {
+					t.Fatalf("Approve(expired) error = %v, want ErrNotPending", err)
+				}
+				return grant
+			},
+		},
+	}
+
+	for _, transition := range transitions {
+		t.Run(transition.name, func(t *testing.T) {
+			now := time.Date(2026, 7, 10, 2, 45, 0, 0, time.UTC)
+			store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+			result := requestTestGrant(t, store, transition.name, 1)
+			claim := claimNotification(t, store, result.Grant.ID)
+			retainNotificationClaim(t, store, result.Grant.ID, claim.Grant.NotificationClaimedAt)
+
+			grant := transition.transition(t, store, &now, result, claim)
+			assertNotificationClaimCleared(t, grant)
+		})
+	}
 }
 
 func TestNotificationUpdateGuards(t *testing.T) {
@@ -259,6 +342,13 @@ func retainNotificationClaim(t *testing.T, store *Store, id string, claimedAt ti
 		t.Fatalf("RetainNotificationClaim() = %+v retained=%v err=%v", grant, retained, err)
 	}
 	return grant
+}
+
+func assertNotificationClaimCleared(t *testing.T, grant Grant) {
+	t.Helper()
+	if !grant.NotificationClaimedAt.IsZero() || !grant.NotificationClaimUntil.IsZero() || grant.NotificationDeliveryUnresolved {
+		t.Fatalf("notification claim remains on %s grant: %+v", grant.Status, grant)
+	}
 }
 
 func assertNotificationClaimUnavailable(t *testing.T, store *Store, id string) {

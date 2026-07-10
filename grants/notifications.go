@@ -62,9 +62,7 @@ func (s *Store) Cancel(id string) error {
 		}
 		grant.Status = StatusCanceled
 		grant.DecidedAt = s.opts.Now().UTC()
-		grant.NotificationClaimedAt = time.Time{}
-		grant.NotificationClaimUntil = time.Time{}
-		grant.NotificationDeliveryUnresolved = false
+		clearNotificationClaim(&grant)
 		data.Grants[index] = grant
 		return nil
 	})
@@ -88,9 +86,7 @@ func (s *Store) CancelIfNotificationClaimed(id string, claimedAt time.Time) (Gra
 		}
 		grant.Status = StatusCanceled
 		grant.DecidedAt = s.opts.Now().UTC()
-		grant.NotificationClaimedAt = time.Time{}
-		grant.NotificationClaimUntil = time.Time{}
-		grant.NotificationDeliveryUnresolved = false
+		clearNotificationClaim(&grant)
 		data.Grants[index] = grant
 		out = grant
 		canceled = true
@@ -203,15 +199,19 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 		}
 		grant.Notification = &ref
 		grant.NotificationStatus = string(StatusPending)
-		grant.NotificationClaimedAt = time.Time{}
-		grant.NotificationClaimUntil = time.Time{}
-		grant.NotificationDeliveryUnresolved = false
+		clearNotificationClaim(&grant)
 		data.Grants[index] = grant
 		out = grant
 		recorded = true
 		return nil
 	})
 	return out, recorded, err
+}
+
+func clearNotificationClaim(grant *Grant) {
+	grant.NotificationClaimedAt = time.Time{}
+	grant.NotificationClaimUntil = time.Time{}
+	grant.NotificationDeliveryUnresolved = false
 }
 
 // MarkNotificationStatus records successful delivery of one status update.
