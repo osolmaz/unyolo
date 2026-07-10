@@ -49,7 +49,7 @@ references, or delivery progress in memory.
 - Done: canonical binary installer runtime with checksum and platform tests.
 - Done: shared client setup, secret input, systemd option/rendering, and local
   doctor primitives.
-- In progress: shared privileged systemd installation for account creation,
+- Done: shared privileged systemd installation for account creation,
   managed files, ownership, atomic unit installation, and service activation.
 - Gate: race tests, coverage, vet, lint, Slophammer checks, mutation checks,
   review, and CI must pass before consumers pin the final API.

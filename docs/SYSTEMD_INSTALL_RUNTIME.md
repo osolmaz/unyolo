@@ -1,6 +1,6 @@
 # Shared systemd Installation Runtime
 
-Status: implementation in progress.
+Status: implemented.
 
 Brokerkit owns the privileged, provider-neutral host changes required to install
 a broker as a Linux systemd service. Consumers provide provider-specific file
