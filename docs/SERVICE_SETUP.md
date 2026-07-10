@@ -45,7 +45,8 @@ Then configure the broker service:
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --repo osolmaz/scraped-news \
-  --repo-type dataset
+  --repo-type dataset \
+  --client bob
 ```
 
 The setup command creates:
@@ -73,9 +74,10 @@ The broker client secret is stored in:
 /etc/hf-broker/secrets
 ```
 
-That file is also owned by `hf-broker:hf-broker` and mode `0600`. The setup
-command prints the generated client secret once so it can be given to the
-agent.
+That file is also owned by `hf-broker:hf-broker` and mode `0600`. Setup never
+prints the generated client secret. Use `hf-broker setup client` as an
+administrator to write the matching broker URL and client secret directly into
+the agent account's private configuration.
 
 ## Agent Setup
 

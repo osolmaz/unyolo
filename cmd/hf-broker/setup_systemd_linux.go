@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	bkservice "github.com/osolmaz/brokerkit/service"
 )
 
 const (
@@ -20,6 +22,7 @@ const (
 	scopeFileName   = "scope.json"
 	envFileName     = "env"
 	unitFileName    = "hf-broker.service"
+	maxHFTokenBytes = 64 * 1024
 )
 
 func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOptions) error {
@@ -27,6 +30,9 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 		return err
 	}
 	plan := systemdSetupPlan(opts)
+	if _, err := renderSystemdUnit(plan); err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
 	if opts.DryRun {
 		return printSystemdDryRun(stdout, plan)
 	}
@@ -103,10 +109,19 @@ func writeSystemdSetupFiles(plan systemdPlan) error {
 	if err != nil {
 		return err
 	}
-	if err := writeSystemdPayloads(plan); err != nil {
+	if err := createSystemdDirs(plan); err != nil {
 		return err
 	}
-	return chownSystemdFiles(plan, configOwnerUID(opts), uid, gid)
+	if err := chownSystemdDirs(plan, configOwnerUID(opts), uid, gid); err != nil {
+		return err
+	}
+	if err := writeSystemdConfigFiles(plan); err != nil {
+		return err
+	}
+	if err := chownSystemdConfigFiles(plan, configOwnerUID(opts), uid, gid); err != nil {
+		return err
+	}
+	return writeUnitFile(plan)
 }
 
 func configOwnerUID(opts setupSystemdOptions) int {
@@ -116,16 +131,12 @@ func configOwnerUID(opts setupSystemdOptions) int {
 	return 0
 }
 
-func writeSystemdPayloads(plan systemdPlan) error {
-	if err := createSystemdDirs(plan); err != nil {
-		return err
-	}
+func writeSystemdConfigFiles(plan systemdPlan) error {
 	writers := []func(systemdPlan) error{
 		writeTokenFile,
 		writeSecretsFile,
 		writeScopeFile,
 		writeEnvFile,
-		writeUnitFile,
 	}
 	for _, write := range writers {
 		if err := write(plan); err != nil {
@@ -170,17 +181,22 @@ func writeEnvFile(plan systemdPlan) error {
 }
 
 func writeUnitFile(plan systemdPlan) error {
-	return writeFile(plan.unitPath, []byte(renderSystemdUnit(plan)), 0o644)
+	body, err := renderSystemdUnit(plan)
+	if err != nil {
+		return err
+	}
+	return writeFile(plan.unitPath, []byte(body), 0o644)
 }
 
-func chownSystemdFiles(plan systemdPlan, configUID, serviceUID, serviceGID int) error {
+func chownSystemdDirs(plan systemdPlan, configUID, serviceUID, serviceGID int) error {
 	opts := plan.opts
 	if err := chownPath(opts.ConfigDir, configUID, serviceGID, "config dir"); err != nil {
 		return err
 	}
-	if err := chownPath(opts.StateDir, serviceUID, serviceGID, "state dir"); err != nil {
-		return err
-	}
+	return chownPath(opts.StateDir, serviceUID, serviceGID, "state dir")
+}
+
+func chownSystemdConfigFiles(plan systemdPlan, configUID, serviceUID, serviceGID int) error {
 	if err := chownPrivateFiles(plan, serviceUID, serviceGID); err != nil {
 		return err
 	}
@@ -249,9 +265,20 @@ func parseServiceIDs(userName, rawUID, groupName, rawGID string) (int, int, erro
 }
 
 func copySecretFile(source, dest string) error {
-	data, err := os.ReadFile(source) // #nosec G304 -- operator-supplied setup path.
+	file, err := os.Open(source) // #nosec G304 -- operator-supplied setup path.
 	if err != nil {
 		return fmt.Errorf("read --hf-token-file: %w", err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxHFTokenBytes+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return fmt.Errorf("read --hf-token-file: %w", readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close --hf-token-file: %w", closeErr)
+	}
+	if len(data) > maxHFTokenBytes {
+		return fmt.Errorf("--hf-token-file exceeds %d bytes", maxHFTokenBytes)
 	}
 	if len(data) == 0 {
 		return fmt.Errorf("--hf-token-file is empty")
@@ -307,31 +334,26 @@ func renderEnvFile(plan systemdPlan) string {
 		"HF_BROKER_PORT=" + strconv.Itoa(opts.Port) + "\n"
 }
 
-func renderSystemdUnit(plan systemdPlan) string {
+func renderSystemdUnit(plan systemdPlan) (string, error) {
 	opts := plan.opts
-	return `[Unit]
-Description=hf-broker Hugging Face credential broker
-After=network-online.target
-Wants=network-online.target
+	return bkservice.RenderSystemd(bkservice.SystemdUnit{
+		Description:     "hf-broker Hugging Face credential broker",
+		User:            opts.User,
+		Group:           opts.Group,
+		EnvironmentFile: plan.envPath,
+		ExecStart:       opts.BinaryPath,
+		StateDir:        opts.StateDir,
+		ConfigDir:       opts.ConfigDir,
+		HomeAccess:      bkservice.HomeAccessDeny,
+		PathValidation:  setupPathValidation(opts),
+	})
+}
 
-[Service]
-Type=simple
-User=` + opts.User + `
-Group=` + opts.Group + `
-EnvironmentFile=` + plan.envPath + `
-ExecStart=` + opts.BinaryPath + `
-Restart=on-failure
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=` + opts.StateDir + `
-ReadOnlyPaths=` + opts.ConfigDir + `
-
-[Install]
-WantedBy=multi-user.target
-`
+func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
+	if opts.DryRun || opts.AllowNonRoot {
+		return bkservice.PathValidationPreview
+	}
+	return bkservice.PathValidationStrict
 }
 
 func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
@@ -355,13 +377,11 @@ func printSystemdSummary(stdout io.Writer, opts setupSystemdOptions) {
 Broker URL:
   %s
 
-Broker client:
-  username: %s
-  password: %s
+Configure a client without exposing its secret:
+  sudo hf-broker setup client --client %s --url %s --secret-file %s --home-dir '/home/<user>'
+`, brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo), shellQuote(opts.ClientName), shellQuote(brokerBaseURL(opts.BindAddr, opts.Port)), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
+}
 
-Set an agent git remote with:
-  git remote set-url origin %s
-
-Configure the agent credential helper with the password above.
-`, brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo), opts.ClientName, opts.SharedSecret, brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo))
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
 func TestRunWithArgsVersion(t *testing.T) {
@@ -51,6 +53,26 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	}
 }
 
+func TestParseSetupSystemdReadsSharedSecretFromFileAndStdin(t *testing.T) {
+	secret := strings.Repeat("s", 32)
+	secretFile := filepath.Join(t.TempDir(), "shared-secret")
+	if err := os.WriteFile(secretFile, []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	base := []string{"--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/scraped-news", "--repo-type", "dataset"}
+	fromFile, err := parseSetupSystemdInput(ioDiscard{}, strings.NewReader(""), append(base, "--shared-secret-file", secretFile))
+	if err != nil || fromFile.SharedSecret != secret {
+		t.Fatalf("file secret = %q, err=%v", fromFile.SharedSecret, err)
+	}
+	fromStdin, err := parseSetupSystemdInput(ioDiscard{}, strings.NewReader(secret+"\n"), append(base, "--shared-secret-stdin"))
+	if err != nil || fromStdin.SharedSecret != secret {
+		t.Fatalf("stdin secret = %q, err=%v", fromStdin.SharedSecret, err)
+	}
+	if _, err := parseSetupSystemd(ioDiscard{}, append(base, "--shared-secret", secret)); err == nil {
+		t.Fatal("legacy raw --shared-secret was accepted")
+	}
+}
+
 func TestParseSetupSystemdHelpAndPositionals(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runSetup(context.Background(), ioDiscard{}, &stderr, []string{"systemd", "-h"})
@@ -65,19 +87,16 @@ func TestParseSetupSystemdHelpAndPositionals(t *testing.T) {
 
 func TestRenderSystemdSetupFiles(t *testing.T) {
 	opts := setupSystemdOptions{
-		User:         "hf-broker",
-		Group:        "hf-broker",
-		ConfigDir:    "/etc/hf-broker",
-		StateDir:     "/var/lib/hf-broker",
-		SystemdDir:   "/etc/systemd/system",
-		BinaryPath:   "/usr/local/bin/hf-broker",
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
+			ConfigDir: "/etc/hf-broker", StateDir: "/var/lib/hf-broker",
+			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker",
+			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, AllowNonRoot: true,
+		},
 		HFTokenFile:  "/tmp/hf-token",
 		Repo:         "osolmaz/scraped-news",
 		RepoType:     "dataset",
-		ClientName:   "agent",
 		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
-		BindAddr:     "127.0.0.1",
-		Port:         8080,
 	}
 	plan := systemdSetupPlan(opts)
 	scopeJSON, err := renderScopeJSON(opts.Repo, opts.RepoType)
@@ -113,7 +132,10 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 			t.Fatalf("env file missing %q:\n%s", want, env)
 		}
 	}
-	unit := renderSystemdUnit(plan)
+	unit, err := renderSystemdUnit(plan)
+	if err != nil {
+		t.Fatalf("renderSystemdUnit() error = %v", err)
+	}
 	for _, want := range []string{
 		"User=hf-broker",
 		"Group=hf-broker",
@@ -130,26 +152,56 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 func TestSetupSystemdDryRun(t *testing.T) {
 	var stdout bytes.Buffer
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{
-		User:         "hf-broker",
-		Group:        "hf-broker",
-		ConfigDir:    "/etc/hf-broker",
-		StateDir:     "/var/lib/hf-broker",
-		SystemdDir:   "/etc/systemd/system",
-		BinaryPath:   "/usr/local/bin/hf-broker",
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
+			ConfigDir: "/etc/hf-broker", StateDir: "/var/lib/hf-broker",
+			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker",
+			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, DryRun: true,
+		},
 		HFTokenFile:  "/tmp/hf-token",
 		Repo:         "osolmaz/scraped-news",
 		RepoType:     "dataset",
-		ClientName:   "agent",
 		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
-		BindAddr:     "127.0.0.1",
-		Port:         8080,
-		DryRun:       true,
 	})
 	if err != nil {
 		t.Fatalf("runSetupSystemd() error = %v", err)
 	}
 	if !strings.Contains(stdout.String(), "http://127.0.0.1:8080/datasets/osolmaz/scraped-news") {
 		t.Fatalf("dry-run output = %q", stdout.String())
+	}
+}
+
+func TestPrintSystemdSummaryUsesQuotedBaseURL(t *testing.T) {
+	var stdout bytes.Buffer
+	printSystemdSummary(&stdout, setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{
+			ClientName: "build agent;echo unsafe", ConfigDir: "/etc/hf-broker", BindAddr: "::1", Port: 8080,
+		},
+		Repo: "osolmaz/scraped-news", RepoType: "dataset",
+	})
+	output := stdout.String()
+	for _, want := range []string{
+		"Broker URL:\n  http://[::1]:8080/datasets/osolmaz/scraped-news",
+		"--client 'build agent;echo unsafe'",
+		"--url 'http://[::1]:8080'",
+		"--secret-file '/etc/hf-broker/secrets'",
+		"--home-dir '/home/<user>'",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("summary missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestSetupSystemdDryRunValidatesSharedUnit(t *testing.T) {
+	err := runSetupSystemd(context.Background(), ioDiscard{}, setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{
+			User: "hf-broker", Group: "hf-broker", ConfigDir: "/etc/hf-broker",
+			StateDir: "/", SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker", DryRun: true,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "filesystem root") {
+		t.Fatalf("unsafe dry-run error = %v", err)
 	}
 }
 
@@ -183,21 +235,16 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{
-		User:          currentUser.Username,
-		Group:         currentGroup.Name,
-		ConfigDir:     filepath.Join(dir, "etc", "hf-broker"),
-		StateDir:      filepath.Join(dir, "var", "lib", "hf-broker"),
-		SystemdDir:    filepath.Join(dir, "systemd"),
-		BinaryPath:    "/usr/local/bin/hf-broker",
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "hf-broker", User: currentUser.Username, Group: currentGroup.Name,
+			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
+			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
+			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, AllowNonRoot: true, NoStart: true,
+		},
 		HFTokenFile:   tokenFile,
 		Repo:          "osolmaz/scraped-news",
 		RepoType:      "dataset",
-		ClientName:    "agent",
 		SharedSecret:  "abcdefghijklmnopqrstuvwxyz123456",
-		BindAddr:      "127.0.0.1",
-		Port:          8080,
-		AllowNonRoot:  true,
-		NoStart:       true,
 		CommandRunner: &recordingRunner{},
 	})
 	if err != nil {
@@ -206,9 +253,12 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	if !strings.Contains(stdout.String(), "hf-broker systemd service configured") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
+	if strings.Contains(stdout.String(), "abcdefghijklmnopqrstuvwxyz123456") {
+		t.Fatalf("setup stdout leaked broker client secret: %q", stdout.String())
+	}
 }
 
-func TestWriteSystemdPayloads(t *testing.T) {
+func TestWriteSystemdSetupFiles(t *testing.T) {
 	currentUser, currentGroup := currentUserAndGroup(t)
 	dir := t.TempDir()
 	tokenFile := filepath.Join(dir, "source-token")
@@ -216,23 +266,20 @@ func TestWriteSystemdPayloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := setupSystemdOptions{
-		User:         currentUser.Username,
-		Group:        currentGroup.Name,
-		ConfigDir:    filepath.Join(dir, "etc", "hf-broker"),
-		StateDir:     filepath.Join(dir, "var", "lib", "hf-broker"),
-		SystemdDir:   filepath.Join(dir, "systemd"),
-		BinaryPath:   "/usr/local/bin/hf-broker",
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "hf-broker", User: currentUser.Username, Group: currentGroup.Name,
+			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
+			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
+			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, AllowNonRoot: true,
+		},
 		HFTokenFile:  tokenFile,
 		Repo:         "osolmaz/scraped-news",
 		RepoType:     "dataset",
-		ClientName:   "agent",
 		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
-		BindAddr:     "127.0.0.1",
-		Port:         8080,
 	}
 	plan := systemdSetupPlan(opts)
-	if err := writeSystemdPayloads(plan); err != nil {
-		t.Fatalf("writeSystemdPayloads() error = %v", err)
+	if err := writeSystemdSetupFiles(plan); err != nil {
+		t.Fatalf("writeSystemdSetupFiles() error = %v", err)
 	}
 	for _, path := range []string{
 		filepath.Join(opts.ConfigDir, "hf-token"),
@@ -245,19 +292,16 @@ func TestWriteSystemdPayloads(t *testing.T) {
 			t.Fatalf("expected %s: %v", path, err)
 		}
 	}
-	if err := chownSystemdFiles(plan, os.Getuid(), os.Getuid(), os.Getgid()); err != nil {
-		t.Fatalf("chownSystemdFiles() error = %v", err)
-	}
 }
 
 func TestWriteSystemdSetupFilesRejectsUnknownUser(t *testing.T) {
 	dir := t.TempDir()
 	opts := setupSystemdOptions{
-		User:        "hf-broker-user-does-not-exist",
-		Group:       "hf-broker-group-does-not-exist",
-		ConfigDir:   filepath.Join(dir, "etc", "hf-broker"),
-		StateDir:    filepath.Join(dir, "var", "lib", "hf-broker"),
-		SystemdDir:  filepath.Join(dir, "systemd"),
+		SystemdOptions: bksetup.SystemdOptions{
+			User: "hf-broker-user-does-not-exist", Group: "hf-broker-group-does-not-exist",
+			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
+			SystemdDir: filepath.Join(dir, "systemd"),
+		},
 		HFTokenFile: filepath.Join(dir, "token"),
 	}
 	err := writeSystemdSetupFiles(systemdSetupPlan(opts))
@@ -269,8 +313,8 @@ func TestWriteSystemdSetupFilesRejectsUnknownUser(t *testing.T) {
 func TestStartSystemdServiceNoStart(t *testing.T) {
 	runner := &recordingRunner{}
 	err := startSystemdService(context.Background(), setupSystemdOptions{
-		NoStart:       true,
-		CommandRunner: runner,
+		SystemdOptions: bksetup.SystemdOptions{NoStart: true},
+		CommandRunner:  runner,
 	})
 	if err != nil {
 		t.Fatalf("startSystemdService() error = %v", err)
@@ -305,10 +349,8 @@ func TestEnsureServiceAccountCreatesMissingParts(t *testing.T) {
 		"id -u hf-broker":        true,
 	}}
 	err := ensureServiceAccount(context.Background(), setupSystemdOptions{
-		User:          "hf-broker",
-		Group:         "hf-broker",
-		StateDir:      "/var/lib/hf-broker",
-		CommandRunner: runner,
+		SystemdOptions: bksetup.SystemdOptions{User: "hf-broker", Group: "hf-broker", StateDir: "/var/lib/hf-broker"},
+		CommandRunner:  runner,
 	})
 	if err != nil {
 		t.Fatalf("ensureServiceAccount() error = %v", err)
@@ -340,26 +382,6 @@ func TestParseServiceIDs(t *testing.T) {
 	}
 }
 
-func TestValidateSetupClient(t *testing.T) {
-	valid := setupSystemdOptions{
-		ClientName:   "agent",
-		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
-	}
-	if err := validateSetupClient(valid); err != nil {
-		t.Fatalf("validateSetupClient() error = %v", err)
-	}
-	for _, opts := range []setupSystemdOptions{
-		{SharedSecret: valid.SharedSecret},
-		{ClientName: "agent", SharedSecret: "short"},
-		{ClientName: "bad=name", SharedSecret: valid.SharedSecret},
-		{ClientName: "agent", SharedSecret: valid.SharedSecret + "\n"},
-	} {
-		if err := validateSetupClient(opts); err == nil {
-			t.Fatalf("validateSetupClient(%+v) error = nil", opts)
-		}
-	}
-}
-
 func TestCopySecretFileRejectsEmptyToken(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "empty")
@@ -369,6 +391,18 @@ func TestCopySecretFileRejectsEmptyToken(t *testing.T) {
 	err := copySecretFile(source, filepath.Join(dir, "dest"))
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatalf("copySecretFile() error = %v, want empty", err)
+	}
+}
+
+func TestCopySecretFileRejectsOversizedToken(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "large")
+	if err := os.WriteFile(source, []byte(strings.Repeat("x", maxHFTokenBytes+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := copySecretFile(source, filepath.Join(dir, "dest"))
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("copySecretFile() error = %v, want size limit", err)
 	}
 }
 

@@ -1,14 +1,17 @@
 # Installer Plan
 
+Status: implemented and cut over to Brokerkit's shared operations runtime.
+
 Goal: make `hf-broker` installable globally without requiring Go, Homebrew, apt,
 or npm, then provide an explicit Linux service setup path for same-host broker
 deployments.
 
 Broker-family unification is tracked in
 [BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md). hf-broker's current
-installer and `setup systemd` UX are the baseline, but the reusable installer,
-service setup, client setup, policy, grant, approval, audit, and doctor pieces
-should move to the shared brokerkit contract instead of remaining bespoke.
+installer is now a thin wrapper over Brokerkit's pinned canonical installer.
+Client parsing, common systemd options, generated/file/stdin secret handling,
+and systemd unit rendering also use Brokerkit. Hugging Face token copying,
+scope generation, and provider-specific doctor probes remain local.
 
 ## User Experience
 
@@ -68,9 +71,11 @@ sudo hf-broker setup systemd \
    - Build release assets.
    - Upload tarballs and `checksums.txt` to the GitHub Release.
 
-4. Add `install.sh`.
-   - Detect OS with `uname -s`.
-   - Detect architecture with `uname -m`.
+4. Delegate `install.sh` to Brokerkit's canonical installer.
+   - Keep only the broker/repository constants and pinned Brokerkit installer
+     revision in this repository.
+   - Brokerkit detects OS with `uname -s`.
+   - Brokerkit detects architecture with `uname -m`.
    - Normalize platform names:
      - `Linux` -> `linux`
      - `Darwin` -> `darwin`
@@ -87,7 +92,8 @@ sudo hf-broker setup systemd \
      - `$INSTALL_DIR` when set
      - otherwise `/usr/local/bin` when writable or usable through `sudo`
      - otherwise `$HOME/.local/bin`
-   - Print final verification with `hf-broker --version`.
+   - Brokerkit prints final verification with the newly installed binary's
+     `--version` output.
 
 5. Add Linux systemd setup.
    - Add `hf-broker setup systemd`.
@@ -98,7 +104,8 @@ sudo hf-broker setup systemd \
    - Generate `/etc/hf-broker/env`.
    - Generate `/etc/systemd/system/hf-broker.service`.
    - Enable and start the service unless `--no-start` is set.
-   - Print the broker URL and generated client secret.
+   - Print the broker URL and a secret-safe `setup client` command.
+   - Never print generated client secrets.
 
 6. Update README install docs.
    - Recommended curl installer.

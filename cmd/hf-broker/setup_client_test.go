@@ -10,14 +10,17 @@ import (
 )
 
 func TestRunSetupClientWritesClientEnv(t *testing.T) {
-	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temporary home: %v", err)
+	}
 	secretFile := filepath.Join(dir, "secrets")
 	secret := "abcdefghijklmnopqrstuvwxyz123456"
 	if err := os.WriteFile(secretFile, []byte("bob = "+secret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var stdout bytes.Buffer
-	err := runSetup(context.Background(), &stdout, ioDiscard{}, []string{
+	err = runSetup(context.Background(), &stdout, ioDiscard{}, []string{
 		"client",
 		"--client", "bob",
 		"--url", "http://127.0.0.1:8080",

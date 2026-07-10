@@ -121,7 +121,8 @@ After installing the binary, create a token file and configure systemd:
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --repo osolmaz/scraped-news \
-  --repo-type dataset
+  --repo-type dataset \
+  --client bob
 ```
 
 The setup command creates:
@@ -136,9 +137,13 @@ The setup command creates:
 ```
 
 It also creates the `hf-broker` service user when needed, enables and
-starts the service, then prints the broker URL and generated broker
-client secret. The real Hugging Face token stays readable only by the
-service. The agent receives only the broker client secret.
+starts the service, and prints the broker URL plus a secret-safe client setup
+command. It never prints the generated broker client secret. The real Hugging
+Face token stays readable only by the service. The agent receives only the
+broker client secret through `setup client`.
+
+To supply an existing broker client secret, use `--shared-secret-file` or
+`--shared-secret-stdin`. Raw secret command-line flags are not accepted.
 
 Write a client config file for an agent account with:
 
@@ -151,8 +156,8 @@ sudo hf-broker setup client \
 ```
 
 This writes `/home/bob/.config/hf-broker/client.env` with only the broker
-URL and broker shared secret. It does not write or print the Hugging Face
-token.
+URL and broker shared secret. It does not print either secret and never writes
+the Hugging Face token.
 
 Use `--dry-run` to preview the service setup without writing files:
 

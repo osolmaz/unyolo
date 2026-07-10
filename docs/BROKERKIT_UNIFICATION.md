@@ -84,7 +84,8 @@ Linux service setup remains:
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --repo osolmaz/scraped-news \
-  --repo-type dataset
+  --repo-type dataset \
+  --client bob
 ```
 
 Client setup should converge on the shared shape:
@@ -127,3 +128,19 @@ The brokerkit install/setup cutover is complete only when tests prove:
 - grant requests still use brokerkit approval state and Telegram transport
 - audit output contains no Hugging Face token, broker secret, approval token,
   Telegram bot token, request body, pack contents, or raw upstream response
+
+## Operations Cutover Status
+
+Implemented:
+
+- `install.sh` is a thin wrapper over the pinned Brokerkit installer.
+- `setup client` delegates parsing, validation, bounded secret-file loading,
+  config rendering, ownership, and secret-safe output to Brokerkit.
+- `setup systemd` uses Brokerkit defaults, flags, path/account validation, and
+  generated/file/stdin secret handling.
+- systemd unit rendering uses Brokerkit's hardened service baseline with home
+  access denied for hf-broker.
+- root-equivalent group classification uses Brokerkit; Hugging Face token,
+  process, socket, ACL, and active-probe checks remain provider-specific.
+- the old raw `--shared-secret` argument and all replaced local helpers were
+  removed as a direct cutover.

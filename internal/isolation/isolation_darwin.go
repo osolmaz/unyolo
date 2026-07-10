@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
 type identity struct {
@@ -76,12 +78,6 @@ var pathMessages = map[pathKind]pathMessageSet{
 		resolveUnknown: "could not resolve socket path",
 		parentPass:     "agent cannot write checked parent directories",
 	},
-}
-
-var rootEquivalentGroups = map[string]bool{
-	"admin": true,
-	"root":  true,
-	"wheel": true,
 }
 
 // Run evaluates the requested isolation checks on macOS.
@@ -288,7 +284,7 @@ func runAgentChecks(report *Report, agent identity) {
 	}
 	var risky []string
 	for group := range agent.groups {
-		if rootEquivalentGroups[group] {
+		if bkdoctor.RootEquivalentGroup(group) {
 			risky = append(risky, group)
 		}
 	}
