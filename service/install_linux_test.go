@@ -101,8 +101,11 @@ func TestSystemdInstallPlanValidation(t *testing.T) {
 		"file mode":       func(plan *SystemdInstallPlan) { plan.Files[0].Mode = 0o666 },
 		"file unreadable": func(plan *SystemdInstallPlan) { plan.Files[0].Mode = 0o200 },
 		"file oversized":  func(plan *SystemdInstallPlan) { plan.Files[0].Data = make([]byte, maxManagedFileBytes+1) },
-		"duplicate file":  func(plan *SystemdInstallPlan) { plan.Files = append(plan.Files, plan.Files[0]) },
-		"missing env":     func(plan *SystemdInstallPlan) { plan.Unit.EnvironmentFile = filepath.Join(plan.ConfigDir, "missing") },
+		"environment owner": func(plan *SystemdInstallPlan) {
+			plan.Files[0].Owner = ManagedFileOwnerService
+		},
+		"duplicate file": func(plan *SystemdInstallPlan) { plan.Files = append(plan.Files, plan.Files[0]) },
+		"missing env":    func(plan *SystemdInstallPlan) { plan.Unit.EnvironmentFile = filepath.Join(plan.ConfigDir, "missing") },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -139,6 +139,58 @@ func TestIdentityCanExecute(t *testing.T) {
 	}
 }
 
+func TestIdentityCanExecuteWithSupplementaryGroup(t *testing.T) {
+	groups := map[uint64]struct{}{30: {}}
+	if !identityCanExecuteWithGroups(0o750, 10, 30, 20, groups) {
+		t.Fatal("supplementary group execute permission rejected")
+	}
+	if identityCanExecuteWithGroups(0o740, 10, 30, 20, groups) {
+		t.Fatal("missing supplementary group execute permission accepted")
+	}
+}
+
+func TestValidateExecutableAncestorAccess(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil { // #nosec G302 -- private executable-ancestor fixture.
+		t.Fatal(err)
+	}
+	info, err := os.Stat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerUID := uint64(info.Sys().(*syscall.Stat_t).Uid)
+	path := filepath.Join(directory, "broker")
+	if err := validateExecutableAncestorAccess(path, ownerUID+1, map[uint64]struct{}{}); err == nil || !strings.Contains(err.Error(), "not searchable") {
+		t.Fatalf("validateExecutableAncestorAccess() error = %v", err)
+	}
+	if err := validateExecutableAncestorAccess(path, 0, map[uint64]struct{}{}); err != nil {
+		t.Fatalf("root ancestor access rejected: %v", err)
+	}
+}
+
+func TestSystemIdentityAccessIDsIncludesSupplementaryGroups(t *testing.T) {
+	oldUser := lookupSystemUser
+	oldGroup := lookupSystemGroup
+	oldGroupIDs := lookupSystemGroupIDs
+	lookupSystemUser = func(string) (*user.User, error) { return &user.User{Username: "broker", Uid: "10"}, nil }
+	lookupSystemGroup = func(string) (*user.Group, error) { return &user.Group{Name: "broker", Gid: "20"}, nil }
+	lookupSystemGroupIDs = func(*user.User) ([]string, error) { return []string{"20", "30"}, nil }
+	t.Cleanup(func() {
+		lookupSystemUser = oldUser
+		lookupSystemGroup = oldGroup
+		lookupSystemGroupIDs = oldGroupIDs
+	})
+	uid, groups, err := systemIdentityAccessIDs("broker", "broker")
+	if err != nil || uid != 10 {
+		t.Fatalf("systemIdentityAccessIDs() uid=%d err=%v", uid, err)
+	}
+	for _, gid := range []uint64{20, 30} {
+		if _, ok := groups[gid]; !ok {
+			t.Fatalf("systemIdentityAccessIDs() missing gid %d", gid)
+		}
+	}
+}
+
 func TestRenderSystemdRejectsUntrustedExistingPathComponents(t *testing.T) {
 	root := t.TempDir()
 	unit := SystemdUnit{

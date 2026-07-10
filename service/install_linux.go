@@ -233,6 +233,9 @@ func validateManagedFiles(plan SystemdInstallPlan) error {
 		}
 		seen[key] = struct{}{}
 		if filepath.Clean(managedFilePath(plan, file)) == filepath.Clean(plan.Unit.EnvironmentFile) {
+			if file.Owner != ManagedFileOwnerRoot {
+				return errors.New("systemd environment file must be root-owned")
+			}
 			environmentManaged = true
 		}
 	}

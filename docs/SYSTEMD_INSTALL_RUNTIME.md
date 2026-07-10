@@ -95,11 +95,13 @@ An install plan is rejected when:
 - a managed file name is not a literal direct child basename;
 - two managed files resolve to the same area and name;
 - a managed file mode contains special bits or group/other write permission;
+- the managed systemd environment file is not root-owned;
 - managed data exceeds the shared bounded setup-file limit;
 - a trusted existing path contains a symlink, is owned by an unrelated user,
   or is mutable by group/other;
-- the final executable is not a regular file or cannot be executed by the
-  configured service identity;
+- the final executable is not a regular file, an ancestor is not searchable,
+  or the file cannot be executed by the configured service identity including
+  its supplementary groups;
 - non-root test mode is requested while service activation is enabled.
 
 ## Test Gates
