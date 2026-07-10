@@ -46,6 +46,8 @@ func (s *Store) decideAndNotify(id string, token string, approver string, status
 	if err != nil {
 		return Grant{}, err
 	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
 	index, grant, err := findGrant(data.Grants, id)
 	if err != nil {
 		return Grant{}, err
@@ -64,10 +66,12 @@ func (s *Store) decideAndNotify(id string, token string, approver string, status
 		return Grant{}, decisionErr
 	}
 	data.Grants[index] = updated
+	s.reconcileLifecycle(&data, before)
 	if err := s.save(data); err != nil {
 		return Grant{}, err
 	}
-	return updated, decisionErr
+	s.signalNewEvents(eventSequence, data.NextEvent)
+	return data.Grants[index], decisionErr
 }
 
 func decisionTokenVerifier(token string) string {

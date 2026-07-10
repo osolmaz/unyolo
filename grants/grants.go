@@ -55,6 +55,7 @@ type Options struct {
 	DefaultDuration    time.Duration
 	MaxDuration        time.Duration
 	ReservationTimeout time.Duration
+	MaxEvents          int
 	Now                func() time.Time
 	NewID              func(int) (string, error)
 }
@@ -93,6 +94,7 @@ type Grant struct {
 	Metadata               map[string]string   `json:"metadata,omitempty"`
 	Reason                 string              `json:"reason"`
 	Status                 Status              `json:"status"`
+	Revision               int64               `json:"revision"`
 	CreatedAt              time.Time           `json:"created_at"`
 	PendingExpiresAt       time.Time           `json:"pending_expires_at"`
 	ExpiresAt              time.Time           `json:"expires_at,omitzero"`
@@ -100,6 +102,7 @@ type Grant struct {
 	PendingTimeout         time.Duration       `json:"pending_timeout"`
 	DecidedAt              time.Time           `json:"decided_at,omitzero"`
 	DecidedBy              string              `json:"decided_by,omitempty"`
+	DecisionReason         string              `json:"decision_reason,omitempty"`
 	UsedAt                 time.Time           `json:"used_at,omitzero"`
 	UsedCount              int                 `json:"used_count"`
 	UseRevision            int                 `json:"use_revision,omitempty"`
@@ -120,7 +123,9 @@ type Grant struct {
 }
 
 type fileData struct {
-	Grants []Grant `json:"grants"`
+	Grants    []Grant                `json:"grants"`
+	Events    []lifecycleEventRecord `json:"events,omitempty"`
+	NextEvent uint64                 `json:"next_event,omitempty"`
 }
 
 type compatibleValues struct {
@@ -252,6 +257,10 @@ func normalizeLoadedRevisions(grant *Grant) bool {
 		grant.ReservationRevision = 1
 		changed = true
 	}
+	if grant.Revision <= 0 {
+		grant.Revision = 1
+		changed = true
+	}
 	return changed
 }
 
@@ -270,9 +279,11 @@ func normalizeLoadedReservation(grant *Grant) bool {
 
 // Store owns one durable grant file.
 type Store struct {
-	path string
-	opts Options
-	mu   sync.Mutex
+	path        string
+	opts        Options
+	mu          sync.Mutex
+	eventMu     sync.Mutex
+	eventSignal chan struct{}
 }
 
 // New returns a Store.
@@ -289,13 +300,16 @@ func New(path string, opts Options) *Store {
 	if opts.ReservationTimeout <= 0 {
 		opts.ReservationTimeout = defaultReservationTimeout
 	}
+	if opts.MaxEvents <= 0 {
+		opts.MaxEvents = defaultMaxEvents
+	}
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
 	if opts.NewID == nil {
 		opts.NewID = randomID
 	}
-	return &Store{path: path, opts: opts}
+	return &Store{path: path, opts: opts, eventSignal: make(chan struct{})}
 }
 
 // Request creates or returns an idempotent pending grant.
@@ -322,6 +336,9 @@ func (s *Store) Request(req Request) (RequestResult, bool, error) {
 		created = true
 		return nil
 	})
+	if err == nil && out.Grant.ID != "" {
+		out.Grant, err = s.Get(out.Grant.ID)
+	}
 	return out, created, err
 }
 
@@ -359,6 +376,9 @@ func (s *Store) Revoke(id string, approver string) (Grant, error) {
 		out = grant
 		return nil
 	})
+	if err == nil && out.ID != "" {
+		out, err = s.Get(out.ID)
+	}
 	return out, err
 }
 
@@ -440,7 +460,10 @@ func (s *Store) ActivePolicyGrants() ([]policy.Grant, error) {
 	if err != nil {
 		return nil, err
 	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
 	changed := s.expireDue(&data)
+	changed = s.reconcileLifecycle(&data, before) || changed
 	now := s.opts.Now().UTC()
 	out := make([]policy.Grant, 0, len(data.Grants))
 	for _, grant := range data.Grants {
@@ -452,6 +475,7 @@ func (s *Store) ActivePolicyGrants() ([]policy.Grant, error) {
 		if err := s.save(data); err != nil {
 			return nil, err
 		}
+		s.signalNewEvents(eventSequence, data.NextEvent)
 	}
 	return out, nil
 }
@@ -464,7 +488,10 @@ func (s *Store) Get(id string) (Grant, error) {
 	if err != nil {
 		return Grant{}, err
 	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
 	changed := s.expireDue(&data)
+	changed = s.reconcileLifecycle(&data, before) || changed
 	_, grant, err := findGrant(data.Grants, id)
 	if err != nil {
 		return Grant{}, err
@@ -473,6 +500,7 @@ func (s *Store) Get(id string) (Grant, error) {
 		if err := s.save(data); err != nil {
 			return Grant{}, err
 		}
+		s.signalNewEvents(eventSequence, data.NextEvent)
 	}
 	return grant, nil
 }
@@ -485,13 +513,17 @@ func (s *Store) List() ([]Grant, error) {
 	if err != nil {
 		return nil, err
 	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
 	changed := s.expireDue(&data)
+	changed = s.reconcileLifecycle(&data, before) || changed
 	out := make([]Grant, len(data.Grants))
 	copy(out, data.Grants)
 	if changed {
 		if err := s.save(data); err != nil {
 			return nil, err
 		}
+		s.signalNewEvents(eventSequence, data.NextEvent)
 	}
 	return out, nil
 }
@@ -526,6 +558,9 @@ func (s *Store) changeUse(id string, mutate func(Grant) (Grant, error)) (Grant, 
 		out = updated
 		return nil
 	})
+	if err == nil && out.ID != "" {
+		out, err = s.Get(out.ID)
+	}
 	return out, err
 }
 
@@ -651,14 +686,26 @@ func (s *Store) update(mutator func(*fileData) error) error {
 	if err != nil {
 		return err
 	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
 	changed := s.prepareLifecycle(&data)
 	if err := mutator(&data); err != nil {
+		changed = s.reconcileLifecycle(&data, before) || changed
 		if changed {
-			return errors.Join(err, s.save(data))
+			saveErr := s.save(data)
+			if saveErr == nil {
+				s.signalNewEvents(eventSequence, data.NextEvent)
+			}
+			return errors.Join(err, saveErr)
 		}
 		return err
 	}
-	return s.save(data)
+	s.reconcileLifecycle(&data, before)
+	if err := s.save(data); err != nil {
+		return err
+	}
+	s.signalNewEvents(eventSequence, data.NextEvent)
+	return nil
 }
 
 func (s *Store) load() (fileData, error) {
@@ -670,6 +717,9 @@ func (s *Store) load() (fileData, error) {
 		if err := s.save(data); err != nil {
 			return fileData{}, err
 		}
+	}
+	if err := normalizeLoadedEvents(&data); err != nil {
+		return fileData{}, err
 	}
 	return data, nil
 }

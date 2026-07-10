@@ -71,6 +71,10 @@ Implemented package candidates are:
   thin broker repository wrappers
 - `notify`: approval notification interfaces, callback answers, and a stateless
   Telegram adapter with send, explicit status edit, and long-poll callbacks
+- `operatorinbox`, `operatorauth`, and `operatorapi`: bounded safe operator
+  projections, separate operator authority, typed decisions, and durable SSE
+- `operatorclient` and `operatorfake`: trusted-host integration and contract
+  testing for web applications such as mlclaw
 - `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
   `hf-broker` and `gh-broker`
 - `store`: atomic file storage and lock helpers, if needed by grants/audit
@@ -90,6 +94,8 @@ runtime is described in
 
 The live cross-repository implementation order and remaining work are tracked
 in [docs/CUTOVER_STATUS.md](docs/CUTOVER_STATUS.md).
+The operator backend and trusted web-host integration contract is documented
+in [docs/OPERATOR_INBOX.md](docs/OPERATOR_INBOX.md).
 
 ## License
 

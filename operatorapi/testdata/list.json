@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "id": "grant-example",
+      "revision": 3,
+      "client": "bob",
+      "operation": "provider.write",
+      "status": "pending",
+      "requested_at": "2026-07-11T01:02:03Z",
+      "pending_expires_at": "2026-07-11T01:07:03Z",
+      "requested_duration_seconds": 300,
+      "max_uses": 1,
+      "used_count": 0,
+      "reserved_count": 0,
+      "reason": "Publish the reviewed change",
+      "presentation": {
+        "risk": "high",
+        "title": "Protected write",
+        "summary": "Updates a protected provider resource.",
+        "target": "example/repository",
+        "fields": [{"label": "Branch", "value": "main"}],
+        "plan_hash": "sha256:example"
+      }
+    }
+  ],
+  "next_cursor": "opaque-page-cursor",
+  "has_more": true
+}

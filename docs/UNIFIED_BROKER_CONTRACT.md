@@ -36,6 +36,24 @@ Each broker owns only its platform adapter:
 brokerkit must not grow provider-specific credentials, API calls, command
 execution, or user-facing approval text.
 
+## Operator Inbox
+
+Every broker exposes the shared `operatorapi` contract on a protected operator
+listener or Unix socket. The agent listener remains client-scoped and cannot
+make operator decisions or read cross-client history.
+
+Each broker provides only its `operatorinbox.Presenter`, operator transport,
+credential loading, and broker name. Brokerkit owns bounded queries, safe
+records, revision-checked decisions, durable events/SSE, operator auth
+primitives, audit fields, the Go client, and conformance fixtures. Telegram is
+an optional notification view over the same grant store, not a separate
+approval state machine.
+
+Trusted web applications call the operator API from their server backend.
+They must not send operator credentials to browsers or accept browser-supplied
+provider plans. A decision is always applied by the broker to its canonical
+stored request.
+
 ## Binary Install
 
 Every broker binary should have the same install shape:
