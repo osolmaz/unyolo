@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -21,6 +22,11 @@ type Config struct {
 	ClientID                string
 	SharedSecret            string
 	SecretsFile             string
+	OperatorID              string
+	OperatorSecret          string
+	OperatorSecretsFile     string
+	OperatorBindAddr        string
+	OperatorPort            string
 	GitHubToken             string
 	GitHubTokenFile         string
 	GitHubAppID             string
@@ -54,6 +60,11 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 		ClientID:                getEnvFrom(getenv, "bob", "GH_BROKER_CLIENT_ID", "CBA_CLIENT_ID"),
 		SharedSecret:            getEnvFrom(getenv, "", "GH_BROKER_SHARED_SECRET", "CBA_SHARED_SECRET"),
 		SecretsFile:             getEnvFrom(getenv, "", "GH_BROKER_SECRETS_FILE"),
+		OperatorID:              getEnvFrom(getenv, "onur", "GH_BROKER_OPERATOR_ID"),
+		OperatorSecret:          getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SHARED_SECRET"),
+		OperatorSecretsFile:     getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SECRETS_FILE"),
+		OperatorBindAddr:        getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_OPERATOR_BIND_ADDR"),
+		OperatorPort:            getEnvFrom(getenv, "8082", "GH_BROKER_OPERATOR_PORT"),
 		GitHubToken:             getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN", "CBA_GITHUB_TOKEN"),
 		GitHubTokenFile:         getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN_FILE", "CBA_GITHUB_TOKEN_FILE"),
 		GitHubAppID:             getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID"),
@@ -72,22 +83,26 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 		WriteTimeout:            durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_WRITE_TIMEOUT", "CBA_WRITE_TIMEOUT"),
 		IdleTimeout:             durationEnvFrom(getenv, 60*time.Second, "GH_BROKER_IDLE_TIMEOUT", "CBA_IDLE_TIMEOUT"),
 	}
-	if err := cfg.loadGitHubTokenFile(); err != nil {
-		return Config{}, err
-	}
-	if err := cfg.loadGitHubAppFiles(); err != nil {
-		return Config{}, err
-	}
-	if err := cfg.loadGitHubWebhookSecretFile(); err != nil {
-		return Config{}, err
-	}
-	if err := cfg.loadBrokerSecretFile(); err != nil {
+	if err := cfg.loadCredentialFiles(); err != nil {
 		return Config{}, err
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func (c *Config) loadCredentialFiles() error {
+	loaders := []func() error{
+		c.loadGitHubTokenFile, c.loadGitHubAppFiles, c.loadGitHubWebhookSecretFile,
+		c.loadBrokerSecretFile, c.loadOperatorSecretFile,
+	}
+	for _, load := range loaders {
+		if err := load(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Config) loadGitHubTokenFile() error {
@@ -137,14 +152,22 @@ func (c *Config) loadGitHubWebhookSecretFile() error {
 }
 
 func (c *Config) loadBrokerSecretFile() error {
-	if c.SharedSecret != "" || c.SecretsFile == "" {
+	return loadNamedSecret(&c.SharedSecret, c.SecretsFile, c.ClientID, "broker")
+}
+
+func (c *Config) loadOperatorSecretFile() error {
+	return loadNamedSecret(&c.OperatorSecret, c.OperatorSecretsFile, c.OperatorID, "operator")
+}
+
+func loadNamedSecret(target *string, path string, identity string, label string) error {
+	if *target != "" || path == "" {
 		return nil
 	}
-	secret, err := clientconfig.SecretFromFile(c.SecretsFile, c.ClientID)
+	secret, err := clientconfig.SecretFromFile(path, identity)
 	if err != nil {
-		return fmt.Errorf("read broker secret file: %w", err)
+		return fmt.Errorf("read %s secret file: %w", label, err)
 	}
-	c.SharedSecret = secret
+	*target = secret
 	return nil
 }
 
@@ -154,6 +177,7 @@ func (c Config) Validate() error {
 		required(c.BindAddr, "GH_BROKER_BIND_ADDR is required"),
 		required(c.ClientID, "GH_BROKER_CLIENT_ID is required"),
 		minimumBytes(c.SharedSecret, minimumSharedSecretBytes, "GH_BROKER_SHARED_SECRET"),
+		operatorConfig(c),
 		githubCredential(c),
 		required(c.ScopeFile, "GH_BROKER_SCOPE_FILE is required"),
 		required(c.StateDir, "GH_BROKER_STATE_DIR is required"),
@@ -161,6 +185,60 @@ func (c Config) Validate() error {
 		positiveDuration(c.GitHubHTTPTimeout, "GH_BROKER_GITHUB_HTTP_TIMEOUT must be positive"),
 		positiveInt64(c.MaxReceivePackBytes, "GH_BROKER_MAX_RECEIVE_PACK_BYTES must be positive"),
 	)
+}
+
+func operatorConfig(c Config) error {
+	if c.OperatorSecret == "" {
+		return nil
+	}
+	return firstError(operatorCredentials(c), operatorListener(c))
+}
+
+func operatorCredentials(c Config) error {
+	if err := clientconfig.ValidateClientName(c.OperatorID); err != nil {
+		return fmt.Errorf("GH_BROKER_OPERATOR_ID: %w", err)
+	}
+	if err := minimumBytes(c.OperatorSecret, minimumSharedSecretBytes, "GH_BROKER_OPERATOR_SHARED_SECRET"); err != nil {
+		return err
+	}
+	if c.OperatorSecret == c.SharedSecret {
+		return errors.New("operator secret must differ from the client secret")
+	}
+	return nil
+}
+
+func operatorListener(c Config) error {
+	return firstError(operatorBindAddress(c.OperatorBindAddr), operatorPorts(c.OperatorPort, c.Port))
+}
+
+func operatorBindAddress(address string) error {
+	if net.ParseIP(address) == nil && address != "localhost" {
+		return errors.New("GH_BROKER_OPERATOR_BIND_ADDR must be an IP address or localhost")
+	}
+	return nil
+}
+
+func operatorPorts(operatorPort string, agentPort string) error {
+	port, err := parsePort(operatorPort, "GH_BROKER_OPERATOR_PORT")
+	if err != nil {
+		return err
+	}
+	agent, err := parsePort(agentPort, "GH_BROKER_PORT")
+	if err != nil {
+		return err
+	}
+	if port == agent {
+		return errors.New("operator and agent listeners must use different ports")
+	}
+	return nil
+}
+
+func parsePort(value string, name string) (int, error) {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%s must be between 1 and 65535", name)
+	}
+	return port, nil
 }
 
 func firstError(errs ...error) error {

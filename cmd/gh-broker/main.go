@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -79,14 +80,14 @@ func runServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	server, err := buildServer(ctx, cfg)
+	servers, err := buildServers(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	return serve(ctx, server, cfg.BindAddr, cfg.Port)
+	return serveServers(ctx, servers)
 }
 
-func buildServer(ctx context.Context, cfg config.Config) (*http.Server, error) {
+func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error) {
 	brokerPolicy, err := policy.LoadFile(cfg.ScopeFile)
 	if err != nil {
 		return nil, err
@@ -96,38 +97,80 @@ func buildServer(ctx context.Context, cfg config.Config) (*http.Server, error) {
 		return nil, err
 	}
 	api.Start(ctx)
+	servers := []*http.Server{configuredHTTPServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
+	if cfg.OperatorSecret != "" {
+		handler, err := api.OperatorHandler(cfg)
+		if err != nil {
+			return nil, err
+		}
+		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, handler, cfg))
+	}
+	return servers, nil
+}
+
+func configuredOperatorServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
+	server := configuredHTTPServer(bindAddr, port, handler, cfg)
+	server.WriteTimeout = 0
+	return server
+}
+
+func buildServer(ctx context.Context, cfg config.Config) (*http.Server, error) {
+	servers, err := buildServers(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return servers[0], nil
+}
+
+func configuredHTTPServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
 	return &http.Server{
-		Addr:              cfg.BindAddr + ":" + cfg.Port,
-		Handler:           api.Handler(),
+		Addr:              net.JoinHostPort(bindAddr, port),
+		Handler:           handler,
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
-	}, nil
+	}
 }
 
 func serve(ctx context.Context, server *http.Server, bindAddr string, port string) error {
-	errCh := make(chan error, 1)
-	go func() {
-		log.Printf("gh-broker listening on %s:%s", bindAddr, port)
-		errCh <- server.ListenAndServe()
-	}()
+	server.Addr = net.JoinHostPort(bindAddr, port)
+	return serveServers(ctx, []*http.Server{server})
+}
+
+func serveServers(ctx context.Context, servers []*http.Server) error {
+	errCh := make(chan error, len(servers))
+	for _, server := range servers {
+		server := server
+		go func() {
+			log.Printf("gh-broker listening on %s", server.Addr)
+			errCh <- server.ListenAndServe()
+		}()
+	}
 	select {
 	case err := <-errCh:
+		_ = shutdownServers(servers)
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return err
 	case <-ctx.Done():
-		return shutdown(server)
+		return shutdownServers(servers)
 	}
 }
 
 func shutdown(server *http.Server) error {
+	return shutdownServers([]*http.Server{server})
+}
+
+func shutdownServers(servers []*http.Server) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		return fmt.Errorf("shutdown server: %w", err)
+	var errs []error
+	for _, server := range servers {
+		if err := server.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("shutdown server: %w", err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }

@@ -169,6 +169,46 @@ func TestLoadReadsBrokerSecretFile(t *testing.T) {
 	}
 }
 
+func TestLoadReadsSeparateOperatorSecretFile(t *testing.T) {
+	dir := t.TempDir()
+	clientSecret := strings.Repeat("c", minimumSharedSecretBytes)
+	operatorSecret := strings.Repeat("o", minimumSharedSecretBytes)
+	clientFile := filepath.Join(dir, "clients")
+	operatorFile := filepath.Join(dir, "operators")
+	if err := os.WriteFile(clientFile, []byte("bob = "+clientSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(operatorFile, []byte("onur = "+operatorSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{
+		"GH_BROKER_CLIENT_ID": "bob", "GH_BROKER_SECRETS_FILE": clientFile,
+		"GH_BROKER_OPERATOR_ID": "onur", "GH_BROKER_OPERATOR_SECRETS_FILE": operatorFile,
+		"GH_BROKER_GITHUB_TOKEN": "github-token",
+	}
+	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
+	if err != nil || cfg.OperatorSecret != operatorSecret || cfg.OperatorPort != "8082" {
+		t.Fatalf("operator config = %+v, err=%v", cfg, err)
+	}
+	if err := os.WriteFile(operatorFile, []byte("onur = "+clientSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFromLookup(func(key string) string { return values[key] }); err == nil || !strings.Contains(err.Error(), "must differ") || strings.Contains(err.Error(), clientSecret) {
+		t.Fatalf("reused operator secret error = %v", err)
+	}
+}
+
+func TestOperatorConfigRejectsEquivalentListenerPorts(t *testing.T) {
+	cfg := Config{
+		Port: "08082", BindAddr: "127.0.0.1", ClientID: "bob", SharedSecret: strings.Repeat("c", minimumSharedSecretBytes),
+		OperatorID: "onur", OperatorSecret: strings.Repeat("o", minimumSharedSecretBytes), OperatorBindAddr: "127.0.0.1", OperatorPort: "8082",
+		GitHubToken: "github-token", ScopeFile: "scope.json", StateDir: "state", GitHubHTTPTimeout: time.Second, MaxReceivePackBytes: 1,
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "different ports") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
 func TestReadSecretFile(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

@@ -22,6 +22,10 @@ import (
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/operatorapi"
+	"github.com/osolmaz/brokerkit/operatorauth"
+	"github.com/osolmaz/brokerkit/operatorinbox"
+	"github.com/osolmaz/gh-broker/internal/approval"
 	"github.com/osolmaz/gh-broker/internal/config"
 	"github.com/osolmaz/gh-broker/internal/githubapp"
 	"github.com/osolmaz/gh-broker/internal/policy"
@@ -45,6 +49,7 @@ type Server struct {
 	auditWriter         *bkaudit.Writer
 	logger              *slog.Logger
 	maxReceivePackBytes int64
+	operatorConfigured  bool
 }
 
 func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
@@ -90,6 +95,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		auditWriter:         bkaudit.New(os.Stderr),
 		logger:              slog.Default(),
 		maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
+		operatorConfigured:  cfg.OperatorSecret != "",
 	}
 	protected := e.Group("")
 	protected.Use(auth.Middleware)
@@ -106,6 +112,24 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	protected.POST("/:owner/:repoGit/git-receive-pack", server.gitReceivePack)
 	e.POST("/webhooks/github", server.githubWebhook)
 	return server, nil
+}
+
+// OperatorHandler exposes Brokerkit's shared inbox over the canonical grant store.
+func (s *Server) OperatorHandler(cfg config.Config) (http.Handler, error) {
+	authenticator, err := operatorauth.New(
+		map[string]string{cfg.OperatorID: cfg.OperatorSecret},
+		operatorauth.Options{ClientSecrets: map[string]string{cfg.ClientID: cfg.SharedSecret}},
+	)
+	if err != nil {
+		return nil, err
+	}
+	inbox, err := operatorinbox.New(s.grants, approval.Presenter{})
+	if err != nil {
+		return nil, err
+	}
+	return operatorapi.New(operatorapi.Options{
+		Inbox: inbox, Authorize: authenticator.AuthenticateRequest, Broker: "gh-broker", Audit: s.auditWriter,
+	})
 }
 
 func githubBaseURLs() (*url.URL, *url.URL, error) {

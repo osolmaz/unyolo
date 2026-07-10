@@ -37,6 +37,9 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	if len(opts.SharedSecret) != 64 {
 		t.Fatalf("generated secret length = %d, want 64", len(opts.SharedSecret))
 	}
+	if len(opts.OperatorSecret) != 64 || opts.OperatorID != "onur" || opts.OperatorPort != 8082 {
+		t.Fatalf("generated operator config = %+v", opts)
+	}
 }
 
 func TestParseSetupSystemdReadsSharedSecretFromFileAndStdin(t *testing.T) {
@@ -79,9 +82,10 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
 			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, DryRun: true,
 		},
-		GitHubTokenFile:  "/tmp/github-token",
-		ScopeFile:        "/tmp/scope.json",
-		SharedSecret:     strings.Repeat("s", 32),
+		GitHubTokenFile: "/tmp/github-token",
+		ScopeFile:       "/tmp/scope.json",
+		SharedSecret:    strings.Repeat("s", 32),
+		OperatorID:      "onur", OperatorSecret: strings.Repeat("o", 32), OperatorBindAddr: "127.0.0.1", OperatorPort: 8082,
 		DevTokenFallback: true,
 	})
 	if err != nil {
@@ -146,6 +150,10 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 		GitHubTokenFile:  tokenFile,
 		ScopeFile:        scopeFile,
 		SharedSecret:     strings.Repeat("s", 32),
+		OperatorID:       "onur",
+		OperatorSecret:   strings.Repeat("o", 32),
+		OperatorBindAddr: "127.0.0.1",
+		OperatorPort:     8082,
 		DevTokenFallback: true,
 		CommandRunner:    runner,
 	})
@@ -161,6 +169,7 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(dir, "etc", "gh-broker", "github-token"),
 		filepath.Join(dir, "etc", "gh-broker", "secrets"),
+		filepath.Join(dir, "etc", "gh-broker", "operator-secrets"),
 		filepath.Join(dir, "etc", "gh-broker", "scope.json"),
 		filepath.Join(dir, "etc", "gh-broker", "env"),
 		filepath.Join(dir, "systemd", "gh-broker.service"),
@@ -178,6 +187,8 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 		"GH_BROKER_SECRETS_FILE=",
 		"GH_BROKER_GITHUB_TOKEN_FILE=",
 		"GH_BROKER_STATE_DIR=",
+		"GH_BROKER_OPERATOR_SECRETS_FILE=",
+		"GH_BROKER_OPERATOR_PORT=8082",
 	} {
 		if !strings.Contains(envText, want) {
 			t.Fatalf("env missing %q:\n%s", want, envText)
@@ -205,6 +216,10 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 		GitHubWebhookSecretFile: webhookSecretFile,
 		ScopeFile:               writeFixture(t, dir, "scope.json", minimalScopeJSON()),
 		SharedSecret:            strings.Repeat("s", 32),
+		OperatorID:              "onur",
+		OperatorSecret:          strings.Repeat("o", 32),
+		OperatorBindAddr:        "127.0.0.1",
+		OperatorPort:            8082,
 	})
 	installPlan, err := brokerkitSystemdInstallPlan(plan)
 	if err != nil {
@@ -215,6 +230,7 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 		githubAppPrivateKeyFileName: bkservice.ManagedFileOwnerService,
 		githubWebhookSecretFileName: bkservice.ManagedFileOwnerService,
 		ghSecretsFileName:           bkservice.ManagedFileOwnerService,
+		ghOperatorSecretsFileName:   bkservice.ManagedFileOwnerService,
 		ghScopeFileName:             bkservice.ManagedFileOwnerRoot,
 		ghEnvFileName:               bkservice.ManagedFileOwnerRoot,
 	}
@@ -242,6 +258,7 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		GitHubTokenFile:  "/tmp/token",
 		SharedSecret:     strings.Repeat("s", 32),
 		DevTokenFallback: true,
+		OperatorID:       "onur", OperatorSecret: strings.Repeat("o", 32), OperatorBindAddr: "127.0.0.1", OperatorPort: 8082,
 	}
 	if err := validateSetupSystemdOptions(valid); err != nil {
 		t.Fatalf("validateSetupSystemdOptions() error = %v", err)
@@ -253,6 +270,7 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		GitHubAppPrivateKeyFile: "/tmp/key",
 		GitHubWebhookSecretFile: "/tmp/webhook",
 		SharedSecret:            strings.Repeat("s", 32),
+		OperatorID:              "onur", OperatorSecret: strings.Repeat("o", 32), OperatorBindAddr: "127.0.0.1", OperatorPort: 8082,
 	}
 	if err := validateSetupSystemdOptions(validApp); err != nil {
 		t.Fatalf("validateSetupSystemdOptions(app) error = %v", err)
@@ -263,6 +281,10 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		func(opts *setupSystemdOptions) { opts.ClientName = "bad=name" },
 		func(opts *setupSystemdOptions) { opts.SharedSecret = "short" },
 		func(opts *setupSystemdOptions) { opts.Port = 0 },
+		func(opts *setupSystemdOptions) { opts.OperatorID = "bad=name" },
+		func(opts *setupSystemdOptions) { opts.OperatorBindAddr = "" },
+		func(opts *setupSystemdOptions) { opts.OperatorPort = opts.Port },
+		func(opts *setupSystemdOptions) { opts.OperatorSecret = opts.SharedSecret },
 	}
 	for _, mutate := range cases {
 		opts := valid

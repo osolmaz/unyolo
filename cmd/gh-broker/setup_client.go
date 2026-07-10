@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/clientconfig"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -26,6 +29,11 @@ type setupSystemdOptions struct {
 	GitHubWebhookSecretFile string
 	ScopeFile               string
 	SharedSecret            string
+	OperatorID              string
+	OperatorSecretFile      string
+	OperatorSecret          string
+	OperatorBindAddr        string
+	OperatorPort            int
 	DevTokenFallback        bool
 	CommandRunner           bkservice.CommandRunner
 }
@@ -114,6 +122,10 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	fs.StringVar(&opts.GitHubWebhookSecretFile, "github-webhook-secret-file", "", "file containing the GitHub webhook secret")
 	fs.StringVar(&opts.ScopeFile, "scope-file", "", "policy scope JSON file")
 	fs.BoolVar(&opts.DevTokenFallback, "dev-token-fallback", false, "configure the current GitHub token fallback runtime")
+	fs.StringVar(&opts.OperatorID, "operator", "onur", "operator identity for the protected inbox")
+	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
+	fs.StringVar(&opts.OperatorBindAddr, "operator-bind-addr", "127.0.0.1", "operator inbox listen address")
+	fs.IntVar(&opts.OperatorPort, "operator-port", 8082, "operator inbox listen port")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = io.Copy(stderr, strings.NewReader(flagOutput.String()))
@@ -134,6 +146,11 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 		return setupSystemdOptions{}, false, err
 	}
 	opts.SharedSecret = secret
+	operatorSecret, err := bksetup.ResolveSecret(bksetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
+	if err != nil {
+		return setupSystemdOptions{}, false, err
+	}
+	opts.OperatorSecret = operatorSecret
 	return opts, false, validateSetupSystemdOptions(opts)
 }
 
@@ -144,7 +161,40 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 	if err := validateSetupSystemdCredentialOptions(opts); err != nil {
 		return err
 	}
-	return validateSetupSystemdClientOptions(opts)
+	if err := validateSetupSystemdClientOptions(opts); err != nil {
+		return err
+	}
+	return validateSetupSystemdOperatorOptions(opts)
+}
+
+func validateSetupSystemdOperatorOptions(opts setupSystemdOptions) error {
+	if err := validateSetupOperatorCredentials(opts); err != nil {
+		return err
+	}
+	return validateSetupOperatorListener(opts)
+}
+
+func validateSetupOperatorCredentials(opts setupSystemdOptions) error {
+	if err := clientconfig.ValidateClientName(opts.OperatorID); err != nil {
+		return err
+	}
+	if _, err := bksetup.ResolveSecret(bksetup.SecretInput{Stdin: true}, strings.NewReader(opts.OperatorSecret)); err != nil {
+		return fmt.Errorf("operator secret: %w", err)
+	}
+	if opts.OperatorSecret == opts.SharedSecret {
+		return errors.New("operator secret must differ from the client secret")
+	}
+	return nil
+}
+
+func validateSetupOperatorListener(opts setupSystemdOptions) error {
+	if net.ParseIP(opts.OperatorBindAddr) == nil && opts.OperatorBindAddr != "localhost" {
+		return errors.New("--operator-bind-addr must be an IP address or localhost")
+	}
+	if opts.OperatorPort < 1 || opts.OperatorPort > 65535 || opts.OperatorPort == opts.Port {
+		return errors.New("--operator-port must be valid and differ from the agent port")
+	}
+	return nil
 }
 
 func validateSetupSystemdCredentialOptions(opts setupSystemdOptions) error {

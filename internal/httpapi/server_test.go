@@ -1446,6 +1446,23 @@ func createGrant(t *testing.T, server *Server, requestID string, reason string) 
 	return doWithBody(t, server, http.MethodPost, "/api/grants", bearerAuth(), []byte(body))
 }
 
+func TestOperatorInboxSurvivesTelegramNotificationFailure(t *testing.T) {
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	server.operatorConfigured = true
+	server.notifier = &captureNotifier{sendErr: errors.New("notify failed")}
+	response := createGrant(t, server, "operator-inbox-notify-failed", "open the work PR")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("grant create status = %d, body=%s", response.Code, response.Body.String())
+	}
+	created := decodeGrantResponse(t, response)
+	stored, err := server.grants.Get(created.ID)
+	if err != nil || stored.Status != grants.StatusPending || !stored.NotificationDeliveryUnresolved {
+		t.Fatalf("stored grant = %+v, err=%v", stored, err)
+	}
+}
+
 func decodeGrantResponse(t *testing.T, response *httptest.ResponseRecorder) apiGrant {
 	t.Helper()
 	var payload struct {

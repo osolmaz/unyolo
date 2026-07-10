@@ -23,6 +23,7 @@ const (
 	githubAppPrivateKeyFileName = "github-app-private-key.pem"
 	githubWebhookSecretFileName = "github-webhook-secret" // #nosec G101 -- this is a config filename, not a secret value.
 	ghSecretsFileName           = "secrets"
+	ghOperatorSecretsFileName   = "operator-secrets"
 	ghScopeFileName             = "scope.json"
 	ghEnvFileName               = "env"
 	ghUnitFileName              = "gh-broker.service"
@@ -30,15 +31,16 @@ const (
 )
 
 type systemdPlan struct {
-	opts              setupSystemdOptions
-	tokenPath         string
-	appIDPath         string
-	appPrivateKeyPath string
-	webhookSecretPath string
-	secretsPath       string
-	scopePath         string
-	envPath           string
-	unitPath          string
+	opts                setupSystemdOptions
+	tokenPath           string
+	appIDPath           string
+	appPrivateKeyPath   string
+	webhookSecretPath   string
+	secretsPath         string
+	operatorSecretsPath string
+	scopePath           string
+	envPath             string
+	unitPath            string
 }
 
 func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOptions) error {
@@ -72,15 +74,16 @@ func requireRootForSystemd(opts setupSystemdOptions) error {
 
 func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 	return systemdPlan{
-		opts:              opts,
-		tokenPath:         filepath.Join(opts.ConfigDir, githubTokenFileName),
-		appIDPath:         filepath.Join(opts.ConfigDir, githubAppIDFileName),
-		appPrivateKeyPath: filepath.Join(opts.ConfigDir, githubAppPrivateKeyFileName),
-		webhookSecretPath: filepath.Join(opts.ConfigDir, githubWebhookSecretFileName),
-		secretsPath:       filepath.Join(opts.ConfigDir, ghSecretsFileName),
-		scopePath:         filepath.Join(opts.ConfigDir, ghScopeFileName),
-		envPath:           filepath.Join(opts.ConfigDir, ghEnvFileName),
-		unitPath:          filepath.Join(opts.SystemdDir, ghUnitFileName),
+		opts:                opts,
+		tokenPath:           filepath.Join(opts.ConfigDir, githubTokenFileName),
+		appIDPath:           filepath.Join(opts.ConfigDir, githubAppIDFileName),
+		appPrivateKeyPath:   filepath.Join(opts.ConfigDir, githubAppPrivateKeyFileName),
+		webhookSecretPath:   filepath.Join(opts.ConfigDir, githubWebhookSecretFileName),
+		secretsPath:         filepath.Join(opts.ConfigDir, ghSecretsFileName),
+		operatorSecretsPath: filepath.Join(opts.ConfigDir, ghOperatorSecretsFileName),
+		scopePath:           filepath.Join(opts.ConfigDir, ghScopeFileName),
+		envPath:             filepath.Join(opts.ConfigDir, ghEnvFileName),
+		unitPath:            filepath.Join(opts.SystemdDir, ghUnitFileName),
 	}
 }
 
@@ -118,6 +121,7 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 	}
 	files := append(credentials,
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghSecretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghOperatorSecretsFileName, Data: []byte(plan.opts.OperatorID + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghScopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghEnvFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	)
@@ -189,6 +193,10 @@ func renderEnvFile(plan systemdPlan) string {
 		"GH_BROKER_SECRETS_FILE=" + plan.secretsPath + "\n" +
 		"GH_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
 		"GH_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
+		"GH_BROKER_OPERATOR_ID=" + opts.OperatorID + "\n" +
+		"GH_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +
+		"GH_BROKER_OPERATOR_BIND_ADDR=" + opts.OperatorBindAddr + "\n" +
+		"GH_BROKER_OPERATOR_PORT=" + strconv.Itoa(opts.OperatorPort) + "\n" +
 		"GH_BROKER_GITHUB_HTTP_TIMEOUT=30\n" +
 		"GH_BROKER_MAX_RECEIVE_PACK_BYTES=26214400\n"
 	if opts.DevTokenFallback {
@@ -238,12 +246,13 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   app private key: %s
   webhook secret:  %s
   secrets file:    %s
+  operator file:   %s
   scope file:      %s
   env file:        %s
   state dir:       %s
   unit file:       %s
   broker URL:      %s
-`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), plan.secretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port))
+`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port))
 	return err
 }
 
@@ -272,9 +281,13 @@ Broker client:
   name: %s
   secret file: %s
 
+Operator inbox:
+  url: %s
+  credential file: %s
+
 Write the client config with:
   gh-broker setup client --client %s --url %s --secret-file %s --home-dir %s
-`, brokerURL(plan.opts.BindAddr, plan.opts.Port), plan.opts.ClientName, plan.secretsPath, shellQuote(plan.opts.ClientName), shellQuote(brokerURL(plan.opts.BindAddr, plan.opts.Port)), shellQuote(plan.secretsPath), shellQuote(filepath.Join("/home", plan.opts.ClientName)))
+`, brokerURL(plan.opts.BindAddr, plan.opts.Port), plan.opts.ClientName, plan.secretsPath, brokerURL(plan.opts.OperatorBindAddr, plan.opts.OperatorPort), plan.operatorSecretsPath, shellQuote(plan.opts.ClientName), shellQuote(brokerURL(plan.opts.BindAddr, plan.opts.Port)), shellQuote(plan.secretsPath), shellQuote(filepath.Join("/home", plan.opts.ClientName)))
 }
 
 func shellQuote(value string) string {

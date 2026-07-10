@@ -225,6 +225,21 @@ func TestBuildServerUsesConfiguredBindAddress(t *testing.T) {
 	}
 }
 
+func TestBuildServersAddsDedicatedOperatorListener(t *testing.T) {
+	cfg := configForBuildTest(t)
+	cfg.OperatorID = "onur"
+	cfg.OperatorSecret = strings.Repeat("o", 32)
+	cfg.OperatorBindAddr = "127.0.0.1"
+	cfg.OperatorPort = "9091"
+	servers, err := buildServers(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 2 || servers[0].Addr != "127.0.0.2:9090" || servers[1].Addr != "127.0.0.1:9091" || servers[1].WriteTimeout != 0 || servers[1].ReadTimeout != cfg.ReadTimeout {
+		t.Fatalf("servers = %+v", servers)
+	}
+}
+
 func TestServeReturnsListenError(t *testing.T) {
 	t.Parallel()
 	server := &http.Server{

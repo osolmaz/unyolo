@@ -25,7 +25,7 @@ The shared broker-family install and setup cutover is tracked in
 - Localhost bind by default for Tailnet-oriented deployment
 - Conservative receive-pack size cap and upstream GitHub timeouts
 - Structured audit logs without secrets, request bodies, diffs, or pack contents
-- Brokerkit-backed grants and Telegram approval for requestable operations
+- Brokerkit-backed grants with a durable operator inbox and optional Telegram notifications
 - No credential API
 - No policy read/write API
 - Tests for auth, route shape, policy decisions, and receive-pack classification
@@ -90,9 +90,12 @@ sudo gh-broker setup systemd \
 ```
 
 Use `--no-start` to write files without enabling or starting the service.
-The setup command writes `/etc/gh-broker/secrets` and configures the service
-with `GH_BROKER_SECRETS_FILE`; it does not place the broker client secret or
-GitHub token value directly in the env file.
+The setup command writes `/etc/gh-broker/secrets` and
+`/etc/gh-broker/operator-secrets`. It does not place broker client secrets,
+operator secrets, or GitHub credentials directly in the env file. The operator
+API uses a separate credential and listener at `http://127.0.0.1:8082` by
+default. Use `--operator-secret-file`, `--operator-bind-addr`, and
+`--operator-port` to supply or change them.
 
 Verify the installed deployment:
 
@@ -204,6 +207,27 @@ POST /{owner}/{repo}.git/git-receive-pack
 
 The long-term route shape is `/api/*` for JSON APIs and Git smart-HTTP routes for Git. Compatibility aliases are not part of the production plan.
 
+## Operator Inbox
+
+The protected operator listener exposes Brokerkit's shared backend:
+
+```text
+GET  /api/grants
+GET  /api/grants/{id}
+GET  /api/grants/events
+POST /api/grants/{id}/approve
+POST /api/grants/{id}/deny
+POST /api/grants/{id}/cancel
+POST /api/grants/{id}/revoke
+```
+
+Authenticate with the separate operator credential from
+`/etc/gh-broker/operator-secrets`. Agent credentials cannot use this listener.
+Telegram is an optional notification view over the same durable request, so a
+decision through either path closes the same state exactly once. A trusted web
+host such as mlclaw keeps this credential server-side and exposes only its own
+authenticated browser session and bounded Brokerkit response fields.
+
 ## Security Model
 
 gh-broker should run behind Tailnet-only reachability, but Tailnet access is not authorization. Every broker endpoint still requires the configured shared secret.
@@ -244,7 +268,7 @@ Deployment safety defaults:
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
 - `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
 - `GH_BROKER_TELEGRAM_BOT_TOKEN` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
-  Telegram approval for requestable grants.
+  Telegram notifications for requestable grants.
 - Audit logs record client, operation, owner, repo, method, path, outcome,
   status, reason, matched rule ids, GitHub installation id when one was minted
   for the request, and verified webhook event metadata.
@@ -257,9 +281,10 @@ Deployment safety defaults:
 Request rules do not execute directly. An authenticated client creates a
 pending grant with `POST /api/grants`; every request must include a unique
 `client_request_id`, and retries must reuse that value. gh-broker sends the
-approval request to Telegram when Telegram is configured. Approval creates a
-short-lived brokerkit grant that is evaluated by the same policy path as static
-rules. Deny rules still win over approved grants.
+approval request to Telegram when Telegram is configured, but the durable
+operator inbox remains authoritative and works without Telegram. Approval
+creates a short-lived brokerkit grant that is evaluated by the same policy path
+as static rules. Deny rules still win over approved grants.
 
 The editable Telegram message reference and its last delivered lifecycle state
 are stored with the grant. Once the reference is stored, status delivery

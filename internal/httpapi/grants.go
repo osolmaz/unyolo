@@ -81,7 +81,7 @@ func (s *Server) createGrant(c echo.Context) error {
 }
 
 func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {
-	if s.notifier == nil {
+	if s.notifier == nil && !s.operatorConfigured {
 		return grantCreatePlan{}, echo.NewHTTPError(http.StatusServiceUnavailable, "approval channel is not configured")
 	}
 	payload, err := decodeGrantCreate(c)
@@ -135,6 +135,9 @@ func (s *Server) notifyPendingGrant(c echo.Context, plan grantCreatePlan, id str
 	if existing.Status != grants.StatusPending {
 		return existing, notify.MessageRef{}, nil
 	}
+	if s.notifier == nil {
+		return existing, notify.MessageRef{}, nil
+	}
 	return s.claimAndSendGrantNotification(c, plan, id)
 }
 
@@ -149,6 +152,9 @@ func (s *Server) claimAndSendGrantNotification(c echo.Context, plan grantCreateP
 	ref, err := s.notifier.SendApproval(c.Request().Context(), grantApprovalMessage(claim.Grant, claim.DecisionToken))
 	if err != nil {
 		s.audit(c, plan.request, "error", "could not notify operator", 0, plan.decision.MatchedRuleIDs)
+		if s.operatorConfigured {
+			return s.keepGrantInOperatorInbox(id, claim.Grant.NotificationClaimedAt, "could not notify operator")
+		}
 		return failNotificationClaim(s.grants.RetainNotificationClaim, id, claim.Grant.NotificationClaimedAt, "could not notify operator")
 	}
 	return s.recordGrantNotification(c.Request().Context(), id, claim, ref)
@@ -156,11 +162,11 @@ func (s *Server) claimAndSendGrantNotification(c echo.Context, plan grantCreateP
 
 func (s *Server) recordGrantNotification(ctx context.Context, id string, claim grants.NotificationClaim, ref notify.MessageRef) (grants.Grant, notify.MessageRef, error) {
 	if ref.MessageID <= 0 {
-		return failNotificationClaim(s.grants.CancelIfNotificationClaimed, id, claim.Grant.NotificationClaimedAt, "could not record operator notification")
+		return s.handleNotificationRecordFailure(id, claim.Grant.NotificationClaimedAt, true)
 	}
 	stored, recorded, err := s.grants.SetNotificationIfClaimed(id, claim.Grant.NotificationClaimedAt, ref)
 	if err != nil {
-		return failNotificationClaim(s.grants.RetainNotificationClaim, id, claim.Grant.NotificationClaimedAt, "could not record operator notification")
+		return s.handleNotificationRecordFailure(id, claim.Grant.NotificationClaimedAt, false)
 	}
 	if recorded {
 		return stored, ref, nil
@@ -169,6 +175,25 @@ func (s *Server) recordGrantNotification(ctx context.Context, id string, claim g
 		_ = s.notifier.UpdateStatus(ctx, ref, "Superseded by another notification attempt.")
 	}
 	return s.waitForGrantNotification(ctx, id)
+}
+
+func (s *Server) handleNotificationRecordFailure(id string, claimedAt time.Time, cancel bool) (grants.Grant, notify.MessageRef, error) {
+	const message = "could not record operator notification"
+	if s.operatorConfigured {
+		return s.keepGrantInOperatorInbox(id, claimedAt, message)
+	}
+	if cancel {
+		return failNotificationClaim(s.grants.CancelIfNotificationClaimed, id, claimedAt, message)
+	}
+	return failNotificationClaim(s.grants.RetainNotificationClaim, id, claimedAt, message)
+}
+
+func (s *Server) keepGrantInOperatorInbox(id string, claimedAt time.Time, message string) (grants.Grant, notify.MessageRef, error) {
+	stored, _, err := s.grants.RetainNotificationClaim(id, claimedAt)
+	if err != nil {
+		return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, message)
+	}
+	return stored, notify.MessageRef{}, nil
 }
 
 func failNotificationClaim(
