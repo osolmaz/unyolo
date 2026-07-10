@@ -97,5 +97,9 @@ func isKeyCharacter(value byte) bool {
 }
 
 func invalidValue(value string) bool {
-	return value == "" || strings.ContainsAny(value, "\x00\r\n\\\"'") || strings.IndexFunc(value, unicode.IsSpace) >= 0
+	return value == "" || strings.ContainsAny(value, "\\\"'") || strings.IndexFunc(value, invalidValueCharacter) >= 0
+}
+
+func invalidValueCharacter(value rune) bool {
+	return unicode.IsControl(value) || unicode.IsSpace(value)
 }

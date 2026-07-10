@@ -30,6 +30,7 @@ func TestParseRejectsMalformedInputWithoutReturningValues(t *testing.T) {
 		"BAD-KEY=value",
 		"DUP=one\nDUP=two",
 		"VALUE=bad\x00value",
+		"VALUE=bad\x1bvalue",
 		"VALUE='quoted'",
 		" VALUE=spaced",
 	} {
