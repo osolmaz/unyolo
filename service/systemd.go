@@ -172,7 +172,7 @@ func validateProtectedServicePaths(unit SystemdUnit) error {
 		"executable":       strings.SplitN(unit.ExecStart, " ", 2)[0],
 	}
 	for name, value := range paths {
-		if err := validateProtectedServicePath(name, value, unit.HomeAccess); err != nil {
+		if err := validateProtectedServicePath(name, value); err != nil {
 			return err
 		}
 	}
@@ -182,12 +182,12 @@ func validateProtectedServicePaths(unit SystemdUnit) error {
 	return validateServicePathIsolation(unit)
 }
 
-func validateProtectedServicePath(name string, value string, homeAccess HomeAccess) error {
+func validateProtectedServicePath(name string, value string) error {
 	if err := validateSystemdPath(name, value); err != nil {
 		return err
 	}
-	if normalizedHomeAccess(homeAccess) == HomeAccessDeny && protectedHomePath(value) {
-		return fmt.Errorf("%s must not be under a path hidden by ProtectHome", name)
+	if protectedHomePath(value) {
+		return fmt.Errorf("%s must not be under a mutable user-home path", name)
 	}
 	return nil
 }

@@ -75,7 +75,6 @@ func TestRenderSystemdHomeAccessPolicies(t *testing.T) {
 		}
 	}
 	base.HomeAccess = HomeAccessAllow
-	base.ExecStart = "/home/bob/bin/test"
 	body, err := RenderSystemd(base)
 	if err != nil {
 		t.Fatalf("home-enabled service: %v", err)
@@ -119,6 +118,11 @@ func TestRenderSystemdRejectsWritableInputOverlap(t *testing.T) {
 		func(unit *SystemdUnit) { unit.ConfigDir = "/" },
 		func(unit *SystemdUnit) { unit.EnvironmentFile = unit.StateDir + "/env" },
 		func(unit *SystemdUnit) { unit.ExecStart = unit.StateDir + "/broker serve" },
+		func(unit *SystemdUnit) { unit.HomeAccess = HomeAccessAllow; unit.ExecStart = "/home/bob/bin/test" },
+		func(unit *SystemdUnit) {
+			unit.HomeAccess = HomeAccessReadOnly
+			unit.EnvironmentFile = "/run/user/1000/test.env"
+		},
 	} {
 		unit := base
 		mutate(&unit)

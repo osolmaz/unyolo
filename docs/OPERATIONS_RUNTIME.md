@@ -60,8 +60,10 @@ Consumers may append only the explicitly allowed additive hardening directives.
 Extensions cannot override the shared identity, execution, restart, filesystem,
 or hardening directives, including through legacy systemd aliases. Paths
 containing systemd specifier or tokenization syntax are rejected instead of
-being rendered ambiguously. Service paths hidden by `ProtectHome=true` are also
-rejected; service binaries must be installed outside home directories.
+being rendered ambiguously. Trusted service paths are always rejected below
+`/home`, `/root`, and `/run/user`, even when broker operations may access those
+trees; service binaries, config, environment files, and state must be installed
+outside user-controlled home directories.
 Provider credentials and policy do not enter Brokerkit.
 
 Home access is an explicit typed policy. The default is `deny`; `read-only` is
