@@ -188,8 +188,13 @@ Implemented in the current brokerkit cutover slice:
   proxy accepts the request
 - approval notification claims, editable message references, and delivered
   status revisions are durable across process restarts
-- unresolved notification claims are never reclaimed automatically; the
-  pending grant expires instead of risking a duplicate approval message
+- unresolved notification claims remain blocked until the durable lease expires;
+  reclaim rotates the one-time decision token before another send
+- verified callbacks atomically commit the decision and editable Telegram
+  message reference, and durable write failures retain the Telegram offset for
+  retry
+- every API grant request requires a `client_request_id`
+- retained grants are quarantined and report no usable remaining capacity
 - ambiguous upstream or grant-commit results retain the reservation or close
   the grant instead of making the approved use available again
 - failures before the target GitHub request is dispatched release the reserved
@@ -203,8 +208,7 @@ Implemented in the current brokerkit cutover slice:
   removed; JSON APIs live under `/api/*` and Git keeps Git smart-HTTP routes
 
 The next cutover slices should move audit helpers and remaining storage/config
-helpers to brokerkit, remove brokerkit's superseded in-memory Telegram tracker,
-then add doctor checks.
+helpers to brokerkit, then add doctor checks.
 
 ## Non-Goals
 

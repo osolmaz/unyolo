@@ -710,7 +710,7 @@ Every brokerkit cutover PR must prove:
 - deny still overrides active grants
 - active grants match only the approved client, operation, target, attrs,
   duration, and use budget
-- Telegram approval uses the brokerkit adapter once it exists
+- Telegram approval uses the brokerkit adapter
 - a dangerous Git operation grant is tested end to end with a fake notifier and
   fake GitHub upstream
 - generated grants are evaluated by the brokerkit policy decision path, not a
@@ -720,7 +720,8 @@ Every brokerkit cutover PR must prove:
 - notification delivery is claimed once, its editable message reference is
   stored with the grant, and lifecycle updates resume after process restart
 - a crash between provider acceptance and message-reference persistence leaves
-  the claim unresolved until the pending grant expires; it is not resent
+  the claim unresolved through its lease; a later retry rotates the one-time
+  decision token before another send
 - a timeout, transport failure, or uncertain upstream result never releases a
   reserved grant use back into the available budget
 - end-to-end broker tests use fake GitHub upstreams, fake installation-token

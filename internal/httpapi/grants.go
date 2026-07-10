@@ -135,9 +135,6 @@ func (s *Server) notifyPendingGrant(c echo.Context, plan grantCreatePlan, id str
 	if existing.Status != grants.StatusPending {
 		return existing, notify.MessageRef{}, nil
 	}
-	if !existing.NotificationClaimedAt.IsZero() {
-		return s.waitForGrantNotification(c.Request().Context(), id)
-	}
 	return s.claimAndSendGrantNotification(c, plan, id)
 }
 
@@ -152,22 +149,35 @@ func (s *Server) claimAndSendGrantNotification(c echo.Context, plan grantCreateP
 	ref, err := s.notifier.SendApproval(c.Request().Context(), grantApprovalMessage(claim.Grant, claim.DecisionToken))
 	if err != nil {
 		s.audit(c, plan.request, "error", "could not notify operator", 0, plan.decision.MatchedRuleIDs)
-		return s.cancelNotificationClaim(id, claim.Grant.NotificationClaimedAt, "could not notify operator")
+		return failNotificationClaim(s.grants.RetainNotificationClaim, id, claim.Grant.NotificationClaimedAt, "could not notify operator")
+	}
+	return s.recordGrantNotification(c.Request().Context(), id, claim, ref)
+}
+
+func (s *Server) recordGrantNotification(ctx context.Context, id string, claim grants.NotificationClaim, ref notify.MessageRef) (grants.Grant, notify.MessageRef, error) {
+	if ref.MessageID <= 0 {
+		return failNotificationClaim(s.grants.CancelIfNotificationClaimed, id, claim.Grant.NotificationClaimedAt, "could not record operator notification")
 	}
 	stored, recorded, err := s.grants.SetNotificationIfClaimed(id, claim.Grant.NotificationClaimedAt, ref)
 	if err != nil {
-		_ = s.notifier.UpdateStatus(c.Request().Context(), ref, "Canceled. Approval request could not be recorded.")
-		return s.cancelNotificationClaim(id, claim.Grant.NotificationClaimedAt, "could not record operator notification")
+		return failNotificationClaim(s.grants.RetainNotificationClaim, id, claim.Grant.NotificationClaimedAt, "could not record operator notification")
 	}
 	if recorded {
 		return stored, ref, nil
 	}
-	_ = s.notifier.UpdateStatus(c.Request().Context(), ref, "Superseded by another notification attempt.")
-	return s.waitForGrantNotification(c.Request().Context(), id)
+	if shouldSupersedeNotification(stored.Notification, ref) {
+		_ = s.notifier.UpdateStatus(ctx, ref, "Superseded by another notification attempt.")
+	}
+	return s.waitForGrantNotification(ctx, id)
 }
 
-func (s *Server) cancelNotificationClaim(id string, claimedAt time.Time, message string) (grants.Grant, notify.MessageRef, error) {
-	_, _, _ = s.grants.CancelIfNotificationClaimed(id, claimedAt)
+func failNotificationClaim(
+	action func(string, time.Time) (grants.Grant, bool, error),
+	id string,
+	claimedAt time.Time,
+	message string,
+) (grants.Grant, notify.MessageRef, error) {
+	_, _, _ = action(id, claimedAt)
 	return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, message)
 }
 
@@ -176,8 +186,8 @@ func (s *Server) waitForGrantNotification(ctx context.Context, id string) (grant
 }
 
 func (s *Server) waitForGrantNotificationFor(ctx context.Context, id string, wait time.Duration, poll time.Duration) (grants.Grant, notify.MessageRef, error) {
-	deadline := time.NewTimer(wait)
-	defer deadline.Stop()
+	waitCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 	for {
@@ -188,13 +198,14 @@ func (s *Server) waitForGrantNotificationFor(ctx context.Context, id string, wai
 		if grant.Notification != nil {
 			return grant, *grant.Notification, nil
 		}
+		if grant.NotificationDeliveryUnresolved {
+			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "operator notification delivery is unresolved")
+		}
 		if grant.Status != grants.StatusPending {
 			return grant, notify.MessageRef{}, nil
 		}
 		select {
-		case <-ctx.Done():
-			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "operator notification is still pending")
-		case <-deadline.C:
+		case <-waitCtx.Done():
 			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "operator notification is still pending")
 		case <-ticker.C:
 		}
@@ -229,63 +240,6 @@ func (s *Server) getGrant(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"grant": apiGrantFromStore(grant)})
 }
 
-func (s *Server) handleTelegramDecision(_ context.Context, decision notify.Decision) notify.DecisionResult {
-	actor := telegramActor(decision)
-	switch decision.Action {
-	case notify.ActionApprove:
-		return s.approveTelegramGrant(decision, actor)
-	case notify.ActionDeny:
-		return s.denyTelegramGrant(decision, actor)
-	default:
-		return notify.DecisionResult{Answer: "Grant decision ignored"}
-	}
-}
-
-func (s *Server) approveTelegramGrant(decision notify.Decision, actor string) notify.DecisionResult {
-	grant, err := s.grants.Approve(decision.GrantID, decision.DecisionToken, actor)
-	if err != nil {
-		return notify.DecisionResult{Answer: grantDecisionAnswer(err)}
-	}
-	return notify.DecisionResult{
-		Answer:          "Grant approved",
-		Status:          "Approved. Access is active.",
-		ActiveExpiresAt: grant.ExpiresAt,
-	}
-}
-
-func (s *Server) denyTelegramGrant(decision notify.Decision, actor string) notify.DecisionResult {
-	if _, err := s.grants.Deny(decision.GrantID, decision.DecisionToken, actor); err != nil {
-		return notify.DecisionResult{Answer: grantDecisionAnswer(err)}
-	}
-	return notify.DecisionResult{Answer: "Grant denied", Status: "Denied. Access was not granted."}
-}
-
-func telegramActor(decision notify.Decision) string {
-	if decision.OperatorTag != "" {
-		return "telegram:@" + decision.OperatorTag
-	}
-	if decision.OperatorID != 0 {
-		return fmt.Sprintf("telegram:%d", decision.OperatorID)
-	}
-	if decision.Approver != "" {
-		return decision.Approver
-	}
-	return "telegram"
-}
-
-func grantDecisionAnswer(err error) string {
-	switch {
-	case errors.Is(err, grants.ErrNotFound):
-		return "Grant not found"
-	case errors.Is(err, grants.ErrInvalidDecisionToken):
-		return "Grant decision token did not match"
-	case errors.Is(err, grants.ErrNotPending):
-		return "Grant is no longer pending"
-	default:
-		return "Grant decision failed"
-	}
-}
-
 func decodeGrantCreate(c echo.Context) (grantCreateRequest, error) {
 	body, err := httpx.ReadLimited(c.Request().Body, maxGrantRequestBodyBytes)
 	if err != nil {
@@ -305,6 +259,9 @@ func decodeGrantCreate(c echo.Context) (grantCreateRequest, error) {
 	}
 	if strings.TrimSpace(payload.Reason) == "" {
 		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, "reason is required")
+	}
+	if err := validateClientRequestID(payload.ClientRequestID); err != nil {
+		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	return payload, nil
 }
@@ -339,30 +296,19 @@ func grantStoreHTTPError(err error) error {
 func apiGrantFromStore(grant grants.Grant) apiGrant {
 	return apiGrant{
 		ID:              grant.ID,
-		Status:          string(grant.Status),
+		Status:          apiGrantStatus(grant),
 		Operation:       grant.Operation,
 		Target:          apiTarget(grant.Target),
 		Attrs:           flattenCoreValues(grant.Attrs),
 		Reason:          grant.Reason,
 		Minutes:         int(grant.Duration / time.Minute),
 		MaxUses:         grant.MaxUses,
-		UsesRemaining:   usesRemaining(grant),
+		UsesRemaining:   grantUsesRemaining(grant),
 		UsedCount:       grant.UsedCount,
 		PendingUntil:    timePointer(grant.PendingExpiresAt),
 		ExpiresAt:       timePointer(grant.ExpiresAt),
 		ClientRequestID: grant.ClientRequestID,
 	}
-}
-
-func usesRemaining(grant grants.Grant) int {
-	if grant.Status != grants.StatusActive {
-		return 0
-	}
-	remaining := grant.MaxUses - grant.UsedCount - grant.ReservedCount
-	if remaining < 0 {
-		return 0
-	}
-	return remaining
 }
 
 func timePointer(value time.Time) *time.Time {
@@ -399,18 +345,18 @@ func grantApprovalMessage(grant grants.Grant, decisionToken string) notify.Appro
 		Reason:           grant.Reason,
 		RequestedMinutes: int(grant.Duration / time.Minute),
 		MaxUses:          grant.MaxUses,
-		PendingExpiresAt: grant.PendingExpiresAt,
 		Fields:           approvalFields(grant),
 	}
 }
 
 func grantApprovalText(grant grants.Grant) string {
 	return fmt.Sprintf(
-		"Approval needed for gh-broker\n\n%s is asking to run %s on %s.\n\nReason: %s\n\nApprove only if this looks right.",
+		"Approval needed for gh-broker\n\n%s is asking to run %s on %s.\n\nReason: %s\nRequest expires: %s\n\nApprove only if this looks right.",
 		grant.Client,
 		grant.Operation,
 		targetSummary(grant.Target),
 		grant.Reason,
+		grant.PendingExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
 	)
 }
 

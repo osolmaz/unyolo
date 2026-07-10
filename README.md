@@ -222,19 +222,22 @@ Deployment safety defaults:
 ## Grants
 
 Request rules do not execute directly. An authenticated client creates a
-pending grant with `POST /api/grants`; gh-broker sends the approval request to
-Telegram when Telegram is configured. Approval creates a short-lived brokerkit
-grant that is evaluated by the same policy path as static rules. Deny rules
-still win over approved grants.
+pending grant with `POST /api/grants`; every request must include a unique
+`client_request_id`, and retries must reuse that value. gh-broker sends the
+approval request to Telegram when Telegram is configured. Approval creates a
+short-lived brokerkit grant that is evaluated by the same policy path as static
+rules. Deny rules still win over approved grants.
 
 The editable Telegram message reference and its last delivered lifecycle state
 are stored with the grant. Once the reference is stored, status delivery
-resumes after a broker restart.
-Approval sends are at most once per pending grant. If the process stops after
-Telegram accepts a send but before its reference is stored, the unresolved
-grant is not sent again; it fails closed and expires.
+resumes after a broker restart. A verified callback commits the decision and
+message reference in one transaction, including when the original send response
+was lost. Durable write failures leave the callback unanswered at the same
+Telegram update for retry. Ambiguous sends remain blocked for the two-minute
+claim lease; a later retry uses a fresh one-time decision token.
 Grant uses are reserved before GitHub forwarding; an ambiguous upstream result
-is retained for operator review instead of reopening the grant budget.
+is retained for operator review instead of reopening the grant budget. Retained
+grants report `status: retained` and `uses_remaining: 0`.
 
 ## License
 

@@ -180,8 +180,12 @@ The brokerkit install/setup cutover is complete only when tests prove:
 - Telegram approval is covered with a fake Bot API server and no live bot token
 - notification claims, Telegram message references, and delivered status
   revisions survive a broker restart without duplicate approval messages
-- an unresolved send claim fails closed until grant expiry instead of being
-  reclaimed and sent a second time
+- an unresolved send claim fails closed through its lease and rotates its
+  one-time decision token before a later retry
+- callback decisions and callback-carried message references commit atomically;
+  a durable failure leaves the Telegram update pending for retry
+- API grant requests require `client_request_id`
+- retained grants expose zero usable capacity
 - ambiguous GitHub outcomes retain the reserved use and close further access
 - audit output contains no GitHub token, GitHub App private key, installation
   token, webhook secret, broker secret, approval token, Telegram bot token,

@@ -29,14 +29,9 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 		return nil, nil, nil
 	}
 	telegram, err := bktelegram.NewWithOptions(cfg.TelegramBotToken, cfg.TelegramChatID, nil, "", bktelegram.Options{
-		ApproveText:           "Approve",
-		DenyText:              "Deny",
-		ExternalStatusUpdates: true,
-		StatusByAnswer: map[string]string{
-			"Grant approved": "Approved. Access is active.",
-			"Grant denied":   "Denied. Access was not granted.",
-		},
-		TerminalStatuses: []string{"Denied. Access was not granted.", "Grant is no longer pending"},
+		IgnoredAnswer: "Grant decision ignored",
+		ApproveText:   "Approve",
+		DenyText:      "Deny",
 	})
 	if err != nil {
 		return nil, nil, err
@@ -118,7 +113,7 @@ func grantLifecycleStatusText(status grants.Status) string {
 
 func grantUseStatusText(grant grants.Grant) string {
 	remaining := grant.MaxUses - grant.UsedCount
-	if grant.Status != grants.StatusActive || remaining <= 0 {
+	if grant.Status != grants.StatusActive || grant.ReservationRetained || remaining <= 0 {
 		return "Used. Access is now closed."
 	}
 	return fmt.Sprintf("Used %d of %d. %d uses remain.", grant.UsedCount, grant.MaxUses, remaining)

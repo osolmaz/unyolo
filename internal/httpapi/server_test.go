@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -881,10 +882,9 @@ func TestTelegramApprovalActivatesGrant(t *testing.T) {
 	telegramAPI := httptest.NewServer(fakeTelegramHandler(t, telegramState))
 	t.Cleanup(telegramAPI.Close)
 	telegram, err := bktelegram.NewWithOptions("bot-token", telegramState.chatID, telegramAPI.Client(), telegramAPI.URL, bktelegram.Options{
-		PollTimeoutSeconds:    1,
-		ApproveText:           "Approve",
-		DenyText:              "Deny",
-		ExternalStatusUpdates: true,
+		PollTimeoutSeconds: 1,
+		ApproveText:        "Approve",
+		DenyText:           "Deny",
 	})
 	if err != nil {
 		t.Fatalf("NewWithOptions() error = %v", err)
@@ -926,42 +926,67 @@ func TestGrantNotificationIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestStaleGrantNotificationClaimDoesNotResend(t *testing.T) {
+func TestUnresolvedGrantNotificationReclaimsAfterLease(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	notifier := &captureNotifier{}
 	server.notifier = notifier
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	claim, claimed, err := server.grants.ClaimNotification(result.Grant.ID, time.Nanosecond)
-	if err != nil || !claimed {
-		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
-	}
-	time.Sleep(time.Millisecond)
+	now := time.Date(2026, 7, 10, 1, 2, 3, 0, time.UTC)
+	grant, claim := createUnresolvedNotificationClaim(t, server, func() time.Time { return now })
 	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/grants", http.NoBody)
-	ctx, cancel := context.WithCancel(request.Context())
-	cancel()
-	request = request.WithContext(ctx)
 	echoContext := server.echo.NewContext(request, httptest.NewRecorder())
 
-	if _, _, err := server.notifyPendingGrant(echoContext, grantCreatePlan{}, result.Grant.ID); err == nil {
+	if _, _, err := server.notifyPendingGrant(echoContext, grantCreatePlan{}, grant.ID); err == nil {
 		t.Fatal("notifyPendingGrant() error = nil, want unresolved delivery")
 	}
 	if len(notifier.messages) != 0 {
 		t.Fatalf("messages = %d, want no duplicate send", len(notifier.messages))
 	}
-	stored, err := server.grants.Get(result.Grant.ID)
+	assertUnresolvedNotificationClaim(t, server, grant.ID, claim.Grant.NotificationClaimedAt)
+	now = now.Add(30 * time.Second)
+	stored, ref, err := server.notifyPendingGrant(echoContext, grantCreatePlan{}, grant.ID)
+	assertReclaimedNotification(t, stored, ref, notifier, claim.DecisionToken, err)
+}
+
+func createUnresolvedNotificationClaim(t *testing.T, server *Server, now func() time.Time) (grants.Grant, grants.NotificationClaim) {
+	t.Helper()
+	server.grants = grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{Now: now})
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
 	if err != nil {
-		t.Fatalf("Get(%q) error = %v", result.Grant.ID, err)
+		t.Fatalf("Request() error = %v", err)
 	}
-	if stored.Status != grants.StatusPending || !stored.NotificationClaimedAt.Equal(claim.Grant.NotificationClaimedAt) {
+	claim, claimed, err := server.grants.ClaimNotification(result.Grant.ID, 30*time.Second)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
+	}
+	if _, retained, err := server.grants.RetainNotificationClaim(result.Grant.ID, claim.Grant.NotificationClaimedAt); err != nil || !retained {
+		t.Fatalf("RetainNotificationClaim() retained=%v err=%v", retained, err)
+	}
+	return result.Grant, claim
+}
+
+func assertUnresolvedNotificationClaim(t *testing.T, server *Server, id string, claimedAt time.Time) {
+	t.Helper()
+	stored, err := server.grants.Get(id)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", id, err)
+	}
+	if stored.Status != grants.StatusPending || !stored.NotificationDeliveryUnresolved || !stored.NotificationClaimedAt.Equal(claimedAt) {
 		t.Fatalf("grant = %+v, want original unresolved claim", stored)
 	}
 }
 
-func TestGrantNotificationFailureCancelsRequest(t *testing.T) {
+func assertReclaimedNotification(t *testing.T, stored grants.Grant, ref notify.MessageRef, notifier *captureNotifier, oldToken string, err error) {
+	t.Helper()
+	if err != nil || stored.Notification == nil || ref.MessageID <= 0 || len(notifier.messages) != 1 {
+		t.Fatalf("reclaimed notify = grant:%+v ref:%+v messages:%d err:%v", stored, ref, len(notifier.messages), err)
+	}
+	if notifier.token == oldToken {
+		t.Fatal("reclaimed notification reused the original decision token")
+	}
+}
+
+func TestGrantNotificationFailureRetainsRequest(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -976,8 +1001,8 @@ func TestGrantNotificationFailureCancelsRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListForClient() error = %v", err)
 	}
-	if len(stored) != 1 || stored[0].Status != grants.StatusCanceled {
-		t.Fatalf("grants = %+v, want one canceled grant", stored)
+	if len(stored) != 1 || stored[0].Status != grants.StatusPending || !stored[0].NotificationDeliveryUnresolved {
+		t.Fatalf("grants = %+v, want one unresolved pending grant", stored)
 	}
 }
 
@@ -1170,6 +1195,10 @@ func TestGrantStatusText(t *testing.T) {
 	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got != "Used 1 of 2. 1 uses remain." {
 		t.Errorf("reserved used status = %q", got)
 	}
+	used.ReservationRetained = true
+	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got != "Used. Access is now closed." {
+		t.Errorf("retained used status = %q", got)
+	}
 	used.Status = grants.StatusConsumed
 	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsedExpired, Grant: used}); got != "Used. Access is now closed." {
 		t.Errorf("closed used status = %q", got)
@@ -1303,6 +1332,9 @@ func approveGrant(t *testing.T, server *Server, grantID string, token string) {
 		GrantID:       grantID,
 		DecisionToken: token,
 		OperatorID:    42,
+		ChatID:        1,
+		MessageID:     1,
+		MessageText:   "approval",
 	})
 	if decision.Answer != "Grant approved" {
 		t.Fatalf("telegram decision = %+v, want approval", decision)
@@ -1464,9 +1496,10 @@ func TestDecodeGrantCreateDirect(t *testing.T) {
 		t.Fatalf("payload = %+v, want decoded request", payload)
 	}
 	cases := map[string]string{
-		"trailing json":  `{"reason":"ok"} {}`,
-		"missing reason": `{"client_request_id":"request-1"}`,
-		"bad json":       `{`,
+		"trailing json":             `{"reason":"ok"} {}`,
+		"missing reason":            `{"client_request_id":"request-1"}`,
+		"missing client request id": `{"reason":"open PR"}`,
+		"bad json":                  `{`,
 	}
 	for name, body := range cases {
 		if _, err := decodeGrantCreate(newBodyContext(t, server, body)); err == nil {
@@ -1527,6 +1560,9 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 		GrantID:       result.Grant.ID,
 		DecisionToken: result.DecisionToken,
 		OperatorTag:   "operator",
+		ChatID:        1,
+		MessageID:     1,
+		MessageText:   "approval",
 	})
 	if denied.Answer != "Grant denied" {
 		t.Fatalf("deny decision = %+v, want denied", denied)
@@ -1535,6 +1571,9 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 		Action:        notify.ActionApprove,
 		GrantID:       result.Grant.ID,
 		DecisionToken: result.DecisionToken,
+		ChatID:        1,
+		MessageID:     1,
+		MessageText:   "approval",
 	})
 	if replay.Answer != "Grant is no longer pending" {
 		t.Fatalf("replay decision = %+v, want no longer pending", replay)
@@ -1569,13 +1608,17 @@ func TestDenyTelegramGrantDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	decision := server.denyTelegramGrant(notify.Decision{
+	decision := server.handleTelegramDecision(context.Background(), notify.Decision{
+		Action:        notify.ActionDeny,
 		GrantID:       result.Grant.ID,
 		DecisionToken: result.DecisionToken,
 		OperatorTag:   "operator",
-	}, "telegram:@operator")
-	if decision.Answer != "Grant denied" || decision.Status != "Denied. Access was not granted." {
-		t.Fatalf("denyTelegramGrant() = %+v, want denied status", decision)
+		ChatID:        1,
+		MessageID:     1,
+		MessageText:   "approval",
+	})
+	if decision.Answer != "Grant denied" || decision.Retry {
+		t.Fatalf("handleTelegramDecision() = %+v, want denied status", decision)
 	}
 }
 

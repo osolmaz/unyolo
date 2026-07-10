@@ -51,8 +51,13 @@ vet:
 ## lint: Run golangci-lint
 .PHONY: lint
 lint:
-	@which golangci-lint > /dev/null || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@which golangci-lint > /dev/null || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 	golangci-lint run
+
+## vuln: Scan called code for known vulnerabilities
+.PHONY: vuln
+vuln:
+	GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
 ## check: Run local quality checks
 .PHONY: check
@@ -62,10 +67,10 @@ check: vet test build
 .PHONY: slophammer
 slophammer:
 	slophammer-go dry .
-	slophammer-go crap .
+	slophammer-go crap . --max-score 8
+	./scripts/check-mutation.sh
 	slophammer-go mutate . --scan
 	slophammer-go check .
-	slophammer-go check . --execute
 
 ## clean: Remove build artifacts
 .PHONY: clean

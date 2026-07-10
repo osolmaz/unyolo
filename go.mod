@@ -1,10 +1,12 @@
 module github.com/osolmaz/gh-broker
 
-go 1.25.0
+go 1.26.0
+
+toolchain go1.26.5
 
 require (
 	github.com/labstack/echo/v4 v4.13.4
-	github.com/osolmaz/brokerkit v0.0.0-20260710014108-a40119314de1
+	github.com/osolmaz/brokerkit v0.0.0-20260710083524-5d682c4b2a15
 )
 
 require (
@@ -13,9 +15,9 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 )
