@@ -212,6 +212,10 @@ func secretPathACLCheck(path string) *Check {
 }
 
 func initializeSecretPath(path string) (string, os.FileInfo, *Check) {
+	if hasParentTraversal(path) {
+		failure := Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "secret path contains parent traversal"}
+		return "", nil, &failure
+	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		failure := Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "could not resolve the secret path"}
@@ -226,6 +230,17 @@ func initializeSecretPath(path string) (string, os.FileInfo, *Check) {
 		return "", nil, aclCheck
 	}
 	return absolute, root, nil
+}
+
+func hasParentTraversal(path string) bool {
+	for _, component := range strings.FieldsFunc(path, func(char rune) bool {
+		return char == '/' || char == '\\'
+	}) {
+		if component == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func agentCanReplaceChild(parent os.FileInfo, child os.FileInfo, agent Identity) bool {

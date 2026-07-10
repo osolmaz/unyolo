@@ -177,3 +177,41 @@ func TestFinalizeSystemdRejectsInvalidBinary(t *testing.T) {
 		t.Fatal("FinalizeSystemd(non-executable) error = nil")
 	}
 }
+
+func TestValidateTrustedExecutable(t *testing.T) {
+	resolved, err := filepath.EvalSymlinks("/bin/sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateTrustedExecutable(resolved); err != nil {
+		t.Fatalf("validateTrustedExecutable(system binary): %v", err)
+	}
+	opts := DefaultSystemdOptions(SystemdDefaults{
+		BrokerName: "test", User: "test", Group: "test", ClientName: "bob", BindAddr: "127.0.0.1", Port: 1,
+	})
+	opts.BinaryPath = resolved
+	if _, err := FinalizeSystemd(opts); err != nil {
+		t.Fatalf("FinalizeSystemd(system binary): %v", err)
+	}
+	untrusted := filepath.Join(t.TempDir(), "broker")
+	if err := os.WriteFile(untrusted, []byte("binary"), 0o755); err != nil { // #nosec G306 -- executable fixture requires execute bits.
+		t.Fatal(err)
+	}
+	if err := validateTrustedExecutable(untrusted); err == nil {
+		t.Fatal("validateTrustedExecutable(user-owned binary) error = nil")
+	}
+}
+
+func TestRequiresTrustedExecutable(t *testing.T) {
+	if !requiresTrustedExecutable(SystemdOptions{}) {
+		t.Fatal("persistent setup should require a trusted executable")
+	}
+	if os.Geteuid() != 0 {
+		if requiresTrustedExecutable(SystemdOptions{DryRun: true}) {
+			t.Fatal("non-root dry-run should not require root-owned fixtures")
+		}
+		if requiresTrustedExecutable(SystemdOptions{AllowNonRoot: true}) {
+			t.Fatal("non-root test setup should not require root-owned fixtures")
+		}
+	}
+}

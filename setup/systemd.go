@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/osolmaz/brokerkit/clientconfig"
 	"github.com/osolmaz/brokerkit/internal/validatex"
@@ -89,8 +90,46 @@ func FinalizeSystemd(opts SystemdOptions) (SystemdOptions, error) {
 	if err := validateExecutableInfo(info); err != nil {
 		return SystemdOptions{}, err
 	}
+	if requiresTrustedExecutable(opts) {
+		if err := validateTrustedExecutable(resolved); err != nil {
+			return SystemdOptions{}, err
+		}
+	}
 	opts.BinaryPath = resolved
 	return opts, opts.Validate()
+}
+
+func requiresTrustedExecutable(opts SystemdOptions) bool {
+	return os.Geteuid() == 0 || (!opts.DryRun && !opts.AllowNonRoot)
+}
+
+func validateTrustedExecutable(path string) error {
+	current := string(filepath.Separator)
+	for _, component := range strings.Split(strings.TrimPrefix(filepath.Clean(path), current), current) {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("inspect executable path: %w", err)
+		}
+		if err := validateTrustedPathComponent(current, info); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTrustedPathComponent(path string, info os.FileInfo) error {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("executable path ownership is unavailable for %s", path)
+	}
+	if stat.Uid != 0 {
+		return fmt.Errorf("executable path component must be root-owned: %s", path)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("executable path component must not be mutable by non-root users: %s", path)
+	}
+	return nil
 }
 
 func resolveExecutablePath(path string) (string, error) {

@@ -140,6 +140,35 @@ func TestSecretFileChecksRejectReplaceableAndSymlinkPaths(t *testing.T) {
 	}
 }
 
+func TestSecretFileChecksRejectsParentTraversalBeforeCleaning(t *testing.T) {
+	root := t.TempDir()
+	stable := filepath.Join(root, "stable")
+	actual := filepath.Join(root, "actual")
+	if err := os.Mkdir(stable, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(actual, 0o777); err != nil { // #nosec G301 -- writable directory is the isolation failure fixture.
+		t.Fatal(err)
+	}
+	if err := os.Chmod(actual, 0o777); err != nil { // #nosec G302 -- writable directory is the isolation failure fixture.
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(actual, "sub"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(actual, "secret"), []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(actual, "sub"), filepath.Join(stable, "hop")); err != nil {
+		t.Fatal(err)
+	}
+	path := stable + string(filepath.Separator) + "hop" + string(filepath.Separator) + ".." + string(filepath.Separator) + "secret"
+	checks := SecretFileChecks(path, Identity{User: "agent", UID: os.Getuid() + 1, GID: os.Getgid() + 1})
+	if checks[0].Status != CheckUnknown {
+		t.Fatalf("parent traversal check = %+v", checks[0])
+	}
+}
+
 func TestAgentCanReplaceChildStickyDirectoryRules(t *testing.T) {
 	root := t.TempDir()
 	parentPath := filepath.Join(root, "sticky")
