@@ -24,6 +24,8 @@ const (
 	defaultReadinessInterval = 100 * time.Millisecond
 )
 
+var errServiceReadinessFailed = errors.New("service readiness check failed before retiring managed files")
+
 // ManagedFileArea selects the trusted root beneath which a setup file lives.
 type ManagedFileArea string
 
@@ -356,12 +358,18 @@ func pollSystemdReadiness(ctx context.Context, check ReadinessCheck, interval ti
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
+		if ctx.Err() != nil {
+			return errServiceReadinessFailed
+		}
 		if err := check(ctx); err == nil {
+			if ctx.Err() != nil {
+				return errServiceReadinessFailed
+			}
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			return errors.New("service readiness check failed before retiring managed files")
+			return errServiceReadinessFailed
 		case <-ticker.C:
 		}
 	}

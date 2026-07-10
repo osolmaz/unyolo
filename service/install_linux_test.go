@@ -199,6 +199,24 @@ func TestInstallSystemdPreservesRetiredFileWhenReadinessFails(t *testing.T) {
 	}
 }
 
+func TestInstallSystemdRejectsReadinessThatSucceedsAfterTimeout(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	retired := prepareRetiredManagedFile(t, plan, "retired-secret")
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	plan.ReadyCheck = func(context.Context) error {
+		time.Sleep(10 * time.Millisecond)
+		return nil
+	}
+	plan.ReadyTimeout = 5 * time.Millisecond
+	plan.ReadyInterval = time.Millisecond
+	if err := installActivatedFixtureError(t, plan, &recordingCommandRunner{}); err == nil || !strings.Contains(err.Error(), "readiness") {
+		t.Fatalf("installSystemdForIdentity() error = %v", err)
+	}
+	if _, err := os.Lstat(retired); err != nil {
+		t.Fatalf("retired file was removed after late readiness: %v", err)
+	}
+}
+
 func TestSystemdInstallPlanValidation(t *testing.T) {
 	valid := nonRootInstallPlan(t)
 	tests := map[string]func(*SystemdInstallPlan){
