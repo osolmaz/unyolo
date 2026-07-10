@@ -164,12 +164,9 @@ func WriteForHomeOwner(cfg Config) (string, error) {
 }
 
 func writeClientConfigSafely(homeDir string, brokerName string, body []byte) error {
-	if err := rejectSymlinkPath(homeDir); err != nil {
-		return err
-	}
-	root, err := os.OpenRoot(homeDir)
+	root, err := openVerifiedHomeRoot(homeDir)
 	if err != nil {
-		return fmt.Errorf("open home directory: %w", err)
+		return err
 	}
 	writeErr := writeClientConfigInRoot(root, brokerName, body)
 	closeErr := root.Close()
@@ -178,6 +175,33 @@ func writeClientConfigSafely(homeDir string, brokerName string, body []byte) err
 	}
 	if closeErr != nil {
 		return fmt.Errorf("close home directory: %w", closeErr)
+	}
+	return nil
+}
+
+func openVerifiedHomeRoot(homeDir string) (*os.Root, error) {
+	expected, err := inspectRealHomePath(homeDir)
+	if err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(homeDir)
+	if err != nil {
+		return nil, fmt.Errorf("open home directory: %w", err)
+	}
+	if err := verifyOpenedHomeRoot(root, expected); err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	return root, nil
+}
+
+func verifyOpenedHomeRoot(root *os.Root, expected os.FileInfo) error {
+	actual, err := root.Stat(".")
+	if err != nil {
+		return fmt.Errorf("verify opened home directory: %w", err)
+	}
+	if !os.SameFile(expected, actual) {
+		return errors.New("home directory changed while it was being opened")
 	}
 	return nil
 }
@@ -308,19 +332,21 @@ func rootOwner(root *os.Root) (int, int, error) {
 	return int(stat.Uid), int(stat.Gid), nil
 }
 
-func rejectSymlinkPath(path string) error {
+func inspectRealHomePath(path string) (os.FileInfo, error) {
 	current := string(filepath.Separator)
+	var final os.FileInfo
 	for _, component := range strings.Split(strings.TrimPrefix(filepath.Clean(path), current), current) {
 		current = filepath.Join(current, component)
 		info, err := os.Lstat(current)
 		if err != nil {
-			return fmt.Errorf("inspect home directory path: %w", err)
+			return nil, fmt.Errorf("inspect home directory path: %w", err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("home directory path must not contain symbolic links")
+			return nil, errors.New("home directory path must not contain symbolic links")
 		}
+		final = info
 	}
-	return nil
+	return final, nil
 }
 
 func ensureClientDirectory(root *os.Root, name string, uid int, gid int) error {

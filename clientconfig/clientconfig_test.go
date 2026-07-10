@@ -103,6 +103,22 @@ func TestWriteForHomeOwnerRejectsSymlinkedConfigPaths(t *testing.T) {
 	}
 }
 
+func TestWriteForHomeOwnerRejectsSymlinkedHome(t *testing.T) {
+	parent := t.TempDir()
+	realHome := t.TempDir()
+	linkedHome := filepath.Join(parent, "home")
+	if err := os.Symlink(realHome, linkedHome); err != nil {
+		t.Fatal(err)
+	}
+	_, err := WriteForHomeOwner(Config{
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1:8081",
+		Secret: "client-secret", HomeDir: linkedHome,
+	})
+	if err == nil {
+		t.Fatal("WriteForHomeOwner(symlinked home) error = nil")
+	}
+}
+
 func TestWriteForHomeOwnerReplacesClientFileSymlinkInsideHome(t *testing.T) {
 	home := t.TempDir()
 	outside := filepath.Join(home, "outside")
