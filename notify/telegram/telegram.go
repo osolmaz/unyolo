@@ -492,7 +492,7 @@ func decodeTelegramError(resp *http.Response) error {
 	if strings.Contains(strings.ToLower(apiError.Description), "message is not modified") {
 		return errMessageNotModified
 	}
-	return fmt.Errorf("telegram request returned status %d: %s", resp.StatusCode, apiError.Description)
+	return fmt.Errorf("telegram request returned status %d", resp.StatusCode)
 }
 
 func (c *Client) redactedError(err error) error {

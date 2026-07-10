@@ -68,7 +68,7 @@ func TestUpdateStatusTreatsUnmodifiedMessageAsDelivered(t *testing.T) {
 func TestUpdateStatusReturnsOtherTelegramErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`))
+		_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: leaked-secret chat not found"}`))
 	}))
 	defer server.Close()
 	client, err := New("test-token", 123, server.Client(), server.URL)
@@ -77,8 +77,8 @@ func TestUpdateStatusReturnsOtherTelegramErrors(t *testing.T) {
 	}
 	ref := notify.MessageRef{Kind: "telegram", ChatID: 123, MessageID: 42, Text: "Approval"}
 	err = client.UpdateStatus(context.Background(), ref, "Approved")
-	if err == nil || !strings.Contains(err.Error(), "chat not found") {
-		t.Fatalf("UpdateStatus() error = %v, want Telegram API error", err)
+	if err == nil || strings.Contains(err.Error(), "leaked-secret") || !strings.Contains(err.Error(), "status 400") {
+		t.Fatalf("UpdateStatus() error = %v, want opaque Telegram API error", err)
 	}
 }
 
