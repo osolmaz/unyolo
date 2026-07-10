@@ -136,6 +136,44 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	}
 }
 
+func TestPollOnceLeavesRetriedDecisionPending(t *testing.T) {
+	answers := 0
+	server := newRetryPollServer(t, &answers)
+	defer server.Close()
+	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{PollTimeoutSeconds: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	offset, err := client.PollOnce(context.Background(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
+		return notify.DecisionResult{Retry: true}
+	})
+	if !errors.Is(err, ErrDecisionRetry) || offset != 0 || answers != 0 {
+		t.Fatalf("first PollOnce() offset=%d answers=%d err=%v", offset, answers, err)
+	}
+	offset, err = client.PollOnce(context.Background(), offset, func(context.Context, notify.Decision) notify.DecisionResult {
+		return notify.DecisionResult{Answer: "saved"}
+	})
+	if err != nil || offset != 6 || answers != 1 {
+		t.Fatalf("retry PollOnce() offset=%d answers=%d err=%v", offset, answers, err)
+	}
+}
+
+func newRetryPollServer(t *testing.T, answers *int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":5,"callback_query":{"id":"retry","from":{"id":2,"username":"operator"},"message":{"message_id":42,"chat":{"id":123},"text":"Approval requested"},"data":"` + CallbackData(notify.ActionApprove, "g1", "t1") + `"}}]}`))
+		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
+			*answers++
+			writeOK(w)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+}
+
 func TestCallbackData(t *testing.T) {
 	data := CallbackData(notify.ActionApprove, "grant-1", "token-1")
 	action, grantID, token, ok := ParseCallbackData(data)
@@ -157,11 +195,42 @@ func TestCallbackDataRejectsInvalid(t *testing.T) {
 }
 
 func TestParseDecisionRejectsInvalid(t *testing.T) {
-	if decision, ok := parseDecision(telegramUpdate{}); ok || decision.GrantID != "" {
-		t.Fatalf("parseDecision(empty) = %+v %v, want no decision", decision, ok)
+	validData := CallbackData(notify.ActionApprove, "g", "t")
+	validMessage := telegramMessage{MessageID: 7, Chat: telegramChat{ID: 123}, Text: "Approval"}
+	tests := []struct {
+		name   string
+		update telegramUpdate
+	}{
+		{name: "empty"},
+		{name: "invalid data", update: telegramUpdate{CallbackQuery: &telegramCallbackQuery{ID: "cb", Data: "bad", Message: &validMessage}}},
+		{name: "empty callback id", update: telegramUpdate{CallbackQuery: &telegramCallbackQuery{Data: validData, Message: &validMessage}}},
+		{name: "no message", update: telegramUpdate{CallbackQuery: &telegramCallbackQuery{ID: "cb", Data: validData}}},
+		{name: "zero chat", update: telegramUpdate{CallbackQuery: &telegramCallbackQuery{ID: "cb", Data: validData, Message: &telegramMessage{MessageID: 7, Text: "Approval"}}}},
+		{name: "zero message id", update: telegramUpdate{CallbackQuery: &telegramCallbackQuery{ID: "cb", Data: validData, Message: &telegramMessage{Chat: telegramChat{ID: 123}, Text: "Approval"}}}},
+		{name: "empty text", update: telegramUpdate{CallbackQuery: &telegramCallbackQuery{ID: "cb", Data: validData, Message: &telegramMessage{MessageID: 7, Chat: telegramChat{ID: 123}}}}},
 	}
-	if decision, ok := parseDecision(telegramUpdate{CallbackQuery: &telegramCallbackQuery{ID: "cb", Data: CallbackData(notify.ActionApprove, "g", "t")}}); ok || decision.GrantID != "" {
-		t.Fatalf("parseDecision(no message) = %+v %v, want no decision", decision, ok)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if decision, ok := parseDecision(test.update); ok || decision.GrantID != "" {
+				t.Fatalf("parseDecision() = %+v %v, want no decision", decision, ok)
+			}
+		})
+	}
+}
+
+func TestParseDecisionAcceptsMinimumMessageID(t *testing.T) {
+	update := telegramUpdate{CallbackQuery: &telegramCallbackQuery{
+		ID:   "cb",
+		Data: CallbackData(notify.ActionApprove, "g", "t"),
+		Message: &telegramMessage{
+			MessageID: 1,
+			Chat:      telegramChat{ID: 123},
+			Text:      "Approval",
+		},
+	}}
+	decision, ok := parseDecision(update)
+	if !ok || decision.MessageID != 1 {
+		t.Fatalf("parseDecision(message id 1) = %+v %v", decision, ok)
 	}
 }
 

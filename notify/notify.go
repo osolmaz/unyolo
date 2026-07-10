@@ -57,6 +57,9 @@ type Decision struct {
 type DecisionResult struct {
 	// Answer is the short callback answer shown by the approval channel.
 	Answer string
+	// Retry leaves the callback unanswered and its update offset uncommitted.
+	// Brokers use it when a durable decision transaction could not be saved.
+	Retry bool
 }
 
 // Notifier sends approval requests and status updates.

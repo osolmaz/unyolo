@@ -143,34 +143,6 @@ func (c *Client) Poll(ctx context.Context, handler func(context.Context, notify.
 	}
 }
 
-// PollOnce fetches and handles one Telegram update batch.
-func (c *Client) PollOnce(ctx context.Context, offset int64, handler func(context.Context, notify.Decision) notify.DecisionResult) (int64, error) {
-	updates, err := c.getUpdates(ctx, offset)
-	if err != nil {
-		return offset, err
-	}
-	nextOffset := offset
-	for _, update := range updates {
-		if update.UpdateID >= nextOffset {
-			nextOffset = update.UpdateID + 1
-		}
-		decision, ok := parseDecision(update)
-		if !ok {
-			continue
-		}
-		c.handleDecision(ctx, decision, handler)
-	}
-	return nextOffset, nil
-}
-
-func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, handler func(context.Context, notify.Decision) notify.DecisionResult) {
-	result := notify.DecisionResult{Answer: c.ignoredAnswer}
-	if decision.ChatID == c.chatID {
-		result = c.normalizeDecisionResult(handler(ctx, decision))
-	}
-	_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
-}
-
 func (c *Client) getUpdates(ctx context.Context, offset int64) ([]telegramUpdate, error) {
 	payload := map[string]any{
 		"offset":          offset,
@@ -372,29 +344,6 @@ func withDecisionStatus(text string, status string) string {
 	const marker = "\n\nStatus: "
 	base, _, _ := strings.Cut(text, marker)
 	return base + marker + status
-}
-
-func parseDecision(update telegramUpdate) (notify.Decision, bool) {
-	if update.CallbackQuery == nil {
-		return notify.Decision{}, false
-	}
-	callback := update.CallbackQuery
-	action, grantID, token, ok := ParseCallbackData(callback.Data)
-	if !ok || callback.ID == "" || callback.Message == nil {
-		return notify.Decision{}, false
-	}
-	return notify.Decision{
-		Action:        action,
-		GrantID:       grantID,
-		DecisionToken: token,
-		CallbackID:    callback.ID,
-		ChatID:        callback.Message.Chat.ID,
-		MessageID:     callback.Message.MessageID,
-		MessageText:   callback.Message.Text,
-		OperatorID:    callback.From.ID,
-		OperatorTag:   callback.From.Username,
-		Approver:      callback.From.Username,
-	}, true
 }
 
 func wait(ctx context.Context, d time.Duration) {

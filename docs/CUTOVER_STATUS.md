@@ -19,11 +19,14 @@ Telegram has one lifecycle:
 1. The broker claims a durable notification send from `brokerkit/grants`.
 2. The Brokerkit Telegram adapter sends the message and returns a reference.
 3. The broker commits that reference to the grant store.
-4. Telegram polling returns a parsed callback and answers the callback query.
-5. The broker verifies the token and applies the durable grant transition.
-6. The broker claims due status updates and asks the adapter to edit the stored
+4. Telegram polling returns a parsed callback to the broker.
+5. The broker atomically verifies the token, applies the grant transition, and
+   records the callback message reference when it was missing.
+6. The Telegram adapter answers and advances the callback only after that
+   transaction succeeds. A transient failure remains pending for retry.
+7. The broker claims due status updates and asks the adapter to edit the stored
    message reference.
-7. The broker commits delivery only after the edit succeeds.
+8. The broker commits delivery only after the edit succeeds.
 
 The Telegram adapter does not retain grant state, expiry timers, message
 references, or delivery progress in memory.
@@ -39,6 +42,8 @@ references, or delivery progress in memory.
   fail promptly while retry remains lease-bound and restart-safe.
 - Done: atomically recover a missing notification reference from an accepted
   callback without overwriting a concurrently recorded send result.
+- Done: commit callback decisions and missing message references in one durable
+  transaction, with unacknowledged offset-preserving retry on failure.
 - Done: removed the optional in-memory Telegram lifecycle and made the
   stateless transport contract the only API.
 - Gate: race tests, coverage, vet, lint, Slophammer checks, mutation checks,

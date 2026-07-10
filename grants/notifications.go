@@ -198,8 +198,8 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 	if mode == notificationWriteClaimed && claimedAt.IsZero() {
 		return Grant{}, false, nil
 	}
-	if ref.MessageID <= 0 {
-		return Grant{}, false, errors.New("notification message id must be positive")
+	if err := validateMessageRef(ref); err != nil {
+		return Grant{}, false, err
 	}
 	var out Grant
 	recorded := false
@@ -221,6 +221,13 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 		return nil
 	})
 	return out, recorded, err
+}
+
+func validateMessageRef(ref MessageRef) error {
+	if ref.MessageID <= 0 {
+		return errors.New("notification message id must be positive")
+	}
+	return nil
 }
 
 func notificationWriteAllowed(grant Grant, claimedAt time.Time, mode notificationWriteMode) bool {

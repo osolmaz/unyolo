@@ -274,7 +274,10 @@ brokerkit owns:
 - generated temporary allow rules
 - approval tokens
 - approve, deny, cancel, revoke, and status update flows
+- atomic approve/deny plus callback-notification recovery
 - Telegram callback parsing and verification
+- unacknowledged, offset-preserving callback retry after transient durable
+  failures
 
 Brokers own the approval summary text and the provider-specific fields shown to
 the operator.
