@@ -807,6 +807,7 @@ func reservationIsStale(grant Grant, now time.Time, timeout time.Duration) bool 
 
 func grantCanUse(grant Grant, now time.Time) bool {
 	return grant.Status == StatusActive &&
+		!grant.ReservationRetained &&
 		now.Before(grant.ExpiresAt) &&
 		grant.UsedCount+grant.ReservedCount < grant.MaxUses
 }
