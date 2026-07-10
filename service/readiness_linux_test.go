@@ -31,6 +31,26 @@ func TestHTTPReadyCheckRejectsFailureWithoutResponseBody(t *testing.T) {
 	}
 }
 
+func TestHTTPReadyCheckRejectsRedirect(t *testing.T) {
+	redirected := false
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/healthy" {
+			redirected = true
+			writer.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Redirect(writer, request, "/healthy", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(server.Close)
+	err := HTTPReadyCheck(server.URL, server.Client())(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "307") {
+		t.Fatalf("HTTPReadyCheck(redirect) error = %v", err)
+	}
+	if redirected {
+		t.Fatal("HTTPReadyCheck followed a readiness redirect")
+	}
+}
+
 func TestHTTPReadyCheckRedactsInvalidURL(t *testing.T) {
 	err := HTTPReadyCheck("http://secret.example/%zz", nil)(context.Background())
 	if err == nil || strings.Contains(err.Error(), "secret.example") {

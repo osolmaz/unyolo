@@ -15,12 +15,16 @@ func HTTPReadyCheck(rawURL string, client *http.Client) ReadinessCheck {
 	if client == nil {
 		client = http.DefaultClient
 	}
+	readinessClient := *client
+	readinessClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	return func(ctx context.Context) error {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
 			return errors.New("invalid readiness endpoint")
 		}
-		response, err := client.Do(request)
+		response, err := readinessClient.Do(request)
 		if err != nil {
 			return errors.New("readiness request failed")
 		}
