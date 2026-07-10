@@ -256,6 +256,29 @@ func TestRetainUseAndReleaseClearReservationState(t *testing.T) {
 	}
 }
 
+func TestRetainedReservationClosesGrantOverlay(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "retained-overlay", 2)
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RetainUse(result.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	if active, err := store.ActivePolicyGrants(); err != nil || len(active) != 0 {
+		t.Fatalf("ActivePolicyGrants(retained) = %+v err=%v, want none", active, err)
+	}
+	if _, err := store.ReleaseUse(result.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	if active, err := store.ActivePolicyGrants(); err != nil || len(active) != 1 {
+		t.Fatalf("ActivePolicyGrants(released) = %+v err=%v, want restored grant", active, err)
+	}
+}
+
 func TestRevokedReservationCanBeSettled(t *testing.T) {
 	now := time.Date(2026, 7, 10, 4, 0, 0, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{
