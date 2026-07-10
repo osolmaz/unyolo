@@ -80,10 +80,12 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 		return err
 	}
 	handler, err := httpapi.New(httpapi.Options{
-		Config:  cfg,
-		Scope:   pol,
-		Audit:   audit.New(stdout),
-		Context: ctx,
+		Config:                cfg,
+		Scope:                 pol,
+		Audit:                 audit.New(stdout),
+		Context:               ctx,
+		UpstreamBaseURL:       cfg.UpstreamHubURL,
+		UpstreamRouterBaseURL: cfg.UpstreamRouterURL,
 	})
 	if err != nil {
 		return err

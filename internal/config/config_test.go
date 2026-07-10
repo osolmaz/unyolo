@@ -28,6 +28,9 @@ func TestLoadDefaultsAndSecretsFile(t *testing.T) {
 	if cfg.MaxPackBytes != DefaultMaxPackBytes || cfg.HFTimeout != DefaultHFTimeout {
 		t.Fatalf("size/timeout defaults not applied: %+v", cfg)
 	}
+	if cfg.UpstreamHubURL != DefaultUpstreamHubURL || cfg.UpstreamRouterURL != DefaultUpstreamRouterURL {
+		t.Fatalf("upstream defaults not applied: %+v", cfg)
+	}
 	if len(cfg.Clients) != 1 || cfg.Clients[0].Name != "agent" {
 		t.Fatalf("clients = %+v", cfg.Clients)
 	}
@@ -144,16 +147,18 @@ func TestLoadOperatorCredentialsAreSeparate(t *testing.T) {
 
 func TestLoadOverrides(t *testing.T) {
 	env := map[string]string{
-		"HF_BROKER_HF_TOKEN":           "hf_token_value",
-		"HF_BROKER_SHARED_SECRET":      "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_BIND_ADDR":          "0.0.0.0",
-		"HF_BROKER_PORT":               "9090",
-		"HF_BROKER_SCOPE_FILE":         "/tmp/scope.json",
-		"HF_BROKER_STATE_DIR":          "/tmp/state",
-		"HF_BROKER_MAX_PACK_BYTES":     "64",
-		"HF_BROKER_HF_TIMEOUT":         "5",
-		"HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value",
-		"HF_BROKER_TELEGRAM_CHAT_ID":   "12345",
+		"HF_BROKER_HF_TOKEN":            "hf_token_value",
+		"HF_BROKER_SHARED_SECRET":       "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_BIND_ADDR":           "0.0.0.0",
+		"HF_BROKER_PORT":                "9090",
+		"HF_BROKER_SCOPE_FILE":          "/tmp/scope.json",
+		"HF_BROKER_STATE_DIR":           "/tmp/state",
+		"HF_BROKER_MAX_PACK_BYTES":      "64",
+		"HF_BROKER_HF_TIMEOUT":          "5",
+		"HF_BROKER_UPSTREAM_HUB_URL":    "https://hub.example.test",
+		"HF_BROKER_UPSTREAM_ROUTER_URL": "https://router.example.test",
+		"HF_BROKER_TELEGRAM_BOT_TOKEN":  "telegram_token_value",
+		"HF_BROKER_TELEGRAM_CHAT_ID":    "12345",
 	}
 	cfg, err := Load(func(key string) string { return env[key] })
 	if err != nil {
@@ -164,6 +169,9 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.MaxPackBytes != 64 || cfg.HFTimeout != 5*time.Second {
 		t.Fatalf("numeric overrides not applied: %+v", cfg)
+	}
+	if cfg.UpstreamHubURL != "https://hub.example.test" || cfg.UpstreamRouterURL != "https://router.example.test" {
+		t.Fatalf("upstream overrides not applied: %+v", cfg)
 	}
 	if cfg.TelegramBotToken != "telegram_token_value" || cfg.TelegramChatID != 12345 {
 		t.Fatalf("telegram config not applied: %+v", cfg)

@@ -55,6 +55,8 @@ func clearBrokerEnv(t *testing.T) {
 		"STATE_DIR",
 		"MAX_PACK_BYTES",
 		"HF_TIMEOUT",
+		"UPSTREAM_HUB_URL",
+		"UPSTREAM_ROUTER_URL",
 		"TELEGRAM_BOT_TOKEN",
 		"TELEGRAM_CHAT_ID",
 	}

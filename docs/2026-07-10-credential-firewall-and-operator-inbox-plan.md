@@ -2,7 +2,7 @@
 
 Date: 2026-07-10
 
-Status: operator inbox implemented; credential-firewall routes pending
+Status: operator inbox and Router inference implemented; typed Hub routes pending
 
 ## Motivation
 
@@ -112,7 +112,7 @@ Requirements:
 - broker process environment contains the token-file path, not the token;
 - client receives only its named broker secret;
 - operator credential is separate from all client secrets;
-- binaries, configuration, policy, state, and sockets have verified ownership
+- binaries, configuration, policy, state, and runtime files have verified ownership
   and modes;
 - diagnostics never report token values or token metadata;
 - `hf-broker doctor` fails closed when the isolation boundary is unsafe or
@@ -270,10 +270,10 @@ revoke
 Approval always applies to the canonical durable request. An operator client
 cannot replace the action, resource, attrs, or execution plan.
 
-The operator transport should default to a Unix socket for same-host use. A
-separate-host deployment may expose it through an independently authenticated
-private listener. The agent-facing client secret must never authenticate to
-the operator inbox.
+The operator transport uses an independently authenticated HTTP listener bound
+to loopback by default. A separate-host deployment may expose it only through a
+private network boundary. The agent-facing client secret must never
+authenticate to the operator inbox.
 
 Telegram becomes an optional notification adapter, not a requirement for
 creating or deciding requests. A broker can run entirely through its operator
@@ -399,10 +399,10 @@ The doctor must check:
 
 - agent and broker UID separation;
 - root-equivalent agent groups;
-- token, policy, state, binary, directory, and socket ownership and modes;
+- token, policy, state, binary, directory, and credential ownership and modes;
 - agent ability to read or modify the token file;
 - agent ability to read broker process environment;
-- agent ability to connect to the operator socket;
+- agent ability to authenticate to the operator listener;
 - accidental exposure of operator routes on the agent listener;
 - client/operator secret reuse;
 - broker health and upstream reachability without printing token metadata.
@@ -461,7 +461,7 @@ Never log or audit:
 - Git packs or uploaded file contents;
 - approval or decision tokens.
 
-Add health status for agent listener, operator socket, grant store, mirror
+Add health status for agent listener, operator listener, grant store, mirror
 store, and upstream connectivity. Health output remains credential-blind.
 
 ## Brokerkit Cutover
@@ -493,7 +493,7 @@ integration in this repository.
 - retain and adapt append-only Git/LFS/Xet enforcement;
 - implement typed reversible Hub writes required by real consumers;
 - implement Hugging Face operator-inbox presentation;
-- mount Brokerkit operator handlers on an operator-only Unix socket;
+- mount Brokerkit operator handlers on the independently authenticated operator listener;
 - make request creation independent of Telegram configuration;
 - add client setup output for inference and Git;
 - expand doctor for dual listeners, operator isolation, and credential files;
@@ -543,7 +543,7 @@ integration in this repository.
 
 - token-file ownership and mode checks;
 - agent cannot read token file or broker environment;
-- agent cannot connect to operator socket;
+- agent cannot authenticate to the operator listener;
 - client and operator secret reuse rejected;
 - no credential in API responses, logs, errors, audits, fixtures, test names,
   process arguments, or diagnostics;

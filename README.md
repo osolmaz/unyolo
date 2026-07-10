@@ -1,7 +1,7 @@
 # hf-broker
 
-hf-broker is a small self-hosted credential broker that sits between a
-coding agent and Hugging Face. It lets the agent push to Hub repos
+hf-broker is a self-hosted credential broker that sits between a coding agent
+and Hugging Face. It provides authenticated Router inference and lets the agent push to Hub repos
 directly — no human click per change — while refusing anything
 irreversible: force-pushes, branch and tag deletion, and tag moves are
 rejected per request, and the agent never sees a real Hub token, only a
@@ -71,6 +71,19 @@ export HF_BROKER_SHARED_SECRET=$(openssl rand -hex 32)
 cp scope.example.json scope.json         # edit: which repos are reachable
 hf-broker
 ```
+
+OpenAI-compatible clients use the broker secret as their API key:
+
+```text
+base URL = http://127.0.0.1:8080/v1
+API key  = value from HF_BROKER_SHARED_SECRET
+```
+
+The agent listener exposes only `GET /v1/models` and
+`POST /v1/chat/completions` for inference. Requests are authenticated with the
+broker client secret, forwarded to the Hugging Face Router with the real token,
+and audited without prompts, completions, tool arguments, or credentials.
+Other `/v1/*` routes fail closed.
 
 For a hardened same-host deployment, prefer a broker-only token file
 over placing the token value in the broker environment:

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -37,8 +38,6 @@ import (
 	"github.com/osolmaz/hf-broker/internal/policy"
 )
 
-const defaultUpstreamBase = "https://huggingface.co"
-
 const (
 	lfsActionQuery = "hf_broker_lfs_action"
 	lfsActionTTL   = time.Hour
@@ -63,30 +62,33 @@ var (
 
 // Options configures a broker HTTP server.
 type Options struct {
-	Config          config.Config
-	Scope           policy.Policy
-	Audit           *audit.Logger
-	UpstreamBaseURL string
-	Context         context.Context
-	GrantNotifier   bknotify.Notifier
-	TelegramBaseURL string
+	Config                config.Config
+	Scope                 policy.Policy
+	Audit                 *audit.Logger
+	UpstreamBaseURL       string
+	UpstreamRouterBaseURL string
+	Context               context.Context
+	GrantNotifier         bknotify.Notifier
+	TelegramBaseURL       string
 }
 
 // Server is an Echo-backed http.Handler for the broker.
 type Server struct {
 	router *echo.Echo
 
-	auth               *auth.Authenticator
-	policy             policy.Policy
-	audit              *audit.Logger
-	mirrors            *mirror.Manager
-	upstream           *url.URL
-	httpClient         *http.Client
-	hfToken            string
-	maxBody            int64
-	grants             *grants.Store
-	notifier           bknotify.Notifier
-	operatorConfigured bool
+	auth                *auth.Authenticator
+	policy              policy.Policy
+	audit               *audit.Logger
+	mirrors             *mirror.Manager
+	upstream            *url.URL
+	routerUpstream      *url.URL
+	httpClient          *http.Client
+	inferenceHTTPClient *http.Client
+	hfToken             string
+	maxBody             int64
+	grants              *grants.Store
+	notifier            bknotify.Notifier
+	operatorConfigured  bool
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
@@ -135,6 +137,10 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	routerUpstream, err := parseRouterUpstreamBase(opts.UpstreamRouterBaseURL)
+	if err != nil {
+		return nil, err
+	}
 	clients := map[string]string{}
 	for _, client := range opts.Config.Clients {
 		clients[client.Name] = client.Secret
@@ -143,7 +149,7 @@ func New(opts Options) (*Server, error) {
 	if auditLogger == nil {
 		auditLogger = audit.New(io.Discard)
 	}
-	server := newServer(opts, upstream, clients, auditLogger)
+	server := newServer(opts, upstream, routerUpstream, clients, auditLogger)
 	if err := server.startTelegram(ctx, opts); err != nil {
 		return nil, err
 	}
@@ -178,26 +184,67 @@ func namedSecrets(identities []config.Client) map[string]string {
 }
 
 func parseUpstreamBase(upstreamBase string) (*url.URL, error) {
-	if upstreamBase == "" {
-		upstreamBase = defaultUpstreamBase
+	return parseUpstreamOrigin(upstreamBase, config.DefaultUpstreamHubURL, "Hub")
+}
+
+func parseRouterUpstreamBase(upstreamBase string) (*url.URL, error) {
+	return parseUpstreamOrigin(upstreamBase, config.DefaultUpstreamRouterURL, "Router")
+}
+
+func parseUpstreamOrigin(value, fallback, name string) (*url.URL, error) {
+	if value == "" {
+		value = fallback
 	}
-	upstream, err := url.Parse(upstreamBase)
-	if err != nil || upstream.Scheme == "" || upstream.Host == "" {
-		return nil, fmt.Errorf("invalid upstream base URL %q", upstreamBase)
+	upstream, err := url.Parse(value)
+	if err != nil || !validUpstreamOrigin(upstream) {
+		return nil, fmt.Errorf("invalid upstream %s URL", name)
 	}
+	upstream.Path = ""
 	return upstream, nil
 }
 
-func newServer(opts Options, upstream *url.URL, clients map[string]string, auditLogger *audit.Logger) *Server {
+func validUpstreamOrigin(upstream *url.URL) bool {
+	if upstream.Scheme != "http" && upstream.Scheme != "https" {
+		return false
+	}
+	if upstream.Host == "" || upstream.User != nil {
+		return false
+	}
+	if upstream.RawQuery != "" || upstream.Fragment != "" {
+		return false
+	}
+	return upstream.Path == "" || upstream.Path == "/"
+}
+
+func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger *audit.Logger) *Server {
+	inferenceTimeout := opts.Config.HFTimeout
+	if inferenceTimeout <= 0 {
+		inferenceTimeout = config.DefaultHFTimeout
+	}
+	inferenceTransport := http.DefaultTransport.(*http.Transport).Clone()
+	inferenceTransport.DialContext = (&net.Dialer{
+		Timeout:   min(inferenceTimeout, 10*time.Second),
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	inferenceTransport.ResponseHeaderTimeout = min(inferenceTimeout, 30*time.Second)
+	inferenceTransport.TLSHandshakeTimeout = min(inferenceTimeout, 10*time.Second)
 	server := &Server{
-		auth:       auth.New(clients),
-		policy:     opts.Scope,
-		audit:      auditLogger,
-		mirrors:    mirror.New(opts.Config.StateDir, opts.Config.HFToken, opts.Config.HFTimeout),
-		upstream:   upstream,
-		httpClient: &http.Client{Timeout: opts.Config.HFTimeout},
-		hfToken:    opts.Config.HFToken,
-		maxBody:    opts.Config.MaxPackBytes,
+		auth:           auth.New(clients),
+		policy:         opts.Scope,
+		audit:          auditLogger,
+		mirrors:        mirror.New(opts.Config.StateDir, opts.Config.HFToken, opts.Config.HFTimeout),
+		upstream:       upstream,
+		routerUpstream: routerUpstream,
+		httpClient:     &http.Client{Timeout: opts.Config.HFTimeout},
+		inferenceHTTPClient: &http.Client{
+			Transport: inferenceTransport,
+			Timeout:   inferenceTimeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return errors.New("inference upstream redirect refused")
+			},
+		},
+		hfToken: opts.Config.HFToken,
+		maxBody: opts.Config.MaxPackBytes,
 		grants: grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{
 			ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
 		}),
@@ -273,6 +320,15 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	client, ok := s.authenticate(w, r)
 	if !ok {
+		return
+	}
+	if isInferencePath(r.URL.Path) {
+		s.serveInference(w, r, client)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/v1/") {
+		writeInferenceError(w, http.StatusNotFound, "unsupported_inference_route")
+		s.record(client, "inference.unknown", "", audit.DecisionRefused, "unsupported_inference_route", 0)
 		return
 	}
 	s.serveAuthenticated(w, r, client)

@@ -22,15 +22,17 @@ const MinSecretBytes = 32
 
 // Defaults for optional settings.
 const (
-	DefaultBindAddr         = "127.0.0.1"
-	DefaultPort             = 8080
-	DefaultOperatorBindAddr = "127.0.0.1"
-	DefaultOperatorPort     = 8081
-	DefaultScopeFile        = "scope.json"
-	DefaultStateDir         = "./state"
-	DefaultMaxPackBytes     = 25 * 1024 * 1024
-	DefaultHFTimeout        = 120 * time.Second
-	maxSecretFileBytes      = 64 * 1024
+	DefaultBindAddr          = "127.0.0.1"
+	DefaultPort              = 8080
+	DefaultOperatorBindAddr  = "127.0.0.1"
+	DefaultOperatorPort      = 8081
+	DefaultScopeFile         = "scope.json"
+	DefaultStateDir          = "./state"
+	DefaultMaxPackBytes      = 25 * 1024 * 1024
+	DefaultHFTimeout         = 120 * time.Second
+	DefaultUpstreamHubURL    = "https://huggingface.co"
+	DefaultUpstreamRouterURL = "https://router.huggingface.co"
+	maxSecretFileBytes       = 64 * 1024
 
 	canonicalEnvPrefix = "HF_BROKER_"
 )
@@ -45,19 +47,21 @@ type Client struct {
 
 // Config is the validated broker configuration.
 type Config struct {
-	HFToken          string
-	Clients          []Client
-	Operators        []Client
-	BindAddr         string
-	Port             int
-	OperatorBindAddr string
-	OperatorPort     int
-	ScopeFile        string
-	StateDir         string
-	MaxPackBytes     int64
-	HFTimeout        time.Duration
-	TelegramBotToken string
-	TelegramChatID   int64
+	HFToken           string
+	Clients           []Client
+	Operators         []Client
+	BindAddr          string
+	Port              int
+	OperatorBindAddr  string
+	OperatorPort      int
+	ScopeFile         string
+	StateDir          string
+	MaxPackBytes      int64
+	HFTimeout         time.Duration
+	UpstreamHubURL    string
+	UpstreamRouterURL string
+	TelegramBotToken  string
+	TelegramChatID    int64
 }
 
 // Load reads and validates configuration from getenv (normally
@@ -68,11 +72,13 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		HFToken:          hfToken,
-		BindAddr:         stringOr(brokerEnv(getenv, "BIND_ADDR"), DefaultBindAddr),
-		OperatorBindAddr: stringOr(brokerEnv(getenv, "OPERATOR_BIND_ADDR"), DefaultOperatorBindAddr),
-		ScopeFile:        stringOr(brokerEnv(getenv, "SCOPE_FILE"), DefaultScopeFile),
-		StateDir:         stringOr(brokerEnv(getenv, "STATE_DIR"), DefaultStateDir),
+		HFToken:           hfToken,
+		BindAddr:          stringOr(brokerEnv(getenv, "BIND_ADDR"), DefaultBindAddr),
+		OperatorBindAddr:  stringOr(brokerEnv(getenv, "OPERATOR_BIND_ADDR"), DefaultOperatorBindAddr),
+		ScopeFile:         stringOr(brokerEnv(getenv, "SCOPE_FILE"), DefaultScopeFile),
+		StateDir:          stringOr(brokerEnv(getenv, "STATE_DIR"), DefaultStateDir),
+		UpstreamHubURL:    stringOr(brokerEnv(getenv, "UPSTREAM_HUB_URL"), DefaultUpstreamHubURL),
+		UpstreamRouterURL: stringOr(brokerEnv(getenv, "UPSTREAM_ROUTER_URL"), DefaultUpstreamRouterURL),
 	}
 	if cfg.HFToken == "" {
 		return Config{}, fmt.Errorf("%s or %s is required", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))

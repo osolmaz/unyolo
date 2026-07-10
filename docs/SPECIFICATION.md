@@ -605,6 +605,8 @@ stays free of HTTP framework types so it is unit-testable without a server.
 | `HF_BROKER_STATE_DIR` | no | default `./state`; holds mirrors and grant store |
 | `HF_BROKER_MAX_PACK_BYTES` | no | default `26214400` (25 MiB) |
 | `HF_BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
+| `HF_BROKER_UPSTREAM_HUB_URL` | no | Hub origin, default `https://huggingface.co`; intended for tests or private mirrors |
+| `HF_BROKER_UPSTREAM_ROUTER_URL` | no | Router origin, default `https://router.huggingface.co`; intended for tests or private gateways |
 | `HF_BROKER_TELEGRAM_BOT_TOKEN` | no (M4) | bot token for approval channel |
 | `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` | no (M4) | path to a broker-only Telegram bot token file; preferred for same-host services and mutually exclusive with the inline token |
 | `HF_BROKER_TELEGRAM_CHAT_ID` | no (M4) | the single operator chat id decisions are accepted from |
@@ -721,6 +723,24 @@ which secrets exist.
 
 ### Routing and upstream mapping
 
+The authenticated inference surface is deliberately limited to:
+
+| Broker request | Router request |
+|----------------|----------------|
+| `GET /v1/models` | `GET {HF_BROKER_UPSTREAM_ROUTER_URL}/v1/models` |
+| `POST /v1/chat/completions` | `POST {HF_BROKER_UPSTREAM_ROUTER_URL}/v1/chat/completions` |
+
+Chat requests must be JSON, fit within 4 MiB, and contain a canonical
+`owner/model` identifier with an optional provider suffix. Streaming and
+non-streaming responses preserve their content type and status. The broker
+forwards only fixed headers, replaces authorization with the real HF token,
+refuses redirects, bounds responses, and applies explicit connection, response
+header, TLS, and total timeouts. Every other `/v1/*` path is refused before any
+upstream contact. Inference audit entries contain the operation, model, status,
+and decision, never prompts, completions, tools, images, or credentials.
+
+Hub and Git paths map by repo type:
+
 Broker path → upstream URL, by repo type:
 
 | Broker request | Upstream |
@@ -730,10 +750,10 @@ Broker path → upstream URL, by repo type:
 | `/spaces/{owner}/{repo}.git/...` | `https://huggingface.co/spaces/{owner}/{repo}.git/...` |
 | bucket S3 verbs | Hub S3-compatible endpoint for `{owner}/{repo}` |
 
-The classified operation and `(owner, repo, type)` target must match a
+The classified Hub operation and `(owner, repo, type)` target must match a
 `scope.json` policy rule or an active generated grant before upstream
-contact. Upstream base URLs are compile-time constants; only the
-policy-approved `owner`/`repo`/path-tail is interpolated, so the agent
+contact. Upstream origins come only from trusted startup configuration; only
+the policy-approved `owner`/`repo`/path-tail is interpolated, so the agent
 cannot redirect the proxy elsewhere.
 
 Outbound requests: strip the client's `Authorization`/`Cookie`, inject
