@@ -17,13 +17,14 @@ import (
 )
 
 const (
-	hfTokenFileName       = "hf-token"
-	telegramTokenFileName = "telegram-bot-token"
-	secretsFileName       = "secrets"
-	scopeFileName         = "scope.json"
-	envFileName           = "env"
-	unitFileName          = "hf-broker.service"
-	maxHFTokenBytes       = 64 * 1024
+	hfTokenFileName         = "hf-token"
+	telegramTokenFileName   = "telegram-bot-token"
+	secretsFileName         = "secrets"
+	operatorSecretsFileName = "operator-secrets"
+	scopeFileName           = "scope.json"
+	envFileName             = "env"
+	unitFileName            = "hf-broker.service"
+	maxHFTokenBytes         = 64 * 1024
 )
 
 func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOptions) error {
@@ -56,24 +57,26 @@ func requireRootForSystemd(opts setupSystemdOptions) error {
 }
 
 type systemdPlan struct {
-	opts              setupSystemdOptions
-	tokenPath         string
-	secretsPath       string
-	scopePath         string
-	envPath           string
-	unitPath          string
-	telegramTokenPath string
+	opts                setupSystemdOptions
+	tokenPath           string
+	secretsPath         string
+	scopePath           string
+	envPath             string
+	unitPath            string
+	telegramTokenPath   string
+	operatorSecretsPath string
 }
 
 func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 	return systemdPlan{
-		opts:              opts,
-		tokenPath:         filepath.Join(opts.ConfigDir, hfTokenFileName),
-		secretsPath:       filepath.Join(opts.ConfigDir, secretsFileName),
-		scopePath:         filepath.Join(opts.ConfigDir, scopeFileName),
-		envPath:           filepath.Join(opts.ConfigDir, envFileName),
-		unitPath:          filepath.Join(opts.SystemdDir, unitFileName),
-		telegramTokenPath: filepath.Join(opts.ConfigDir, telegramTokenFileName),
+		opts:                opts,
+		tokenPath:           filepath.Join(opts.ConfigDir, hfTokenFileName),
+		secretsPath:         filepath.Join(opts.ConfigDir, secretsFileName),
+		scopePath:           filepath.Join(opts.ConfigDir, scopeFileName),
+		envPath:             filepath.Join(opts.ConfigDir, envFileName),
+		unitPath:            filepath.Join(opts.SystemdDir, unitFileName),
+		telegramTokenPath:   filepath.Join(opts.ConfigDir, telegramTokenFileName),
+		operatorSecretsPath: filepath.Join(opts.ConfigDir, operatorSecretsFileName),
 	}
 }
 
@@ -89,6 +92,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	files := []bkservice.ManagedFile{
 		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
 		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		{Area: bkservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
 		{Area: bkservice.ManagedFileConfig, Name: scopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
 		{Area: bkservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	}
@@ -192,6 +196,9 @@ func renderEnvFile(plan systemdPlan) string {
 		"HF_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
 		"HF_BROKER_BIND_ADDR=" + opts.BindAddr + "\n" +
 		"HF_BROKER_PORT=" + strconv.Itoa(opts.Port) + "\n"
+	body += "HF_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +
+		"HF_BROKER_OPERATOR_BIND_ADDR=" + opts.OperatorBindAddr + "\n" +
+		"HF_BROKER_OPERATOR_PORT=" + strconv.Itoa(opts.OperatorPort) + "\n"
 	if opts.TelegramBotTokenFile != "" {
 		body += "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +
 			"HF_BROKER_TELEGRAM_CHAT_ID=" + strconv.FormatInt(opts.TelegramChatID, 10) + "\n"
@@ -238,12 +245,13 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   group:        %s
   token file:   %s
   secrets file: %s
+  operator file:%s
   scope file:   %s
   env file:     %s
   state dir:    %s
   unit file:    %s
   broker URL:   %s
-`, plan.opts.User, plan.opts.Group, plan.tokenPath, plan.secretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port, plan.opts.RepoType, plan.opts.Repo))
+`, plan.opts.User, plan.opts.Group, plan.tokenPath, plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port, plan.opts.RepoType, plan.opts.Repo))
 	return err
 }
 
@@ -253,9 +261,15 @@ func printSystemdSummary(stdout io.Writer, opts setupSystemdOptions) {
 Broker URL:
   %s
 
+Operator inbox URL:
+  %s
+
+Operator credential file:
+  %s
+
 Configure a client without exposing its secret:
   sudo hf-broker setup client --client %s --url %s --secret-file %s --home-dir '/home/<user>'
-`, brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo), shellQuote(opts.ClientName), shellQuote(brokerBaseURL(opts.BindAddr, opts.Port)), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
+`, brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo), brokerBaseURL(opts.OperatorBindAddr, opts.OperatorPort), filepath.Join(opts.ConfigDir, operatorSecretsFileName), shellQuote(opts.ClientName), shellQuote(brokerBaseURL(opts.BindAddr, opts.Port)), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
 }
 
 func shellQuote(value string) string {

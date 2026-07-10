@@ -68,6 +68,8 @@ func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 		{name: "missing client", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value"}, want: "HF_BROKER_SHARED_SECRET"},
 		{name: "short secret", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "short"}, want: "shorter than"},
 		{name: "bad port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_PORT": "zero"}, want: "HF_BROKER_PORT"},
+		{name: "bad operator port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_PORT": "zero"}, want: "HF_BROKER_OPERATOR_PORT"},
+		{name: "shared listener port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_PORT": "8080"}, want: "different ports"},
 		{name: "telegram token without chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value"}, want: "HF_BROKER_TELEGRAM"},
 		{name: "bad telegram chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "HF_BROKER_TELEGRAM_CHAT_ID": "chat"}, want: "HF_BROKER_TELEGRAM_CHAT_ID"},
 		{name: "token pasted into token file", env: map[string]string{"HF_BROKER_HF_TOKEN_FILE": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN_FILE"},
@@ -106,6 +108,37 @@ func TestLoadRejectsDuplicateClientSecrets(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), duplicateSecret) {
 		t.Fatalf("error leaked client secret: %v", err)
+	}
+}
+
+func TestLoadOperatorCredentialsAreSeparate(t *testing.T) {
+	dir := t.TempDir()
+	clients := filepath.Join(dir, "clients")
+	operators := filepath.Join(dir, "operators")
+	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
+	operatorSecret := "operator-secret-abcdefghijklmnopqrstuvwxyz"
+	if err := os.WriteFile(clients, []byte("agent = "+clientSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(operators, []byte("onur = "+operatorSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SECRETS_FILE": clients,
+		"HF_BROKER_OPERATOR_SECRETS_FILE": operators, "HF_BROKER_OPERATOR_BIND_ADDR": "::1", "HF_BROKER_OPERATOR_PORT": "9091",
+	}
+	cfg, err := Load(func(key string) string { return env[key] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Operators) != 1 || cfg.Operators[0].Name != "onur" || cfg.OperatorBindAddr != "::1" || cfg.OperatorPort != 9091 {
+		t.Fatalf("operator config = %+v", cfg)
+	}
+	if err := os.WriteFile(operators, []byte("onur = "+clientSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(func(key string) string { return env[key] }); err == nil || !strings.Contains(err.Error(), "reuses a client secret") || strings.Contains(err.Error(), clientSecret) {
+		t.Fatalf("reused operator error = %v", err)
 	}
 }
 

@@ -1456,10 +1456,20 @@ func TestGrantRequestErrors(t *testing.T) {
 	}
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
-	validBody := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "", 5, 0)
+	validBody := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "without-notifier", 5, 0)
 	resp, _ := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(validBody))
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("grant without notifier = %d, want 503", resp.StatusCode)
+		t.Fatalf("grant without approval channel = %d, want 503", resp.StatusCode)
+	}
+	baseCfg.Operators = []config.Client{{Name: "operator", Secret: "operator-secret-abcdefghijklmnopqrstuvwxyz"}}
+	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker.Config.Handler = handler
+	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(validBody))
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("grant with operator inbox = %d, want 202", resp.StatusCode)
 	}
 
 	notifier := &captureGrantNotifier{}
@@ -1520,6 +1530,7 @@ func TestGrantRequestErrors(t *testing.T) {
 		})
 	}
 
+	baseCfg.Operators = nil
 	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: failingGrantNotifier{}})
 	if err != nil {
 		t.Fatal(err)
@@ -1528,6 +1539,37 @@ func TestGrantRequestErrors(t *testing.T) {
 	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(validBody))
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("notifier failure status = %d, want 502", resp.StatusCode)
+	}
+}
+
+func TestOperatorInboxSurvivesTelegramNotificationFailure(t *testing.T) {
+	dir := t.TempDir()
+	scp, err := policy.Parse([]byte(datasetPolicyJSON(grantableDataset("repo", policy.OpGitPushForce))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+			Operators: []config.Client{{Name: "operator", Secret: "operator-secret-abcdefghijklmnopqrstuvwxyz"}},
+			StateDir:  filepath.Join(dir, "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second,
+		},
+		Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: failingGrantNotifier{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "telegram-failed-inbox-pending", 5, 0)
+	resp, responseBody := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("grant request = %d %s, want 202", resp.StatusCode, responseBody)
+	}
+	stored := decodeAPIGrantResponse(t, responseBody)
+	grant, err := handler.grants.Get(stored.ID)
+	if err != nil || grant.Status != grants.StatusPending || !grant.NotifierUnresolved {
+		t.Fatalf("stored grant = %+v, err=%v", grant, err)
 	}
 }
 

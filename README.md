@@ -133,6 +133,7 @@ The setup command creates:
 /etc/hf-broker/hf-token
 /etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
+/etc/hf-broker/operator-secrets
 /etc/hf-broker/scope.json
 /etc/hf-broker/env
 /var/lib/hf-broker
@@ -142,12 +143,18 @@ The setup command creates:
 It also creates the `hf-broker` service user when needed, enables and
 starts the service, and prints the broker URL plus a secret-safe client setup
 command. It never prints the generated broker client secret. The real Hugging
-Face and Telegram tokens stay readable only by the service. The agent receives
+Face and Telegram tokens stay readable only by the service. The generated
+operator credential is separate from every agent credential and is used only
+on the operator listener at `http://127.0.0.1:8081`. The agent receives
 only the broker client secret through `setup client`. Omit both Telegram flags
-to run without Telegram; they must otherwise be set together.
+to run without Telegram; pending requests remain available in the operator
+inbox and the Telegram flags must otherwise be set together.
 
 To supply an existing broker client secret, use `--shared-secret-file` or
 `--shared-secret-stdin`. Raw secret command-line flags are not accepted.
+Use `--operator-secret-file` to preserve or rotate the operator credential,
+and `--operator-bind-addr` / `--operator-port` to change the protected
+listener. Agent and operator listeners must use different ports.
 
 Write a client config file for an agent account with:
 
@@ -235,6 +242,28 @@ normal. A history rewrite is refused with a message at the terminal:
  ! [remote rejected] main -> main (hf-broker: history rewrite refused)
 ```
 
+## Operator Inbox
+
+The operator listener exposes Brokerkit's shared backend:
+
+```text
+GET  /api/grants
+GET  /api/grants/{id}
+GET  /api/grants/events
+POST /api/grants/{id}/approve
+POST /api/grants/{id}/deny
+POST /api/grants/{id}/cancel
+POST /api/grants/{id}/revoke
+```
+
+Authenticate with a bearer token from `/etc/hf-broker/operator-secrets`.
+Do not give that file or token to an agent. The listener returns bounded
+Hugging Face-specific display fields while decisions apply only to the
+canonical stored request. Lifecycle events use durable SSE cursors, so a
+trusted host such as mlclaw can reconnect after a restart without depending on
+Telegram. The browser must authenticate to the trusted host; the host keeps
+the broker operator credential server-side.
+
 ## Telegram Grants
 
 Destructive git pushes are still refused by default. To make a narrow
@@ -253,6 +282,10 @@ grant bounds, and active-grant overlays. Brokerkit also owns durable grant
 state, notification claims and references, expiry, reservation recovery, and
 use accounting. hf-broker only maps HF targets and attrs and renders HF-specific
 operator text.
+
+Telegram is optional. It is a notification view over the same durable grant
+store used by the operator inbox; a decision through either path closes the
+same request exactly once.
 
 Telegram callbacks are acknowledged immediately after the durable decision.
 Status edits run through the restart-safe brokerkit grant sweep. A verified

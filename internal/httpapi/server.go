@@ -23,6 +23,9 @@ import (
 	"github.com/labstack/echo/v4"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/operatorapi"
+	"github.com/osolmaz/brokerkit/operatorauth"
+	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/hf-broker/internal/approval"
 	"github.com/osolmaz/hf-broker/internal/audit"
 	"github.com/osolmaz/hf-broker/internal/auth"
@@ -73,16 +76,17 @@ type Options struct {
 type Server struct {
 	router *echo.Echo
 
-	auth       *auth.Authenticator
-	policy     policy.Policy
-	audit      *audit.Logger
-	mirrors    *mirror.Manager
-	upstream   *url.URL
-	httpClient *http.Client
-	hfToken    string
-	maxBody    int64
-	grants     *grants.Store
-	notifier   bknotify.Notifier
+	auth               *auth.Authenticator
+	policy             policy.Policy
+	audit              *audit.Logger
+	mirrors            *mirror.Manager
+	upstream           *url.URL
+	httpClient         *http.Client
+	hfToken            string
+	maxBody            int64
+	grants             *grants.Store
+	notifier           bknotify.Notifier
+	operatorConfigured bool
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
@@ -149,6 +153,30 @@ func New(opts Options) (*Server, error) {
 	return server, nil
 }
 
+// OperatorHandler builds the shared inbox over the same canonical grant store.
+func (s *Server) OperatorHandler(cfg config.Config, recorder operatorapi.AuditRecorder) (http.Handler, error) {
+	clientSecrets := namedSecrets(cfg.Clients)
+	authenticator, err := operatorauth.New(namedSecrets(cfg.Operators), operatorauth.Options{ClientSecrets: clientSecrets})
+	if err != nil {
+		return nil, err
+	}
+	inbox, err := operatorinbox.New(s.grants.Core(), approval.Presenter{})
+	if err != nil {
+		return nil, err
+	}
+	return operatorapi.New(operatorapi.Options{
+		Inbox: inbox, Authorize: authenticator.AuthenticateRequest, Broker: "hf-broker", Audit: recorder,
+	})
+}
+
+func namedSecrets(identities []config.Client) map[string]string {
+	secrets := make(map[string]string, len(identities))
+	for _, identity := range identities {
+		secrets[identity.Name] = identity.Secret
+	}
+	return secrets
+}
+
 func parseUpstreamBase(upstreamBase string) (*url.URL, error) {
 	if upstreamBase == "" {
 		upstreamBase = defaultUpstreamBase
@@ -173,8 +201,9 @@ func newServer(opts Options, upstream *url.URL, clients map[string]string, audit
 		grants: grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{
 			ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
 		}),
-		notifier:   opts.GrantNotifier,
-		lfsActions: map[string]lfsAction{},
+		notifier:           opts.GrantNotifier,
+		operatorConfigured: len(opts.Config.Operators) > 0,
+		lfsActions:         map[string]lfsAction{},
 	}
 	server.router = newRouter(server)
 	return server
@@ -741,9 +770,7 @@ func apiKnownPath(path string) bool {
 }
 
 func (s *Server) handleAPIGrantCreate(w http.ResponseWriter, r *http.Request, client string) {
-	if s.notifier == nil {
-		writeJSendError(w, http.StatusServiceUnavailable, "approval channel is not configured", "approval_channel_not_configured")
-		s.record(client, "grant_request", "", audit.DecisionRefused, "approval channel is not configured", 0)
+	if !s.requireApprovalChannel(w, client) {
 		return
 	}
 	req, ok := readAPIGrantRequest(w, r)
@@ -764,7 +791,7 @@ func (s *Server) handleAPIGrantCreate(w http.ResponseWriter, r *http.Request, cl
 		s.record(client, "grant_request", targetNameFromPolicy(req.Target), audit.DecisionRefused, reason, 0)
 		return
 	}
-	if grantNeedsNotification(grant) {
+	if s.notifier != nil && grantNeedsNotification(grant) {
 		var notified bool
 		grant, notified = s.notifyAPIGrantIfClaimed(w, r, client, grant)
 		if !notified {
@@ -773,6 +800,15 @@ func (s *Server) handleAPIGrantCreate(w http.ResponseWriter, r *http.Request, cl
 	}
 	writeJSendSuccess(w, http.StatusAccepted, map[string]any{"grant": apiGrantFromStore(grant, req.Target)})
 	s.record(client, "grant_request", grant.Target, audit.DecisionAllowed, "pending", 0)
+}
+
+func (s *Server) requireApprovalChannel(w http.ResponseWriter, client string) bool {
+	if s.notifier != nil || s.operatorConfigured {
+		return true
+	}
+	writeJSendError(w, http.StatusServiceUnavailable, "approval channel is not configured", "approval_channel_not_configured")
+	s.record(client, "grant_request", "", audit.DecisionRefused, "approval channel is not configured", 0)
+	return false
 }
 
 func readAPIGrantRequest(w http.ResponseWriter, r *http.Request) (apiGrantRequestBody, bool) {

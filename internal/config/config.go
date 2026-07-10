@@ -22,13 +22,15 @@ const MinSecretBytes = 32
 
 // Defaults for optional settings.
 const (
-	DefaultBindAddr     = "127.0.0.1"
-	DefaultPort         = 8080
-	DefaultScopeFile    = "scope.json"
-	DefaultStateDir     = "./state"
-	DefaultMaxPackBytes = 25 * 1024 * 1024
-	DefaultHFTimeout    = 120 * time.Second
-	maxSecretFileBytes  = 64 * 1024
+	DefaultBindAddr         = "127.0.0.1"
+	DefaultPort             = 8080
+	DefaultOperatorBindAddr = "127.0.0.1"
+	DefaultOperatorPort     = 8081
+	DefaultScopeFile        = "scope.json"
+	DefaultStateDir         = "./state"
+	DefaultMaxPackBytes     = 25 * 1024 * 1024
+	DefaultHFTimeout        = 120 * time.Second
+	maxSecretFileBytes      = 64 * 1024
 
 	canonicalEnvPrefix = "HF_BROKER_"
 )
@@ -45,8 +47,11 @@ type Client struct {
 type Config struct {
 	HFToken          string
 	Clients          []Client
+	Operators        []Client
 	BindAddr         string
 	Port             int
+	OperatorBindAddr string
+	OperatorPort     int
 	ScopeFile        string
 	StateDir         string
 	MaxPackBytes     int64
@@ -63,10 +68,11 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		HFToken:   hfToken,
-		BindAddr:  stringOr(brokerEnv(getenv, "BIND_ADDR"), DefaultBindAddr),
-		ScopeFile: stringOr(brokerEnv(getenv, "SCOPE_FILE"), DefaultScopeFile),
-		StateDir:  stringOr(brokerEnv(getenv, "STATE_DIR"), DefaultStateDir),
+		HFToken:          hfToken,
+		BindAddr:         stringOr(brokerEnv(getenv, "BIND_ADDR"), DefaultBindAddr),
+		OperatorBindAddr: stringOr(brokerEnv(getenv, "OPERATOR_BIND_ADDR"), DefaultOperatorBindAddr),
+		ScopeFile:        stringOr(brokerEnv(getenv, "SCOPE_FILE"), DefaultScopeFile),
+		StateDir:         stringOr(brokerEnv(getenv, "STATE_DIR"), DefaultStateDir),
 	}
 	if cfg.HFToken == "" {
 		return Config{}, fmt.Errorf("%s or %s is required", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))
@@ -74,8 +80,14 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.Clients, err = loadClients(getenv); err != nil {
 		return Config{}, err
 	}
+	if cfg.Operators, err = loadOperators(getenv, cfg.Clients); err != nil {
+		return Config{}, err
+	}
 	if err := loadNumeric(getenv, &cfg); err != nil {
 		return Config{}, err
+	}
+	if len(cfg.Operators) > 0 && cfg.Port == cfg.OperatorPort {
+		return Config{}, errors.New("operator and agent listeners must use different ports")
 	}
 	return cfg, loadTelegram(getenv, &cfg)
 }
@@ -98,9 +110,9 @@ func secretPathReadFailure(err error) string {
 }
 
 func loadNumeric(getenv func(string) string, cfg *Config) error {
-	port, err := intOr(brokerEnv(getenv, "PORT"), DefaultPort)
+	port, operatorPort, err := loadPorts(getenv)
 	if err != nil {
-		return fmt.Errorf("%s: %w", brokerEnvName("PORT"), err)
+		return err
 	}
 	maxPack, err := intOr(brokerEnv(getenv, "MAX_PACK_BYTES"), DefaultMaxPackBytes)
 	if err != nil {
@@ -111,12 +123,31 @@ func loadNumeric(getenv func(string) string, cfg *Config) error {
 		return fmt.Errorf("%s: %w", brokerEnvName("HF_TIMEOUT"), err)
 	}
 	cfg.Port = port
+	cfg.OperatorPort = operatorPort
 	cfg.MaxPackBytes = int64(maxPack)
 	cfg.HFTimeout = DefaultHFTimeout
 	if timeoutSeconds > 0 {
 		cfg.HFTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 	return nil
+}
+
+func loadPorts(getenv func(string) string) (int, int, error) {
+	port, err := intOr(brokerEnv(getenv, "PORT"), DefaultPort)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: %w", brokerEnvName("PORT"), err)
+	}
+	operatorPort, err := intOr(brokerEnv(getenv, "OPERATOR_PORT"), DefaultOperatorPort)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: %w", brokerEnvName("OPERATOR_PORT"), err)
+	}
+	if port < 1 || port > 65535 {
+		return 0, 0, fmt.Errorf("%s: expected a port between 1 and 65535", brokerEnvName("PORT"))
+	}
+	if operatorPort < 1 || operatorPort > 65535 {
+		return 0, 0, fmt.Errorf("%s: expected a port between 1 and 65535", brokerEnvName("OPERATOR_PORT"))
+	}
+	return port, operatorPort, nil
 }
 
 func loadTelegram(getenv func(string) string, cfg *Config) error {
@@ -201,6 +232,46 @@ func loadClients(getenv func(string) string) ([]Client, error) {
 	return validateClients(clients)
 }
 
+func loadOperators(getenv func(string) string, clients []Client) ([]Client, error) {
+	operators, err := collectOperators(getenv)
+	if err != nil || len(operators) == 0 {
+		return operators, err
+	}
+	validated, err := validateClients(operators)
+	if err != nil {
+		return nil, fmt.Errorf("operator credentials: %w", err)
+	}
+	return validateOperatorSeparation(validated, clients)
+}
+
+func collectOperators(getenv func(string) string) ([]Client, error) {
+	var operators []Client
+	if shared := brokerEnv(getenv, "OPERATOR_SHARED_SECRET"); shared != "" {
+		operators = append(operators, Client{Name: "default", Secret: shared})
+	}
+	if path := brokerEnv(getenv, "OPERATOR_SECRETS_FILE"); path != "" {
+		fromFile, err := parseNamedSecretsFile(path, "OPERATOR_SECRETS_FILE")
+		if err != nil {
+			return nil, err
+		}
+		operators = append(operators, fromFile...)
+	}
+	return operators, nil
+}
+
+func validateOperatorSeparation(operators []Client, clients []Client) ([]Client, error) {
+	clientHashes := make(map[[32]byte]struct{}, len(clients))
+	for _, client := range clients {
+		clientHashes[sha256.Sum256([]byte(client.Secret))] = struct{}{}
+	}
+	for _, operator := range operators {
+		if _, reused := clientHashes[sha256.Sum256([]byte(operator.Secret))]; reused {
+			return nil, fmt.Errorf("operator %q secret reuses a client secret", operator.Name)
+		}
+	}
+	return operators, nil
+}
+
 func validateClients(clients []Client) ([]Client, error) {
 	seen := make(map[string]bool, len(clients))
 	seenSecrets := make(map[[32]byte]string, len(clients))
@@ -224,15 +295,19 @@ func validateClients(clients []Client) ([]Client, error) {
 // parseSecretsFile reads `name = secret` lines. Blank lines and lines
 // starting with # are ignored.
 func parseSecretsFile(path string) ([]Client, error) {
+	return parseNamedSecretsFile(path, "SECRETS_FILE")
+}
+
+func parseNamedSecretsFile(path string, envSuffix string) ([]Client, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- operator-configured path from the environment.
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", brokerEnvName("SECRETS_FILE"), err)
+		return nil, fmt.Errorf("read %s: %w", brokerEnvName(envSuffix), err)
 	}
 	var clients []Client
 	for lineNumber, line := range strings.Split(string(data), "\n") {
 		client, ok, err := parseSecretLine(line)
 		if err != nil {
-			return nil, fmt.Errorf("%s line %d: %w", brokerEnvName("SECRETS_FILE"), lineNumber+1, err)
+			return nil, fmt.Errorf("%s line %d: %w", brokerEnvName(envSuffix), lineNumber+1, err)
 		}
 		if !ok {
 			continue
@@ -240,7 +315,7 @@ func parseSecretsFile(path string) ([]Client, error) {
 		clients = append(clients, client)
 	}
 	if len(clients) == 0 {
-		return nil, fmt.Errorf("%s contains no clients", brokerEnvName("SECRETS_FILE"))
+		return nil, fmt.Errorf("%s contains no identities", brokerEnvName(envSuffix))
 	}
 	return clients, nil
 }

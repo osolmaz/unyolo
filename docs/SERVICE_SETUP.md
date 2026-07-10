@@ -64,6 +64,7 @@ The setup command creates:
 /etc/hf-broker/hf-token
 /etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
+/etc/hf-broker/operator-secrets
 /etc/hf-broker/scope.json
 /etc/hf-broker/env
 /var/lib/hf-broker
@@ -81,6 +82,11 @@ The real Hugging Face token is copied to:
 ```
 
 That file is owned by `hf-broker:hf-broker` and mode `0600`.
+
+The operator inbox credential is generated independently at
+`/etc/hf-broker/operator-secrets`, also mode `0600`. The service exposes the
+operator API on `127.0.0.1:8081` by default. Agents receive neither this
+credential nor access to that listener through their client configuration.
 
 When Telegram is configured, its token is copied to
 `/etc/hf-broker/telegram-bot-token` with the same ownership and mode. The

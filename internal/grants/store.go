@@ -147,6 +147,9 @@ type Store struct {
 	maxDuration     time.Duration
 }
 
+// Core returns the canonical Brokerkit store for shared operator surfaces.
+func (s *Store) Core() *bkgrants.Store { return s.core }
+
 // New returns an HF grant adapter rooted at path.
 func New(path string, opts Options) *Store {
 	defaultGrantDuration := defaultDuration(opts.DefaultDuration, DefaultDuration)

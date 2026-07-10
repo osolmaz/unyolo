@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	bkaudit "github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/hf-broker/internal/audit"
 	"github.com/osolmaz/hf-broker/internal/config"
 	"github.com/osolmaz/hf-broker/internal/httpapi"
@@ -87,34 +88,55 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
-	server := &http.Server{
+	servers := []*http.Server{{
 		Addr:              net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.Port)),
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
+	}}
+	if len(cfg.Operators) > 0 {
+		operatorHandler, err := handler.OperatorHandler(cfg, bkaudit.New(stdout))
+		if err != nil {
+			return err
+		}
+		servers = append(servers, &http.Server{
+			Addr:    net.JoinHostPort(cfg.OperatorBindAddr, strconv.Itoa(cfg.OperatorPort)),
+			Handler: operatorHandler, ReadHeaderTimeout: 10 * time.Second,
+		})
 	}
-	return serveWithContext(ctx, server, stderr)
+	return serveServersWithContext(ctx, servers, stderr)
 }
 
-func serveWithContext(ctx context.Context, server *http.Server, stderr io.Writer) error {
-	errs := make(chan error, 1)
-	go func() {
-		errs <- server.ListenAndServe()
-	}()
+func serveServersWithContext(ctx context.Context, servers []*http.Server, stderr io.Writer) error {
+	errs := make(chan error, len(servers))
+	for _, server := range servers {
+		go func(server *http.Server) { errs <- server.ListenAndServe() }(server)
+	}
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
+		if err := shutdownServers(servers); err != nil {
 			return err
 		}
 		_, _ = fmt.Fprintln(stderr, "hf-broker stopped")
 		return nil
 	case err := <-errs:
+		_ = shutdownServers(servers)
 		if err == http.ErrServerClosed {
 			return nil
 		}
 		return err
 	}
+}
+
+func shutdownServers(servers []*http.Server) error {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var errs []error
+	for _, server := range servers {
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 type exitError struct {

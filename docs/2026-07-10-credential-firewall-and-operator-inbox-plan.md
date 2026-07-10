@@ -2,7 +2,7 @@
 
 Date: 2026-07-10
 
-Status: planned, not implemented
+Status: operator inbox implemented; credential-firewall routes pending
 
 ## Motivation
 
@@ -419,10 +419,11 @@ HF_BROKER_HF_TOKEN_FILE
 HF_BROKER_SECRETS_FILE
 HF_BROKER_SCOPE_FILE
 HF_BROKER_STATE_DIR
-HF_BROKER_AGENT_BIND_ADDR
-HF_BROKER_AGENT_PORT
-HF_BROKER_OPERATOR_SOCKET
-HF_BROKER_AUDIT_FILE
+HF_BROKER_BIND_ADDR
+HF_BROKER_PORT
+HF_BROKER_OPERATOR_SECRETS_FILE
+HF_BROKER_OPERATOR_BIND_ADDR
+HF_BROKER_OPERATOR_PORT
 HF_BROKER_UPSTREAM_HUB_URL
 HF_BROKER_UPSTREAM_ROUTER_URL
 ```
@@ -430,6 +431,10 @@ HF_BROKER_UPSTREAM_ROUTER_URL
 Unknown configuration fields and invalid combinations fail startup. Operator
 and client secrets must be distinct. Configuration errors name fields, never
 values.
+
+The implemented operator transport is a dedicated HTTP listener so local and
+private-network trusted hosts can use the same contract. Setup binds it to
+`127.0.0.1:8081` by default. It is never multiplexed onto the agent listener.
 
 ## Audit And Observability
 

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -11,8 +13,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/clientconfig"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
+	"github.com/osolmaz/hf-broker/internal/config"
 )
 
 const setupUsage = `usage:
@@ -29,6 +33,11 @@ type setupSystemdOptions struct {
 	Repo                 string
 	RepoType             string
 	SharedSecret         string
+	OperatorName         string
+	OperatorSecretFile   string
+	OperatorSecret       string
+	OperatorBindAddr     string
+	OperatorPort         int
 	CommandRunner        bkservice.CommandRunner
 }
 
@@ -78,6 +87,10 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.StringVar(&opts.RepoType, "repo-type", "", "Hub repo type: model, dataset, or space")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
+	fs.StringVar(&opts.OperatorName, "operator", "onur", "operator identity for the protected inbox")
+	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
+	fs.StringVar(&opts.OperatorBindAddr, "operator-bind-addr", "127.0.0.1", "operator inbox listen address")
+	fs.IntVar(&opts.OperatorPort, "operator-port", 8081, "operator inbox listen port")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = io.Copy(stderr, strings.NewReader(flagOutput.String()))
@@ -100,6 +113,11 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 		return setupSystemdOptions{}, exitError{code: 64, message: err.Error()}
 	}
 	opts.SharedSecret = secret
+	operatorSecret, err := bksetup.ResolveSecret(bksetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
+	if err != nil {
+		return setupSystemdOptions{}, exitError{code: 64, message: err.Error()}
+	}
+	opts.OperatorSecret = operatorSecret
 	return opts, validateSetupSystemdOptions(opts)
 }
 
@@ -128,6 +146,39 @@ func validateSetupRequired(opts setupSystemdOptions) error {
 	}
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return exitError{code: 64, message: "--telegram-bot-token-file and --telegram-chat-id must be set together"}
+	}
+	return validateOperatorSetup(opts)
+}
+
+func validateOperatorSetup(opts setupSystemdOptions) error {
+	if err := validateOperatorCredentials(opts); err != nil {
+		return err
+	}
+	return validateOperatorListener(opts)
+}
+
+func validateOperatorCredentials(opts setupSystemdOptions) error {
+	if err := clientconfig.ValidateClientName(opts.OperatorName); err != nil {
+		return exitError{code: 64, message: "invalid --operator: " + err.Error()}
+	}
+	if len(opts.OperatorSecret) < config.MinSecretBytes {
+		return exitError{code: 64, message: fmt.Sprintf("operator secret must be at least %d bytes", config.MinSecretBytes)}
+	}
+	if subtle.ConstantTimeCompare([]byte(opts.OperatorSecret), []byte(opts.SharedSecret)) == 1 {
+		return exitError{code: 64, message: "operator secret must differ from the client secret"}
+	}
+	return nil
+}
+
+func validateOperatorListener(opts setupSystemdOptions) error {
+	if ip := net.ParseIP(opts.OperatorBindAddr); ip == nil && opts.OperatorBindAddr != "localhost" {
+		return exitError{code: 64, message: "--operator-bind-addr must be an IP address or localhost"}
+	}
+	if opts.OperatorPort < 1 || opts.OperatorPort > 65535 {
+		return exitError{code: 64, message: "--operator-port must be between 1 and 65535"}
+	}
+	if opts.OperatorPort == opts.Port {
+		return exitError{code: 64, message: "operator and agent listeners must use different ports"}
 	}
 	return nil
 }

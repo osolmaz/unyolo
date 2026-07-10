@@ -72,6 +72,9 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	if len(opts.SharedSecret) != 64 {
 		t.Fatalf("generated secret length = %d, want 64", len(opts.SharedSecret))
 	}
+	if len(opts.OperatorSecret) != 64 || opts.OperatorName != "onur" || opts.OperatorPort != 8081 {
+		t.Fatalf("generated operator configuration = %+v", opts)
+	}
 }
 
 func TestParseSetupSystemdRequiresCompleteTelegramConfiguration(t *testing.T) {
@@ -106,6 +109,44 @@ func TestParseSetupSystemdReadsSharedSecretFromFileAndStdin(t *testing.T) {
 	}
 }
 
+func TestParseSetupSystemdRejectsReusedOperatorSecret(t *testing.T) {
+	secret := strings.Repeat("s", 32)
+	dir := t.TempDir()
+	clientFile := filepath.Join(dir, "client-secret")
+	operatorFile := filepath.Join(dir, "operator-secret")
+	for _, path := range []string{clientFile, operatorFile} {
+		if err := os.WriteFile(path, []byte(secret+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := parseSetupSystemd(ioDiscard{}, []string{
+		"--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/repo", "--repo-type", "model",
+		"--shared-secret-file", clientFile, "--operator-secret-file", operatorFile,
+	})
+	if err == nil || !strings.Contains(err.Error(), "must differ") || strings.Contains(err.Error(), secret) {
+		t.Fatalf("parseSetupSystemd() error = %v", err)
+	}
+}
+
+func TestParseSetupSystemdRejectsUnsafeOperatorSettings(t *testing.T) {
+	base := []string{"--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/repo", "--repo-type", "model"}
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "empty bind", args: []string{"--operator-bind-addr", ""}, want: "IP address or localhost"},
+		{name: "unsafe identity", args: []string{"--operator", "onur=admin"}, want: "invalid --operator"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseSetupSystemd(ioDiscard{}, append(append([]string{}, base...), test.args...))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("parseSetupSystemd() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestParseSetupSystemdHelpAndPositionals(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runSetup(context.Background(), ioDiscard{}, &stderr, []string{"systemd", "-h"})
@@ -130,6 +171,8 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 		Repo:         "osolmaz/scraped-news",
 		RepoType:     "dataset",
 		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
+		OperatorName: "onur", OperatorSecret: "operator-secret-abcdefghijklmnopqrstuvwxyz",
+		OperatorBindAddr: "127.0.0.1", OperatorPort: 8081,
 	}
 	plan := systemdSetupPlan(opts)
 	scopeJSON, err := renderScopeJSON(opts.Repo, opts.RepoType)
@@ -160,6 +203,8 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 		"HF_BROKER_SECRETS_FILE=/etc/hf-broker/secrets",
 		"HF_BROKER_SCOPE_FILE=/etc/hf-broker/scope.json",
 		"HF_BROKER_STATE_DIR=/var/lib/hf-broker",
+		"HF_BROKER_OPERATOR_SECRETS_FILE=/etc/hf-broker/operator-secrets",
+		"HF_BROKER_OPERATOR_PORT=8081",
 	} {
 		if !strings.Contains(env, want) {
 			t.Fatalf("env file missing %q:\n%s", want, env)
@@ -286,10 +331,12 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
 			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, AllowNonRoot: true, NoStart: true,
 		},
-		HFTokenFile:   tokenFile,
-		Repo:          "osolmaz/scraped-news",
-		RepoType:      "dataset",
-		SharedSecret:  "abcdefghijklmnopqrstuvwxyz123456",
+		HFTokenFile:  tokenFile,
+		Repo:         "osolmaz/scraped-news",
+		RepoType:     "dataset",
+		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
+		OperatorName: "onur", OperatorSecret: "operator-secret-abcdefghijklmnopqrstuvwxyz",
+		OperatorBindAddr: "127.0.0.1", OperatorPort: 8081,
 		CommandRunner: runner,
 	})
 	if err != nil {
@@ -306,6 +353,15 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	}
 	assertSetupFile(t, filepath.Join(dir, "etc", "hf-broker", "hf-token"), "hf_xxx\n", 0o600)
 	assertSetupFile(t, filepath.Join(dir, "etc", "hf-broker", "secrets"), "agent = abcdefghijklmnopqrstuvwxyz123456\n", 0o600)
+	assertSetupFileContains(t, filepath.Join(dir, "etc", "hf-broker", operatorSecretsFileName), "onur = ", 0o600)
+	operatorData, err := os.ReadFile(filepath.Join(dir, "etc", "hf-broker", operatorSecretsFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	operatorSecret := strings.TrimSpace(strings.TrimPrefix(string(operatorData), "onur = "))
+	if operatorSecret == "" || strings.Contains(stdout.String(), operatorSecret) {
+		t.Fatalf("setup leaked or omitted the operator secret")
+	}
 	assertSetupFileContains(t, filepath.Join(dir, "etc", "hf-broker", "scope.json"), `"name": "scraped-news"`, 0o644)
 	assertSetupFileContains(t, filepath.Join(dir, "etc", "hf-broker", "env"), "HF_BROKER_STATE_DIR=", 0o640)
 	assertSetupFileContains(t, filepath.Join(dir, "systemd", unitFileName), "ProtectSystem=strict", 0o644)
@@ -328,6 +384,8 @@ func TestBrokerkitSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 		Repo:         "osolmaz/scraped-news",
 		RepoType:     "dataset",
 		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
+		OperatorName: "onur", OperatorSecret: "operator-secret-abcdefghijklmnopqrstuvwxyz",
+		OperatorBindAddr: "127.0.0.1", OperatorPort: 8081,
 	}
 	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
@@ -338,7 +396,8 @@ func TestBrokerkitSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 	}
 	wantOwners := map[string]bkservice.ManagedFileOwner{
 		hfTokenFileName: bkservice.ManagedFileOwnerService, secretsFileName: bkservice.ManagedFileOwnerService,
-		scopeFileName: bkservice.ManagedFileOwnerRoot, envFileName: bkservice.ManagedFileOwnerRoot,
+		operatorSecretsFileName: bkservice.ManagedFileOwnerService,
+		scopeFileName:           bkservice.ManagedFileOwnerRoot, envFileName: bkservice.ManagedFileOwnerRoot,
 	}
 	for _, file := range plan.Files {
 		if got := file.Owner; got != wantOwners[file.Name] {
