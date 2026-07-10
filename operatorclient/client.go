@@ -114,6 +114,9 @@ func (c *Client) Revoke(ctx context.Context, id string, decision Decision) (oper
 }
 
 func (c *Client) decide(ctx context.Context, id string, action string, decision Decision) (operatorinbox.Item, error) {
+	if decision.Duration > 0 && decision.Duration < time.Second {
+		return operatorinbox.Item{}, errors.New("operator approval duration must be at least one second")
+	}
 	body := struct {
 		ExpectedRevision int64         `json:"expected_revision"`
 		ExpectedStatus   grants.Status `json:"expected_status,omitempty"`

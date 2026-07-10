@@ -57,14 +57,19 @@ type EventPage struct {
 }
 
 type lifecycleEventRecord struct {
-	Sequence      uint64    `json:"sequence"`
-	Kind          EventKind `json:"kind"`
-	GrantID       string    `json:"grant_id"`
-	Status        Status    `json:"status"`
-	UsedCount     int       `json:"used_count"`
-	ReservedCount int       `json:"reserved_count"`
-	Revision      int64     `json:"revision"`
-	Time          time.Time `json:"time"`
+	Sequence         uint64    `json:"sequence"`
+	Kind             EventKind `json:"kind"`
+	GrantID          string    `json:"grant_id"`
+	Status           Status    `json:"status"`
+	UsedCount        int       `json:"used_count"`
+	ReservedCount    int       `json:"reserved_count"`
+	Revision         int64     `json:"revision"`
+	Time             time.Time `json:"time"`
+	Approver         string    `json:"approver,omitempty"`
+	Reason           string    `json:"reason,omitempty"`
+	PreviousStatus   Status    `json:"previous_status,omitempty"`
+	PreviousRevision int64     `json:"previous_revision,omitempty"`
+	ExpectedRevision int64     `json:"expected_revision,omitempty"`
 }
 
 func grantSnapshots(grants []Grant) map[string]Grant {
@@ -91,7 +96,7 @@ func (s *Store) reconcileLifecycle(data *fileData, before map[string]Grant) bool
 		}
 		data.Grants[index] = grant
 		for _, kind := range kinds {
-			s.appendLifecycleEvent(data, kind, grant)
+			s.appendLifecycleEvent(data, kind, grant, previous)
 		}
 		changed = true
 	}
@@ -140,7 +145,7 @@ func statusEventKinds(before Grant, after Grant) []EventKind {
 	}
 }
 
-func (s *Store) appendLifecycleEvent(data *fileData, kind EventKind, grant Grant) {
+func (s *Store) appendLifecycleEvent(data *fileData, kind EventKind, grant Grant, previous Grant) {
 	if data.NextEvent == 0 {
 		data.NextEvent = 1
 	}
@@ -148,6 +153,11 @@ func (s *Store) appendLifecycleEvent(data *fileData, kind EventKind, grant Grant
 		Sequence: data.NextEvent, Kind: kind, GrantID: grant.ID, Status: grant.Status,
 		UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,
 		Revision: grant.Revision, Time: s.opts.Now().UTC(),
+		Approver: grant.DecidedBy, Reason: grant.DecisionReason,
+		PreviousStatus: previous.Status, PreviousRevision: previous.Revision,
+	}
+	if grant.DecidedBy != "" {
+		record.ExpectedRevision = previous.Revision
 	}
 	data.NextEvent++
 	data.Events = append(data.Events, record)
@@ -265,12 +275,115 @@ func (s *Store) WaitForEvents(ctx context.Context, cursor string) (EventPage, er
 		if err != nil || len(page.Events) > 0 {
 			return page, err
 		}
-		select {
-		case <-ctx.Done():
-			return EventPage{}, ctx.Err()
-		case <-wait:
+		delay, hasDeadline, err := s.nextLifecycleDelay()
+		if err != nil {
+			return EventPage{}, err
+		}
+		deadline, err := waitForLifecycleWake(ctx, wait, delay, hasDeadline)
+		if err != nil {
+			return EventPage{}, err
+		}
+		if err := s.reconcileLifecycleDeadline(deadline); err != nil {
+			return EventPage{}, err
 		}
 	}
+}
+
+func (s *Store) reconcileLifecycleDeadline(deadline bool) error {
+	if !deadline {
+		return nil
+	}
+	return s.reconcileDueLifecycle()
+}
+
+func (s *Store) nextLifecycleDelay() (time.Duration, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return 0, false, err
+	}
+	now := s.opts.Now().UTC()
+	var earliest time.Time
+	for _, grant := range data.Grants {
+		candidate := s.grantLifecycleDeadline(grant, now)
+		if !candidate.IsZero() && (earliest.IsZero() || candidate.Before(earliest)) {
+			earliest = candidate
+		}
+	}
+	if earliest.IsZero() {
+		return 0, false, nil
+	}
+	return max(earliest.Sub(now), 0), true, nil
+}
+
+func (s *Store) grantLifecycleDeadline(grant Grant, now time.Time) time.Time {
+	switch grant.Status {
+	case StatusPending:
+		return grant.PendingExpiresAt
+	case StatusActive:
+		reservationDeadline := s.reservationLifecycleDeadline(grant, now)
+		if !reservationDeadline.IsZero() && reservationDeadline.Before(grant.ExpiresAt) {
+			return reservationDeadline
+		}
+		return grant.ExpiresAt
+	case StatusExpired, StatusRevoked:
+		return s.reservationLifecycleDeadline(grant, now)
+	case StatusDenied, StatusConsumed, StatusCanceled:
+		return time.Time{}
+	default:
+		return time.Time{}
+	}
+}
+
+func (s *Store) reservationLifecycleDeadline(grant Grant, now time.Time) time.Time {
+	if grant.ReservedCount <= 0 || grant.ReservationRetained {
+		return time.Time{}
+	}
+	if reservationIsStale(grant, now, s.opts.ReservationTimeout) || grant.ReservedAt.IsZero() {
+		return now
+	}
+	return grant.ReservedAt.Add(s.opts.ReservationTimeout)
+}
+
+func waitForLifecycleWake(ctx context.Context, signal <-chan struct{}, delay time.Duration, hasDeadline bool) (bool, error) {
+	if !hasDeadline {
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-signal:
+			return false, nil
+		}
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-signal:
+		return false, nil
+	case <-timer.C:
+		return true, nil
+	}
+}
+
+func (s *Store) reconcileDueLifecycle() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return err
+	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
+	if !s.prepareLifecycle(&data) || !s.reconcileLifecycle(&data, before) {
+		return nil
+	}
+	if err := s.save(data); err != nil {
+		return err
+	}
+	s.signalNewEvents(eventSequence, data.NextEvent)
+	return nil
 }
 
 // RecordExecution appends one safe provider execution outcome event.
@@ -284,7 +397,7 @@ func (s *Store) RecordExecution(id string, kind EventKind) (Event, error) {
 		if err != nil {
 			return err
 		}
-		s.appendLifecycleEvent(data, kind, grant)
+		s.appendLifecycleEvent(data, kind, grant, grant)
 		out = publicEvent(data.Events[len(data.Events)-1])
 		return nil
 	})

@@ -70,6 +70,9 @@ func TestClientRoutesAndErrors(t *testing.T) { //nolint:cyclop,gocognit // One w
 	if _, err := (&Client{}).Get(t.Context(), "grant"); err == nil {
 		t.Fatal("client without BaseURL returned no error")
 	}
+	if _, err := client.Approve(t.Context(), "grant-1", Decision{ExpectedRevision: 2, Duration: 500 * time.Millisecond}); err == nil {
+		t.Fatal("Approve() accepted a sub-second duration")
+	}
 }
 
 func TestClientStreamParsesEventsAndStopsOnReceiver(t *testing.T) {

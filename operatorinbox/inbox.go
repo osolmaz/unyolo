@@ -136,6 +136,11 @@ func (s *Service) Get(ctx context.Context, id string) (Item, error) {
 	return s.project(ctx, grant), nil
 }
 
+// Project creates a safe item from an authoritative grant returned by a transition.
+func (s *Service) Project(ctx context.Context, grant grants.Grant) Item {
+	return s.project(ctx, grant)
+}
+
 func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 	presentation, unavailable := s.presentation(ctx, grant)
 	item := Item{

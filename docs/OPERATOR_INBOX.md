@@ -119,7 +119,10 @@ view, and starts from the newest returned lifecycle state.
 - Provider presenters can add wording, fields, risk, and a plan hash, but
   presentation never becomes execution authority.
 - Events contain only grant ID, state, counters, revision, time, and cursor.
-- Operator actions require an audit sink and record approver, action, reason,
-  previous/next state, expected/actual revision, and event cursor.
+- Operator actions persist approver, reason, previous/next state, revisions,
+  and event cursor atomically in the durable lifecycle record. The required
+  audit recorder receives the same outcome as an external export; export
+  failure is reported in `X-Broker-Audit-Export` but cannot turn a committed
+  decision into an apparent failure.
 - Notification transports such as Telegram are optional views over the same
   durable state machine.

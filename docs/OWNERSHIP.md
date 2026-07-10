@@ -116,7 +116,8 @@ Generated grants must never use wildcard clients.
 - revision-checked approve, deny, cancel, and revoke commands
 - safe broker-owned presentation validation with generic fallback
 - dedicated operator authentication separate from broker clients
-- operator-only JSON and SSE handlers with mandatory audit recording
+- operator-only JSON and SSE handlers with atomic durable audit metadata and a
+  mandatory external audit exporter
 - trusted-host Go client, checked-in wire fixtures, and fake test server
 
 The consuming broker supplies provider wording and exposes the handler on a

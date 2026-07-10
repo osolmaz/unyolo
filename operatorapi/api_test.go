@@ -229,6 +229,30 @@ func TestOperatorAPIReportsExpiredEventCursor(t *testing.T) {
 	}
 }
 
+type failingAudit struct{}
+
+func (failingAudit) Record(audit.Event) error { return errors.New("audit export unavailable") }
+
+func TestCommittedDecisionSucceedsWhenAuditExportFails(t *testing.T) {
+	store := grants.New(t.TempDir()+"/grants.json", grants.Options{})
+	server, err := operatorfake.New(operatorfake.Options{
+		Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret}, Audit: failingAudit{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(server.Close)
+	grant := requestGrant(t, store, "audit-export")
+	approved, err := server.Client(testOperatorSecret).Approve(t.Context(), grant.ID, operatorclient.Decision{ExpectedRevision: grant.Revision})
+	if err != nil || approved.Status != grants.StatusActive {
+		t.Fatalf("Approve() = %+v, %v", approved, err)
+	}
+	latest, err := store.LatestEvent(grant.ID)
+	if err != nil || latest.Kind != grants.EventRequestApproved {
+		t.Fatalf("LatestEvent() = %+v, %v", latest, err)
+	}
+}
+
 func newOperatorServer(t *testing.T) (*grants.Store, *operatorfake.Server, *operatorclient.Client) {
 	t.Helper()
 	store := grants.New(t.TempDir()+"/grants.json", grants.Options{})

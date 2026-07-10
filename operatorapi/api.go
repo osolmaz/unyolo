@@ -176,14 +176,9 @@ func (h *handler) decide(writer http.ResponseWriter, request *http.Request, id s
 		h.writeMappedError(writer, request, err)
 		return
 	}
-	item, err := h.inbox.Get(request.Context(), grant.ID)
-	if err != nil {
-		h.writeMappedError(writer, request, err)
-		return
-	}
+	item := h.inbox.Project(request.Context(), grant)
 	if err := h.recordDecisionAudit(action, approver, body, previous, &item, nil); err != nil {
-		h.writeError(writer, http.StatusInternalServerError, "audit_failed", "operator audit recording failed", nil)
-		return
+		writer.Header().Set("X-Broker-Audit-Export", "failed")
 	}
 	h.writeJSON(writer, http.StatusOK, item)
 }

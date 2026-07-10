@@ -335,6 +335,100 @@ func TestCursorDecodingAndEventPagingBranches(t *testing.T) { //nolint:cyclop //
 	}
 }
 
+func TestWaitForEventsEmitsTimeDrivenExpiry(t *testing.T) {
+	store := New(t.TempDir()+"/grants.json", Options{PendingTimeout: 25 * time.Millisecond})
+	result, _, err := store.Request(Request{
+		Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"}, Reason: "expire without traffic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.EventsAfter("", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	page, err := store.WaitForEvents(ctx, created.NextCursor)
+	if err != nil || len(page.Events) != 1 || page.Events[0].Kind != EventRequestExpired {
+		t.Fatalf("WaitForEvents() = %+v, %v", page, err)
+	}
+	grant, err := store.Get(result.Grant.ID)
+	if err != nil || grant.Status != StatusExpired {
+		t.Fatalf("expired grant = %+v, %v", grant, err)
+	}
+}
+
+func TestDecisionLifecycleRecordContainsDurableAuditFields(t *testing.T) {
+	store := New(t.TempDir()+"/grants.json", Options{})
+	result, _, err := store.Request(testOperatorRequest("durable-audit"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.OperatorApprove(ApproveCommand{DecisionCommand: DecisionCommand{
+		ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision, Reason: "reviewed",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	data, err := store.load()
+	store.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := data.Events[len(data.Events)-1]
+	if record.Approver != "onur" || record.Reason != "reviewed" || record.PreviousStatus != StatusPending ||
+		record.PreviousRevision != result.Grant.Revision || record.ExpectedRevision != result.Grant.Revision || record.Revision != approved.Revision {
+		t.Fatalf("durable audit record = %+v", record)
+	}
+}
+
+func TestLifecycleDeadlineVariantsAndSignalWake(t *testing.T) {
+	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
+	store := New(t.TempDir()+"/grants.json", Options{Now: func() time.Time { return now }, ReservationTimeout: time.Minute})
+	future := now.Add(5 * time.Minute)
+	reservedAt := now.Add(-30 * time.Second)
+	tests := []Grant{
+		{Status: StatusPending, PendingExpiresAt: future},
+		{Status: StatusActive, ExpiresAt: future},
+		{Status: StatusActive, ExpiresAt: future, ReservedCount: 1, ReservedAt: reservedAt},
+		{Status: StatusActive, ExpiresAt: future, ReservedCount: 1},
+		{Status: StatusExpired, ReservedCount: 1, ReservedAt: reservedAt},
+		{Status: StatusRevoked},
+		{Status: StatusDenied}, {Status: StatusConsumed}, {Status: StatusCanceled}, {Status: "unknown"},
+	}
+	for _, grant := range tests {
+		_ = store.grantLifecycleDeadline(grant, now)
+	}
+	for _, grant := range []Grant{
+		{},
+		{ReservedCount: 1, ReservationRetained: true},
+		{Status: StatusActive, ReservedCount: 1, ReservedAt: now.Add(-2 * time.Minute)},
+		{Status: StatusActive, ReservedCount: 1},
+		{Status: StatusActive, ReservedCount: 1, ReservedAt: reservedAt},
+	} {
+		_ = store.reservationLifecycleDeadline(grant, now)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		page, err := store.WaitForEvents(ctx, "")
+		if err == nil && (len(page.Events) != 1 || page.Events[0].Kind != EventRequestCreated) {
+			err = errors.New("unexpected event page")
+		}
+		result <- err
+	}()
+	time.Sleep(10 * time.Millisecond)
+	if _, _, err := store.Request(testOperatorRequest("signal-wake")); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func pendingID(t *testing.T, store *Store, id string) string {
 	t.Helper()
 	result, _, err := store.Request(testOperatorRequest(id))
