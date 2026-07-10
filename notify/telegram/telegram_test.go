@@ -135,6 +135,43 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	assertPollEdit(t, state.edits)
 }
 
+func TestExternalStatusUpdatesDisableCallbackAndExpiryEdits(t *testing.T) {
+	state := &pollServerState{}
+	server := newPollServer(t, state)
+	defer server.Close()
+	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{
+		PollTimeoutSeconds:    1,
+		ExternalStatusUpdates: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.PollOnce(context.Background(), 0, func(_ context.Context, _ notify.Decision) notify.DecisionResult {
+		return notify.DecisionResult{Answer: "handled", Status: "Approved"}
+	}); err != nil {
+		t.Fatalf("PollOnce() error = %v", err)
+	}
+	if len(state.edits) != 0 {
+		t.Fatalf("callback edits = %+v, want external lifecycle only", state.edits)
+	}
+	if len(state.answered) != 2 {
+		t.Fatalf("callback answers = %+v, want both answered", state.answered)
+	}
+
+	ref, err := client.SendApproval(context.Background(), notify.ApprovalMessage{
+		GrantID:          "grant-1",
+		DecisionToken:    "token-1",
+		PendingExpiresAt: time.Now().Add(time.Minute),
+	})
+	if err != nil || ref.MessageID == 0 {
+		t.Fatalf("SendApproval() = %+v err=%v", ref, err)
+	}
+	client.ExpireTracked(context.Background(), time.Now().Add(time.Hour))
+	if len(state.edits) != 0 {
+		t.Fatalf("expiry edits = %+v, want external lifecycle only", state.edits)
+	}
+}
+
 func TestTrackedPendingAndActiveExpiry(t *testing.T) {
 	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
 	var edits []map[string]any
@@ -344,6 +381,8 @@ func newPollServer(t *testing.T, state *pollServerState) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
+			writeMessage(w, 42)
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
 			writePollUpdates(w)
 		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
