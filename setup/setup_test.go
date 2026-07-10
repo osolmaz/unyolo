@@ -124,8 +124,16 @@ func TestSystemdOptions(t *testing.T) {
 	if opts.ListenAddress() != "127.0.0.1:8080" {
 		t.Fatalf("ListenAddress() = %q", opts.ListenAddress())
 	}
+	for _, client := range []string{"ci@host", "123"} {
+		valid := opts
+		valid.ClientName = client
+		if err := valid.Validate(); err != nil {
+			t.Fatalf("Validate(client=%q): %v", client, err)
+		}
+	}
 	for _, mutate := range []func(*SystemdOptions){
 		func(value *SystemdOptions) { value.User = "bad=name" },
+		func(value *SystemdOptions) { value.ClientName = "bad=name" },
 		func(value *SystemdOptions) { value.ConfigDir = "relative" },
 		func(value *SystemdOptions) { value.BindAddr = "all" },
 		func(value *SystemdOptions) { value.Port = 0 },

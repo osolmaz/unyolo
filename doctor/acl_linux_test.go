@@ -4,9 +4,11 @@ package doctor
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -70,5 +72,16 @@ func TestMergeACLStates(t *testing.T) {
 		if got := mergeACLStates(test.left, test.right); got != test.want {
 			t.Fatalf("mergeACLStates(%v, %v) = %v, want %v", test.left, test.right, got, test.want)
 		}
+	}
+}
+
+func TestXattrACLErrorState(t *testing.T) {
+	for _, err := range []error{syscall.ENOTSUP, syscall.EOPNOTSUPP, errors.New("unknown")} {
+		if got := xattrACLErrorState(err); got != aclUnknown {
+			t.Fatalf("xattrACLErrorState(%v) = %v, want unknown", err, got)
+		}
+	}
+	if got := xattrACLErrorState(syscall.ENODATA); got != aclAbsent {
+		t.Fatalf("xattrACLErrorState(ENODATA) = %v, want absent", got)
 	}
 }

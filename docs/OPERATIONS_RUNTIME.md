@@ -69,6 +69,13 @@ available for read-only integrations; and privileged brokers such as
 sudo-broker select `allow` when approved commands or shells must operate in user
 home directories. The writable state path may never be `/`.
 
+Privilege escalation is a separate typed policy and is denied by default with
+`NoNewPrivileges=true`. A broker that deliberately delegates through a mature
+setuid boundary, such as sudo-broker's sudo runner, must explicitly select
+`PrivilegeEscalationAllow`; Brokerkit then renders `NoNewPrivileges=false`.
+Writable state, read-only config, the service executable, and the environment
+file must occupy non-overlapping paths.
+
 ## Doctor
 
 Package `doctor` provides portable building blocks for:

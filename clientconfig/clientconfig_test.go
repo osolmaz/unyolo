@@ -209,7 +209,9 @@ func TestValidation(t *testing.T) {
 		"bad broker":   {BrokerName: "../bad", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1", Secret: "s"},
 		"bad prefix":   {BrokerName: "gh-broker", EnvPrefix: "gh-broker", URL: "http://127.0.0.1", Secret: "s"},
 		"bad url":      {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "ftp://127.0.0.1", Secret: "s"},
-		"url userinfo": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://user:credential@broker.example", Secret: "s"}, // #nosec G101 -- credential-bearing URL is the rejection fixture.
+		"url userinfo": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://user:credential@broker.example", Secret: "s"},  // #nosec G101 -- credential-bearing URL is the rejection fixture.
+		"url query":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://broker.example?token=credential", Secret: "s"}, // #nosec G101 -- credential-bearing URL is the rejection fixture.
+		"url fragment": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://broker.example#credential", Secret: "s"},       // #nosec G101 -- credential-bearing URL is the rejection fixture.
 		"no secret":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1"},
 	}
 	for name, cfg := range cases {
@@ -218,6 +220,19 @@ func TestValidation(t *testing.T) {
 				t.Fatal("Render() error = nil, want validation error")
 			}
 		})
+	}
+}
+
+func TestValidateClientName(t *testing.T) {
+	for _, value := range []string{"bob", "ci@host", "123"} {
+		if err := ValidateClientName(value); err != nil {
+			t.Fatalf("ValidateClientName(%q): %v", value, err)
+		}
+	}
+	for _, value := range []string{"", "#comment", "a=b", "a\nb"} {
+		if err := ValidateClientName(value); err == nil {
+			t.Fatalf("ValidateClientName(%q) error = nil", value)
+		}
 	}
 }
 

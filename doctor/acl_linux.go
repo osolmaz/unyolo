@@ -17,11 +17,14 @@ func pathACLState(path string) aclState {
 
 func xattrACLState(path string, name string) aclState {
 	_, err := syscall.Getxattr(path, name, nil)
+	return xattrACLErrorState(err)
+}
+
+func xattrACLErrorState(err error) aclState {
 	if err == nil || errors.Is(err, syscall.ERANGE) {
 		return aclPresent
 	}
-	if errors.Is(err, syscall.ENODATA) || errors.Is(err, syscall.ENOTSUP) ||
-		errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, syscall.ENODATA) || errors.Is(err, os.ErrNotExist) {
 		return aclAbsent
 	}
 	return aclUnknown

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/clientconfig"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
@@ -95,7 +96,10 @@ func (opts SystemdOptions) Validate() error {
 	if strings.TrimSpace(opts.BrokerName) == "" {
 		return errors.New("broker name is required")
 	}
-	if err := validatex.AccountNames(map[string]string{"user": opts.User, "group": opts.Group, "client": opts.ClientName}); err != nil {
+	if err := validatex.AccountNames(map[string]string{"user": opts.User, "group": opts.Group}); err != nil {
+		return err
+	}
+	if err := clientconfig.ValidateClientName(opts.ClientName); err != nil {
 		return err
 	}
 	if err := validatex.AbsolutePaths(map[string]string{"config-dir": opts.ConfigDir, "state-dir": opts.StateDir, "systemd-dir": opts.SystemdDir, "binary": opts.BinaryPath}, true); err != nil {

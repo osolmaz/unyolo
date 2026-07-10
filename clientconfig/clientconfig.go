@@ -51,8 +51,8 @@ func SecretsFromFile(path string) (map[string]string, error) {
 // SecretFromData parses `name = secret` data and returns client's secret.
 func SecretFromData(data []byte, client string) (string, error) {
 	name := strings.TrimSpace(client)
-	if name == "" {
-		return "", errors.New("client name is required")
+	if err := ValidateClientName(name); err != nil {
+		return "", err
 	}
 	secrets, err := SecretsFromData(data)
 	if err != nil {
@@ -223,6 +223,10 @@ func ValidateURL(value string) error {
 	if err != nil {
 		return fmt.Errorf("broker URL is invalid: %w", err)
 	}
+	return validateParsedURL(parsed)
+}
+
+func validateParsedURL(parsed *url.URL) error {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return errors.New("broker URL must use http or https")
 	}
@@ -231,6 +235,21 @@ func ValidateURL(value string) error {
 	}
 	if parsed.User != nil {
 		return errors.New("broker URL must not contain user information")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("broker URL must not contain a query or fragment")
+	}
+	return nil
+}
+
+// ValidateClientName validates an identifier used as a client secret-file key.
+func ValidateClientName(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return errors.New("client name is required")
+	}
+	if strings.ContainsAny(value, "\r\n=") || strings.HasPrefix(trimmed, "#") {
+		return errors.New("client name is not safe for a client secret file")
 	}
 	return nil
 }
@@ -277,6 +296,9 @@ func parseSecretLine(line string) (string, string, bool, error) {
 	secret = strings.TrimSpace(secret)
 	if name == "" {
 		return "", "", false, errors.New("client name is empty")
+	}
+	if err := ValidateClientName(name); err != nil {
+		return "", "", false, err
 	}
 	if secret == "" {
 		return "", "", false, fmt.Errorf("client %q secret is empty", name)

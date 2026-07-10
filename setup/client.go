@@ -82,8 +82,8 @@ func validateClientIdentity(opts ClientOptions) error {
 	if strings.TrimSpace(opts.BrokerName) == "" || strings.TrimSpace(opts.EnvPrefix) == "" {
 		return errors.New("broker name and environment prefix are required")
 	}
-	if strings.TrimSpace(opts.ClientName) == "" {
-		return errors.New("--client must not be empty")
+	if err := clientconfig.ValidateClientName(opts.ClientName); err != nil {
+		return fmt.Errorf("--client: %w", err)
 	}
 	return nil
 }

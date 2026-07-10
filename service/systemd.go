@@ -12,16 +12,17 @@ import (
 
 // SystemdUnit describes one broker-family systemd service.
 type SystemdUnit struct {
-	Description     string
-	User            string
-	Group           string
-	EnvironmentFile string
-	ExecStart       string
-	StateDir        string
-	ConfigDir       string
-	RestartSec      int
-	HomeAccess      HomeAccess
-	ExtraDirectives []string
+	Description         string
+	User                string
+	Group               string
+	EnvironmentFile     string
+	ExecStart           string
+	StateDir            string
+	ConfigDir           string
+	RestartSec          int
+	HomeAccess          HomeAccess
+	PrivilegeEscalation PrivilegeEscalation
+	ExtraDirectives     []string
 }
 
 // HomeAccess controls service visibility into user home directories.
@@ -34,6 +35,15 @@ const (
 	HomeAccessReadOnly HomeAccess = "read-only"
 	// HomeAccessAllow permits broker-specific user-home operations.
 	HomeAccessAllow HomeAccess = "allow"
+)
+
+// PrivilegeEscalation controls whether the service may perform a deliberate
+// setuid transition. The zero value denies privilege escalation.
+type PrivilegeEscalation string
+
+const (
+	PrivilegeEscalationDeny  PrivilegeEscalation = "deny"
+	PrivilegeEscalationAllow PrivilegeEscalation = "allow"
 )
 
 var allowedExtraSystemdDirectives = map[string]string{
@@ -65,6 +75,10 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 		restartSec = 5
 	}
 	protectHome := protectHomeValue(unit.HomeAccess)
+	noNewPrivileges := "true"
+	if normalizedPrivilegeEscalation(unit.PrivilegeEscalation) == PrivilegeEscalationAllow {
+		noNewPrivileges = "false"
+	}
 	var body strings.Builder
 	_, _ = fmt.Fprintf(&body, `[Unit]
 Description=%s
@@ -79,13 +93,13 @@ EnvironmentFile=%s
 ExecStart=%s
 Restart=on-failure
 RestartSec=%d
-NoNewPrivileges=true
+NoNewPrivileges=%s
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, protectHome, unit.StateDir, unit.ConfigDir)
+`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectHome, unit.StateDir, unit.ConfigDir)
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
 		body.WriteByte('\n')
@@ -111,6 +125,9 @@ func (unit SystemdUnit) validate() error {
 		return err
 	}
 	if err := validateHomeAccess(unit.HomeAccess); err != nil {
+		return err
+	}
+	if err := validatePrivilegeEscalation(unit.PrivilegeEscalation); err != nil {
 		return err
 	}
 	if err := validateSystemdUnitPaths(unit); err != nil {
@@ -151,17 +168,49 @@ func validateProtectedServicePaths(unit SystemdUnit) error {
 		"executable":       strings.SplitN(unit.ExecStart, " ", 2)[0],
 	}
 	for name, value := range paths {
-		if err := validateSystemdPath(name, value); err != nil {
+		if err := validateProtectedServicePath(name, value, unit.HomeAccess); err != nil {
 			return err
-		}
-		if normalizedHomeAccess(unit.HomeAccess) == HomeAccessDeny && protectedHomePath(value) {
-			return fmt.Errorf("%s must not be under a path hidden by ProtectHome", name)
 		}
 	}
 	if filepath.Clean(unit.StateDir) == string(filepath.Separator) {
 		return errors.New("state directory must not make the filesystem root writable")
 	}
+	return validateServicePathIsolation(unit)
+}
+
+func validateProtectedServicePath(name string, value string, homeAccess HomeAccess) error {
+	if err := validateSystemdPath(name, value); err != nil {
+		return err
+	}
+	if normalizedHomeAccess(homeAccess) == HomeAccessDeny && protectedHomePath(value) {
+		return fmt.Errorf("%s must not be under a path hidden by ProtectHome", name)
+	}
 	return nil
+}
+
+func validateServicePathIsolation(unit SystemdUnit) error {
+	stateDir := filepath.Clean(unit.StateDir)
+	configDir := filepath.Clean(unit.ConfigDir)
+	if pathsOverlap(stateDir, configDir) {
+		return errors.New("state and config directories must not overlap")
+	}
+	for name, value := range map[string]string{
+		"environment file": unit.EnvironmentFile,
+		"executable":       strings.SplitN(unit.ExecStart, " ", 2)[0],
+	} {
+		if pathWithin(stateDir, filepath.Clean(value)) {
+			return fmt.Errorf("%s must not be inside the writable state directory", name)
+		}
+	}
+	return nil
+}
+
+func pathsOverlap(left string, right string) bool {
+	return pathWithin(left, right) || pathWithin(right, left)
+}
+
+func pathWithin(parent string, candidate string) bool {
+	return candidate == parent || strings.HasPrefix(candidate, parent+string(filepath.Separator))
 }
 
 func validateHomeAccess(value HomeAccess) error {
@@ -171,6 +220,22 @@ func validateHomeAccess(value HomeAccess) error {
 	default:
 		return fmt.Errorf("home access %q is invalid", value)
 	}
+}
+
+func validatePrivilegeEscalation(value PrivilegeEscalation) error {
+	switch normalizedPrivilegeEscalation(value) {
+	case PrivilegeEscalationDeny, PrivilegeEscalationAllow:
+		return nil
+	default:
+		return fmt.Errorf("privilege escalation %q is invalid", value)
+	}
+}
+
+func normalizedPrivilegeEscalation(value PrivilegeEscalation) PrivilegeEscalation {
+	if value == "" {
+		return PrivilegeEscalationDeny
+	}
+	return value
 }
 
 func normalizedHomeAccess(value HomeAccess) HomeAccess {

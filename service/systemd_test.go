@@ -81,6 +81,48 @@ func TestRenderSystemdHomeAccessPolicies(t *testing.T) {
 	}
 }
 
+func TestRenderSystemdPrivilegeEscalationPolicies(t *testing.T) {
+	base := SystemdUnit{
+		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+	}
+	for policy, want := range map[PrivilegeEscalation]string{
+		PrivilegeEscalationDeny:  "NoNewPrivileges=true",
+		PrivilegeEscalationAllow: "NoNewPrivileges=false",
+	} {
+		unit := base
+		unit.PrivilegeEscalation = policy
+		body, err := RenderSystemd(unit)
+		if err != nil || !strings.Contains(body, want) {
+			t.Fatalf("RenderSystemd(%q) body=%q err=%v", policy, body, err)
+		}
+	}
+	base.PrivilegeEscalation = "invalid"
+	if _, err := RenderSystemd(base); err == nil {
+		t.Fatal("RenderSystemd(invalid privilege escalation) error = nil")
+	}
+}
+
+func TestRenderSystemdRejectsWritableInputOverlap(t *testing.T) {
+	base := SystemdUnit{
+		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+	}
+	for _, mutate := range []func(*SystemdUnit){
+		func(unit *SystemdUnit) { unit.ConfigDir = unit.StateDir },
+		func(unit *SystemdUnit) { unit.ConfigDir = unit.StateDir + "/config" },
+		func(unit *SystemdUnit) { unit.StateDir = unit.ConfigDir + "/state" },
+		func(unit *SystemdUnit) { unit.EnvironmentFile = unit.StateDir + "/env" },
+		func(unit *SystemdUnit) { unit.ExecStart = unit.StateDir + "/broker serve" },
+	} {
+		unit := base
+		mutate(&unit)
+		if _, err := RenderSystemd(unit); err == nil {
+			t.Fatalf("RenderSystemd(%+v) error = nil", unit)
+		}
+	}
+}
+
 func TestProtectedHomePath(t *testing.T) {
 	for _, path := range []string{"/home", "/home/bob/bin", "/root/x", "/run/user/1000/x"} {
 		if !protectedHomePath(path) {
