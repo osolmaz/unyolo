@@ -168,19 +168,34 @@ func notificationClaimIsAvailable(grant Grant, now time.Time, lease time.Duratio
 	return !now.Before(claimedUntil)
 }
 
+type notificationWriteMode uint8
+
+const (
+	notificationWriteAlways notificationWriteMode = iota
+	notificationWriteClaimed
+	notificationWriteMissing
+)
+
 // SetNotification records the editable operator notification for a grant.
 func (s *Store) SetNotification(id string, ref MessageRef) (Grant, error) {
-	grant, _, err := s.setNotification(id, time.Time{}, ref, false)
+	grant, _, err := s.setNotification(id, time.Time{}, ref, notificationWriteAlways)
 	return grant, err
+}
+
+// SetNotificationIfMissing records ref only when the grant has no notification.
+// Consumers use this to recover the message reference carried by an accepted
+// callback after an earlier send returned an ambiguous error.
+func (s *Store) SetNotificationIfMissing(id string, ref MessageRef) (Grant, bool, error) {
+	return s.setNotification(id, time.Time{}, ref, notificationWriteMissing)
 }
 
 // SetNotificationIfClaimed records ref only if claimedAt is still current.
 func (s *Store) SetNotificationIfClaimed(id string, claimedAt time.Time, ref MessageRef) (Grant, bool, error) {
-	return s.setNotification(id, claimedAt, ref, true)
+	return s.setNotification(id, claimedAt, ref, notificationWriteClaimed)
 }
 
-func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, requireClaim bool) (Grant, bool, error) {
-	if requireClaim && claimedAt.IsZero() {
+func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, mode notificationWriteMode) (Grant, bool, error) {
+	if mode == notificationWriteClaimed && claimedAt.IsZero() {
 		return Grant{}, false, nil
 	}
 	if ref.MessageID <= 0 {
@@ -194,7 +209,7 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 			return err
 		}
 		out = grant
-		if requireClaim && !grant.NotificationClaimedAt.Equal(claimedAt) {
+		if !notificationWriteAllowed(grant, claimedAt, mode) {
 			return nil
 		}
 		grant.Notification = &ref
@@ -206,6 +221,17 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 		return nil
 	})
 	return out, recorded, err
+}
+
+func notificationWriteAllowed(grant Grant, claimedAt time.Time, mode notificationWriteMode) bool {
+	switch mode {
+	case notificationWriteClaimed:
+		return grant.NotificationClaimedAt.Equal(claimedAt)
+	case notificationWriteMissing:
+		return grant.Notification == nil
+	default:
+		return true
+	}
 }
 
 func clearNotificationClaim(grant *Grant) {

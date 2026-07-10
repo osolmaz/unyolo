@@ -84,6 +84,62 @@ func TestUnresolvedNotificationClaimSurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestNotificationReferenceRecoveredFromCallback(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "callback-recovery", 1)
+	claim := claimNotification(t, store, result.Grant.ID)
+	retainNotificationClaim(t, store, result.Grant.ID, claim.Grant.NotificationClaimedAt)
+	approved, err := store.Approve(result.Grant.ID, claim.DecisionToken, "operator")
+	if err != nil || approved.Status != StatusActive {
+		t.Fatalf("Approve() = %+v err=%v, want active grant", approved, err)
+	}
+	assertNotificationClaimResolved(t, approved, claim.Grant.NotificationClaimedAt)
+
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	recovered, recorded, err := store.SetNotificationIfMissing(result.Grant.ID, ref)
+	if err != nil || !recorded || recovered.Notification == nil || *recovered.Notification != ref {
+		t.Fatalf("SetNotificationIfMissing() = %+v recorded=%v err=%v", recovered, recorded, err)
+	}
+	assertNotificationClaimCleared(t, recovered)
+	assertSingleDueUpdate(t, store, StatusUpdateLifecycle, StatusActive, string(StatusActive))
+}
+
+func TestNotificationReferenceRecoveryPreservesExisting(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "callback-existing", 1)
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	if _, err := store.SetNotification(result.Grant.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	other := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 8, Text: "duplicate"}
+	unchanged, recorded, err := store.SetNotificationIfMissing(result.Grant.ID, other)
+	if err != nil || recorded || unchanged.Notification == nil || *unchanged.Notification != ref {
+		t.Fatalf("SetNotificationIfMissing(existing) = %+v recorded=%v err=%v", unchanged, recorded, err)
+	}
+}
+
+func TestSetNotificationOverwritesExisting(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "notification-overwrite", 1)
+	first := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7}
+	second := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 8}
+	if _, err := store.SetNotification(result.Grant.ID, first); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.SetNotification(result.Grant.ID, second)
+	if err != nil || stored.Notification == nil || *stored.Notification != second {
+		t.Fatalf("SetNotification(overwrite) = %+v err=%v", stored, err)
+	}
+}
+
+func TestNotificationReferenceRecoveryRejectsInvalidRef(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "invalid-callback-reference", 1)
+	if _, recorded, err := store.SetNotificationIfMissing(result.Grant.ID, notify.MessageRef{}); err == nil || recorded {
+		t.Fatalf("SetNotificationIfMissing(invalid) recorded=%v err=%v", recorded, err)
+	}
+}
+
 func TestUnresolvedNotificationClaimClearsOnReclaim(t *testing.T) {
 	now := time.Date(2026, 7, 10, 2, 15, 0, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
