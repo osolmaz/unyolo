@@ -16,9 +16,11 @@ Brokerkit owns:
 - creating and validating the config, state, and systemd directories;
 - enforcing exact directory ownership and safe modes;
 - writing opaque managed files atomically beneath config or state;
+- retiring explicitly named managed files during direct configuration cutovers;
 - assigning every managed file to either the root or service ownership class;
 - rendering and atomically installing the hardened systemd unit last;
-- running `systemctl daemon-reload` and `systemctl enable --now` unless disabled;
+- running `systemctl daemon-reload`, `systemctl enable`, and `systemctl restart`
+  unless activation is disabled;
 - rejecting symlinks, traversal, unsafe modes, duplicate files, path overlap,
   mutable trusted ancestors, and mismatches between the plan and unit.
 
@@ -49,6 +51,7 @@ User, Group
 ConfigDir, StateDir, SystemdDir
 UnitName
 Files[]
+RemoveFiles[]
 Unit
 NoStart
 AllowNonRoot (tests only)
@@ -64,6 +67,10 @@ Data  = opaque bytes
 Mode  = regular Unix permission bits
 Owner = root | service
 ```
+
+Each removal contains only an area and direct child name. The environment file
+must always be written and cannot be removed. A plan cannot write and remove
+the same path.
 
 Direct child names deliberately exclude `/`, `..`, absolute paths, and systemd
 specifier syntax. Nested runtime state is created by the broker after startup,
@@ -82,10 +89,15 @@ directory is `<service-user>:<service-group>` mode `0750`.
 4. Resolve numeric ids.
 5. Create and verify trusted directories without following symlinks.
 6. Set exact directory ownership and modes through opened handles.
-7. Atomically write, sync, own, and replace every managed file.
-8. Render the systemd unit in strict path-validation mode.
-9. Atomically install and sync the unit.
-10. Reload systemd and enable/start the unit unless `NoStart` is set.
+7. Atomically write and sync non-environment managed files.
+8. Atomically write the environment file so it never references a secret that
+   failed to install.
+9. Remove retired managed files after the new environment no longer references
+   them.
+10. Render the systemd unit in strict path-validation mode.
+11. Atomically install and sync the unit.
+12. Reload systemd, enable the unit, and restart it so reruns apply changed
+    configuration unless `NoStart` is set.
 
 The unit is rendered last so strict validation observes the final config,
 environment-file, executable, and state-directory ownership. A failure never
@@ -100,6 +112,7 @@ An install plan is rejected when:
 - the unit name is not a literal `.service` basename;
 - a managed file name is not a literal direct child basename;
 - two managed files resolve to the same area and name;
+- a file is both written and removed, or the environment file is removed;
 - a managed file mode contains special bits or group/other write permission;
 - the managed systemd environment file is not root-owned;
 - managed data exceeds the shared bounded setup-file limit;
@@ -117,6 +130,8 @@ An install plan is rejected when:
   modes, unit ordering, and no `systemctl` calls when disabled;
 - failed and successful service activation calls;
 - symlink replacement cannot modify the link target;
+- new secrets are installed before the environment is committed, and retired
+  secrets are removed afterward;
 - invalid names, duplicate files, unsafe modes, oversized files, path overlap,
   and plan/unit mismatch fail before mutation;
 - strict service rendering rejects a directory or inaccessible file as the

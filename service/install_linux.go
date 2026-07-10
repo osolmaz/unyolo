@@ -44,6 +44,13 @@ type ManagedFile struct {
 	Owner ManagedFileOwner
 }
 
+// ManagedFileRef identifies one provider-owned file that should no longer
+// exist after a successful configuration cutover.
+type ManagedFileRef struct {
+	Area ManagedFileArea
+	Name string
+}
+
 // SystemdInstallPlan describes one complete broker systemd installation.
 type SystemdInstallPlan struct {
 	User         string
@@ -53,6 +60,7 @@ type SystemdInstallPlan struct {
 	SystemdDir   string
 	UnitName     string
 	Files        []ManagedFile
+	RemoveFiles  []ManagedFileRef
 	Unit         SystemdUnit
 	NoStart      bool
 	AllowNonRoot bool
@@ -216,26 +224,54 @@ func validateInstallUnit(plan SystemdInstallPlan) error {
 }
 
 func validateManagedFiles(plan SystemdInstallPlan) error {
-	seen := make(map[string]struct{}, len(plan.Files))
+	seen := make(map[string]struct{}, len(plan.Files)+len(plan.RemoveFiles))
+	environmentManaged, err := validateManagedFileWrites(plan, seen)
+	if err != nil {
+		return err
+	}
+	if err := validateManagedFileRemovals(plan, seen); err != nil {
+		return err
+	}
+	if !environmentManaged {
+		return errors.New("systemd environment file must be a managed file")
+	}
+	return nil
+}
+
+func validateManagedFileWrites(plan SystemdInstallPlan, seen map[string]struct{}) (bool, error) {
 	environmentManaged := false
 	for _, file := range plan.Files {
 		if err := validateManagedFile(plan, file); err != nil {
-			return err
+			return false, err
 		}
-		key := string(file.Area) + "/" + file.Name
+		key := managedFileKey(file.Area, file.Name)
 		if _, exists := seen[key]; exists {
-			return fmt.Errorf("duplicate managed file %s", key)
+			return false, fmt.Errorf("duplicate managed file %s", key)
 		}
 		seen[key] = struct{}{}
 		if filepath.Clean(managedFilePath(plan, file)) == filepath.Clean(plan.Unit.EnvironmentFile) {
 			if file.Owner != ManagedFileOwnerRoot {
-				return errors.New("systemd environment file must be root-owned")
+				return false, errors.New("systemd environment file must be root-owned")
 			}
 			environmentManaged = true
 		}
 	}
-	if !environmentManaged {
-		return errors.New("systemd environment file must be a managed file")
+	return environmentManaged, nil
+}
+
+func validateManagedFileRemovals(plan SystemdInstallPlan, seen map[string]struct{}) error {
+	for _, file := range plan.RemoveFiles {
+		if err := validateManagedFileRef(file); err != nil {
+			return err
+		}
+		key := managedFileKey(file.Area, file.Name)
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate managed file %s", key)
+		}
+		if filepath.Clean(managedFileRefPath(plan, file)) == filepath.Clean(plan.Unit.EnvironmentFile) {
+			return errors.New("systemd environment file must be written, not removed")
+		}
+		seen[key] = struct{}{}
 	}
 	return nil
 }
@@ -251,14 +287,21 @@ func validateManagedFile(plan SystemdInstallPlan, file ManagedFile) error {
 }
 
 func validateManagedFilePlacement(file ManagedFile) error {
+	if err := validateManagedFileRef(ManagedFileRef{Area: file.Area, Name: file.Name}); err != nil {
+		return err
+	}
+	if file.Owner != ManagedFileOwnerRoot && file.Owner != ManagedFileOwnerService {
+		return fmt.Errorf("managed file %q has invalid owner %q", file.Name, file.Owner)
+	}
+	return nil
+}
+
+func validateManagedFileRef(file ManagedFileRef) error {
 	if !validManagedFileName(file.Name) {
 		return fmt.Errorf("managed file name %q must be a literal direct child", file.Name)
 	}
 	if file.Area != ManagedFileConfig && file.Area != ManagedFileState {
 		return fmt.Errorf("managed file %q has invalid area %q", file.Name, file.Area)
-	}
-	if file.Owner != ManagedFileOwnerRoot && file.Owner != ManagedFileOwnerService {
-		return fmt.Errorf("managed file %q has invalid owner %q", file.Name, file.Owner)
 	}
 	return nil
 }
@@ -304,10 +347,18 @@ func managedFileReadableByService(plan SystemdInstallPlan, file ManagedFile) boo
 }
 
 func managedFilePath(plan SystemdInstallPlan, file ManagedFile) string {
+	return managedFileRefPath(plan, ManagedFileRef{Area: file.Area, Name: file.Name})
+}
+
+func managedFileRefPath(plan SystemdInstallPlan, file ManagedFileRef) string {
 	if file.Area == ManagedFileState {
 		return filepath.Join(plan.StateDir, file.Name)
 	}
 	return filepath.Join(plan.ConfigDir, file.Name)
+}
+
+func managedFileKey(area ManagedFileArea, name string) string {
+	return string(area) + "/" + name
 }
 
 type execCommandRunner struct{}
@@ -544,21 +595,61 @@ func (roots installRoots) close() {
 }
 
 func writeManagedFiles(roots installRoots, plan SystemdInstallPlan, serviceUID uint64, serviceGID uint64) error {
-	rootUID, _ := installRootIDs(plan)
-	for _, file := range plan.Files {
-		root := roots.config
-		if file.Area == ManagedFileState {
-			root = roots.state
+	for _, environment := range []bool{false, true} {
+		for _, file := range plan.Files {
+			isEnvironment := filepath.Clean(managedFilePath(plan, file)) == filepath.Clean(plan.Unit.EnvironmentFile)
+			if isEnvironment != environment {
+				continue
+			}
+			if err := writeManagedFile(roots, plan, file, serviceUID, serviceGID); err != nil {
+				return err
+			}
 		}
-		uid := rootUID
-		if file.Owner == ManagedFileOwnerService {
-			uid = serviceUID
-		}
-		if err := writeAtomicInstallFile(root, file.Name, file.Data, file.Mode, uid, serviceGID, plan.AllowNonRoot); err != nil {
-			return fmt.Errorf("write managed file %s/%s: %w", file.Area, file.Name, err)
+	}
+	for _, file := range plan.RemoveFiles {
+		if err := removeManagedFile(roots, file); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func writeManagedFile(roots installRoots, plan SystemdInstallPlan, file ManagedFile, serviceUID uint64, serviceGID uint64) error {
+	rootUID, _ := installRootIDs(plan)
+	root := managedFileRoot(roots, file.Area)
+	uid := rootUID
+	if file.Owner == ManagedFileOwnerService {
+		uid = serviceUID
+	}
+	if err := writeAtomicInstallFile(root, file.Name, file.Data, file.Mode, uid, serviceGID, plan.AllowNonRoot); err != nil {
+		return fmt.Errorf("write managed file %s/%s: %w", file.Area, file.Name, err)
+	}
+	return nil
+}
+
+func removeManagedFile(roots installRoots, file ManagedFileRef) error {
+	root := managedFileRoot(roots, file.Area)
+	info, err := root.Lstat(file.Name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect managed file %s/%s: %w", file.Area, file.Name, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("remove managed file %s/%s: path is a directory", file.Area, file.Name)
+	}
+	if err := root.Remove(file.Name); err != nil {
+		return fmt.Errorf("remove managed file %s/%s: %w", file.Area, file.Name, err)
+	}
+	return syncInstallRoot(root)
+}
+
+func managedFileRoot(roots installRoots, area ManagedFileArea) *os.Root {
+	if area == ManagedFileState {
+		return roots.state
+	}
+	return roots.config
 }
 
 func writeSystemdUnit(root *os.Root, plan SystemdInstallPlan) error {
@@ -643,8 +734,11 @@ func activateSystemdUnit(ctx context.Context, runner CommandRunner, unitName str
 	if err := runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("systemctl daemon-reload: %w", err)
 	}
-	if err := runner.Run(ctx, "systemctl", "enable", "--now", unitName); err != nil {
-		return fmt.Errorf("systemctl enable --now %s: %w", unitName, err)
+	if err := runner.Run(ctx, "systemctl", "enable", unitName); err != nil {
+		return fmt.Errorf("systemctl enable %s: %w", unitName, err)
+	}
+	if err := runner.Run(ctx, "systemctl", "restart", unitName); err != nil {
+		return fmt.Errorf("systemctl restart %s: %w", unitName, err)
 	}
 	return nil
 }
