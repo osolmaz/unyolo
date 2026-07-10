@@ -2,7 +2,7 @@
 
 Date: 2026-07-10
 
-Status: planned, not implemented
+Status: Brokerkit backend implemented; consuming-broker cutover pending
 
 ## Motivation
 

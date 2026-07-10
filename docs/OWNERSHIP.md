@@ -109,6 +109,21 @@ Generated grants must never use wildcard clients.
 - grant-to-notification correlation
 - fail-closed behavior for ambiguous approval state
 
+### Operator Inbox
+
+- bounded pending, active, history, and all-state queries
+- opaque deterministic pagination and durable lifecycle event cursors
+- revision-checked approve, deny, cancel, and revoke commands
+- safe broker-owned presentation validation with generic fallback
+- dedicated operator authentication separate from broker clients
+- operator-only JSON and SSE handlers with mandatory audit recording
+- trusted-host Go client, checked-in wire fixtures, and fake test server
+
+The consuming broker supplies provider wording and exposes the handler on a
+protected operator transport. A web host such as mlclaw keeps the operator
+credential server-side and renders the safe projection. Brokerkit does not own
+browser sessions, frontend components, or provider execution plans.
+
 ### Notifications
 
 - generic notifier interfaces

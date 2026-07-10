@@ -1,0 +1,352 @@
+package grants
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/osolmaz/brokerkit/policy"
+)
+
+func TestQueryGrantsPaginatesDeterministically(t *testing.T) { //nolint:cyclop // Table setup and assertions are one pagination scenario.
+	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
+	ids := []string{"grant-a", "token-a", "grant-c", "token-c", "grant-b", "token-b"}
+	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
+	for _, requestID := range []string{"a", "c", "b"} {
+		request := testOperatorRequest(requestID)
+		if _, _, err := store.Request(request); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first, err := store.QueryGrants(Query{StatusGroup: StatusGroupPending, Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Grants) != 2 || first.Grants[0].ID != "grant-c" || first.Grants[1].ID != "grant-b" || !first.HasMore {
+		t.Fatalf("first page = %+v, want grant-c and grant-b", first)
+	}
+	second, err := store.QueryGrants(Query{StatusGroup: StatusGroupPending, Limit: 2, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Grants) != 1 || second.Grants[0].ID != "grant-a" || second.HasMore {
+		t.Fatalf("second page = %+v, want grant-a", second)
+	}
+	if _, err := store.QueryGrants(Query{Cursor: "not-a-cursor"}); !errors.Is(err, ErrInvalidGrantCursor) {
+		t.Fatalf("invalid cursor error = %v", err)
+	}
+}
+
+func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) { //nolint:cyclop // One scenario verifies transition and conflict invariants.
+	store := New(t.TempDir()+"/grants.json", Options{})
+	result, _, err := store.Request(testOperatorRequest("decision"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.OperatorApprove(ApproveCommand{
+		DecisionCommand: DecisionCommand{ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision},
+		Duration:        time.Minute,
+		MaxUses:         1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Status != StatusActive || approved.Revision != result.Grant.Revision+1 || approved.Duration != time.Minute {
+		t.Fatalf("approved = %+v", approved)
+	}
+	current, err := store.OperatorRevoke(DecisionCommand{
+		ID: approved.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision,
+	})
+	var conflict *RevisionConflictError
+	if !errors.As(err, &conflict) || current.Revision != approved.Revision || conflict.Current.Status != StatusActive {
+		t.Fatalf("stale revoke = %+v err=%v", current, err)
+	}
+
+	second, _, err := store.Request(testOperatorRequest("bounds"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.OperatorApprove(ApproveCommand{
+		DecisionCommand: DecisionCommand{ID: second.Grant.ID, Approver: "onur", ExpectedRevision: second.Grant.Revision},
+		Duration:        second.Grant.Duration + time.Second,
+	})
+	if !errors.Is(err, ErrInvalidCommand) {
+		t.Fatalf("overbroad approval error = %v", err)
+	}
+}
+
+func TestLifecycleEventsSurviveRestartAndWakeWaiters(t *testing.T) { //nolint:cyclop // Sequential lifecycle assertions are intentionally explicit.
+	path := t.TempDir() + "/grants.json"
+	store := New(path, Options{})
+	result, _, err := store.Request(testOperatorRequest("events"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.EventsAfter("", 100)
+	if err != nil || len(page.Events) != 1 || page.Events[0].Kind != EventRequestCreated {
+		t.Fatalf("created events = %+v err=%v", page, err)
+	}
+	approved, err := store.OperatorApprove(ApproveCommand{DecisionCommand: DecisionCommand{
+		ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReserveUse(approved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RecordExecution(approved.ID, EventExecutionSucceeded); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitUse(approved.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := New(path, Options{})
+	recovered, err := restarted.EventsAfter(page.NextCursor, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []EventKind{EventRequestApproved, EventGrantReserved, EventExecutionSucceeded, EventGrantConsumed}
+	if len(recovered.Events) != len(want) {
+		t.Fatalf("recovered events = %+v, want %v", recovered.Events, want)
+	}
+	for index, kind := range want {
+		if recovered.Events[index].Kind != kind {
+			t.Fatalf("event %d = %q, want %q", index, recovered.Events[index].Kind, kind)
+		}
+	}
+}
+
+func TestEventRetentionRejectsExpiredCursor(t *testing.T) {
+	store := New(t.TempDir()+"/grants.json", Options{MaxEvents: 2})
+	first, _, err := store.Request(testOperatorRequest("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := store.EventsAfter("", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := store.Request(testOperatorRequest("second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.OperatorDeny(DecisionCommand{ID: first.Grant.ID, Approver: "onur", ExpectedRevision: first.Grant.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.OperatorDeny(DecisionCommand{ID: second.Grant.ID, Approver: "onur", ExpectedRevision: second.Grant.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.EventsAfter(initial.NextCursor, 10); !errors.Is(err, ErrCursorExpired) {
+		t.Fatalf("compacted cursor error = %v", err)
+	}
+	if page, err := store.EventsAfter("", 10); err != nil || len(page.Events) != 2 {
+		t.Fatalf("fresh compacted stream = %+v, %v", page, err)
+	}
+}
+
+func TestQueryFiltersStatusGroupsAndValidation(t *testing.T) { //nolint:cyclop,gocognit // Table exercises every query validation branch.
+	store := New(t.TempDir()+"/grants.json", Options{})
+	pending, _, err := store.Request(testOperatorRequest("pending"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	activeResult, _, err := store.Request(testOperatorRequest("active"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := store.OperatorApprove(ApproveCommand{DecisionCommand: DecisionCommand{
+		ID: activeResult.Grant.ID, Approver: "onur", ExpectedRevision: activeResult.Grant.Revision,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	historyResult, _, err := store.Request(testOperatorRequest("history"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.OperatorDeny(DecisionCommand{ID: historyResult.Grant.ID, Approver: "onur", ExpectedRevision: historyResult.Grant.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	queries := []struct {
+		query grantsQueryAlias
+		want  string
+	}{
+		{grantsQueryAlias{StatusGroup: StatusGroupPending}, pending.Grant.ID},
+		{grantsQueryAlias{StatusGroup: StatusGroupActive}, active.ID},
+		{grantsQueryAlias{StatusGroup: StatusGroupHistory}, historyResult.Grant.ID},
+		{grantsQueryAlias{Client: "bob", Operation: "git.push.fast_forward", Target: &pending.Grant.Target}, pending.Grant.ID},
+	}
+	for _, test := range queries {
+		page, err := store.QueryGrants(Query(test.query))
+		if err != nil || len(page.Grants) == 0 {
+			t.Fatalf("QueryGrants(%+v) = %+v, %v", test.query, page, err)
+		}
+		found := false
+		for _, grant := range page.Grants {
+			found = found || grant.ID == test.want
+		}
+		if !found {
+			t.Fatalf("QueryGrants(%+v) missing %s", test.query, test.want)
+		}
+	}
+	invalid := []Query{
+		{StatusGroup: "invalid"}, {Limit: -1}, {Limit: 101},
+		{Target: &policy.Target{}},
+		{Target: &policy.Target{Kind: "repo", Fields: map[string][]string{"": {"x"}}}},
+		{Target: &policy.Target{Kind: "repo", Fields: map[string][]string{"name": {}}}},
+		{Target: &policy.Target{Kind: "repo", Fields: map[string][]string{"name": {""}}}},
+	}
+	for _, query := range invalid {
+		if _, err := store.QueryGrants(query); !errors.Is(err, ErrInvalidQuery) {
+			t.Fatalf("QueryGrants(%+v) error = %v", query, err)
+		}
+	}
+	if _, err := store.QueryGrants(Query{Cursor: strings.Repeat("x", 513)}); !errors.Is(err, ErrInvalidGrantCursor) {
+		t.Fatalf("long cursor error = %v", err)
+	}
+}
+
+type grantsQueryAlias Query
+
+func TestOperatorTerminalCommandsAndValidation(t *testing.T) {
+	store := New(t.TempDir()+"/grants.json", Options{})
+	for index, action := range []func(DecisionCommand) (Grant, error){store.OperatorDeny, store.OperatorCancel} {
+		result, _, err := store.Request(testOperatorRequest("terminal-" + string(rune('a'+index))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		grant, err := action(DecisionCommand{ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision, Reason: "reviewed"})
+		if err != nil || grant.Revision != result.Grant.Revision+1 {
+			t.Fatalf("terminal command = %+v, %v", grant, err)
+		}
+	}
+	activeResult, _, _ := store.Request(testOperatorRequest("revoke"))
+	active, err := store.OperatorApprove(ApproveCommand{DecisionCommand: DecisionCommand{ID: activeResult.Grant.ID, Approver: "onur", ExpectedRevision: activeResult.Grant.Revision}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.OperatorRevoke(DecisionCommand{ID: active.ID, Approver: "onur", ExpectedRevision: active.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	invalid := []DecisionCommand{
+		{},
+		{ID: pendingID(t, store, "bad-approver"), Approver: "bad\nname", ExpectedRevision: 1},
+		{ID: pendingID(t, store, "bad-reason"), Approver: "onur", ExpectedRevision: 1, Reason: "bad\x00reason"},
+		{ID: pendingID(t, store, "long-reason"), Approver: "onur", ExpectedRevision: 1, Reason: strings.Repeat("x", maxDecisionReasonBytes+1)},
+	}
+	for _, command := range invalid {
+		if _, err := store.OperatorDeny(command); !errors.Is(err, ErrInvalidCommand) {
+			t.Fatalf("OperatorDeny(%+v) error = %v", command, err)
+		}
+	}
+	if _, err := store.OperatorDeny(DecisionCommand{ID: "missing", Approver: "onur", ExpectedRevision: 1}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing decision error = %v", err)
+	}
+}
+
+func TestEventValidationAndStatusKinds(t *testing.T) {
+	store := New(t.TempDir()+"/grants.json", Options{})
+	if _, err := store.EventsAfter("bad", 1); !errors.Is(err, ErrInvalidCursor) {
+		t.Fatalf("invalid event cursor error = %v", err)
+	}
+	for _, limit := range []int{-1, 101} {
+		if _, err := store.EventsAfter("", limit); err == nil {
+			t.Fatalf("EventsAfter(limit=%d) returned no error", limit)
+		}
+	}
+	if _, err := store.RecordExecution("missing", EventRequestCreated); err == nil {
+		t.Fatal("RecordExecution() accepted invalid kind")
+	}
+	if _, err := store.LatestEvent("missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("LatestEvent() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := store.WaitForEvents(ctx, ""); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WaitForEvents() error = %v", err)
+	}
+	for _, status := range []Status{StatusActive, StatusDenied, StatusCanceled, StatusExpired, StatusRevoked, StatusPending, StatusConsumed, "unknown"} {
+		_ = statusEventKinds(Grant{Status: StatusPending}, Grant{Status: status})
+	}
+}
+
+func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
+	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
+	ids := []string{"grant-expire", "token-expire", "grant-bounds", "token-bounds"}
+	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
+	expiring, _, err := store.Request(testOperatorRequest("expire"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = expiring.Grant.PendingExpiresAt.Add(time.Second)
+	current, err := store.OperatorDeny(DecisionCommand{ID: expiring.Grant.ID, Approver: "onur", ExpectedRevision: expiring.Grant.Revision})
+	if !errors.Is(err, ErrRevisionConflict) || current.Status != StatusExpired || current.Revision != expiring.Grant.Revision+1 {
+		t.Fatalf("expired decision = %+v, %v", current, err)
+	}
+	now = time.Date(2026, 7, 11, 2, 2, 3, 0, time.UTC)
+	bounds, _, err := store.Request(testOperatorRequest("bounds-extra"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.OperatorDeny(DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision, ExpectedStatus: StatusActive}); !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("status conflict error = %v", err)
+	}
+	for _, command := range []ApproveCommand{
+		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, Duration: -time.Second},
+		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: -1},
+		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: bounds.Grant.MaxUses + 1},
+	} {
+		if _, err := store.OperatorApprove(command); !errors.Is(err, ErrInvalidCommand) {
+			t.Fatalf("OperatorApprove(%+v) error = %v", command, err)
+		}
+	}
+}
+
+func TestCursorDecodingAndEventPagingBranches(t *testing.T) { //nolint:cyclop // Cursor and paging branches share one store setup.
+	invalidJSON := base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"x","unknown":true}`))
+	trailingJSON := base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"x"}{}`))
+	emptyJSON := base64.RawURLEncoding.EncodeToString([]byte(`{}`))
+	for _, cursor := range []string{"!!!", invalidJSON, trailingJSON, emptyJSON} {
+		if _, err := decodeGrantCursor(cursor); !errors.Is(err, ErrInvalidGrantCursor) {
+			t.Fatalf("decodeGrantCursor(%q) error = %v", cursor, err)
+		}
+	}
+	store := New(t.TempDir()+"/grants.json", Options{})
+	if page, err := store.EventsAfter("", 1); err != nil || len(page.Events) != 0 {
+		t.Fatalf("empty EventsAfter() = %+v, %v", page, err)
+	}
+	for index := 0; index < 3; index++ {
+		if _, _, err := store.Request(testOperatorRequest("page-" + string(rune('a'+index)))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := store.EventsAfter("", 1)
+	if err != nil || !page.HasMore || len(page.Events) != 1 {
+		t.Fatalf("paged EventsAfter() = %+v, %v", page, err)
+	}
+	if latest, err := store.LatestEvent(page.Events[0].GrantID); err != nil || latest.Cursor == "" {
+		t.Fatalf("LatestEvent() = %+v, %v", latest, err)
+	}
+}
+
+func pendingID(t *testing.T, store *Store, id string) string {
+	t.Helper()
+	result, _, err := store.Request(testOperatorRequest(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result.Grant.ID
+}
+
+func testOperatorRequest(id string) Request {
+	return Request{
+		Client: "bob", ClientRequestID: id, Operation: "git.push.fast_forward",
+		Target: repoTarget("demo"), Reason: "test operator inbox", Duration: 5 * time.Minute, MaxUses: 2,
+	}
+}

@@ -2,13 +2,12 @@
 package auth
 
 import (
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/internal/secretset"
 )
 
 const defaultMinSecretBytes = 16
@@ -28,14 +27,9 @@ type Options struct {
 	MinSecretBytes int
 }
 
-type client struct {
-	id         string
-	secretHash [sha256.Size]byte
-}
-
 // Authenticator resolves Authorization headers to named clients.
 type Authenticator struct {
-	clients []client
+	clients *secretset.Set
 }
 
 // New builds an Authenticator from client id to shared secret.
@@ -43,30 +37,9 @@ func New(secrets map[string]string, opts Options) (*Authenticator, error) {
 	if opts.MinSecretBytes <= 0 {
 		opts.MinSecretBytes = defaultMinSecretBytes
 	}
-	if len(secrets) == 0 {
-		return nil, errors.New("at least one client secret is required")
-	}
-	clients := make([]client, 0, len(secrets))
-	seen := make(map[string]struct{}, len(secrets))
-	seenSecrets := make(map[[sha256.Size]byte]string, len(secrets))
-	for id, secret := range secrets {
-		normalizedID := strings.TrimSpace(id)
-		if normalizedID == "" {
-			return nil, errors.New("client id is required")
-		}
-		if _, ok := seen[normalizedID]; ok {
-			return nil, fmt.Errorf("duplicate client id %q", normalizedID)
-		}
-		seen[normalizedID] = struct{}{}
-		if len(secret) < opts.MinSecretBytes {
-			return nil, fmt.Errorf("client %q secret must be at least %d bytes", normalizedID, opts.MinSecretBytes)
-		}
-		secretHash := sha256.Sum256([]byte(secret))
-		if existingID, ok := seenSecrets[secretHash]; ok {
-			return nil, fmt.Errorf("client %q secret duplicates client %q", normalizedID, existingID)
-		}
-		seenSecrets[secretHash] = normalizedID
-		clients = append(clients, client{id: normalizedID, secretHash: secretHash})
+	clients, err := secretset.New("client", secrets, opts.MinSecretBytes, nil)
+	if err != nil {
+		return nil, err
 	}
 	return &Authenticator{clients: clients}, nil
 }
@@ -86,17 +59,11 @@ func (a *Authenticator) AuthenticateRequest(r *http.Request) (string, error) {
 }
 
 func (a *Authenticator) authenticateSecret(secret string) (string, error) {
-	presented := sha256.Sum256([]byte(secret))
-	matched := -1
-	for i := range a.clients {
-		if subtle.ConstantTimeCompare(presented[:], a.clients[i].secretHash[:]) == 1 {
-			matched = i
-		}
-	}
-	if matched < 0 {
+	id, ok := a.clients.Match(secret)
+	if !ok {
 		return "", ErrInvalid
 	}
-	return a.clients[matched].id, nil
+	return id, nil
 }
 
 // SecretFromAuthorization extracts a broker secret from Bearer or Basic auth.
