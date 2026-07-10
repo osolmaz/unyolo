@@ -44,11 +44,6 @@ type ManagedFile struct {
 	Owner ManagedFileOwner
 }
 
-// CommandRunner runs provider-neutral host setup commands.
-type CommandRunner interface {
-	Run(context.Context, string, ...string) error
-}
-
 // SystemdInstallPlan describes one complete broker systemd installation.
 type SystemdInstallPlan struct {
 	User         string

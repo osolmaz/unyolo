@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,11 @@ import (
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
+
+// CommandRunner runs provider-neutral host setup commands.
+type CommandRunner interface {
+	Run(context.Context, string, ...string) error
+}
 
 // SystemdUnit describes one broker-family systemd service.
 type SystemdUnit struct {
