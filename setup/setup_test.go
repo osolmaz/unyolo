@@ -97,6 +97,13 @@ func assertInvalidSecretSources(t *testing.T) {
 	if _, err := ResolveSecret(SecretInput{Stdin: true}, strings.NewReader(strings.Repeat("x", maxSecretInputBytes+1))); err == nil {
 		t.Fatal("ResolveSecret(oversized) error = nil")
 	}
+	largeFile := filepath.Join(t.TempDir(), "large-secret")
+	if err := os.WriteFile(largeFile, []byte(strings.Repeat("x", maxSecretInputBytes+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveSecret(SecretInput{File: largeFile}, strings.NewReader("")); err == nil {
+		t.Fatal("ResolveSecret(oversized file) error = nil")
+	}
 	if _, err := ResolveSecret(SecretInput{Stdin: true}, strings.NewReader(strings.Repeat("x", 32)+"\nsecond")); err == nil {
 		t.Fatal("ResolveSecret(multiline) error = nil")
 	}

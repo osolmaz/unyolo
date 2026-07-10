@@ -57,7 +57,10 @@ explicit read-only config and writable state paths
 ```
 
 Consumers may append validated `key=value` directives required by their own
-execution boundary. Provider credentials and policy do not enter Brokerkit.
+execution boundary. Extensions cannot override the shared identity, execution,
+restart, filesystem, or hardening directives. Paths containing systemd
+specifier or tokenization syntax are rejected instead of being rendered
+ambiguously. Provider credentials and policy do not enter Brokerkit.
 
 ## Doctor
 
@@ -66,14 +69,17 @@ Package `doctor` provides portable building blocks for:
 - local account and supplementary-group lookup;
 - root and root-equivalent group detection;
 - broker service and agent UID separation;
-- secret-file type, mode, and agent read/write checks;
+- secret-file type, mode, path stability, and agent read/write checks;
 - stable text and JSON reports with `ok`, `unsafe`, and `inconclusive` status;
 - the shared doctor exit codes `0`, `1`, and `2`.
 
-The checks never read or print secret contents. Provider-specific probes remain
-in each broker. For example, hf-broker owns Hugging Face credential-source and
-mirror checks, gh-broker owns GitHub App and ruleset checks, and sudo-broker
-owns catalog, target-user, and privileged-executor checks.
+The checks never read or print secret contents. A symbolic link makes the
+portable path check inconclusive, and an agent-writable path component makes it
+unsafe, so a replaceable credential path cannot receive an `ok` verdict.
+Provider-specific probes remain in each broker. For example, hf-broker owns
+Hugging Face credential-source and mirror checks, gh-broker owns GitHub App and
+ruleset checks, and sudo-broker owns catalog, target-user, and
+privileged-executor checks.
 
 ## Adoption Rule
 

@@ -53,11 +53,86 @@ func TestSecretFileChecks(t *testing.T) {
 		}
 	}
 	ownerChecks := SecretFileChecks(path, Identity{User: "owner", UID: int(stat.Uid), GID: int(stat.Gid)})
-	if ownerChecks[2].Status != CheckFail || ownerChecks[3].Status != CheckFail {
+	if ownerChecks[3].Status != CheckFail || ownerChecks[4].Status != CheckFail {
 		t.Fatalf("owner secret checks = %+v", ownerChecks)
 	}
 	if checks := SecretFileChecks(filepath.Join(t.TempDir(), "missing"), agent); checks[0].Status != CheckUnknown {
 		t.Fatalf("missing secret checks = %+v", checks)
+	}
+}
+
+func TestSecretFileChecksRejectReplaceableAndSymlinkPaths(t *testing.T) {
+	root := t.TempDir()
+	writable := filepath.Join(root, "writable")
+	if err := os.Mkdir(writable, 0o777); err != nil { // #nosec G301 -- world-writable directory is the isolation failure fixture.
+		t.Fatal(err)
+	}
+	if err := os.Chmod(writable, 0o777); err != nil { // #nosec G302 -- world-writable directory is the isolation failure fixture.
+		t.Fatal(err)
+	}
+	secret := filepath.Join(writable, "secret")
+	if err := os.WriteFile(secret, []byte("do-not-print"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(writable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := info.Sys().(*syscall.Stat_t)
+	agent := Identity{User: "agent", UID: int(stat.Uid) + 1, GID: int(stat.Gid) + 1}
+	if got := SecretFileChecks(secret, agent)[0]; got.Status != CheckFail {
+		t.Fatalf("replaceable path check = %+v", got)
+	}
+
+	stableDir := filepath.Join(root, "stable")
+	if err := os.Mkdir(stableDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stableSecret := filepath.Join(stableDir, "secret")
+	if err := os.WriteFile(stableSecret, []byte("do-not-print"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(stableDir, "secret-link")
+	if err := os.Symlink(stableSecret, link); err != nil {
+		t.Fatal(err)
+	}
+	if got := SecretFileChecks(link, agent)[0]; got.Status != CheckUnknown {
+		t.Fatalf("symlink path check = %+v", got)
+	}
+}
+
+func TestAgentCanReplaceChildStickyDirectoryRules(t *testing.T) {
+	root := t.TempDir()
+	parentPath := filepath.Join(root, "sticky")
+	if err := os.Mkdir(parentPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(parentPath, os.ModeSticky|0o777); err != nil { // #nosec G302 -- sticky world-writable directory is the fixture.
+		t.Fatal(err)
+	}
+	childPath := filepath.Join(parentPath, "child")
+	if err := os.WriteFile(childPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := os.Stat(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := os.Stat(childPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := child.Sys().(*syscall.Stat_t)
+	owner := Identity{User: "owner", UID: int(stat.Uid), GID: int(stat.Gid)}
+	if !agentCanReplaceChild(parent, child, owner) {
+		t.Fatal("owner should be able to replace a child in a sticky directory")
+	}
+	other := Identity{User: "other", UID: int(stat.Uid) + 1, GID: int(stat.Gid) + 1}
+	if agentCanReplaceChild(parent, child, other) {
+		t.Fatal("unrelated user should not replace another owner's sticky-directory child")
+	}
+	if !agentCanReplaceChild(child, child, other) {
+		t.Fatal("a non-directory parent must fail closed")
 	}
 }
 

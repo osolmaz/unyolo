@@ -46,8 +46,10 @@ EnvironmentFile=%s
 ExecStart=%s
 Restart=on-failure
 RestartSec=%d
+NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+ProtectHome=true
 ReadWritePaths=%s
 ReadOnlyPaths=%s
 `, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, unit.StateDir, unit.ConfigDir)
@@ -82,16 +84,63 @@ func (unit SystemdUnit) validate() error {
 	if !strings.HasPrefix(unit.ExecStart, "/") {
 		return errors.New("exec start must begin with an absolute binary path")
 	}
+	if strings.ContainsAny(unit.ExecStart, "\t%\\\"'") {
+		return errors.New("exec start contains unsupported systemd syntax")
+	}
+	for name, value := range map[string]string{
+		"environment file": unit.EnvironmentFile,
+		"state directory":  unit.StateDir,
+		"config directory": unit.ConfigDir,
+	} {
+		if err := validateSystemdPath(name, value); err != nil {
+			return err
+		}
+	}
 	return validateExtraDirectives(unit.ExtraDirectives)
 }
 
 func validateExtraDirectives(directives []string) error {
+	owned := map[string]struct{}{
+		"After": {}, "Description": {}, "EnvironmentFile": {}, "ExecStart": {},
+		"Group": {}, "NoNewPrivileges": {}, "PrivateTmp": {}, "ProtectHome": {},
+		"ProtectSystem": {}, "ReadOnlyPaths": {}, "ReadWritePaths": {}, "Restart": {},
+		"RestartSec": {}, "Type": {}, "User": {}, "WantedBy": {}, "Wants": {},
+	}
 	for _, directive := range directives {
 		if strings.TrimSpace(directive) == "" || strings.ContainsAny(directive, "\r\n") || !strings.Contains(directive, "=") {
 			return errors.New("extra systemd directives must be nonempty key=value lines")
 		}
+		key, _, _ := strings.Cut(directive, "=")
+		if key != strings.TrimSpace(key) || strings.ContainsAny(key, " \t.[]") {
+			return fmt.Errorf("extra systemd directive key %q is invalid", key)
+		}
+		if _, exists := owned[key]; exists {
+			return fmt.Errorf("extra systemd directive %q overrides the shared baseline", key)
+		}
 	}
 	return nil
+}
+
+func validateSystemdPath(name string, value string) error {
+	for _, char := range value {
+		if !isSystemdPathCharacter(char) {
+			return fmt.Errorf("%s contains unsupported systemd path character %q", name, char)
+		}
+	}
+	return nil
+}
+
+func isSystemdPathCharacter(char rune) bool {
+	switch {
+	case char >= 'a' && char <= 'z':
+		return true
+	case char >= 'A' && char <= 'Z':
+		return true
+	case char >= '0' && char <= '9':
+		return true
+	default:
+		return strings.ContainsRune("/._+-", char)
+	}
 }
 
 func validateRequiredLines(values map[string]string) error {

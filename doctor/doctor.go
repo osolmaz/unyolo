@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -141,22 +142,99 @@ func SeparationCheck(agent Identity, service Identity) Check {
 	return Check{Status: CheckPass, Name: "service_user_separation", Message: "agent and broker service use different uids"}
 }
 
-// SecretFileChecks checks mode-bit access without reading file contents.
+// SecretFileChecks checks path stability and mode-bit access without reading
+// file contents. Symlinks are inconclusive because this portable check cannot
+// prove that their targets remain stable.
 func SecretFileChecks(path string, agent Identity) []Check {
+	pathCheck := secretPathStabilityCheck(path, agent)
 	info, err := os.Stat(path) // #nosec G304 -- operator supplied doctor target.
 	if err != nil {
-		return []Check{{Status: CheckUnknown, Name: "secret_file", Message: "could not inspect secret file"}}
+		return []Check{pathCheck, {Status: CheckUnknown, Name: "secret_file", Message: "could not inspect secret file"}}
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return []Check{{Status: CheckUnknown, Name: "secret_file", Message: "secret file ownership is unavailable"}}
+		return []Check{pathCheck, {Status: CheckUnknown, Name: "secret_file", Message: "secret file ownership is unavailable"}}
 	}
-	checks := []Check{regularFileCheck(info), privateModeCheck(info)}
+	checks := []Check{pathCheck, regularFileCheck(info), privateModeCheck(info)}
 	checks = append(checks,
 		accessCheck("secret_file_not_readable", "read", canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o400, 0o040, 0o004)),
 		accessCheck("secret_file_not_writable", "write", canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o200, 0o020, 0o002)),
 	)
 	return checks
+}
+
+func secretPathStabilityCheck(path string, agent Identity) Check {
+	absolute, parentInfo, failure := initializeSecretPath(path)
+	if failure != nil {
+		return *failure
+	}
+	current := string(filepath.Separator)
+	for _, component := range strings.Split(strings.TrimPrefix(filepath.Clean(absolute), current), string(filepath.Separator)) {
+		childPath := filepath.Join(current, component)
+		childInfo, statErr := os.Lstat(childPath) // #nosec G304 -- operator supplied doctor target.
+		if statErr != nil {
+			return Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "could not inspect every secret path component"}
+		}
+		if childInfo.Mode()&os.ModeSymlink != 0 {
+			return Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "secret path contains a symbolic link"}
+		}
+		if agentCanReplaceChild(parentInfo, childInfo, agent) {
+			return Check{Status: CheckFail, Name: "secret_path_stable", Message: "agent can replace a secret path component by Unix mode bits"}
+		}
+		current = childPath
+		parentInfo = childInfo
+	}
+	return Check{Status: CheckPass, Name: "secret_path_stable", Message: "secret path has no symlinks or agent-replaceable components by Unix mode bits"}
+}
+
+func initializeSecretPath(path string) (string, os.FileInfo, *Check) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		failure := Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "could not resolve the secret path"}
+		return "", nil, &failure
+	}
+	root, err := os.Lstat(string(filepath.Separator))
+	if err != nil {
+		failure := Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "could not inspect the secret path"}
+		return "", nil, &failure
+	}
+	return absolute, root, nil
+}
+
+func agentCanReplaceChild(parent os.FileInfo, child os.FileInfo, agent Identity) bool {
+	parentUID, parentGID, parentOK := unixOwnership(parent)
+	if !parentOK {
+		return true
+	}
+	childUID, _, childOK := unixOwnership(child)
+	if !childOK {
+		return true
+	}
+	if !parent.IsDir() {
+		return true
+	}
+	if !canAccess(parent.Mode().Perm(), parentUID, parentGID, agent, 0o200, 0o020, 0o002) {
+		return false
+	}
+	if !canAccess(parent.Mode().Perm(), parentUID, parentGID, agent, 0o100, 0o010, 0o001) {
+		return false
+	}
+	if parent.Mode()&os.ModeSticky == 0 {
+		return true
+	}
+	return ownsStickyEntry(agent.UID, parentUID, childUID)
+}
+
+func unixOwnership(info os.FileInfo) (int, int, bool) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return int(stat.Uid), int(stat.Gid), true
+}
+
+func ownsStickyEntry(agentUID int, parentUID int, childUID int) bool {
+	return agentUID == 0 || agentUID == parentUID || agentUID == childUID
 }
 
 func regularFileCheck(info os.FileInfo) Check {

@@ -27,23 +27,35 @@ func ResolveSecret(source SecretInput, stdin io.Reader) (string, error) {
 	case source.File != "" && source.Stdin:
 		return "", errors.New("secret file and stdin inputs are mutually exclusive")
 	case source.File != "":
-		data, err := os.ReadFile(source.File) // #nosec G304 -- operator configured setup input.
+		file, err := os.Open(source.File) // #nosec G304 -- operator configured setup input.
 		if err != nil {
 			return "", fmt.Errorf("read secret file: %w", err)
 		}
-		return validateSecret(string(data))
+		secret, readErr := readSecret(file)
+		closeErr := file.Close()
+		if readErr != nil {
+			return "", readErr
+		}
+		if closeErr != nil {
+			return "", fmt.Errorf("close secret file: %w", closeErr)
+		}
+		return secret, nil
 	case source.Stdin:
-		data, err := io.ReadAll(io.LimitReader(stdin, maxSecretInputBytes+1))
-		if err != nil {
-			return "", fmt.Errorf("read secret from stdin: %w", err)
-		}
-		if len(data) > maxSecretInputBytes {
-			return "", errors.New("secret input exceeds 4096 bytes")
-		}
-		return validateSecret(string(data))
+		return readSecret(stdin)
 	default:
 		return GenerateSecret()
 	}
+}
+
+func readSecret(reader io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxSecretInputBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read secret input: %w", err)
+	}
+	if len(data) > maxSecretInputBytes {
+		return "", errors.New("secret input exceeds 4096 bytes")
+	}
+	return validateSecret(string(data))
 }
 
 // GenerateSecret returns a 256-bit random secret encoded as lowercase hex.

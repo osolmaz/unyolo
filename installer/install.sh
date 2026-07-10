@@ -162,9 +162,7 @@ dest_dir="$(choose_install_dir)"
 install_binary "${tmp_dir}/${BROKER}" "$dest_dir"
 
 echo "Installed ${BROKER} to ${dest_dir}/${BROKER}"
-if command -v "$BROKER" >/dev/null 2>&1; then
-  "$BROKER" --version
-elif [ -x "${dest_dir}/${BROKER}" ]; then
-  "${dest_dir}/${BROKER}" --version
+"${dest_dir}/${BROKER}" --version
+if [ "$(command -v "$BROKER" 2>/dev/null || true)" != "${dest_dir}/${BROKER}" ]; then
   echo "Add ${dest_dir} to PATH to run ${BROKER} directly."
 fi

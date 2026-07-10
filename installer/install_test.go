@@ -55,6 +55,26 @@ func TestInstallerRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestInstallerVerifiesInstalledBinaryInsteadOfEarlierPATHEntry(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAsset(t, filepath.Join(releaseDir, asset), "test-broker", "#!/bin/sh\necho installed-v1.2.3\n")
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	oldBinDir := t.TempDir()
+	oldBinary := filepath.Join(oldBinDir, "test-broker")
+	if err := os.WriteFile(oldBinary, []byte("#!/bin/sh\necho stale-path-version\nexit 9\n"), 0o755); err != nil { // #nosec G306 -- executable fixture requires execute bits.
+		t.Fatal(err)
+	}
+	command := installerCommand(t, t.TempDir(), server.URL, "v1.2.3")
+	command.Env = append(command.Env, "PATH="+oldBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := command.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), "installed-v1.2.3") || strings.Contains(string(output), "stale-path-version") {
+		t.Fatalf("installer err=%v output=%s", err, output)
+	}
+}
+
 func TestInstallerRejectsUnsupportedPlatformAndInvalidInputs(t *testing.T) {
 	tests := []struct {
 		name string
