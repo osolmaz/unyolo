@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	defaultPendingTimeout = 5 * time.Minute
-	defaultDuration       = 5 * time.Minute
-	defaultMaxDuration    = time.Hour
-	defaultMaxUses        = 1
-	maxMaxUses            = 25
+	defaultPendingTimeout     = 5 * time.Minute
+	defaultDuration           = 5 * time.Minute
+	defaultMaxDuration        = time.Hour
+	defaultMaxUses            = 1
+	maxMaxUses                = 25
+	defaultReservationTimeout = 5 * time.Minute
 )
 
 // Grant status values.
@@ -52,11 +53,12 @@ type Status string
 
 // Options configures a Store.
 type Options struct {
-	PendingTimeout  time.Duration
-	DefaultDuration time.Duration
-	MaxDuration     time.Duration
-	Now             func() time.Time
-	NewID           func(int) (string, error)
+	PendingTimeout     time.Duration
+	DefaultDuration    time.Duration
+	MaxDuration        time.Duration
+	ReservationTimeout time.Duration
+	Now                func() time.Time
+	NewID              func(int) (string, error)
 }
 
 // Request creates one pending approval grant.
@@ -66,6 +68,7 @@ type Request struct {
 	Operation       string
 	Target          policy.Target
 	Attrs           map[string][]string
+	Metadata        map[string]string
 	Reason          string
 	Duration        time.Duration
 	PendingTimeout  time.Duration
@@ -82,27 +85,37 @@ type RequestResult struct {
 
 // Grant is one durable approval record.
 type Grant struct {
-	ID                    string              `json:"id"`
-	DecisionTokenVerifier string              `json:"decision_token_verifier"`
-	Client                string              `json:"client"`
-	ClientRequestID       string              `json:"client_request_id,omitempty"`
-	Operation             string              `json:"operation"`
-	Target                policy.Target       `json:"target"`
-	Attrs                 map[string][]string `json:"attrs,omitempty"`
-	Reason                string              `json:"reason"`
-	Status                Status              `json:"status"`
-	CreatedAt             time.Time           `json:"created_at"`
-	PendingExpiresAt      time.Time           `json:"pending_expires_at"`
-	ExpiresAt             time.Time           `json:"expires_at,omitzero"`
-	Duration              time.Duration       `json:"duration"`
-	PendingTimeout        time.Duration       `json:"pending_timeout"`
-	DecidedAt             time.Time           `json:"decided_at,omitzero"`
-	DecidedBy             string              `json:"decided_by,omitempty"`
-	UsedAt                time.Time           `json:"used_at,omitzero"`
-	UsedCount             int                 `json:"used_count"`
-	ReservedCount         int                 `json:"reserved_count,omitempty"`
-	MaxUses               int                 `json:"max_uses"`
-	legacySchema          bool
+	ID                     string              `json:"id"`
+	DecisionTokenVerifier  string              `json:"decision_token_verifier"`
+	Client                 string              `json:"client"`
+	ClientRequestID        string              `json:"client_request_id,omitempty"`
+	Operation              string              `json:"operation"`
+	Target                 policy.Target       `json:"target"`
+	Attrs                  map[string][]string `json:"attrs,omitempty"`
+	Metadata               map[string]string   `json:"metadata,omitempty"`
+	Reason                 string              `json:"reason"`
+	Status                 Status              `json:"status"`
+	CreatedAt              time.Time           `json:"created_at"`
+	PendingExpiresAt       time.Time           `json:"pending_expires_at"`
+	ExpiresAt              time.Time           `json:"expires_at,omitzero"`
+	Duration               time.Duration       `json:"duration"`
+	PendingTimeout         time.Duration       `json:"pending_timeout"`
+	DecidedAt              time.Time           `json:"decided_at,omitzero"`
+	DecidedBy              string              `json:"decided_by,omitempty"`
+	UsedAt                 time.Time           `json:"used_at,omitzero"`
+	UsedCount              int                 `json:"used_count"`
+	UseRevision            int                 `json:"use_revision,omitempty"`
+	ReservedCount          int                 `json:"reserved_count,omitempty"`
+	ReservedAt             time.Time           `json:"reserved_at,omitzero"`
+	ReservationRetained    bool                `json:"reservation_retained,omitempty"`
+	ReservationRevision    int                 `json:"reservation_revision,omitempty"`
+	MaxUses                int                 `json:"max_uses"`
+	ExpiredFrom            Status              `json:"expired_from,omitempty"`
+	Notification           *MessageRef         `json:"notification,omitempty"`
+	NotificationStatus     string              `json:"notification_status,omitempty"`
+	NotificationClaimedAt  time.Time           `json:"notification_claimed_at,omitzero"`
+	NotificationClaimUntil time.Time           `json:"notification_claim_until,omitzero"`
+	legacySchema           bool
 }
 
 type fileData struct {
@@ -216,12 +229,42 @@ func canonicalizeLoadedGrants(grants []Grant) bool {
 	changed := false
 	for index := range grants {
 		grant := &grants[index]
-		changed = changed || grant.legacySchema
+		grantChanged := grant.legacySchema
 		grant.legacySchema = false
 		grant.Target.Fields = copyx.CanonicalStringSliceMap(grant.Target.Fields)
 		grant.Attrs = copyx.CanonicalStringSliceMap(grant.Attrs)
+		grant.Metadata = copyx.StringMap(grant.Metadata)
+		reservationChanged := normalizeLoadedReservation(grant)
+		revisionChanged := normalizeLoadedRevisions(grant)
+		changed = reservationChanged || revisionChanged || grantChanged || changed
 	}
 	return changed
+}
+
+func normalizeLoadedRevisions(grant *Grant) bool {
+	changed := false
+	if grant.UseRevision < grant.UsedCount {
+		grant.UseRevision = grant.UsedCount
+		changed = true
+	}
+	if grant.ReservedCount > 0 && grant.ReservationRevision <= 0 {
+		grant.ReservationRevision = 1
+		changed = true
+	}
+	return changed
+}
+
+func normalizeLoadedReservation(grant *Grant) bool {
+	changed := grant.ReservedCount < 0
+	if changed {
+		grant.ReservedCount = 0
+	}
+	if grant.ReservedCount != 0 || (grant.ReservedAt.IsZero() && !grant.ReservationRetained) {
+		return changed
+	}
+	grant.ReservedAt = time.Time{}
+	grant.ReservationRetained = false
+	return true
 }
 
 // Store owns one durable grant file.
@@ -241,6 +284,9 @@ func New(path string, opts Options) *Store {
 	}
 	if opts.MaxDuration <= 0 {
 		opts.MaxDuration = defaultMaxDuration
+	}
+	if opts.ReservationTimeout <= 0 {
+		opts.ReservationTimeout = defaultReservationTimeout
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -262,19 +308,9 @@ func (s *Store) Request(req Request) (RequestResult, bool, error) {
 	err = s.update(func(data *fileData) error {
 		s.expireDue(data)
 		if index, existing, ok := findIdempotent(data.Grants, req); ok {
-			if !sameRequest(existing, req) {
-				return ErrIdempotencyConflict
-			}
-			out = RequestResult{Grant: existing}
-			if existing.Status == StatusPending {
-				refreshed, decisionToken, err := s.refreshDecisionToken(existing)
-				if err != nil {
-					return err
-				}
-				data.Grants[index] = refreshed
-				out = RequestResult{Grant: refreshed, DecisionToken: decisionToken}
-			}
-			return nil
+			var existingErr error
+			out, existingErr = s.idempotentRequest(data, index, existing, req)
+			return existingErr
 		}
 		grant, decisionToken, err := s.newGrant(req)
 		if err != nil {
@@ -286,6 +322,22 @@ func (s *Store) Request(req Request) (RequestResult, bool, error) {
 		return nil
 	})
 	return out, created, err
+}
+
+func (s *Store) idempotentRequest(data *fileData, index int, existing Grant, req Request) (RequestResult, error) {
+	if !sameRequest(existing, req) {
+		return RequestResult{}, ErrIdempotencyConflict
+	}
+	result := RequestResult{Grant: existing}
+	if existing.Status != StatusPending || existing.Notification != nil || !existing.NotificationClaimedAt.IsZero() {
+		return result, nil
+	}
+	refreshed, decisionToken, err := s.refreshDecisionToken(existing)
+	if err != nil {
+		return RequestResult{}, err
+	}
+	data.Grants[index] = refreshed
+	return RequestResult{Grant: refreshed, DecisionToken: decisionToken}, nil
 }
 
 // Approve activates a pending grant.
@@ -325,7 +377,26 @@ func (s *Store) ReserveUse(id string) (Grant, error) {
 		if !grantCanUse(grant, s.opts.Now().UTC()) {
 			return Grant{}, ErrNotActive
 		}
+		if grant.ReservedCount == 0 {
+			grant.ReservedAt = s.opts.Now().UTC()
+			grant.ReservationRevision++
+		}
 		grant.ReservedCount++
+		return grant, nil
+	})
+}
+
+// RetainUse preserves a reserved use for operator review after an ambiguous
+// execution result.
+func (s *Store) RetainUse(id string) (Grant, error) {
+	return s.changeUse(id, func(grant Grant) (Grant, error) {
+		if !grantCanCommitUse(grant) {
+			return Grant{}, ErrNotActive
+		}
+		grant.ReservationRetained = true
+		if grant.ReservedAt.IsZero() {
+			grant.ReservedAt = s.opts.Now().UTC()
+		}
 		return grant, nil
 	})
 }
@@ -333,14 +404,22 @@ func (s *Store) ReserveUse(id string) (Grant, error) {
 // CommitUse turns one reservation into a used grant budget.
 func (s *Store) CommitUse(id string) (Grant, error) {
 	return s.changeUse(id, func(grant Grant) (Grant, error) {
-		if grant.ReservedCount <= 0 {
+		if !grantCanCommitUse(grant) {
 			return Grant{}, ErrNotActive
 		}
 		grant.ReservedCount--
 		grant.UsedCount++
+		grant.UseRevision++
 		grant.UsedAt = s.opts.Now().UTC()
+		if grant.ReservedCount == 0 {
+			grant.ReservedAt = time.Time{}
+			grant.ReservationRetained = false
+		}
 		if grant.UsedCount >= grant.MaxUses {
-			grant.Status = StatusConsumed
+			if grant.Status != StatusRevoked {
+				grant.Status = StatusConsumed
+				grant.ExpiredFrom = ""
+			}
 		}
 		return grant, nil
 	})
@@ -351,6 +430,10 @@ func (s *Store) ReleaseUse(id string) (Grant, error) {
 	return s.changeUse(id, func(grant Grant) (Grant, error) {
 		if grant.ReservedCount > 0 {
 			grant.ReservedCount--
+		}
+		if grant.ReservedCount == 0 {
+			grant.ReservedAt = time.Time{}
+			grant.ReservationRetained = false
 		}
 		return grant, nil
 	})
@@ -485,7 +568,9 @@ func (s *Store) decideFound(data *fileData, index int, grant Grant, approver str
 }
 
 func (s *Store) expireLateDecision(data *fileData, index int, grant Grant) (Grant, error) {
+	grant.ExpiredFrom = grant.Status
 	grant.Status = StatusExpired
+	grant.DecidedAt = s.opts.Now().UTC()
 	data.Grants[index] = grant
 	if err := s.save(*data); err != nil {
 		return Grant{}, err
@@ -520,6 +605,14 @@ func (s *Store) changeUse(id string, mutate func(Grant) (Grant, error)) (Grant, 
 }
 
 func (s *Store) normalizeRequest(req Request) (Request, error) {
+	normalized, err := normalizeRequestValues(req)
+	if err != nil {
+		return Request{}, err
+	}
+	return s.normalizeRequestBounds(normalized)
+}
+
+func normalizeRequestValues(req Request) (Request, error) {
 	if req.Client == "" || req.Operation == "" || req.Target.Kind == "" {
 		return Request{}, errors.New("client, operation, and target are required")
 	}
@@ -532,13 +625,13 @@ func (s *Store) normalizeRequest(req Request) (Request, error) {
 	if err := validateValueMap("attr", req.Attrs); err != nil {
 		return Request{}, err
 	}
-	normalized, err := s.normalizeRequestBounds(req)
-	if err != nil {
+	if err := validateMetadata(req.Metadata); err != nil {
 		return Request{}, err
 	}
-	normalized.Target.Fields = copyx.CanonicalStringSliceMap(normalized.Target.Fields)
-	normalized.Attrs = copyx.CanonicalStringSliceMap(normalized.Attrs)
-	return normalized, nil
+	req.Target.Fields = copyx.CanonicalStringSliceMap(req.Target.Fields)
+	req.Attrs = copyx.CanonicalStringSliceMap(req.Attrs)
+	req.Metadata = copyx.StringMap(req.Metadata)
+	return req, nil
 }
 
 func validateValueMap(kind string, values map[string][]string) error {
@@ -595,6 +688,7 @@ func (s *Store) newGrant(req Request) (Grant, string, error) {
 		Operation:             req.Operation,
 		Target:                req.Target,
 		Attrs:                 req.Attrs,
+		Metadata:              req.Metadata,
 		Reason:                req.Reason,
 		Status:                StatusPending,
 		CreatedAt:             now,
@@ -632,7 +726,11 @@ func (s *Store) update(mutator func(*fileData) error) error {
 	if err != nil {
 		return err
 	}
+	changed := s.prepareLifecycle(&data)
 	if err := mutator(&data); err != nil {
+		if changed {
+			return errors.Join(err, s.save(data))
+		}
 		return err
 	}
 	return s.save(data)
@@ -661,8 +759,11 @@ func (s *Store) expireDue(data *fileData) bool {
 	for index, grant := range data.Grants {
 		switch {
 		case grant.Status == StatusPending && !now.Before(grant.PendingExpiresAt):
+			grant.ExpiredFrom = grant.Status
 			grant.Status = StatusExpired
+			grant.DecidedAt = now
 		case grant.Status == StatusActive && !now.Before(grant.ExpiresAt):
+			grant.ExpiredFrom = grant.Status
 			grant.Status = StatusExpired
 		default:
 			continue
@@ -673,10 +774,49 @@ func (s *Store) expireDue(data *fileData) bool {
 	return changed
 }
 
+func (s *Store) prepareLifecycle(data *fileData) bool {
+	expired := s.expireDue(data)
+	retained := s.retainStaleReservations(data)
+	return expired || retained
+}
+
+func (s *Store) retainStaleReservations(data *fileData) bool {
+	now := s.opts.Now().UTC()
+	changed := false
+	for index, grant := range data.Grants {
+		if !reservationIsStale(grant, now, s.opts.ReservationTimeout) {
+			continue
+		}
+		grant.ReservationRetained = true
+		if grant.ReservedAt.IsZero() {
+			grant.ReservedAt = now
+		}
+		data.Grants[index] = grant
+		changed = true
+	}
+	return changed
+}
+
+func reservationIsStale(grant Grant, now time.Time, timeout time.Duration) bool {
+	if grant.ReservationRetained || grant.ReservedCount <= 0 ||
+		!reservationCanSettle(grant.Status) {
+		return false
+	}
+	return grant.ReservedAt.IsZero() || !now.Before(grant.ReservedAt.Add(timeout))
+}
+
 func grantCanUse(grant Grant, now time.Time) bool {
 	return grant.Status == StatusActive &&
 		now.Before(grant.ExpiresAt) &&
 		grant.UsedCount+grant.ReservedCount < grant.MaxUses
+}
+
+func grantCanCommitUse(grant Grant) bool {
+	return grant.ReservedCount > 0 && reservationCanSettle(grant.Status)
+}
+
+func reservationCanSettle(status Status) bool {
+	return status == StatusActive || status == StatusExpired || status == StatusRevoked
 }
 
 func (g Grant) toPolicyGrant() policy.Grant {
@@ -719,6 +859,7 @@ func sameRequest(grant Grant, req Request) bool {
 	return grant.Operation == req.Operation &&
 		targetEqual(grant.Target, req.Target) &&
 		mapsEqual(grant.Attrs, req.Attrs) &&
+		stringMapsEqual(grant.Metadata, req.Metadata) &&
 		grant.Reason == req.Reason &&
 		grant.MaxUses == req.MaxUses &&
 		grant.Duration == req.Duration &&

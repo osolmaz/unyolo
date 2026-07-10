@@ -56,14 +56,14 @@ Implemented package candidates are:
 
 - `auth`: shared-secret bearer/basic authentication for named clients
 - `policy`: generic rule evaluation with broker-owned operation registries
-- `grants`: short-lived pending/active/expired/revoked grants
+- `grants`: durable short-lived grants, use reservations, crash recovery, and
+  notification delivery state
 - `audit`: secret-safe structured audit helpers
 - `httpx`: proxy-safe header filtering and bounded body helpers
 - `clientconfig`: shared client env rendering for
   `~/.config/<broker>/client.env`
 - `notify`: approval notification interfaces, generic decision results, and a
-  reusable Telegram adapter with send, status edit, long-poll callback, and
-  tracked expiry support
+  reusable Telegram adapter with send, status edit, and long-poll callbacks
 - `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
   `hf-broker` and `gh-broker`
 - `store`: atomic file storage and lock helpers, if needed by grants/audit

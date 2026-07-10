@@ -79,10 +79,17 @@ The registry mechanism is shared. The registered vocabulary is broker-local.
 - expiry checks
 - use budgets
 - reservation, commit, and release of uses
+- fail-closed recovery of crash-stale and ambiguous reservations
+- durable notification references and delivered-status keys
+- leased notification-send claims and conditional cancellation
+- restart-safe discovery of notification updates that remain due
 - generated temporary allow rules
 - durable store interface
 - default local durable store
 - clock injection for tests
+- bounded opaque provider metadata that is persisted and included in
+  idempotency, but never interpreted by brokerkit policy or lifecycle code;
+  metadata must not contain credentials, decision tokens, or other secrets
 
 Generated grants must never use wildcard clients.
 
@@ -129,9 +136,10 @@ brokerkit should own:
 - shared tests for callback and token safety
 
 Status: brokerkit now owns the reusable Telegram client, inline callback data,
-long polling, configured-chat filtering, callback answering, status edits, and
-pending/active expiry tracking. Brokers still own the domain-specific approval
-summary and the final grant approve/deny/revoke calls.
+long polling, configured-chat filtering, callback answering, and status edits.
+The shared grant store owns durable expiry and delivery tracking. Brokers still
+own the domain-specific approval summary, status wording, and the final grant
+approve/deny/revoke calls.
 
 brokerkit should not own text such as "approve this force-push" or "approve
 this shell as deploy." Brokers compose those summaries.

@@ -63,8 +63,9 @@ type FieldSpec struct {
 
 // AttrSpec describes one request attr.
 type AttrSpec struct {
-	Match      MatchMode
-	GrantMatch MatchMode
+	Match        MatchMode
+	GrantMatch   MatchMode
+	GrantMayOmit bool
 }
 
 func (r Registry) validate() error {

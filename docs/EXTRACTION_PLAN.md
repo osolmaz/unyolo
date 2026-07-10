@@ -86,9 +86,10 @@ provider-specific behavior.
 
 Status: implemented for the shared pending/active/denied/expired/consumed/
 revoked/canceled lifecycle, idempotency, decision tokens, expiry, use
-reservation, and policy overlays. Provider-specific recovery metadata and
-notification presentation remain in consuming brokers until represented by a
-provider-neutral extension contract.
+reservation, crash-stale reservation recovery, durable notification
+correlation, notification-send claims, retryable status discovery, and policy
+overlays. Only provider-specific notification presentation remains in
+consuming brokers.
 
 Extract grant lifecycle types and store behavior after the policy request,
 decision, and generated-rule overlay model is clear.
@@ -105,10 +106,17 @@ The package should support:
 - approved access duration
 - use budget
 - reservation, commit, and release of uses
+- fail-closed retention of ambiguous or crash-stale reservations
 - idempotency key
 - generated temporary allow rules
+- durable notification references and delivered-status keys
+- leased notification-send claims and conditional cancellation
+- fresh one-time approval tokens on every claimed delivery attempt, with only
+  token verifiers persisted
+- restart-safe discovery of notification updates that are still due
 
-It should not own notification delivery or provider execution.
+It should not own provider-specific notification text, transport delivery, or
+provider execution.
 
 Cutover rule: after a broker imports `brokerkit/grants`, grant storage and state
 transitions should have one runtime implementation.
@@ -136,9 +144,10 @@ Extract the generic approval workflow after grants are stable.
 Status: initial `brokerkit/notify` and `brokerkit/notify/telegram` packages are
 implemented. They provide provider-neutral approval messages, decision results,
 Telegram send/status-edit behavior, inline approve/deny callback data, long
-polling for callback queries, configured-chat filtering, and tracked pending or
-active expiry edits. Consuming brokers still need to cut over and delete local
-Telegram transports.
+polling for callback queries, and configured-chat filtering. Durable pending,
+active, use, and expiry status tracking belongs to `brokerkit/grants`, so it
+survives process restarts. Consuming brokers still need to cut over and delete
+local Telegram transports.
 
 The package should support:
 

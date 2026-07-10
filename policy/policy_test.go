@@ -165,6 +165,30 @@ func TestGrantOverlayRequiresExactAttrs(t *testing.T) {
 	}
 }
 
+func TestGrantOverlayAllowsProviderOptionalConstraint(t *testing.T) {
+	policy := requestShellPolicy(t)
+	operation := policy.registry.Operations["session.shell"]
+	operation.Attrs = []string{"tty"}
+	policy.registry.Operations["session.shell"] = operation
+	policy.registry.Attrs["tty"] = AttrSpec{GrantMayOmit: true}
+	decision := policy.Decide(Request{
+		Client:    "bob",
+		Operation: "session.shell",
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		Attrs:     map[string][]string{"tty": {"true"}},
+	}, DecisionOptions{ActiveGrants: []Grant{{
+		ID:        "grant-shell",
+		Client:    "bob",
+		Operation: "session.shell",
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		ExpiresAt: time.Now().Add(time.Minute),
+		UsesLeft:  1,
+	}}})
+	if !decision.Allowed || decision.Reason != "grant_allowed" {
+		t.Fatalf("optional attr grant decision = %+v, want grant allow", decision)
+	}
+}
+
 func TestGrantMatchesValueSetsWithoutOrder(t *testing.T) {
 	grant := Grant{
 		Client:    "bob",
@@ -774,6 +798,17 @@ func TestPolicyDoesNotExposeMutableInternals(t *testing.T) {
 	rules[0].Targets[0].Fields["name"][0] = "other"
 	if got := policy.Decide(repoReq("bob", "git.fetch", "demo", ""), DecisionOptions{}); !got.Allowed {
 		t.Fatalf("decision after Rules mutation = %+v, want allowed", got)
+	}
+}
+
+func TestEscapedLiteralClientsAreNotAmbiguous(t *testing.T) {
+	registry := testRegistry()
+	_, err := Parse([]byte(`{"rules":[
+		{"id":"first","effect":"request","clients":["agent-\\*"],"operations":["git.push.fast_forward"],"targets":[{"kind":"repo","owner":"osolmaz","name":"demo"}],"grant_policy":{"default_minutes":5,"max_minutes":5}},
+		{"id":"second","effect":"request","clients":["agent-\\*x"],"operations":["git.push.fast_forward"],"targets":[{"kind":"repo","owner":"osolmaz","name":"demo"}],"grant_policy":{"default_minutes":10,"max_minutes":10}}
+	]}`), registry)
+	if err != nil {
+		t.Fatalf("Parse() error = %v, want disjoint literal client names", err)
 	}
 }
 

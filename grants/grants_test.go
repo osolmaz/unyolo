@@ -3,6 +3,7 @@ package grants
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,6 +138,61 @@ func TestIdempotentRetryIgnoresValueOrder(t *testing.T) {
 	retry, created, err := store.Request(request)
 	if err != nil || created || retry.Grant.ID != first.Grant.ID {
 		t.Fatalf("reordered Request() = %+v created=%v err=%v", retry, created, err)
+	}
+}
+
+func TestGrantMetadataIsDurableAndIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grants.json")
+	store := New(path, Options{})
+	request := Request{
+		Client:          "bob",
+		ClientRequestID: "provider-metadata",
+		Operation:       "git.push",
+		Target:          repoTarget("demo"),
+		Reason:          "provider metadata",
+		Metadata:        map[string]string{"grant_mode": "execution"},
+	}
+	result, created, err := store.Request(request)
+	if err != nil || !created || result.Grant.Metadata["grant_mode"] != "execution" {
+		t.Fatalf("Request() = %+v created=%v err=%v", result, created, err)
+	}
+	request.Metadata["grant_mode"] = "window"
+	if result.Grant.Metadata["grant_mode"] != "execution" {
+		t.Fatalf("request mutation changed grant metadata: %+v", result.Grant.Metadata)
+	}
+	request.Metadata["grant_mode"] = "execution"
+	restarted := New(path, Options{})
+	stored, err := restarted.Get(result.Grant.ID)
+	if err != nil || stored.Metadata["grant_mode"] != "execution" {
+		t.Fatalf("Get() = %+v err=%v", stored, err)
+	}
+	request.Metadata["grant_mode"] = "window"
+	if _, _, err := restarted.Request(request); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("Request(metadata conflict) error = %v, want ErrIdempotencyConflict", err)
+	}
+}
+
+func TestGrantMetadataValidation(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	base := Request{Client: "bob", Operation: "git.push", Target: repoTarget("demo"), Reason: "metadata"}
+	cases := []map[string]string{
+		{"": "value"},
+		{" key": "value"},
+		{"key": " "},
+		{strings.Repeat("k", maxMetadataKeyBytes+1): "value"},
+		{"key": strings.Repeat("v", maxMetadataValueBytes+1)},
+	}
+	tooMany := make(map[string]string, maxMetadataEntries+1)
+	for index := range maxMetadataEntries + 1 {
+		tooMany[fmt.Sprintf("key-%d", index)] = "value"
+	}
+	cases = append(cases, tooMany)
+	for _, metadata := range cases {
+		request := base
+		request.Metadata = metadata
+		if _, _, err := store.Request(request); err == nil {
+			t.Fatalf("Request(metadata=%q) error = nil, want validation error", metadata)
+		}
 	}
 }
 
@@ -439,6 +495,35 @@ func TestLateDecisionPersistsExpiredStatus(t *testing.T) {
 	}
 	if persisted.Status != StatusExpired {
 		t.Fatalf("persisted expired grant status = %s, want expired", persisted.Status)
+	}
+}
+
+func TestLifecyclePreparationReportsPersistenceFailure(t *testing.T) {
+	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
+	dir := t.TempDir()
+	store := New(filepath.Join(dir, "grants.json"), Options{Now: func() time.Time { return now }})
+	result, _, err := store.Request(Request{
+		Client:    "bob",
+		Operation: "session.shell",
+		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		Reason:    "expire",
+		Duration:  time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "telegram:1"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Minute)
+	if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- test intentionally blocks directory writes.
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) // #nosec G302 -- private test directory restore.
+
+	_, err = store.ReserveUse(result.Grant.ID)
+	if !errors.Is(err, ErrNotActive) || !strings.Contains(err.Error(), "create temp file") {
+		t.Fatalf("ReserveUse() error = %v, want joined lifecycle and persistence errors", err)
 	}
 }
 

@@ -109,13 +109,16 @@ func pathMatcherValuesMayOverlap(left string, right string, match func([]string,
 	if left == right {
 		return true
 	}
-	leftGlob := hasGlobMeta(left)
-	rightGlob := hasGlobMeta(right)
-	if !leftGlob {
-		return match([]string{right}, left)
+	leftLiteral, leftIsLiteral := literalGlobValue(left)
+	rightLiteral, rightIsLiteral := literalGlobValue(right)
+	if leftIsLiteral && rightIsLiteral {
+		return leftLiteral == rightLiteral
 	}
-	if !rightGlob {
-		return match([]string{left}, right)
+	if leftIsLiteral {
+		return match([]string{right}, leftLiteral)
+	}
+	if rightIsLiteral {
+		return match([]string{left}, rightLiteral)
 	}
 	return true
 }
@@ -139,22 +142,42 @@ func patternsMayOverlap(left string, right string) bool {
 	if left == right {
 		return true
 	}
-	leftGlob := hasGlobMeta(left)
-	rightGlob := hasGlobMeta(right)
-	if !leftGlob && !rightGlob {
-		return false
+	leftLiteral, leftIsLiteral := literalGlobValue(left)
+	rightLiteral, rightIsLiteral := literalGlobValue(right)
+	if leftIsLiteral && rightIsLiteral {
+		return leftLiteral == rightLiteral
 	}
-	if !leftGlob {
-		return patternMatches(right, left)
+	if leftIsLiteral {
+		return patternMatches(right, leftLiteral)
 	}
-	if !rightGlob {
-		return patternMatches(left, right)
+	if rightIsLiteral {
+		return patternMatches(left, rightLiteral)
 	}
 	return globPrefixesMayOverlap(left, right)
 }
 
-func hasGlobMeta(value string) bool {
-	return strings.ContainsAny(value, `*?[\`)
+func literalGlobValue(pattern string) (string, bool) {
+	var value strings.Builder
+	escaped := false
+	for _, char := range pattern {
+		if escaped {
+			value.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' {
+			escaped = true
+			continue
+		}
+		if strings.ContainsRune("*?[", char) {
+			return "", false
+		}
+		value.WriteRune(char)
+	}
+	if escaped {
+		return "", false
+	}
+	return value.String(), true
 }
 
 func globPrefixesMayOverlap(left string, right string) bool {

@@ -196,6 +196,12 @@ than an exact value. For example, `integer_maximum` lets an approved
 `max_bytes: 10` grant authorize requests up to 10 bytes without changing exact
 matching for other attributes.
 
+A provider may set `GrantMayOmit` for a runtime attribute that does not need to
+be present in every grant. Omitted attributes remain unconstrained; when the
+grant includes the attribute, its exact or `GrantMatch` constraint still
+applies. This choice belongs to the provider registry because only the provider
+knows whether an unconstrained runtime value changes the approved authority.
+
 This keeps typed provider parsing in the broker while making the decision
 semantics reusable. For example, hf-broker parses a JSON byte count, validates
 it as an integer, and passes a one-element list containing its canonical

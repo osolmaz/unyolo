@@ -315,26 +315,35 @@ func grantMatches(registry Registry, grant Grant, request Request) bool {
 }
 
 func grantAttrsMatch(registry Registry, constraints map[string][]string, attrs map[string][]string) bool {
-	if len(constraints) != len(attrs) {
+	if len(constraints) > len(attrs) {
 		return false
 	}
 	for name, allowed := range constraints {
 		values, ok := attrs[name]
-		if !ok {
+		if !ok || !grantAttrConstraintMatches(registry.Attrs[name], allowed, values) {
 			return false
 		}
-		mode := registry.Attrs[name].GrantMatch
-		if mode == "" {
-			if !copyx.StringSlicesEqual(allowed, values) {
-				return false
-			}
+	}
+	return unconstrainedGrantAttrsAllowed(registry, constraints, attrs)
+}
+
+func unconstrainedGrantAttrsAllowed(registry Registry, constraints, attrs map[string][]string) bool {
+	for name := range attrs {
+		if _, constrained := constraints[name]; constrained {
 			continue
 		}
-		if !allValuesMatch(mode, allowed, values) {
+		if !registry.Attrs[name].GrantMayOmit {
 			return false
 		}
 	}
 	return true
+}
+
+func grantAttrConstraintMatches(spec AttrSpec, allowed, values []string) bool {
+	if spec.GrantMatch == "" {
+		return copyx.StringSlicesEqual(allowed, values)
+	}
+	return allValuesMatch(spec.GrantMatch, allowed, values)
 }
 
 func targetEqual(left Target, right Target) bool {
