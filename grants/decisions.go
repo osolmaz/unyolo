@@ -1,0 +1,111 @@
+package grants
+
+import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+)
+
+// Approve activates a pending grant.
+func (s *Store) Approve(id string, decisionToken string, approver string) (Grant, error) {
+	return s.decide(id, decisionToken, approver, StatusActive)
+}
+
+// ApproveWithNotification atomically approves a pending grant and records a
+// callback-carried notification when no notification is already stored.
+func (s *Store) ApproveWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
+	return s.decideWithNotification(id, decisionToken, approver, StatusActive, ref)
+}
+
+// Deny denies a pending grant.
+func (s *Store) Deny(id string, decisionToken string, approver string) (Grant, error) {
+	return s.decide(id, decisionToken, approver, StatusDenied)
+}
+
+// DenyWithNotification atomically denies a pending grant and records a
+// callback-carried notification when no notification is already stored.
+func (s *Store) DenyWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
+	return s.decideWithNotification(id, decisionToken, approver, StatusDenied, ref)
+}
+
+func (s *Store) decide(id string, token string, approver string, status Status) (Grant, error) {
+	return s.decideAndNotify(id, token, approver, status, nil)
+}
+
+func (s *Store) decideWithNotification(id string, token string, approver string, status Status, ref MessageRef) (Grant, error) {
+	if err := validateMessageRef(ref); err != nil {
+		return Grant{}, err
+	}
+	return s.decideAndNotify(id, token, approver, status, &ref)
+}
+
+func (s *Store) decideAndNotify(id string, token string, approver string, status Status, ref *MessageRef) (Grant, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return Grant{}, err
+	}
+	index, grant, err := findGrant(data.Grants, id)
+	if err != nil {
+		return Grant{}, err
+	}
+	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
+		return Grant{}, ErrInvalidDecisionToken
+	}
+	updated, changed, decisionErr := s.prepareDecision(grant, approver, status)
+	if ref != nil && updated.Notification == nil {
+		updated.Notification = ref
+		updated.NotificationStatus = string(StatusPending)
+		clearNotificationClaim(&updated)
+		changed = true
+	}
+	if !changed {
+		return Grant{}, decisionErr
+	}
+	data.Grants[index] = updated
+	if err := s.save(data); err != nil {
+		return Grant{}, err
+	}
+	return updated, decisionErr
+}
+
+func decisionTokenVerifier(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
+func decisionTokenMatches(storedVerifier string, presented string) bool {
+	if storedVerifier == "" {
+		return false
+	}
+	if presented == "" {
+		return false
+	}
+	expectedVerifier := decisionTokenVerifier(presented)
+	storedHash := sha256.Sum256([]byte(storedVerifier))
+	presentedHash := sha256.Sum256([]byte(expectedVerifier))
+	return subtle.ConstantTimeCompare(storedHash[:], presentedHash[:]) == 1
+}
+
+func (s *Store) prepareDecision(grant Grant, approver string, status Status) (Grant, bool, error) {
+	now := s.opts.Now().UTC()
+	if grant.Status != StatusPending {
+		return grant, false, ErrNotPending
+	}
+	if !now.Before(grant.PendingExpiresAt) {
+		grant.ExpiredFrom = grant.Status
+		grant.Status = StatusExpired
+		grant.DecidedAt = now
+		grant.NotificationDeliveryUnresolved = false
+		return grant, true, ErrNotPending
+	}
+	grant.Status = status
+	grant.DecidedAt = now
+	grant.DecidedBy = approver
+	grant.NotificationDeliveryUnresolved = false
+	if status == StatusActive {
+		grant.ExpiresAt = now.Add(s.durationFromGrant(grant))
+	}
+	return grant, true, nil
+}

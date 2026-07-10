@@ -151,6 +151,11 @@ pending/active/use/expiry state, and status retries belong exclusively to
 `brokerkit/grants`, so they survive process restarts. Consuming brokers must cut
 over and delete local Telegram transports and trackers.
 
+Callback decisions use one shared transaction: token verification, the grant
+transition, and recovery of a callback-carried message reference commit
+together. If that transaction fails, Telegram polling must not acknowledge the
+callback or advance past its update.
+
 The package should support:
 
 - approval request and decision models

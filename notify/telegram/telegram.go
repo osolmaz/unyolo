@@ -41,6 +41,7 @@ type Client struct {
 	baseURL            string
 	client             *http.Client
 	pollTimeoutSeconds int
+	retryDelay         time.Duration
 	ignoredAnswer      string
 	approveText        string
 	denyText           string
@@ -72,6 +73,7 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 		baseURL:            strings.TrimRight(baseURL, "/"),
 		client:             httpClient,
 		pollTimeoutSeconds: opts.PollTimeoutSeconds,
+		retryDelay:         time.Second,
 		ignoredAnswer:      opts.IgnoredAnswer,
 		approveText:        opts.ApproveText,
 		denyText:           opts.DenyText,
@@ -134,41 +136,12 @@ func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status
 func (c *Client) Poll(ctx context.Context, handler func(context.Context, notify.Decision) notify.DecisionResult) {
 	var offset int64
 	for ctx.Err() == nil {
-		nextOffset, err := c.PollOnce(ctx, offset, handler)
+		var err error
+		offset, err = c.PollOnce(ctx, offset, handler)
 		if err != nil {
-			wait(ctx, time.Second)
-			continue
+			wait(ctx, c.retryDelay)
 		}
-		offset = nextOffset
 	}
-}
-
-// PollOnce fetches and handles one Telegram update batch.
-func (c *Client) PollOnce(ctx context.Context, offset int64, handler func(context.Context, notify.Decision) notify.DecisionResult) (int64, error) {
-	updates, err := c.getUpdates(ctx, offset)
-	if err != nil {
-		return offset, err
-	}
-	nextOffset := offset
-	for _, update := range updates {
-		if update.UpdateID >= nextOffset {
-			nextOffset = update.UpdateID + 1
-		}
-		decision, ok := parseDecision(update)
-		if !ok {
-			continue
-		}
-		c.handleDecision(ctx, decision, handler)
-	}
-	return nextOffset, nil
-}
-
-func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, handler func(context.Context, notify.Decision) notify.DecisionResult) {
-	result := notify.DecisionResult{Answer: c.ignoredAnswer}
-	if decision.ChatID == c.chatID {
-		result = c.normalizeDecisionResult(handler(ctx, decision))
-	}
-	_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
 }
 
 func (c *Client) getUpdates(ctx context.Context, offset int64) ([]telegramUpdate, error) {
@@ -372,29 +345,6 @@ func withDecisionStatus(text string, status string) string {
 	const marker = "\n\nStatus: "
 	base, _, _ := strings.Cut(text, marker)
 	return base + marker + status
-}
-
-func parseDecision(update telegramUpdate) (notify.Decision, bool) {
-	if update.CallbackQuery == nil {
-		return notify.Decision{}, false
-	}
-	callback := update.CallbackQuery
-	action, grantID, token, ok := ParseCallbackData(callback.Data)
-	if !ok || callback.ID == "" || callback.Message == nil {
-		return notify.Decision{}, false
-	}
-	return notify.Decision{
-		Action:        action,
-		GrantID:       grantID,
-		DecisionToken: token,
-		CallbackID:    callback.ID,
-		ChatID:        callback.Message.Chat.ID,
-		MessageID:     callback.Message.MessageID,
-		MessageText:   callback.Message.Text,
-		OperatorID:    callback.From.ID,
-		OperatorTag:   callback.From.Username,
-		Approver:      callback.From.Username,
-	}, true
 }
 
 func wait(ctx context.Context, d time.Duration) {

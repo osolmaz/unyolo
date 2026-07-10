@@ -4,8 +4,6 @@ package grants
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -343,16 +341,6 @@ func (s *Store) idempotentRequest(data *fileData, index int, existing Grant, req
 	return RequestResult{Grant: refreshed, DecisionToken: decisionToken}, nil
 }
 
-// Approve activates a pending grant.
-func (s *Store) Approve(id string, decisionToken string, approver string) (Grant, error) {
-	return s.decide(id, decisionToken, approver, StatusActive)
-}
-
-// Deny denies a pending grant.
-func (s *Store) Deny(id string, decisionToken string, approver string) (Grant, error) {
-	return s.decide(id, decisionToken, approver, StatusDenied)
-}
-
 // Revoke closes an active grant.
 func (s *Store) Revoke(id string, approver string) (Grant, error) {
 	var out Grant
@@ -521,76 +509,6 @@ func (s *Store) ListForClient(client string) ([]Grant, error) {
 		}
 	}
 	return out, nil
-}
-
-func (s *Store) decide(id string, token string, approver string, status Status) (Grant, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	data, err := s.load()
-	if err != nil {
-		return Grant{}, err
-	}
-	index, grant, err := findGrant(data.Grants, id)
-	if err != nil {
-		return Grant{}, err
-	}
-	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
-		return Grant{}, ErrInvalidDecisionToken
-	}
-	return s.decideFound(&data, index, grant, approver, status)
-}
-
-func decisionTokenVerifier(token string) string {
-	hash := sha256.Sum256([]byte(token))
-	return base64.RawURLEncoding.EncodeToString(hash[:])
-}
-
-func decisionTokenMatches(storedVerifier string, presented string) bool {
-	if storedVerifier == "" || presented == "" {
-		return false
-	}
-	expectedVerifier := decisionTokenVerifier(presented)
-	storedHash := sha256.Sum256([]byte(storedVerifier))
-	presentedHash := sha256.Sum256([]byte(expectedVerifier))
-	return subtle.ConstantTimeCompare(storedHash[:], presentedHash[:]) == 1
-}
-
-func (s *Store) decideFound(data *fileData, index int, grant Grant, approver string, status Status) (Grant, error) {
-	now := s.opts.Now().UTC()
-	if grant.Status != StatusPending {
-		return Grant{}, ErrNotPending
-	}
-	if !now.Before(grant.PendingExpiresAt) {
-		return s.expireLateDecision(data, index, grant)
-	}
-	grant.Status = status
-	grant.DecidedAt = now
-	grant.DecidedBy = approver
-	grant.NotificationDeliveryUnresolved = false
-	if status == StatusActive {
-		grant.ExpiresAt = now.Add(s.durationFromGrant(grant))
-	}
-	return s.saveDecidedGrant(data, index, grant)
-}
-
-func (s *Store) expireLateDecision(data *fileData, index int, grant Grant) (Grant, error) {
-	grant.ExpiredFrom = grant.Status
-	grant.Status = StatusExpired
-	grant.DecidedAt = s.opts.Now().UTC()
-	grant.NotificationDeliveryUnresolved = false
-	data.Grants[index] = grant
-	if err := s.save(*data); err != nil {
-		return Grant{}, err
-	}
-	return grant, ErrNotPending
-}
-
-func (s *Store) saveDecidedGrant(data *fileData, index int, grant Grant) (Grant, error) {
-	data.Grants[index] = grant
-	if err := s.save(*data); err != nil {
-		return Grant{}, err
-	}
-	return grant, nil
 }
 
 func (s *Store) changeUse(id string, mutate func(Grant) (Grant, error)) (Grant, error) {

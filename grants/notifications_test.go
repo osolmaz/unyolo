@@ -104,6 +104,86 @@ func TestNotificationReferenceRecoveredFromCallback(t *testing.T) {
 	assertSingleDueUpdate(t, store, StatusUpdateLifecycle, StatusActive, string(StatusActive))
 }
 
+func TestDecisionWithNotificationIsAtomic(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "atomic-callback", 1)
+	claim := claimNotification(t, store, result.Grant.ID)
+	retainNotificationClaim(t, store, result.Grant.ID, claim.Grant.NotificationClaimedAt)
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+
+	approved, err := store.ApproveWithNotification(result.Grant.ID, claim.DecisionToken, "operator", ref)
+	if err != nil || approved.Status != StatusActive || approved.Notification == nil || *approved.Notification != ref {
+		t.Fatalf("ApproveWithNotification() = %+v err=%v", approved, err)
+	}
+	assertNotificationClaimCleared(t, approved)
+	assertSingleDueUpdate(t, store, StatusUpdateLifecycle, StatusActive, string(StatusActive))
+}
+
+func TestDecisionWithNotificationPreservesExistingReference(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "atomic-existing", 1)
+	storedRef := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	callbackRef := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 8, Text: "duplicate"}
+	if _, err := store.SetNotification(result.Grant.ID, storedRef); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.ApproveWithNotification(result.Grant.ID, result.DecisionToken, "operator", callbackRef)
+	if err != nil || approved.Notification == nil || *approved.Notification != storedRef {
+		t.Fatalf("ApproveWithNotification(existing) = %+v err=%v", approved, err)
+	}
+}
+
+func TestTerminalDecisionRecoversMissingNotification(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "terminal-callback-recovery", 1)
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	recovered, err := store.DenyWithNotification(result.Grant.ID, result.DecisionToken, "operator", ref)
+	if !errors.Is(err, ErrNotPending) || recovered.Status != StatusActive || recovered.Notification == nil || *recovered.Notification != ref {
+		t.Fatalf("DenyWithNotification(replay) = %+v err=%v", recovered, err)
+	}
+	assertSingleDueUpdate(t, store, StatusUpdateLifecycle, StatusActive, string(StatusActive))
+}
+
+func TestDecisionWithNotificationRejectsInvalidInputWithoutMutation(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "invalid-atomic-callback", 1)
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	if _, err := store.ApproveWithNotification(result.Grant.ID, "wrong", "operator", ref); !errors.Is(err, ErrInvalidDecisionToken) {
+		t.Fatalf("ApproveWithNotification(wrong token) error = %v", err)
+	}
+	if _, err := store.ApproveWithNotification(result.Grant.ID, result.DecisionToken, "operator", notify.MessageRef{}); err == nil {
+		t.Fatal("ApproveWithNotification(invalid ref) succeeded")
+	}
+	stored, err := store.Get(result.Grant.ID)
+	if err != nil || stored.Status != StatusPending || stored.Notification != nil {
+		t.Fatalf("grant mutated after rejected callback = %+v err=%v", stored, err)
+	}
+}
+
+func TestDecisionWithNotificationWriteFailureIsAtomic(t *testing.T) {
+	dir := t.TempDir()
+	store := New(filepath.Join(dir, "grants.json"), Options{})
+	result := requestTestGrant(t, store, "callback-write-failure", 1)
+	if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- test makes its temp directory intentionally read-only.
+		t.Fatal(err)
+	}
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	_, decisionErr := store.ApproveWithNotification(result.Grant.ID, result.DecisionToken, "operator", ref)
+	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- test restores access to its private temp directory.
+		t.Fatal(err)
+	}
+	if decisionErr == nil {
+		t.Skip("filesystem does not enforce directory write permissions")
+	}
+	stored, err := store.Get(result.Grant.ID)
+	if err != nil || stored.Status != StatusPending || stored.Notification != nil {
+		t.Fatalf("grant mutated after failed atomic write = %+v err=%v decisionErr=%v", stored, err, decisionErr)
+	}
+}
+
 func TestNotificationReferenceRecoveryPreservesExisting(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "callback-existing", 1)

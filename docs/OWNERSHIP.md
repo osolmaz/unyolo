@@ -86,6 +86,7 @@ The registry mechanism is shared. The registered vocabulary is broker-local.
 - leased notification-send claims and conditional cancellation
 - durable unresolved-delivery state for ambiguous sends and lease-bound retry
 - atomic notification-reference recovery from accepted callbacks
+- atomic approve/deny plus callback-reference transactions
 - restart-safe discovery of notification updates that remain due
 - generated temporary allow rules
 - durable store interface
@@ -136,6 +137,8 @@ brokerkit should own:
 - Telegram operator metadata extraction
 - callback-query answers
 - retry behavior
+- offset-preserving callback retry without acknowledgement after durable-store
+  failure
 - transport errors
 - shared tests for callback and token safety
 
@@ -145,7 +148,10 @@ The adapter is stateless. It never tracks pending or active expiry and never
 edits a message as a side effect of receiving a callback. The shared grant
 store owns durable delivery claims, notification references, expiry, and due
 status updates. Brokers own decision-token verification, domain-specific
-approval summaries and status wording, and the final approve/deny/revoke calls.
+approval summaries and status wording, and invoke brokerkit's atomic
+approve/deny-with-notification transitions. A broker can mark a callback result
+for retry; the adapter then leaves it unanswered and does not advance its
+update offset.
 
 This is the only supported lifecycle. There is no in-memory Telegram tracking
 mode and no compatibility option that enables one.

@@ -4,8 +4,10 @@ set -euo pipefail
 
 targets=(
 	doc.go
+	grants/decisions.go
 	grants/notifications.go
 	httpx/httpx.go
+	notify/telegram/decision_poll.go
 )
 backup_dir="$(mktemp -d)"
 for target in "${targets[@]}"; do
