@@ -84,6 +84,7 @@ The registry mechanism is shared. The registered vocabulary is broker-local.
   settlement, so a live newer use is never aged from an older use's start time
 - durable notification references and delivered-status keys
 - leased notification-send claims and conditional cancellation
+- durable unresolved-delivery state for ambiguous sends and lease-bound retry
 - restart-safe discovery of notification updates that remain due
 - generated temporary allow rules
 - durable store interface

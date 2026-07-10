@@ -62,8 +62,7 @@ func (s *Store) Cancel(id string) error {
 		}
 		grant.Status = StatusCanceled
 		grant.DecidedAt = s.opts.Now().UTC()
-		grant.NotificationClaimedAt = time.Time{}
-		grant.NotificationClaimUntil = time.Time{}
+		clearNotificationClaim(&grant)
 		data.Grants[index] = grant
 		return nil
 	})
@@ -87,14 +86,39 @@ func (s *Store) CancelIfNotificationClaimed(id string, claimedAt time.Time) (Gra
 		}
 		grant.Status = StatusCanceled
 		grant.DecidedAt = s.opts.Now().UTC()
-		grant.NotificationClaimedAt = time.Time{}
-		grant.NotificationClaimUntil = time.Time{}
+		clearNotificationClaim(&grant)
 		data.Grants[index] = grant
 		out = grant
 		canceled = true
 		return nil
 	})
 	return out, canceled, err
+}
+
+// RetainNotificationClaim marks the current send attempt as ambiguous without
+// canceling the grant or making the claim immediately reusable.
+func (s *Store) RetainNotificationClaim(id string, claimedAt time.Time) (Grant, bool, error) {
+	if claimedAt.IsZero() {
+		return Grant{}, false, nil
+	}
+	var out Grant
+	retained := false
+	err := s.update(func(data *fileData) error {
+		index, grant, err := findGrant(data.Grants, id)
+		if err != nil {
+			return err
+		}
+		out = grant
+		if grant.Status != StatusPending || grant.Notification != nil || !grant.NotificationClaimedAt.Equal(claimedAt) {
+			return nil
+		}
+		grant.NotificationDeliveryUnresolved = true
+		data.Grants[index] = grant
+		out = grant
+		retained = true
+		return nil
+	})
+	return out, retained, err
 }
 
 // ClaimNotification reserves notification delivery and rotates its decision
@@ -121,6 +145,7 @@ func (s *Store) ClaimNotification(id string, lease time.Duration) (NotificationC
 		}
 		grant.NotificationClaimedAt = now
 		grant.NotificationClaimUntil = now.Add(lease)
+		grant.NotificationDeliveryUnresolved = false
 		data.Grants[index] = grant
 		out = NotificationClaim{Grant: grant, DecisionToken: decisionToken}
 		claimed = true
@@ -174,14 +199,19 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 		}
 		grant.Notification = &ref
 		grant.NotificationStatus = string(StatusPending)
-		grant.NotificationClaimedAt = time.Time{}
-		grant.NotificationClaimUntil = time.Time{}
+		clearNotificationClaim(&grant)
 		data.Grants[index] = grant
 		out = grant
 		recorded = true
 		return nil
 	})
 	return out, recorded, err
+}
+
+func clearNotificationClaim(grant *Grant) {
+	grant.NotificationClaimedAt = time.Time{}
+	grant.NotificationClaimUntil = time.Time{}
+	grant.NotificationDeliveryUnresolved = false
 }
 
 // MarkNotificationStatus records successful delivery of one status update.
