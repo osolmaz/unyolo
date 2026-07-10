@@ -29,6 +29,8 @@ const (
 	defaultActiveExpired      = "Expired. Access window ended."
 )
 
+var errMessageNotModified = errors.New("telegram message is not modified")
+
 // Options configures Telegram approval behavior.
 type Options struct {
 	PollTimeoutSeconds  int
@@ -169,6 +171,9 @@ func (c *Client) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (
 // UpdateStatus edits an existing approval message status.
 func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status string) error {
 	err := c.editMessageStatus(ctx, trackedMessage{chatID: ref.ChatID, messageID: ref.MessageID, text: ref.Text}, status)
+	if errors.Is(err, errMessageNotModified) {
+		err = nil
+	}
 	if err == nil && c.terminalStatus(status) {
 		c.forgetMessage(ref.ChatID, ref.MessageID)
 	}
@@ -464,8 +469,7 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 
 func decodeTelegramResponse(resp *http.Response, out any) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return fmt.Errorf("telegram request returned status %d", resp.StatusCode)
+		return decodeTelegramError(resp)
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, resp.Body)
@@ -478,6 +482,17 @@ func decodeTelegramResponse(resp *http.Response, out any) error {
 		return err
 	}
 	return nil
+}
+
+func decodeTelegramError(resp *http.Response) error {
+	var apiError telegramErrorResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&apiError); err != nil || apiError.Description == "" {
+		return fmt.Errorf("telegram request returned status %d", resp.StatusCode)
+	}
+	if strings.Contains(strings.ToLower(apiError.Description), "message is not modified") {
+		return errMessageNotModified
+	}
+	return fmt.Errorf("telegram request returned status %d", resp.StatusCode)
 }
 
 func (c *Client) redactedError(err error) error {
@@ -542,6 +557,12 @@ func wait(ctx context.Context, d time.Duration) {
 
 type okResponse struct {
 	OK bool `json:"ok"`
+}
+
+type telegramErrorResponse struct {
+	OK          bool   `json:"ok"`
+	ErrorCode   int    `json:"error_code"`
+	Description string `json:"description"`
 }
 
 type updatesResponse struct {
