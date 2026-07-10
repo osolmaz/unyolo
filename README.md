@@ -62,6 +62,13 @@ Implemented package candidates are:
 - `httpx`: proxy-safe header filtering and bounded body helpers
 - `clientconfig`: shared client env rendering for
   `~/.config/<broker>/client.env`
+- `setup`: shared client command parsing, secret input/generation, and common
+  systemd setup options
+- `service`: hardened provider-neutral systemd unit rendering
+- `doctor`: portable identity, root-equivalent group, service separation, and
+  fail-closed secret-path, ACL, and mode checks with secret-safe reports
+- `installer`: the canonical parameterized POSIX binary installer used by
+  thin broker repository wrappers
 - `notify`: approval notification interfaces, callback answers, and a stateless
   Telegram adapter with send, explicit status edit, and long-poll callbacks
 - `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
@@ -77,7 +84,9 @@ The packages above have initial Go implementations.
 This repository now contains the shared Go packages plus the design documents
 that define the cutover boundary. Telegram delivery is deliberately stateless:
 brokers persist notification references and use `brokerkit/grants` to drive
-every status transition and retry after a restart.
+every status transition and retry after a restart. The shared operational
+runtime is described in
+[docs/OPERATIONS_RUNTIME.md](docs/OPERATIONS_RUNTIME.md).
 
 The live cross-repository implementation order and remaining work are tracked
 in [docs/CUTOVER_STATUS.md](docs/CUTOVER_STATUS.md).

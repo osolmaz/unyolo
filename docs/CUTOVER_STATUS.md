@@ -46,39 +46,35 @@ references, or delivery progress in memory.
   transaction, with unacknowledged offset-preserving retry on failure.
 - Done: removed the optional in-memory Telegram lifecycle and made the
   stateless transport contract the only API.
+- Done: canonical binary installer runtime with checksum and platform tests.
+- Done: shared client setup, secret input, systemd option/rendering, and local
+  doctor primitives.
 - Gate: race tests, coverage, vet, lint, Slophammer checks, mutation checks,
   review, and CI must pass before consumers pin the final API.
 
 ### 2. hf-broker
 
-- Pin the final Brokerkit revision.
-- Delete the broker-local Telegram transport and expiry tracker.
-- Use Brokerkit notify and Telegram APIs directly.
-- Drive send claims, callbacks, expiry, and status edits from durable grant
-  state, including restart and retry tests.
-- Remove every shared compatibility runtime that Brokerkit now replaces.
-- Finish review, CI, merge, and a live Hugging Face plus Telegram test before
-  moving to the remaining brokers.
+- Done: final durable Brokerkit Telegram lifecycle pinned and merged.
+- Next: adopt the shared operations runtime and remove the duplicated installer,
+  setup parser, unit renderer, and generic doctor helpers.
+- Next: run live Hugging Face plus Telegram verification from the agent account.
 
 ### 3. gh-broker
 
-- Keep the already implemented durable notification lifecycle.
-- Pin the final stateless Telegram API and remove obsolete Telegram options.
-- Re-audit for remaining shared auth, grant, notification, audit, config, or
-  Git helper duplication and delete it where Brokerkit owns the behavior.
-- Verify GitHub read, request, approval, execution, denial, and default-branch
-  policy behavior end to end.
+- Done: final durable Brokerkit Telegram lifecycle pinned and merged.
+- Next: adopt the shared operations runtime and add GitHub-specific doctor
+  checks on top of Brokerkit.
+- Next: verify GitHub read, request, approval, execution, denial, and
+  default-branch policy behavior end to end.
 
 ### 4. sudo-broker
 
-- Continue pull request #7 for the durable notification lifecycle.
-- Finish fail-closed quarantine and recovery after settlement-write failures.
-- Retain unresolved send claims when Telegram delivery is ambiguous.
-- Report remaining uses after subtracting live reservations.
-- Pin the final Brokerkit API, remove legacy Telegram lifecycle code, and pass
-  review, CI, and restart/retry tests.
-- Verify allowed, denied, requested, approved, expired, and use-budgeted Unix
-  execution without giving the client root-equivalent membership.
+- Done: durable lifecycle, fail-closed execution settlement, review, and CI
+  merged in pull request #7.
+- Next: adopt the shared operations runtime and implement the Unix-specific
+  doctor checks.
+- Next: verify allowed, denied, requested, approved, expired, and use-budgeted
+  Unix execution without giving the client root-equivalent membership.
 
 ## Final Integration Work
 

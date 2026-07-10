@@ -2,8 +2,11 @@
 package clientconfig
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,9 +16,10 @@ import (
 	"github.com/osolmaz/brokerkit/store"
 )
 
-const clientEnvFileMode os.FileMode = 0o600
-
-var chownPath = os.Chown
+const (
+	clientEnvFileMode     os.FileMode = 0o600
+	maxClientSecretsBytes             = 1024 * 1024
+)
 
 // Config describes one broker client environment file.
 type Config struct {
@@ -28,18 +32,18 @@ type Config struct {
 
 // SecretFromFile reads path and returns the configured secret for client.
 func SecretFromFile(path string, client string) (string, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is operator supplied setup input.
+	data, err := readSecretsFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read client secret file: %w", err)
+		return "", err
 	}
 	return SecretFromData(data, client)
 }
 
 // SecretsFromFile reads path and returns all configured client secrets.
 func SecretsFromFile(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- path is operator supplied setup input.
+	data, err := readSecretsFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read client secret file: %w", err)
+		return nil, err
 	}
 	return SecretsFromData(data)
 }
@@ -47,19 +51,36 @@ func SecretsFromFile(path string) (map[string]string, error) {
 // SecretFromData parses `name = secret` data and returns client's secret.
 func SecretFromData(data []byte, client string) (string, error) {
 	name := strings.TrimSpace(client)
-	if name == "" {
-		return "", errors.New("client name is required")
+	if err := ValidateClientName(name); err != nil {
+		return "", err
 	}
-	for lineNumber, line := range strings.Split(string(data), "\n") {
-		foundName, secret, ok, err := parseSecretLine(line)
-		if err != nil {
-			return "", fmt.Errorf("client secret file line %d: %w", lineNumber+1, err)
-		}
-		if ok && foundName == name {
-			return secret, nil
-		}
+	secrets, err := SecretsFromData(data)
+	if err != nil {
+		return "", err
+	}
+	if secret, exists := secrets[name]; exists {
+		return secret, nil
 	}
 	return "", fmt.Errorf("client %q was not found in secret file", name)
+}
+
+func readSecretsFile(path string) ([]byte, error) {
+	file, err := os.Open(path) // #nosec G304 -- path is operator supplied setup input.
+	if err != nil {
+		return nil, fmt.Errorf("read client secret file: %w", err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxClientSecretsBytes+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read client secret file: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close client secret file: %w", closeErr)
+	}
+	if len(data) > maxClientSecretsBytes {
+		return nil, fmt.Errorf("client secret file exceeds %d bytes", maxClientSecretsBytes)
+	}
+	return data, nil
 }
 
 // SecretsFromData parses `name = secret` data and returns all configured client secrets.
@@ -91,6 +112,9 @@ func Path(homeDir string, brokerName string) (string, error) {
 	}
 	if strings.TrimSpace(homeDir) == "" {
 		return "", errors.New("home directory is required")
+	}
+	if !filepath.IsAbs(homeDir) {
+		return "", errors.New("home directory must be absolute")
 	}
 	return filepath.Join(homeDir, ".config", brokerName, "client.env"), nil
 }
@@ -125,18 +149,77 @@ func Write(cfg Config) (string, error) {
 // WriteForHomeOwner writes cfg and, when running as root, makes the generated
 // client config paths owned by the owner of cfg.HomeDir.
 func WriteForHomeOwner(cfg Config) (string, error) {
-	path, err := Write(cfg)
+	path, err := Path(cfg.HomeDir, cfg.BrokerName)
 	if err != nil {
 		return "", err
 	}
-	if os.Geteuid() != 0 {
-		return path, nil
-	}
-	uid, gid, err := homeOwner(cfg.HomeDir)
+	body, err := Render(cfg)
 	if err != nil {
 		return "", err
 	}
-	return path, chownClientPaths(cfg.HomeDir, cfg.BrokerName, path, uid, gid)
+	if err := writeClientConfigSafely(cfg.HomeDir, cfg.BrokerName, body); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func writeClientConfigSafely(homeDir string, brokerName string, body []byte) error {
+	root, err := openVerifiedHomeRoot(homeDir)
+	if err != nil {
+		return err
+	}
+	writeErr := writeClientConfigInRoot(root, brokerName, body)
+	closeErr := root.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close home directory: %w", closeErr)
+	}
+	return nil
+}
+
+func openVerifiedHomeRoot(homeDir string) (*os.Root, error) {
+	expected, err := inspectRealHomePath(homeDir)
+	if err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(homeDir)
+	if err != nil {
+		return nil, fmt.Errorf("open home directory: %w", err)
+	}
+	if err := verifyOpenedHomeRoot(root, expected); err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	return root, nil
+}
+
+func verifyOpenedHomeRoot(root *os.Root, expected os.FileInfo) error {
+	actual, err := root.Stat(".")
+	if err != nil {
+		return fmt.Errorf("verify opened home directory: %w", err)
+	}
+	if !os.SameFile(expected, actual) {
+		return errors.New("home directory changed while it was being opened")
+	}
+	return nil
+}
+
+func writeClientConfigInRoot(root *os.Root, brokerName string, body []byte) error {
+	uid, gid, err := rootOwner(root)
+	if err != nil {
+		return err
+	}
+	configDir := ".config"
+	brokerDir := filepath.Join(configDir, brokerName)
+	if err := ensureClientDirectory(root, configDir, uid, gid); err != nil {
+		return err
+	}
+	if err := ensureClientDirectory(root, brokerDir, uid, gid); err != nil {
+		return err
+	}
+	return writeClientFile(root, filepath.Join(brokerDir, "client.env"), body, uid, gid)
 }
 
 func (cfg Config) validate() error {
@@ -146,7 +229,7 @@ func (cfg Config) validate() error {
 	if err := validateEnvPrefix(cfg.EnvPrefix); err != nil {
 		return err
 	}
-	if err := validateURL(cfg.URL); err != nil {
+	if err := ValidateURL(cfg.URL); err != nil {
 		return err
 	}
 	if strings.TrimSpace(cfg.Secret) == "" {
@@ -192,7 +275,8 @@ func normalizeEnvPrefix(value string) string {
 	return strings.Trim(strings.TrimSpace(value), "_")
 }
 
-func validateURL(value string) error {
+// ValidateURL validates a broker client URL and rejects embedded credentials.
+func ValidateURL(value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return errors.New("broker URL is required")
@@ -201,11 +285,33 @@ func validateURL(value string) error {
 	if err != nil {
 		return fmt.Errorf("broker URL is invalid: %w", err)
 	}
+	return validateParsedURL(parsed)
+}
+
+func validateParsedURL(parsed *url.URL) error {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return errors.New("broker URL must use http or https")
 	}
 	if parsed.Host == "" {
 		return errors.New("broker URL host is required")
+	}
+	if parsed.User != nil {
+		return errors.New("broker URL must not contain user information")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("broker URL must not contain a query or fragment")
+	}
+	return nil
+}
+
+// ValidateClientName validates an identifier used as a client secret-file key.
+func ValidateClientName(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return errors.New("client name is required")
+	}
+	if strings.ContainsAny(value, "\r\n=") || strings.HasPrefix(trimmed, "#") {
+		return errors.New("client name is not safe for a client secret file")
 	}
 	return nil
 }
@@ -214,8 +320,8 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
-func homeOwner(homeDir string) (int, int, error) {
-	info, err := os.Stat(homeDir)
+func rootOwner(root *os.Root) (int, int, error) {
+	info, err := root.Stat(".")
 	if err != nil {
 		return 0, 0, fmt.Errorf("stat home directory: %w", err)
 	}
@@ -226,15 +332,143 @@ func homeOwner(homeDir string) (int, int, error) {
 	return int(stat.Uid), int(stat.Gid), nil
 }
 
-func chownClientPaths(homeDir string, brokerName string, envPath string, uid int, gid int) error {
-	for _, path := range []string{
-		filepath.Join(homeDir, ".config"),
-		filepath.Join(homeDir, ".config", brokerName),
-		envPath,
-	} {
-		if err := chownPath(path, uid, gid); err != nil {
-			return fmt.Errorf("chown %s: %w", path, err)
+func inspectRealHomePath(path string) (os.FileInfo, error) {
+	current := string(filepath.Separator)
+	var final os.FileInfo
+	for _, component := range strings.Split(strings.TrimPrefix(filepath.Clean(path), current), current) {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return nil, fmt.Errorf("inspect home directory path: %w", err)
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.New("home directory path must not contain symbolic links")
+		}
+		final = info
+	}
+	return final, nil
+}
+
+func ensureClientDirectory(root *os.Root, name string, uid int, gid int) error {
+	if err := ensureRealClientDirectory(root, name); err != nil {
+		return err
+	}
+	return chownClientDirectory(root, name, uid, gid)
+}
+
+func ensureRealClientDirectory(root *os.Root, name string) error {
+	info, err := root.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := root.Mkdir(name, 0o700); err != nil {
+			return fmt.Errorf("create client config directory: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect client config directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return errors.New("client config path must contain only real directories")
+	}
+	return nil
+}
+
+func chownClientDirectory(root *os.Root, name string, uid int, gid int) error {
+	handle, err := root.Open(name)
+	if err != nil {
+		return fmt.Errorf("open client config directory: %w", err)
+	}
+	uid, gid = requestedOwner(uid, gid)
+	chownErr := handle.Chown(uid, gid)
+	closeErr := handle.Close()
+	if chownErr != nil {
+		return fmt.Errorf("chown client config directory: %w", chownErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close client config directory: %w", closeErr)
+	}
+	return nil
+}
+
+func writeClientFile(root *os.Root, name string, data []byte, uid int, gid int) error {
+	temporary, err := temporaryClientName(name)
+	if err != nil {
+		return err
+	}
+	if err := writeClientTemporary(root, temporary, data, uid, gid); err != nil {
+		_ = root.Remove(temporary)
+		return err
+	}
+	if err := root.Rename(temporary, name); err != nil {
+		_ = root.Remove(temporary)
+		return fmt.Errorf("replace client config file: %w", err)
+	}
+	return syncClientDirectory(root, filepath.Dir(name))
+}
+
+func writeClientTemporary(root *os.Root, name string, data []byte, uid int, gid int) error {
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, clientEnvFileMode)
+	if err != nil {
+		return fmt.Errorf("create client config file: %w", err)
+	}
+	return populateClientTemporary(file, data, uid, gid)
+}
+
+func populateClientTemporary(file *os.File, data []byte, uid int, gid int) error {
+	uid, gid = requestedOwner(uid, gid)
+	if err := runClientFileSteps(file, data, uid, gid); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close client config file: %w", err)
+	}
+	return nil
+}
+
+func requestedOwner(uid int, gid int) (int, int) {
+	if os.Geteuid() != 0 {
+		return -1, -1
+	}
+	return uid, gid
+}
+
+func runClientFileSteps(file *os.File, data []byte, uid int, gid int) error {
+	steps := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "write", run: func() error { _, err := file.Write(data); return err }},
+		{name: "chown", run: func() error { return file.Chown(uid, gid) }},
+		{name: "sync", run: file.Sync},
+	}
+	for _, step := range steps {
+		if err := step.run(); err != nil {
+			return fmt.Errorf("%s client config file: %w", step.name, err)
+		}
+	}
+	return nil
+}
+
+func temporaryClientName(name string) (string, error) {
+	var suffix [16]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return "", fmt.Errorf("generate client config temporary name: %w", err)
+	}
+	return name + "." + hex.EncodeToString(suffix[:]) + ".tmp", nil
+}
+
+func syncClientDirectory(root *os.Root, name string) error {
+	handle, err := root.Open(name)
+	if err != nil {
+		return fmt.Errorf("open client config directory for sync: %w", err)
+	}
+	if err := handle.Sync(); err != nil {
+		_ = handle.Close()
+		return fmt.Errorf("sync client config directory: %w", err)
+	}
+	if err := handle.Close(); err != nil {
+		return fmt.Errorf("close client config directory: %w", err)
 	}
 	return nil
 }
@@ -252,6 +486,9 @@ func parseSecretLine(line string) (string, string, bool, error) {
 	secret = strings.TrimSpace(secret)
 	if name == "" {
 		return "", "", false, errors.New("client name is empty")
+	}
+	if err := ValidateClientName(name); err != nil {
+		return "", "", false, err
 	}
 	if secret == "" {
 		return "", "", false, fmt.Errorf("client %q secret is empty", name)

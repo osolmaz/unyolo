@@ -1,7 +1,6 @@
 package clientconfig
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,56 +76,71 @@ func TestWriteForHomeOwnerWritesClientEnv(t *testing.T) {
 	}
 }
 
-func TestHomeOwner(t *testing.T) {
-	uid, gid, err := homeOwner(t.TempDir())
-	if err != nil {
-		t.Fatalf("homeOwner() error = %v", err)
-	}
-	if uid < 0 || gid < 0 {
-		t.Fatalf("homeOwner() = %d:%d, want non-negative ids", uid, gid)
-	}
-}
-
-func TestChownClientPaths(t *testing.T) {
-	home := t.TempDir()
-	envPath := filepath.Join(home, ".config", "gh-broker", "client.env")
-	if err := os.MkdirAll(filepath.Dir(envPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(envPath, []byte("env"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var paths []string
-	oldChown := chownPath
-	chownPath = func(path string, uid int, gid int) error {
-		if uid != 123 || gid != 456 {
-			t.Fatalf("chown ids = %d:%d, want 123:456", uid, gid)
+func TestWriteForHomeOwnerRejectsSymlinkedConfigPaths(t *testing.T) {
+	for _, brokerLink := range []bool{false, true} {
+		home := t.TempDir()
+		outside := t.TempDir()
+		if brokerLink {
+			if err := os.Mkdir(filepath.Join(home, ".config"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, filepath.Join(home, ".config", "gh-broker")); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.Symlink(outside, filepath.Join(home, ".config")); err != nil {
+			t.Fatal(err)
 		}
-		paths = append(paths, path)
-		return nil
-	}
-	t.Cleanup(func() { chownPath = oldChown })
-	if err := chownClientPaths(home, "gh-broker", envPath, 123, 456); err != nil {
-		t.Fatalf("chownClientPaths() error = %v", err)
-	}
-	if strings.Join(paths, "\n") != strings.Join([]string{
-		filepath.Join(home, ".config"),
-		filepath.Join(home, ".config", "gh-broker"),
-		envPath,
-	}, "\n") {
-		t.Fatalf("chown paths = %q", paths)
+		_, err := WriteForHomeOwner(Config{
+			BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1:8081",
+			Secret: "client-secret", HomeDir: home,
+		})
+		if err == nil {
+			t.Fatal("WriteForHomeOwner(symlink) error = nil")
+		}
+		if _, statErr := os.Stat(filepath.Join(outside, "client.env")); !os.IsNotExist(statErr) {
+			t.Fatalf("outside client config stat error = %v", statErr)
+		}
 	}
 }
 
-func TestChownClientPathsError(t *testing.T) {
-	oldChown := chownPath
-	chownPath = func(string, int, int) error {
-		return errors.New("nope")
+func TestWriteForHomeOwnerRejectsSymlinkedHome(t *testing.T) {
+	parent := t.TempDir()
+	realHome := t.TempDir()
+	linkedHome := filepath.Join(parent, "home")
+	if err := os.Symlink(realHome, linkedHome); err != nil {
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { chownPath = oldChown })
-	err := chownClientPaths(t.TempDir(), "gh-broker", "/tmp/client.env", 123, 456)
-	if err == nil || !strings.Contains(err.Error(), "chown") {
-		t.Fatalf("chownClientPaths() error = %v, want chown error", err)
+	_, err := WriteForHomeOwner(Config{
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1:8081",
+		Secret: "client-secret", HomeDir: linkedHome,
+	})
+	if err == nil {
+		t.Fatal("WriteForHomeOwner(symlinked home) error = nil")
+	}
+}
+
+func TestWriteForHomeOwnerReplacesClientFileSymlinkInsideHome(t *testing.T) {
+	home := t.TempDir()
+	outside := filepath.Join(home, "outside")
+	if err := os.WriteFile(outside, []byte("unchanged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, ".config", "gh-broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "client.env")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteForHomeOwner(Config{
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1:8081",
+		Secret: "client-secret", HomeDir: home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(outside) // #nosec G304 -- test reads its private fixture path.
+	if err != nil || string(data) != "unchanged" {
+		t.Fatalf("outside file = %q, err=%v", data, err)
 	}
 }
 
@@ -182,6 +196,7 @@ func TestSecretFromDataValidation(t *testing.T) {
 		"missing client name": {data: "bob = secret\n"},
 		"bad line":            {data: "bob secret\n", client: "bob"},
 		"empty secret":        {data: "bob = \n", client: "bob"},
+		"duplicate client":    {data: "bob = first\nbob = second\n", client: "bob"},
 		"not found":           {data: "alice = secret\n", client: "bob"},
 	}
 	for name, tc := range cases {
@@ -193,12 +208,25 @@ func TestSecretFromDataValidation(t *testing.T) {
 	}
 }
 
+func TestSecretsFromFileRejectsOversizedInput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secrets")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", maxClientSecretsBytes+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SecretsFromFile(path); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("SecretsFromFile(oversized) error = %v", err)
+	}
+}
+
 func TestValidation(t *testing.T) {
 	cases := map[string]Config{
-		"bad broker": {BrokerName: "../bad", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1", Secret: "s"},
-		"bad prefix": {BrokerName: "gh-broker", EnvPrefix: "gh-broker", URL: "http://127.0.0.1", Secret: "s"},
-		"bad url":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "ftp://127.0.0.1", Secret: "s"},
-		"no secret":  {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1"},
+		"bad broker":   {BrokerName: "../bad", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1", Secret: "s"},
+		"bad prefix":   {BrokerName: "gh-broker", EnvPrefix: "gh-broker", URL: "http://127.0.0.1", Secret: "s"},
+		"bad url":      {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "ftp://127.0.0.1", Secret: "s"},
+		"url userinfo": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://user:credential@broker.example", Secret: "s"},  // #nosec G101 -- credential-bearing URL is the rejection fixture.
+		"url query":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://broker.example?token=credential", Secret: "s"}, // #nosec G101 -- credential-bearing URL is the rejection fixture.
+		"url fragment": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://broker.example#credential", Secret: "s"},       // #nosec G101 -- credential-bearing URL is the rejection fixture.
+		"no secret":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1"},
 	}
 	for name, cfg := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -206,6 +234,19 @@ func TestValidation(t *testing.T) {
 				t.Fatal("Render() error = nil, want validation error")
 			}
 		})
+	}
+}
+
+func TestValidateClientName(t *testing.T) {
+	for _, value := range []string{"bob", "ci@host", "123"} {
+		if err := ValidateClientName(value); err != nil {
+			t.Fatalf("ValidateClientName(%q): %v", value, err)
+		}
+	}
+	for _, value := range []string{"", "#comment", "a=b", "a\nb"} {
+		if err := ValidateClientName(value); err == nil {
+			t.Fatalf("ValidateClientName(%q) error = nil", value)
+		}
 	}
 }
 

@@ -1,0 +1,470 @@
+// Package service renders provider-neutral broker service definitions.
+package service
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"unicode"
+
+	"github.com/osolmaz/brokerkit/internal/validatex"
+)
+
+// SystemdUnit describes one broker-family systemd service.
+type SystemdUnit struct {
+	Description         string
+	User                string
+	Group               string
+	EnvironmentFile     string
+	ExecStart           string
+	StateDir            string
+	ConfigDir           string
+	RestartSec          int
+	HomeAccess          HomeAccess
+	PrivilegeEscalation PrivilegeEscalation
+	PathValidation      PathValidation
+	ExtraDirectives     []string
+}
+
+// HomeAccess controls service visibility into user home directories.
+type HomeAccess string
+
+const (
+	// HomeAccessDeny hides home directories and is the default.
+	HomeAccessDeny HomeAccess = "deny"
+	// HomeAccessReadOnly permits reads but not writes except explicit writable paths.
+	HomeAccessReadOnly HomeAccess = "read-only"
+	// HomeAccessAllow permits broker-specific user-home operations.
+	HomeAccessAllow HomeAccess = "allow"
+)
+
+// PathValidation controls filesystem trust checks while rendering a unit.
+type PathValidation string
+
+const (
+	// PathValidationStrict is the default for units that may be installed.
+	PathValidationStrict PathValidation = "strict"
+	// PathValidationPreview skips host trust checks for dry-runs and non-root fixtures.
+	PathValidationPreview PathValidation = "preview"
+)
+
+// PrivilegeEscalation controls whether the service may perform a deliberate
+// setuid transition. The zero value denies privilege escalation.
+type PrivilegeEscalation string
+
+const (
+	PrivilegeEscalationDeny  PrivilegeEscalation = "deny"
+	PrivilegeEscalationAllow PrivilegeEscalation = "allow"
+)
+
+var allowedExtraSystemdDirectives = map[string]string{
+	"LockPersonality":         "true",
+	"MemoryDenyWriteExecute":  "true",
+	"PrivateDevices":          "true",
+	"ProtectClock":            "true",
+	"ProtectControlGroups":    "true",
+	"ProtectHostname":         "true",
+	"ProtectKernelLogs":       "true",
+	"ProtectKernelModules":    "true",
+	"ProtectKernelTunables":   "true",
+	"RemoveIPC":               "true",
+	"RestrictNamespaces":      "true",
+	"RestrictRealtime":        "true",
+	"RestrictSUIDSGID":        "true",
+	"SystemCallArchitectures": "native",
+	"UMask":                   "0077",
+}
+
+var lookupSystemUser = user.Lookup
+
+// RenderSystemd renders a hardened systemd unit using the shared broker-family
+// baseline. Broker-specific directives may be appended to the Service section.
+func RenderSystemd(unit SystemdUnit) (string, error) {
+	if err := unit.validate(); err != nil {
+		return "", err
+	}
+	restartSec := unit.RestartSec
+	if restartSec <= 0 {
+		restartSec = 5
+	}
+	protectHome := protectHomeValue(unit.HomeAccess)
+	readWritePaths := unit.StateDir
+	if normalizedHomeAccess(unit.HomeAccess) == HomeAccessAllow {
+		readWritePaths += " -/home -/root -/run/user"
+	}
+	noNewPrivileges := "true"
+	if normalizedPrivilegeEscalation(unit.PrivilegeEscalation) == PrivilegeEscalationAllow {
+		noNewPrivileges = "false"
+	}
+	var body strings.Builder
+	_, _ = fmt.Fprintf(&body, `[Unit]
+Description=%s
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%s
+Group=%s
+EnvironmentFile=%s
+ExecStart=%s
+Restart=on-failure
+RestartSec=%d
+NoNewPrivileges=%s
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=%s
+ReadWritePaths=%s
+ReadOnlyPaths=%s
+`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectHome, readWritePaths, unit.ConfigDir)
+	for _, directive := range unit.ExtraDirectives {
+		body.WriteString(directive)
+		body.WriteByte('\n')
+	}
+	body.WriteString("\n[Install]\nWantedBy=multi-user.target\n")
+	return body.String(), nil
+}
+
+func (unit SystemdUnit) validate() error {
+	values := map[string]string{
+		"description":      unit.Description,
+		"user":             unit.User,
+		"group":            unit.Group,
+		"environment file": unit.EnvironmentFile,
+		"exec start":       unit.ExecStart,
+		"state directory":  unit.StateDir,
+		"config directory": unit.ConfigDir,
+	}
+	if err := validateRequiredLines(values); err != nil {
+		return err
+	}
+	if err := validateDescription(unit.Description); err != nil {
+		return err
+	}
+	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
+		return err
+	}
+	if err := validateHomeAccess(unit.HomeAccess); err != nil {
+		return err
+	}
+	if err := validatePrivilegeEscalation(unit.PrivilegeEscalation); err != nil {
+		return err
+	}
+	if err := validatePathValidation(unit.PathValidation); err != nil {
+		return err
+	}
+	if err := validateSystemdUnitPaths(unit); err != nil {
+		return err
+	}
+	return validateExtraDirectives(unit.ExtraDirectives)
+}
+
+func validateDescription(value string) error {
+	if strings.HasSuffix(value, "\\") || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return errors.New("description contains unsupported systemd syntax")
+	}
+	return nil
+}
+
+func validateSystemdUnitPaths(unit SystemdUnit) error {
+	if err := validatex.AbsolutePaths(map[string]string{
+		"environment file": unit.EnvironmentFile,
+		"state directory":  unit.StateDir,
+		"config directory": unit.ConfigDir,
+	}, false); err != nil {
+		return err
+	}
+	if err := validateExecStart(unit.ExecStart); err != nil {
+		return err
+	}
+	return validateProtectedServicePaths(unit)
+}
+
+func validateExecStart(value string) error {
+	if !strings.HasPrefix(value, "/") {
+		return errors.New("exec start must begin with an absolute binary path")
+	}
+	if strings.ContainsAny(value, "%\\\"'$;") || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return errors.New("exec start contains unsupported systemd syntax")
+	}
+	return nil
+}
+
+func validateProtectedServicePaths(unit SystemdUnit) error {
+	paths := map[string]string{
+		"environment file": unit.EnvironmentFile,
+		"state directory":  unit.StateDir,
+		"config directory": unit.ConfigDir,
+		"executable":       strings.SplitN(unit.ExecStart, " ", 2)[0],
+	}
+	for name, value := range paths {
+		if err := validateProtectedServicePath(name, value); err != nil {
+			return err
+		}
+	}
+	if filepath.Clean(unit.StateDir) == string(filepath.Separator) {
+		return errors.New("state directory must not make the filesystem root writable")
+	}
+	if normalizedPathValidation(unit.PathValidation) == PathValidationStrict {
+		if err := validateTrustedServicePaths(unit); err != nil {
+			return err
+		}
+	}
+	return validateServicePathIsolation(unit)
+}
+
+func validatePathValidation(value PathValidation) error {
+	return validatePolicyValue("path validation", string(value), string(normalizedPathValidation(value)), string(PathValidationStrict), string(PathValidationPreview))
+}
+
+func normalizedPathValidation(value PathValidation) PathValidation {
+	if value == "" {
+		return PathValidationStrict
+	}
+	return value
+}
+
+func validateTrustedServicePaths(unit SystemdUnit) error {
+	paths := map[string]struct {
+		value      string
+		finalOwner string
+	}{
+		"environment file": {value: unit.EnvironmentFile},
+		"config directory": {value: unit.ConfigDir},
+		"executable":       {value: strings.SplitN(unit.ExecStart, " ", 2)[0]},
+		"state directory":  {value: unit.StateDir, finalOwner: unit.User},
+	}
+	for name, path := range paths {
+		if err := validateTrustedServicePath(name, path.value, path.finalOwner); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTrustedServicePath(name string, path string, finalOwner string) error {
+	if validatex.HasParentTraversal(path) {
+		return fmt.Errorf("%s must not contain parent traversal", name)
+	}
+	components := strings.Split(strings.TrimPrefix(filepath.Clean(path), string(filepath.Separator)), string(filepath.Separator))
+	current := string(filepath.Separator)
+	for index, component := range components {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("inspect %s path: %w", name, err)
+		}
+		final := index == len(components)-1
+		expectedOwner := ""
+		if final {
+			expectedOwner = finalOwner
+		}
+		if err := validateTrustedServiceComponent(name, current, info, expectedOwner); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTrustedServiceComponent(name string, path string, info os.FileInfo, expectedOwner string) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s path must not contain symbolic links: %s", name, path)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("%s path ownership is unavailable: %s", name, path)
+	}
+	if err := validateTrustedServiceOwner(name, path, uint64(stat.Uid), expectedOwner); err != nil {
+		return err
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%s path component must not be mutable by untrusted users: %s", name, path)
+	}
+	return nil
+}
+
+func validateTrustedServiceOwner(name string, path string, actualUID uint64, expectedOwner string) error {
+	if expectedOwner == "" {
+		if actualUID != 0 {
+			return fmt.Errorf("%s path component must be root-owned: %s", name, path)
+		}
+		return nil
+	}
+	expectedUID, err := systemUserUID(expectedOwner)
+	if err != nil {
+		return fmt.Errorf("resolve %s owner: %w", name, err)
+	}
+	if actualUID != expectedUID {
+		return fmt.Errorf("%s must be owned by service user %s: %s", name, expectedOwner, path)
+	}
+	return nil
+}
+
+func systemUserUID(name string) (uint64, error) {
+	account, err := lookupSystemUser(name)
+	if err != nil {
+		return 0, fmt.Errorf("lookup user %q: %w", name, err)
+	}
+	uid, err := strconv.ParseUint(account.Uid, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("parse uid for %q: %w", name, err)
+	}
+	return uid, nil
+}
+
+func validateProtectedServicePath(name string, value string) error {
+	if err := validateSystemdPath(name, value); err != nil {
+		return err
+	}
+	if protectedHomePath(value) {
+		return fmt.Errorf("%s must not be under a mutable user-home path", name)
+	}
+	return nil
+}
+
+func validateServicePathIsolation(unit SystemdUnit) error {
+	stateDir := filepath.Clean(unit.StateDir)
+	configDir := filepath.Clean(unit.ConfigDir)
+	if pathsOverlap(stateDir, configDir) {
+		return errors.New("state and config directories must not overlap")
+	}
+	for name, value := range map[string]string{
+		"environment file": unit.EnvironmentFile,
+		"executable":       strings.SplitN(unit.ExecStart, " ", 2)[0],
+	} {
+		if pathWithin(stateDir, filepath.Clean(value)) {
+			return fmt.Errorf("%s must not be inside the writable state directory", name)
+		}
+	}
+	return nil
+}
+
+func pathsOverlap(left string, right string) bool {
+	return pathWithin(left, right) || pathWithin(right, left)
+}
+
+func pathWithin(parent string, candidate string) bool {
+	if parent == string(filepath.Separator) {
+		return strings.HasPrefix(candidate, string(filepath.Separator))
+	}
+	return candidate == parent || strings.HasPrefix(candidate, parent+string(filepath.Separator))
+}
+
+func validateHomeAccess(value HomeAccess) error {
+	return validatePolicyValue("home access", string(value), string(normalizedHomeAccess(value)), string(HomeAccessDeny), string(HomeAccessReadOnly), string(HomeAccessAllow))
+}
+
+func validatePrivilegeEscalation(value PrivilegeEscalation) error {
+	return validatePolicyValue("privilege escalation", string(value), string(normalizedPrivilegeEscalation(value)), string(PrivilegeEscalationDeny), string(PrivilegeEscalationAllow))
+}
+
+func validatePolicyValue(name string, raw string, normalized string, allowed ...string) error {
+	for _, value := range allowed {
+		if normalized == value {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s %q is invalid", name, raw)
+}
+
+func normalizedPrivilegeEscalation(value PrivilegeEscalation) PrivilegeEscalation {
+	if value == "" {
+		return PrivilegeEscalationDeny
+	}
+	return value
+}
+
+func normalizedHomeAccess(value HomeAccess) HomeAccess {
+	if value == "" {
+		return HomeAccessDeny
+	}
+	return value
+}
+
+func protectHomeValue(value HomeAccess) string {
+	switch normalizedHomeAccess(value) {
+	case HomeAccessReadOnly:
+		return "read-only"
+	case HomeAccessAllow:
+		return "false"
+	case HomeAccessDeny:
+		return "true"
+	default:
+		return "true"
+	}
+}
+
+func protectedHomePath(value string) bool {
+	cleaned := filepath.Clean(value)
+	for _, root := range []string{"/home", "/root", "/run/user"} {
+		if cleaned == root || strings.HasPrefix(cleaned, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateExtraDirectives(directives []string) error {
+	for _, directive := range directives {
+		if err := validateExtraDirective(directive); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateExtraDirective(directive string) error {
+	if strings.TrimSpace(directive) == "" || strings.ContainsAny(directive, "\r\n") || !strings.Contains(directive, "=") {
+		return errors.New("extra systemd directives must be nonempty key=value lines")
+	}
+	key, value, _ := strings.Cut(directive, "=")
+	if key != strings.TrimSpace(key) || strings.ContainsAny(key, " \t.[]") {
+		return fmt.Errorf("extra systemd directive key %q is invalid", key)
+	}
+	if allowedValue, exists := allowedExtraSystemdDirectives[key]; !exists || value != allowedValue {
+		return fmt.Errorf("extra systemd directive %q is not an allowed additive hardening setting", directive)
+	}
+	return nil
+}
+
+func validateSystemdPath(name string, value string) error {
+	for _, char := range value {
+		if !isSystemdPathCharacter(char) {
+			return fmt.Errorf("%s contains unsupported systemd path character %q", name, char)
+		}
+	}
+	return nil
+}
+
+func isSystemdPathCharacter(char rune) bool {
+	switch {
+	case char >= 'a' && char <= 'z':
+		return true
+	case char >= 'A' && char <= 'Z':
+		return true
+	case char >= '0' && char <= '9':
+		return true
+	default:
+		return strings.ContainsRune("/._+-", char)
+	}
+}
+
+func validateRequiredLines(values map[string]string) error {
+	for name, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s is required", name)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("%s must be one line", name)
+		}
+	}
+	return nil
+}
