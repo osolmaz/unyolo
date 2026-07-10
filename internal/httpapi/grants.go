@@ -22,6 +22,12 @@ import (
 
 const maxGrantRequestBodyBytes int64 = 32 * 1024
 
+const (
+	grantNotificationClaimLease = 2 * time.Minute
+	grantNotificationWait       = 10 * time.Second
+	grantNotificationPoll       = 50 * time.Millisecond
+)
+
 type grantCreateRequest struct {
 	ClientRequestID string            `json:"client_request_id"`
 	Operation       policy.Operation  `json:"operation"`
@@ -66,12 +72,12 @@ func (s *Server) createGrant(c echo.Context) error {
 	if err != nil {
 		return grantStoreHTTPError(err)
 	}
-	ref, err := s.notifyPendingGrant(c, plan, result)
+	stored, ref, err := s.notifyPendingGrant(c, plan, result.Grant.ID)
 	if err != nil {
 		return err
 	}
 	s.audit(c, plan.request, "requires_grant", "operator approval requested", 0, plan.decision.MatchedRuleIDs)
-	return c.JSON(grantCreateStatus(created), map[string]any{"grant": apiGrantFromStore(result.Grant), "notification": apiNotification(ref)})
+	return c.JSON(grantCreateStatus(created), map[string]any{"grant": apiGrantFromStore(stored), "notification": apiNotification(ref)})
 }
 
 func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {
@@ -118,16 +124,81 @@ func (p grantCreatePlan) storeRequest() grants.Request {
 	}
 }
 
-func (s *Server) notifyPendingGrant(c echo.Context, plan grantCreatePlan, result grants.RequestResult) (notify.MessageRef, error) {
-	if result.DecisionToken == "" {
-		return notify.MessageRef{}, nil
+func (s *Server) notifyPendingGrant(c echo.Context, plan grantCreatePlan, id string) (grants.Grant, notify.MessageRef, error) {
+	existing, err := s.grants.Get(id)
+	if err != nil {
+		return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "could not inspect operator notification")
 	}
-	ref, err := s.notifier.SendApproval(c.Request().Context(), grantApprovalMessage(result.Grant, result.DecisionToken))
+	if existing.Notification != nil {
+		return existing, *existing.Notification, nil
+	}
+	if existing.Status != grants.StatusPending {
+		return existing, notify.MessageRef{}, nil
+	}
+	if !existing.NotificationClaimedAt.IsZero() {
+		return s.waitForGrantNotification(c.Request().Context(), id)
+	}
+	return s.claimAndSendGrantNotification(c, plan, id)
+}
+
+func (s *Server) claimAndSendGrantNotification(c echo.Context, plan grantCreatePlan, id string) (grants.Grant, notify.MessageRef, error) {
+	claim, claimed, err := s.grants.ClaimNotification(id, grantNotificationClaimLease)
+	if err != nil {
+		return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "could not claim operator notification")
+	}
+	if !claimed {
+		return s.waitForGrantNotification(c.Request().Context(), id)
+	}
+	ref, err := s.notifier.SendApproval(c.Request().Context(), grantApprovalMessage(claim.Grant, claim.DecisionToken))
 	if err != nil {
 		s.audit(c, plan.request, "error", "could not notify operator", 0, plan.decision.MatchedRuleIDs)
-		return notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "could not notify operator")
+		return s.cancelNotificationClaim(id, claim.Grant.NotificationClaimedAt, "could not notify operator")
 	}
-	return ref, nil
+	stored, recorded, err := s.grants.SetNotificationIfClaimed(id, claim.Grant.NotificationClaimedAt, ref)
+	if err != nil {
+		_ = s.notifier.UpdateStatus(c.Request().Context(), ref, "Canceled. Approval request could not be recorded.")
+		return s.cancelNotificationClaim(id, claim.Grant.NotificationClaimedAt, "could not record operator notification")
+	}
+	if recorded {
+		return stored, ref, nil
+	}
+	_ = s.notifier.UpdateStatus(c.Request().Context(), ref, "Superseded by another notification attempt.")
+	return s.waitForGrantNotification(c.Request().Context(), id)
+}
+
+func (s *Server) cancelNotificationClaim(id string, claimedAt time.Time, message string) (grants.Grant, notify.MessageRef, error) {
+	_, _, _ = s.grants.CancelIfNotificationClaimed(id, claimedAt)
+	return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, message)
+}
+
+func (s *Server) waitForGrantNotification(ctx context.Context, id string) (grants.Grant, notify.MessageRef, error) {
+	return s.waitForGrantNotificationFor(ctx, id, grantNotificationWait, grantNotificationPoll)
+}
+
+func (s *Server) waitForGrantNotificationFor(ctx context.Context, id string, wait time.Duration, poll time.Duration) (grants.Grant, notify.MessageRef, error) {
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+	for {
+		grant, err := s.grants.Get(id)
+		if err != nil {
+			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "could not confirm operator notification")
+		}
+		if grant.Notification != nil {
+			return grant, *grant.Notification, nil
+		}
+		if grant.Status != grants.StatusPending {
+			return grant, notify.MessageRef{}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "operator notification is still pending")
+		case <-deadline.C:
+			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "operator notification is still pending")
+		case <-ticker.C:
+		}
+	}
 }
 
 func grantCreateStatus(created bool) int {

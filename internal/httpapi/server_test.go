@@ -739,6 +739,31 @@ func TestGrantRequestApproveAndUsePullRequestGrant(t *testing.T) {
 	assertGrantBackedPullRequestConsumed(t, server, grant.ID, &upstreamCalls)
 }
 
+func TestGrantBackedPullRequestRetainsGrantOnProxyError(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	grant := createPullRequestGrant(t, server, notifier, "pr-proxy-error")
+	approveGrant(t, server, grant.ID, notifier.token)
+	server.githubClient = &http.Client{Transport: errorRoundTripper{}}
+
+	response := createPullRequest(t, server, "uncertain work")
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s, want upstream proxy error", response.Code, response.Body.String())
+	}
+	assertGrantUseState(t, server, grant.ID, grants.StatusRevoked, 0, 1)
+	stored, err := server.grants.Get(grant.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", grant.ID, err)
+	}
+	if !stored.ReservationRetained {
+		t.Fatalf("grant = %+v, want retained reservation", stored)
+	}
+}
+
 func TestDenyOverridesActiveGrant(t *testing.T) {
 	t.Parallel()
 	var upstreamCalls int
@@ -794,7 +819,7 @@ func TestGrantBackedReceivePackConsumesGrant(t *testing.T) {
 	assertGrantUseState(t, server, grantID, grants.StatusConsumed, 1, 0)
 }
 
-func TestGrantBackedReceivePackReleasesGrantOnProxyError(t *testing.T) {
+func TestGrantBackedReceivePackRetainsGrantOnProxyError(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestMainPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -812,7 +837,14 @@ func TestGrantBackedReceivePackReleasesGrantOnProxyError(t *testing.T) {
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, body = %s, want upstream proxy error", response.Code, response.Body.String())
 	}
-	assertGrantUseState(t, server, grantID, grants.StatusActive, 0, 0)
+	assertGrantUseState(t, server, grantID, grants.StatusRevoked, 0, 1)
+	grant, err := server.grants.Get(grantID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", grantID, err)
+	}
+	if !grant.ReservationRetained {
+		t.Fatalf("grant = %+v, want retained reservation", grant)
+	}
 }
 
 func TestGrantBackedReceivePackCommitFailureReturnsError(t *testing.T) {
@@ -837,7 +869,7 @@ func TestGrantBackedReceivePackCommitFailureReturnsError(t *testing.T) {
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, body = %s, want grant commit error", response.Code, response.Body.String())
 	}
-	assertGrantUseState(t, server, grantID, grants.StatusActive, 0, 0)
+	assertGrantUseState(t, server, grantID, grants.StatusRevoked, 0, 0)
 }
 
 func TestTelegramApprovalActivatesGrant(t *testing.T) {
@@ -849,9 +881,10 @@ func TestTelegramApprovalActivatesGrant(t *testing.T) {
 	telegramAPI := httptest.NewServer(fakeTelegramHandler(t, telegramState))
 	t.Cleanup(telegramAPI.Close)
 	telegram, err := bktelegram.NewWithOptions("bot-token", telegramState.chatID, telegramAPI.Client(), telegramAPI.URL, bktelegram.Options{
-		PollTimeoutSeconds: 1,
-		ApproveText:        "Approve",
-		DenyText:           "Deny",
+		PollTimeoutSeconds:    1,
+		ApproveText:           "Approve",
+		DenyText:              "Deny",
+		ExternalStatusUpdates: true,
 	})
 	if err != nil {
 		t.Fatalf("NewWithOptions() error = %v", err)
@@ -860,8 +893,384 @@ func TestTelegramApprovalActivatesGrant(t *testing.T) {
 	server.telegram = telegram
 
 	created := createTelegramPullRequestGrant(t, server, telegramState)
+	stored, err := server.grants.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", created.ID, err)
+	}
+	if stored.Notification == nil || stored.Notification.ChatID != telegramState.chatID || stored.Notification.MessageID != telegramState.messageID {
+		t.Fatalf("notification = %+v, want persisted Telegram message", stored.Notification)
+	}
 	pollTelegramApproval(t, telegram, server)
+	server.deliverGrantStatusUpdates(context.Background())
 	assertGrantActiveAfterTelegram(t, server, created.ID, telegramState)
+}
+
+func TestGrantNotificationIsIdempotent(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+
+	first := createGrant(t, server, "same-request", "open the work PR")
+	second := createGrant(t, server, "same-request", "open the work PR")
+	if first.Code != http.StatusCreated || second.Code != http.StatusOK {
+		t.Fatalf("statuses = %d, %d, want 201 then 200", first.Code, second.Code)
+	}
+	if len(notifier.messages) != 1 {
+		t.Fatalf("messages = %d, want exactly one", len(notifier.messages))
+	}
+	if decodeGrantResponse(t, first).ID != decodeGrantResponse(t, second).ID {
+		t.Fatal("idempotent request returned different grants")
+	}
+}
+
+func TestStaleGrantNotificationClaimDoesNotResend(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	claim, claimed, err := server.grants.ClaimNotification(result.Grant.ID, time.Nanosecond)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
+	}
+	time.Sleep(time.Millisecond)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/grants", http.NoBody)
+	ctx, cancel := context.WithCancel(request.Context())
+	cancel()
+	request = request.WithContext(ctx)
+	echoContext := server.echo.NewContext(request, httptest.NewRecorder())
+
+	if _, _, err := server.notifyPendingGrant(echoContext, grantCreatePlan{}, result.Grant.ID); err == nil {
+		t.Fatal("notifyPendingGrant() error = nil, want unresolved delivery")
+	}
+	if len(notifier.messages) != 0 {
+		t.Fatalf("messages = %d, want no duplicate send", len(notifier.messages))
+	}
+	stored, err := server.grants.Get(result.Grant.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", result.Grant.ID, err)
+	}
+	if stored.Status != grants.StatusPending || !stored.NotificationClaimedAt.Equal(claim.Grant.NotificationClaimedAt) {
+		t.Fatalf("grant = %+v, want original unresolved claim", stored)
+	}
+}
+
+func TestGrantNotificationFailureCancelsRequest(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	server.notifier = &captureNotifier{sendErr: errors.New("telegram unavailable")}
+
+	response := createGrant(t, server, "failed-notification", "open the work PR")
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s, want bad gateway", response.Code, response.Body.String())
+	}
+	stored, err := server.grants.ListForClient("bob")
+	if err != nil {
+		t.Fatalf("ListForClient() error = %v", err)
+	}
+	if len(stored) != 1 || stored[0].Status != grants.StatusCanceled {
+		t.Fatalf("grants = %+v, want one canceled grant", stored)
+	}
+}
+
+func TestInvalidGrantNotificationReferenceCancelsRequest(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	server.notifier = &captureNotifier{invalidRef: true}
+
+	response := createGrant(t, server, "invalid-notification", "open the work PR")
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s, want bad gateway", response.Code, response.Body.String())
+	}
+	stored, err := server.grants.ListForClient("bob")
+	if err != nil {
+		t.Fatalf("ListForClient() error = %v", err)
+	}
+	if len(stored) != 1 || stored[0].Status != grants.StatusCanceled {
+		t.Fatalf("grants = %+v, want one canceled grant", stored)
+	}
+}
+
+func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	cfg := config.Config{ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, StateDir: stateDir}
+	brokerPolicy := requestPRPolicy(t)
+	server, err := New(cfg, brokerPolicy)
+	if err != nil {
+		t.Fatalf("New(first) error = %v", err)
+	}
+	createdNotifier := &captureNotifier{}
+	server.notifier = createdNotifier
+	created := createGrant(t, server, "restart-status", "open the work PR")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("grant create status = %d, body = %s", created.Code, created.Body.String())
+	}
+	grant := decodeGrantResponse(t, created)
+	approveGrant(t, server, grant.ID, createdNotifier.token)
+
+	restarted, err := New(cfg, brokerPolicy)
+	if err != nil {
+		t.Fatalf("New(restarted) error = %v", err)
+	}
+	statusNotifier := &captureNotifier{}
+	restarted.notifier = statusNotifier
+	restarted.deliverGrantStatusUpdates(context.Background())
+	restarted.deliverGrantStatusUpdates(context.Background())
+	if len(statusNotifier.statuses) != 1 || statusNotifier.statuses[0] != "Approved. Access is active." {
+		t.Fatalf("statuses = %q, want one durable active update", statusNotifier.statuses)
+	}
+	stored, err := restarted.grants.Get(grant.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", grant.ID, err)
+	}
+	if stored.NotificationStatus != string(grants.StatusActive) {
+		t.Fatalf("notification status = %q, want active", stored.NotificationStatus)
+	}
+}
+
+func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	if _, err := server.grants.SetNotification(result.Grant.ID, notify.MessageRef{Kind: "test", ChatID: 1, MessageID: 9}); err != nil {
+		t.Fatalf("SetNotification() error = %v", err)
+	}
+	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	if _, err := server.grants.ReserveUse(result.Grant.ID); err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	if _, err := server.grants.RetainUse(result.Grant.ID); err != nil {
+		t.Fatalf("RetainUse() error = %v", err)
+	}
+
+	server.deliverGrantStatusUpdates(context.Background())
+	if len(notifier.statuses) != 1 || !strings.Contains(notifier.statuses[0], "ambiguous") {
+		t.Fatalf("statuses = %q, want retained-use warning", notifier.statuses)
+	}
+}
+
+func TestRetainingMultiUseGrantClosesRemainingAccess(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	request := grantsRequestForMainPush(t)
+	request.MaxUses = 3
+	result, _, err := server.grants.Request(request)
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	reserved, err := server.grants.ReserveUse(result.Grant.ID)
+	if err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	if err := server.retainGrantUses([]grants.Grant{reserved}); err != nil {
+		t.Fatalf("retainGrantUses() error = %v", err)
+	}
+	stored, err := server.grants.Get(result.Grant.ID)
+	if err != nil {
+		t.Fatalf("Get(%q) error = %v", result.Grant.ID, err)
+	}
+	if stored.Status != grants.StatusRevoked || !stored.ReservationRetained || stored.ReservedCount != 1 {
+		t.Fatalf("grant = %+v, want revoked retained reservation", stored)
+	}
+	assertNoActiveGrants(t, server)
+}
+
+func TestPreDispatchFailureReleasesGrantUse(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	reserved, err := server.grants.ReserveUse(result.Grant.ID)
+	if err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	c := server.echo.NewContext(httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", http.NoBody), httptest.NewRecorder())
+	request := policy.Request{Client: "bob", Operation: policy.OperationGitPushForce, Target: policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}}
+	decision := policy.Decision{GrantID: result.Grant.ID}
+	if err := server.runAuthorizedBrokerRequest(c, request, decision, []grants.Grant{reserved}, func(echo.Context) error {
+		return errors.New("credential lookup failed")
+	}); err == nil {
+		t.Fatal("runAuthorizedBrokerRequest() error = nil")
+	}
+	assertGrantUseState(t, server, result.Grant.ID, grants.StatusActive, 0, 0)
+}
+
+func TestGrantStatusDeliveryRetriesFailedEdit(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	notifier := &captureNotifier{updateErr: errors.New("telegram unavailable")}
+	server.notifier = notifier
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	if _, err := server.grants.SetNotification(result.Grant.ID, notify.MessageRef{Kind: "test", ChatID: 1, MessageID: 10}); err != nil {
+		t.Fatalf("SetNotification() error = %v", err)
+	}
+	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+
+	server.deliverGrantStatusUpdates(context.Background())
+	notifier.updateErr = nil
+	server.deliverGrantStatusUpdates(context.Background())
+	server.deliverGrantStatusUpdates(context.Background())
+	if len(notifier.statuses) != 1 || notifier.statuses[0] != "Approved. Access is active." {
+		t.Fatalf("statuses = %q, want one successful retry", notifier.statuses)
+	}
+}
+
+func TestGrantStatusText(t *testing.T) {
+	t.Parallel()
+	lifecycle := map[grants.Status]string{
+		grants.StatusActive:   "Approved. Access is active.",
+		grants.StatusDenied:   "Denied. Access was not granted.",
+		grants.StatusExpired:  "Expired. Access is closed.",
+		grants.StatusConsumed: "Used. Access is now closed.",
+		grants.StatusRevoked:  "Revoked. Access is closed.",
+		grants.StatusCanceled: "Canceled. Approval request is closed.",
+		grants.StatusPending:  "Grant status changed.",
+	}
+	for status, want := range lifecycle {
+		if got := grantStatusText(grants.StatusUpdate{Status: status}); got != want {
+			t.Errorf("grantStatusText(%q) = %q, want %q", status, got, want)
+		}
+	}
+	used := grants.Grant{Status: grants.StatusActive, MaxUses: 3, UsedCount: 1}
+	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got != "Used 1 of 3. 2 uses remain." {
+		t.Errorf("used status = %q", got)
+	}
+	used = grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1}
+	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got != "Used 1 of 2. 1 uses remain." {
+		t.Errorf("reserved used status = %q", got)
+	}
+	used.Status = grants.StatusConsumed
+	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsedExpired, Grant: used}); got != "Used. Access is now closed." {
+		t.Errorf("closed used status = %q", got)
+	}
+	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation}); !strings.Contains(got, "ambiguous") {
+		t.Errorf("retained status = %q", got)
+	}
+}
+
+func TestReleaseReservedGrantUse(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	reserved, err := server.grants.ReserveUse(result.Grant.ID)
+	if err != nil {
+		t.Fatalf("ReserveUse() error = %v", err)
+	}
+	server.releaseGrantUses([]grants.Grant{reserved})
+	assertGrantUseState(t, server, result.Grant.ID, grants.StatusActive, 0, 0)
+}
+
+func TestWaitForGrantNotificationHonorsCancellation(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := server.waitForGrantNotification(ctx, result.Grant.ID); err == nil {
+		t.Fatal("waitForGrantNotification() error = nil, want cancellation")
+	}
+}
+
+func TestWaitForGrantNotificationReturnsStoredReference(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+	ref := notify.MessageRef{Kind: "test", ChatID: 1, MessageID: 11}
+	if _, err := server.grants.SetNotification(result.Grant.ID, ref); err != nil {
+		t.Fatalf("SetNotification() error = %v", err)
+	}
+	stored, got, err := server.waitForGrantNotificationFor(context.Background(), result.Grant.ID, time.Second, time.Millisecond)
+	if err != nil || stored.ID != result.Grant.ID || got != ref {
+		t.Fatalf("notified wait = grant:%+v ref:%+v err:%v", stored, got, err)
+	}
+}
+
+func TestWaitForGrantNotificationReturnsTerminalGrant(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	terminal, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request(terminal) error = %v", err)
+	}
+	if err := server.grants.Cancel(terminal.Grant.ID); err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+	stored, got, err := server.waitForGrantNotificationFor(context.Background(), terminal.Grant.ID, time.Second, time.Millisecond)
+	if err != nil || stored.Status != grants.StatusCanceled || got.MessageID != 0 {
+		t.Fatalf("terminal wait = grant:%+v ref:%+v err:%v", stored, got, err)
+	}
+}
+
+func TestWaitForGrantNotificationRejectsMissingGrant(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	if _, _, err := server.waitForGrantNotificationFor(context.Background(), "missing", time.Second, time.Millisecond); err == nil {
+		t.Fatal("missing wait error = nil")
+	}
+}
+
+func TestWaitForGrantNotificationTimesOut(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	pending, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	if err != nil {
+		t.Fatalf("Request(timeout) error = %v", err)
+	}
+	if _, _, err := server.waitForGrantNotificationFor(context.Background(), pending.Grant.ID, time.Millisecond, time.Millisecond); err == nil {
+		t.Fatal("timeout wait error = nil")
+	}
+}
+
+func TestGrantNotificationSweeperStopsWithContext(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	server.notifier = &captureNotifier{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	server.runGrantNotificationSweeper(ctx)
 }
 
 func assertPullRequestNeedsGrant(t *testing.T, server *Server, title string) {
@@ -2167,21 +2576,44 @@ func assertGrantUseState(t *testing.T, server *Server, grantID string, status gr
 	}
 }
 
+func assertNoActiveGrants(t *testing.T, server *Server) {
+	t.Helper()
+	active, err := server.grants.ActivePolicyGrants()
+	if err != nil {
+		t.Fatalf("ActivePolicyGrants() error = %v", err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("active grants = %+v, want none", active)
+	}
+}
+
 type captureNotifier struct {
-	messages []notify.ApprovalMessage
-	statuses []string
-	token    string
+	messages   []notify.ApprovalMessage
+	statuses   []string
+	token      string
+	sendErr    error
+	updateErr  error
+	invalidRef bool
 }
 
 func (n *captureNotifier) SendApproval(_ context.Context, msg notify.ApprovalMessage) (notify.MessageRef, error) {
+	if n.sendErr != nil {
+		return notify.MessageRef{}, n.sendErr
+	}
 	n.token = msg.DecisionToken
 	stored := msg
 	stored.DecisionToken = ""
 	n.messages = append(n.messages, stored)
+	if n.invalidRef {
+		return notify.MessageRef{}, nil
+	}
 	return notify.MessageRef{Kind: "test", ChatID: 1, MessageID: len(n.messages), Text: msg.Text}, nil
 }
 
 func (n *captureNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status string) error {
+	if n.updateErr != nil {
+		return n.updateErr
+	}
 	n.statuses = append(n.statuses, status)
 	return nil
 }

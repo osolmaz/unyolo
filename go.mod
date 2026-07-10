@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/labstack/echo/v4 v4.13.4
-	github.com/osolmaz/brokerkit v0.0.0-20260709220548-2ed961259f3d
+	github.com/osolmaz/brokerkit v0.0.0-20260710014108-a40119314de1
 )
 
 require (

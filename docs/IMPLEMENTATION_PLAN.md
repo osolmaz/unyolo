@@ -186,6 +186,14 @@ Implemented in the current brokerkit cutover slice:
 - active grants are evaluated through brokerkit policy overlays
 - grant use is reserved before upstream forwarding and committed after the
   proxy accepts the request
+- approval notification claims, editable message references, and delivered
+  status revisions are durable across process restarts
+- unresolved notification claims are never reclaimed automatically; the
+  pending grant expires instead of risking a duplicate approval message
+- ambiguous upstream or grant-commit results retain the reservation or close
+  the grant instead of making the approved use available again
+- failures before the target GitHub request is dispatched release the reserved
+  use because the requested operation cannot have reached GitHub
 - deny rules still override active grants
 - Telegram approval uses the shared brokerkit adapter and is tested with a fake
   Bot API server
@@ -195,7 +203,8 @@ Implemented in the current brokerkit cutover slice:
   removed; JSON APIs live under `/api/*` and Git keeps Git smart-HTTP routes
 
 The next cutover slices should move audit helpers and remaining storage/config
-helpers to brokerkit, then add doctor checks.
+helpers to brokerkit, remove brokerkit's superseded in-memory Telegram tracker,
+then add doctor checks.
 
 ## Non-Goals
 

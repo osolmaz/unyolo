@@ -717,6 +717,12 @@ Every brokerkit cutover PR must prove:
   second grant-specific allow path
 - Telegram approval is covered with a fake Bot API server or fake notifier in
   automated tests; CI must not require a live bot token or send real messages
+- notification delivery is claimed once, its editable message reference is
+  stored with the grant, and lifecycle updates resume after process restart
+- a crash between provider acceptance and message-reference persistence leaves
+  the claim unresolved until the pending grant expires; it is not resent
+- a timeout, transport failure, or uncertain upstream result never releases a
+  reserved grant use back into the available budget
 - end-to-end broker tests use fake GitHub upstreams, fake installation-token
   minting, and fake notifiers by default; live GitHub checks are explicit
   manual or milestone probes

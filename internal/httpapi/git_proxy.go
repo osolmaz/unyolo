@@ -10,6 +10,16 @@ import (
 	"github.com/osolmaz/brokerkit/httpx"
 )
 
+const upstreamDispatchedContextKey = "gh_broker_upstream_dispatched"
+
+func markUpstreamDispatched(c echo.Context) {
+	c.Set(upstreamDispatchedContextKey, true)
+}
+
+func upstreamWasDispatched(c echo.Context) bool {
+	return c.Get(upstreamDispatchedContextKey) == true
+}
+
 func (s *Server) forwardGit(c echo.Context) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(
 		c.Request().Context(),
@@ -25,6 +35,7 @@ func (s *Server) forwardGit(c echo.Context) (*http.Response, error) {
 		return nil, err
 	}
 	// #nosec G704 -- upstream URL is built from a fixed GitHub base URL and policy-gated route params.
+	markUpstreamDispatched(c)
 	response, err := s.githubClient.Do(request)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")

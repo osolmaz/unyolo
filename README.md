@@ -227,6 +227,15 @@ Telegram when Telegram is configured. Approval creates a short-lived brokerkit
 grant that is evaluated by the same policy path as static rules. Deny rules
 still win over approved grants.
 
+The editable Telegram message reference and its last delivered lifecycle state
+are stored with the grant. Once the reference is stored, status delivery
+resumes after a broker restart.
+Approval sends are at most once per pending grant. If the process stops after
+Telegram accepts a send but before its reference is stored, the unresolved
+grant is not sent again; it fails closed and expires.
+Grant uses are reserved before GitHub forwarding; an ambiguous upstream result
+is retained for operator review instead of reopening the grant budget.
+
 ## License
 
 [MIT](LICENSE)

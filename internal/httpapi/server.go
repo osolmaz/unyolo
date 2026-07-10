@@ -221,7 +221,7 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 	c.Request().ContentLength = int64(len(body))
 	response, err := s.forwardGit(c)
 	if err != nil {
-		s.releaseGrantUses(reserved)
+		err = s.settleFailedExecution(c, reserved, err)
 		s.auditAuthorizedReceivePack(c, authorized, errorOutcome(err), errorString(err), errorStatus(c, err))
 		return err
 	}
@@ -229,6 +229,7 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 		_ = response.Body.Close()
 	}()
 	if err := s.commitGrantUses(reserved); err != nil {
+		_ = s.closeGrantUsesAfterCommitFailure(reserved)
 		s.auditAuthorizedReceivePack(c, authorized, "error", "grant use commit failed", response.StatusCode)
 		return echo.NewHTTPError(http.StatusInternalServerError, "could not commit grant use")
 	}
@@ -299,13 +300,24 @@ func (s *Server) authorizeBrokerRequest(
 		s.audit(c, request, "error", "grant is no longer active", 0, decision.MatchedRuleIDs)
 		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
 	}
-	err = run(c)
+	return s.runAuthorizedBrokerRequest(c, request, decision, reserved, run)
+}
+
+func (s *Server) runAuthorizedBrokerRequest(
+	c echo.Context,
+	request policy.Request,
+	decision policy.Decision,
+	reserved []grants.Grant,
+	run func(echo.Context) error,
+) error {
+	err := run(c)
 	if err != nil {
-		s.releaseGrantUses(reserved)
+		err = s.settleFailedExecution(c, reserved, err)
 		s.audit(c, request, errorOutcome(err), errorString(err), errorStatus(c, err), decision.MatchedRuleIDs)
 		return err
 	}
 	if err := s.commitGrantUses(reserved); err != nil {
+		_ = s.closeGrantUsesAfterCommitFailure(reserved)
 		s.audit(c, request, "error", "grant use commit failed", responseStatus(c), decision.MatchedRuleIDs)
 		return echo.NewHTTPError(http.StatusInternalServerError, "could not commit grant use")
 	}
@@ -611,6 +623,7 @@ func (s *Server) fetchRepoListURL(c echo.Context, upstreamURL *url.URL) (*http.R
 		return nil, err
 	}
 	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL.
+	markUpstreamDispatched(c)
 	response, err := s.githubClient.Do(request)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
@@ -735,38 +748,6 @@ func boundedQueryInt(value string, fallback int, minValue int, maxValue int) str
 		return strconv.Itoa(fallback)
 	}
 	return strconv.Itoa(parsed)
-}
-
-func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*http.Request) error) error {
-	request, err := http.NewRequestWithContext(
-		c.Request().Context(),
-		c.Request().Method,
-		upstreamURL.String(),
-		c.Request().Body,
-	)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
-	}
-	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
-	if err := configure(request); err != nil {
-		return err
-	}
-	return s.doProxy(c, request)
-}
-
-func (s *Server) doProxy(c echo.Context, request *http.Request) error {
-	// #nosec G704 -- upstream URLs are built from fixed GitHub base URLs and policy-gated route params.
-	response, err := s.githubClient.Do(request)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-	httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
-	c.Response().WriteHeader(response.StatusCode)
-	_, err = io.Copy(c.Response(), response.Body)
-	return err
 }
 
 func (s *Server) audit(c echo.Context, request policy.Request, outcome string, reason string, status int, matchedRuleIDs []string) {

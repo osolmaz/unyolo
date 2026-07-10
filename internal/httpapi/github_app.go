@@ -69,6 +69,7 @@ func (s *Server) fetchGitHubAppInstallationRepos(c echo.Context, installationID 
 	}
 	configureInstallationTokenRequest(request, token.Value)
 	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL.
+	markUpstreamDispatched(c)
 	response, err := s.githubClient.Do(request)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
