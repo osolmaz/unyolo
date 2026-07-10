@@ -7,14 +7,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
-
-var accountNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
 
 // SystemdDefaults configures shared Linux service setup flags.
 type SystemdDefaults struct {
@@ -98,22 +95,13 @@ func (opts SystemdOptions) Validate() error {
 	if strings.TrimSpace(opts.BrokerName) == "" {
 		return errors.New("broker name is required")
 	}
-	if err := validateAccountNames(map[string]string{"user": opts.User, "group": opts.Group, "client": opts.ClientName}); err != nil {
+	if err := validatex.AccountNames(map[string]string{"user": opts.User, "group": opts.Group, "client": opts.ClientName}); err != nil {
 		return err
 	}
 	if err := validatex.AbsolutePaths(map[string]string{"config-dir": opts.ConfigDir, "state-dir": opts.StateDir, "systemd-dir": opts.SystemdDir, "binary": opts.BinaryPath}, true); err != nil {
 		return err
 	}
 	return validateListenAddress(opts.BindAddr, opts.Port)
-}
-
-func validateAccountNames(values map[string]string) error {
-	for name, value := range values {
-		if !accountNamePattern.MatchString(value) {
-			return fmt.Errorf("%s %q is invalid", name, value)
-		}
-	}
-	return nil
 }
 
 func validateListenAddress(bindAddr string, port int) error {

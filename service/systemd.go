@@ -4,6 +4,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
@@ -92,6 +93,16 @@ func (unit SystemdUnit) validate() error {
 	if err := validateRequiredLines(values); err != nil {
 		return err
 	}
+	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
+		return err
+	}
+	if err := validateSystemdUnitPaths(unit); err != nil {
+		return err
+	}
+	return validateExtraDirectives(unit.ExtraDirectives)
+}
+
+func validateSystemdUnitPaths(unit SystemdUnit) error {
 	if err := validatex.AbsolutePaths(map[string]string{
 		"environment file": unit.EnvironmentFile,
 		"state directory":  unit.StateDir,
@@ -99,22 +110,48 @@ func (unit SystemdUnit) validate() error {
 	}, false); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(unit.ExecStart, "/") {
+	if err := validateExecStart(unit.ExecStart); err != nil {
+		return err
+	}
+	return validateProtectedServicePaths(unit)
+}
+
+func validateExecStart(value string) error {
+	if !strings.HasPrefix(value, "/") {
 		return errors.New("exec start must begin with an absolute binary path")
 	}
-	if strings.ContainsAny(unit.ExecStart, "\t%\\\"'") {
+	if strings.ContainsAny(value, "\t%\\\"'$;") {
 		return errors.New("exec start contains unsupported systemd syntax")
 	}
-	for name, value := range map[string]string{
+	return nil
+}
+
+func validateProtectedServicePaths(unit SystemdUnit) error {
+	paths := map[string]string{
 		"environment file": unit.EnvironmentFile,
 		"state directory":  unit.StateDir,
 		"config directory": unit.ConfigDir,
-	} {
+		"executable":       strings.SplitN(unit.ExecStart, " ", 2)[0],
+	}
+	for name, value := range paths {
 		if err := validateSystemdPath(name, value); err != nil {
 			return err
 		}
+		if protectedHomePath(value) {
+			return fmt.Errorf("%s must not be under a path hidden by ProtectHome", name)
+		}
 	}
-	return validateExtraDirectives(unit.ExtraDirectives)
+	return nil
+}
+
+func protectedHomePath(value string) bool {
+	cleaned := filepath.Clean(value)
+	for _, root := range []string{"/home", "/root", "/run/user"} {
+		if cleaned == root || strings.HasPrefix(cleaned, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateExtraDirectives(directives []string) error {

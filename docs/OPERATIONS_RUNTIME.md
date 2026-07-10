@@ -60,8 +60,9 @@ Consumers may append only the explicitly allowed additive hardening directives.
 Extensions cannot override the shared identity, execution, restart, filesystem,
 or hardening directives, including through legacy systemd aliases. Paths
 containing systemd specifier or tokenization syntax are rejected instead of
-being rendered ambiguously. Provider credentials and policy do not enter
-Brokerkit.
+being rendered ambiguously. Service paths hidden by `ProtectHome=true` are also
+rejected; service binaries must be installed outside home directories.
+Provider credentials and policy do not enter Brokerkit.
 
 ## Doctor
 
@@ -76,8 +77,8 @@ Package `doctor` provides portable building blocks for:
 
 The checks never read or print secret contents. A symbolic link or access
 control list makes the portable path check inconclusive, and an agent-writable
-path component makes it unsafe, so a replaceable credential path cannot receive
-an `ok` verdict.
+or agent-owned path component makes it unsafe, so a replaceable credential path
+cannot receive an `ok` verdict.
 Provider-specific probes remain in each broker. For example, hf-broker owns
 Hugging Face credential-source and mirror checks, gh-broker owns GitHub App and
 ruleset checks, and sudo-broker owns catalog, target-user, and

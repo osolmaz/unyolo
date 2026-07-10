@@ -3,6 +3,7 @@ package doctor
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -38,6 +39,19 @@ func TestRootEquivalentAndSeparationChecks(t *testing.T) {
 	}
 }
 
+func TestIdentityGroupsFailsWhenGroupNameIsUnknown(t *testing.T) {
+	oldLookup := lookupGroupByID
+	lookupGroupByID = func(string) (*user.Group, error) { return nil, errors.New("lookup unavailable") }
+	t.Cleanup(func() { lookupGroupByID = oldLookup })
+	current, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := identityGroups(current); err == nil {
+		t.Fatal("identityGroups() error = nil")
+	}
+}
+
 func TestSecretFileChecks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secret")
 	if err := os.WriteFile(path, []byte("do-not-print"), 0o600); err != nil {
@@ -64,6 +78,25 @@ func TestSecretFileChecks(t *testing.T) {
 	}
 	if checks := SecretFileChecks(filepath.Join(t.TempDir(), "missing"), agent); checks[0].Status != CheckUnknown {
 		t.Fatalf("missing secret checks = %+v", checks)
+	}
+}
+
+func TestSecretFileOwnerCanGainAccessDespiteModeZero(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(path, []byte("do-not-print"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := info.Sys().(*syscall.Stat_t)
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	ownerChecks := SecretFileChecks(path, Identity{User: "owner", UID: int(stat.Uid), GID: int(stat.Gid)})
+	if ownerChecks[3].Status != CheckFail || ownerChecks[4].Status != CheckFail {
+		t.Fatalf("mode-zero owner secret checks = %+v", ownerChecks)
 	}
 }
 
@@ -137,7 +170,48 @@ func TestAgentCanReplaceChildStickyDirectoryRules(t *testing.T) {
 	if agentCanReplaceChild(parent, child, other) {
 		t.Fatal("unrelated user should not replace another owner's sticky-directory child")
 	}
-	if !agentCanReplaceChild(child, child, other) {
+}
+
+func TestAgentCanReplaceChildWhenOwningModeZeroDirectory(t *testing.T) {
+	parentPath := filepath.Join(t.TempDir(), "parent")
+	if err := os.Mkdir(parentPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	childPath := filepath.Join(parentPath, "child")
+	if err := os.WriteFile(childPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	child, err := os.Stat(childPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := child.Sys().(*syscall.Stat_t)
+	owner := Identity{User: "owner", UID: int(stat.Uid), GID: int(stat.Gid)}
+	if err := os.Chmod(parentPath, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parentPath, 0o700) }) // #nosec G302 -- restore owner traversal for test cleanup.
+	parent, err := os.Stat(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !agentCanReplaceChild(parent, child, owner) {
+		t.Fatal("directory owner should be able to chmod and replace its child")
+	}
+}
+
+func TestAgentCanReplaceChildFailsClosedForNonDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := file.Sys().(*syscall.Stat_t)
+	other := Identity{User: "other", UID: int(stat.Uid) + 1, GID: int(stat.Gid) + 1}
+	if !agentCanReplaceChild(file, file, other) {
 		t.Fatal("a non-directory parent must fail closed")
 	}
 }

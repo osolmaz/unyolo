@@ -58,6 +58,8 @@ type Report struct {
 	Checks []Check  `json:"checks"`
 }
 
+var lookupGroupByID = user.LookupGroupId
+
 // LookupIdentity resolves a local account and all group memberships.
 func LookupIdentity(name string) (Identity, error) {
 	account, err := user.Lookup(strings.TrimSpace(name))
@@ -100,9 +102,11 @@ func identityGroups(account *user.User) ([]int, []string, error) {
 			return nil, nil, parseErr
 		}
 		ids = append(ids, groupID)
-		if group, lookupErr := user.LookupGroupId(value); lookupErr == nil {
-			names = append(names, group.Name)
+		group, lookupErr := lookupGroupByID(value)
+		if lookupErr != nil {
+			return nil, nil, fmt.Errorf("lookup agent group %s: %w", value, lookupErr)
 		}
+		names = append(names, group.Name)
 	}
 	sort.Ints(ids)
 	sort.Strings(names)
@@ -159,9 +163,10 @@ func SecretFileChecks(path string, agent Identity) []Check {
 		return []Check{pathCheck, {Status: CheckUnknown, Name: "secret_file", Message: "secret file ownership is unavailable"}}
 	}
 	checks := []Check{pathCheck, regularFileCheck(info), privateModeCheck(info)}
+	ownerControlled := agent.UID == int(stat.Uid)
 	checks = append(checks,
-		accessCheck("secret_file_not_readable", "read", canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o400, 0o040, 0o004)),
-		accessCheck("secret_file_not_writable", "write", canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o200, 0o020, 0o002)),
+		accessCheck("secret_file_not_readable", "read", ownerControlled || canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o400, 0o040, 0o004)),
+		accessCheck("secret_file_not_writable", "write", ownerControlled || canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o200, 0o020, 0o002)),
 	)
 	return checks
 }
@@ -217,6 +222,9 @@ func initializeSecretPath(path string) (string, os.FileInfo, *Check) {
 		failure := Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "could not inspect the secret path"}
 		return "", nil, &failure
 	}
+	if aclCheck := secretPathACLCheck(string(filepath.Separator)); aclCheck != nil {
+		return "", nil, aclCheck
+	}
 	return absolute, root, nil
 }
 
@@ -232,16 +240,23 @@ func agentCanReplaceChild(parent os.FileInfo, child os.FileInfo, agent Identity)
 	if !parent.IsDir() {
 		return true
 	}
-	if !canAccess(parent.Mode().Perm(), parentUID, parentGID, agent, 0o200, 0o020, 0o002) {
-		return false
-	}
-	if !canAccess(parent.Mode().Perm(), parentUID, parentGID, agent, 0o100, 0o010, 0o001) {
+	if !agentCanModifyDirectory(parent, parentUID, parentGID, agent) {
 		return false
 	}
 	if parent.Mode()&os.ModeSticky == 0 {
 		return true
 	}
 	return ownsStickyEntry(agent.UID, parentUID, childUID)
+}
+
+func agentCanModifyDirectory(directory os.FileInfo, ownerUID int, ownerGID int, agent Identity) bool {
+	if agent.UID == ownerUID {
+		return true
+	}
+	mode := directory.Mode().Perm()
+	canWrite := canAccess(mode, ownerUID, ownerGID, agent, 0o200, 0o020, 0o002)
+	canSearch := canAccess(mode, ownerUID, ownerGID, agent, 0o100, 0o010, 0o001)
+	return canWrite && canSearch
 }
 
 func unixOwnership(info os.FileInfo) (int, int, bool) {
@@ -272,9 +287,9 @@ func privateModeCheck(info os.FileInfo) Check {
 
 func accessCheck(name string, operation string, allowed bool) Check {
 	if allowed {
-		return Check{Status: CheckFail, Name: name, Message: "agent can " + operation + " the secret file by Unix mode bits"}
+		return Check{Status: CheckFail, Name: name, Message: "agent can gain " + operation + " access to the secret file by Unix ownership or mode bits"}
 	}
-	return Check{Status: CheckPass, Name: name, Message: "agent cannot " + operation + " the secret file by Unix mode bits"}
+	return Check{Status: CheckPass, Name: name, Message: "agent cannot gain " + operation + " access to the secret file by Unix ownership or mode bits"}
 }
 
 func canAccess(mode os.FileMode, ownerUID int, ownerGID int, identity Identity, ownerBit os.FileMode, groupBit os.FileMode, otherBit os.FileMode) bool {

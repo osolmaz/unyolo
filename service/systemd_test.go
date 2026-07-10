@@ -32,11 +32,18 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 	for _, mutate := range []func(*SystemdUnit){
 		func(unit *SystemdUnit) { unit.Description = "" },
 		func(unit *SystemdUnit) { unit.User = "broker\nUser=root" },
+		func(unit *SystemdUnit) { unit.User = "%u" },
+		func(unit *SystemdUnit) { unit.Group = "%g" },
 		func(unit *SystemdUnit) { unit.EnvironmentFile = "relative" },
 		func(unit *SystemdUnit) { unit.ExecStart = "test serve" },
 		func(unit *SystemdUnit) { unit.StateDir = "/var/lib/test broker" },
 		func(unit *SystemdUnit) { unit.ConfigDir = "/etc/test%N" },
 		func(unit *SystemdUnit) { unit.ExecStart = "/usr/bin/test %N" },
+		func(unit *SystemdUnit) { unit.ExecStart = "/usr/bin/test $MODE" },
+		func(unit *SystemdUnit) { unit.ExecStart = "/usr/bin/test ; /bin/sh" },
+		func(unit *SystemdUnit) { unit.ExecStart = "/home/bob/.local/bin/test" },
+		func(unit *SystemdUnit) { unit.EnvironmentFile = "/run/user/1000/test.env" },
+		func(unit *SystemdUnit) { unit.ConfigDir = "/root/test" },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"bad"} },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"User=root"} },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"ProtectSystem=false"} },
@@ -46,6 +53,19 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		mutate(&unit)
 		if _, err := RenderSystemd(unit); err == nil {
 			t.Fatalf("RenderSystemd(%+v) error = nil", unit)
+		}
+	}
+}
+
+func TestProtectedHomePath(t *testing.T) {
+	for _, path := range []string{"/home", "/home/bob/bin", "/root/x", "/run/user/1000/x"} {
+		if !protectedHomePath(path) {
+			t.Fatalf("protectedHomePath(%q) = false", path)
+		}
+	}
+	for _, path := range []string{"/etc/test", "/var/lib/test", "/homeward/test", "/run/users/test"} {
+		if protectedHomePath(path) {
+			t.Fatalf("protectedHomePath(%q) = true", path)
 		}
 	}
 }
