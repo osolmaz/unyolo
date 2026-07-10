@@ -78,17 +78,41 @@ func BindSystemdFlags(fs *flag.FlagSet, opts *SystemdOptions) {
 
 // FinalizeSystemd resolves the current executable and validates opts.
 func FinalizeSystemd(opts SystemdOptions) (SystemdOptions, error) {
-	if opts.BinaryPath == "" {
-		path, err := os.Executable()
-		if err != nil {
-			return SystemdOptions{}, fmt.Errorf("resolve executable path: %w", err)
-		}
-		opts.BinaryPath = path
+	resolved, err := resolveExecutablePath(opts.BinaryPath)
+	if err != nil {
+		return SystemdOptions{}, err
 	}
-	if resolved, err := filepath.EvalSymlinks(opts.BinaryPath); err == nil {
-		opts.BinaryPath = resolved
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return SystemdOptions{}, fmt.Errorf("stat executable path: %w", err)
 	}
+	if err := validateExecutableInfo(info); err != nil {
+		return SystemdOptions{}, err
+	}
+	opts.BinaryPath = resolved
 	return opts, opts.Validate()
+}
+
+func resolveExecutablePath(path string) (string, error) {
+	if path == "" {
+		resolved, err := os.Executable()
+		if err != nil {
+			return "", fmt.Errorf("resolve executable path: %w", err)
+		}
+		path = resolved
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve executable path: %w", err)
+	}
+	return resolved, nil
+}
+
+func validateExecutableInfo(info os.FileInfo) error {
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return errors.New("executable path must be a regular executable file")
+	}
+	return nil
 }
 
 // Validate validates shared Linux service setup fields.

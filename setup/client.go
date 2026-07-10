@@ -108,6 +108,10 @@ func ConfigureClient(stdout io.Writer, opts ClientOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	secret, err = validateSecret(secret)
+	if err != nil {
+		return "", fmt.Errorf("client secret: %w", err)
+	}
 	path, err := clientconfig.WriteForHomeOwner(clientconfig.Config{
 		BrokerName: opts.BrokerName,
 		EnvPrefix:  opts.EnvPrefix,

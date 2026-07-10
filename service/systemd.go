@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
@@ -125,6 +126,9 @@ func (unit SystemdUnit) validate() error {
 	if err := validateRequiredLines(values); err != nil {
 		return err
 	}
+	if err := validateDescription(unit.Description); err != nil {
+		return err
+	}
 	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
 		return err
 	}
@@ -138,6 +142,13 @@ func (unit SystemdUnit) validate() error {
 		return err
 	}
 	return validateExtraDirectives(unit.ExtraDirectives)
+}
+
+func validateDescription(value string) error {
+	if strings.HasSuffix(value, "\\") || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return errors.New("description contains unsupported systemd syntax")
+	}
+	return nil
 }
 
 func validateSystemdUnitPaths(unit SystemdUnit) error {

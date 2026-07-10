@@ -58,6 +58,20 @@ func TestParseClientHelpAndValidation(t *testing.T) {
 	}
 }
 
+func TestConfigureClientRejectsWeakSecret(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "secrets")
+	if err := os.WriteFile(secretFile, []byte("bob = short\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ConfigureClient(&bytes.Buffer{}, ClientOptions{
+		BrokerName: "test-broker", EnvPrefix: "TEST", ClientName: "bob",
+		URL: "http://127.0.0.1", SecretFile: secretFile, HomeDir: t.TempDir(),
+	})
+	if err == nil {
+		t.Fatal("ConfigureClient(weak secret) error = nil")
+	}
+}
+
 func TestResolveSecretSources(t *testing.T) {
 	generated, err := ResolveSecret(SecretInput{}, strings.NewReader(""))
 	if err != nil || len(generated) != 64 {
@@ -148,9 +162,18 @@ func TestSystemdOptions(t *testing.T) {
 
 func TestFinalizeSystemdRejectsInvalidBinary(t *testing.T) {
 	opts := DefaultSystemdOptions(SystemdDefaults{BrokerName: "test", User: "test", Group: "test", ClientName: "bob", BindAddr: "127.0.0.1", Port: 1})
-	opts.BinaryPath = "relative"
-	_, err := FinalizeSystemd(opts)
-	if err == nil {
-		t.Fatalf("FinalizeSystemd() error = %v", err)
+	for _, path := range []string{"relative", filepath.Join(t.TempDir(), "missing"), t.TempDir()} {
+		opts.BinaryPath = path
+		if _, err := FinalizeSystemd(opts); err == nil {
+			t.Fatalf("FinalizeSystemd(%q) error = nil", path)
+		}
+	}
+	nonExecutable := filepath.Join(t.TempDir(), "broker")
+	if err := os.WriteFile(nonExecutable, []byte("binary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts.BinaryPath = nonExecutable
+	if _, err := FinalizeSystemd(opts); err == nil {
+		t.Fatal("FinalizeSystemd(non-executable) error = nil")
 	}
 }

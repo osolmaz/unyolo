@@ -31,6 +31,8 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 	}
 	for _, mutate := range []func(*SystemdUnit){
 		func(unit *SystemdUnit) { unit.Description = "" },
+		func(unit *SystemdUnit) { unit.Description = "continued\\" },
+		func(unit *SystemdUnit) { unit.Description = "bad\tdescription" },
 		func(unit *SystemdUnit) { unit.User = "broker\nUser=root" },
 		func(unit *SystemdUnit) { unit.User = "%u" },
 		func(unit *SystemdUnit) { unit.Group = "%g" },
