@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInstallSystemdNonRootFixture(t *testing.T) {
@@ -83,6 +84,139 @@ func TestInstallSystemdReplacesManagedFileSymlink(t *testing.T) {
 	}
 }
 
+func TestInstallSystemdOrdersSecretsBeforeEnvironment(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	if err := os.MkdirAll(plan.ConfigDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(plan.ConfigDir, "env"), []byte("OLD=1\n"), 0o640); err != nil { // #nosec G306 -- fixture mirrors the managed environment mode.
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(plan.ConfigDir, "secret"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plan.Runner = &recordingCommandRunner{}
+	if err := InstallSystemd(context.Background(), plan); err == nil {
+		t.Fatal("InstallSystemd() error = nil")
+	}
+	assertInstalledFile(t, filepath.Join(plan.ConfigDir, "env"), "OLD=1\n", 0o640)
+}
+
+func TestInstallSystemdPreservesRetiredManagedFileWithoutActivation(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	if err := os.MkdirAll(plan.ConfigDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	retired := filepath.Join(plan.ConfigDir, "retired-secret")
+	if err := os.WriteFile(retired, []byte("old-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	plan.Runner = &recordingCommandRunner{}
+	if err := InstallSystemd(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(retired); err != nil {
+		t.Fatalf("retired managed file was removed without activation: %v", err)
+	}
+	assertInstalledFile(t, filepath.Join(plan.ConfigDir, "env"), "BIND=127.0.0.1\n", 0o640)
+}
+
+func TestInstallSystemdRemovesRetiredManagedFileAfterActivation(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	retired := prepareRetiredManagedFile(t, plan, "retired-secret")
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	installActivatedFixture(t, plan, &recordingCommandRunner{})
+	if _, err := os.Lstat(retired); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retired managed file still exists: %v", err)
+	}
+}
+
+func TestInstallSystemdRetiresSymlinkWithoutFollowingIt(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	if err := os.MkdirAll(plan.ConfigDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(filepath.Dir(plan.ConfigDir), "outside-secret")
+	if err := os.WriteFile(outside, []byte("unchanged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	retired := filepath.Join(plan.ConfigDir, "retired-secret")
+	if err := os.Symlink(outside, retired); err != nil {
+		t.Fatal(err)
+	}
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	installActivatedFixture(t, plan, &recordingCommandRunner{})
+	if data, err := os.ReadFile(outside); err != nil || string(data) != "unchanged" { // #nosec G304 -- controlled test fixture path.
+		t.Fatalf("outside file = %q, err=%v", data, err)
+	}
+	if _, err := os.Lstat(retired); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retired symlink still exists: %v", err)
+	}
+}
+
+func TestInstallSystemdRefusesToRetireDirectoryAfterEnvironmentCutover(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	if err := os.MkdirAll(filepath.Join(plan.ConfigDir, "retired-secret"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	runner := &recordingCommandRunner{}
+	if err := installActivatedFixtureError(t, plan, runner); err == nil || !strings.Contains(err.Error(), "directory") {
+		t.Fatalf("InstallSystemd() error = %v", err)
+	}
+	assertInstalledFile(t, filepath.Join(plan.ConfigDir, "env"), "BIND=127.0.0.1\n", 0o640)
+	if got := strings.Join(runner.calls, "\n"); !strings.Contains(got, "systemctl restart "+plan.UnitName) {
+		t.Fatalf("retirement ran before activation:\n%s", got)
+	}
+}
+
+func TestInstallSystemdPreservesRetiredFileWhenActivationFails(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	retired := prepareRetiredManagedFile(t, plan, "retired-secret")
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	runner := &recordingCommandRunner{fail: map[string]error{"systemctl restart " + plan.UnitName: errors.New("failed")}}
+	if err := installActivatedFixtureError(t, plan, runner); err == nil || !strings.Contains(err.Error(), "restart") {
+		t.Fatalf("installSystemdForIdentity() error = %v", err)
+	}
+	if _, err := os.Lstat(retired); err != nil {
+		t.Fatalf("retired file was removed after failed activation: %v", err)
+	}
+}
+
+func TestInstallSystemdPreservesRetiredFileWhenReadinessFails(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	retired := prepareRetiredManagedFile(t, plan, "retired-secret")
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	plan.ReadyCheck = func(context.Context) error { return errors.New("not ready: sensitive provider detail") }
+	plan.ReadyTimeout = 5 * time.Millisecond
+	plan.ReadyInterval = time.Millisecond
+	if err := installActivatedFixtureError(t, plan, &recordingCommandRunner{}); err == nil || !strings.Contains(err.Error(), "readiness") || strings.Contains(err.Error(), "sensitive") {
+		t.Fatalf("installSystemdForIdentity() error = %v", err)
+	}
+	if _, err := os.Lstat(retired); err != nil {
+		t.Fatalf("retired file was removed after failed readiness: %v", err)
+	}
+}
+
+func TestInstallSystemdRejectsReadinessThatSucceedsAfterTimeout(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	retired := prepareRetiredManagedFile(t, plan, "retired-secret")
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	plan.ReadyCheck = func(context.Context) error {
+		time.Sleep(10 * time.Millisecond)
+		return nil
+	}
+	plan.ReadyTimeout = 5 * time.Millisecond
+	plan.ReadyInterval = time.Millisecond
+	if err := installActivatedFixtureError(t, plan, &recordingCommandRunner{}); err == nil || !strings.Contains(err.Error(), "readiness") {
+		t.Fatalf("installSystemdForIdentity() error = %v", err)
+	}
+	if _, err := os.Lstat(retired); err != nil {
+		t.Fatalf("retired file was removed after late readiness: %v", err)
+	}
+}
+
 func TestSystemdInstallPlanValidation(t *testing.T) {
 	valid := nonRootInstallPlan(t)
 	tests := map[string]func(*SystemdInstallPlan){
@@ -105,7 +239,19 @@ func TestSystemdInstallPlanValidation(t *testing.T) {
 			plan.Files[0].Owner = ManagedFileOwnerService
 		},
 		"duplicate file": func(plan *SystemdInstallPlan) { plan.Files = append(plan.Files, plan.Files[0]) },
-		"missing env":    func(plan *SystemdInstallPlan) { plan.Unit.EnvironmentFile = filepath.Join(plan.ConfigDir, "missing") },
+		"remove file name": func(plan *SystemdInstallPlan) {
+			plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "nested/file"}}
+		},
+		"remove state file": func(plan *SystemdInstallPlan) {
+			plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileState, Name: "state.json"}}
+		},
+		"write and remove file": func(plan *SystemdInstallPlan) {
+			plan.RemoveFiles = []ManagedFileRef{{Area: plan.Files[0].Area, Name: plan.Files[0].Name}}
+		},
+		"remove environment": func(plan *SystemdInstallPlan) {
+			plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "env"}}
+		},
+		"missing env": func(plan *SystemdInstallPlan) { plan.Unit.EnvironmentFile = filepath.Join(plan.ConfigDir, "missing") },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -115,6 +261,16 @@ func TestSystemdInstallPlanValidation(t *testing.T) {
 				t.Fatalf("Validate(%s) error = nil", name)
 			}
 		})
+	}
+}
+
+func TestSystemdInstallPlanRequiresReadinessForActivatedRetirement(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	plan.AllowNonRoot = false
+	plan.NoStart = false
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "readiness") {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -143,12 +299,16 @@ func TestActivateSystemdUnit(t *testing.T) {
 	if err := activateSystemdUnit(context.Background(), runner, "broker.service"); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(runner.calls, "\n"); got != "systemctl daemon-reload\nsystemctl enable --now broker.service" {
+	if got := strings.Join(runner.calls, "\n"); got != "systemctl daemon-reload\nsystemctl enable broker.service\nsystemctl restart broker.service" {
 		t.Fatalf("runner calls:\n%s", got)
 	}
 	runner.fail = map[string]error{"systemctl daemon-reload": errors.New("failed")}
 	if err := activateSystemdUnit(context.Background(), runner, "broker.service"); err == nil {
 		t.Fatal("activateSystemdUnit(failed reload) error = nil")
+	}
+	runner = &recordingCommandRunner{fail: map[string]error{"systemctl restart broker.service": errors.New("failed")}}
+	if err := activateSystemdUnit(context.Background(), runner, "broker.service"); err == nil || !strings.Contains(err.Error(), "restart") {
+		t.Fatalf("activateSystemdUnit(failed restart) error = %v", err)
 	}
 }
 
@@ -253,10 +413,43 @@ func nonRootInstallPlan(t *testing.T) SystemdInstallPlan {
 func cloneInstallPlan(plan SystemdInstallPlan) SystemdInstallPlan {
 	clone := plan
 	clone.Files = append([]ManagedFile(nil), plan.Files...)
+	clone.RemoveFiles = append([]ManagedFileRef(nil), plan.RemoveFiles...)
 	for index := range clone.Files {
 		clone.Files[index].Data = append([]byte(nil), clone.Files[index].Data...)
 	}
 	return clone
+}
+
+func prepareRetiredManagedFile(t *testing.T, plan SystemdInstallPlan, name string) string {
+	t.Helper()
+	if err := os.MkdirAll(plan.ConfigDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(plan.ConfigDir, name)
+	if err := os.WriteFile(path, []byte("old-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func installActivatedFixture(t *testing.T, plan SystemdInstallPlan, runner CommandRunner) {
+	t.Helper()
+	if err := installActivatedFixtureError(t, plan, runner); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func installActivatedFixtureError(t *testing.T, plan SystemdInstallPlan, runner CommandRunner) error {
+	t.Helper()
+	uid, gid, err := currentInstallIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.NoStart = false
+	if plan.ReadyCheck == nil {
+		plan.ReadyCheck = func(context.Context) error { return nil }
+	}
+	return installSystemdForIdentity(context.Background(), runner, plan, uid, gid)
 }
 
 func assertInstalledFile(t *testing.T, path string, body string, mode os.FileMode) {

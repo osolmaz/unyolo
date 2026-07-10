@@ -13,11 +13,18 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
-const maxManagedFileBytes = 16 * 1024 * 1024
+const (
+	maxManagedFileBytes      = 16 * 1024 * 1024
+	defaultReadinessTimeout  = 15 * time.Second
+	defaultReadinessInterval = 100 * time.Millisecond
+)
+
+var errServiceReadinessFailed = errors.New("service readiness check failed before retiring managed files")
 
 // ManagedFileArea selects the trusted root beneath which a setup file lives.
 type ManagedFileArea string
@@ -44,19 +51,34 @@ type ManagedFile struct {
 	Owner ManagedFileOwner
 }
 
+// ManagedFileRef identifies one provider-owned file that should no longer
+// exist after a successful configuration cutover.
+type ManagedFileRef struct {
+	Area ManagedFileArea
+	Name string
+}
+
+// ReadinessCheck confirms that a restarted broker initialized with its new
+// configuration before retired credentials are deleted.
+type ReadinessCheck func(context.Context) error
+
 // SystemdInstallPlan describes one complete broker systemd installation.
 type SystemdInstallPlan struct {
-	User         string
-	Group        string
-	ConfigDir    string
-	StateDir     string
-	SystemdDir   string
-	UnitName     string
-	Files        []ManagedFile
-	Unit         SystemdUnit
-	NoStart      bool
-	AllowNonRoot bool
-	Runner       CommandRunner
+	User          string
+	Group         string
+	ConfigDir     string
+	StateDir      string
+	SystemdDir    string
+	UnitName      string
+	Files         []ManagedFile
+	RemoveFiles   []ManagedFileRef
+	ReadyCheck    ReadinessCheck
+	ReadyTimeout  time.Duration
+	ReadyInterval time.Duration
+	Unit          SystemdUnit
+	NoStart       bool
+	AllowNonRoot  bool
+	Runner        CommandRunner
 }
 
 // InstallSystemd installs one broker service from a validated typed plan.
@@ -110,7 +132,16 @@ func installSystemdForIdentity(ctx context.Context, runner CommandRunner, plan S
 			return err
 		}
 	}
-	return startInstalledSystemdUnit(ctx, runner, plan)
+	if err := startInstalledSystemdUnit(ctx, runner, plan); err != nil {
+		return err
+	}
+	if plan.NoStart {
+		return nil
+	}
+	if err := waitForSystemdReady(ctx, plan); err != nil {
+		return err
+	}
+	return removeManagedFiles(roots, plan.RemoveFiles)
 }
 
 func startInstalledSystemdUnit(ctx context.Context, runner CommandRunner, plan SystemdInstallPlan) error {
@@ -143,6 +174,16 @@ func validateInstallFields(plan SystemdInstallPlan) error {
 	}
 	if plan.AllowNonRoot && !plan.NoStart {
 		return errors.New("non-root test installation must disable service activation")
+	}
+	return validateReadinessSettings(plan)
+}
+
+func validateReadinessSettings(plan SystemdInstallPlan) error {
+	if plan.ReadyTimeout < 0 || plan.ReadyInterval < 0 {
+		return errors.New("readiness timeout and interval must not be negative")
+	}
+	if len(plan.RemoveFiles) > 0 && !plan.NoStart && plan.ReadyCheck == nil {
+		return errors.New("managed file retirement requires a readiness check")
 	}
 	return nil
 }
@@ -216,26 +257,54 @@ func validateInstallUnit(plan SystemdInstallPlan) error {
 }
 
 func validateManagedFiles(plan SystemdInstallPlan) error {
-	seen := make(map[string]struct{}, len(plan.Files))
+	seen := make(map[string]struct{}, len(plan.Files)+len(plan.RemoveFiles))
+	environmentManaged, err := validateManagedFileWrites(plan, seen)
+	if err != nil {
+		return err
+	}
+	if err := validateManagedFileRemovals(plan, seen); err != nil {
+		return err
+	}
+	if !environmentManaged {
+		return errors.New("systemd environment file must be a managed file")
+	}
+	return nil
+}
+
+func validateManagedFileWrites(plan SystemdInstallPlan, seen map[string]struct{}) (bool, error) {
 	environmentManaged := false
 	for _, file := range plan.Files {
 		if err := validateManagedFile(plan, file); err != nil {
-			return err
+			return false, err
 		}
-		key := string(file.Area) + "/" + file.Name
+		key := managedFileKey(file.Area, file.Name)
 		if _, exists := seen[key]; exists {
-			return fmt.Errorf("duplicate managed file %s", key)
+			return false, fmt.Errorf("duplicate managed file %s", key)
 		}
 		seen[key] = struct{}{}
 		if filepath.Clean(managedFilePath(plan, file)) == filepath.Clean(plan.Unit.EnvironmentFile) {
 			if file.Owner != ManagedFileOwnerRoot {
-				return errors.New("systemd environment file must be root-owned")
+				return false, errors.New("systemd environment file must be root-owned")
 			}
 			environmentManaged = true
 		}
 	}
-	if !environmentManaged {
-		return errors.New("systemd environment file must be a managed file")
+	return environmentManaged, nil
+}
+
+func validateManagedFileRemovals(plan SystemdInstallPlan, seen map[string]struct{}) error {
+	for _, file := range plan.RemoveFiles {
+		if err := validateManagedFileRef(file); err != nil {
+			return err
+		}
+		key := managedFileKey(file.Area, file.Name)
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate managed file %s", key)
+		}
+		if filepath.Clean(managedFileRefPath(plan, file)) == filepath.Clean(plan.Unit.EnvironmentFile) {
+			return errors.New("systemd environment file must be written, not removed")
+		}
+		seen[key] = struct{}{}
 	}
 	return nil
 }
@@ -254,11 +323,68 @@ func validateManagedFilePlacement(file ManagedFile) error {
 	if !validManagedFileName(file.Name) {
 		return fmt.Errorf("managed file name %q must be a literal direct child", file.Name)
 	}
-	if file.Area != ManagedFileConfig && file.Area != ManagedFileState {
-		return fmt.Errorf("managed file %q has invalid area %q", file.Name, file.Area)
+	if err := validateManagedFileArea(file.Area, file.Name); err != nil {
+		return err
 	}
 	if file.Owner != ManagedFileOwnerRoot && file.Owner != ManagedFileOwnerService {
 		return fmt.Errorf("managed file %q has invalid owner %q", file.Name, file.Owner)
+	}
+	return nil
+}
+
+func validateManagedFileRef(file ManagedFileRef) error {
+	if !validManagedFileName(file.Name) {
+		return fmt.Errorf("managed file name %q must be a literal direct child", file.Name)
+	}
+	if file.Area != ManagedFileConfig {
+		return fmt.Errorf("retired managed file %q must be in the config area", file.Name)
+	}
+	return nil
+}
+
+func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
+	if len(plan.RemoveFiles) == 0 {
+		return nil
+	}
+	if plan.ReadyCheck == nil {
+		return errors.New("managed file retirement requires a readiness check")
+	}
+	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
+	defer cancel()
+	return pollSystemdReadiness(readyContext, plan.ReadyCheck, durationOr(plan.ReadyInterval, defaultReadinessInterval))
+}
+
+func pollSystemdReadiness(ctx context.Context, check ReadinessCheck, interval time.Duration) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if ctx.Err() != nil {
+			return errServiceReadinessFailed
+		}
+		if err := check(ctx); err == nil {
+			if ctx.Err() != nil {
+				return errServiceReadinessFailed
+			}
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return errServiceReadinessFailed
+		case <-ticker.C:
+		}
+	}
+}
+
+func durationOr(value, fallback time.Duration) time.Duration {
+	if value == 0 {
+		return fallback
+	}
+	return value
+}
+
+func validateManagedFileArea(area ManagedFileArea, name string) error {
+	if area != ManagedFileConfig && area != ManagedFileState {
+		return fmt.Errorf("managed file %q has invalid area %q", name, area)
 	}
 	return nil
 }
@@ -304,10 +430,18 @@ func managedFileReadableByService(plan SystemdInstallPlan, file ManagedFile) boo
 }
 
 func managedFilePath(plan SystemdInstallPlan, file ManagedFile) string {
+	return managedFileRefPath(plan, ManagedFileRef{Area: file.Area, Name: file.Name})
+}
+
+func managedFileRefPath(plan SystemdInstallPlan, file ManagedFileRef) string {
 	if file.Area == ManagedFileState {
 		return filepath.Join(plan.StateDir, file.Name)
 	}
 	return filepath.Join(plan.ConfigDir, file.Name)
+}
+
+func managedFileKey(area ManagedFileArea, name string) string {
+	return string(area) + "/" + name
 }
 
 type execCommandRunner struct{}
@@ -544,21 +678,65 @@ func (roots installRoots) close() {
 }
 
 func writeManagedFiles(roots installRoots, plan SystemdInstallPlan, serviceUID uint64, serviceGID uint64) error {
-	rootUID, _ := installRootIDs(plan)
-	for _, file := range plan.Files {
-		root := roots.config
-		if file.Area == ManagedFileState {
-			root = roots.state
-		}
-		uid := rootUID
-		if file.Owner == ManagedFileOwnerService {
-			uid = serviceUID
-		}
-		if err := writeAtomicInstallFile(root, file.Name, file.Data, file.Mode, uid, serviceGID, plan.AllowNonRoot); err != nil {
-			return fmt.Errorf("write managed file %s/%s: %w", file.Area, file.Name, err)
+	for _, environment := range []bool{false, true} {
+		for _, file := range plan.Files {
+			isEnvironment := filepath.Clean(managedFilePath(plan, file)) == filepath.Clean(plan.Unit.EnvironmentFile)
+			if isEnvironment != environment {
+				continue
+			}
+			if err := writeManagedFile(roots, plan, file, serviceUID, serviceGID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func removeManagedFiles(roots installRoots, files []ManagedFileRef) error {
+	for _, file := range files {
+		if err := removeManagedFile(roots, file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeManagedFile(roots installRoots, plan SystemdInstallPlan, file ManagedFile, serviceUID uint64, serviceGID uint64) error {
+	rootUID, _ := installRootIDs(plan)
+	root := managedFileRoot(roots, file.Area)
+	uid := rootUID
+	if file.Owner == ManagedFileOwnerService {
+		uid = serviceUID
+	}
+	if err := writeAtomicInstallFile(root, file.Name, file.Data, file.Mode, uid, serviceGID, plan.AllowNonRoot); err != nil {
+		return fmt.Errorf("write managed file %s/%s: %w", file.Area, file.Name, err)
+	}
+	return nil
+}
+
+func removeManagedFile(roots installRoots, file ManagedFileRef) error {
+	root := managedFileRoot(roots, file.Area)
+	info, err := root.Lstat(file.Name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect managed file %s/%s: %w", file.Area, file.Name, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("remove managed file %s/%s: path is a directory", file.Area, file.Name)
+	}
+	if err := root.Remove(file.Name); err != nil {
+		return fmt.Errorf("remove managed file %s/%s: %w", file.Area, file.Name, err)
+	}
+	return syncInstallRoot(root)
+}
+
+func managedFileRoot(roots installRoots, area ManagedFileArea) *os.Root {
+	if area == ManagedFileState {
+		return roots.state
+	}
+	return roots.config
 }
 
 func writeSystemdUnit(root *os.Root, plan SystemdInstallPlan) error {
@@ -643,8 +821,11 @@ func activateSystemdUnit(ctx context.Context, runner CommandRunner, unitName str
 	if err := runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("systemctl daemon-reload: %w", err)
 	}
-	if err := runner.Run(ctx, "systemctl", "enable", "--now", unitName); err != nil {
-		return fmt.Errorf("systemctl enable --now %s: %w", unitName, err)
+	if err := runner.Run(ctx, "systemctl", "enable", unitName); err != nil {
+		return fmt.Errorf("systemctl enable %s: %w", unitName, err)
+	}
+	if err := runner.Run(ctx, "systemctl", "restart", unitName); err != nil {
+		return fmt.Errorf("systemctl restart %s: %w", unitName, err)
 	}
 	return nil
 }
