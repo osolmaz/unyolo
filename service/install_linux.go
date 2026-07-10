@@ -355,16 +355,13 @@ func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
 func pollSystemdReadiness(ctx context.Context, check ReadinessCheck, interval time.Duration) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	var lastErr error
 	for {
 		if err := check(ctx); err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("service readiness check failed before retiring managed files: %w", lastErr)
+			return errors.New("service readiness check failed before retiring managed files")
 		case <-ticker.C:
 		}
 	}

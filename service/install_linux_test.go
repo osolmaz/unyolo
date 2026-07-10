@@ -188,10 +188,10 @@ func TestInstallSystemdPreservesRetiredFileWhenReadinessFails(t *testing.T) {
 	plan := nonRootInstallPlan(t)
 	retired := prepareRetiredManagedFile(t, plan, "retired-secret")
 	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
-	plan.ReadyCheck = func(context.Context) error { return errors.New("not ready") }
+	plan.ReadyCheck = func(context.Context) error { return errors.New("not ready: sensitive provider detail") }
 	plan.ReadyTimeout = 5 * time.Millisecond
 	plan.ReadyInterval = time.Millisecond
-	if err := installActivatedFixtureError(t, plan, &recordingCommandRunner{}); err == nil || !strings.Contains(err.Error(), "readiness") {
+	if err := installActivatedFixtureError(t, plan, &recordingCommandRunner{}); err == nil || !strings.Contains(err.Error(), "readiness") || strings.Contains(err.Error(), "sensitive") {
 		t.Fatalf("installSystemdForIdentity() error = %v", err)
 	}
 	if _, err := os.Lstat(retired); err != nil {

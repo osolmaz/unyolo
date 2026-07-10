@@ -18,7 +18,7 @@ func HTTPReadyCheck(rawURL string, client *http.Client) ReadinessCheck {
 	return func(ctx context.Context) error {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
-			return fmt.Errorf("create readiness request: %w", err)
+			return errors.New("invalid readiness endpoint")
 		}
 		response, err := client.Do(request)
 		if err != nil {

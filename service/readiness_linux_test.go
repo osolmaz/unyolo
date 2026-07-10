@@ -30,3 +30,10 @@ func TestHTTPReadyCheckRejectsFailureWithoutResponseBody(t *testing.T) {
 		t.Fatalf("HTTPReadyCheck() error = %v", err)
 	}
 }
+
+func TestHTTPReadyCheckRedactsInvalidURL(t *testing.T) {
+	err := HTTPReadyCheck("http://secret.example/%zz", nil)(context.Background())
+	if err == nil || strings.Contains(err.Error(), "secret.example") {
+		t.Fatalf("HTTPReadyCheck(invalid URL) error = %v", err)
+	}
+}
