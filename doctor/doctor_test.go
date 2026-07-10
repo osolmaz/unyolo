@@ -53,7 +53,7 @@ func TestIdentityGroupsFailsWhenGroupNameIsUnknown(t *testing.T) {
 }
 
 func TestSecretFileChecks(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secret")
+	path := filepath.Join(resolvedTempDir(t), "secret")
 	if err := os.WriteFile(path, []byte("do-not-print"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -76,13 +76,22 @@ func TestSecretFileChecks(t *testing.T) {
 	if ownerChecks[3].Status != CheckFail || ownerChecks[4].Status != CheckFail {
 		t.Fatalf("owner secret checks = %+v", ownerChecks)
 	}
-	if checks := SecretFileChecks(filepath.Join(t.TempDir(), "missing"), agent); checks[0].Status != CheckUnknown {
+	if checks := SecretFileChecks(filepath.Join(resolvedTempDir(t), "missing"), agent); checks[0].Status != CheckUnknown {
 		t.Fatalf("missing secret checks = %+v", checks)
 	}
 }
 
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	path, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temporary directory: %v", err)
+	}
+	return path
+}
+
 func TestSecretFileOwnerCanGainAccessDespiteModeZero(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secret")
+	path := filepath.Join(resolvedTempDir(t), "secret")
 	if err := os.WriteFile(path, []byte("do-not-print"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +110,7 @@ func TestSecretFileOwnerCanGainAccessDespiteModeZero(t *testing.T) {
 }
 
 func TestSecretFileChecksRejectReplaceableAndSymlinkPaths(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedTempDir(t)
 	writable := filepath.Join(root, "writable")
 	if err := os.Mkdir(writable, 0o777); err != nil { // #nosec G301 -- world-writable directory is the isolation failure fixture.
 		t.Fatal(err)
@@ -141,7 +150,7 @@ func TestSecretFileChecksRejectReplaceableAndSymlinkPaths(t *testing.T) {
 }
 
 func TestSecretFileChecksRejectsParentTraversalBeforeCleaning(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedTempDir(t)
 	stable := filepath.Join(root, "stable")
 	actual := filepath.Join(root, "actual")
 	if err := os.Mkdir(stable, 0o750); err != nil {
@@ -170,7 +179,7 @@ func TestSecretFileChecksRejectsParentTraversalBeforeCleaning(t *testing.T) {
 }
 
 func TestAgentCanReplaceChildStickyDirectoryRules(t *testing.T) {
-	root := t.TempDir()
+	root := resolvedTempDir(t)
 	parentPath := filepath.Join(root, "sticky")
 	if err := os.Mkdir(parentPath, 0o700); err != nil {
 		t.Fatal(err)
@@ -202,7 +211,7 @@ func TestAgentCanReplaceChildStickyDirectoryRules(t *testing.T) {
 }
 
 func TestAgentCanReplaceChildWhenOwningModeZeroDirectory(t *testing.T) {
-	parentPath := filepath.Join(t.TempDir(), "parent")
+	parentPath := filepath.Join(resolvedTempDir(t), "parent")
 	if err := os.Mkdir(parentPath, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +239,7 @@ func TestAgentCanReplaceChildWhenOwningModeZeroDirectory(t *testing.T) {
 }
 
 func TestAgentCanReplaceChildFailsClosedForNonDirectory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "file")
+	path := filepath.Join(resolvedTempDir(t), "file")
 	if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -1,22 +1,27 @@
 package service
 
 import (
+	"fmt"
+	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
 func TestRenderSystemd(t *testing.T) {
 	body, err := RenderSystemd(SystemdUnit{
 		Description: "test broker", User: "broker", Group: "broker",
-		EnvironmentFile: "/etc/test/env", ExecStart: "/usr/local/bin/test serve",
+		EnvironmentFile: "/etc/test/env", ExecStart: "/usr/bin/test serve",
 		StateDir: "/var/lib/test", ConfigDir: "/etc/test",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"After=network-online.target", "EnvironmentFile=/etc/test/env", "ExecStart=/usr/local/bin/test serve",
+		"After=network-online.target", "EnvironmentFile=/etc/test/env", "ExecStart=/usr/bin/test serve",
 		"ProtectSystem=strict", "ProtectHome=true", "ReadWritePaths=/var/lib/test", "NoNewPrivileges=true", "WantedBy=multi-user.target",
 	} {
 		if !strings.Contains(body, want) {
@@ -34,6 +39,7 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		func(unit *SystemdUnit) { unit.Description = "" },
 		func(unit *SystemdUnit) { unit.Description = "continued\\" },
 		func(unit *SystemdUnit) { unit.Description = "bad\tdescription" },
+		func(unit *SystemdUnit) { unit.ExecStart = "/usr/bin/test\x00serve" },
 		func(unit *SystemdUnit) { unit.User = "broker\nUser=root" },
 		func(unit *SystemdUnit) { unit.User = "%u" },
 		func(unit *SystemdUnit) { unit.Group = "%g" },
@@ -60,6 +66,36 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		if _, err := RenderSystemd(unit); err == nil {
 			t.Fatalf("RenderSystemd(%+v) error = nil", unit)
 		}
+	}
+}
+
+func TestTrustedStateDirectoryRequiresConfiguredServiceOwner(t *testing.T) {
+	path := t.TempDir()
+	if err := os.Chmod(path, 0o750); err != nil { // #nosec G302 -- service state ownership fixture.
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := info.Sys().(*syscall.Stat_t)
+	oldLookup := lookupSystemUser
+	lookupSystemUser = func(name string) (*user.User, error) {
+		switch name {
+		case "broker":
+			return &user.User{Username: name, Uid: strconv.FormatUint(uint64(stat.Uid), 10)}, nil
+		case "unrelated":
+			return &user.User{Username: name, Uid: strconv.FormatUint(uint64(stat.Uid)+1, 10)}, nil
+		default:
+			return nil, fmt.Errorf("unknown user")
+		}
+	}
+	t.Cleanup(func() { lookupSystemUser = oldLookup })
+	if err := validateTrustedServiceComponent("state directory", path, info, "broker"); err != nil {
+		t.Fatalf("configured owner rejected: %v", err)
+	}
+	if err := validateTrustedServiceComponent("state directory", path, info, "unrelated"); err == nil {
+		t.Fatal("unrelated state directory owner accepted")
 	}
 }
 

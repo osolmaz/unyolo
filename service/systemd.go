@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
@@ -77,6 +79,8 @@ var allowedExtraSystemdDirectives = map[string]string{
 	"SystemCallArchitectures": "native",
 	"UMask":                   "0077",
 }
+
+var lookupSystemUser = user.Lookup
 
 // RenderSystemd renders a hardened systemd unit using the shared broker-family
 // baseline. Broker-specific directives may be appended to the Service section.
@@ -185,7 +189,7 @@ func validateExecStart(value string) error {
 	if !strings.HasPrefix(value, "/") {
 		return errors.New("exec start must begin with an absolute binary path")
 	}
-	if strings.ContainsAny(value, "\t%\\\"'$;") {
+	if strings.ContainsAny(value, "%\\\"'$;") || strings.IndexFunc(value, unicode.IsControl) >= 0 {
 		return errors.New("exec start contains unsupported systemd syntax")
 	}
 	return nil
@@ -227,23 +231,23 @@ func normalizedPathValidation(value PathValidation) PathValidation {
 
 func validateTrustedServicePaths(unit SystemdUnit) error {
 	paths := map[string]struct {
-		value             string
-		allowFinalNonRoot bool
+		value      string
+		finalOwner string
 	}{
 		"environment file": {value: unit.EnvironmentFile},
 		"config directory": {value: unit.ConfigDir},
 		"executable":       {value: strings.SplitN(unit.ExecStart, " ", 2)[0]},
-		"state directory":  {value: unit.StateDir, allowFinalNonRoot: true},
+		"state directory":  {value: unit.StateDir, finalOwner: unit.User},
 	}
 	for name, path := range paths {
-		if err := validateTrustedServicePath(name, path.value, path.allowFinalNonRoot); err != nil {
+		if err := validateTrustedServicePath(name, path.value, path.finalOwner); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateTrustedServicePath(name string, path string, allowFinalNonRoot bool) error {
+func validateTrustedServicePath(name string, path string, finalOwner string) error {
 	if validatex.HasParentTraversal(path) {
 		return fmt.Errorf("%s must not contain parent traversal", name)
 	}
@@ -259,14 +263,18 @@ func validateTrustedServicePath(name string, path string, allowFinalNonRoot bool
 			return fmt.Errorf("inspect %s path: %w", name, err)
 		}
 		final := index == len(components)-1
-		if err := validateTrustedServiceComponent(name, current, info, allowFinalNonRoot && final); err != nil {
+		expectedOwner := ""
+		if final {
+			expectedOwner = finalOwner
+		}
+		if err := validateTrustedServiceComponent(name, current, info, expectedOwner); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateTrustedServiceComponent(name string, path string, info os.FileInfo, allowNonRootOwner bool) error {
+func validateTrustedServiceComponent(name string, path string, info os.FileInfo, expectedOwner string) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%s path must not contain symbolic links: %s", name, path)
 	}
@@ -274,13 +282,42 @@ func validateTrustedServiceComponent(name string, path string, info os.FileInfo,
 	if !ok {
 		return fmt.Errorf("%s path ownership is unavailable: %s", name, path)
 	}
-	if !allowNonRootOwner && stat.Uid != 0 {
-		return fmt.Errorf("%s path component must be root-owned: %s", name, path)
+	if err := validateTrustedServiceOwner(name, path, uint64(stat.Uid), expectedOwner); err != nil {
+		return err
 	}
 	if info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("%s path component must not be mutable by untrusted users: %s", name, path)
 	}
 	return nil
+}
+
+func validateTrustedServiceOwner(name string, path string, actualUID uint64, expectedOwner string) error {
+	if expectedOwner == "" {
+		if actualUID != 0 {
+			return fmt.Errorf("%s path component must be root-owned: %s", name, path)
+		}
+		return nil
+	}
+	expectedUID, err := systemUserUID(expectedOwner)
+	if err != nil {
+		return fmt.Errorf("resolve %s owner: %w", name, err)
+	}
+	if actualUID != expectedUID {
+		return fmt.Errorf("%s must be owned by service user %s: %s", name, expectedOwner, path)
+	}
+	return nil
+}
+
+func systemUserUID(name string) (uint64, error) {
+	account, err := lookupSystemUser(name)
+	if err != nil {
+		return 0, fmt.Errorf("lookup user %q: %w", name, err)
+	}
+	uid, err := strconv.ParseUint(account.Uid, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("parse uid for %q: %w", name, err)
+	}
+	return uid, nil
 }
 
 func validateProtectedServicePath(name string, value string) error {
