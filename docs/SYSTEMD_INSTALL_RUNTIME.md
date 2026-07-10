@@ -31,6 +31,12 @@ Consumers own:
 - provider-specific dry-run and summary text;
 - provider-specific service hardening choices exposed by typed Brokerkit APIs.
 
+The default unit uses `ProtectSystem=strict`. A privileged execution broker may
+explicitly select `HostFilesystemAccessAllow`, which renders
+`ProtectSystem=false` so approved child processes retain the target Unix
+account's normal filesystem permissions. This is an opt-in capability; it does
+not change the default for credential brokers.
+
 Brokerkit never parses, logs, returns, or adds provider meaning to managed file
 contents.
 
