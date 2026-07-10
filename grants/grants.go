@@ -377,10 +377,8 @@ func (s *Store) ReserveUse(id string) (Grant, error) {
 		if !grantCanUse(grant, s.opts.Now().UTC()) {
 			return Grant{}, ErrNotActive
 		}
-		if grant.ReservedCount == 0 {
-			grant.ReservedAt = s.opts.Now().UTC()
-			grant.ReservationRevision++
-		}
+		grant.ReservedAt = s.opts.Now().UTC()
+		grant.ReservationRevision++
 		grant.ReservedCount++
 		return grant, nil
 	})
@@ -414,6 +412,8 @@ func (s *Store) CommitUse(id string) (Grant, error) {
 		if grant.ReservedCount == 0 {
 			grant.ReservedAt = time.Time{}
 			grant.ReservationRetained = false
+		} else {
+			grant.ReservedAt = s.opts.Now().UTC()
 		}
 		if grant.UsedCount >= grant.MaxUses {
 			if grant.Status != StatusRevoked {
@@ -434,6 +434,8 @@ func (s *Store) ReleaseUse(id string) (Grant, error) {
 		if grant.ReservedCount == 0 {
 			grant.ReservedAt = time.Time{}
 			grant.ReservationRetained = false
+		} else {
+			grant.ReservedAt = s.opts.Now().UTC()
 		}
 		return grant, nil
 	})

@@ -80,6 +80,8 @@ The registry mechanism is shared. The registered vocabulary is broker-local.
 - use budgets
 - reservation, commit, and release of uses
 - fail-closed recovery of crash-stale and ambiguous reservations
+- overlapping reservation recovery measured from the most recent reserve or
+  settlement, so a live newer use is never aged from an older use's start time
 - durable notification references and delivered-status keys
 - leased notification-send claims and conditional cancellation
 - restart-safe discovery of notification updates that remain due
