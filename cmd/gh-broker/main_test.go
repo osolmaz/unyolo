@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,15 +27,110 @@ func TestRunWithArgsVersion(t *testing.T) {
 	}
 }
 
+func TestDoctorCommandHelp(t *testing.T) {
+	var help bytes.Buffer
+	command, err := parseDoctorGitHub(&help, []string{"--help"})
+	if err != nil || !command.help || help.Len() == 0 {
+		t.Fatalf("parseDoctorGitHub(help) = %+v, %v, output %q", command, err, help.String())
+	}
+}
+
+func TestDoctorCommandParsing(t *testing.T) {
+	command, err := parseDoctorGitHub(ioDiscard{}, []string{
+		"--repo", "osolmaz/gh-broker",
+		"--agent-user", "alice",
+		"--service-user", "broker",
+		"--require-protection=false",
+		"--json",
+		"--env-file", "/tmp/gh-broker-env",
+	})
+	if err != nil {
+		t.Fatalf("parseDoctorGitHub() error = %v", err)
+	}
+	if command.options.Repo != "osolmaz/gh-broker" || command.options.AgentUser != "alice" || command.options.ServiceUser != "broker" || command.options.RequireProtection || command.envFile != "/tmp/gh-broker-env" || !command.jsonOutput {
+		t.Fatalf("parseDoctorGitHub() = %+v", command)
+	}
+}
+
+func TestDoctorCommandRejectsInvalidFlags(t *testing.T) {
+	for _, args := range [][]string{{"--bad"}, {}, {"--repo", "owner/repo", "extra"}} {
+		if _, parseErr := parseDoctorGitHub(ioDiscard{}, args); parseErr == nil {
+			t.Fatalf("parseDoctorGitHub(%v) error = nil", args)
+		}
+	}
+}
+
+func TestRunDoctorRejectsInvalidInvocation(t *testing.T) {
+	if err := runDoctor(t.Context(), ioDiscard{}, ioDiscard{}, nil); err == nil {
+		t.Fatal("runDoctor(empty) error = nil")
+	}
+	if err := runDoctor(t.Context(), ioDiscard{}, ioDiscard{}, []string{"github", "--help"}); err != nil {
+		t.Fatalf("runDoctor(help) error = %v", err)
+	}
+	t.Setenv("GH_BROKER_SHARED_SECRET", "short")
+	if err := runDoctor(t.Context(), ioDiscard{}, ioDiscard{}, []string{"github", "--repo", "owner/repo", "--env-file", ""}); err == nil {
+		t.Fatal("runDoctor(invalid config) error = nil")
+	}
+}
+
+func TestLoadGitHubDoctorConfigReadsInstalledEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	secret := strings.Repeat("s", 32)
+	secretsFile := filepath.Join(dir, "secrets")
+	tokenFile := filepath.Join(dir, "github-token")
+	envFile := filepath.Join(dir, "env")
+	if err := os.WriteFile(secretsFile, []byte("bob = "+secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tokenFile, []byte("github-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := "GH_BROKER_CLIENT_ID=bob\n" +
+		"GH_BROKER_SECRETS_FILE=" + secretsFile + "\n" +
+		"GH_BROKER_GITHUB_TOKEN_FILE=" + tokenFile + "\n" +
+		"GH_BROKER_SCOPE_FILE=" + filepath.Join(dir, "scope.json") + "\n" +
+		"GH_BROKER_STATE_DIR=" + filepath.Join(dir, "state") + "\n"
+	if err := os.WriteFile(envFile, []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("p", 32))
+	t.Setenv("GH_BROKER_GITHUB_TOKEN", "process-token")
+	cfg, err := loadGitHubDoctorConfig(envFile)
+	if err != nil {
+		t.Fatalf("loadGitHubDoctorConfig() error = %v", err)
+	}
+	if cfg.SharedSecret != secret || cfg.GitHubToken != "github-token" || cfg.SecretsFile != secretsFile {
+		t.Fatalf("loaded doctor config = %+v", cfg)
+	}
+}
+
+func TestExitCodeForRun(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := exitCodeForRun(nil, &stderr); code != 0 {
+		t.Fatalf("nil exit code = %d", code)
+	}
+	if code := exitCodeForRun(exitError{code: 2, message: "unsafe"}, &stderr); code != 2 || !strings.Contains(stderr.String(), "unsafe") {
+		t.Fatalf("status exit = %d, stderr = %q", code, stderr.String())
+	}
+	stderr.Reset()
+	if code := exitCodeForRun(errors.New("failed"), &stderr); code != 1 || !strings.Contains(stderr.String(), "failed") {
+		t.Fatalf("error exit = %d, stderr = %q", code, stderr.String())
+	}
+}
+
 func TestRunSetupClientWritesClientEnv(t *testing.T) {
 	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("resolve temp home: %v", err)
+	}
 	secretFile := filepath.Join(dir, "secrets")
 	secret := strings.Repeat("s", 32)
 	if err := os.WriteFile(secretFile, []byte("bob = "+secret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var stdout bytes.Buffer
-	err := runWithArgs(t.Context(), []string{
+	err = runWithArgs(t.Context(), []string{
 		"setup", "client",
 		"--client", "bob",
 		"--url", "http://127.0.0.1:8081",
@@ -74,13 +170,6 @@ func TestSetupClientParsingAndValidation(t *testing.T) {
 	}
 	if opts.HomeDir != home {
 		t.Fatalf("HomeDir = %q, want HOME", opts.HomeDir)
-	}
-	explicit := setupClientOptions{HomeDir: "/tmp/custom"}
-	if err := defaultSetupClientHome(&explicit); err != nil {
-		t.Fatalf("defaultSetupClientHome(explicit) error = %v", err)
-	}
-	if explicit.HomeDir != "/tmp/custom" {
-		t.Fatalf("explicit HomeDir = %q, want unchanged", explicit.HomeDir)
 	}
 	if err := validateSetupClientOptions(setupClientOptions{}); err == nil {
 		t.Fatal("validateSetupClientOptions(empty) error = nil, want validation error")

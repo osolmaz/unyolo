@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	bkaudit "github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
@@ -40,6 +42,7 @@ type Server struct {
 	githubClient        *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
+	auditWriter         *bkaudit.Writer
 	logger              *slog.Logger
 	maxReceivePackBytes int64
 }
@@ -84,6 +87,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		githubClient:        githubClient,
 		githubGitBaseURL:    gitBaseURL,
 		githubAPIBaseURL:    apiBaseURL,
+		auditWriter:         bkaudit.New(os.Stderr),
 		logger:              slog.Default(),
 		maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 	}
@@ -755,28 +759,32 @@ func (s *Server) audit(c echo.Context, request policy.Request, outcome string, r
 	if repo == "" {
 		repo = strings.TrimSuffix(c.Param("repoGit"), ".git")
 	}
-	attrs := []any{
-		"client", request.Client,
-		"operation", string(request.Operation),
-		"outcome", outcome,
-		"owner", request.Target.Owner,
-		"repo", repo,
-		"method", c.Request().Method,
-		"path", c.Request().URL.Path,
-	}
-	if status != 0 {
-		attrs = append(attrs, "status", status)
-	}
-	if reason != "" {
-		attrs = append(attrs, "reason", reason)
-	}
-	if len(matchedRuleIDs) > 0 {
-		attrs = append(attrs, "matched_rules", matchedRuleIDs)
+	event := bkaudit.Event{
+		Broker:         "gh-broker",
+		Client:         request.Client,
+		Operation:      string(request.Operation),
+		Target:         repositoryTarget(request.Target.Owner, repo),
+		Decision:       outcome,
+		Reason:         reason,
+		MatchedRuleIDs: matchedRuleIDs,
+		Status:         status,
+		Attrs: map[string]string{
+			"method": c.Request().Method,
+			"path":   c.Request().URL.Path,
+		},
+		Extensions: map[string]string{},
 	}
 	if installationID, ok := c.Get("github_installation_id").(int64); ok && installationID > 0 {
-		attrs = append(attrs, "github_installation_id", installationID)
+		event.Extensions["github_installation_id"] = strconv.FormatInt(installationID, 10)
 	}
-	s.logger.Info("broker operation", attrs...)
+	_ = s.auditWriter.Record(event)
+}
+
+func repositoryTarget(owner string, repo string) string {
+	if owner == "" {
+		return repo
+	}
+	return owner + "/" + repo
 }
 
 func (s *Server) auditAuthorizedReceivePack(c echo.Context, authorized []authorizedReceivePackRequest, outcome string, reason string, status int) {

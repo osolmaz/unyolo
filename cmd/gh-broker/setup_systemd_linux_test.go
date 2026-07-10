@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	bkservice "github.com/osolmaz/brokerkit/service"
+	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
 func TestParseSetupSystemdRequiresScope(t *testing.T) {
@@ -70,20 +73,16 @@ func TestParseSetupSystemdReadsSharedSecretFromFileAndStdin(t *testing.T) {
 func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 	var stdout bytes.Buffer
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
-		User:             "gh-broker",
-		Group:            "gh-broker",
-		ConfigDir:        "/etc/gh-broker",
-		StateDir:         "/var/lib/gh-broker",
-		SystemdDir:       "/etc/systemd/system",
-		BinaryPath:       "/usr/local/bin/gh-broker",
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
+			ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
+			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
+			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, DryRun: true,
+		},
 		GitHubTokenFile:  "/tmp/github-token",
 		ScopeFile:        "/tmp/scope.json",
-		ClientName:       "bob",
 		SharedSecret:     strings.Repeat("s", 32),
-		BindAddr:         "127.0.0.1",
-		Port:             8081,
 		DevTokenFallback: true,
-		DryRun:           true,
 	})
 	if err != nil {
 		t.Fatalf("runSetupSystemd() error = %v", err)
@@ -103,21 +102,17 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 func TestSetupSystemdDryRunForGitHubAppFiles(t *testing.T) {
 	var stdout bytes.Buffer
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
-		User:                    "gh-broker",
-		Group:                   "gh-broker",
-		ConfigDir:               "/etc/gh-broker",
-		StateDir:                "/var/lib/gh-broker",
-		SystemdDir:              "/etc/systemd/system",
-		BinaryPath:              "/usr/local/bin/gh-broker",
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
+			ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
+			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
+			ClientName: "bob", BindAddr: "0.0.0.0", Port: 8081, DryRun: true,
+		},
 		GitHubAppIDFile:         "/tmp/app-id",
 		GitHubAppPrivateKeyFile: "/tmp/private-key.pem",
 		GitHubWebhookSecretFile: "/tmp/webhook-secret",
 		ScopeFile:               "/tmp/scope.json",
-		ClientName:              "bob",
 		SharedSecret:            strings.Repeat("s", 32),
-		BindAddr:                "0.0.0.0",
-		Port:                    8081,
-		DryRun:                  true,
 	})
 	if err != nil {
 		t.Fatalf("runSetupSystemd() error = %v", err)
@@ -140,29 +135,28 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	tokenFile := writeFixture(t, dir, "source-token", "ghp_token\n")
 	scopeFile := writeFixture(t, dir, "scope.json", minimalScopeJSON())
 	var stdout bytes.Buffer
+	runner := &recordingRunner{}
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{
-		User:             currentUser.Username,
-		Group:            currentGroup.Name,
-		ConfigDir:        filepath.Join(dir, "etc", "gh-broker"),
-		StateDir:         filepath.Join(dir, "var", "lib", "gh-broker"),
-		SystemdDir:       filepath.Join(dir, "systemd"),
-		BinaryPath:       "/usr/local/bin/gh-broker",
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "gh-broker", User: currentUser.Username, Group: currentGroup.Name,
+			ConfigDir: filepath.Join(dir, "etc", "gh-broker"), StateDir: filepath.Join(dir, "var", "lib", "gh-broker"),
+			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
+			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, AllowNonRoot: true, NoStart: true,
+		},
 		GitHubTokenFile:  tokenFile,
 		ScopeFile:        scopeFile,
-		ClientName:       "bob",
 		SharedSecret:     strings.Repeat("s", 32),
-		BindAddr:         "127.0.0.1",
-		Port:             8081,
 		DevTokenFallback: true,
-		AllowNonRoot:     true,
-		NoStart:          true,
-		CommandRunner:    &recordingRunner{},
+		CommandRunner:    runner,
 	})
 	if err != nil {
 		t.Fatalf("runSetupSystemd() error = %v", err)
 	}
 	if !strings.Contains(stdout.String(), "gh-broker systemd service configured") {
 		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if got := strings.Join(runner.calls, "\n"); got != "getent group "+currentGroup.Name+"\nid -u "+currentUser.Username {
+		t.Fatalf("setup runner calls:\n%s", got)
 	}
 	for _, path := range []string{
 		filepath.Join(dir, "etc", "gh-broker", "github-token"),
@@ -194,129 +188,85 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	}
 }
 
-func TestWriteGitHubAppCredentialFiles(t *testing.T) {
+func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 	dir := t.TempDir()
 	appIDFile := writeFixture(t, dir, "app-id", "12345\n")
 	privateKeyFile := writeFixture(t, dir, "private-key.pem", "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----\n")
 	webhookSecretFile := writeFixture(t, dir, "webhook-secret", "webhook-fixture\n")
 	plan := systemdSetupPlan(setupSystemdOptions{
-		ConfigDir:               filepath.Join(dir, "etc", "gh-broker"),
-		StateDir:                filepath.Join(dir, "var", "lib", "gh-broker"),
-		SystemdDir:              filepath.Join(dir, "systemd"),
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
+			ConfigDir: filepath.Join(dir, "etc", "gh-broker"), StateDir: filepath.Join(dir, "var", "lib", "gh-broker"),
+			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
+			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, NoStart: true,
+		},
 		GitHubAppIDFile:         appIDFile,
 		GitHubAppPrivateKeyFile: privateKeyFile,
 		GitHubWebhookSecretFile: webhookSecretFile,
+		ScopeFile:               writeFixture(t, dir, "scope.json", minimalScopeJSON()),
+		SharedSecret:            strings.Repeat("s", 32),
 	})
-	if err := createSystemdDirs(plan); err != nil {
-		t.Fatalf("createSystemdDirs() error = %v", err)
-	}
-	if err := writeGitHubAppCredentialFiles(plan); err != nil {
-		t.Fatalf("writeGitHubAppCredentialFiles() error = %v", err)
-	}
-	for _, path := range []string{plan.appIDPath, plan.appPrivateKeyPath, plan.webhookSecretPath} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected %s: %v", path, err)
-		}
-	}
-}
-
-func TestStartSystemdServiceNoStartAndRun(t *testing.T) {
-	runner := &recordingRunner{}
-	if err := startSystemdService(context.Background(), setupSystemdOptions{NoStart: true, CommandRunner: runner}); err != nil {
-		t.Fatalf("startSystemdService(no-start) error = %v", err)
-	}
-	if len(runner.calls) != 0 {
-		t.Fatalf("no-start calls = %v, want none", runner.calls)
-	}
-	if err := startSystemdService(context.Background(), setupSystemdOptions{CommandRunner: runner}); err != nil {
-		t.Fatalf("startSystemdService(run) error = %v", err)
-	}
-	got := strings.Join(runner.calls, "\n")
-	for _, want := range []string{
-		"systemctl daemon-reload",
-		"systemctl enable --now gh-broker.service",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("calls missing %q:\n%s", want, got)
-		}
-	}
-}
-
-func TestEnsureServiceAccountCreatesMissingParts(t *testing.T) {
-	runner := &recordingRunner{fail: map[string]bool{
-		"getent group gh-broker": true,
-		"id -u gh-broker":        true,
-	}}
-	err := ensureServiceAccount(context.Background(), setupSystemdOptions{
-		User:          "gh-broker",
-		Group:         "gh-broker",
-		StateDir:      "/var/lib/gh-broker",
-		CommandRunner: runner,
-	})
+	installPlan, err := brokerkitSystemdInstallPlan(plan)
 	if err != nil {
-		t.Fatalf("ensureServiceAccount() error = %v", err)
+		t.Fatalf("brokerkitSystemdInstallPlan() error = %v", err)
 	}
-	got := strings.Join(runner.calls, "\n")
-	for _, want := range []string{
-		"groupadd --system gh-broker",
-		"useradd --system --gid gh-broker --home-dir /var/lib/gh-broker --shell /usr/sbin/nologin gh-broker",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("calls missing %q:\n%s", want, got)
+	wantOwners := map[string]bkservice.ManagedFileOwner{
+		githubAppIDFileName:         bkservice.ManagedFileOwnerRoot,
+		githubAppPrivateKeyFileName: bkservice.ManagedFileOwnerService,
+		githubWebhookSecretFileName: bkservice.ManagedFileOwnerService,
+		ghSecretsFileName:           bkservice.ManagedFileOwnerService,
+		ghScopeFileName:             bkservice.ManagedFileOwnerRoot,
+		ghEnvFileName:               bkservice.ManagedFileOwnerRoot,
+	}
+	for _, file := range installPlan.Files {
+		if file.Owner != wantOwners[file.Name] {
+			t.Fatalf("managed file %s owner = %q, want %q", file.Name, file.Owner, wantOwners[file.Name])
 		}
+		delete(wantOwners, file.Name)
 	}
-}
-
-func TestParseServiceIDs(t *testing.T) {
-	uid, gid, err := parseServiceIDs("user", "1000", "group", "1001")
-	if err != nil {
-		t.Fatalf("parseServiceIDs() error = %v", err)
-	}
-	if uid != 1000 || gid != 1001 {
-		t.Fatalf("parseServiceIDs() = %d, %d", uid, gid)
-	}
-	if _, _, err := parseServiceIDs("user", "bad", "group", "1001"); err == nil {
-		t.Fatal("parseServiceIDs() bad uid error = nil")
-	}
-	if _, _, err := parseServiceIDs("user", "1000", "group", "bad"); err == nil {
-		t.Fatal("parseServiceIDs() bad gid error = nil")
+	if len(wantOwners) != 0 {
+		t.Fatalf("missing managed files: %v", wantOwners)
 	}
 }
 
 func TestValidateSetupSystemdOptions(t *testing.T) {
+	base := bksetup.SystemdOptions{
+		BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
+		ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
+		SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
+		ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081,
+	}
 	valid := setupSystemdOptions{
+		SystemdOptions:   base,
 		ScopeFile:        "/tmp/scope.json",
 		GitHubTokenFile:  "/tmp/token",
-		ClientName:       "bob",
 		SharedSecret:     strings.Repeat("s", 32),
-		Port:             8081,
 		DevTokenFallback: true,
 	}
 	if err := validateSetupSystemdOptions(valid); err != nil {
 		t.Fatalf("validateSetupSystemdOptions() error = %v", err)
 	}
 	validApp := setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
+		SystemdOptions:          base,
 		ScopeFile:               "/tmp/scope.json",
 		GitHubAppIDFile:         "/tmp/app-id",
 		GitHubAppPrivateKeyFile: "/tmp/key",
 		GitHubWebhookSecretFile: "/tmp/webhook",
-		ClientName:              "bob",
 		SharedSecret:            strings.Repeat("s", 32),
-		Port:                    8081,
 	}
 	if err := validateSetupSystemdOptions(validApp); err != nil {
 		t.Fatalf("validateSetupSystemdOptions(app) error = %v", err)
 	}
-	cases := []setupSystemdOptions{
-		{GitHubTokenFile: valid.GitHubTokenFile, ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, Port: valid.Port, DevTokenFallback: true},
-		{ScopeFile: valid.ScopeFile, ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, Port: valid.Port, DevTokenFallback: true},
-		{ScopeFile: valid.ScopeFile, GitHubTokenFile: valid.GitHubTokenFile, SharedSecret: valid.SharedSecret, Port: valid.Port, DevTokenFallback: true},
-		{ScopeFile: valid.ScopeFile, GitHubTokenFile: valid.GitHubTokenFile, ClientName: "bad=name", SharedSecret: valid.SharedSecret, Port: valid.Port, DevTokenFallback: true},
-		{ScopeFile: valid.ScopeFile, GitHubTokenFile: valid.GitHubTokenFile, ClientName: valid.ClientName, SharedSecret: "short", Port: valid.Port, DevTokenFallback: true},
-		{ScopeFile: valid.ScopeFile, GitHubTokenFile: valid.GitHubTokenFile, ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, DevTokenFallback: true},
-		{ScopeFile: valid.ScopeFile, GitHubAppPrivateKeyFile: "/tmp/key", GitHubWebhookSecretFile: "/tmp/webhook", ClientName: valid.ClientName, SharedSecret: valid.SharedSecret, Port: valid.Port}, // #nosec G101 -- test fixture paths and generated secrets are not credentials.
+	cases := []func(*setupSystemdOptions){
+		func(opts *setupSystemdOptions) { opts.ScopeFile = "" },
+		func(opts *setupSystemdOptions) { opts.GitHubTokenFile = "" },
+		func(opts *setupSystemdOptions) { opts.ClientName = "bad=name" },
+		func(opts *setupSystemdOptions) { opts.SharedSecret = "short" },
+		func(opts *setupSystemdOptions) { opts.Port = 0 },
 	}
-	for _, opts := range cases {
+	for _, mutate := range cases {
+		opts := valid
+		mutate(&opts)
 		if err := validateSetupSystemdOptions(opts); err == nil {
 			t.Fatalf("validateSetupSystemdOptions(%+v) error = nil", opts)
 		}

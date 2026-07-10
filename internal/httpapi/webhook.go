@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/gh-broker/internal/policy"
 )
 
 const maxWebhookBodyBytes int64 = 1024 * 1024
@@ -126,18 +128,21 @@ func webhookRepositoryName(fullName string, owner string, name string) string {
 }
 
 func (s *Server) auditGitHubWebhook(metadata githubWebhookMetadata) {
-	attrs := []any{
-		"event", metadata.Event,
-		"delivery", metadata.Delivery,
+	event := audit.Event{
+		Broker:    "gh-broker",
+		Operation: string(policy.OperationWebhookGitHubReceive),
+		Target:    metadata.Repository,
+		Decision:  "received",
+		Extensions: map[string]string{
+			"github_event":    metadata.Event,
+			"github_delivery": metadata.Delivery,
+		},
 	}
 	if metadata.Action != "" {
-		attrs = append(attrs, "action", metadata.Action)
+		event.Extensions["github_action"] = metadata.Action
 	}
 	if metadata.InstallationID > 0 {
-		attrs = append(attrs, "github_installation_id", strconv.FormatInt(metadata.InstallationID, 10))
+		event.Extensions["github_installation_id"] = strconv.FormatInt(metadata.InstallationID, 10)
 	}
-	if metadata.Repository != "" {
-		attrs = append(attrs, "repository", metadata.Repository)
-	}
-	s.logger.Info("github webhook", attrs...)
+	_ = s.auditWriter.Record(event)
 }

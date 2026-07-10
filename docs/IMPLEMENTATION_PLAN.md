@@ -113,10 +113,10 @@ GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
 POST /{owner}/{repo}.git/git-receive-pack
 ```
 
-## Not Yet Implemented
+## Conditional Future Work
 
-- brokerkit cutover for audit helpers and remaining storage/config helpers.
-- Runtime branch-ruleset inspection in `doctor`.
+- Invalidate an installation cache from verified webhooks if an installation
+  cache is introduced. There is no cache today.
 
 ## Brokerkit Cutover Tests
 
@@ -158,8 +158,9 @@ contract:
 
 gh-broker now imports brokerkit for shared authentication, broker policy
 evaluation, generated grants, approval state, notification interfaces, Telegram
-approval transport, local durable grant storage, and provider-neutral Git
-receive-pack parsing. The remaining `internal/security`, `internal/policy`, and
+approval transport, local durable grant storage, provider-neutral Git
+receive-pack parsing, client and systemd setup, audit events, and common doctor
+checks. The remaining `internal/security`, `internal/policy`, and
 `internal/httpapi/receive_pack.go` code is GitHub-specific adapter code: Echo
 middleware wiring, GitHub operation registration, target and attr normalization,
 request classification, and audit-facing rule-id mapping.
@@ -170,6 +171,8 @@ Implemented in the current brokerkit cutover slice:
 - release tarballs and checksums through `scripts/release.sh`
 - `gh-broker setup client`
 - `gh-broker setup systemd --dev-token-fallback`
+- shared brokerkit privileged systemd account, directory, file, unit, and
+  activation runtime with GitHub-owned credential and unit payloads
 - GitHub App private-key authentication and installation token minting
 - repo-scoped installation resolution through GitHub's repository installation
   endpoint
@@ -178,6 +181,8 @@ Implemented in the current brokerkit cutover slice:
   `X-GitHub-Event`, and `X-GitHub-Delivery` checks
 - webhook audit metadata for event, delivery id, action, installation id, and
   repository name
+- broker and webhook audit records use the brokerkit audit schema with
+  GitHub-specific extension fields
 - server-side named client secrets through `GH_BROKER_SECRETS_FILE`
 - `POST /api/grants`
 - `GET /api/grants`
@@ -206,9 +211,14 @@ Implemented in the current brokerkit cutover slice:
   allows the request and are not written to disk, returned to clients, or logged
 - compatibility route aliases such as `POST /repos/{owner}/{repo}/pulls` are
   removed; JSON APIs live under `/api/*` and Git keeps Git smart-HTTP routes
+- `gh-broker doctor github --repo owner/name` verifies local account and secret
+  isolation, App JWT signing and installation-token minting, minimal App
+  permissions, repository visibility, and default-branch rulesets or classic
+  branch protection
 
-The next cutover slices should move audit helpers and remaining storage/config
-helpers to brokerkit, then add doctor checks.
+The brokerkit control-plane and Linux host-runtime cutover described by this
+plan is complete. GitHub-specific classifiers, credential use, upstream calls,
+protection interpretation, and audit extensions intentionally remain local.
 
 ## Non-Goals
 

@@ -7,10 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
+
+	bkservice "github.com/osolmaz/brokerkit/service"
+	ghpolicy "github.com/osolmaz/gh-broker/internal/policy"
 )
 
 const (
@@ -22,19 +26,19 @@ const (
 	ghScopeFileName             = "scope.json"
 	ghEnvFileName               = "env"
 	ghUnitFileName              = "gh-broker.service"
+	maxGitHubSetupFileBytes     = 16 * 1024 * 1024
 )
 
 type systemdPlan struct {
-	opts                    setupSystemdOptions
-	tokenPath               string
-	appIDPath               string
-	appPrivateKeyPath       string
-	webhookSecretPath       string
-	secretsPath             string
-	scopePath               string
-	envPath                 string
-	unitPath                string
-	productionAppConfigured bool
+	opts              setupSystemdOptions
+	tokenPath         string
+	appIDPath         string
+	appPrivateKeyPath string
+	webhookSecretPath string
+	secretsPath       string
+	scopePath         string
+	envPath           string
+	unitPath          string
 }
 
 func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOptions) error {
@@ -42,16 +46,17 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 		return err
 	}
 	plan := systemdSetupPlan(opts)
+	if err := validateSystemdSetupPlan(plan); err != nil {
+		return err
+	}
 	if opts.DryRun {
 		return printSystemdDryRun(stdout, plan)
 	}
-	if err := ensureServiceAccount(ctx, opts); err != nil {
+	installPlan, err := brokerkitSystemdInstallPlan(plan)
+	if err != nil {
 		return err
 	}
-	if err := writeSystemdSetupFiles(plan); err != nil {
-		return err
-	}
-	if err := startSystemdService(ctx, opts); err != nil {
+	if err := bkservice.InstallSystemd(ctx, installPlan); err != nil {
 		return err
 	}
 	printSystemdSummary(stdout, plan)
@@ -67,219 +72,112 @@ func requireRootForSystemd(opts setupSystemdOptions) error {
 
 func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 	return systemdPlan{
-		opts:                    opts,
-		tokenPath:               filepath.Join(opts.ConfigDir, githubTokenFileName),
-		appIDPath:               filepath.Join(opts.ConfigDir, githubAppIDFileName),
-		appPrivateKeyPath:       filepath.Join(opts.ConfigDir, githubAppPrivateKeyFileName),
-		webhookSecretPath:       filepath.Join(opts.ConfigDir, githubWebhookSecretFileName),
-		secretsPath:             filepath.Join(opts.ConfigDir, ghSecretsFileName),
-		scopePath:               filepath.Join(opts.ConfigDir, ghScopeFileName),
-		envPath:                 filepath.Join(opts.ConfigDir, ghEnvFileName),
-		unitPath:                filepath.Join(opts.SystemdDir, ghUnitFileName),
-		productionAppConfigured: !opts.DevTokenFallback,
+		opts:              opts,
+		tokenPath:         filepath.Join(opts.ConfigDir, githubTokenFileName),
+		appIDPath:         filepath.Join(opts.ConfigDir, githubAppIDFileName),
+		appPrivateKeyPath: filepath.Join(opts.ConfigDir, githubAppPrivateKeyFileName),
+		webhookSecretPath: filepath.Join(opts.ConfigDir, githubWebhookSecretFileName),
+		secretsPath:       filepath.Join(opts.ConfigDir, ghSecretsFileName),
+		scopePath:         filepath.Join(opts.ConfigDir, ghScopeFileName),
+		envPath:           filepath.Join(opts.ConfigDir, ghEnvFileName),
+		unitPath:          filepath.Join(opts.SystemdDir, ghUnitFileName),
 	}
 }
 
-func ensureServiceAccount(ctx context.Context, opts setupSystemdOptions) error {
-	if err := ensureServiceGroup(ctx, opts); err != nil {
-		return err
+func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan, error) {
+	if _, err := ghpolicy.LoadFile(plan.opts.ScopeFile); err != nil {
+		return bkservice.SystemdInstallPlan{}, err
 	}
-	return ensureServiceUser(ctx, opts)
-}
-
-func ensureServiceGroup(ctx context.Context, opts setupSystemdOptions) error {
-	if opts.CommandRunner.Run(ctx, "getent", "group", opts.Group) == nil {
-		return nil
-	}
-	if err := opts.CommandRunner.Run(ctx, "groupadd", "--system", opts.Group); err != nil {
-		return fmt.Errorf("create group %q: %w", opts.Group, err)
-	}
-	return nil
-}
-
-func ensureServiceUser(ctx context.Context, opts setupSystemdOptions) error {
-	if opts.CommandRunner.Run(ctx, "id", "-u", opts.User) == nil {
-		return nil
-	}
-	if err := opts.CommandRunner.Run(ctx, "useradd", "--system", "--gid", opts.Group, "--home-dir", opts.StateDir, "--shell", "/usr/sbin/nologin", opts.User); err != nil {
-		return fmt.Errorf("create user %q: %w", opts.User, err)
-	}
-	return nil
-}
-
-func writeSystemdSetupFiles(plan systemdPlan) error {
-	opts := plan.opts
-	uid, gid, err := serviceIDs(opts.User, opts.Group)
+	files, err := githubManagedFiles(plan)
 	if err != nil {
-		return err
+		return bkservice.SystemdInstallPlan{}, err
 	}
-	if err := writeSystemdPayloads(plan); err != nil {
-		return err
-	}
-	return chownSystemdFiles(plan, configOwnerUID(opts), uid, gid)
+	return bkservice.SystemdInstallPlan{
+		User:         plan.opts.User,
+		Group:        plan.opts.Group,
+		ConfigDir:    plan.opts.ConfigDir,
+		StateDir:     plan.opts.StateDir,
+		SystemdDir:   plan.opts.SystemdDir,
+		UnitName:     ghUnitFileName,
+		Files:        files,
+		Unit:         systemdUnit(plan),
+		NoStart:      plan.opts.NoStart,
+		AllowNonRoot: plan.opts.AllowNonRoot,
+		Runner:       plan.opts.CommandRunner,
+	}, nil
 }
 
-func configOwnerUID(opts setupSystemdOptions) int {
-	if opts.AllowNonRoot {
-		return os.Getuid()
+func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
+	credentials, err := githubCredentialFiles(plan)
+	if err != nil {
+		return nil, err
 	}
-	return 0
+	scope, err := readRequiredSetupFile(plan.opts.ScopeFile, "--scope-file")
+	if err != nil {
+		return nil, err
+	}
+	files := append(credentials,
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghSecretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghScopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghEnvFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+	)
+	return files, nil
 }
 
-func writeSystemdPayloads(plan systemdPlan) error {
-	if err := createSystemdDirs(plan); err != nil {
-		return err
-	}
-	if err := writeCredentialFiles(plan); err != nil {
-		return err
-	}
-	return writeBrokerConfigFiles(plan)
-}
-
-func writeCredentialFiles(plan systemdPlan) error {
+func githubCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 	if plan.opts.DevTokenFallback {
-		return copyRequiredFile(plan.opts.GitHubTokenFile, plan.tokenPath, 0o600, "--github-token-file")
+		data, err := readRequiredSetupFile(plan.opts.GitHubTokenFile, "--github-token-file")
+		if err != nil {
+			return nil, err
+		}
+		return []bkservice.ManagedFile{{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName, Data: data, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService}}, nil
 	}
-	return writeGitHubAppCredentialFiles(plan)
+	return githubAppCredentialFiles(plan)
 }
 
-func writeGitHubAppCredentialFiles(plan systemdPlan) error {
-	if err := copyRequiredFile(plan.opts.GitHubAppIDFile, plan.appIDPath, 0o640, "--github-app-id-file"); err != nil {
-		return err
+func githubAppCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
+	sources := []struct {
+		path  string
+		label string
+		name  string
+		mode  os.FileMode
+		owner bkservice.ManagedFileOwner
+	}{
+		{path: plan.opts.GitHubAppIDFile, label: "--github-app-id-file", name: githubAppIDFileName, mode: 0o640, owner: bkservice.ManagedFileOwnerRoot},
+		{path: plan.opts.GitHubAppPrivateKeyFile, label: "--github-app-private-key-file", name: githubAppPrivateKeyFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService},
+		{path: plan.opts.GitHubWebhookSecretFile, label: "--github-webhook-secret-file", name: githubWebhookSecretFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService},
 	}
-	if err := copyRequiredFile(plan.opts.GitHubAppPrivateKeyFile, plan.appPrivateKeyPath, 0o600, "--github-app-private-key-file"); err != nil {
-		return err
+	files := make([]bkservice.ManagedFile, 0, len(sources))
+	for _, source := range sources {
+		data, err := readRequiredSetupFile(source.path, source.label)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: source.name, Data: data, Mode: source.mode, Owner: source.owner})
 	}
-	return copyRequiredFile(plan.opts.GitHubWebhookSecretFile, plan.webhookSecretPath, 0o600, "--github-webhook-secret-file")
+	return files, nil
 }
 
-func writeBrokerConfigFiles(plan systemdPlan) error {
-	if err := writeFile(plan.secretsPath, []byte(plan.opts.ClientName+" = "+plan.opts.SharedSecret+"\n"), 0o600); err != nil {
-		return err
-	}
-	if err := copyRequiredFile(plan.opts.ScopeFile, plan.scopePath, 0o644, "--scope-file"); err != nil {
-		return err
-	}
-	if err := writeFile(plan.envPath, []byte(renderEnvFile(plan)), 0o640); err != nil {
-		return err
-	}
-	return writeFile(plan.unitPath, []byte(renderSystemdUnit(plan)), 0o644)
-}
-
-func createSystemdDirs(plan systemdPlan) error {
-	if err := os.MkdirAll(plan.opts.ConfigDir, 0o750); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	if err := os.MkdirAll(plan.opts.StateDir, 0o750); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
-	}
-	if err := os.MkdirAll(plan.opts.SystemdDir, 0o755); err != nil { // #nosec G301 -- systemd unit directories must be world-readable/traversable.
-		return fmt.Errorf("create systemd dir: %w", err)
-	}
-	return nil
-}
-
-func copyRequiredFile(source string, dest string, mode os.FileMode, label string) error {
-	data, err := os.ReadFile(source) // #nosec G304 -- operator-supplied setup path.
+func readRequiredSetupFile(path string, label string) ([]byte, error) {
+	file, err := os.Open(path) // #nosec G304 -- operator-supplied setup path.
 	if err != nil {
-		return fmt.Errorf("read %s: %w", label, err)
+		return nil, fmt.Errorf("read %s: %w", label, err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxGitHubSetupFileBytes+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read %s: %w", label, readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close %s: %w", label, closeErr)
+	}
+	if len(data) > maxGitHubSetupFileBytes {
+		return nil, fmt.Errorf("%s exceeds %d bytes", label, maxGitHubSetupFileBytes)
 	}
 	if len(data) == 0 {
-		return fmt.Errorf("%s is empty", label)
+		return nil, fmt.Errorf("%s is empty", label)
 	}
-	return writeFile(dest, data, mode)
-}
-
-func writeFile(path string, data []byte, mode os.FileMode) error {
-	if err := os.WriteFile(path, data, mode); err != nil { // #nosec G304,G703 -- setup writes operator-configured filesystem paths.
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return os.Chmod(path, mode)
-}
-
-func chownSystemdFiles(plan systemdPlan, configUID, serviceUID, serviceGID int) error {
-	opts := plan.opts
-	if err := chownPath(opts.ConfigDir, configUID, serviceGID, "config dir"); err != nil {
-		return err
-	}
-	if err := chownPath(opts.StateDir, serviceUID, serviceGID, "state dir"); err != nil {
-		return err
-	}
-	if err := chownPrivateFiles(plan, serviceUID, serviceGID); err != nil {
-		return err
-	}
-	return chownConfigFiles(plan, configUID, serviceGID)
-}
-
-func chownPrivateFiles(plan systemdPlan, uid, gid int) error {
-	paths := []string{plan.secretsPath}
-	if plan.opts.DevTokenFallback {
-		paths = append(paths, plan.tokenPath)
-	} else {
-		paths = append(paths, plan.appPrivateKeyPath, plan.webhookSecretPath)
-	}
-	return chownPaths(paths, uid, gid)
-}
-
-func chownConfigFiles(plan systemdPlan, uid, gid int) error {
-	paths := []string{plan.scopePath, plan.envPath}
-	if !plan.opts.DevTokenFallback {
-		paths = append(paths, plan.appIDPath)
-	}
-	return chownPaths(paths, uid, gid)
-}
-
-func chownPaths(paths []string, uid, gid int) error {
-	for _, path := range paths {
-		if err := chownPath(path, uid, gid, path); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func chownPath(path string, uid, gid int, label string) error {
-	if err := os.Chown(path, uid, gid); err != nil {
-		return fmt.Errorf("chown %s: %w", label, err)
-	}
-	return nil
-}
-
-func startSystemdService(ctx context.Context, opts setupSystemdOptions) error {
-	if opts.NoStart {
-		return nil
-	}
-	if err := opts.CommandRunner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-		return fmt.Errorf("systemctl daemon-reload: %w", err)
-	}
-	if err := opts.CommandRunner.Run(ctx, "systemctl", "enable", "--now", ghUnitFileName); err != nil {
-		return fmt.Errorf("systemctl enable --now %s: %w", ghUnitFileName, err)
-	}
-	return nil
-}
-
-func serviceIDs(userName, groupName string) (int, int, error) {
-	account, err := user.Lookup(userName)
-	if err != nil {
-		return 0, 0, fmt.Errorf("lookup user %q: %w", userName, err)
-	}
-	group, err := user.LookupGroup(groupName)
-	if err != nil {
-		return 0, 0, fmt.Errorf("lookup group %q: %w", groupName, err)
-	}
-	return parseServiceIDs(userName, account.Uid, groupName, group.Gid)
-}
-
-func parseServiceIDs(userName, rawUID, groupName, rawGID string) (int, int, error) {
-	uid, err := strconv.Atoi(rawUID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse uid for %q: %w", userName, err)
-	}
-	gid, err := strconv.Atoi(rawGID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse gid for %q: %w", groupName, err)
-	}
-	return uid, gid, nil
+	return data, nil
 }
 
 func renderEnvFile(plan systemdPlan) string {
@@ -302,31 +200,32 @@ func renderEnvFile(plan systemdPlan) string {
 		"GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE=" + plan.webhookSecretPath + "\n"
 }
 
-func renderSystemdUnit(plan systemdPlan) string {
-	opts := plan.opts
-	return `[Unit]
-Description=gh-broker GitHub credential broker
-After=network-online.target
-Wants=network-online.target
+func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
+	return bkservice.SystemdUnit{
+		Description:     "gh-broker GitHub credential broker",
+		User:            plan.opts.User,
+		Group:           plan.opts.Group,
+		EnvironmentFile: plan.envPath,
+		ExecStart:       plan.opts.BinaryPath,
+		StateDir:        plan.opts.StateDir,
+		ConfigDir:       plan.opts.ConfigDir,
+		HomeAccess:      bkservice.HomeAccessDeny,
+		PathValidation:  setupPathValidation(plan.opts),
+	}
+}
 
-[Service]
-Type=simple
-User=` + opts.User + `
-Group=` + opts.Group + `
-EnvironmentFile=` + plan.envPath + `
-ExecStart=` + opts.BinaryPath + `
-Restart=on-failure
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=` + opts.StateDir + `
-ReadOnlyPaths=` + opts.ConfigDir + `
+func validateSystemdSetupPlan(plan systemdPlan) error {
+	unit := systemdUnit(plan)
+	unit.PathValidation = bkservice.PathValidationPreview
+	_, err := bkservice.RenderSystemd(unit)
+	return err
+}
 
-[Install]
-WantedBy=multi-user.target
-`
+func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
+	if opts.DryRun || opts.AllowNonRoot {
+		return bkservice.PathValidationPreview
+	}
+	return bkservice.PathValidationStrict
 }
 
 func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
@@ -360,7 +259,7 @@ func brokerURL(bindAddr string, port int) string {
 	if host == "0.0.0.0" || host == "::" {
 		host = "127.0.0.1"
 	}
-	return "http://" + host + ":" + strconv.Itoa(port)
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
 }
 
 func printSystemdSummary(stdout io.Writer, plan systemdPlan) {
@@ -374,6 +273,10 @@ Broker client:
   secret file: %s
 
 Write the client config with:
-  gh-broker setup client --client %s --url %s --secret-file %s --home-dir /home/%s
-`, brokerURL(plan.opts.BindAddr, plan.opts.Port), plan.opts.ClientName, plan.secretsPath, plan.opts.ClientName, brokerURL(plan.opts.BindAddr, plan.opts.Port), plan.secretsPath, plan.opts.ClientName)
+  gh-broker setup client --client %s --url %s --secret-file %s --home-dir %s
+`, brokerURL(plan.opts.BindAddr, plan.opts.Port), plan.opts.ClientName, plan.secretsPath, shellQuote(plan.opts.ClientName), shellQuote(brokerURL(plan.opts.BindAddr, plan.opts.Port)), shellQuote(plan.secretsPath), shellQuote(filepath.Join("/home", plan.opts.ClientName)))
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

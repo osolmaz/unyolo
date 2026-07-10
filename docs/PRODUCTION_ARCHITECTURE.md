@@ -591,20 +591,24 @@ GitHub App installation tokens
 
 ## Doctor
 
-Add GitHub-native deployment checks:
+GitHub-native deployment checks are implemented as:
 
 ```sh
-gh-broker doctor github
+sudo gh-broker doctor github \
+  --repo owner/name \
+  --agent-user bob \
+  --service-user gh-broker
 ```
 
-The doctor should verify:
+The doctor verifies:
 
 ```text
 service user exists
 agent user is not root-equivalent
-GitHub App id file exists and is not readable by the agent
+GitHub App id loads successfully
 GitHub App private key exists and is not readable by the agent
 webhook secret exists and is not readable by the agent
+broker client secret exists and is not readable by the agent
 broker can sign a GitHub App JWT
 broker can mint an installation token for a configured repo
 GitHub App has the expected minimal permissions
@@ -613,8 +617,17 @@ broker can reach api.github.com
 branch protection or ruleset exists for default branch when policy expects it
 ```
 
+Rulesets are inspected with the App's mandatory Metadata read permission.
+Classic branch protection inspection requires Administration read; when the
+minimal App does not have that permission, the classic-protection result is
+inconclusive rather than falsely reported as absent.
+
 Doctor output must never print private keys, webhook secrets, PATs,
 installation tokens, JWTs, Authorization headers, or token metadata.
+`--json` emits the brokerkit doctor report schema. Exit code `0` means safe,
+`1` means unsafe, `2` means inconclusive, and `64` means invalid invocation or
+configuration. The development PAT fallback is reported as a warning because
+it cannot prove GitHub App installation permissions.
 
 ## Implementation Order
 

@@ -20,11 +20,13 @@ import (
 var version = "dev"
 
 func main() {
+	os.Exit(mainCode())
+}
+
+func mainCode() int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := runWithArgs(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		log.Fatalf("gh-broker: %v", err)
-	}
+	return exitCodeForRun(runWithArgs(ctx, os.Args[1:], os.Stdout, os.Stderr), os.Stderr)
 }
 
 func run(ctx context.Context) error {
@@ -41,9 +43,35 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		return err
 	case "setup":
 		return runSetupWithContext(ctx, stdout, stderr, args[1:])
+	case "doctor":
+		return runDoctor(ctx, stdout, stderr, args[1:])
 	default:
-		return fmt.Errorf("usage: gh-broker [--version|version|setup]")
+		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup]")
 	}
+}
+
+type exitError struct {
+	code    int
+	message string
+}
+
+func (err exitError) Error() string {
+	return err.message
+}
+
+func exitCodeForRun(err error, stderr io.Writer) int {
+	if err == nil {
+		return 0
+	}
+	var status exitError
+	if errors.As(err, &status) {
+		if status.message != "" {
+			_, _ = fmt.Fprintln(stderr, "gh-broker:", status.message)
+		}
+		return status.code
+	}
+	_, _ = fmt.Fprintln(stderr, "gh-broker:", err)
+	return 1
 }
 
 func runServer(ctx context.Context) error {

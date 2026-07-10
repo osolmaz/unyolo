@@ -19,6 +19,8 @@ Implemented today:
 - release tarballs and checksums through `scripts/release.sh`
 - `gh-broker setup client`
 - `gh-broker setup systemd --dev-token-fallback`
+- shared brokerkit setup parsing, client config, privileged systemd account,
+  directory, file, unit, and activation runtime
 - Echo HTTP server
 - named client id through `GH_BROKER_CLIENT_ID`
 - shared secret through `GH_BROKER_SHARED_SECRET`
@@ -36,16 +38,18 @@ Implemented today:
 - Git smart-HTTP fetch and receive-pack route shape
 - narrow GitHub REST routes for repo listing, content reads, and PR creation
 - verified `POST /webhooks/github` with GitHub HMAC signature checks
+- brokerkit audit event schema for broker operations and GitHub webhooks
+- `gh-broker doctor github --repo owner/name` with common local isolation,
+  GitHub App permission, repository visibility, and default-branch protection
+  checks
 
-Not implemented yet:
+Conditional future work:
 
-- brokerkit audit helpers
 - webhook-driven installation cache invalidation once a cache is introduced
-- runtime GitHub branch ruleset doctor checks
 
 ## What Moves To brokerkit
 
-The following pieces should be shared through brokerkit or a brokerkit-owned
+The following pieces are shared through brokerkit or a brokerkit-owned
 template:
 
 - release installer behavior
@@ -147,6 +151,20 @@ Target files:
 
 Production should prefer GitHub App credentials. The PAT file is only a local
 development fallback.
+
+Deployment verification:
+
+```sh
+sudo gh-broker doctor github \
+  --repo osolmaz/gh-broker \
+  --agent-user bob \
+  --service-user gh-broker
+```
+
+The command exits `0` when checks pass, `1` when the deployment is unsafe, and
+`2` when a check is inconclusive. `--json` emits the shared brokerkit doctor
+schema. A PAT fallback produces a warning because it cannot prove GitHub App
+installation permissions.
 
 ## Cutover Rules
 

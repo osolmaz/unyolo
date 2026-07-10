@@ -42,30 +42,35 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	return LoadFromLookup(os.Getenv)
+}
+
+// LoadFromLookup loads configuration from an injected environment lookup.
+func LoadFromLookup(getenv func(string) string) (Config, error) {
 	cfg := Config{
-		Environment:             getEnv("local", "GH_BROKER_ENVIRONMENT", "CBA_ENVIRONMENT"),
-		BindAddr:                getEnv("127.0.0.1", "GH_BROKER_BIND_ADDR", "CBA_BIND_ADDR"),
-		Port:                    getEnv("8080", "GH_BROKER_PORT", "CBA_PORT"),
-		ClientID:                getEnv("bob", "GH_BROKER_CLIENT_ID", "CBA_CLIENT_ID"),
-		SharedSecret:            getEnv("", "GH_BROKER_SHARED_SECRET", "CBA_SHARED_SECRET"),
-		SecretsFile:             getEnv("", "GH_BROKER_SECRETS_FILE"),
-		GitHubToken:             getEnv("", "GH_BROKER_GITHUB_TOKEN", "CBA_GITHUB_TOKEN"),
-		GitHubTokenFile:         getEnv("", "GH_BROKER_GITHUB_TOKEN_FILE", "CBA_GITHUB_TOKEN_FILE"),
-		GitHubAppID:             getEnv("", "GH_BROKER_GITHUB_APP_ID"),
-		GitHubAppIDFile:         getEnv("", "GH_BROKER_GITHUB_APP_ID_FILE"),
-		GitHubAppPrivateKeyFile: getEnv("", "GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"),
-		GitHubWebhookSecret:     getEnv("", "GH_BROKER_GITHUB_WEBHOOK_SECRET"),
-		GitHubWebhookSecretFile: getEnv("", "GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"),
-		ScopeFile:               getEnv("scope.json", "GH_BROKER_SCOPE_FILE", "CBA_GITHUB_ACCESS_FILE"),
-		StateDir:                getEnv("./state", "GH_BROKER_STATE_DIR", "CBA_STATE_DIR"),
-		TelegramBotToken:        getEnv("", "GH_BROKER_TELEGRAM_BOT_TOKEN"),
-		TelegramChatID:          int64Env(0, "GH_BROKER_TELEGRAM_CHAT_ID"),
-		GitHubHTTPTimeout:       durationEnv(30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT", "CBA_GITHUB_HTTP_TIMEOUT"),
-		MaxReceivePackBytes:     int64Env(25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES", "CBA_MAX_RECEIVE_PACK_BYTES"),
-		ReadHeaderTimeout:       durationEnv(5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT", "CBA_READ_HEADER_TIMEOUT"),
-		ReadTimeout:             durationEnv(15*time.Second, "GH_BROKER_READ_TIMEOUT", "CBA_READ_TIMEOUT"),
-		WriteTimeout:            durationEnv(15*time.Second, "GH_BROKER_WRITE_TIMEOUT", "CBA_WRITE_TIMEOUT"),
-		IdleTimeout:             durationEnv(60*time.Second, "GH_BROKER_IDLE_TIMEOUT", "CBA_IDLE_TIMEOUT"),
+		Environment:             getEnvFrom(getenv, "local", "GH_BROKER_ENVIRONMENT", "CBA_ENVIRONMENT"),
+		BindAddr:                getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_BIND_ADDR", "CBA_BIND_ADDR"),
+		Port:                    getEnvFrom(getenv, "8080", "GH_BROKER_PORT", "CBA_PORT"),
+		ClientID:                getEnvFrom(getenv, "bob", "GH_BROKER_CLIENT_ID", "CBA_CLIENT_ID"),
+		SharedSecret:            getEnvFrom(getenv, "", "GH_BROKER_SHARED_SECRET", "CBA_SHARED_SECRET"),
+		SecretsFile:             getEnvFrom(getenv, "", "GH_BROKER_SECRETS_FILE"),
+		GitHubToken:             getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN", "CBA_GITHUB_TOKEN"),
+		GitHubTokenFile:         getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN_FILE", "CBA_GITHUB_TOKEN_FILE"),
+		GitHubAppID:             getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID"),
+		GitHubAppIDFile:         getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID_FILE"),
+		GitHubAppPrivateKeyFile: getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"),
+		GitHubWebhookSecret:     getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET"),
+		GitHubWebhookSecretFile: getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"),
+		ScopeFile:               getEnvFrom(getenv, "scope.json", "GH_BROKER_SCOPE_FILE", "CBA_GITHUB_ACCESS_FILE"),
+		StateDir:                getEnvFrom(getenv, "./state", "GH_BROKER_STATE_DIR", "CBA_STATE_DIR"),
+		TelegramBotToken:        getEnvFrom(getenv, "", "GH_BROKER_TELEGRAM_BOT_TOKEN"),
+		TelegramChatID:          int64EnvFrom(getenv, 0, "GH_BROKER_TELEGRAM_CHAT_ID"),
+		GitHubHTTPTimeout:       durationEnvFrom(getenv, 30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT", "CBA_GITHUB_HTTP_TIMEOUT"),
+		MaxReceivePackBytes:     int64EnvFrom(getenv, 25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES", "CBA_MAX_RECEIVE_PACK_BYTES"),
+		ReadHeaderTimeout:       durationEnvFrom(getenv, 5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT", "CBA_READ_HEADER_TIMEOUT"),
+		ReadTimeout:             durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_READ_TIMEOUT", "CBA_READ_TIMEOUT"),
+		WriteTimeout:            durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_WRITE_TIMEOUT", "CBA_WRITE_TIMEOUT"),
+		IdleTimeout:             durationEnvFrom(getenv, 60*time.Second, "GH_BROKER_IDLE_TIMEOUT", "CBA_IDLE_TIMEOUT"),
 	}
 	if err := cfg.loadGitHubTokenFile(); err != nil {
 		return Config{}, err
@@ -215,9 +220,9 @@ func telegramPair(token string, chatID int64) error {
 	return nil
 }
 
-func getEnv(fallback string, keys ...string) string {
+func getEnvFrom(getenv func(string) string, fallback string, keys ...string) string {
 	for _, key := range keys {
-		if value := os.Getenv(key); value != "" {
+		if value := getenv(key); value != "" {
 			return value
 		}
 	}
@@ -225,7 +230,11 @@ func getEnv(fallback string, keys ...string) string {
 }
 
 func durationEnv(fallback time.Duration, keys ...string) time.Duration {
-	value := getEnv("", keys...)
+	return durationEnvFrom(os.Getenv, fallback, keys...)
+}
+
+func durationEnvFrom(getenv func(string) string, fallback time.Duration, keys ...string) time.Duration {
+	value := getEnvFrom(getenv, "", keys...)
 	if value == "" {
 		return fallback
 	}
@@ -237,7 +246,11 @@ func durationEnv(fallback time.Duration, keys ...string) time.Duration {
 }
 
 func int64Env(fallback int64, keys ...string) int64 {
-	value := getEnv("", keys...)
+	return int64EnvFrom(os.Getenv, fallback, keys...)
+}
+
+func int64EnvFrom(getenv func(string) string, fallback int64, keys ...string) int64 {
+	value := getEnvFrom(getenv, "", keys...)
 	if value == "" {
 		return fallback
 	}

@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -26,6 +25,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	bkaudit "github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
@@ -69,7 +69,7 @@ func TestGitHubWebhookVerifiesSignatureAndAuditsMetadata(t *testing.T) {
 	var logs bytes.Buffer
 	server := newTestServer(t)
 	server.githubWebhookSecret = "webhook-secret"
-	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	server.auditWriter = bkaudit.New(&logs)
 	body := []byte(`{"action":"added","installation":{"id":42},"repository":{"full_name":"dutifuldev/gh-broker"}}`)
 	response := doWebhook(t, server, body, map[string]string{
 		"X-GitHub-Event":      "installation_repositories",
@@ -81,7 +81,7 @@ func TestGitHubWebhookVerifiesSignatureAndAuditsMetadata(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 	logText := logs.String()
-	for _, want := range []string{`"event":"installation_repositories"`, `"delivery":"delivery-1"`, `"action":"added"`, `"github_installation_id":"42"`, `"repository":"dutifuldev/gh-broker"`} {
+	for _, want := range []string{`"github_event":"installation_repositories"`, `"github_delivery":"delivery-1"`, `"github_action":"added"`, `"github_installation_id":"42"`, `"target":"dutifuldev/gh-broker"`} {
 		if !strings.Contains(logText, want) {
 			t.Fatalf("webhook audit missing %s: %s", want, logText)
 		}
@@ -2149,7 +2149,7 @@ func TestAuditLogDoesNotExposeClientSecretsOrBodies(t *testing.T) {
 	t.Parallel()
 	var logs bytes.Buffer
 	server := newTestServer(t)
-	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	server.auditWriter = bkaudit.New(&logs)
 	rawBody := []byte("do-not-log-body")
 	response := doWithHeaders(
 		t,
@@ -2177,7 +2177,7 @@ func TestAuditLogRecordsPolicyDenialWithoutSecrets(t *testing.T) {
 	t.Parallel()
 	var logs bytes.Buffer
 	server := newTestServer(t)
-	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	server.auditWriter = bkaudit.New(&logs)
 	response := doWithBody(
 		t,
 		server,
@@ -2190,7 +2190,7 @@ func TestAuditLogRecordsPolicyDenialWithoutSecrets(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
 	logText := logs.String()
-	for _, expected := range []string{`"operation":"git.push.branch_create"`, `"outcome":"denied"`, `"client":"bob"`, `"owner":"outside"`, `"repo":"repo"`} {
+	for _, expected := range []string{`"operation":"git.push.branch_create"`, `"decision":"denied"`, `"client":"bob"`, `"target":"outside/repo"`} {
 		if !strings.Contains(logText, expected) {
 			t.Fatalf("audit log missing %s: %s", expected, logText)
 		}
@@ -2204,7 +2204,7 @@ func TestAuditLogRecordsActualReceivePackOperation(t *testing.T) {
 	t.Parallel()
 	var logs bytes.Buffer
 	server := newTestServer(t)
-	server.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	server.auditWriter = bkaudit.New(&logs)
 	response := doWithBody(
 		t,
 		server,
@@ -2217,7 +2217,7 @@ func TestAuditLogRecordsActualReceivePackOperation(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 	logText := logs.String()
-	for _, expected := range []string{`"operation":"git.push.branch_create"`, `"outcome":"proxied"`, `"matched_rules":["bob-push-branches"]`} {
+	for _, expected := range []string{`"operation":"git.push.branch_create"`, `"decision":"proxied"`, `"matched_rule_ids":["bob-push-branches"]`} {
 		if !strings.Contains(logText, expected) {
 			t.Fatalf("audit log missing %s: %s", expected, logText)
 		}

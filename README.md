@@ -13,6 +13,8 @@ The shared broker-family install and setup cutover is tracked in
 - `gh-broker --version`
 - `gh-broker setup client`
 - `gh-broker setup systemd` for Linux service file/config generation
+- `gh-broker doctor github` for local isolation, GitHub App, repository, and
+  default-branch protection checks
 - Shared-secret authentication for one configured client id
 - Server-side named client secrets through `GH_BROKER_SECRETS_FILE`
 - Rule-based `scope.json` with GitHub classification delegated to the shared
@@ -23,6 +25,7 @@ The shared broker-family install and setup cutover is tracked in
 - Localhost bind by default for Tailnet-oriented deployment
 - Conservative receive-pack size cap and upstream GitHub timeouts
 - Structured audit logs without secrets, request bodies, diffs, or pack contents
+- Brokerkit-backed grants and Telegram approval for requestable operations
 - No credential API
 - No policy read/write API
 - Tests for auth, route shape, policy decisions, and receive-pack classification
@@ -67,7 +70,17 @@ gh-broker setup client \
 The generated `client.env` contains only `GH_BROKER_URL` and
 `GH_BROKER_SHARED_SECRET`; it does not contain GitHub credentials.
 
-Linux service setup with the current token-file runtime:
+Production Linux service setup with GitHub App credentials:
+
+```sh
+sudo gh-broker setup systemd \
+  --github-app-id-file ./app-id \
+  --github-app-private-key-file ./private-key.pem \
+  --github-webhook-secret-file ./webhook-secret \
+  --scope-file ./scope.json
+```
+
+Development setup with a token file:
 
 ```sh
 sudo gh-broker setup systemd \
@@ -80,6 +93,26 @@ Use `--no-start` to write files without enabling or starting the service.
 The setup command writes `/etc/gh-broker/secrets` and configures the service
 with `GH_BROKER_SECRETS_FILE`; it does not place the broker client secret or
 GitHub token value directly in the env file.
+
+Verify the installed deployment:
+
+```sh
+sudo gh-broker doctor github \
+  --repo osolmaz/gh-broker \
+  --agent-user bob \
+  --service-user gh-broker
+```
+
+Use `--json` for machine-readable output. Exit code `0` means safe, `1` means
+unsafe, `2` means inconclusive, and `64` means the invocation or configuration
+is invalid. Doctor reads `/etc/gh-broker/env` by default; use `--env-file` for
+a nonstandard installation or `--env-file ''` to use only the current process
+environment.
+
+When an env file is selected, it is authoritative; exported shell variables do
+not override the installed service configuration. Inline credential values are
+reported as inconclusive because doctor cannot prove which users have observed
+them. Protected credential files are required for a safe isolation verdict.
 
 Health check:
 

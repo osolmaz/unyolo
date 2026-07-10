@@ -33,6 +33,7 @@ const (
 type Token struct {
 	Value          string
 	InstallationID int64
+	Permissions    map[string]string
 }
 
 // Source signs GitHub App JWTs and mints installation tokens.
@@ -114,7 +115,8 @@ func (s *Source) InstallationToken(ctx context.Context, installationID int64) (T
 		return Token{}, errors.New("installation id must be positive")
 	}
 	var payload struct {
-		Token string `json:"token"`
+		Token       string            `json:"token"`
+		Permissions map[string]string `json:"permissions"`
 	}
 	if err := s.doAppJSON(ctx, http.MethodPost, []string{"app", "installations", strconv.FormatInt(installationID, 10), "access_tokens"}, []byte(`{}`), &payload); err != nil {
 		return Token{}, err
@@ -123,7 +125,7 @@ func (s *Source) InstallationToken(ctx context.Context, installationID int64) (T
 	if value == "" {
 		return Token{}, errors.New("github app access token response did not include token")
 	}
-	return Token{Value: value, InstallationID: installationID}, nil
+	return Token{Value: value, InstallationID: installationID, Permissions: payload.Permissions}, nil
 }
 
 // Installations lists installations visible to the app.

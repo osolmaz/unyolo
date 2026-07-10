@@ -30,6 +30,25 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	assertLoadedConfigNumbers(t, cfg)
 }
 
+func TestLoadFromLookupUsesInjectedValues(t *testing.T) {
+	values := map[string]string{
+		"GH_BROKER_BIND_ADDR":          "127.0.0.9",
+		"GH_BROKER_SHARED_SECRET":      strings.Repeat("s", minimumSharedSecretBytes),
+		"GH_BROKER_GITHUB_TOKEN":       "github-token",
+		"GH_BROKER_SCOPE_FILE":         "/etc/gh-broker/scope.json",
+		"GH_BROKER_STATE_DIR":          "/var/lib/gh-broker",
+		"GH_BROKER_TELEGRAM_CHAT_ID":   "42",
+		"GH_BROKER_TELEGRAM_BOT_TOKEN": "telegram-token",
+	}
+	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
+	if err != nil {
+		t.Fatalf("LoadFromLookup() error = %v", err)
+	}
+	if cfg.BindAddr != "127.0.0.9" || cfg.ScopeFile != "/etc/gh-broker/scope.json" || cfg.TelegramChatID != 42 {
+		t.Fatalf("LoadFromLookup() = %+v", cfg)
+	}
+}
+
 func assertLoadedConfigStrings(t *testing.T, cfg Config) {
 	t.Helper()
 	assertString(t, "Environment", cfg.Environment, "test")
