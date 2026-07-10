@@ -122,6 +122,8 @@ sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --repo osolmaz/scraped-news \
   --repo-type dataset \
+  --telegram-bot-token-file ./telegram-bot-token \
+  --telegram-chat-id 123456789 \
   --client bob
 ```
 
@@ -129,6 +131,7 @@ The setup command creates:
 
 ```text
 /etc/hf-broker/hf-token
+/etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
 /etc/hf-broker/scope.json
 /etc/hf-broker/env
@@ -139,8 +142,9 @@ The setup command creates:
 It also creates the `hf-broker` service user when needed, enables and
 starts the service, and prints the broker URL plus a secret-safe client setup
 command. It never prints the generated broker client secret. The real Hugging
-Face token stays readable only by the service. The agent receives only the
-broker client secret through `setup client`.
+Face and Telegram tokens stay readable only by the service. The agent receives
+only the broker client secret through `setup client`. Omit both Telegram flags
+to run without Telegram; they must otherwise be set together.
 
 To supply an existing broker client secret, use `--shared-secret-file` or
 `--shared-secret-stdin`. Raw secret command-line flags are not accepted.
@@ -282,6 +286,13 @@ update.
 export HF_BROKER_TELEGRAM_BOT_TOKEN=...
 export HF_BROKER_TELEGRAM_CHAT_ID=123456789
 ```
+
+For a service deployment, use `--telegram-bot-token-file` during `setup
+systemd`. The installer copies the token to a service-owned `0600` file and
+puts only its path in the service environment. Rerunning setup without both
+Telegram flags disables Telegram and removes the managed token only after the
+restarted service passes its readiness check. `--no-start` does not retire the
+file.
 
 An authenticated client can then request a time-boxed grant. Every request must
 carry a unique `client_request_id`; retry the same request with the same value.

@@ -136,3 +136,37 @@ func TestLoadOverrides(t *testing.T) {
 		t.Fatalf("telegram config not applied: %+v", cfg)
 	}
 }
+
+func TestLoadTelegramTokenFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "telegram-token")
+	if err := os.WriteFile(path, []byte("telegram_file_token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_TELEGRAM_BOT_TOKEN_FILE": path, "HF_BROKER_TELEGRAM_CHAT_ID": "12345",
+	}
+	cfg, err := Load(func(key string) string { return env[key] })
+	if err != nil || cfg.TelegramBotToken != "telegram_file_token" || cfg.TelegramChatID != 12345 {
+		t.Fatalf("Load(token file) cfg=%+v err=%v", cfg, err)
+	}
+	env["HF_BROKER_TELEGRAM_BOT_TOKEN"] = "inline"
+	if _, err := Load(func(key string) string { return env[key] }); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("Load(inline and file) error = %v", err)
+	}
+}
+
+func TestLoadTelegramTokenFileRejectsOversizedSecret(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "telegram-token")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", maxSecretFileBytes+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_TELEGRAM_BOT_TOKEN_FILE": path, "HF_BROKER_TELEGRAM_CHAT_ID": "12345",
+	}
+	_, err := Load(func(key string) string { return env[key] })
+	if err == nil || !strings.Contains(err.Error(), "exceeds") || strings.Contains(err.Error(), path) {
+		t.Fatalf("Load(oversized token file) error = %v", err)
+	}
+}

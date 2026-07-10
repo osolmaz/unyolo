@@ -27,6 +27,7 @@ Implemented in hf-broker today:
 - `/etc/systemd/system/hf-broker.service`
 - `hf-broker doctor isolation`
 - Telegram-backed grant requests through brokerkit's reusable Telegram adapter
+- service-owned Telegram token-file installation without inline service secrets
 
 That UX should stay, but the implementation should stop being bespoke where the
 behavior is shared by gh-broker and sudo-broker.
@@ -138,6 +139,9 @@ Implemented:
   config rendering, ownership, and secret-safe output to Brokerkit.
 - `setup systemd` uses Brokerkit defaults, flags, path/account validation, and
   generated/file/stdin secret handling.
+- Telegram service configuration accepts a bot-token source file and installs
+  it as a service-owned `0600` file; only the installed path and chat ID appear
+  in the environment file.
 - systemd unit rendering uses Brokerkit's hardened service baseline with home
   access denied for hf-broker.
 - privileged systemd installation now delegates service account creation,

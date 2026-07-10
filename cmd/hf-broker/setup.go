@@ -23,11 +23,13 @@ var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type setupSystemdOptions struct {
 	bksetup.SystemdOptions
-	HFTokenFile   string
-	Repo          string
-	RepoType      string
-	SharedSecret  string
-	CommandRunner bkservice.CommandRunner
+	HFTokenFile          string
+	TelegramBotTokenFile string
+	TelegramChatID       int64
+	Repo                 string
+	RepoType             string
+	SharedSecret         string
+	CommandRunner        bkservice.CommandRunner
 }
 
 func runSetup(ctx context.Context, stdout, stderr io.Writer, args []string) error {
@@ -74,6 +76,8 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.StringVar(&opts.HFTokenFile, "hf-token-file", "", "file containing the upstream Hugging Face token")
 	fs.StringVar(&opts.Repo, "repo", "", "allowed Hub repo as owner/name")
 	fs.StringVar(&opts.RepoType, "repo-type", "", "Hub repo type: model, dataset, or space")
+	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
+	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = io.Copy(stderr, strings.NewReader(flagOutput.String()))
@@ -122,6 +126,9 @@ func validateSetupRequired(opts setupSystemdOptions) error {
 	if opts.RepoType == "" {
 		return exitError{code: 64, message: "--repo-type is required"}
 	}
+	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
+		return exitError{code: 64, message: "--telegram-bot-token-file and --telegram-chat-id must be set together"}
+	}
 	return nil
 }
 
@@ -165,8 +172,11 @@ func brokerURL(bindAddr string, port int, repoType, repo string) string {
 
 func brokerBaseURL(bindAddr string, port int) string {
 	host := bindAddr
-	if host == "0.0.0.0" || host == "::" {
+	switch host {
+	case "0.0.0.0":
 		host = "127.0.0.1"
+	case "::":
+		host = "::1"
 	}
 	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
 }

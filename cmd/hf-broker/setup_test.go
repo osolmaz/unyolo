@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -26,6 +27,25 @@ func TestRunWithArgsVersion(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "v1.2.3-test" {
 		t.Fatalf("version output = %q", got)
+	}
+}
+
+func TestBrokerBaseURLUsesMatchingLoopbackForWildcard(t *testing.T) {
+	for bindAddr, want := range map[string]string{
+		"0.0.0.0": "http://127.0.0.1:8080",
+		"::":      "http://[::1]:8080",
+	} {
+		if got := brokerBaseURL(bindAddr, 8080); got != want {
+			t.Fatalf("brokerBaseURL(%q) = %q, want %q", bindAddr, got, want)
+		}
+	}
+}
+
+func TestLocalReadinessHTTPClientDisablesProxy(t *testing.T) {
+	client := localReadinessHTTPClient()
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.Proxy != nil {
+		t.Fatalf("readiness transport = %#v, want proxy disabled", client.Transport)
 	}
 }
 
@@ -51,6 +71,18 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	}
 	if len(opts.SharedSecret) != 64 {
 		t.Fatalf("generated secret length = %d, want 64", len(opts.SharedSecret))
+	}
+}
+
+func TestParseSetupSystemdRequiresCompleteTelegramConfiguration(t *testing.T) {
+	base := []string{"--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/scraped-news", "--repo-type", "dataset"}
+	for _, args := range [][]string{
+		append(base, "--telegram-bot-token-file", "/tmp/telegram-token"),
+		append(base, "--telegram-chat-id", "123"),
+	} {
+		if _, err := parseSetupSystemd(ioDiscard{}, args); err == nil || !strings.Contains(err.Error(), "must be set together") {
+			t.Fatalf("parseSetupSystemd(%v) error = %v", args, err)
+		}
 	}
 }
 
@@ -319,6 +351,65 @@ func TestBrokerkitSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 	}
 }
 
+func TestBrokerkitSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
+	dir := t.TempDir()
+	hfToken := filepath.Join(dir, "hf-token-source")
+	telegramToken := filepath.Join(dir, "telegram-token-source")
+	if err := os.WriteFile(hfToken, []byte("hf_xxx\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(telegramToken, []byte("123:telegram\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/test", ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, NoStart: true},
+		HFTokenFile:    hfToken, TelegramBotTokenFile: telegramToken, TelegramChatID: 123,
+		Repo: "osolmaz/repo", RepoType: "model", SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
+	}
+	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, file := range plan.Files {
+		if file.Name == telegramTokenFileName && file.Owner == bkservice.ManagedFileOwnerService && file.Mode == 0o600 {
+			found = true
+		}
+	}
+	if !found || !strings.Contains(renderEnvFile(systemdSetupPlan(opts)), "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=") {
+		t.Fatalf("telegram token was not installed: %+v", plan.Files)
+	}
+	if len(plan.RemoveFiles) != 0 || plan.ReadyCheck != nil {
+		t.Fatalf("configured Telegram plan retires files: %+v", plan.RemoveFiles)
+	}
+}
+
+func TestBrokerkitSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.T) {
+	dir := t.TempDir()
+	hfToken := filepath.Join(dir, "hf-token-source")
+	if err := os.WriteFile(hfToken, []byte("hf_xxx\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/test", ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, NoStart: true},
+		HFTokenFile:    hfToken, Repo: "osolmaz/repo", RepoType: "model", SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
+	}
+	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRemoval := bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName}
+	if len(plan.RemoveFiles) != 1 || plan.RemoveFiles[0] != wantRemoval {
+		t.Fatalf("disabled Telegram removals = %+v, want %+v", plan.RemoveFiles, wantRemoval)
+	}
+	if plan.ReadyCheck == nil {
+		t.Fatal("disabled Telegram plan has no readiness check")
+	}
+	if strings.Contains(renderEnvFile(systemdSetupPlan(opts)), "TELEGRAM") {
+		t.Fatal("disabled Telegram remains in the environment")
+	}
+}
+
 func TestBrokerkitSystemdInstallPlanRejectsMissingToken(t *testing.T) {
 	dir := t.TempDir()
 	opts := setupSystemdOptions{
@@ -336,14 +427,17 @@ func TestBrokerkitSystemdInstallPlanRejectsMissingToken(t *testing.T) {
 }
 
 func TestReadHFTokenFileRejectsEmptyToken(t *testing.T) {
-	dir := t.TempDir()
-	source := filepath.Join(dir, "empty")
-	if err := os.WriteFile(source, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := readHFTokenFile(source)
-	if err == nil || !strings.Contains(err.Error(), "empty") {
-		t.Fatalf("readHFTokenFile() error = %v, want empty", err)
+	for name, data := range map[string][]byte{"empty": nil, "whitespace": []byte(" \n\t")} {
+		t.Run(name, func(t *testing.T) {
+			source := filepath.Join(t.TempDir(), "token")
+			if err := os.WriteFile(source, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := readHFTokenFile(source)
+			if err == nil || !strings.Contains(err.Error(), "empty") {
+				t.Fatalf("readHFTokenFile() error = %v, want empty", err)
+			}
+		})
 	}
 }
 

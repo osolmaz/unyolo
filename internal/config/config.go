@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -27,9 +28,12 @@ const (
 	DefaultStateDir     = "./state"
 	DefaultMaxPackBytes = 25 * 1024 * 1024
 	DefaultHFTimeout    = 120 * time.Second
+	maxSecretFileBytes  = 64 * 1024
 
 	canonicalEnvPrefix = "HF_BROKER_"
 )
+
+var errSecretFileTooLarge = errors.New("secret file is too large")
 
 // Client is one named broker client and its shared secret.
 type Client struct {
@@ -77,23 +81,7 @@ func Load(getenv func(string) string) (Config, error) {
 }
 
 func loadHFToken(getenv func(string) string) (string, error) {
-	token := brokerEnv(getenv, "HF_TOKEN")
-	path := brokerEnv(getenv, "HF_TOKEN_FILE")
-	if token != "" && path != "" {
-		return "", fmt.Errorf("%s and %s are mutually exclusive", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))
-	}
-	if token != "" || path == "" {
-		return token, nil
-	}
-	data, err := os.ReadFile(path) // #nosec G304 -- operator-configured path from the environment.
-	if err != nil {
-		return "", fmt.Errorf("read %s: %s", brokerEnvName("HF_TOKEN_FILE"), secretPathReadFailure(err))
-	}
-	token = strings.TrimSpace(string(data))
-	if token == "" {
-		return "", fmt.Errorf("%s is empty", brokerEnvName("HF_TOKEN_FILE"))
-	}
-	return token, nil
+	return loadSecretValue(getenv, "HF_TOKEN", "HF_TOKEN_FILE")
 }
 
 func secretPathReadFailure(err error) string {
@@ -102,6 +90,8 @@ func secretPathReadFailure(err error) string {
 		return "file does not exist"
 	case errors.Is(err, os.ErrPermission):
 		return "permission denied"
+	case errors.Is(err, errSecretFileTooLarge):
+		return fmt.Sprintf("file exceeds %d bytes", maxSecretFileBytes)
 	default:
 		return "failed"
 	}
@@ -130,7 +120,11 @@ func loadNumeric(getenv func(string) string, cfg *Config) error {
 }
 
 func loadTelegram(getenv func(string) string, cfg *Config) error {
-	cfg.TelegramBotToken = brokerEnv(getenv, "TELEGRAM_BOT_TOKEN")
+	token, err := loadTelegramToken(getenv)
+	if err != nil {
+		return err
+	}
+	cfg.TelegramBotToken = token
 	rawChatID := brokerEnv(getenv, "TELEGRAM_CHAT_ID")
 	if cfg.TelegramBotToken == "" && rawChatID == "" {
 		return nil
@@ -144,6 +138,49 @@ func loadTelegram(getenv func(string) string, cfg *Config) error {
 	}
 	cfg.TelegramChatID = chatID
 	return nil
+}
+
+func loadTelegramToken(getenv func(string) string) (string, error) {
+	return loadSecretValue(getenv, "TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN_FILE")
+}
+
+func loadSecretValue(getenv func(string) string, valueSuffix, fileSuffix string) (string, error) {
+	inlineValue := brokerEnv(getenv, valueSuffix)
+	path := brokerEnv(getenv, fileSuffix)
+	if inlineValue != "" && path != "" {
+		return "", fmt.Errorf("%s and %s are mutually exclusive", brokerEnvName(valueSuffix), brokerEnvName(fileSuffix))
+	}
+	if inlineValue != "" || path == "" {
+		return inlineValue, nil
+	}
+	data, err := readSecretFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %s", brokerEnvName(fileSuffix), secretPathReadFailure(err))
+	}
+	value := strings.TrimSpace(string(data))
+	if value == "" {
+		return "", fmt.Errorf("%s is empty", brokerEnvName(fileSuffix))
+	}
+	return value, nil
+}
+
+func readSecretFile(path string) ([]byte, error) {
+	file, err := os.Open(path) // #nosec G304 -- operator-configured secret path.
+	if err != nil {
+		return nil, err
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if len(data) > maxSecretFileBytes {
+		return nil, errSecretFileTooLarge
+	}
+	return data, nil
 }
 
 func loadClients(getenv func(string) string) ([]Client, error) {

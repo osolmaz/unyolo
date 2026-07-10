@@ -606,11 +606,13 @@ stays free of HTTP framework types so it is unit-testable without a server.
 | `HF_BROKER_MAX_PACK_BYTES` | no | default `26214400` (25 MiB) |
 | `HF_BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
 | `HF_BROKER_TELEGRAM_BOT_TOKEN` | no (M4) | bot token for approval channel |
+| `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` | no (M4) | path to a broker-only Telegram bot token file; preferred for same-host services and mutually exclusive with the inline token |
 | `HF_BROKER_TELEGRAM_CHAT_ID` | no (M4) | the single operator chat id decisions are accepted from |
 
 Startup validation fails closed: missing required secret, setting both
-`HF_BROKER_HF_TOKEN` and `HF_BROKER_HF_TOKEN_FILE`, unreadable or empty
-token file, unreadable or invalid `scope.json`, secret under 32 bytes,
+`HF_BROKER_HF_TOKEN` and `HF_BROKER_HF_TOKEN_FILE`, either inline token and
+its corresponding token-file variable, unreadable, oversized, or empty token
+file, unreadable or invalid `scope.json`, secret under 32 bytes,
 or a `snapshot_prefix` that overlaps a writable path all abort boot with
 a specific error. The token value is never logged, even at startup.
 

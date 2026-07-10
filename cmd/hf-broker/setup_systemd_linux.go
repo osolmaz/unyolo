@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,12 +17,13 @@ import (
 )
 
 const (
-	hfTokenFileName = "hf-token"
-	secretsFileName = "secrets"
-	scopeFileName   = "scope.json"
-	envFileName     = "env"
-	unitFileName    = "hf-broker.service"
-	maxHFTokenBytes = 64 * 1024
+	hfTokenFileName       = "hf-token"
+	telegramTokenFileName = "telegram-bot-token"
+	secretsFileName       = "secrets"
+	scopeFileName         = "scope.json"
+	envFileName           = "env"
+	unitFileName          = "hf-broker.service"
+	maxHFTokenBytes       = 64 * 1024
 )
 
 func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOptions) error {
@@ -54,22 +56,24 @@ func requireRootForSystemd(opts setupSystemdOptions) error {
 }
 
 type systemdPlan struct {
-	opts        setupSystemdOptions
-	tokenPath   string
-	secretsPath string
-	scopePath   string
-	envPath     string
-	unitPath    string
+	opts              setupSystemdOptions
+	tokenPath         string
+	secretsPath       string
+	scopePath         string
+	envPath           string
+	unitPath          string
+	telegramTokenPath string
 }
 
 func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 	return systemdPlan{
-		opts:        opts,
-		tokenPath:   filepath.Join(opts.ConfigDir, hfTokenFileName),
-		secretsPath: filepath.Join(opts.ConfigDir, secretsFileName),
-		scopePath:   filepath.Join(opts.ConfigDir, scopeFileName),
-		envPath:     filepath.Join(opts.ConfigDir, envFileName),
-		unitPath:    filepath.Join(opts.SystemdDir, unitFileName),
+		opts:              opts,
+		tokenPath:         filepath.Join(opts.ConfigDir, hfTokenFileName),
+		secretsPath:       filepath.Join(opts.ConfigDir, secretsFileName),
+		scopePath:         filepath.Join(opts.ConfigDir, scopeFileName),
+		envPath:           filepath.Join(opts.ConfigDir, envFileName),
+		unitPath:          filepath.Join(opts.SystemdDir, unitFileName),
+		telegramTokenPath: filepath.Join(opts.ConfigDir, telegramTokenFileName),
 	}
 }
 
@@ -82,19 +86,34 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
+	files := []bkservice.ManagedFile{
+		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		{Area: bkservice.ManagedFileConfig, Name: scopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+		{Area: bkservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+	}
+	var removeFiles []bkservice.ManagedFileRef
+	var readyCheck bkservice.ReadinessCheck
+	if plan.opts.TelegramBotTokenFile != "" {
+		telegramToken, readErr := readSetupTokenFile(plan.opts.TelegramBotTokenFile, "--telegram-bot-token-file")
+		if readErr != nil {
+			return bkservice.SystemdInstallPlan{}, readErr
+		}
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
+	} else {
+		removeFiles = []bkservice.ManagedFileRef{{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName}}
+		readyCheck = bkservice.HTTPReadyCheck(brokerBaseURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", localReadinessHTTPClient())
+	}
 	return bkservice.SystemdInstallPlan{
-		User:       plan.opts.User,
-		Group:      plan.opts.Group,
-		ConfigDir:  plan.opts.ConfigDir,
-		StateDir:   plan.opts.StateDir,
-		SystemdDir: plan.opts.SystemdDir,
-		UnitName:   unitFileName,
-		Files: []bkservice.ManagedFile{
-			{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-			{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-			{Area: bkservice.ManagedFileConfig, Name: scopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
-			{Area: bkservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
-		},
+		User:         plan.opts.User,
+		Group:        plan.opts.Group,
+		ConfigDir:    plan.opts.ConfigDir,
+		StateDir:     plan.opts.StateDir,
+		SystemdDir:   plan.opts.SystemdDir,
+		UnitName:     unitFileName,
+		Files:        files,
+		RemoveFiles:  removeFiles,
+		ReadyCheck:   readyCheck,
 		Unit:         systemdUnit(plan),
 		NoStart:      plan.opts.NoStart,
 		AllowNonRoot: plan.opts.AllowNonRoot,
@@ -103,25 +122,35 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 }
 
 func readHFTokenFile(path string) ([]byte, error) {
+	return readSetupTokenFile(path, "--hf-token-file")
+}
+
+func readSetupTokenFile(path string, label string) ([]byte, error) {
 	file, err := os.Open(path) // #nosec G304 -- operator-supplied setup path.
 	if err != nil {
-		return nil, fmt.Errorf("read --hf-token-file: %w", err)
+		return nil, fmt.Errorf("read %s: %w", label, err)
 	}
 	data, readErr := io.ReadAll(io.LimitReader(file, maxHFTokenBytes+1))
 	closeErr := file.Close()
 	if readErr != nil {
-		return nil, fmt.Errorf("read --hf-token-file: %w", readErr)
+		return nil, fmt.Errorf("read %s: %w", label, readErr)
 	}
 	if closeErr != nil {
-		return nil, fmt.Errorf("close --hf-token-file: %w", closeErr)
+		return nil, fmt.Errorf("close %s: %w", label, closeErr)
 	}
 	if len(data) > maxHFTokenBytes {
-		return nil, fmt.Errorf("--hf-token-file exceeds %d bytes", maxHFTokenBytes)
+		return nil, fmt.Errorf("%s exceeds %d bytes", label, maxHFTokenBytes)
 	}
-	if len(data) == 0 {
-		return nil, fmt.Errorf("--hf-token-file is empty")
+	if strings.TrimSpace(string(data)) == "" {
+		return nil, fmt.Errorf("%s is empty", label)
 	}
 	return data, nil
+}
+
+func localReadinessHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return &http.Client{Transport: transport}
 }
 
 func renderScopeJSON(repo, repoType string) ([]byte, error) {
@@ -157,12 +186,17 @@ func renderScopeJSON(repo, repoType string) ([]byte, error) {
 
 func renderEnvFile(plan systemdPlan) string {
 	opts := plan.opts
-	return "HF_BROKER_HF_TOKEN_FILE=" + plan.tokenPath + "\n" +
+	body := "HF_BROKER_HF_TOKEN_FILE=" + plan.tokenPath + "\n" +
 		"HF_BROKER_SECRETS_FILE=" + plan.secretsPath + "\n" +
 		"HF_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
 		"HF_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
 		"HF_BROKER_BIND_ADDR=" + opts.BindAddr + "\n" +
 		"HF_BROKER_PORT=" + strconv.Itoa(opts.Port) + "\n"
+	if opts.TelegramBotTokenFile != "" {
+		body += "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +
+			"HF_BROKER_TELEGRAM_CHAT_ID=" + strconv.FormatInt(opts.TelegramChatID, 10) + "\n"
+	}
+	return body
 }
 
 func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {

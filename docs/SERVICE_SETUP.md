@@ -39,6 +39,13 @@ printf '%s\n' 'hf_...' > ./hf-token
 chmod 600 ./hf-token
 ```
 
+For Telegram approvals, also create a local bot-token file:
+
+```sh
+printf '%s\n' '123456:bot-token' > ./telegram-bot-token
+chmod 600 ./telegram-bot-token
+```
+
 Then configure the broker service:
 
 ```sh
@@ -46,6 +53,8 @@ sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --repo osolmaz/scraped-news \
   --repo-type dataset \
+  --telegram-bot-token-file ./telegram-bot-token \
+  --telegram-chat-id 123456789 \
   --client bob
 ```
 
@@ -53,6 +62,7 @@ The setup command creates:
 
 ```text
 /etc/hf-broker/hf-token
+/etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
 /etc/hf-broker/scope.json
 /etc/hf-broker/env
@@ -71,6 +81,17 @@ The real Hugging Face token is copied to:
 ```
 
 That file is owned by `hf-broker:hf-broker` and mode `0600`.
+
+When Telegram is configured, its token is copied to
+`/etc/hf-broker/telegram-bot-token` with the same ownership and mode. The
+service environment contains the token-file path and operator chat ID, never
+the token value.
+
+Rerun setup without both Telegram flags to disable Telegram. Setup writes the
+Telegram-free environment, restarts the service, waits for `/healthz`, and only
+then removes `/etc/hf-broker/telegram-bot-token`. A failed restart or readiness
+check leaves the token file in place for recovery. `--no-start` also preserves
+the token file because the new configuration has not been activated.
 
 The broker client secret is stored in:
 
