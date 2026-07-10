@@ -4,8 +4,10 @@ package service
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unicode"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
@@ -23,6 +25,7 @@ type SystemdUnit struct {
 	RestartSec          int
 	HomeAccess          HomeAccess
 	PrivilegeEscalation PrivilegeEscalation
+	PathValidation      PathValidation
 	ExtraDirectives     []string
 }
 
@@ -36,6 +39,16 @@ const (
 	HomeAccessReadOnly HomeAccess = "read-only"
 	// HomeAccessAllow permits broker-specific user-home operations.
 	HomeAccessAllow HomeAccess = "allow"
+)
+
+// PathValidation controls filesystem trust checks while rendering a unit.
+type PathValidation string
+
+const (
+	// PathValidationStrict is the default for units that may be installed.
+	PathValidationStrict PathValidation = "strict"
+	// PathValidationPreview skips host trust checks for dry-runs and non-root fixtures.
+	PathValidationPreview PathValidation = "preview"
 )
 
 // PrivilegeEscalation controls whether the service may perform a deliberate
@@ -138,6 +151,9 @@ func (unit SystemdUnit) validate() error {
 	if err := validatePrivilegeEscalation(unit.PrivilegeEscalation); err != nil {
 		return err
 	}
+	if err := validatePathValidation(unit.PathValidation); err != nil {
+		return err
+	}
 	if err := validateSystemdUnitPaths(unit); err != nil {
 		return err
 	}
@@ -190,7 +206,81 @@ func validateProtectedServicePaths(unit SystemdUnit) error {
 	if filepath.Clean(unit.StateDir) == string(filepath.Separator) {
 		return errors.New("state directory must not make the filesystem root writable")
 	}
+	if normalizedPathValidation(unit.PathValidation) == PathValidationStrict {
+		if err := validateTrustedServicePaths(unit); err != nil {
+			return err
+		}
+	}
 	return validateServicePathIsolation(unit)
+}
+
+func validatePathValidation(value PathValidation) error {
+	return validatePolicyValue("path validation", string(value), string(normalizedPathValidation(value)), string(PathValidationStrict), string(PathValidationPreview))
+}
+
+func normalizedPathValidation(value PathValidation) PathValidation {
+	if value == "" {
+		return PathValidationStrict
+	}
+	return value
+}
+
+func validateTrustedServicePaths(unit SystemdUnit) error {
+	paths := map[string]struct {
+		value             string
+		allowFinalNonRoot bool
+	}{
+		"environment file": {value: unit.EnvironmentFile},
+		"config directory": {value: unit.ConfigDir},
+		"executable":       {value: strings.SplitN(unit.ExecStart, " ", 2)[0]},
+		"state directory":  {value: unit.StateDir, allowFinalNonRoot: true},
+	}
+	for name, path := range paths {
+		if err := validateTrustedServicePath(name, path.value, path.allowFinalNonRoot); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTrustedServicePath(name string, path string, allowFinalNonRoot bool) error {
+	if validatex.HasParentTraversal(path) {
+		return fmt.Errorf("%s must not contain parent traversal", name)
+	}
+	components := strings.Split(strings.TrimPrefix(filepath.Clean(path), string(filepath.Separator)), string(filepath.Separator))
+	current := string(filepath.Separator)
+	for index, component := range components {
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("inspect %s path: %w", name, err)
+		}
+		final := index == len(components)-1
+		if err := validateTrustedServiceComponent(name, current, info, allowFinalNonRoot && final); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTrustedServiceComponent(name string, path string, info os.FileInfo, allowNonRootOwner bool) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s path must not contain symbolic links: %s", name, path)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("%s path ownership is unavailable: %s", name, path)
+	}
+	if !allowNonRootOwner && stat.Uid != 0 {
+		return fmt.Errorf("%s path component must be root-owned: %s", name, path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%s path component must not be mutable by untrusted users: %s", name, path)
+	}
+	return nil
 }
 
 func validateProtectedServicePath(name string, value string) error {
@@ -232,21 +322,20 @@ func pathWithin(parent string, candidate string) bool {
 }
 
 func validateHomeAccess(value HomeAccess) error {
-	switch normalizedHomeAccess(value) {
-	case HomeAccessDeny, HomeAccessReadOnly, HomeAccessAllow:
-		return nil
-	default:
-		return fmt.Errorf("home access %q is invalid", value)
-	}
+	return validatePolicyValue("home access", string(value), string(normalizedHomeAccess(value)), string(HomeAccessDeny), string(HomeAccessReadOnly), string(HomeAccessAllow))
 }
 
 func validatePrivilegeEscalation(value PrivilegeEscalation) error {
-	switch normalizedPrivilegeEscalation(value) {
-	case PrivilegeEscalationDeny, PrivilegeEscalationAllow:
-		return nil
-	default:
-		return fmt.Errorf("privilege escalation %q is invalid", value)
+	return validatePolicyValue("privilege escalation", string(value), string(normalizedPrivilegeEscalation(value)), string(PrivilegeEscalationDeny), string(PrivilegeEscalationAllow))
+}
+
+func validatePolicyValue(name string, raw string, normalized string, allowed ...string) error {
+	for _, value := range allowed {
+		if normalized == value {
+			return nil
+		}
 	}
+	return fmt.Errorf("%s %q is invalid", name, raw)
 }
 
 func normalizedPrivilegeEscalation(value PrivilegeEscalation) PrivilegeEscalation {

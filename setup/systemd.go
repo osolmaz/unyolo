@@ -100,7 +100,7 @@ func FinalizeSystemd(opts SystemdOptions) (SystemdOptions, error) {
 }
 
 func requiresTrustedExecutable(opts SystemdOptions) bool {
-	return os.Geteuid() == 0 || (!opts.DryRun && !opts.AllowNonRoot)
+	return os.Geteuid() == 0
 }
 
 func validateTrustedExecutable(path string) error {

@@ -4,6 +4,7 @@ package validatex
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // AbsolutePaths validates a named set of absolute filesystem paths.
@@ -17,4 +18,16 @@ func AbsolutePaths(values map[string]string, flagStyle bool) error {
 		}
 	}
 	return nil
+}
+
+// HasParentTraversal reports whether path contains an uncleaned `..` component.
+func HasParentTraversal(path string) bool {
+	for _, component := range strings.FieldsFunc(path, func(char rune) bool {
+		return char == '/' || char == '\\'
+	}) {
+		if component == ".." {
+			return true
+		}
+	}
+	return false
 }

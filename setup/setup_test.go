@@ -203,15 +203,7 @@ func TestValidateTrustedExecutable(t *testing.T) {
 }
 
 func TestRequiresTrustedExecutable(t *testing.T) {
-	if !requiresTrustedExecutable(SystemdOptions{}) {
-		t.Fatal("persistent setup should require a trusted executable")
-	}
-	if os.Geteuid() != 0 {
-		if requiresTrustedExecutable(SystemdOptions{DryRun: true}) {
-			t.Fatal("non-root dry-run should not require root-owned fixtures")
-		}
-		if requiresTrustedExecutable(SystemdOptions{AllowNonRoot: true}) {
-			t.Fatal("non-root test setup should not require root-owned fixtures")
-		}
+	if got := requiresTrustedExecutable(SystemdOptions{}); got != (os.Geteuid() == 0) {
+		t.Fatalf("requiresTrustedExecutable() = %t for euid %d", got, os.Geteuid())
 	}
 }

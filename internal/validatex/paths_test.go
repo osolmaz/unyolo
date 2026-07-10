@@ -16,3 +16,16 @@ func TestAbsolutePaths(t *testing.T) {
 		t.Fatalf("AbsolutePaths(flag) error = %v", err)
 	}
 }
+
+func TestHasParentTraversal(t *testing.T) {
+	for _, path := range []string{"../secret", "/safe/../secret", `safe\..\secret`} {
+		if !HasParentTraversal(path) {
+			t.Fatalf("HasParentTraversal(%q) = false", path)
+		}
+	}
+	for _, path := range []string{"/safe/secret", "/safe/.../secret", "/safe/..name/secret"} {
+		if HasParentTraversal(path) {
+			t.Fatalf("HasParentTraversal(%q) = true", path)
+		}
+	}
+}

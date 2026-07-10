@@ -79,6 +79,11 @@ setuid boundary, such as sudo-broker's sudo runner, must explicitly select
 `PrivilegeEscalationAllow`; Brokerkit then renders `NoNewPrivileges=false`.
 Writable state, read-only config, the service executable, and the environment
 file must occupy non-overlapping paths.
+Existing trusted service path components must be root-owned, non-symlinked, and
+not writable by group or other users. The final state directory may instead be
+owned by the dedicated service account. `PathValidationPreview` exists only for
+dry-runs and non-root temporary-directory fixtures; installable units use the
+zero-value strict policy.
 
 ## Doctor
 

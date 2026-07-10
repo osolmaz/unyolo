@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
 // Status is the overall doctor verdict.
@@ -212,7 +214,7 @@ func secretPathACLCheck(path string) *Check {
 }
 
 func initializeSecretPath(path string) (string, os.FileInfo, *Check) {
-	if hasParentTraversal(path) {
+	if validatex.HasParentTraversal(path) {
 		failure := Check{Status: CheckUnknown, Name: "secret_path_stable", Message: "secret path contains parent traversal"}
 		return "", nil, &failure
 	}
@@ -230,17 +232,6 @@ func initializeSecretPath(path string) (string, os.FileInfo, *Check) {
 		return "", nil, aclCheck
 	}
 	return absolute, root, nil
-}
-
-func hasParentTraversal(path string) bool {
-	for _, component := range strings.FieldsFunc(path, func(char rune) bool {
-		return char == '/' || char == '\\'
-	}) {
-		if component == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 func agentCanReplaceChild(parent os.FileInfo, child os.FileInfo, agent Identity) bool {

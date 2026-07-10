@@ -1,6 +1,7 @@
 package service
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,7 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		func(unit *SystemdUnit) { unit.EnvironmentFile = "/run/user/1000/test.env" },
 		func(unit *SystemdUnit) { unit.ConfigDir = "/root/test" },
 		func(unit *SystemdUnit) { unit.StateDir = "/" },
+		func(unit *SystemdUnit) { unit.ConfigDir = "/etc/test/../test" },
 		func(unit *SystemdUnit) { unit.HomeAccess = "invalid" },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"bad"} },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"User=root"} },
@@ -58,6 +60,25 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		if _, err := RenderSystemd(unit); err == nil {
 			t.Fatalf("RenderSystemd(%+v) error = nil", unit)
 		}
+	}
+}
+
+func TestRenderSystemdRejectsUntrustedExistingPathComponents(t *testing.T) {
+	root := t.TempDir()
+	unit := SystemdUnit{
+		Description: "test", User: "broker", Group: "broker", EnvironmentFile: filepath.Join(root, "config", "env"),
+		ExecStart: "/usr/bin/test serve", StateDir: "/var/lib/test", ConfigDir: filepath.Join(root, "config"),
+	}
+	if _, err := RenderSystemd(unit); err == nil {
+		t.Fatal("RenderSystemd(user-owned config ancestor) error = nil")
+	}
+	unit.PathValidation = PathValidationPreview
+	if _, err := RenderSystemd(unit); err != nil {
+		t.Fatalf("RenderSystemd(test path override): %v", err)
+	}
+	unit.PathValidation = "invalid"
+	if _, err := RenderSystemd(unit); err == nil {
+		t.Fatal("RenderSystemd(invalid path validation) error = nil")
 	}
 }
 
