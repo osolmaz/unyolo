@@ -62,8 +62,8 @@ Implemented package candidates are:
 - `httpx`: proxy-safe header filtering and bounded body helpers
 - `clientconfig`: shared client env rendering for
   `~/.config/<broker>/client.env`
-- `notify`: approval notification interfaces, generic decision results, and a
-  reusable Telegram adapter with send, status edit, and long-poll callbacks
+- `notify`: approval notification interfaces, callback answers, and a stateless
+  Telegram adapter with send, explicit status edit, and long-poll callbacks
 - `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
   `hf-broker` and `gh-broker`
 - `store`: atomic file storage and lock helpers, if needed by grants/audit
@@ -74,10 +74,13 @@ The packages above have initial Go implementations.
 
 ## Status
 
-This repository now contains the first brokerkit Go packages plus the design
-documents that define the cutover boundary. The next step is cutting
-`hf-broker`, `gh-broker`, and `sudo-broker` over to these packages directly
-rather than preserving old and new runtimes.
+This repository now contains the shared Go packages plus the design documents
+that define the cutover boundary. Telegram delivery is deliberately stateless:
+brokers persist notification references and use `brokerkit/grants` to drive
+every status transition and retry after a restart.
+
+The live cross-repository implementation order and remaining work are tracked
+in [docs/CUTOVER_STATUS.md](docs/CUTOVER_STATUS.md).
 
 ## License
 

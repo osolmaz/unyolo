@@ -127,21 +127,26 @@ brokerkit should own:
 
 - Bot API client
 - sending approval messages
-- editing approval status messages
+- explicit approval status edits requested by the broker
 - inline approve/deny buttons
-- callback token parsing
-- callback authenticity checks
-- chat allowlists
-- Telegram user to approver identity mapping
+- callback payload parsing without interpreting the decision token
+- configured-chat filtering
+- Telegram operator metadata extraction
+- callback-query answers
 - retry behavior
 - transport errors
 - shared tests for callback and token safety
 
 Status: brokerkit now owns the reusable Telegram client, inline callback data,
 long polling, configured-chat filtering, callback answering, and status edits.
-The shared grant store owns durable expiry and delivery tracking. Brokers still
-own the domain-specific approval summary, status wording, and the final grant
-approve/deny/revoke calls.
+The adapter is stateless. It never tracks pending or active expiry and never
+edits a message as a side effect of receiving a callback. The shared grant
+store owns durable delivery claims, notification references, expiry, and due
+status updates. Brokers own decision-token verification, domain-specific
+approval summaries and status wording, and the final approve/deny/revoke calls.
+
+This is the only supported lifecycle. There is no in-memory Telegram tracking
+mode and no compatibility option that enables one.
 
 brokerkit should not own text such as "approve this force-push" or "approve
 this shell as deploy." Brokers compose those summaries.

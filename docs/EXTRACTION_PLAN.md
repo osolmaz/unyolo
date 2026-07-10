@@ -141,13 +141,13 @@ forwarding behavior.
 
 Extract the generic approval workflow after grants are stable.
 
-Status: initial `brokerkit/notify` and `brokerkit/notify/telegram` packages are
-implemented. They provide provider-neutral approval messages, decision results,
-Telegram send/status-edit behavior, inline approve/deny callback data, long
-polling for callback queries, and configured-chat filtering. Durable pending,
-active, use, and expiry status tracking belongs to `brokerkit/grants`, so it
-survives process restarts. Consuming brokers still need to cut over and delete
-local Telegram transports.
+Status: `brokerkit/notify` and `brokerkit/notify/telegram` are implemented as a
+stateless transport. They provide provider-neutral approval messages, callback
+answers, explicit Telegram send/status-edit behavior, inline approve/deny
+callback data, long polling, and configured-chat filtering. Durable delivery,
+pending/active/use/expiry state, and status retries belong exclusively to
+`brokerkit/grants`, so they survive process restarts. Consuming brokers must cut
+over and delete local Telegram transports and trackers.
 
 The package should support:
 
@@ -160,11 +160,12 @@ The package should support:
 - reusable Telegram Bot API adapter
 - Telegram inline approve/deny buttons
 - Telegram chat/user allowlists
-- Telegram callback-token validation
+- Telegram callback payload parsing
 
 It should not own broker-specific message text. `hf-broker`, `gh-broker`, and
 `sudo-broker` should compose their own approval summaries and pass them to the
-shared notification adapter.
+shared notification adapter. The broker verifies the parsed decision token
+against the durable grant before changing grant state.
 
 Cutover rule: after a broker imports `brokerkit/notify` and the Telegram
 adapter, delete its local Telegram transport and callback implementation.
@@ -308,10 +309,13 @@ Telegram tests:
 - approval send builds the expected generic Bot API payload
 - buttons carry the correct grant id and decision token
 - callback from the wrong chat is rejected
-- callback with the wrong token is rejected
-- stale or replayed callback is rejected
+- callbacks never cause implicit message edits
+- callback payloads preserve the opaque decision token for broker verification
 - status update edits the expected message
 - bot token is never included in errors, logs, or audit metadata
+
+Consuming-broker tests must reject wrong, stale, and replayed decision tokens
+through the durable grant store.
 
 Audit tests:
 
