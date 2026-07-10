@@ -13,11 +13,16 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
-const maxManagedFileBytes = 16 * 1024 * 1024
+const (
+	maxManagedFileBytes      = 16 * 1024 * 1024
+	defaultReadinessTimeout  = 15 * time.Second
+	defaultReadinessInterval = 100 * time.Millisecond
+)
 
 // ManagedFileArea selects the trusted root beneath which a setup file lives.
 type ManagedFileArea string
@@ -51,20 +56,27 @@ type ManagedFileRef struct {
 	Name string
 }
 
+// ReadinessCheck confirms that a restarted broker initialized with its new
+// configuration before retired credentials are deleted.
+type ReadinessCheck func(context.Context) error
+
 // SystemdInstallPlan describes one complete broker systemd installation.
 type SystemdInstallPlan struct {
-	User         string
-	Group        string
-	ConfigDir    string
-	StateDir     string
-	SystemdDir   string
-	UnitName     string
-	Files        []ManagedFile
-	RemoveFiles  []ManagedFileRef
-	Unit         SystemdUnit
-	NoStart      bool
-	AllowNonRoot bool
-	Runner       CommandRunner
+	User          string
+	Group         string
+	ConfigDir     string
+	StateDir      string
+	SystemdDir    string
+	UnitName      string
+	Files         []ManagedFile
+	RemoveFiles   []ManagedFileRef
+	ReadyCheck    ReadinessCheck
+	ReadyTimeout  time.Duration
+	ReadyInterval time.Duration
+	Unit          SystemdUnit
+	NoStart       bool
+	AllowNonRoot  bool
+	Runner        CommandRunner
 }
 
 // InstallSystemd installs one broker service from a validated typed plan.
@@ -124,6 +136,9 @@ func installSystemdForIdentity(ctx context.Context, runner CommandRunner, plan S
 	if plan.NoStart {
 		return nil
 	}
+	if err := waitForSystemdReady(ctx, plan); err != nil {
+		return err
+	}
 	return removeManagedFiles(roots, plan.RemoveFiles)
 }
 
@@ -157,6 +172,16 @@ func validateInstallFields(plan SystemdInstallPlan) error {
 	}
 	if plan.AllowNonRoot && !plan.NoStart {
 		return errors.New("non-root test installation must disable service activation")
+	}
+	return validateReadinessSettings(plan)
+}
+
+func validateReadinessSettings(plan SystemdInstallPlan) error {
+	if plan.ReadyTimeout < 0 || plan.ReadyInterval < 0 {
+		return errors.New("readiness timeout and interval must not be negative")
+	}
+	if len(plan.RemoveFiles) > 0 && !plan.NoStart && plan.ReadyCheck == nil {
+		return errors.New("managed file retirement requires a readiness check")
 	}
 	return nil
 }
@@ -293,7 +318,10 @@ func validateManagedFile(plan SystemdInstallPlan, file ManagedFile) error {
 }
 
 func validateManagedFilePlacement(file ManagedFile) error {
-	if err := validateManagedFileRef(ManagedFileRef{Area: file.Area, Name: file.Name}); err != nil {
+	if !validManagedFileName(file.Name) {
+		return fmt.Errorf("managed file name %q must be a literal direct child", file.Name)
+	}
+	if err := validateManagedFileArea(file.Area, file.Name); err != nil {
 		return err
 	}
 	if file.Owner != ManagedFileOwnerRoot && file.Owner != ManagedFileOwnerService {
@@ -306,8 +334,52 @@ func validateManagedFileRef(file ManagedFileRef) error {
 	if !validManagedFileName(file.Name) {
 		return fmt.Errorf("managed file name %q must be a literal direct child", file.Name)
 	}
-	if file.Area != ManagedFileConfig && file.Area != ManagedFileState {
-		return fmt.Errorf("managed file %q has invalid area %q", file.Name, file.Area)
+	if file.Area != ManagedFileConfig {
+		return fmt.Errorf("retired managed file %q must be in the config area", file.Name)
+	}
+	return nil
+}
+
+func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
+	if len(plan.RemoveFiles) == 0 {
+		return nil
+	}
+	if plan.ReadyCheck == nil {
+		return errors.New("managed file retirement requires a readiness check")
+	}
+	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
+	defer cancel()
+	return pollSystemdReadiness(readyContext, plan.ReadyCheck, durationOr(plan.ReadyInterval, defaultReadinessInterval))
+}
+
+func pollSystemdReadiness(ctx context.Context, check ReadinessCheck, interval time.Duration) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		if err := check(ctx); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("service readiness check failed before retiring managed files: %w", lastErr)
+		case <-ticker.C:
+		}
+	}
+}
+
+func durationOr(value, fallback time.Duration) time.Duration {
+	if value == 0 {
+		return fallback
+	}
+	return value
+}
+
+func validateManagedFileArea(area ManagedFileArea, name string) error {
+	if area != ManagedFileConfig && area != ManagedFileState {
+		return fmt.Errorf("managed file %q has invalid area %q", name, area)
 	}
 	return nil
 }

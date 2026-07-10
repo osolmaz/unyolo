@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInstallSystemdNonRootFixture(t *testing.T) {
@@ -183,6 +184,21 @@ func TestInstallSystemdPreservesRetiredFileWhenActivationFails(t *testing.T) {
 	}
 }
 
+func TestInstallSystemdPreservesRetiredFileWhenReadinessFails(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	retired := prepareRetiredManagedFile(t, plan, "retired-secret")
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	plan.ReadyCheck = func(context.Context) error { return errors.New("not ready") }
+	plan.ReadyTimeout = 5 * time.Millisecond
+	plan.ReadyInterval = time.Millisecond
+	if err := installActivatedFixtureError(t, plan, &recordingCommandRunner{}); err == nil || !strings.Contains(err.Error(), "readiness") {
+		t.Fatalf("installSystemdForIdentity() error = %v", err)
+	}
+	if _, err := os.Lstat(retired); err != nil {
+		t.Fatalf("retired file was removed after failed readiness: %v", err)
+	}
+}
+
 func TestSystemdInstallPlanValidation(t *testing.T) {
 	valid := nonRootInstallPlan(t)
 	tests := map[string]func(*SystemdInstallPlan){
@@ -208,6 +224,9 @@ func TestSystemdInstallPlanValidation(t *testing.T) {
 		"remove file name": func(plan *SystemdInstallPlan) {
 			plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "nested/file"}}
 		},
+		"remove state file": func(plan *SystemdInstallPlan) {
+			plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileState, Name: "state.json"}}
+		},
 		"write and remove file": func(plan *SystemdInstallPlan) {
 			plan.RemoveFiles = []ManagedFileRef{{Area: plan.Files[0].Area, Name: plan.Files[0].Name}}
 		},
@@ -224,6 +243,16 @@ func TestSystemdInstallPlanValidation(t *testing.T) {
 				t.Fatalf("Validate(%s) error = nil", name)
 			}
 		})
+	}
+}
+
+func TestSystemdInstallPlanRequiresReadinessForActivatedRetirement(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	plan.AllowNonRoot = false
+	plan.NoStart = false
+	plan.RemoveFiles = []ManagedFileRef{{Area: ManagedFileConfig, Name: "retired-secret"}}
+	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "readiness") {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -399,6 +428,9 @@ func installActivatedFixtureError(t *testing.T, plan SystemdInstallPlan, runner 
 		t.Fatal(err)
 	}
 	plan.NoStart = false
+	if plan.ReadyCheck == nil {
+		plan.ReadyCheck = func(context.Context) error { return nil }
+	}
 	return installSystemdForIdentity(context.Background(), runner, plan, uid, gid)
 }
 

@@ -52,6 +52,7 @@ ConfigDir, StateDir, SystemdDir
 UnitName
 Files[]
 RemoveFiles[]
+ReadyCheck, ReadyTimeout, ReadyInterval
 Unit
 NoStart
 AllowNonRoot (tests only)
@@ -68,9 +69,15 @@ Mode  = regular Unix permission bits
 Owner = root | service
 ```
 
-Each removal contains only an area and direct child name. The environment file
-must always be written and cannot be removed. A plan cannot write and remove
-the same path.
+Each removal contains only a config-area direct child name. Retirement is
+restricted to the root-owned config directory so the service cannot race the
+cleanup. The environment file must always be written and cannot be removed. A
+plan cannot write and remove the same path.
+
+An activated plan with removals must provide a readiness check. Brokerkit polls
+it with bounded timeout and interval settings after `systemctl restart`; only a
+successful check permits credential retirement. `HTTPReadyCheck` provides the
+common loopback health-endpoint implementation.
 
 Direct child names deliberately exclude `/`, `..`, absolute paths, and systemd
 specifier syntax. Nested runtime state is created by the broker after startup,
@@ -96,9 +103,10 @@ directory is `<service-user>:<service-group>` mode `0750`.
 10. Atomically install and sync the unit.
 11. Reload systemd, enable the unit, and restart it so reruns apply changed
     configuration unless `NoStart` is set.
-12. After successful activation, remove retired managed files that the new
-    process no longer references. Preserve them when activation is disabled or
-    fails.
+12. Poll the provider readiness check after activation.
+13. Only after readiness succeeds, remove retired config files that the new
+    process no longer references. Preserve them when activation is disabled,
+    fails, or never becomes ready.
 
 The unit is rendered last so strict validation observes the final config,
 environment-file, executable, and state-directory ownership. A failure never
@@ -114,6 +122,7 @@ An install plan is rejected when:
 - a managed file name is not a literal direct child basename;
 - two managed files resolve to the same area and name;
 - a file is both written and removed, or the environment file is removed;
+- retirement targets writable state or lacks a readiness check for activation;
 - a managed file mode contains special bits or group/other write permission;
 - the managed systemd environment file is not root-owned;
 - managed data exceeds the shared bounded setup-file limit;
