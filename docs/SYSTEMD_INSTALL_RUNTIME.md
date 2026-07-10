@@ -92,12 +92,13 @@ directory is `<service-user>:<service-group>` mode `0750`.
 7. Atomically write and sync non-environment managed files.
 8. Atomically write the environment file so it never references a secret that
    failed to install.
-9. Remove retired managed files after the new environment no longer references
-   them.
-10. Render the systemd unit in strict path-validation mode.
-11. Atomically install and sync the unit.
-12. Reload systemd, enable the unit, and restart it so reruns apply changed
+9. Render the systemd unit in strict path-validation mode.
+10. Atomically install and sync the unit.
+11. Reload systemd, enable the unit, and restart it so reruns apply changed
     configuration unless `NoStart` is set.
+12. After successful activation, remove retired managed files that the new
+    process no longer references. Preserve them when activation is disabled or
+    fails.
 
 The unit is rendered last so strict validation observes the final config,
 environment-file, executable, and state-directory ownership. A failure never
@@ -131,7 +132,7 @@ An install plan is rejected when:
 - failed and successful service activation calls;
 - symlink replacement cannot modify the link target;
 - new secrets are installed before the environment is committed, and retired
-  secrets are removed afterward;
+  secrets are removed only after successful activation;
 - invalid names, duplicate files, unsafe modes, oversized files, path overlap,
   and plan/unit mismatch fail before mutation;
 - strict service rendering rejects a directory or inaccessible file as the

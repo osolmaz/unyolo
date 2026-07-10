@@ -118,7 +118,13 @@ func installSystemdForIdentity(ctx context.Context, runner CommandRunner, plan S
 			return err
 		}
 	}
-	return startInstalledSystemdUnit(ctx, runner, plan)
+	if err := startInstalledSystemdUnit(ctx, runner, plan); err != nil {
+		return err
+	}
+	if plan.NoStart {
+		return nil
+	}
+	return removeManagedFiles(roots, plan.RemoveFiles)
 }
 
 func startInstalledSystemdUnit(ctx context.Context, runner CommandRunner, plan SystemdInstallPlan) error {
@@ -606,7 +612,11 @@ func writeManagedFiles(roots installRoots, plan SystemdInstallPlan, serviceUID u
 			}
 		}
 	}
-	for _, file := range plan.RemoveFiles {
+	return nil
+}
+
+func removeManagedFiles(roots installRoots, files []ManagedFileRef) error {
+	for _, file := range files {
 		if err := removeManagedFile(roots, file); err != nil {
 			return err
 		}
