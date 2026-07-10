@@ -10,13 +10,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/copyx"
 	"github.com/osolmaz/brokerkit/notify"
 )
 
@@ -25,54 +22,28 @@ const (
 	callbackPrefix            = "bk"
 	defaultPollTimeoutSeconds = 30
 	defaultIgnoredAnswer      = "Decision ignored"
-	defaultPendingExpired     = "Expired. Request was not approved in time."
-	defaultActiveExpired      = "Expired. Access window ended."
 )
 
 var errMessageNotModified = errors.New("telegram message is not modified")
 
 // Options configures Telegram approval behavior.
 type Options struct {
-	PollTimeoutSeconds  int
-	IgnoredAnswer       string
-	PendingExpired      string
-	ActiveExpired       string
-	ApproveText         string
-	DenyText            string
-	StatusByAnswer      map[string]string
-	TerminalStatuses    []string
-	TerminalStatusStart []string
-	// ExternalStatusUpdates leaves message edits and expiry to a durable broker lifecycle.
-	ExternalStatusUpdates bool
-}
-
-type trackedMessage struct {
-	id             string
-	chatID         int64
-	messageID      int
-	text           string
-	expiresAt      time.Time
-	statusOnExpire string
+	PollTimeoutSeconds int
+	IgnoredAnswer      string
+	ApproveText        string
+	DenyText           string
 }
 
 // Client sends approval messages through Telegram Bot API.
 type Client struct {
-	token                 string
-	chatID                int64
-	baseURL               string
-	client                *http.Client
-	pollTimeoutSeconds    int
-	ignoredAnswer         string
-	pendingExpired        string
-	activeExpired         string
-	approveText           string
-	denyText              string
-	statusByAnswer        map[string]string
-	terminalStatuses      []string
-	terminalStarts        []string
-	externalStatusUpdates bool
-	trackedMu             sync.Mutex
-	tracked               map[string]trackedMessage
+	token              string
+	chatID             int64
+	baseURL            string
+	client             *http.Client
+	pollTimeoutSeconds int
+	ignoredAnswer      string
+	approveText        string
+	denyText           string
 }
 
 // New returns a Telegram client.
@@ -96,21 +67,14 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 	}
 	opts = normalizeOptions(opts)
 	return &Client{
-		token:                 token,
-		chatID:                chatID,
-		baseURL:               strings.TrimRight(baseURL, "/"),
-		client:                httpClient,
-		pollTimeoutSeconds:    opts.PollTimeoutSeconds,
-		ignoredAnswer:         opts.IgnoredAnswer,
-		pendingExpired:        opts.PendingExpired,
-		activeExpired:         opts.ActiveExpired,
-		approveText:           opts.ApproveText,
-		denyText:              opts.DenyText,
-		statusByAnswer:        copyx.StringMap(opts.StatusByAnswer),
-		terminalStatuses:      append([]string(nil), opts.TerminalStatuses...),
-		terminalStarts:        append([]string(nil), opts.TerminalStatusStart...),
-		externalStatusUpdates: opts.ExternalStatusUpdates,
-		tracked:               map[string]trackedMessage{},
+		token:              token,
+		chatID:             chatID,
+		baseURL:            strings.TrimRight(baseURL, "/"),
+		client:             httpClient,
+		pollTimeoutSeconds: opts.PollTimeoutSeconds,
+		ignoredAnswer:      opts.IgnoredAnswer,
+		approveText:        opts.ApproveText,
+		denyText:           opts.DenyText,
 	}, nil
 }
 
@@ -123,12 +87,6 @@ func normalizeOptions(opts Options) Options {
 	}
 	if opts.IgnoredAnswer == "" {
 		opts.IgnoredAnswer = defaultIgnoredAnswer
-	}
-	if opts.PendingExpired == "" {
-		opts.PendingExpired = defaultPendingExpired
-	}
-	if opts.ActiveExpired == "" {
-		opts.ActiveExpired = defaultActiveExpired
 	}
 	if opts.ApproveText == "" {
 		opts.ApproveText = "Approve"
@@ -160,28 +118,14 @@ func (c *Client) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (
 	if chatID == 0 {
 		chatID = c.chatID
 	}
-	ref := notify.MessageRef{Kind: "telegram", ChatID: chatID, MessageID: response.Result.MessageID, Text: text}
-	if !c.externalStatusUpdates {
-		c.track(trackedMessage{
-			id:             msg.GrantID,
-			chatID:         chatID,
-			messageID:      response.Result.MessageID,
-			text:           text,
-			expiresAt:      msg.PendingExpiresAt,
-			statusOnExpire: c.pendingExpired,
-		})
-	}
-	return ref, nil
+	return notify.MessageRef{Kind: "telegram", ChatID: chatID, MessageID: response.Result.MessageID, Text: text}, nil
 }
 
 // UpdateStatus edits an existing approval message status.
 func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status string) error {
-	err := c.editMessageStatus(ctx, trackedMessage{chatID: ref.ChatID, messageID: ref.MessageID, text: ref.Text}, status)
+	err := c.editMessageStatus(ctx, ref.ChatID, ref.MessageID, ref.Text, status)
 	if errors.Is(err, errMessageNotModified) {
-		err = nil
-	}
-	if err == nil && c.terminalStatus(status) {
-		c.forgetMessage(ref.ChatID, ref.MessageID)
+		return nil
 	}
 	return err
 }
@@ -225,17 +169,6 @@ func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, h
 		result = c.normalizeDecisionResult(handler(ctx, decision))
 	}
 	_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
-	if decision.ChatID == c.chatID && !c.externalStatusUpdates {
-		_ = c.markDecision(ctx, decision, result)
-		c.trackAfterDecision(decision, result)
-	}
-}
-
-// ExpireTracked edits tracked approval messages whose pending or active window expired.
-func (c *Client) ExpireTracked(ctx context.Context, now time.Time) {
-	for _, message := range c.dueMessages(now.UTC()) {
-		_ = c.editMessageStatus(ctx, message, message.statusOnExpire)
-	}
 }
 
 func (c *Client) getUpdates(ctx context.Context, offset int64) ([]telegramUpdate, error) {
@@ -260,36 +193,6 @@ func (c *Client) answerCallback(ctx context.Context, callbackID string, text str
 	return c.post(ctx, "answerCallbackQuery", payload, &response)
 }
 
-func (c *Client) markDecision(ctx context.Context, decision notify.Decision, result notify.DecisionResult) error {
-	if decision.MessageID == 0 || decision.MessageText == "" {
-		return nil
-	}
-	status := result.Status
-	if status == "" {
-		status = c.statusForAnswer(result.Answer)
-	}
-	return c.editMessageStatus(ctx, trackedMessage{
-		chatID:    decision.ChatID,
-		messageID: decision.MessageID,
-		text:      decision.MessageText,
-	}, status)
-}
-
-func (c *Client) trackAfterDecision(decision notify.Decision, result notify.DecisionResult) {
-	if result.ActiveExpiresAt.IsZero() {
-		c.forget(decision.GrantID)
-		return
-	}
-	c.track(trackedMessage{
-		id:             decision.GrantID,
-		chatID:         decision.ChatID,
-		messageID:      decision.MessageID,
-		text:           decision.MessageText,
-		expiresAt:      result.ActiveExpiresAt,
-		statusOnExpire: c.activeExpired,
-	})
-}
-
 func (c *Client) normalizeDecisionResult(result notify.DecisionResult) notify.DecisionResult {
 	if result.Answer == "" {
 		result.Answer = c.ignoredAnswer
@@ -297,79 +200,17 @@ func (c *Client) normalizeDecisionResult(result notify.DecisionResult) notify.De
 	return result
 }
 
-func (c *Client) statusForAnswer(answer string) string {
-	if value, ok := c.statusByAnswer[answer]; ok {
-		return value
-	}
-	return answer
-}
-
-func (c *Client) track(message trackedMessage) {
-	if message.id == "" || message.chatID == 0 || message.messageID == 0 || message.text == "" || message.expiresAt.IsZero() {
-		return
-	}
-	c.trackedMu.Lock()
-	defer c.trackedMu.Unlock()
-	c.tracked[message.id] = message
-}
-
-func (c *Client) forget(id string) {
-	c.trackedMu.Lock()
-	defer c.trackedMu.Unlock()
-	delete(c.tracked, id)
-}
-
-func (c *Client) forgetMessage(chatID int64, messageID int) {
-	c.trackedMu.Lock()
-	defer c.trackedMu.Unlock()
-	for id, message := range c.tracked {
-		if message.chatID == chatID && message.messageID == messageID {
-			delete(c.tracked, id)
-		}
-	}
-}
-
-func (c *Client) dueMessages(now time.Time) []trackedMessage {
-	c.trackedMu.Lock()
-	defer c.trackedMu.Unlock()
-	var due []trackedMessage
-	for id, message := range c.tracked {
-		if now.Before(message.expiresAt) {
-			continue
-		}
-		due = append(due, message)
-		delete(c.tracked, id)
-	}
-	return due
-}
-
-func (c *Client) editMessageStatus(ctx context.Context, message trackedMessage, status string) error {
+func (c *Client) editMessageStatus(ctx context.Context, chatID int64, messageID int, text string, status string) error {
 	payload := map[string]any{
-		"chat_id":    message.chatID,
-		"message_id": message.messageID,
-		"text":       withDecisionStatus(message.text, status),
+		"chat_id":    chatID,
+		"message_id": messageID,
+		"text":       withDecisionStatus(text, status),
 		"reply_markup": map[string]any{
 			"inline_keyboard": []any{},
 		},
 	}
 	var response okResponse
 	return c.post(ctx, "editMessageText", payload, &response)
-}
-
-func (c *Client) terminalStatus(status string) bool {
-	if status == c.pendingExpired || status == c.activeExpired {
-		return true
-	}
-	return slices.Contains(c.terminalStatuses, status) || hasAnyPrefix(status, c.terminalStarts)
-}
-
-func hasAnyPrefix(value string, prefixes []string) bool {
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(value, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // RenderApproval returns generic approval message text.

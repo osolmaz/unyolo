@@ -1,10 +1,7 @@
 // Package notify defines broker approval notification interfaces.
 package notify
 
-import (
-	"context"
-	"time"
-)
+import "context"
 
 // Action is an approval decision action.
 type Action string
@@ -25,7 +22,6 @@ type ApprovalMessage struct {
 	Reason           string
 	RequestedMinutes int
 	MaxUses          int
-	PendingExpiresAt time.Time
 	Fields           []Field
 }
 
@@ -57,14 +53,10 @@ type Decision struct {
 	OperatorTag   string
 }
 
-// DecisionResult is the visible result of an operator decision.
+// DecisionResult is the callback answer returned after an operator decision.
 type DecisionResult struct {
 	// Answer is the short callback answer shown by the approval channel.
 	Answer string
-	// Status is the message status line. If empty, Answer is used.
-	Status string
-	// ActiveExpiresAt tracks an approved access window for a later expiry edit.
-	ActiveExpiresAt time.Time
 }
 
 // Notifier sends approval requests and status updates.

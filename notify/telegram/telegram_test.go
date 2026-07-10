@@ -32,7 +32,6 @@ func TestSendApprovalAndUpdateStatus(t *testing.T) {
 		Reason:           "cleanup branch",
 		RequestedMinutes: 5,
 		MaxUses:          1,
-		PendingExpiresAt: time.Now().Add(time.Minute),
 	})
 	if err != nil || ref.MessageID != 42 || ref.ChatID != 123 {
 		t.Fatalf("SendApproval() = %+v err=%v", ref, err)
@@ -132,127 +131,8 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	}
 	assertPollDecision(t, decisions)
 	assertPollAnswers(t, state.answered)
-	assertPollEdit(t, state.edits)
-}
-
-func TestExternalStatusUpdatesDisableCallbackAndExpiryEdits(t *testing.T) {
-	state := &pollServerState{}
-	server := newPollServer(t, state)
-	defer server.Close()
-	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{
-		PollTimeoutSeconds:    1,
-		ExternalStatusUpdates: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := client.PollOnce(context.Background(), 0, func(_ context.Context, _ notify.Decision) notify.DecisionResult {
-		return notify.DecisionResult{Answer: "handled", Status: "Approved"}
-	}); err != nil {
-		t.Fatalf("PollOnce() error = %v", err)
-	}
 	if len(state.edits) != 0 {
-		t.Fatalf("callback edits = %+v, want external lifecycle only", state.edits)
-	}
-	if len(state.answered) != 2 {
-		t.Fatalf("callback answers = %+v, want both answered", state.answered)
-	}
-
-	ref, err := client.SendApproval(context.Background(), notify.ApprovalMessage{
-		GrantID:          "grant-1",
-		DecisionToken:    "token-1",
-		PendingExpiresAt: time.Now().Add(time.Minute),
-	})
-	if err != nil || ref.MessageID == 0 {
-		t.Fatalf("SendApproval() = %+v err=%v", ref, err)
-	}
-	client.ExpireTracked(context.Background(), time.Now().Add(time.Hour))
-	if len(state.edits) != 0 {
-		t.Fatalf("expiry edits = %+v, want external lifecycle only", state.edits)
-	}
-}
-
-func TestTrackedPendingAndActiveExpiry(t *testing.T) {
-	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
-	var edits []map[string]any
-	server := newTrackingServer(t, &edits)
-	defer server.Close()
-	client, err := New("test-token", 123, server.Client(), server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ref, err := client.SendApproval(context.Background(), notify.ApprovalMessage{
-		GrantID:          "grant-1",
-		DecisionToken:    "decision-token",
-		Client:           "bob",
-		Operation:        "git.ref.delete",
-		Target:           "repo/osolmaz/demo",
-		Reason:           "cleanup branch",
-		RequestedMinutes: 5,
-		MaxUses:          1,
-		PendingExpiresAt: now.Add(time.Minute),
-	})
-	if err != nil {
-		t.Fatalf("SendApproval() error = %v", err)
-	}
-	client.ExpireTracked(context.Background(), now.Add(time.Minute))
-	if len(edits) != 1 || !strings.Contains(edits[0]["text"].(string), "Status: Expired. Request was not approved in time.") {
-		t.Fatalf("pending expiry edits = %+v", edits)
-	}
-
-	client.trackAfterDecision(notify.Decision{
-		GrantID:     "grant-1",
-		ChatID:      ref.ChatID,
-		MessageID:   ref.MessageID,
-		MessageText: ref.Text,
-	}, notify.DecisionResult{Answer: "approved", ActiveExpiresAt: now.Add(5 * time.Minute)})
-	client.ExpireTracked(context.Background(), now.Add(5*time.Minute))
-	if len(edits) != 2 || !strings.Contains(edits[1]["text"].(string), "Status: Expired. Access window ended.") {
-		t.Fatalf("active expiry edits = %+v", edits)
-	}
-	if strings.Contains(edits[1]["text"].(string), "Request was not approved") {
-		t.Fatalf("active expiry kept old status: %q", edits[1]["text"].(string))
-	}
-}
-
-func TestUpdateStatusClearsConfiguredTerminalExpiry(t *testing.T) {
-	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
-	var edits []map[string]any
-	server := newTrackingServer(t, &edits)
-	defer server.Close()
-	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{
-		TerminalStatuses: []string{"used"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ref, err := client.SendApproval(context.Background(), notify.ApprovalMessage{
-		GrantID:          "grant-1",
-		DecisionToken:    "decision-token",
-		Client:           "bob",
-		Operation:        "git.ref.delete",
-		Target:           "repo/osolmaz/demo",
-		Reason:           "cleanup branch",
-		RequestedMinutes: 5,
-		MaxUses:          1,
-		PendingExpiresAt: now.Add(time.Minute),
-	})
-	if err != nil {
-		t.Fatalf("SendApproval() error = %v", err)
-	}
-	client.trackAfterDecision(notify.Decision{
-		GrantID:     "grant-1",
-		ChatID:      ref.ChatID,
-		MessageID:   ref.MessageID,
-		MessageText: ref.Text,
-	}, notify.DecisionResult{Answer: "approved", ActiveExpiresAt: now.Add(5 * time.Minute)})
-	if err := client.UpdateStatus(context.Background(), ref, "used"); err != nil {
-		t.Fatalf("UpdateStatus() error = %v", err)
-	}
-	client.ExpireTracked(context.Background(), now.Add(5*time.Minute))
-	if len(edits) != 1 || !strings.Contains(edits[0]["text"].(string), "Status: used") {
-		t.Fatalf("edits after terminal update = %+v, want only used status", edits)
+		t.Fatalf("callback edits = %+v, want broker-owned status lifecycle", state.edits)
 	}
 }
 
@@ -398,21 +278,6 @@ func newPollServer(t *testing.T, state *pollServerState) *httptest.Server {
 	}))
 }
 
-func newTrackingServer(t *testing.T, edits *[]map[string]any) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
-			writeMessage(w, 7)
-		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
-			*edits = append(*edits, decodePayload(t, r))
-			writeOK(w)
-		default:
-			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-	}))
-}
-
 func telegramTestHandler(t *testing.T, calls *[]map[string]any) http.Handler {
 	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -479,30 +344,6 @@ func assertPollAnswers(t *testing.T, answered []string) {
 	}
 	if answered[1] != "right:handled" {
 		t.Fatalf("right-chat answer = %q", answered[1])
-	}
-}
-
-func assertPollEdit(t *testing.T, edits []map[string]any) {
-	t.Helper()
-	if len(edits) != 1 {
-		t.Fatalf("edits = %+v, want one edit", edits)
-	}
-	if edits[0]["chat_id"].(float64) != 123 {
-		t.Fatalf("edit chat = %+v", edits[0])
-	}
-	if edits[0]["message_id"].(float64) != 42 {
-		t.Fatalf("edit message = %+v", edits[0])
-	}
-	text := edits[0]["text"].(string)
-	if !strings.Contains(text, "Status: handled") {
-		t.Fatalf("edit text = %q", text)
-	}
-	if strings.Contains(text, "bk:") {
-		t.Fatalf("edit text leaked callback data: %q", text)
-	}
-	replyMarkup := edits[0]["reply_markup"].(map[string]any)
-	if keyboard := replyMarkup["inline_keyboard"].([]any); len(keyboard) != 0 {
-		t.Fatalf("edit keyboard = %+v, want empty", keyboard)
 	}
 }
 
