@@ -41,6 +41,13 @@ GitHub App key, scope file, sudo policy, or command catalog.
 
 No setup result or diagnostic output includes a secret value.
 
+Package `envfile` reads the literal `KEY=VALUE` files generated for systemd
+services. It bounds input to 1 MiB, rejects duplicate or malformed assignments,
+does not interpret shell syntax, and provides an overlay lookup where explicit
+process environment values take precedence. Broker doctor commands use this
+shared parser to inspect installed service configuration without inheriting the
+systemd process environment.
+
 ## Service
 
 Package `service` renders the common hardened systemd baseline:
