@@ -111,6 +111,8 @@ The package should support:
 - generated temporary allow rules
 - durable notification references and delivered-status keys
 - leased notification-send claims and conditional cancellation
+- durable unresolved-delivery claims for ambiguous sends, with retry only after
+  the original lease expires
 - fresh one-time approval tokens on every claimed delivery attempt, with only
   token verifiers persisted
 - restart-safe discovery of notification updates that are still due

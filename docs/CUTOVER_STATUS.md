@@ -35,7 +35,9 @@ references, or delivery progress in memory.
 - Done: provider-neutral policy registry and evaluation.
 - Done: durable grants, send claims, message references, due status updates,
   retained reservations, and refreshed overlapping-reservation clocks.
-- Current: remove the optional in-memory Telegram lifecycle and make the
+- Current: persist ambiguous notification sends as unresolved claims so callers
+  fail promptly while retry remains lease-bound and restart-safe.
+- Done: removed the optional in-memory Telegram lifecycle and made the
   stateless transport contract the only API.
 - Gate: race tests, coverage, vet, lint, Slophammer checks, mutation checks,
   review, and CI must pass before consumers pin the final API.

@@ -115,7 +115,10 @@ type Grant struct {
 	NotificationStatus     string              `json:"notification_status,omitempty"`
 	NotificationClaimedAt  time.Time           `json:"notification_claimed_at,omitzero"`
 	NotificationClaimUntil time.Time           `json:"notification_claim_until,omitzero"`
-	legacySchema           bool
+	// NotificationDeliveryUnresolved records an ambiguous send attempt until
+	// the current claim is completed or reclaimed.
+	NotificationDeliveryUnresolved bool `json:"notification_delivery_unresolved,omitempty"`
+	legacySchema                   bool
 }
 
 type fileData struct {

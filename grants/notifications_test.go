@@ -58,10 +58,43 @@ func TestNotificationClaimRecoveryAndConditionalCancel(t *testing.T) {
 	if _, canceled, err := store.CancelIfNotificationClaimed(result.Grant.ID, first.Grant.NotificationClaimedAt); err != nil || canceled {
 		t.Fatalf("stale cancel canceled=%v err=%v", canceled, err)
 	}
+	retainNotificationClaim(t, store, result.Grant.ID, second.Grant.NotificationClaimedAt)
 	canceledGrant, canceled, err := store.CancelIfNotificationClaimed(result.Grant.ID, second.Grant.NotificationClaimedAt)
-	if err != nil || !canceled || canceledGrant.Status != StatusCanceled {
+	if err != nil || !canceled || canceledGrant.Status != StatusCanceled || canceledGrant.NotificationDeliveryUnresolved {
 		t.Fatalf("current cancel = %+v canceled=%v err=%v", canceledGrant, canceled, err)
 	}
+}
+
+func TestUnresolvedNotificationClaimSurvivesRestart(t *testing.T) {
+	now := time.Date(2026, 7, 10, 2, 15, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "grants.json")
+	store := New(path, Options{Now: func() time.Time { return now }})
+	result := requestTestGrant(t, store, "unresolved-claim", 1)
+	first := claimNotification(t, store, result.Grant.ID)
+
+	retainNotificationClaim(t, store, result.Grant.ID, first.Grant.NotificationClaimedAt)
+	if _, ok, err := store.RetainNotificationClaim(result.Grant.ID, first.Grant.NotificationClaimedAt.Add(time.Second)); err != nil || ok {
+		t.Fatalf("RetainNotificationClaim(stale) retained=%v err=%v", ok, err)
+	}
+
+	restarted := New(path, Options{Now: func() time.Time { return now }})
+	loaded, err := restarted.Get(result.Grant.ID)
+	if err != nil || !loaded.NotificationDeliveryUnresolved {
+		t.Fatalf("Get(restarted unresolved) = %+v err=%v", loaded, err)
+	}
+}
+
+func TestUnresolvedNotificationClaimClearsOnReclaim(t *testing.T) {
+	now := time.Date(2026, 7, 10, 2, 15, 0, 0, time.UTC)
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
+	result := requestTestGrant(t, store, "unresolved-reclaim", 1)
+	first := claimNotification(t, store, result.Grant.ID)
+	retainNotificationClaim(t, store, result.Grant.ID, first.Grant.NotificationClaimedAt)
+	assertNotificationClaimUnavailable(t, store, result.Grant.ID)
+	now = now.Add(2 * time.Minute)
+	second := reclaimNotification(t, store, result.Grant.ID, first.DecisionToken)
+	retainNotificationClaim(t, store, result.Grant.ID, second.Grant.NotificationClaimedAt)
+	assertSetNotificationClearsUnresolved(t, store, result.Grant.ID, second.Grant.NotificationClaimedAt)
 }
 
 func TestNotificationClaimHonorsOriginalLease(t *testing.T) {
@@ -87,14 +120,78 @@ func TestNotificationClaimHonorsOriginalLease(t *testing.T) {
 	}
 }
 
+func TestNotificationClaimAcceptsMinimumPositiveLease(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "minimum-claim-lease", 1)
+	claim, claimed, err := store.ClaimNotification(result.Grant.ID, time.Nanosecond)
+	if err != nil || !claimed || claim.DecisionToken == "" {
+		t.Fatalf("ClaimNotification(1ns) = %+v claimed=%v err=%v", claim, claimed, err)
+	}
+}
+
+func TestNotificationClaimRejectsTerminalAndNotifiedGrants(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	terminal := requestTestGrant(t, store, "terminal-claim", 1)
+	if _, err := store.Approve(terminal.Grant.ID, terminal.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	assertGrantCannotClaimNotification(t, store, terminal.Grant.ID)
+
+	notified := requestTestGrant(t, store, "notified-claim", 1)
+	if _, err := store.SetNotification(notified.Grant.ID, notify.MessageRef{Kind: "telegram", MessageID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	assertGrantCannotClaimNotification(t, store, notified.Grant.ID)
+}
+
+func TestRetainNotificationClaimRejectsTerminalGrant(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "terminal-retain", 1)
+	claim := claimNotification(t, store, result.Grant.ID)
+	if _, err := store.Approve(result.Grant.ID, claim.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if _, retained, err := store.RetainNotificationClaim(result.Grant.ID, claim.Grant.NotificationClaimedAt); err != nil || retained {
+		t.Fatalf("RetainNotificationClaim(terminal) retained=%v err=%v", retained, err)
+	}
+}
+
+func TestNotificationUpdateGuards(t *testing.T) {
+	zeroRef := &MessageRef{}
+	cases := []struct {
+		name  string
+		grant Grant
+		check func(Grant) (StatusUpdate, bool)
+	}{
+		{name: "missing notification", grant: Grant{Status: StatusActive}, check: statusUpdateNeedingDelivery},
+		{name: "zero message id", grant: Grant{Status: StatusActive, Notification: zeroRef}, check: statusUpdateNeedingDelivery},
+		{name: "pending lifecycle", grant: Grant{Status: StatusPending}, check: lifecycleUpdate},
+		{name: "reservation not retained", grant: Grant{Status: StatusActive, ReservedCount: 1}, check: retainedReservationUpdate},
+		{name: "reservation count zero", grant: Grant{Status: StatusActive, ReservationRetained: true}, check: retainedReservationUpdate},
+		{name: "reservation terminal", grant: Grant{Status: StatusConsumed, ReservationRetained: true, ReservedCount: 1}, check: retainedReservationUpdate},
+		{name: "used expiry wrong status", grant: Grant{Status: StatusActive, UsedCount: 1}, check: usedExpiredUpdate},
+		{name: "used expiry count zero", grant: Grant{Status: StatusExpired}, check: usedExpiredUpdate},
+		{name: "used expiry reserved", grant: Grant{Status: StatusExpired, UsedCount: 1, ReservedCount: 1}, check: usedExpiredUpdate},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if update, ok := test.check(test.grant); ok {
+				t.Fatalf("guard returned update %+v", update)
+			}
+		})
+	}
+}
+
 func TestCancelPendingGrantAndIgnoreTerminalGrant(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "cancel", 1)
+	claim := claimNotification(t, store, result.Grant.ID)
+	retainNotificationClaim(t, store, result.Grant.ID, claim.Grant.NotificationClaimedAt)
 	if err := store.Cancel(result.Grant.ID); err != nil {
 		t.Fatal(err)
 	}
 	canceled, err := store.Get(result.Grant.ID)
-	if err != nil || canceled.Status != StatusCanceled || canceled.DecidedAt.IsZero() {
+	if err != nil || canceled.Status != StatusCanceled || canceled.DecidedAt.IsZero() || canceled.NotificationDeliveryUnresolved {
 		t.Fatalf("Get(canceled) = %+v err=%v", canceled, err)
 	}
 	if err := store.Cancel(result.Grant.ID); err != nil {
@@ -149,6 +246,50 @@ func assertZeroClaimCannotMutate(t *testing.T, store *Store, id string) {
 	}
 	if _, recorded, err := store.SetNotificationIfClaimed(id, time.Time{}, notify.MessageRef{MessageID: 1}); err != nil || recorded {
 		t.Fatalf("zero-claim notification recorded=%v err=%v", recorded, err)
+	}
+	if _, retained, err := store.RetainNotificationClaim(id, time.Time{}); err != nil || retained {
+		t.Fatalf("zero-claim retain retained=%v err=%v", retained, err)
+	}
+}
+
+func retainNotificationClaim(t *testing.T, store *Store, id string, claimedAt time.Time) Grant {
+	t.Helper()
+	grant, retained, err := store.RetainNotificationClaim(id, claimedAt)
+	if err != nil || !retained || !grant.NotificationDeliveryUnresolved {
+		t.Fatalf("RetainNotificationClaim() = %+v retained=%v err=%v", grant, retained, err)
+	}
+	return grant
+}
+
+func assertNotificationClaimUnavailable(t *testing.T, store *Store, id string) {
+	t.Helper()
+	claim, claimed, err := store.ClaimNotification(id, time.Minute)
+	if err != nil || claimed || !claim.Grant.NotificationDeliveryUnresolved {
+		t.Fatalf("ClaimNotification(before lease) = %+v claimed=%v err=%v", claim, claimed, err)
+	}
+}
+
+func assertGrantCannotClaimNotification(t *testing.T, store *Store, id string) {
+	t.Helper()
+	if claim, claimed, err := store.ClaimNotification(id, time.Minute); err != nil || claimed {
+		t.Fatalf("ClaimNotification(ineligible) = %+v claimed=%v err=%v", claim, claimed, err)
+	}
+}
+
+func reclaimNotification(t *testing.T, store *Store, id string, oldToken string) NotificationClaim {
+	t.Helper()
+	claim, claimed, err := store.ClaimNotification(id, time.Minute)
+	if err != nil || !claimed || claim.Grant.NotificationDeliveryUnresolved || claim.DecisionToken == oldToken {
+		t.Fatalf("ClaimNotification(after lease) = %+v claimed=%v err=%v", claim, claimed, err)
+	}
+	return claim
+}
+
+func assertSetNotificationClearsUnresolved(t *testing.T, store *Store, id string, claimedAt time.Time) {
+	t.Helper()
+	grant, recorded, err := store.SetNotificationIfClaimed(id, claimedAt, notify.MessageRef{Kind: "telegram", MessageID: 7})
+	if err != nil || !recorded || grant.NotificationDeliveryUnresolved {
+		t.Fatalf("SetNotificationIfClaimed(after unresolved) = %+v recorded=%v err=%v", grant, recorded, err)
 	}
 }
 

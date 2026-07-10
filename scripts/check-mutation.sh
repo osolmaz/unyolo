@@ -4,6 +4,7 @@ set -euo pipefail
 
 targets=(
 	doc.go
+	grants/notifications.go
 	httpx/httpx.go
 )
 backup_dir="$(mktemp -d)"
