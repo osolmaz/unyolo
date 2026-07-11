@@ -34,6 +34,9 @@ func New(options Options) (*Server, error) {
 	if options.Store == nil {
 		return nil, errors.New("grant store is required")
 	}
+	if len(options.OperatorSecrets) == 0 {
+		return nil, errors.New("at least one operator secret is required")
+	}
 	if options.Broker == "" {
 		options.Broker = "fake-broker"
 	}

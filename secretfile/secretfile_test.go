@@ -6,12 +6,12 @@ import (
 )
 
 func TestParseAndRender(t *testing.T) {
-	parsed, err := ParseBytes([]byte("# operators\nbob = b-secret\nalice = a-secret\n"))
-	if err != nil || parsed["alice"] != "a-secret" || parsed["bob"] != "b-secret" {
+	parsed, err := ParseBytes([]byte("# operators\n123 = numeric-secret\nci@host = host-secret\nalice = a-secret\n"))
+	if err != nil || parsed["alice"] != "a-secret" || parsed["123"] != "numeric-secret" || parsed["ci@host"] != "host-secret" {
 		t.Fatalf("ParseBytes() = %#v, %v", parsed, err)
 	}
 	rendered, err := Render(parsed)
-	if err != nil || string(rendered) != "alice = a-secret\nbob = b-secret\n" {
+	if err != nil || string(rendered) != "123 = numeric-secret\nalice = a-secret\nci@host = host-secret\n" {
 		t.Fatalf("Render() = %q, %v", rendered, err)
 	}
 }

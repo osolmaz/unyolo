@@ -33,6 +33,11 @@ func Run(ctx context.Context, options Options) error {
 	if err := validate(options); err != nil {
 		return err
 	}
+	directory, dist, err := safePaths(options.Directory, options.Dist)
+	if err != nil {
+		return err
+	}
+	options.Directory, options.Dist = directory, dist
 	if err := os.RemoveAll(options.Dist); err != nil {
 		return err
 	}
@@ -52,6 +57,52 @@ func Run(ctx context.Context, options Options) error {
 		fmt.Fprintf(&checksums, "%x  %s\n", digest, filepath.Base(asset))
 	}
 	return os.WriteFile(filepath.Join(options.Dist, "checksums.txt"), []byte(checksums.String()), 0o600)
+}
+
+func safePaths(directory, dist string) (string, string, error) {
+	directoryPath, err := canonicalPath(directory)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve source directory: %w", err)
+	}
+	distPath, err := canonicalPath(dist)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve release directory: %w", err)
+	}
+	relative, err := filepath.Rel(distPath, directoryPath)
+	if err != nil {
+		return "", "", err
+	}
+	if relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
+		return "", "", errors.New("release directory must not contain the source directory")
+	}
+	return directoryPath, distPath, nil
+}
+
+func canonicalPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	current := filepath.Clean(absolute)
+	var missing []string
+	for {
+		resolved, resolveErr := filepath.EvalSymlinks(current)
+		if resolveErr == nil {
+			for index := len(missing) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, missing[index])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !errors.Is(resolveErr, os.ErrNotExist) {
+			return "", resolveErr
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", resolveErr
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
 }
 
 func validate(options Options) error {
@@ -91,8 +142,12 @@ func archive(asset string, options Options, binary string) error {
 	gzipWriter := gzip.NewWriter(file)
 	gzipWriter.ModTime = time.Unix(0, 0).UTC()
 	tarWriter := tar.NewWriter(gzipWriter)
-	for _, source := range []string{binary, filepath.Join(options.Directory, "README.md"), filepath.Join(options.Directory, "LICENSE")} {
-		if err := addFile(tarWriter, source, filepath.Base(source)); err != nil {
+	files := []struct {
+		path string
+		mode int64
+	}{{binary, 0o755}, {filepath.Join(options.Directory, "README.md"), 0o644}, {filepath.Join(options.Directory, "LICENSE"), 0o644}}
+	for _, source := range files {
+		if err := addFile(tarWriter, source.path, filepath.Base(source.path), source.mode); err != nil {
 			_ = tarWriter.Close()
 			_ = gzipWriter.Close()
 			_ = file.Close()
@@ -108,7 +163,7 @@ func archive(asset string, options Options, binary string) error {
 	return file.Close()
 }
 
-func addFile(writer *tar.Writer, source, name string) (returnErr error) {
+func addFile(writer *tar.Writer, source, name string, mode int64) (returnErr error) {
 	file, err := os.Open(source) // #nosec G304 -- release input is operator configured.
 	if err != nil {
 		return err
@@ -128,6 +183,7 @@ func addFile(writer *tar.Writer, source, name string) (returnErr error) {
 	}
 	epoch := time.Unix(0, 0).UTC()
 	header.Name, header.ModTime, header.AccessTime, header.ChangeTime = name, epoch, epoch, epoch
+	header.Mode, header.Uid, header.Gid, header.Uname, header.Gname = mode, 0, 0, "", ""
 	if err := writer.WriteHeader(header); err != nil {
 		return err
 	}

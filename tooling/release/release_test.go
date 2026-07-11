@@ -23,6 +23,18 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestSafePathsRejectsSourceRemoval(t *testing.T) {
+	directory := t.TempDir()
+	for _, dist := range []string{directory, filepath.Dir(directory)} {
+		if _, _, err := safePaths(directory, dist); err == nil {
+			t.Fatalf("safePaths(%q, %q) accepted destructive output", directory, dist)
+		}
+	}
+	if _, _, err := safePaths(directory, filepath.Join(directory, "dist")); err != nil {
+		t.Fatalf("safePaths() rejected nested output: %v", err)
+	}
+}
+
 func TestHostTarget(t *testing.T) {
 	if HostTarget() == "/" {
 		t.Fatal("HostTarget() is empty")
@@ -48,6 +60,7 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 	if names := archiveNames(t, asset); !slices.Equal(names, []string{"test-broker", "README.md", "LICENSE"}) {
 		t.Fatalf("archive names = %v", names)
 	}
+	assertArchiveMetadata(t, asset)
 	if err := Run(t.Context(), options); err != nil {
 		t.Fatal(err)
 	}
@@ -57,22 +70,32 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 	}
 }
 
+func assertArchiveMetadata(t *testing.T, path string) {
+	t.Helper()
+	reader, closeArchive := openArchive(t, path)
+	defer closeArchive()
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantMode := int64(0o644)
+		if header.Name == "test-broker" {
+			wantMode = 0o755
+		}
+		if header.Mode != wantMode || header.Uid != 0 || header.Gid != 0 || header.Uname != "" || header.Gname != "" {
+			t.Fatalf("archive metadata for %q = mode %o uid %d gid %d uname %q gname %q", header.Name, header.Mode, header.Uid, header.Gid, header.Uname, header.Gname)
+		}
+	}
+}
+
 func archiveNames(t *testing.T, path string) []string {
 	t.Helper()
-	file, err := os.Open(path) // #nosec G304 -- generated test fixture.
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			t.Error(err)
-		}
-	}()
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader := tar.NewReader(gzipReader)
+	reader, closeArchive := openArchive(t, path)
+	defer closeArchive()
 	var names []string
 	for {
 		header, err := reader.Next()
@@ -85,6 +108,28 @@ func archiveNames(t *testing.T, path string) []string {
 		names = append(names, header.Name)
 	}
 	return names
+}
+
+func openArchive(t *testing.T, path string) (*tar.Reader, func()) {
+	t.Helper()
+	file, err := os.Open(path) // #nosec G304 -- generated test fixture.
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	closeArchive := func() {
+		if err := gzipReader.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Error(err)
+		}
+	}
+	return tar.NewReader(gzipReader), closeArchive
 }
 
 func writeReleaseFile(t *testing.T, directory, name, body string) {

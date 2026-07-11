@@ -2,6 +2,8 @@
 package conformance
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,8 +24,8 @@ type Fixture struct {
 // RunControlPlane verifies the common broker contract against a real HTTP server.
 func RunControlPlane(t *testing.T, fixture Fixture) {
 	t.Helper()
-	if fixture.Runtime == nil {
-		t.Fatal("conformance runtime is required")
+	if err := validateFixture(fixture); err != nil {
+		t.Fatal(err)
 	}
 	created := requestGrant(t, fixture)
 	server := httptest.NewServer(fixture.Runtime.OperatorHandler)
@@ -31,6 +33,17 @@ func RunControlPlane(t *testing.T, fixture Fixture) {
 	assertRejectedCredential(t, server, fixture.ClientToken)
 	assertRejectedCredential(t, server, "unknown-operator-secret-abcdefghijklmnopqrstuvwxyz")
 	assertOperatorLifecycle(t, fixture, server, created)
+}
+
+func validateFixture(fixture Fixture) error {
+	if fixture.Runtime == nil || fixture.Runtime.Clients == nil {
+		return errors.New("conformance runtime is required")
+	}
+	client, err := fixture.Runtime.Clients.AuthenticateHeader("Bearer " + fixture.ClientToken)
+	if err != nil || client != fixture.Request.Client {
+		return fmt.Errorf("fixture client authentication = %q, %v; want %q", client, err, fixture.Request.Client)
+	}
+	return nil
 }
 
 func requestGrant(t *testing.T, fixture Fixture) grants.RequestResult {

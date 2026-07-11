@@ -13,7 +13,7 @@ import (
 
 const maxBytes = 64 * 1024
 
-var identityPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,63}$`)
+var identityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$`)
 
 // Parse reads `name = secret` records from path.
 func Parse(path string) (map[string]string, error) {
