@@ -1,6 +1,7 @@
 package operatorclient
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorv1"
@@ -92,22 +94,70 @@ func TestClientWatchesOperatorV1Events(t *testing.T) {
 	}
 }
 
-func TestClientRejectsNonCanonicalResponses(t *testing.T) {
+func TestEventReceiveCancellationClosesBlockedStream(t *testing.T) {
 	t.Parallel()
-	for _, body := range []string{
-		`{"api_version":"operator.v1","unknown":true}`,
-		`{"api_version":"operator.v1"}{}`,
-	} {
-		body := body
-		t.Run(body, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-				_, _ = writer.Write([]byte(body))
-			}))
-			defer server.Close()
-			if _, err := (&Client{BaseURL: server.URL, HTTPClient: server.Client()}).Discover(t.Context()); err == nil {
-				t.Fatal("Discover() accepted a non-canonical response")
-			}
-		})
+	handlerDone := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		defer close(handlerDone)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+	stream, err := (&Client{BaseURL: server.URL, HTTPClient: server.Client()}).Watch(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+	defer cancel()
+	if _, err := stream.Receive(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Receive() error = %v", err)
+	}
+	select {
+	case <-handlerDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled receive did not close the event response")
+	}
+}
+
+func TestClientRejectsWrongResponseMediaTypes(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "text/plain")
+		if request.URL.Path == "/api/operator/v1/events" {
+			_, _ = writer.Write([]byte("data: {}\n\n"))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"api_version":"operator.v1"}`))
+	}))
+	defer server.Close()
+	client := &Client{BaseURL: server.URL, HTTPClient: server.Client()}
+	if _, err := client.Discover(t.Context()); err == nil {
+		t.Fatal("Discover() accepted text/plain")
+	}
+	if _, err := client.Watch(t.Context(), ""); err == nil {
+		t.Fatal("Watch() accepted text/plain")
+	}
+}
+
+func TestClientDropsUnknownResponseFieldsAndRejectsTrailingData(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(writer, `{"api_version":%q,"unknown":{"unsafe":"dropped"}}`, operatorv1.APIVersion)
+	}))
+	defer server.Close()
+	if descriptor, err := (&Client{BaseURL: server.URL, HTTPClient: server.Client()}).Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
+		t.Fatalf("Discover(unknown output) = %+v, %v", descriptor, err)
+	}
+	trailing := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(writer, `{"api_version":%q}{}`, operatorv1.APIVersion)
+	}))
+	defer trailing.Close()
+	if _, err := (&Client{BaseURL: trailing.URL, HTTPClient: trailing.Client()}).Discover(t.Context()); err == nil {
+		t.Fatal("Discover() accepted trailing response data")
 	}
 	if _, err := NewUnix("relative.sock", "token"); err == nil {
 		t.Fatal("NewUnix() accepted a relative socket path")

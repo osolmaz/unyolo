@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -144,6 +145,10 @@ func (c *Client) Watch(ctx context.Context, cursor string) (operatorv1.EventStre
 		_ = response.Body.Close()
 		return nil, err
 	}
+	if !hasMediaType(response.Header.Get("Content-Type"), "text/event-stream") {
+		_ = response.Body.Close()
+		return nil, errors.New("operator event response has invalid content type")
+	}
 	return &eventStream{body: response.Body, scanner: newSSEScanner(response.Body)}, nil
 }
 
@@ -175,6 +180,7 @@ func (s *eventStream) Receive(ctx context.Context) (operatorv1.Event, error) {
 	}()
 	select {
 	case <-ctx.Done():
+		_ = s.body.Close()
 		return operatorv1.Event{}, ctx.Err()
 	case result := <-resultc:
 		if result.err == nil && result.event.Cursor == "" {
@@ -217,7 +223,15 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, target a
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return decodeAPIError(response)
 	}
+	if !hasMediaType(response.Header.Get("Content-Type"), "application/json") {
+		return errors.New("operator response has invalid content type")
+	}
 	return decodeBounded(response.Body, target)
+}
+
+func hasMediaType(value, expected string) bool {
+	mediaType, _, err := mime.ParseMediaType(value)
+	return err == nil && mediaType == expected
 }
 
 func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
@@ -249,6 +263,9 @@ func (c *Client) httpClient() *http.Client {
 }
 
 func decodeAPIError(response *http.Response) error {
+	if !hasMediaType(response.Header.Get("Content-Type"), "application/json") {
+		return &Error{Status: response.StatusCode, Code: "internal_error", Message: "invalid operator error response"}
+	}
 	var envelope operatorv1.ErrorEnvelope
 	if err := decodeBounded(response.Body, &envelope); err != nil {
 		return &Error{Status: response.StatusCode, Code: "internal_error", Message: "invalid operator error response"}
@@ -268,7 +285,6 @@ func decodeBounded(reader io.Reader, target any) error {
 		return errors.New("operator response exceeds size limit")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("decode operator response: %w", err)
 	}

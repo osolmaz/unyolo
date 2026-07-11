@@ -40,7 +40,7 @@ classifying, validating, and executing its own operations.
   malformed, or mismatched plans fail approval and execution closed.
 - Bound request bodies, query sizes, pages, cursors, presentation text, event
   retention, grant duration, and use counts.
-- Reject unknown JSON fields, unsupported protocol versions, duplicate scalar
+- Reject unknown command JSON fields, unsupported protocol versions, duplicate scalar
   query parameters, invalid transitions, widened approval constraints, and
   unsupported state shapes.
 - Persist transitions, events, idempotency records, reservations, and
