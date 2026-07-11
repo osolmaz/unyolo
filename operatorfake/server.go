@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 
 	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorapi"
-	"github.com/osolmaz/brokerkit/operatorauth"
 	"github.com/osolmaz/brokerkit/operatorclient"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 )
@@ -34,27 +34,25 @@ func New(options Options) (*Server, error) {
 	if options.Store == nil {
 		return nil, errors.New("grant store is required")
 	}
-	authenticator, err := operatorauth.New(options.OperatorSecrets, operatorauth.Options{ClientSecrets: options.ClientSecrets})
-	if err != nil {
-		return nil, err
-	}
-	inbox, err := operatorinbox.New(options.Store, options.Presenter)
-	if err != nil {
-		return nil, err
-	}
 	if options.Broker == "" {
 		options.Broker = "fake-broker"
 	}
 	if options.Audit == nil {
 		options.Audit = audit.New(io.Discard)
 	}
-	handler, err := operatorapi.New(operatorapi.Options{
-		Inbox: inbox, Authorize: authenticator.AuthenticateRequest, Broker: options.Broker, Audit: options.Audit,
+	clientSecrets := options.ClientSecrets
+	if len(clientSecrets) == 0 {
+		clientSecrets = map[string]string{"fixture-client": "operatorfake-client-secret-not-for-production"}
+	}
+	runtime, err := controlplane.New(controlplane.Options{
+		Store: options.Store, Presenter: options.Presenter,
+		ClientSecrets: clientSecrets, OperatorSecrets: options.OperatorSecrets,
+		Broker: options.Broker, Audit: options.Audit,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &Server{server: httptest.NewServer(handler)}, nil
+	return &Server{server: httptest.NewServer(runtime.OperatorHandler)}, nil
 }
 
 // Client returns a client configured for this fake server.

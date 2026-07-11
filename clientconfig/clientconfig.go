@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/osolmaz/brokerkit/secretfile"
 	"github.com/osolmaz/brokerkit/store"
 )
 
@@ -85,24 +86,7 @@ func readSecretsFile(path string) ([]byte, error) {
 
 // SecretsFromData parses `name = secret` data and returns all configured client secrets.
 func SecretsFromData(data []byte) (map[string]string, error) {
-	out := map[string]string{}
-	for lineNumber, line := range strings.Split(string(data), "\n") {
-		name, secret, ok, err := parseSecretLine(line)
-		if err != nil {
-			return nil, fmt.Errorf("client secret file line %d: %w", lineNumber+1, err)
-		}
-		if !ok {
-			continue
-		}
-		if _, exists := out[name]; exists {
-			return nil, fmt.Errorf("client secret file line %d: duplicate client %q", lineNumber+1, name)
-		}
-		out[name] = secret
-	}
-	if len(out) == 0 {
-		return nil, errors.New("client secret file has no clients")
-	}
-	return out, nil
+	return secretfile.ParseBytes(data)
 }
 
 // Path returns the default client.env path for cfg.
@@ -471,27 +455,4 @@ func syncClientDirectory(root *os.Root, name string) error {
 		return fmt.Errorf("close client config directory: %w", err)
 	}
 	return nil
-}
-
-func parseSecretLine(line string) (string, string, bool, error) {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-		return "", "", false, nil
-	}
-	name, secret, ok := strings.Cut(trimmed, "=")
-	if !ok {
-		return "", "", false, errors.New("expected name = secret")
-	}
-	name = strings.TrimSpace(name)
-	secret = strings.TrimSpace(secret)
-	if name == "" {
-		return "", "", false, errors.New("client name is empty")
-	}
-	if err := ValidateClientName(name); err != nil {
-		return "", "", false, err
-	}
-	if secret == "" {
-		return "", "", false, fmt.Errorf("client %q secret is empty", name)
-	}
-	return name, secret, true, nil
 }
