@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.dev/schema/operator/v1/presentation.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["risk", "title"],
+  "properties": {
+    "risk": {"enum": ["unknown", "low", "medium", "high", "critical"]},
+    "title": {"type": "string", "minLength": 1, "maxLength": 200},
+    "summary": {"type": "string", "maxLength": 2000},
+    "facts": {"type": "array", "maxItems": 20, "items": {"type": "object", "additionalProperties": false, "required": ["label", "value"], "properties": {"label": {"type": "string", "minLength": 1, "maxLength": 80}, "value": {"type": "string", "minLength": 1, "maxLength": 500}}}}
+  }
+}

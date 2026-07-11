@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reviewed non-secret protocol and historical test fixtures"
+paths = [
+  '''docs/2026-07-11-universal-broker-platform-plan\.md''',
+  '''(^|/)internal/httpapi/server_test\.go'''
+]
+regexTarget = "match"
+regexes = [
+  '''01JZ8M7G1WPEY7NQ8B6J3D2A4V''',
+  '''0123456789abcdef0123456789abcdef'''
+]

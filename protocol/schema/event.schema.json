@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.dev/schema/operator/v1/event.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cursor", "kind", "request_id", "revision", "status", "occurred_at", "used_count"],
+  "properties": {
+    "cursor": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "kind": {"enum": ["request.created", "request.approved", "request.denied", "request.canceled", "request.expired", "request.consumed", "request.revoked", "request.updated"]},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "revision": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["pending", "active", "denied", "canceled", "expired", "consumed", "revoked"]},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "used_count": {"type": "integer", "minimum": 0}
+  }
+}

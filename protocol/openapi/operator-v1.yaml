@@ -1,0 +1,14 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "BrokerKit Operator API", "version": "1.0.0"},
+  "paths": {
+    "/.well-known/brokerkit-operator": {"get": {"security": [{"operatorBearer": []}], "responses": {"200": {"description": "Operator V1 discovery", "content": {"application/json": {"schema": {"$ref": "../schema/discovery.schema.json"}}}}}}},
+    "/healthz": {"get": {"security": [], "responses": {"200": {"description": "Status only"}}}},
+    "/readyz": {"get": {"security": [], "responses": {"200": {"description": "Status only"}}}},
+    "/api/operator/v1/requests": {"get": {"security": [{"operatorBearer": []}], "responses": {"200": {"description": "Bounded request page", "content": {"application/json": {"schema": {"$ref": "../schema/page.schema.json"}}}}}}},
+    "/api/operator/v1/requests/{id}": {"get": {"security": [{"operatorBearer": []}], "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}], "responses": {"200": {"description": "Safe request", "content": {"application/json": {"schema": {"$ref": "../schema/request.schema.json"}}}}}}},
+    "/api/operator/v1/requests/{id}/{action}": {"post": {"security": [{"operatorBearer": []}], "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}, {"name": "action", "in": "path", "required": true, "schema": {"enum": ["approve", "deny", "cancel", "revoke"]}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "../schema/decision.schema.json"}}}}, "responses": {"200": {"description": "Committed decision", "content": {"application/json": {"schema": {"$ref": "../schema/request.schema.json"}}}}, "409": {"description": "Conflict", "content": {"application/json": {"schema": {"$ref": "../schema/error.schema.json"}}}}}}},
+    "/api/operator/v1/events": {"get": {"security": [{"operatorBearer": []}], "responses": {"200": {"description": "SSE stream of event.schema.json objects", "content": {"text/event-stream": {"schema": {"type": "string"}}}}}}}
+  },
+  "components": {"securitySchemes": {"operatorBearer": {"type": "http", "scheme": "bearer"}}}
+}
