@@ -14,6 +14,9 @@ func TestServerRunsProductionOperatorContract(t *testing.T) {
 		t.Fatal("New() accepted no store")
 	}
 	store := grants.New(t.TempDir()+"/grants.json", grants.Options{})
+	if _, err := New(Options{Store: store}); err == nil {
+		t.Fatal("New() accepted no operator credentials")
+	}
 	server, err := New(Options{
 		Store: store, OperatorSecrets: map[string]string{"onur": "operator-secret-with-enough-entropy"},
 		Presenter: operatorinbox.PresenterFunc(func(context.Context, grants.Grant) (operatorinbox.Presentation, error) {

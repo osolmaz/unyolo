@@ -326,7 +326,7 @@ func usedExpiredUpdate(grant Grant) (StatusUpdate, bool) {
 }
 
 func usedUpdate(grant Grant) (StatusUpdate, bool) {
-	if (grant.Status != StatusActive && grant.Status != StatusRevoked) || grant.UsedCount <= 0 {
+	if (grant.Status != StatusActive && grant.Status != StatusConsumed && grant.Status != StatusRevoked) || grant.UsedCount <= 0 {
 		return StatusUpdate{}, false
 	}
 	key := NotificationStatusUsed + ":" + string(grant.Status) + ":" + strconv.Itoa(grant.UseRevision)

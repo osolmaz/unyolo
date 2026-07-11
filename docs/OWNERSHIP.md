@@ -108,6 +108,7 @@ Generated grants must never use wildcard clients.
 - status update model
 - grant-to-notification correlation
 - fail-closed behavior for ambiguous approval state
+- shared approval-channel actor identities and terminal decision-result mapping
 
 ### Operator Inbox
 
@@ -162,12 +163,30 @@ Status: brokerkit now owns the reusable Telegram client, inline callback data,
 long polling, configured-chat filtering, callback answering, and status edits.
 The adapter is stateless. It never tracks pending or active expiry and never
 edits a message as a side effect of receiving a callback. The shared grant
-store owns durable delivery claims, notification references, expiry, and due
-status updates. Brokers own decision-token verification, domain-specific
-approval summaries and status wording, and invoke brokerkit's atomic
-approve/deny-with-notification transitions. A broker can mark a callback result
-for retry; the adapter then leaves it unanswered and does not advance its
-update offset.
+store owns decision-token verification, durable delivery claims, notification
+references, expiry, due status updates, atomic approve/deny transitions,
+channel actor naming, and retry classification. Brokers own domain-specific
+approval summaries and status wording. A broker with extra approval invariants
+implements the shared decider interface; it does not reimplement channel
+mapping. A retry leaves the callback unanswered and does not advance its update
+offset.
+
+### Control-Plane Assembly
+
+The `controlplane` package assembles the canonical grant store, named client
+authentication, separately named operator authentication, operator inbox,
+audit exporter, and approval-channel decider. Brokers provide their platform
+presenter and optionally a stricter decider. HTTP framework middleware and
+listener ownership remain broker-local.
+
+The `secretfile` package is the sole parser and renderer for named client and
+operator credential files. Raw single-secret operator files are not part of
+the broker-family contract.
+
+The `conformance` package runs the shared contract against real HTTP handlers.
+Every broker invokes it in its own tests. `brokerkit-coverage` and
+`brokerkit-release` provide common quality and release behavior; mutation
+targets remain broker-local.
 
 This is the only supported lifecycle. There is no in-memory Telegram tracking
 mode and no compatibility option that enables one.

@@ -774,6 +774,20 @@ func TestCommittedUseRemainsDueAfterRestart(t *testing.T) {
 	assertSingleDueUpdate(t, restarted, StatusUpdateUsed, StatusActive, NotificationStatusUsed+":active:1")
 }
 
+func TestFinalCommittedUseIsAUsedUpdate(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result := requestTestGrant(t, store, "final-use", 1)
+	setTestNotification(t, store, result.Grant.ID)
+	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkNotificationStatus(result.Grant.ID, string(StatusActive)); err != nil {
+		t.Fatal(err)
+	}
+	commitTestUse(t, store, result.Grant.ID)
+	assertSingleDueUpdate(t, store, StatusUpdateUsed, StatusConsumed, NotificationStatusUsed+":consumed:1")
+}
+
 func TestSuccessiveUsesHaveDistinctDeliveryKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grants.json")
 	store := New(path, Options{})

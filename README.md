@@ -15,6 +15,12 @@ compatibility runtime.
 brokerkit should stay small: it is not a full broker framework, and it should
 not contain provider-specific Hugging Face, GitHub, or Unix privilege logic.
 
+The `controlplane` package is the standard assembly path for grant storage,
+client and operator authentication, the protected operator API, audit export,
+and approval-channel decisions. `secretfile` owns the named credential format,
+and `conformance` provides the black-box contract suite consumed by every
+broker.
+
 ## Design
 
 The common broker shape is:
