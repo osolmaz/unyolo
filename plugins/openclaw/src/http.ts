@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { pluginErrorCode } from "./errors.js";
+import { operatorV1 } from "./generated/operator-v1.js";
 import type { BrokerRuntime, DecisionOptions } from "./runtime.js";
 import type { Action } from "./types.js";
 
@@ -271,7 +272,8 @@ function parseDecisionInput(
     ) ||
     !positiveSafeInteger(body.expectedRevision) ||
     (body.reason !== undefined &&
-      (typeof body.reason !== "string" || body.reason.length > 4096))
+      (typeof body.reason !== "string" ||
+        body.reason.length > operatorV1.limits.reason))
   )
     throw new Error("invalid_input");
   const options: DecisionOptions = {};

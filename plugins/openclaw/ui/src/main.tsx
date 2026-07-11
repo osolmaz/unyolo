@@ -15,6 +15,7 @@ import {
   parseUiBootstrap,
   type UiDecisionOptions,
 } from "./api.js";
+import { operatorV1 } from "../../src/generated/operator-v1.js";
 import "./styles.css";
 
 const api = new BrokerKitUiApi(parseUiBootstrap(location.hash.slice(1)));
@@ -294,7 +295,7 @@ function DecisionDialog({
           <label className="reason">
             Reason (optional)
             <textarea
-              maxLength={4096}
+              maxLength={operatorV1.limits.reason}
               rows={3}
               value={reason}
               onChange={(event) => setReason(event.currentTarget.value)}

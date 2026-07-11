@@ -71,6 +71,7 @@ describe("OpenClaw HTTP boundary", () => {
       ["not-json"],
       [JSON.stringify({ expectedRevision: 0 })],
       [JSON.stringify({ expectedRevision: 1, extra: true })],
+      [JSON.stringify({ expectedRevision: 1, reason: "x".repeat(2_001) })],
       ['{"expectedRevision":1,"expectedRevision":2}'],
       [
         '{"expectedRevision":1,"constraints":{"durationSeconds":300,"durationSeconds":60,"maxUses":1}}',

@@ -107,6 +107,10 @@ test("renders a bounded capability-protected approval surface", async ({
   await page.getByRole("button", { name: "Approve" }).click();
   const dialog = page.getByRole("dialog", { name: "Approve request" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Reason (optional)")).toHaveAttribute(
+    "maxlength",
+    "2000",
+  );
   await expect(dialog.getByText("at revision 1")).toBeVisible();
   await dialog
     .getByLabel("Reason (optional)")
