@@ -2514,7 +2514,7 @@ func newTestServerWithPolicyAndHandler(t *testing.T, brokerPolicy *policy.Policy
 
 func newTestServerWithPolicyAndHandlerInStateDir(t *testing.T, brokerPolicy *policy.Policy, handler http.HandlerFunc, stateDir string) *Server {
 	t.Helper()
-	upstream := httptest.NewServer(handler)
+	upstream := httptest.NewServer(withDefaultGitHubSafetyState(handler))
 	t.Cleanup(upstream.Close)
 	server, err := New(config.Config{
 		ClientID:     "bob",
@@ -2529,11 +2529,30 @@ func newTestServerWithPolicyAndHandlerInStateDir(t *testing.T, brokerPolicy *pol
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	server.githubClient = upstream.Client()
+	writeClient := *upstream.Client()
+	readClient := *upstream.Client()
+	server.githubClient = &writeClient
 	server.githubClient.CheckRedirect = stopGitHubRedirect
+	server.githubReadClient = &readClient
+	server.githubReadClient.CheckRedirect = stopGitHubRedirect
 	server.githubGitBaseURL = upstreamURL
 	server.githubAPIBaseURL = upstreamURL
 	return server
+}
+
+func withDefaultGitHubSafetyState(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/rules/branches/"):
+			_, _ = w.Write([]byte(`[]`))
+		case strings.Contains(r.URL.Path, "/branches/") && strings.HasSuffix(r.URL.Path, "/protection"):
+			http.NotFound(w, r)
+		case strings.HasPrefix(r.URL.Path, "/repos/") && len(strings.Split(strings.Trim(r.URL.Path, "/"), "/")) == 3:
+			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
+		default:
+			next(w, r)
+		}
+	}
 }
 
 func requestPRPolicy(t *testing.T) *policy.Policy {

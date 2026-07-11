@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapi"
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
@@ -59,6 +60,9 @@ func TestPermissionCheck(t *testing.T) {
 	}
 	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "administration": "write"}); got.Status != bkdoctor.CheckFail {
 		t.Fatalf("administrative permissions = %+v", got)
+	}
+	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "administration": "read"}); got.Status != bkdoctor.CheckPass {
+		t.Fatalf("read-only administration permission = %+v", got)
 	}
 	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "workflows": "write"}); got.Status != bkdoctor.CheckFail {
 		t.Fatalf("unexpected write permissions = %+v", got)
@@ -165,37 +169,13 @@ func TestParseRepoAndOptionalProtection(t *testing.T) {
 }
 
 func TestProtectionCheckDistinguishesAbsentAndInconclusive(t *testing.T) {
-	unknown := protectionCheck(true, false, githubStatusError{code: http.StatusForbidden})
+	unknown := protectionCheck(true, false, githubapi.StatusError{Code: http.StatusForbidden})
 	if unknown.Status != bkdoctor.CheckUnknown {
 		t.Fatalf("forbidden protection check = %+v", unknown)
 	}
-	missing := protectionCheck(true, false, githubStatusError{code: http.StatusNotFound})
+	missing := protectionCheck(true, false, githubapi.StatusError{Code: http.StatusNotFound})
 	if missing.Status != bkdoctor.CheckFail {
 		t.Fatalf("missing protection check = %+v", missing)
-	}
-}
-
-func TestGitHubJSONRejectsUnsafeResponses(t *testing.T) {
-	tests := map[string]struct {
-		status int
-		body   string
-	}{
-		"status":    {status: http.StatusForbidden, body: `{}`},
-		"invalid":   {status: http.StatusOK, body: `{`},
-		"oversized": {status: http.StatusOK, body: `{"value":"` + strings.Repeat("x", maxDoctorResponseBytes) + `"}`},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(test.status)
-				_, _ = w.Write([]byte(test.body))
-			}))
-			defer api.Close()
-			var payload map[string]any
-			if err := githubJSON(context.Background(), api.Client(), mustURL(t, api.URL), "token", &payload); err == nil {
-				t.Fatal("githubJSON() error = nil")
-			}
-		})
 	}
 }
 

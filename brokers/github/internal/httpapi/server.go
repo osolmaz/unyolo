@@ -46,6 +46,7 @@ type Server struct {
 	githubApp           *githubapp.Source
 	githubWebhookSecret string
 	githubClient        *http.Client
+	githubReadClient    *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
 	auditWriter         *bkaudit.Writer
@@ -92,7 +93,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	server := &Server{
 		echo: e, policy: brokerPolicy, grants: grantStore, plans: plans, planValidator: planValidator, control: control, notifier: notifier, telegram: telegram,
 		githubToken: cfg.GitHubToken, githubApp: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
-		githubClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
+		githubClient: githubClient, githubReadClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
 		auditWriter: auditWriter, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
 	}
@@ -259,6 +260,11 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 	if err != nil {
 		s.releaseGrantUses(reserved)
 		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
+	}
+	if err := s.enforceReceivePackBackstops(c, authorized); err != nil {
+		s.releaseGrantUses(reserved)
+		s.auditAuthorizedReceivePack(c, authorized, errorOutcome(err), errorString(err), errorStatus(c, err))
+		return err
 	}
 	c.Request().Body = io.NopCloser(bytes.NewReader(body))
 	c.Request().ContentLength = int64(len(body))

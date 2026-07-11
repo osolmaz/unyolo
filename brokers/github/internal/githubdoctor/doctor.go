@@ -3,21 +3,17 @@ package githubdoctor
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapi"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
-
-const maxDoctorResponseBytes = 1 << 20
 
 var lookupIdentity = bkdoctor.LookupIdentity
 
@@ -139,10 +135,11 @@ func githubAppDoctorToken(ctx context.Context, source *githubapp.Source, owner s
 
 func permissionCheck(permissions map[string]string) bkdoctor.Check {
 	allowed := map[string]map[string]bool{
-		"checks":        {"read": true},
-		"contents":      {"write": true},
-		"metadata":      {"read": true},
-		"pull_requests": {"write": true},
+		"administration": {"read": true},
+		"checks":         {"read": true},
+		"contents":       {"write": true},
+		"metadata":       {"read": true},
+		"pull_requests":  {"write": true},
 	}
 	for permission, level := range permissions {
 		if !allowed[permission][level] {
@@ -156,76 +153,11 @@ func permissionCheck(permissions map[string]string) bkdoctor.Check {
 }
 
 func fetchDefaultBranch(ctx context.Context, client *http.Client, baseURL *url.URL, token string, owner string, repo string) (string, error) {
-	var payload struct {
-		DefaultBranch string `json:"default_branch"`
-	}
-	if err := githubJSON(ctx, client, baseURL.JoinPath("repos", owner, repo), token, &payload); err != nil {
-		return "", err
-	}
-	payload.DefaultBranch = strings.TrimSpace(payload.DefaultBranch)
-	if payload.DefaultBranch == "" {
-		return "", errors.New("repository response omitted default branch")
-	}
-	return payload.DefaultBranch, nil
+	return (githubapi.Reader{BaseURL: baseURL, HTTPClient: client}).DefaultBranch(ctx, token, owner, repo)
 }
 
 func branchProtected(ctx context.Context, client *http.Client, baseURL *url.URL, token string, owner string, repo string, branch string) (bool, error) {
-	var rules []json.RawMessage
-	err := githubJSON(ctx, client, baseURL.JoinPath("repos", owner, repo, "rules", "branches", branch), token, &rules)
-	if err == nil && len(rules) > 0 {
-		return true, nil
-	}
-	var protection map[string]any
-	protectionErr := githubJSON(ctx, client, baseURL.JoinPath("repos", owner, repo, "branches", branch, "protection"), token, &protection)
-	if protectionErr == nil {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return false, protectionErr
-}
-
-type githubStatusError struct {
-	code int
-}
-
-func (err githubStatusError) Error() string {
-	return fmt.Sprintf("GitHub API returned status %d", err.code)
-}
-
-func githubJSON(ctx context.Context, client *http.Client, endpoint *url.URL, token string, out any) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Authorization", "Bearer "+token)
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	response, err := client.Do(request)
-	if err != nil {
-		return errors.New("GitHub API request failed")
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return githubStatusError{code: response.StatusCode}
-	}
-	body, err := readDoctorResponse(response.Body)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return errors.New("GitHub API response was invalid")
-	}
-	return nil
-}
-
-func readDoctorResponse(body io.Reader) ([]byte, error) {
-	payload, err := io.ReadAll(io.LimitReader(body, maxDoctorResponseBytes+1))
-	if err != nil || len(payload) > maxDoctorResponseBytes {
-		return nil, errors.New("GitHub API response was invalid")
-	}
-	return payload, nil
+	return (githubapi.Reader{BaseURL: baseURL, HTTPClient: client}).BranchProtected(ctx, token, owner, repo, branch)
 }
 
 func protectionCheck(required bool, protected bool, err error) bkdoctor.Check {
@@ -235,8 +167,7 @@ func protectionCheck(required bool, protected bool, err error) bkdoctor.Check {
 	if !required {
 		return bkdoctor.Check{Status: bkdoctor.CheckWarn, Name: "github_default_branch_protected", Message: "default branch protection was not required by this doctor run"}
 	}
-	var statusErr githubStatusError
-	if err != nil && (!errors.As(err, &statusErr) || statusErr.code != http.StatusNotFound) {
+	if code, statusError := githubapi.StatusCode(err); err != nil && (!statusError || code != http.StatusNotFound) {
 		return bkdoctor.Check{Status: bkdoctor.CheckUnknown, Name: "github_default_branch_protected", Message: "default branch protection could not be inspected with the configured credential"}
 	}
 	return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_default_branch_protected", Message: "default branch has no verifiable ruleset or branch protection"}
