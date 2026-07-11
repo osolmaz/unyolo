@@ -71,14 +71,7 @@ func (s *Service) validate(ctx context.Context, grant grants.Grant, constraints 
 
 // ApproveToken applies a single-use notification-channel approval through the same validator.
 func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	grant, err := s.store.Get(id)
-	if err != nil {
-		return grants.Grant{}, err
-	}
-	if err := s.validate(ctx, grant, grants.ApprovalConstraints{}); err != nil {
-		return grants.Grant{}, err
-	}
-	return s.store.ApproveWithNotification(id, token, actor, grants.MessageRef(ref))
+	return s.store.ApproveWithNotificationValidated(ctx, id, token, actor, grants.MessageRef(ref), s.validate)
 }
 
 // DenyToken applies a single-use notification-channel denial.

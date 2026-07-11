@@ -1,6 +1,7 @@
 package grants
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -14,7 +15,14 @@ func (s *Store) Approve(id string, decisionToken string, approver string) (Grant
 // ApproveWithNotification atomically approves a pending grant and records a
 // callback-carried notification when no notification is already stored.
 func (s *Store) ApproveWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
-	return s.decideWithNotification(id, decisionToken, approver, StatusActive, ref)
+	return s.decideWithNotification(context.Background(), id, decisionToken, approver, StatusActive, ref, nil)
+}
+
+// ApproveWithNotificationValidated atomically validates and approves a pending
+// notification-channel grant. The validation runs against the committed grant
+// while the store lock is held.
+func (s *Store) ApproveWithNotificationValidated(ctx context.Context, id string, decisionToken string, approver string, ref MessageRef, validate ActivationCheck) (Grant, error) {
+	return s.decideWithNotification(ctx, id, decisionToken, approver, StatusActive, ref, validate)
 }
 
 // Deny denies a pending grant.
@@ -25,21 +33,21 @@ func (s *Store) Deny(id string, decisionToken string, approver string) (Grant, e
 // DenyWithNotification atomically denies a pending grant and records a
 // callback-carried notification when no notification is already stored.
 func (s *Store) DenyWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
-	return s.decideWithNotification(id, decisionToken, approver, StatusDenied, ref)
+	return s.decideWithNotification(context.Background(), id, decisionToken, approver, StatusDenied, ref, nil)
 }
 
 func (s *Store) decide(id string, token string, approver string, status Status) (Grant, error) {
-	return s.decideAndNotify(id, token, approver, status, nil)
+	return s.decideAndNotify(context.Background(), id, token, approver, status, nil, nil)
 }
 
-func (s *Store) decideWithNotification(id string, token string, approver string, status Status, ref MessageRef) (Grant, error) {
+func (s *Store) decideWithNotification(ctx context.Context, id string, token string, approver string, status Status, ref MessageRef, validate ActivationCheck) (Grant, error) {
 	if err := validateMessageRef(ref); err != nil {
 		return Grant{}, err
 	}
-	return s.decideAndNotify(id, token, approver, status, &ref)
+	return s.decideAndNotify(ctx, id, token, approver, status, &ref, validate)
 }
 
-func (s *Store) decideAndNotify(id string, token string, approver string, status Status, ref *MessageRef) (Grant, error) {
+func (s *Store) decideAndNotify(ctx context.Context, id string, token string, approver string, status Status, ref *MessageRef, validate ActivationCheck) (Grant, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	data, err := s.load()
@@ -54,6 +62,11 @@ func (s *Store) decideAndNotify(id string, token string, approver string, status
 	}
 	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
 		return Grant{}, ErrInvalidDecisionToken
+	}
+	if status == StatusActive && validate != nil && grant.Status == StatusPending && s.opts.Now().UTC().Before(grant.PendingExpiresAt) {
+		if err := validate(ctx, grant, ApprovalConstraints{}); err != nil {
+			return Grant{}, err
+		}
 	}
 	updated, changed, decisionErr := s.prepareDecision(grant, approver, status)
 	if ref != nil && updated.Notification == nil {

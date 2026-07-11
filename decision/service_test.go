@@ -55,12 +55,53 @@ func TestServiceRejectsInvalidInputAndValidatorFailure(t *testing.T) {
 	}); !errors.Is(err, grants.ErrInvalidCommand) {
 		t.Fatalf("invalid constraint error = %v", err)
 	}
-	if _, err := service.ApproveToken(t.Context(), created.Grant.ID, created.DecisionToken, "operator:onur", notify.MessageRef{}); !errors.Is(err, rejected) {
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2}
+	if _, err := service.ApproveToken(t.Context(), created.Grant.ID, created.DecisionToken, "operator:onur", ref); !errors.Is(err, rejected) {
 		t.Fatalf("validator error = %v", err)
 	}
-	denied, err := service.DenyToken(t.Context(), created.Grant.ID, created.DecisionToken, "operator:onur", notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2})
+	denied, err := service.DenyToken(t.Context(), created.Grant.ID, created.DecisionToken, "operator:onur", ref)
 	if err != nil || denied.Status != grants.StatusDenied {
 		t.Fatalf("DenyToken() = %+v, %v", denied, err)
+	}
+}
+
+func TestTokenApprovalValidationAndCommitAreAtomic(t *testing.T) {
+	t.Parallel()
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	created := create(t, store, "atomic-token")
+	validationStarted := make(chan struct{})
+	releaseValidation := make(chan struct{})
+	service, err := New(store, ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error {
+		close(validationStarted)
+		<-releaseValidation
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2}
+	approveDone := make(chan error, 1)
+	go func() {
+		_, approveErr := service.ApproveToken(t.Context(), created.Grant.ID, created.DecisionToken, "telegram:onur", ref)
+		approveDone <- approveErr
+	}()
+	<-validationStarted
+	denyDone := make(chan error, 1)
+	go func() {
+		_, denyErr := service.DenyToken(t.Context(), created.Grant.ID, created.DecisionToken, "telegram:onur", ref)
+		denyDone <- denyErr
+	}()
+	select {
+	case err := <-denyDone:
+		t.Fatalf("concurrent denial completed during activation validation: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseValidation)
+	if err := <-approveDone; err != nil {
+		t.Fatalf("ApproveToken() error = %v", err)
+	}
+	if err := <-denyDone; !errors.Is(err, grants.ErrNotPending) {
+		t.Fatalf("DenyToken() error = %v, want ErrNotPending", err)
 	}
 }
 

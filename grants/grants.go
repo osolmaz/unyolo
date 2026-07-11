@@ -2,13 +2,10 @@
 package grants
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -122,7 +119,6 @@ type Grant struct {
 	// NotificationDeliveryUnresolved records an ambiguous send attempt until
 	// the current claim is completed or reclaimed.
 	NotificationDeliveryUnresolved bool `json:"notification_delivery_unresolved,omitempty"`
-	legacySchema                   bool
 }
 
 type fileData struct {
@@ -132,121 +128,16 @@ type fileData struct {
 	DecisionRecords []decisionRecord       `json:"decision_records,omitempty"`
 }
 
-type compatibleValues struct {
-	values []string
-	legacy bool
-}
-
-func (g *Grant) UnmarshalJSON(data []byte) error {
-	type grantJSON Grant
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return err
-	}
-	legacyAttrs, err := normalizeStoredValueMap(fields, "attrs")
-	if err != nil {
-		return fmt.Errorf("attrs: %w", err)
-	}
-	legacyTarget, err := normalizeStoredTarget(fields)
-	if err != nil {
-		return fmt.Errorf("target: %w", err)
-	}
-	normalized, err := json.Marshal(fields)
-	if err != nil {
-		return err
-	}
-	var decoded grantJSON
-	if err := json.Unmarshal(normalized, &decoded); err != nil {
-		return err
-	}
-	*g = Grant(decoded)
-	g.legacySchema = legacyAttrs || legacyTarget
-	return nil
-}
-
-func normalizeStoredTarget(fields map[string]json.RawMessage) (bool, error) {
-	raw, ok := fields["target"]
-	if !ok || string(raw) == "null" {
-		return false, nil
-	}
-	var targetFields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &targetFields); err != nil {
-		return false, err
-	}
-	legacy, err := normalizeStoredValueMap(targetFields, "Fields")
-	if err != nil {
-		return false, fmt.Errorf("fields: %w", err)
-	}
-	if !legacy {
-		legacy, err = normalizeStoredValueMap(targetFields, "fields")
-		if err != nil {
-			return false, fmt.Errorf("fields: %w", err)
-		}
-	}
-	return legacy, replaceJSONField(fields, "target", targetFields)
-}
-
-func normalizeStoredValueMap(fields map[string]json.RawMessage, name string) (bool, error) {
-	raw, ok := fields[name]
-	if !ok || string(raw) == "null" {
-		return false, nil
-	}
-	var encoded map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &encoded); err != nil {
-		return false, err
-	}
-	legacy := false
-	values := make(map[string][]string, len(encoded))
-	for key, value := range encoded {
-		decoded, err := decodeCompatibleValues(value)
-		if err != nil {
-			return false, fmt.Errorf("%s: %w", key, err)
-		}
-		values[key] = copyx.CanonicalStringSlice(decoded.values)
-		legacy = legacy || decoded.legacy || !slices.Equal(values[key], decoded.values)
-	}
-	return legacy, replaceJSONField(fields, name, values)
-}
-
-func replaceJSONField(fields map[string]json.RawMessage, name string, value any) error {
-	normalized, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	fields[name] = normalized
-	return nil
-}
-
-func decodeCompatibleValues(data []byte) (compatibleValues, error) {
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return compatibleValues{}, errors.New("must be a string or string array")
-	}
-	var scalar string
-	if err := json.Unmarshal(data, &scalar); err == nil {
-		return compatibleValues{values: []string{scalar}, legacy: true}, nil
-	}
-	var values []string
-	if err := json.Unmarshal(data, &values); err != nil {
-		return compatibleValues{}, errors.New("must be a string or string array")
-	}
-	if len(values) == 0 {
-		return compatibleValues{}, errors.New("string array must not be empty")
-	}
-	return compatibleValues{values: values}, nil
-}
-
 func canonicalizeLoadedGrants(grants []Grant) bool {
 	changed := false
 	for index := range grants {
 		grant := &grants[index]
-		grantChanged := grant.legacySchema
-		grant.legacySchema = false
 		grant.Target.Fields = copyx.CanonicalStringSliceMap(grant.Target.Fields)
 		grant.Attrs = copyx.CanonicalStringSliceMap(grant.Attrs)
 		grant.Metadata = copyx.StringMap(grant.Metadata)
 		reservationChanged := normalizeLoadedReservation(grant)
 		revisionChanged := normalizeLoadedRevisions(grant)
-		changed = reservationChanged || revisionChanged || grantChanged || changed
+		changed = reservationChanged || revisionChanged || changed
 	}
 	return changed
 }
