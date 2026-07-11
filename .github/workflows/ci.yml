@@ -61,3 +61,4 @@ jobs:
       - run: pnpm --filter openclaw-brokerkit test:browser
       - run: npm pack --dry-run
         working-directory: plugins/openclaw
+      - run: pnpm --filter openclaw-brokerkit test:package

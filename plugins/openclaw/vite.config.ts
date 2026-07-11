@@ -6,5 +6,5 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   root: "ui",
   base: "/plugins/brokerkit/ui/",
-  build: { outDir: "../dist/ui", emptyOutDir: false, sourcemap: true },
+  build: { outDir: "../dist/ui", emptyOutDir: false, sourcemap: false },
 });

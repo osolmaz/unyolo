@@ -21,3 +21,22 @@ for provider in huggingface github sudo; do
     fi
   done
 done
+
+if grep -R -n --include='*.ts' --include='*.tsx' -E "from [\"']openclaw/(src|dist)/" plugins/openclaw 2>/dev/null; then
+  echo 'OpenClaw plugin imports private host internals' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.ts' --include='*.tsx' -E 'mlclaw\.|(telegram|discord|slack)' \
+  plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
+  --exclude='*.test.ts' 2>/dev/null; then
+  echo 'OpenClaw production code contains a host- or channel-specific branch' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.ts' --include='*.tsx' -E '(huggingface|github|sudo)-broker' \
+  plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
+  --exclude='*.test.ts' 2>/dev/null; then
+  echo 'OpenClaw production code contains a provider-specific branch' >&2
+  exit 1
+fi

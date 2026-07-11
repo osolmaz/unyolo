@@ -17,6 +17,7 @@
     "clean": "rm -rf dist",
     "test": "vitest run --config vitest.config.ts",
     "test:browser": "playwright test",
+    "test:package": "node scripts/test-packed-install.mjs",
     "generate": "node scripts/generate-operator-v1.mjs",
     "generate:check": "node scripts/generate-operator-v1.mjs --check"
   },
