@@ -23,11 +23,11 @@ import (
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/gh-broker/internal/approval"
-	"github.com/osolmaz/gh-broker/internal/config"
-	"github.com/osolmaz/gh-broker/internal/githubapp"
-	"github.com/osolmaz/gh-broker/internal/policy"
-	"github.com/osolmaz/gh-broker/internal/security"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 )
 
 const maxPullRequestBodyBytes int64 = 64 * 1024

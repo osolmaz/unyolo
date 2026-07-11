@@ -16,8 +16,8 @@ import (
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/gh-broker/internal/policy"
-	"github.com/osolmaz/gh-broker/internal/security"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 )
 
 const maxGrantRequestBodyBytes int64 = 32 * 1024

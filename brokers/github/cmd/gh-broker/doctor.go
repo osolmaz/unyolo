@@ -9,8 +9,8 @@ import (
 
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 	"github.com/osolmaz/brokerkit/envfile"
-	"github.com/osolmaz/gh-broker/internal/config"
-	"github.com/osolmaz/gh-broker/internal/githubdoctor"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubdoctor"
 )
 
 func runDoctor(ctx context.Context, stdout io.Writer, stderr io.Writer, args []string) error {

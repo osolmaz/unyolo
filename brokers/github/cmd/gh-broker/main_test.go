@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/gh-broker/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 )
 
 func TestRunWithArgsVersion(t *testing.T) {

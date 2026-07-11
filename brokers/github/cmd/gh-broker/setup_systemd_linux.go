@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	bkservice "github.com/osolmaz/brokerkit/service"
-	ghpolicy "github.com/osolmaz/gh-broker/internal/policy"
+	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
 
 const (

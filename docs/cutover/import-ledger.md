@@ -51,6 +51,6 @@ go test -race ./...
 | Component | Destination | Import merge | Verification |
 | --- | --- | --- | --- |
 | HF broker | `brokers/huggingface` | `1bba2bc16c01b84bd973b14f891daaaa228222f3` | ancestor and tree identity verified |
-| GH broker | `brokers/github` | pending | pending |
+| GH broker | `brokers/github` | `6f75d6c83d8d06f93a5928b70b2b4738d9dde7c4` | ancestor and tree identity verified |
 
 The temporary source remotes are removed after ancestry and tree verification.

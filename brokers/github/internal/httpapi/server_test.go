@@ -29,9 +29,9 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/gh-broker/internal/config"
-	"github.com/osolmaz/gh-broker/internal/githubapp"
-	"github.com/osolmaz/gh-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
 
 const testSharedSecret = "0123456789abcdef0123456789abcdef"

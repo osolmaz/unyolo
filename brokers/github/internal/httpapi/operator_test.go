@@ -9,19 +9,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/conformance"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
+	"github.com/osolmaz/brokerkit/operatorv1"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/gh-broker/internal/config"
-	"github.com/osolmaz/gh-broker/internal/policy"
 )
 
 func TestBrokerkitControlPlaneConformance(t *testing.T) {
 	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
 	operatorSecret := "operator-secret-abcdefghijklmnopqrstuvwxyz"
 	server, _ := newOperatorTestServer(t, clientSecret, operatorSecret)
-	conformance.RunControlPlane(t, conformance.Fixture{
+	conformance.RunOperatorV1(t, conformance.Fixture{
 		Runtime: server.control, ClientToken: clientSecret, OperatorToken: operatorSecret,
 		Request: grants.Request{
 			Client: "bob", ClientRequestID: "conformance", Operation: "git.push.force",
@@ -40,11 +41,14 @@ func TestOperatorHandlerSharesCanonicalGitHubGrantState(t *testing.T) {
 	result := requestOperatorTestGrant(t, server)
 	operatorServer := newOperatorHTTPServer(t, server, cfg)
 	client := &operatorclient.Client{BaseURL: operatorServer.URL, Token: operatorSecret, HTTPClient: operatorServer.Client()}
-	page, err := client.List(t.Context(), grants.Query{StatusGroup: grants.StatusGroupPending})
-	if err != nil || len(page.Items) != 1 || page.Items[0].Presentation.Target != "osolmaz/gh-broker" {
+	page, err := client.List(t.Context(), operatorv1.Query{Status: grants.StatusGroupPending})
+	if err != nil || len(page.Requests) != 1 || len(page.Requests[0].Presentation.Facts) == 0 {
 		t.Fatalf("List() = %+v, %v", page, err)
 	}
-	approved, err := client.Approve(t.Context(), result.Grant.ID, operatorclient.Decision{ExpectedRevision: page.Items[0].Revision, MaxUses: 1})
+	approved, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, operatorv1.Decision{
+		ExpectedRevision: page.Requests[0].Revision, IdempotencyKey: "operator-test-approve",
+		Constraints: &operatorv1.Constraints{MaxUses: 1},
+	})
 	if err != nil || approved.Status != grants.StatusActive {
 		t.Fatalf("Approve() = %+v, %v", approved, err)
 	}
@@ -93,7 +97,7 @@ func newOperatorHTTPServer(t *testing.T, server *Server, cfg config.Config) *htt
 
 func assertOperatorRejectsClientSecret(t *testing.T, operatorServer *httptest.Server, clientSecret string) {
 	t.Helper()
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, operatorServer.URL+"/api/grants", nil)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, operatorServer.URL+"/api/operator/v1/requests", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

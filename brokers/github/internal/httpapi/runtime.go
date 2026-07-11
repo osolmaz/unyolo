@@ -11,8 +11,8 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/gh-broker/internal/config"
-	"github.com/osolmaz/gh-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
 
 const defaultStateDir = "./state"

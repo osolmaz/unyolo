@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
-	"github.com/osolmaz/gh-broker/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 )
 
 func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {

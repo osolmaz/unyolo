@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/osolmaz/gh-broker/internal/config"
-	"github.com/osolmaz/gh-broker/internal/httpapi"
-	"github.com/osolmaz/gh-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/httpapi"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
 
 var version = "dev"
