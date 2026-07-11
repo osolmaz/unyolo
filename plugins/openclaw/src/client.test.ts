@@ -45,4 +45,63 @@ describe("BrokerClient", () => {
     const stream = client.events(undefined, new AbortController().signal);
     expect((await stream.next()).value?.cursor).toBe("cursor-2");
   });
+
+  it("drops unknown response fields and rejects malformed broker data", async () => {
+    let malformed = false;
+    const server = createServer((req, res) => {
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      if (req.url?.startsWith("/api/operator/v1/requests?")) {
+        return res.end(
+          JSON.stringify({
+            requests: malformed
+              ? [{ id: "request-1", revision: "not-an-integer" }]
+              : [],
+            event_cursor: "cursor-1",
+            future_field: "ignored",
+          }),
+        );
+      }
+      return res.end('{"api_version":"brokerkit.io/operator/v1"}');
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no address");
+    const client = new BrokerClient(
+      `http://127.0.0.1:${address.port}`,
+      async () => "operator",
+      1000,
+    );
+    const page = await client.list();
+    expect(page).toEqual({ requests: [], event_cursor: "cursor-1" });
+    malformed = true;
+    await expect(client.list()).rejects.toThrow();
+  });
+
+  it("rejects wrong media types and oversized SSE frames", async () => {
+    const server = createServer((req, res) => {
+      if (req.url?.startsWith("/api/operator/v1/requests?")) {
+        res.setHeader("content-type", "text/plain");
+        return res.end('{"requests":[]}');
+      }
+      res.setHeader("content-type", "text/event-stream");
+      return res.end(`data: ${"x".repeat(256_001)}\n\n`);
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no address");
+    const client = new BrokerClient(
+      `http://127.0.0.1:${address.port}`,
+      async () => "operator",
+      1000,
+    );
+    await expect(client.list()).rejects.toThrow("invalid content type");
+    const stream = client.events(undefined, new AbortController().signal);
+    await expect(stream.next()).rejects.toThrow("frame is too large");
+  });
 });
