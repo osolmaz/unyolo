@@ -14,11 +14,10 @@ slophammer_go() {
 
 mutation_targets="
 internal/approval/message.go
-internal/grants/decisions.go
+internal/hfgrant/hfgrant.go
 internal/httpapi/grant_notification_ref.go
 internal/httpapi/grant_request_validation.go
 internal/httpapi/grant_retained_status.go
-internal/httpapi/telegram_decision.go
 "
 backup_dir="$(mktemp -d)"
 for target in $mutation_targets; do

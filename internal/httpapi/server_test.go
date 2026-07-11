@@ -22,12 +22,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/hf-broker/internal/audit"
 	"github.com/osolmaz/hf-broker/internal/config"
 	"github.com/osolmaz/hf-broker/internal/gitproxy"
 	"github.com/osolmaz/hf-broker/internal/gitproxy/pktline"
-	"github.com/osolmaz/hf-broker/internal/grants"
+	"github.com/osolmaz/hf-broker/internal/hfgrant"
 	"github.com/osolmaz/hf-broker/internal/policy"
 )
 
@@ -48,6 +49,16 @@ type grantRequestResult struct {
 	status int
 	body   string
 	err    error
+}
+
+type requestedGrant struct {
+	grants.Grant
+	DecisionToken string
+}
+
+func requestHFGrant(store *grants.Store, input hfgrant.Input) (requestedGrant, bool, error) {
+	result, created, err := hfgrant.Request(store, input)
+	return requestedGrant{Grant: result.Grant, DecisionToken: result.DecisionToken}, created, err
 }
 
 func appendOnlyDatasetPolicyJSON(names ...string) string {
@@ -518,7 +529,7 @@ func TestDenyRuleOverridesActiveGrant(t *testing.T) {
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 
-	grant, _, err := handler.grants.Request(grants.Request{
+	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -565,7 +576,7 @@ func TestDenyRuleStopsActiveGrantPushPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := store.Request(grants.Request{
+	grant, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -597,7 +608,7 @@ func TestDenyRuleStopsActiveGrantPushPreflight(t *testing.T) {
 
 func TestActiveGrantRequiresApprovedAttrs(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := store.Request(grants.Request{
+	grant, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushAppend),
 		Target:    "dataset/acme/repo",
@@ -639,10 +650,10 @@ func TestActiveGrantRequiresApprovedAttrs(t *testing.T) {
 
 func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := store.Request(grants.Request{
+	grant, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
-		Mode:      grants.ModeExecution,
+		Mode:      hfgrant.ModeExecution,
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Attrs:     refChangeAttrs("non_fast_forward"),
@@ -679,14 +690,24 @@ func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 }
 
 func TestRetainedReservationDoesNotAuthorizeRuntimeRequest(t *testing.T) {
+	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
+		Client:    "agent",
+		Operation: string(policy.OpGitPushForce),
+		Target:    "dataset/acme/repo",
+		Ref:       "refs/heads/main",
+		Attrs:     refChangeAttrs("non_fast_forward"),
+		Reason:    "test retained reservation",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	retained := grants.Grant{
 		ID:                  "grant-retained",
-		Client:              "agent",
-		Operation:           string(policy.OpGitPushForce),
-		Mode:                grants.ModeWindow,
-		Target:              "dataset/acme/repo",
-		Ref:                 "refs/heads/main",
-		Attrs:               refChangeAttrs("non_fast_forward"),
+		Client:              request.Client,
+		Operation:           request.Operation,
+		Target:              request.Target,
+		Metadata:            request.Metadata,
+		Attrs:               request.Attrs,
 		Status:              grants.StatusActive,
 		MaxUses:             3,
 		ReservedCount:       1,
@@ -695,7 +716,7 @@ func TestRetainedReservationDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	if _, ok := activeGrantRule(retained); ok {
 		t.Fatal("activeGrantRule() generated a rule for a retained reservation")
 	}
-	if activeGrantMatchesIgnoringRef(retained, "agent", policy.OpGitPushForce, "dataset/acme/repo", retained.Attrs) {
+	if activeGrantMatchesIgnoringRef(retained, "agent", policy.OpGitPushForce, "dataset/acme/repo", refChangeAttrs("non_fast_forward")) {
 		t.Fatal("activeGrantMatchesIgnoringRef() matched a retained reservation")
 	}
 }
@@ -899,7 +920,7 @@ func TestReceivePackDiscoveryChecksLaterActiveGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant, _, err := handler.grants.Request(grants.Request{
+	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitRefDelete),
 		Target:    "dataset/acme/repo",
@@ -976,7 +997,7 @@ func TestReceivePackDiscoveryRequiresAllowOrActiveGrant(t *testing.T) {
 		t.Fatalf("request-only discovery reached upstream: hits=%d want 0", got)
 	}
 
-	grant, _, err := handler.grants.Request(grants.Request{
+	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -1044,7 +1065,7 @@ func TestReceivePackDiscoveryDeniedPolicyBeatsActiveGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant, _, err := handler.grants.Request(grants.Request{
+	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -1183,7 +1204,7 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 	if updated.Status != grants.StatusActive || updated.ReservedCount != 1 || updated.UsedCount != 0 || !updated.ReservationRetained {
 		t.Fatalf("grant after upstream rejection = %+v, want active with retained reservation", updated)
 	}
-	if _, ok, err := handler.grants.MatchActive("agent", string(policy.OpGitPushForce), "dataset/acme/repo", "refs/heads/main"); err != nil || ok {
+	if _, ok, err := hfgrant.MatchActiveFunc(handler.grants, "agent", string(policy.OpGitPushForce), "dataset/acme/repo", "refs/heads/main", nil); err != nil || ok {
 		t.Fatalf("MatchActive() after retained reservation ok=%v err=%v, want false nil", ok, err)
 	}
 	rejectedHits := upstream.receivePackHits()
@@ -1298,7 +1319,7 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant, _, err := handler.grants.Request(grants.Request{
+	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitFetch),
 		Target:    "dataset/acme/repo",
@@ -1308,7 +1329,7 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := handler.grants.SetNotifier(grant.ID, grants.NotifierMessage{Kind: "capture", ChatID: 123, MessageID: 1, Text: "grant text"}); err != nil {
+	if _, err := handler.grants.SetNotification(grant.ID, notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: 1, Text: "grant text"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := handler.grants.Approve(grant.ID, grant.DecisionToken, "test"); err != nil {
@@ -1568,7 +1589,7 @@ func TestOperatorInboxSurvivesTelegramNotificationFailure(t *testing.T) {
 	}
 	stored := decodeAPIGrantResponse(t, responseBody)
 	grant, err := handler.grants.Get(stored.ID)
-	if err != nil || grant.Status != grants.StatusPending || !grant.NotifierUnresolved {
+	if err != nil || grant.Status != grants.StatusPending || !grant.NotificationDeliveryUnresolved {
 		t.Fatalf("stored grant = %+v, err=%v", grant, err)
 	}
 }
@@ -1813,7 +1834,7 @@ func TestAPIGrantNotifierFailureIsJSend(t *testing.T) {
 		t.Fatalf("notifier failure = %d %q %s, want 502 JSend error", resp.StatusCode, resp.Header.Get("Content-Type"), body)
 	}
 	stored, err := handler.grants.ListForClient("agent")
-	if err != nil || len(stored) != 1 || !stored[0].NotifierUnresolved || stored[0].NotifierClaimedAt.IsZero() {
+	if err != nil || len(stored) != 1 || !stored[0].NotificationDeliveryUnresolved || stored[0].NotificationClaimedAt.IsZero() {
 		t.Fatalf("stored notifier failure = %+v err=%v, want one unresolved claim", stored, err)
 	}
 }
@@ -1825,9 +1846,9 @@ func TestGrantNotificationWaitState(t *testing.T) {
 		want  error
 	}{
 		{name: "canceled", grant: grants.Grant{Status: grants.StatusCanceled}, want: errGrantNotificationCanceled},
-		{name: "unresolved", grant: grants.Grant{Status: grants.StatusPending, NotifierUnresolved: true}, want: errGrantNotificationUnresolved},
+		{name: "unresolved", grant: grants.Grant{Status: grants.StatusPending, NotificationDeliveryUnresolved: true}, want: errGrantNotificationUnresolved},
 		{name: "queued", grant: grants.Grant{Status: grants.StatusPending}, want: errGrantNotificationStillQueued},
-		{name: "notified", grant: grants.Grant{Status: grants.StatusPending, Notifier: &grants.NotifierMessage{MessageID: 1}}},
+		{name: "notified", grant: grants.Grant{Status: grants.StatusPending, Notification: &grants.MessageRef{MessageID: 1}}},
 		{name: "terminal", grant: grants.Grant{Status: grants.StatusDenied}},
 	}
 	for _, test := range tests {
@@ -1918,7 +1939,7 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 		t.Fatalf("notification tokens = %+v, want two distinct non-empty tokens", tokens)
 	}
 	stored, err := restartedHandler.grants.ListForClient("agent")
-	if err != nil || len(stored) != 1 || stored[0].Notifier == nil || stored[0].NotifierUnresolved {
+	if err != nil || len(stored) != 1 || stored[0].Notification == nil || stored[0].NotificationDeliveryUnresolved {
 		t.Fatalf("stored post-lease grant = %+v err=%v", stored, err)
 	}
 }
@@ -2486,14 +2507,14 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := handler.grants.Request(grants.Request{
+	if _, _, err := requestHFGrant(handler.grants, hfgrant.Input{
 		Client:            "agent",
 		ClientRequestID:   "retry-missing-message",
 		Operation:         string(policy.OpGitPushForce),
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Reason:            "recover",
-		Mode:              grants.ModeWindow,
+		Mode:              hfgrant.ModeWindow,
 		RequestedDuration: 5 * time.Minute,
 		PendingTimeout:    5 * time.Minute,
 		MaxUses:           1,
@@ -2619,7 +2640,7 @@ func TestCallbackWinningNotificationRaceKeepsMessageActive(t *testing.T) {
 	}
 	created := decodeAPIGrantResponse(t, responseBody)
 	stored, err := handler.grants.Get(created.ID)
-	if err != nil || stored.Status != grants.StatusActive || stored.Notifier == nil || *stored.Notifier != notifier.ref {
+	if err != nil || stored.Status != grants.StatusActive || stored.Notification == nil || *stored.Notification != notifier.ref {
 		t.Fatalf("stored grant = %+v err=%v", stored, err)
 	}
 }
@@ -2772,7 +2793,7 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(%q) error = %v", retry.ID, err)
 	}
-	if updated.Status != grants.StatusPending || updated.Notifier == nil || updated.Notifier.MessageID != 2 || !updated.NotifierClaimedAt.IsZero() {
+	if updated.Status != grants.StatusPending || updated.Notification == nil || updated.Notification.MessageID != 2 || !updated.NotificationClaimedAt.IsZero() {
 		t.Fatalf("grant after stale notifier failure = %+v, want pending grant with newer notifier", updated)
 	}
 }
@@ -2819,7 +2840,7 @@ func TestGrantRequestRejectsNonEditableNotifier(t *testing.T) {
 func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 	dir := t.TempDir()
 	store := grants.New(filepath.Join(dir, "grants.json"), grants.Options{})
-	grant, _, err := store.Request(grants.Request{
+	grant, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -2852,14 +2873,14 @@ func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := store.MatchActive(approved.Client, approved.Operation, approved.Target, approved.Ref); err != nil || !ok {
+	if _, ok, err := hfgrant.MatchActiveFunc(store, approved.Client, approved.Operation, hfgrant.Target(approved), hfgrant.Ref(approved), nil); err != nil || !ok {
 		t.Fatalf("MatchActive() after failed reservation ok=%v err=%v, want true nil", ok, err)
 	}
 }
 
 func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := store.Request(grants.Request{
+	grant, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -2880,19 +2901,19 @@ func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reserveGrantUses() error = %v", err)
 	}
-	if _, ok, err := store.MatchActive(approved.Client, approved.Operation, approved.Target, approved.Ref); err != nil || ok {
+	if _, ok, err := hfgrant.MatchActiveFunc(store, approved.Client, approved.Operation, hfgrant.Target(approved), hfgrant.Ref(approved), nil); err != nil || ok {
 		t.Fatalf("MatchActive() while reserved ok=%v err=%v, want false nil", ok, err)
 	}
 
 	server.releaseGrantUses(reserved)
-	if _, ok, err := store.MatchActive(approved.Client, approved.Operation, approved.Target, approved.Ref); err != nil || !ok {
+	if _, ok, err := hfgrant.MatchActiveFunc(store, approved.Client, approved.Operation, hfgrant.Target(approved), hfgrant.Ref(approved), nil); err != nil || !ok {
 		t.Fatalf("MatchActive() after release ok=%v err=%v, want true nil", ok, err)
 	}
 }
 
 func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := store.Request(grants.Request{
+	grant, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -2902,8 +2923,8 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetNotifier(grant.ID, grants.NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
-		t.Fatalf("SetNotifier() error = %v", err)
+	if _, err := store.SetNotification(grant.ID, grants.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotification() error = %v", err)
 	}
 	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
 	if err != nil {
@@ -2927,7 +2948,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StatusUpdatesDue() error = %v", err)
 	}
-	if len(updates) != 1 || updates[0].Status != grants.NotifierStatusReserved {
+	if len(updates) != 1 || updates[0].Kind != grants.StatusUpdateRetainedReservation {
 		t.Fatalf("StatusUpdatesDue() = %+v, want retained reservation update", updates)
 	}
 }
@@ -2935,7 +2956,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) {
 	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{Now: func() time.Time { return now }})
-	grant, _, err := store.Request(grants.Request{
+	grant, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:            "agent",
 		Operation:         string(policy.OpGitPushForce),
 		Target:            "dataset/acme/repo",
@@ -2947,15 +2968,15 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetNotifier(grant.ID, grants.NotifierMessage{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
-		t.Fatalf("SetNotifier() error = %v", err)
+	if _, err := store.SetNotification(grant.ID, grants.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+		t.Fatalf("SetNotification() error = %v", err)
 	}
 	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
 	if err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-	if err := store.MarkNotifierStatus(grant.ID, string(grants.StatusActive)); err != nil {
-		t.Fatalf("MarkNotifierStatus(active) error = %v", err)
+	if err := store.MarkNotificationStatus(grant.ID, string(grants.StatusActive)); err != nil {
+		t.Fatalf("MarkNotificationStatus(active) error = %v", err)
 	}
 	reserved, err := store.ReserveUse(approved.ID)
 	if err != nil {
@@ -2974,7 +2995,7 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Get(%q) error = %v", grant.ID, err)
 	}
-	if updated.Status != grants.StatusExpired || !updated.ReservationRetained || !strings.HasPrefix(updated.NotifierStatus, "reserved:expired:") {
+	if updated.Status != grants.StatusExpired || !updated.ReservationRetained || !strings.HasPrefix(updated.NotificationStatus, "reserved:expired:") {
 		t.Fatalf("grant after retained reservation update = %+v, want expired retained grant with reserved notifier status", updated)
 	}
 }
@@ -3006,17 +3027,17 @@ func TestGrantStatusUpdateText(t *testing.T) {
 		},
 		{
 			name:   "consumed",
-			update: grants.StatusUpdate{Status: grants.StatusConsumed, Grant: grants.Grant{Status: grants.StatusConsumed, MaxUses: 1, UsedCount: 1}},
+			update: grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Status: grants.StatusConsumed, Grant: grants.Grant{Status: grants.StatusConsumed, MaxUses: 1, UsedCount: 1}},
 			want:   "✅ Used. Access is now closed.",
 		},
 		{
 			name:   "reserved",
-			update: grants.StatusUpdate{Status: grants.NotifierStatusReserved, Grant: grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1}},
+			update: grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation, Status: grants.StatusActive, Grant: grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1}},
 			want:   "⚠️ Push result is ambiguous. 2 of 2 uses are held; access is closed until an operator reviews it.",
 		},
 		{
 			name:   "reserved expired",
-			update: grants.StatusUpdate{Status: grants.NotifierStatusReserved, Grant: grants.Grant{Status: grants.StatusExpired, MaxUses: 3, UsedCount: 1, ReservedCount: 1}},
+			update: grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation, Status: grants.StatusExpired, Grant: grants.Grant{Status: grants.StatusExpired, MaxUses: 3, UsedCount: 1, ReservedCount: 1}},
 			want:   "⚠️ Push result is ambiguous. Access is closed; operator review is still needed.",
 		},
 		{

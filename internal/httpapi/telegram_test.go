@@ -11,9 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/hf-broker/internal/grants"
+	"github.com/osolmaz/hf-broker/internal/hfgrant"
 )
 
 func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
@@ -31,11 +33,11 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	}
 	path := t.TempDir() + "/grants.json"
 	store := grants.New(path, grants.Options{})
-	requested, _, err := store.Request(grants.Request{
+	requested, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:            "agent",
 		ClientRequestID:   "telegram-restart",
 		Operation:         "git.push.force",
-		Mode:              grants.ModeWindow,
+		Mode:              hfgrant.ModeWindow,
 		Target:            "dataset/acme/repo",
 		Ref:               "refs/heads/main",
 		Attrs:             map[string]any{"ref_change": "non_fast_forward"},
@@ -47,20 +49,20 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed, ok, err := store.ClaimNotifier(requested.ID, time.Minute)
+	claimed, ok, err := store.ClaimNotification(requested.ID, time.Minute)
 	if err != nil || !ok {
-		t.Fatalf("ClaimNotifier() = %+v, %v, %v", claimed, ok, err)
+		t.Fatalf("ClaimNotification() = %+v, %v, %v", claimed, ok, err)
 	}
-	ref, err := client.SendApproval(context.Background(), grantApprovalMessage(claimed))
+	ref, err := client.SendApproval(context.Background(), grantApprovalMessage(claimed.Grant, claimed.DecisionToken))
 	if err != nil {
 		t.Fatalf("SendApproval() error = %v", err)
 	}
-	if _, recorded, err := store.SetNotifierIfClaimed(claimed.ID, claimed.NotifierClaimedAt, ref); err != nil || !recorded {
-		t.Fatalf("SetNotifierIfClaimed() recorded=%v err=%v", recorded, err)
+	if _, recorded, err := store.SetNotificationIfClaimed(claimed.Grant.ID, claimed.Grant.NotificationClaimedAt, ref); err != nil || !recorded {
+		t.Fatalf("SetNotificationIfClaimed() recorded=%v err=%v", recorded, err)
 	}
-	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.ID, claimed.DecisionToken)
+	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
 
-	server := &Server{grants: store, notifier: client}
+	server := newTelegramDecisionTestServer(t, store, client)
 	offset, err := client.PollOnce(context.Background(), 0, server.handleTelegramDecision)
 	if err != nil || offset != 2 {
 		t.Fatalf("PollOnce() offset=%d err=%v", offset, err)
@@ -68,11 +70,11 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if bot.editAttempts != 0 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" {
 		t.Fatalf("callback performed edit before acknowledgement: edits=%d answers=%+v", bot.editAttempts, bot.answers)
 	}
-	afterDecision, err := store.Get(claimed.ID)
+	afterDecision, err := store.Get(claimed.Grant.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if afterDecision.Status != grants.StatusActive || afterDecision.NotifierStatus == string(grants.StatusActive) {
+	if afterDecision.Status != grants.StatusActive || afterDecision.NotificationStatus == string(grants.StatusActive) {
 		t.Fatalf("grant after failed edit = %+v, want active with status still due", afterDecision)
 	}
 
@@ -82,13 +84,13 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	}
 
 	restartedStore := grants.New(path, grants.Options{})
-	restarted := &Server{grants: restartedStore, notifier: client}
+	restarted := newTelegramDecisionTestServer(t, restartedStore, client)
 	restarted.sweepGrantNotifications(context.Background())
 	if bot.editAttempts != 2 || !strings.Contains(bot.edits[1], "Status: ✅ Approved. Access is active.") {
 		t.Fatalf("restart edits = %+v attempts=%d", bot.edits, bot.editAttempts)
 	}
-	delivered, err := restartedStore.Get(claimed.ID)
-	if err != nil || delivered.NotifierStatus != string(grants.StatusActive) {
+	delivered, err := restartedStore.Get(claimed.Grant.ID)
+	if err != nil || delivered.NotificationStatus != string(grants.StatusActive) {
 		t.Fatalf("delivered grant = %+v err=%v", delivered, err)
 	}
 
@@ -115,10 +117,10 @@ func TestTelegramCallbackRecoversReferenceAfterAmbiguousSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := grants.New(t.TempDir()+"/grants.json", grants.Options{})
-	requested, _, err := store.Request(grants.Request{
+	requested, _, err := requestHFGrant(store, hfgrant.Input{
 		Client:    "agent",
 		Operation: "git.push.force",
-		Mode:      grants.ModeWindow,
+		Mode:      hfgrant.ModeWindow,
 		Target:    "dataset/acme/repo",
 		Ref:       "refs/heads/main",
 		Reason:    "recover main",
@@ -126,21 +128,21 @@ func TestTelegramCallbackRecoversReferenceAfterAmbiguousSend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed, ok, err := store.ClaimNotifier(requested.ID, time.Minute)
+	claimed, ok, err := store.ClaimNotification(requested.ID, time.Minute)
 	if err != nil || !ok {
-		t.Fatalf("ClaimNotifier() = %+v claimed=%v err=%v", claimed, ok, err)
+		t.Fatalf("ClaimNotification() = %+v claimed=%v err=%v", claimed, ok, err)
 	}
-	if _, retained, err := store.RetainNotifierClaim(claimed.ID, claimed.NotifierClaimedAt); err != nil || !retained {
-		t.Fatalf("RetainNotifierClaim() retained=%v err=%v", retained, err)
+	if _, retained, err := store.RetainNotificationClaim(claimed.Grant.ID, claimed.Grant.NotificationClaimedAt); err != nil || !retained {
+		t.Fatalf("RetainNotificationClaim() retained=%v err=%v", retained, err)
 	}
 	bot.sentText = approvalTextForTest(claimed)
-	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.ID, claimed.DecisionToken)
-	server := &Server{grants: store, notifier: client}
+	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
+	server := newTelegramDecisionTestServer(t, store, client)
 	if _, err := client.PollOnce(context.Background(), 0, server.handleTelegramDecision); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := store.Get(claimed.ID)
-	if err != nil || stored.Status != grants.StatusActive || stored.Notifier == nil || stored.Notifier.MessageID != 7 || stored.Notifier.Text != bot.sentText {
+	stored, err := store.Get(claimed.Grant.ID)
+	if err != nil || stored.Status != grants.StatusActive || stored.Notification == nil || stored.Notification.MessageID != 7 || stored.Notification.Text != bot.sentText {
 		t.Fatalf("recovered callback grant = %+v err=%v", stored, err)
 	}
 	if bot.editAttempts != 0 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" {
@@ -162,20 +164,20 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 	}
 	dir := t.TempDir()
 	store := grants.New(dir+"/grants.json", grants.Options{})
-	requested, _, err := store.Request(grants.Request{
-		Client: "agent", Operation: "git.push.force", Mode: grants.ModeWindow,
+	requested, _, err := requestHFGrant(store, hfgrant.Input{
+		Client: "agent", Operation: "git.push.force", Mode: hfgrant.ModeWindow,
 		Target: "dataset/acme/repo", Ref: "refs/heads/main", Reason: "recover main",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed, ok, err := store.ClaimNotifier(requested.ID, time.Minute)
+	claimed, ok, err := store.ClaimNotification(requested.ID, time.Minute)
 	if err != nil || !ok {
-		t.Fatalf("ClaimNotifier() = %+v claimed=%v err=%v", claimed, ok, err)
+		t.Fatalf("ClaimNotification() = %+v claimed=%v err=%v", claimed, ok, err)
 	}
 	bot.sentText = approvalTextForTest(claimed)
-	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.ID, claimed.DecisionToken)
-	server := &Server{grants: store, notifier: client}
+	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
+	server := newTelegramDecisionTestServer(t, store, client)
 	if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- test intentionally blocks atomic replacement.
 		t.Fatal(err)
 	}
@@ -189,22 +191,35 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 	if !errors.Is(pollErr, bktelegram.ErrDecisionRetry) || offset != 0 || len(bot.answers) != 0 {
 		t.Fatalf("failed callback offset=%d answers=%v err=%v", offset, bot.answers, pollErr)
 	}
-	pending, err := store.Get(claimed.ID)
-	if err != nil || pending.Status != grants.StatusPending || pending.Notifier != nil {
+	pending, err := store.Get(claimed.Grant.ID)
+	if err != nil || pending.Status != grants.StatusPending || pending.Notification != nil {
 		t.Fatalf("grant after failed callback = %+v err=%v", pending, err)
 	}
 	offset, err = client.PollOnce(context.Background(), offset, server.handleTelegramDecision)
 	if err != nil || offset != 2 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" {
 		t.Fatalf("retried callback offset=%d answers=%v err=%v", offset, bot.answers, err)
 	}
-	active, err := store.Get(claimed.ID)
-	if err != nil || active.Status != grants.StatusActive || active.Notifier == nil {
+	active, err := store.Get(claimed.Grant.ID)
+	if err != nil || active.Status != grants.StatusActive || active.Notification == nil {
 		t.Fatalf("grant after callback retry = %+v err=%v", active, err)
 	}
 }
 
-func approvalTextForTest(grant grants.Grant) string {
-	return grantApprovalMessage(grant).Text
+func approvalTextForTest(claim grants.NotificationClaim) string {
+	return grantApprovalMessage(claim.Grant, claim.DecisionToken).Text
+}
+
+func newTelegramDecisionTestServer(t *testing.T, store *grants.Store, notifier notify.Notifier) *Server {
+	t.Helper()
+	runtime, err := controlplane.New(controlplane.Options{
+		Broker:        "hf-broker",
+		Store:         store,
+		ClientSecrets: map[string]string{"agent": testSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Server{grants: store, notifier: notifier, control: runtime}
 }
 
 type fakeTelegramBot struct {

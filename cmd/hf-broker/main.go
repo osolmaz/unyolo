@@ -86,6 +86,7 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 		Context:               ctx,
 		UpstreamBaseURL:       cfg.UpstreamHubURL,
 		UpstreamRouterBaseURL: cfg.UpstreamRouterURL,
+		OperatorAudit:         bkaudit.New(stdout),
 	})
 	if err != nil {
 		return err
@@ -96,13 +97,9 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 		ReadHeaderTimeout: 10 * time.Second,
 	}}
 	if len(cfg.Operators) > 0 {
-		operatorHandler, err := handler.OperatorHandler(cfg, bkaudit.New(stdout))
-		if err != nil {
-			return err
-		}
 		servers = append(servers, &http.Server{
 			Addr:    net.JoinHostPort(cfg.OperatorBindAddr, strconv.Itoa(cfg.OperatorPort)),
-			Handler: operatorHandler, ReadHeaderTimeout: 10 * time.Second,
+			Handler: handler.OperatorHandler(), ReadHeaderTimeout: 10 * time.Second,
 		})
 	}
 	return serveServersWithContext(ctx, servers, stderr)

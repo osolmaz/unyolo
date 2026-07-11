@@ -30,11 +30,10 @@ go:
       allow:
         - internal/audit
         - internal/approval
-        - internal/auth
         - internal/config
         - internal/gitproxy
         - internal/gitproxy/pktline
-        - internal/grants
+        - internal/hfgrant
         - internal/jsend
         - internal/mirror
         - internal/policy
@@ -51,15 +50,13 @@ go:
       allow: []
     - from: internal/config
       allow: []
-    - from: internal/auth
-      allow: []
     - from: internal/isolation
       allow: []
     - from: internal/gitproxy/pktline
       allow: []
     - from: internal/audit
       allow: []
-    - from: internal/grants
+    - from: internal/hfgrant
       allow: []
     - from: internal/jsend
       allow: []

@@ -568,15 +568,14 @@ toolchain `go1.26.5`. One binary (`cmd/hf-broker`), business logic in
 
 ```text
 cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
-internal/config/                 env + scope.json loading and validation
-internal/auth/                   temporary; cut over to brokerkit/auth
+internal/config/                 HF env loading and validation; named secrets use brokerkit/secretfile
 internal/isolation/              local runtime isolation doctor checks
-internal/policy/                 temporary; cut over to brokerkit/policy + HF registry
+internal/policy/                 HF parser, registry, and classifiers over brokerkit/policy
 internal/gitproxy/               HF enforcement and upstream forward; generic parsing moves to brokerkit/gitx
 internal/gitproxy/pktline/       temporary; cut over to brokerkit generic Git helpers
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
 internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
-internal/grants/                 HF field adapter over brokerkit/grants
+internal/hfgrant/                HF target, attr, and mode mapping to brokerkit/grants
 internal/approval/               HF-specific operator approval wording
 internal/jsend/                  JSON API response envelopes
 internal/httpapi/                Echo router, handlers, refusal responses, audit

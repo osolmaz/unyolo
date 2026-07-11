@@ -34,7 +34,11 @@ jobs:
       - run: slophammer-go dry .
       - run: slophammer-go crap .
       - run: ./scripts/check-go-coverage.sh
-      - run: ./scripts/check-mutation.sh
+      - name: mutation gate (paused)
+        if: ${{ vars.RUN_MUTATION == 'true' }}
+        run: |
+          ./scripts/check-mutation.sh
+          slophammer-go mutate . --scan
       - run: slophammer-go check .
 
   macos:

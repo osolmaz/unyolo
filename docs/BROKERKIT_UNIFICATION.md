@@ -49,9 +49,11 @@ template:
 - broker client auth
 - policy parsing and registry mechanics
 - grants, approval state, idempotency, and use budgets
+- shared control-plane assembly, client/operator authentication, and operator API
+- named client and operator credential parsing and rendering
 - shared Telegram transport and callback handling: implemented through
-  brokerkit's reusable Telegram adapter; hf-broker now keeps only HF approval
-  message composition and grant-decision application
+  brokerkit's reusable Telegram adapter; hf-broker keeps only HF approval
+  message composition
 - audit event schema and no-secret helpers
 - common doctor checks for user separation, root-equivalent groups, secret file
   permissions, process environment reachability, socket access, and service

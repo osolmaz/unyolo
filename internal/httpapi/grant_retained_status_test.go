@@ -3,7 +3,7 @@ package httpapi
 import (
 	"testing"
 
-	"github.com/osolmaz/hf-broker/internal/grants"
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/hf-broker/internal/policy"
 )
 

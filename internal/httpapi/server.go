@@ -22,17 +22,17 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	bkauth "github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/grants"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
-	"github.com/osolmaz/brokerkit/operatorauth"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/hf-broker/internal/approval"
 	"github.com/osolmaz/hf-broker/internal/audit"
-	"github.com/osolmaz/hf-broker/internal/auth"
 	"github.com/osolmaz/hf-broker/internal/config"
 	"github.com/osolmaz/hf-broker/internal/gitproxy"
-	"github.com/osolmaz/hf-broker/internal/grants"
+	"github.com/osolmaz/hf-broker/internal/hfgrant"
 	"github.com/osolmaz/hf-broker/internal/jsend"
 	"github.com/osolmaz/hf-broker/internal/mirror"
 	"github.com/osolmaz/hf-broker/internal/policy"
@@ -70,13 +70,14 @@ type Options struct {
 	Context               context.Context
 	GrantNotifier         bknotify.Notifier
 	TelegramBaseURL       string
+	OperatorAudit         operatorapi.AuditRecorder
 }
 
 // Server is an Echo-backed http.Handler for the broker.
 type Server struct {
 	router *echo.Echo
 
-	auth                *auth.Authenticator
+	control             *controlplane.Runtime
 	policy              policy.Policy
 	audit               *audit.Logger
 	mirrors             *mirror.Manager
@@ -129,17 +130,25 @@ type lockedPushResult struct {
 
 // New builds a broker HTTP handler.
 func New(opts Options) (*Server, error) {
+	server, ctx, err := prepareServer(opts)
+	if err != nil {
+		return nil, err
+	}
+	return startServer(ctx, server, opts)
+}
+
+func prepareServer(opts Options) (*Server, context.Context, error) {
 	ctx := opts.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	upstream, err := parseUpstreamBase(opts.UpstreamBaseURL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	routerUpstream, err := parseRouterUpstreamBase(opts.UpstreamRouterBaseURL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	clients := map[string]string{}
 	for _, client := range opts.Config.Clients {
@@ -149,7 +158,14 @@ func New(opts Options) (*Server, error) {
 	if auditLogger == nil {
 		auditLogger = audit.New(io.Discard)
 	}
-	server := newServer(opts, upstream, routerUpstream, clients, auditLogger)
+	server, err := newServer(opts, upstream, routerUpstream, clients, auditLogger)
+	if err != nil {
+		return nil, nil, err
+	}
+	return server, ctx, nil
+}
+
+func startServer(ctx context.Context, server *Server, opts Options) (*Server, error) {
 	if err := server.startTelegram(ctx, opts); err != nil {
 		return nil, err
 	}
@@ -160,20 +176,7 @@ func New(opts Options) (*Server, error) {
 }
 
 // OperatorHandler builds the shared inbox over the same canonical grant store.
-func (s *Server) OperatorHandler(cfg config.Config, recorder operatorapi.AuditRecorder) (http.Handler, error) {
-	clientSecrets := namedSecrets(cfg.Clients)
-	authenticator, err := operatorauth.New(namedSecrets(cfg.Operators), operatorauth.Options{ClientSecrets: clientSecrets})
-	if err != nil {
-		return nil, err
-	}
-	inbox, err := operatorinbox.New(s.grants.Core(), approval.Presenter{})
-	if err != nil {
-		return nil, err
-	}
-	return operatorapi.New(operatorapi.Options{
-		Inbox: inbox, Authorize: authenticator.AuthenticateRequest, Broker: "hf-broker", Audit: recorder,
-	})
-}
+func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
 
 func namedSecrets(identities []config.Client) map[string]string {
 	secrets := make(map[string]string, len(identities))
@@ -216,7 +219,7 @@ func validUpstreamOrigin(upstream *url.URL) bool {
 	return upstream.Path == "" || upstream.Path == "/"
 }
 
-func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger *audit.Logger) *Server {
+func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger *audit.Logger) (*Server, error) {
 	inferenceTimeout := opts.Config.HFTimeout
 	if inferenceTimeout <= 0 {
 		inferenceTimeout = config.DefaultHFTimeout
@@ -228,8 +231,19 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	}).DialContext
 	inferenceTransport.ResponseHeaderTimeout = min(inferenceTimeout, 30*time.Second)
 	inferenceTransport.TLSHandshakeTimeout = min(inferenceTimeout, 10*time.Second)
+	store := grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{
+		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
+		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
+	})
+	runtime, err := controlplane.New(controlplane.Options{
+		Broker: "hf-broker", Store: store, ClientSecrets: clients,
+		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
+	})
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{
-		auth:           auth.New(clients),
+		control:        runtime,
 		policy:         opts.Scope,
 		audit:          auditLogger,
 		mirrors:        mirror.New(opts.Config.StateDir, opts.Config.HFToken, opts.Config.HFTimeout),
@@ -243,17 +257,15 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 				return errors.New("inference upstream redirect refused")
 			},
 		},
-		hfToken: opts.Config.HFToken,
-		maxBody: opts.Config.MaxPackBytes,
-		grants: grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{
-			ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
-		}),
+		hfToken:            opts.Config.HFToken,
+		maxBody:            opts.Config.MaxPackBytes,
+		grants:             store,
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
 		lfsActions:         map[string]lfsAction{},
 	}
 	server.router = newRouter(server)
-	return server
+	return server, nil
 }
 
 func newRouter(server *Server) *echo.Echo {
@@ -279,7 +291,7 @@ func newRouter(server *Server) *echo.Echo {
 
 func grantReservationTimeout(hfTimeout time.Duration) time.Duration {
 	if hfTimeout <= 0 {
-		return grants.DefaultReservationTimeout
+		return hfgrant.DefaultReservationTimeout
 	}
 	return hfTimeout + grantReservationGrace
 }
@@ -297,8 +309,12 @@ func (s *Server) startTelegram(ctx context.Context, opts Options) error {
 		return fmt.Errorf("configure Telegram notifier: %w", err)
 	}
 	s.notifier = telegram
-	go telegram.Poll(ctx, s.handleTelegramDecision)
+	go telegram.Poll(ctx, s.control.HandleDecision)
 	return nil
+}
+
+func (s *Server) handleTelegramDecision(ctx context.Context, decision bknotify.Decision) bknotify.DecisionResult {
+	return s.control.HandleDecision(ctx, decision)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -519,22 +535,34 @@ func (s *Server) writeGrantStoreError(w http.ResponseWriter, client, operation, 
 }
 
 func activeGrantRule(grant grants.Grant) (policy.Rule, bool) {
-	if grant.Status != grants.StatusActive || grant.ReservationRetained || !runtimeWindowGrant(grant) || grantUsesRemaining(grant) <= 0 {
+	if !grantEligibleForRule(grant) {
 		return policy.Rule{}, false
 	}
 	target := targetFromGrant(grant)
 	if target.Kind == "" {
 		return policy.Rule{}, false
 	}
-	attrs, err := policy.AttrConstraintsFromValues(grant.Attrs)
+	constraints, err := grantAttrConstraints(grant)
 	if err != nil {
 		return policy.Rule{}, false
 	}
 	rule := policy.GeneratedGrantRule(
 		grant.ID, grant.Client, policy.Operation(grant.Operation), target, grant.ExpiresAt, grantUsesRemaining(grant),
 	)
-	rule.Attrs = attrs
+	rule.Attrs = constraints
 	return rule, true
+}
+
+func grantEligibleForRule(grant grants.Grant) bool {
+	return grant.Status == grants.StatusActive && !grant.ReservationRetained && runtimeWindowGrant(grant) && grantUsesRemaining(grant) > 0
+}
+
+func grantAttrConstraints(grant grants.Grant) (map[string]policy.AttrConstraint, error) {
+	attrs, err := hfgrant.Attrs(grant)
+	if err != nil {
+		return nil, err
+	}
+	return policy.AttrConstraintsFromValues(attrs)
 }
 
 func routeTarget(rt route, refs []string) policy.Target {
@@ -598,9 +626,14 @@ func activeGrantMatchesIgnoringRef(grant grants.Grant, client string, operation 
 		runtimeWindowGrant(grant) &&
 		grant.Client == client &&
 		grant.Operation == string(operation) &&
-		grant.Target == target &&
+		hfgrant.Target(grant) == target &&
 		grantUsesRemaining(grant) > 0 &&
-		policy.AttrValuesMatch(refLessSupportGrantAttrs(grant.Attrs), attrs)
+		grantAttrsMatchIgnoringRef(grant, attrs)
+}
+
+func grantAttrsMatchIgnoringRef(grant grants.Grant, attrs map[string]any) bool {
+	values, err := hfgrant.Attrs(grant)
+	return err == nil && policy.AttrValuesMatch(refLessSupportGrantAttrs(values), attrs)
 }
 
 func refLessSupportGrantAttrs(attrs map[string]any) map[string]any {
@@ -687,12 +720,12 @@ func isAPIPath(path string) bool {
 }
 
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (string, bool) {
-	client, err := s.auth.Authenticate(r.Header.Get("Authorization"))
+	client, err := s.control.Clients.AuthenticateHeader(r.Header.Get("Authorization"))
 	if err == nil {
 		return client, true
 	}
 	status := http.StatusForbidden
-	if errors.Is(err, auth.ErrMissing) {
+	if errors.Is(err, bkauth.ErrMissing) {
 		status = http.StatusUnauthorized
 		w.Header().Set("WWW-Authenticate", `Basic realm="hf-broker"`)
 	}
@@ -702,14 +735,14 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (string, b
 }
 
 func (s *Server) authenticateAPI(w http.ResponseWriter, r *http.Request) (string, bool) {
-	client, err := s.auth.Authenticate(r.Header.Get("Authorization"))
+	client, err := s.control.Clients.AuthenticateHeader(r.Header.Get("Authorization"))
 	if err == nil {
 		return client, true
 	}
 	status := http.StatusForbidden
 	reason := "bad_auth"
 	message := "Authentication failed"
-	if errors.Is(err, auth.ErrMissing) {
+	if errors.Is(err, bkauth.ErrMissing) {
 		status = http.StatusUnauthorized
 		reason = "missing_auth"
 		message = "Authentication required"
@@ -855,7 +888,7 @@ func (s *Server) handleAPIGrantCreate(w http.ResponseWriter, r *http.Request, cl
 		}
 	}
 	writeJSendSuccess(w, http.StatusAccepted, map[string]any{"grant": apiGrantFromStore(grant, req.Target)})
-	s.record(client, "grant_request", grant.Target, audit.DecisionAllowed, "pending", 0)
+	s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionAllowed, "pending", 0)
 }
 
 func (s *Server) requireApprovalChannel(w http.ResponseWriter, client string) bool {
@@ -1020,7 +1053,7 @@ func (s *Server) requestAPIGrant(client string, req apiGrantRequestBody, grantPo
 		maxUses = grantPolicy.DefaultMaxUses
 	}
 	ref, _ := grantRefFromTarget(req.Target)
-	return s.grants.Request(grants.Request{
+	result, created, err := hfgrant.Request(s.grants, hfgrant.Input{
 		Client:            client,
 		ClientRequestID:   req.ClientRequestID,
 		Operation:         string(req.Operation),
@@ -1033,6 +1066,7 @@ func (s *Server) requestAPIGrant(client string, req apiGrantRequestBody, grantPo
 		PendingTimeout:    time.Duration(grantPolicy.RequestTTLMinutes) * time.Minute,
 		MaxUses:           maxUses,
 	})
+	return result.Grant, created, err
 }
 
 func grantRequestError(err error) (int, string, string) {
@@ -1076,43 +1110,43 @@ func apiGrantListFromStore(grantsForClient []grants.Grant, statusFilter string) 
 }
 
 func (s *Server) notifyAPIGrantIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant) (grants.Grant, bool) {
-	claimedGrant, claimed, err := s.grants.ClaimNotifier(grant.ID, grantNotificationClaimLease)
+	claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
 	if err != nil {
 		writeJSendError(w, http.StatusBadGateway, "could not claim operator notification", "internal_error")
-		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, "could not claim operator notification", 0)
+		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, "could not claim operator notification", 0)
 		return grants.Grant{}, false
 	}
 	if !claimed {
 		return s.waitForAPIGrantNotificationResponse(w, r, client, grant, grant.ID)
 	}
-	return s.notifyAPICreatedGrant(w, r, client, claimedGrant)
+	return s.notifyAPICreatedGrant(w, r, client, claim)
 }
 
 func (s *Server) cancelAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, reason string) (grants.Grant, bool) {
-	updated, canceled, err := s.grants.CancelIfNotifierClaimed(grant.ID, grant.NotifierClaimedAt)
+	updated, canceled, err := s.grants.CancelIfNotificationClaimed(grant.ID, grant.NotificationClaimedAt)
 	if err != nil {
 		writeJSendError(w, http.StatusBadGateway, reason, "internal_error")
-		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
+		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
 		return grants.Grant{}, false
 	}
 	if canceled || updated.Status == grants.StatusCanceled {
 		writeJSendError(w, http.StatusBadGateway, reason, "upstream_error")
-		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
+		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
 		return grants.Grant{}, false
 	}
 	return s.resolveAPIPendingGrantNotification(w, r, client, grant, updated)
 }
 
 func (s *Server) retainAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, reason string) (grants.Grant, bool) {
-	updated, retained, err := s.grants.RetainNotifierClaim(grant.ID, grant.NotifierClaimedAt)
+	updated, retained, err := s.grants.RetainNotificationClaim(grant.ID, grant.NotificationClaimedAt)
 	if err != nil {
 		writeJSendError(w, http.StatusBadGateway, reason, "internal_error")
-		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
+		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
 		return grants.Grant{}, false
 	}
-	if retained || updated.NotifierUnresolved {
+	if retained || updated.NotificationDeliveryUnresolved {
 		writeJSendError(w, http.StatusBadGateway, reason, "upstream_error")
-		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, reason, 0)
+		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
 		return grants.Grant{}, false
 	}
 	return s.resolveAPIPendingGrantNotification(w, r, client, grant, updated)
@@ -1130,7 +1164,7 @@ func (s *Server) waitForAPIGrantNotificationResponse(w http.ResponseWriter, r *h
 	if err != nil {
 		status, message, code := apiGrantNotificationWaitError(err)
 		writeJSendError(w, status, message, code)
-		s.record(client, "grant_request", grant.Target, audit.DecisionRefused, message, 0)
+		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, message, 0)
 		return grants.Grant{}, false
 	}
 	return current, true
@@ -1156,7 +1190,7 @@ func (s *Server) handleAPIGrantGet(w http.ResponseWriter, r *http.Request, clien
 		s.record(client, "grant_read", "grant", audit.DecisionRefused, "grant_not_found", 0)
 		return
 	}
-	grant, err := s.grants.GetForClient(client, id)
+	grant, err := hfgrant.GetForClient(s.grants, client, id)
 	if err != nil {
 		writeJSendFail(w, http.StatusNotFound, "grant_not_found", "Grant not found")
 		s.record(client, "grant_read", id, audit.DecisionRefused, "grant_not_found", 0)
@@ -1343,14 +1377,15 @@ func grantStatusMatchesFilter(grant grants.Grant, filter string) bool {
 func apiGrantFromStore(grant grants.Grant, target policy.Target) apiGrantBody {
 	pendingUntil := timeStringPtr(grant.PendingExpiresAt)
 	expiresAt := grantExpiresAtStringPtr(grant)
+	attrs, _ := hfgrant.Attrs(grant)
 	return apiGrantBody{
 		ID:              grant.ID,
 		Status:          apiGrantStatus(grant),
 		Operation:       grant.Operation,
 		Target:          target,
-		Attrs:           attrsOrEmpty(grant.Attrs),
+		Attrs:           attrsOrEmpty(attrs),
 		Mode:            grantModeFromStore(grant),
-		Minutes:         grant.RequestedMinutes,
+		Minutes:         hfgrant.RequestedMinutes(grant),
 		MaxUses:         grant.MaxUses,
 		UsesRemaining:   grantUsesRemaining(grant),
 		UsedCount:       grant.UsedCount,
@@ -1375,8 +1410,8 @@ func grantExpiresAtStringPtr(grant grants.Grant) *string {
 }
 
 func grantModeFromStore(grant grants.Grant) policy.GrantMode {
-	switch grant.Mode {
-	case grants.ModeExecution:
+	switch hfgrant.Mode(grant) {
+	case hfgrant.ModeExecution:
 		return policy.GrantModeExecution
 	default:
 		return policy.GrantModeWindow
@@ -1424,13 +1459,13 @@ func timeStringPtr(value time.Time) *string {
 }
 
 func targetFromGrant(grant grants.Grant) policy.Target {
-	rt, ok := parseGrantTarget(grant.Target)
+	rt, ok := parseGrantTarget(hfgrant.Target(grant))
 	if !ok {
 		return policy.Target{}
 	}
 	target := routeTarget(rt, nil)
-	if grant.Ref != "" {
-		target.Refs = []string{grant.Ref}
+	if ref := hfgrant.Ref(grant); ref != "" {
+		target.Refs = []string{ref}
 	}
 	return target
 }
@@ -1469,7 +1504,7 @@ func writeJSendError(w http.ResponseWriter, status int, message, code string) {
 }
 
 func grantNeedsNotification(grant grants.Grant) bool {
-	return grant.Status == grants.StatusPending && grant.Notifier == nil
+	return grant.Status == grants.StatusPending && grant.Notification == nil
 }
 
 func (s *Server) supersedeGrantMessage(ctx context.Context, ref bknotify.MessageRef) {
@@ -1504,7 +1539,7 @@ func grantNotificationWaitState(grant grants.Grant) error {
 	switch {
 	case grant.Status == grants.StatusCanceled:
 		return errGrantNotificationCanceled
-	case grant.NotifierUnresolved:
+	case grant.NotificationDeliveryUnresolved:
 		return errGrantNotificationUnresolved
 	case grantNeedsNotification(grant):
 		return errGrantNotificationStillQueued
@@ -1557,28 +1592,31 @@ func invalidGrantTargetSegment(value string) bool {
 	return value == "" || strings.ContainsAny(value, " \t\r\n/\x00*?")
 }
 
-func grantApprovalMessage(grant grants.Grant) bknotify.ApprovalMessage {
+func grantApprovalMessage(grant grants.Grant, decisionToken string) bknotify.ApprovalMessage {
+	attrs, _ := hfgrant.Attrs(grant)
+	target := hfgrant.Target(grant)
+	requestedMinutes := hfgrant.RequestedMinutes(grant)
 	message := approval.Message{
 		Client:           grant.Client,
 		Operation:        grant.Operation,
-		Mode:             grant.Mode,
-		Target:           grant.Target,
-		Ref:              grant.Ref,
-		Attrs:            grant.Attrs,
+		Mode:             hfgrant.Mode(grant),
+		Target:           target,
+		Ref:              hfgrant.Ref(grant),
+		Attrs:            attrs,
 		Reason:           grant.Reason,
-		RequestedMinutes: grant.RequestedMinutes,
+		RequestedMinutes: requestedMinutes,
 		MaxUses:          grant.MaxUses,
 		PendingExpiresAt: grant.PendingExpiresAt,
 	}
 	return bknotify.ApprovalMessage{
 		GrantID:          grant.ID,
-		DecisionToken:    grant.DecisionToken,
+		DecisionToken:    decisionToken,
 		Text:             approval.Text(message),
 		Client:           grant.Client,
 		Operation:        grant.Operation,
-		Target:           grant.Target,
+		Target:           target,
 		Reason:           grant.Reason,
-		RequestedMinutes: grant.RequestedMinutes,
+		RequestedMinutes: requestedMinutes,
 		MaxUses:          grant.MaxUses,
 	}
 }
@@ -2143,13 +2181,14 @@ func (s *Server) useActiveGrant(client string, operation policy.Operation, targe
 }
 
 func (s *Server) matchActiveGrant(client string, operation policy.Operation, target, ref string, attrs map[string]any) (grants.Grant, bool, error) {
-	return s.grants.MatchActiveFunc(client, string(operation), target, ref, func(grant grants.Grant) bool {
-		return runtimeWindowGrant(grant) && policy.AttrValuesMatch(grant.Attrs, attrs)
+	return hfgrant.MatchActiveFunc(s.grants, client, string(operation), target, ref, func(grant grants.Grant) bool {
+		values, err := hfgrant.Attrs(grant)
+		return err == nil && runtimeWindowGrant(grant) && policy.AttrValuesMatch(values, attrs)
 	})
 }
 
 func runtimeWindowGrant(grant grants.Grant) bool {
-	return grant.Mode == grants.ModeWindow
+	return hfgrant.Mode(grant) == hfgrant.ModeWindow
 }
 
 func refFailureForDecision(ref string, decision policy.Decision) gitproxy.RefFailure {
@@ -2314,21 +2353,23 @@ func (s *Server) sweepGrantNotifications(ctx context.Context) {
 	for _, item := range updates {
 		status := grantStatusUpdateText(item)
 		if err := s.updateGrantMessage(ctx, item.Grant, status); err == nil {
-			_ = s.grants.MarkNotifierStatus(item.Grant.ID, item.NotifierStatusKey())
+			_ = s.grants.MarkNotificationStatus(item.Grant.ID, item.NotificationStatusKey())
 		}
 	}
 }
 
 func grantStatusUpdateText(update grants.StatusUpdate) string {
+	switch update.Kind {
+	case grants.StatusUpdateRetainedReservation:
+		return retainedGrantReservationStatus(update.Grant)
+	case grants.StatusUpdateUsed, grants.StatusUpdateUsedExpired:
+		return grantUseStatus(update.Grant)
+	}
 	switch update.Status {
 	case grants.StatusActive:
 		return "✅ Approved. Access is active."
 	case grants.StatusDenied:
 		return "❌ Denied. Access was not granted."
-	case grants.NotifierStatusReserved:
-		return retainedGrantReservationStatus(update.Grant)
-	case grants.StatusConsumed:
-		return grantUseStatus(update.Grant)
 	default:
 		return pendingExpiredStatusForGrant(update.Grant)
 	}
@@ -2356,17 +2397,17 @@ func (s *Server) deliverGrantStatusUpdate(ctx context.Context, id string) {
 			continue
 		}
 		if err := s.updateGrantMessage(ctx, update.Grant, grantStatusUpdateText(update)); err == nil {
-			_ = s.grants.MarkNotifierStatus(id, update.NotifierStatusKey())
+			_ = s.grants.MarkNotificationStatus(id, update.NotificationStatusKey())
 		}
 		return
 	}
 }
 
 func (s *Server) updateGrantMessage(ctx context.Context, grant grants.Grant, status string) error {
-	if grant.Notifier == nil {
+	if grant.Notification == nil {
 		return nil
 	}
-	return s.updateNotifierStatus(ctx, *grant.Notifier, status)
+	return s.updateNotifierStatus(ctx, *grant.Notification, status)
 }
 
 func (s *Server) updateNotifierStatus(ctx context.Context, ref bknotify.MessageRef, status string) error {

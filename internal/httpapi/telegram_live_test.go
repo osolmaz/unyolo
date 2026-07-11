@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/grants"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/hf-broker/internal/grants"
+	"github.com/osolmaz/hf-broker/internal/hfgrant"
 )
 
 func TestTelegramLiveSendApproval(t *testing.T) {
@@ -26,19 +27,20 @@ func TestTelegramLiveSendApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.SendApproval(context.Background(), grantApprovalMessage(grants.Grant{
-		ID:               "live-smoke",
-		DecisionToken:    "not-a-real-grant",
-		Client:           "local-smoke",
-		Operation:        "git.push.force",
-		Mode:             grants.ModeWindow,
-		Target:           "dataset/dutifulbob/hf-broker-smoke",
-		Ref:              "refs/heads/main",
-		Reason:           "live Telegram delivery smoke test",
-		RequestedMinutes: 5,
-		MaxUses:          1,
-		PendingExpiresAt: time.Now().UTC().Add(5 * time.Minute),
-	}))
+	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
+		Client: "local-smoke", Operation: "git.push.force", Mode: hfgrant.ModeWindow,
+		Target: "dataset/dutifulbob/hf-broker-smoke", Ref: "refs/heads/main",
+		Reason: "live Telegram delivery smoke test", RequestedDuration: 5 * time.Minute, MaxUses: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant := grants.Grant{
+		ID: "live-smoke", Client: request.Client, Operation: request.Operation, Target: request.Target,
+		Metadata: request.Metadata, Attrs: request.Attrs, Reason: request.Reason, Duration: request.Duration,
+		MaxUses: request.MaxUses, PendingExpiresAt: time.Now().UTC().Add(5 * time.Minute),
+	}
+	_, err = client.SendApproval(context.Background(), grantApprovalMessage(grant, "not-a-real-grant"))
 	if err != nil {
 		t.Fatalf("SendApproval() live error = %v", err)
 	}

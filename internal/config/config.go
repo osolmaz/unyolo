@@ -12,9 +12,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/osolmaz/brokerkit/secretfile"
 )
 
 // MinSecretBytes is the minimum accepted client secret length.
@@ -305,23 +308,18 @@ func parseSecretsFile(path string) ([]Client, error) {
 }
 
 func parseNamedSecretsFile(path string, envSuffix string) ([]Client, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- operator-configured path from the environment.
+	secrets, err := secretfile.Parse(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", brokerEnvName(envSuffix), err)
 	}
-	var clients []Client
-	for lineNumber, line := range strings.Split(string(data), "\n") {
-		client, ok, err := parseSecretLine(line)
-		if err != nil {
-			return nil, fmt.Errorf("%s line %d: %w", brokerEnvName(envSuffix), lineNumber+1, err)
-		}
-		if !ok {
-			continue
-		}
-		clients = append(clients, client)
+	names := make([]string, 0, len(secrets))
+	for name := range secrets {
+		names = append(names, name)
 	}
-	if len(clients) == 0 {
-		return nil, fmt.Errorf("%s contains no identities", brokerEnvName(envSuffix))
+	slices.Sort(names)
+	clients := make([]Client, 0, len(names))
+	for _, name := range names {
+		clients = append(clients, Client{Name: name, Secret: secrets[name]})
 	}
 	return clients, nil
 }
@@ -332,20 +330,6 @@ func brokerEnv(getenv func(string) string, suffix string) string {
 
 func brokerEnvName(suffix string) string {
 	return canonicalEnvPrefix + suffix
-}
-
-func parseSecretLine(line string) (Client, bool, error) {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-		return Client{}, false, nil
-	}
-	name, secret, found := strings.Cut(trimmed, "=")
-	name = strings.TrimSpace(name)
-	secret = strings.TrimSpace(secret)
-	if !found || name == "" || secret == "" {
-		return Client{}, false, errors.New("expected `name = secret`")
-	}
-	return Client{Name: name, Secret: secret}, true, nil
 }
 
 func stringOr(value, fallback string) string {

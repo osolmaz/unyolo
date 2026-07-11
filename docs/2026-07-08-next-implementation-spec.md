@@ -83,23 +83,25 @@ brokerkit.
 
 ## Current Cutover Status
 
-`brokerkit/auth` is now adopted. `internal/auth` is only a small hf-broker
-adapter that preserves the existing server API while delegating bearer/basic
-shared-secret authentication to brokerkit with hf-broker's 32-byte secret
-minimum.
+`brokerkit/controlplane` and `brokerkit/auth` now assemble the canonical grant
+store, client authentication, operator authentication, operator API, audit
+wiring, and approval-channel decisions. The old `internal/auth` adapter has
+been deleted. Named client and operator credential files use
+`brokerkit/secretfile`; hf-broker retains only environment loading and its
+32-byte credential policy.
 
 `brokerkit/grants` is now adopted for the durable grant lifecycle. Pending and
 active state, expiry, use budgets, reservation recovery, idempotency, decision
 token verification, notification claims, editable message references, and
-delivery revisions all run through brokerkit. `internal/grants` is an HF-only
-field adapter for target, attr, mode, and API response conversion; it contains
-no second state machine.
+delivery revisions all run through brokerkit. The old `internal/grants` store
+adapter has been deleted. `internal/hfgrant` now performs only validated HF
+target, attr, mode, and API-boundary conversion.
 
 `brokerkit/notify/telegram` is now adopted for Telegram send, callback polling,
 configured-chat filtering, and status editing. Durable pending, active, used,
 retained, and expired message updates come from `brokerkit/grants` and survive
 process restart. `internal/approval` keeps only HF-specific approval text and
-decision mapping.
+operator-inbox presentation; generic decision mapping lives in Brokerkit.
 
 Ambiguous Telegram sends retain their durable brokerkit claim. Concurrent and
 post-restart callers fail promptly, retry is blocked until the original lease
