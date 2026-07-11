@@ -55,8 +55,8 @@ brokerkit repository
 All current Go repositories are at `v0.1.0`, already depend on the same
 BrokerKit runtime, and are about to change together for the stable operator V1
 contract. Keeping them separate would require coordinated pull requests,
-temporary replace directives or pre-releases, duplicated fixtures, and a
-compatibility matrix for changes that should be atomic.
+temporary replace directives or pre-releases, duplicated fixtures, and
+cross-repository coordination for changes that should be atomic.
 
 The monorepo provides:
 
@@ -83,9 +83,9 @@ execution plans, or privileged runtime state.
 - A new `sudo-broker` implementation built on BrokerKit from its first commit.
 - A new OpenClaw plugin that aggregates conforming brokers and uses OpenClaw's
   existing approval and channel infrastructure.
-- Shared conformance, compatibility, integration, generation, CI, release, and
+- Shared conformance, integration, generation, CI, release, and
   security tooling.
-- Existing broker documentation, release notes, and migration records.
+- Existing broker documentation, release notes, and consolidation provenance.
 
 ### Excluded
 
@@ -157,14 +157,14 @@ brokerkit/
       ui/
 
   integration/
-    compatibility/
+    conformance/
     fixtures/
     openclaw/
     scripts/
 
   docs/
     adr/
-    migration/
+    cutover/
     security/
 
   .github/
@@ -175,7 +175,7 @@ The existing provider-neutral Go packages stay at their current import paths
 under `github.com/osolmaz/brokerkit`. Moving them merely to make the tree look
 more symmetrical would create churn without improving the boundary.
 
-Provider executables use the root Go module after migration. Their internal
+Provider executables use the root Go module after consolidation. Their internal
 packages move under:
 
 - `github.com/osolmaz/brokerkit/brokers/huggingface/internal/...`
@@ -269,7 +269,7 @@ History must be retained without squashing. The import procedure is:
 1. Freeze each source repository at a recorded commit and ensure its required
    checks pass there.
 2. Record source commit, source `v0.1.0` tag, release assets, open issues, and
-   default-branch protection in a migration ledger.
+   default-branch protection in a import ledger.
 3. Scan each source tree and history for secrets before importing it.
 4. Add each source as a temporary remote and fetch its default branch with
    `--no-tags`; all three repositories currently have a conflicting `v0.1.0`
@@ -283,7 +283,7 @@ History must be retained without squashing. The import procedure is:
    `git merge-base --is-ancestor` before restructuring.
 8. Remove temporary remotes after verification.
 
-Illustrative commands, to be executed on a dedicated migration branch after
+Illustrative commands, to be executed on a dedicated consolidation branch after
 fresh backups and dry runs:
 
 ```sh
@@ -300,44 +300,43 @@ Do not reuse the ambiguous imported `v0.1.0` tag names. Record them in the
 ledger and use component-qualified tags for future executable/plugin releases.
 The existing root `v0.1.0` remains the historical BrokerKit library tag.
 
-## Source Repository Retirement
+## Source Repository Cutover
 
-Do not archive `hf-broker` or `gh-broker` immediately after import. Use a
-two-stage retirement:
+Freeze `hf-broker` and `gh-broker` when the consolidation branch starts. Do
+not merge new feature work into the source repositories after the recorded
+tips. At the single cutover, publish the complete monorepo release, redirect
+issue and development links, disable source workflows, and archive both source
+repositories read-only in the same coordinated operation.
 
-1. During a validation window, make the monorepo authoritative, disable source
-   repo release workflows, and add prominent moved-development notices while
-   retaining issue access and existing release downloads.
-2. After the first successful monorepo release and rollback exercise, archive
-   the source repositories read-only.
-
-Before archiving:
+Before the cutover:
 
 - migrate or close open issues with explicit destination links;
 - update repository descriptions and README headers;
 - preserve historical releases and checksums;
 - update documentation, installers, automation, and dependency links;
 - transfer security advisories privately if any exist;
-- confirm Go consumers can still fetch old tagged module versions; and
-- protect or archive rather than delete the repositories.
+- confirm historical tagged source and release artifacts remain readable; and
+- archive rather than delete the repositories.
 
-Old module versions such as `github.com/osolmaz/hf-broker@v0.1.0` remain
-available from the archived repositories. New code uses monorepo import paths,
-but binary and configuration names remain stable.
+Historical module versions such as `github.com/osolmaz/hf-broker@v0.1.0`
+remain obtainable from the archived repositories, but they are not supported
+by the new system. New code uses monorepo import paths. Canonical executable
+names remain `hf-broker`, `gh-broker`, and `sudo-broker`.
 
-## Go Module Migration
+## Go Module Cutover
 
-Use a staged transition so history import and code movement are independently
-reviewable.
+Use dependency-ordered commits on the one cutover branch so history import and
+code movement remain independently reviewable without creating an intermediate
+supported deployment.
 
-### Import stage
+### Import commits
 
 Keep each imported source tree intact, including its nested `go.mod`, tests,
-docs, and workflows. Add a temporary root `go.work` only on the migration
+docs, and workflows. Add a temporary root `go.work` only on the consolidation
 branch if needed to run all three modules together. Do not publish from this
 intermediate layout.
 
-### Convergence stage
+### Convergence commits
 
 - Move broker commands and internal packages into their target directories.
 - Merge required dependencies into the root `go.mod` and `go.sum`.
@@ -379,14 +378,14 @@ security model.
 
 ## OpenClaw Plugin Packaging
 
-The plugin lives at `plugins/openclaw` and is independently publishable. The
-working package name is `openclaw-brokerkit`, subject to a final live registry
-and OpenClaw ecosystem check immediately before first publication. Do not
-create an npm organization solely for this plugin.
+The plugin lives at `plugins/openclaw` and is independently publishable as
+`openclaw-brokerkit`. The name returned npm registry 404 on 2026-07-11; claim it
+during the coordinated release and stop rather than silently rename if it is no
+longer available. Do not create an npm organization solely for this plugin.
 
 The plugin package includes:
 
-- OpenClaw manifest and compatibility metadata;
+- OpenClaw manifest and minimum-host metadata;
 - configuration schema for a list of BrokerKit sources;
 - SecretRef declarations for operator credentials;
 - broker list/watch/decision client and reconciliation loop;
@@ -394,36 +393,38 @@ The plugin package includes:
 - portable approval projections for existing OpenClaw channel delivery; and
 - tests with the BrokerKit fake server and conformance fixtures.
 
-If OpenClaw still lacks a provider-neutral background approval SDK method, make
-one narrow upstream contribution such as `api.runtime.approvals.request(...)`
-that feeds its existing approval manager. Keep all BrokerKit-specific behavior
-in this repository. The plugin may use an existing tab surface until a generic
-settings-popover host seam exists, but the target UX remains a compact element
-tied to Settings rather than a permanent full-height side panel.
+Implement the provider-neutral OpenClaw host seams in
+`docs/2026-07-11-openclaw-host-seams-plan.md` before releasing the plugin. Keep
+all BrokerKit-specific behavior in this repository. The production plugin uses
+the compact Settings popover only; it has no tab or side-panel fallback.
 
 The plugin is released through npm and/or ClawHub only after its exact package
-name, manifest contract, host compatibility range, provenance, and install flow
+name, manifest contract, minimum host range, provenance, and install flow
 are validated against a pinned OpenClaw version.
 
-## Configuration And State Compatibility
+## Configuration And State Cutover
 
-Consolidation must not force deployed users to rename binaries, services,
-configuration directories, environment variables, or state directories.
+This is a clean pre-1.0 break. The monorepo release supports only its new
+configuration and V1 state schemas.
 
-Preserve:
+- Keep the executable product names `hf-broker`, `gh-broker`, and
+  `sudo-broker`; all module, installer, release, and repository URLs switch to
+  the monorepo.
+- Do not parse old config keys, operator routes, cursors, grants, notification
+  records, or provider-plan files.
+- Do not add aliases, conversion commands, dual reads, dual writes, or state
+  backfills.
+- Before cutover, revoke or allow all existing authority to expire, stop the
+  old brokers, archive their state/audit directories for forensic retention,
+  and initialize fresh V1 state.
+- Validate new configuration offline before stopping the old deployment.
+- If any readiness or smoke check fails, do not expose the new listeners.
+  Repair the complete new deployment and rerun the cutover.
+- Never run an old binary against new state or a new binary against old state.
 
-- binary names `hf-broker`, `gh-broker`, and `sudo-broker`;
-- existing service names and executable flags unless separately deprecated;
-- existing `~/.config/<broker>` and system configuration paths;
-- existing scope, secret, grant, audit, and notification state formats;
-- existing health endpoints and authenticated route behavior; and
-- legacy operator routes during the documented V1 compatibility window.
-
-Release archives and installer URLs will change repository ownership. Provide a
-versioned installer migration with checksum verification, an explicit old/new
-URL matrix, and a rollback command. An upgrade must stop only its target broker,
-preserve its state, replace its binary atomically, run readiness checks, and
-restore the previous binary on failure.
+Release archives and installer URLs switch directly to qualified monorepo
+artifacts with checksum verification. Documentation gives one clean install
+procedure, not an old/new URL matrix.
 
 The OpenClaw plugin stores only safe mappings, cursors, and reconciliation
 state. Broker credentials remain SecretRefs resolved server-side. The browser
@@ -481,20 +482,20 @@ Artifacts release independently from the same tested commit:
 
 A component tag must point to a commit where the full required matrix is green.
 Release workflows dispatch only for the matching qualified tag and build from
-fixed paths. Every release includes checksums, source commit, protocol
-compatibility, upgrade/rollback notes, and generated provenance. Privileged or
+fixed paths. Every release includes checksums, source commit, supported
+API/host versions, cutover notes, and generated provenance. Privileged or
 provider credentials are never available to ordinary build jobs.
 
-Do not force all artifacts to share a version. Maintain a generated
-compatibility table that states which operator wire versions and OpenClaw host
-ranges each artifact supports.
+Do not force all artifacts to share a version. Maintain a generated artifact
+table that identifies the one supported operator wire version and minimum
+OpenClaw host for the complete cutover release.
 
 ## Documentation Consolidation
 
 - Keep the root README short and user-oriented, with links to each component.
 - Retain imported provider docs under their provider directories first; dedupe
   only after provenance is verified.
-- Move shared architecture, protocol, security, migration, and conformance
+- Move shared architecture, protocol, security, cutover, and conformance
   documents to root `docs/`.
 - Replace contradictory copies with small redirect documents rather than
   silently deleting historical decisions.
@@ -506,122 +507,33 @@ ranges each artifact supports.
 - Record topology, dependency direction, runtime isolation, schema ownership,
   and release naming as ADRs before implementation diverges.
 
-## Migration Phases
+## Implementation Order For The Single Cutover
 
-### Phase 0: approve and inventory
+The following are dependency-ordered commits on one branch and one coordinated
+release. They are not supported intermediate deployments:
 
-- Approve this topology and the universal platform plan.
-- Freeze source SHAs and create the migration ledger.
-- Inventory open issues, releases, workflows, branch rules, docs, module paths,
-  installers, deployment references, and external consumers.
-- Run all current repository checks and record known failures without fixing
-  unrelated behavior during import.
-- Back up Git refs and verify each repository can be reconstructed.
+1. approve topology and companion plans; freeze source SHAs; record the import
+   ledger, issues, releases, workflows, docs, module paths, and deployments;
+2. back up Git refs, run source checks/secret scans, and add destination ADRs,
+   ownership rules, CI skeleton, and dependency-direction checks;
+3. import HF and GH histories sequentially without squashing and verify
+   reachability, blame, file counts, tags, and intact source tests;
+4. rehome commands/internal packages, merge the root Go module, normalize the
+   toolchain, delete nested modules, and remove duplicated common runtime code;
+5. implement the complete V1 protocol/runtime plus HF/GH canonical plans and
+   provider conformance;
+6. implement the provider-neutral OpenClaw host seams and independent plugin;
+7. implement the exact-command sudo broker and isolated privilege tests;
+8. build fresh configs/state, run the full Go/TypeScript/browser/channel/live
+   matrix, and produce all qualified artifacts from the same green commit;
+9. revoke/expire existing authority, stop old deployments, archive old state,
+   install and verify the complete new system, then expose listeners; and
+10. redirect development/issues and archive HF/GH source repositories.
 
-Exit gate: scope, target layout, source SHAs, history method, release names,
-and rollback owner are explicit.
-
-### Phase 1: prepare the destination
-
-- Create a dedicated consolidation branch from BrokerKit main.
-- Add ADRs, migration ledger, target CI skeleton, ownership rules, and temporary
-  compatibility scripts.
-- Update root instructions for monorepo-scoped provider code without weakening
-  secret or fail-closed requirements.
-- Add secret and dependency-direction checks before importing history.
-
-Exit gate: destination controls can detect the main risks introduced by import.
-
-### Phase 2: import histories unchanged
-
-- Import HF and GH sequentially with no-squash history merges.
-- Commit each import as an independently reviewable slice.
-- Verify commit reachability, file counts, representative blame history,
-  source tags in the ledger, and source test commands.
-- Do not mix source refactoring into history-import commits.
-
-Exit gate: both original tips are reachable and their intact trees test as they
-did before import.
-
-### Phase 3: converge the Go workspace
-
-- Rehome commands/internal packages and update imports.
-- Merge modules into the root module and normalize toolchain/dependencies.
-- Centralize common CI and release scripts without weakening provider checks.
-- Keep binary/config/state compatibility and add migration tests.
-- Delete duplicated generic runtime code only when shared BrokerKit equivalents
-  pass provider tests.
-
-Exit gate: one root `go.mod`, no local replaces, all three current Go suites and
-cross-broker conformance pass, and HF/GH binaries are behaviorally compatible.
-
-### Phase 4: stabilize protocol V1
-
-- Implement the universal platform plan's schema, handler, client, lifecycle,
-  presenter, idempotency, cursor, and conformance work.
-- Cut over HF and GH in the same commits as contract changes.
-- Add generated TypeScript bindings and mixed-version fixtures.
-
-Exit gate: both brokers expose identical common operator behavior while keeping
-different canonical provider plans and executors.
-
-### Phase 5: add the OpenClaw plugin
-
-- Create the private root JS workspace and plugin package.
-- Add source registration, SecretRefs, cursor persistence, reconciliation, UI,
-  and OpenClaw approval projection.
-- Make any required provider-neutral OpenClaw SDK contribution separately.
-- Test Gateway UI and multiple native channels without channel-specific code in
-  the plugin.
-
-Exit gate: a configured HF or GH request can be decided from the compact Gateway
-UI and at least one existing OpenClaw channel, with the broker remaining
-authoritative after restarts and lost responses.
-
-### Phase 6: add sudo broker
-
-- Turn the existing sudo model into a threat model and narrow V1 product scope.
-- Implement structured command catalog and exact execution plans first.
-- Add isolated privilege-transition tests and fail-closed host diagnostics.
-- Defer interactive shells until their stronger identity-grant semantics have
-  separate approval and audit acceptance criteria.
-
-Exit gate: `sudo-broker` is a separate least-privileged process, passes common
-conformance, cannot execute an unregistered or modified plan, and cannot expose
-privilege to other monorepo artifacts.
-
-### Phase 7: release and retire source repositories
-
-- Produce release candidates for HF and GH from the monorepo.
-- Exercise upgrade and rollback on representative existing state.
-- Publish qualified component releases and verify install paths/checksums.
-- Redirect development, migrate issues, observe the validation window, then
-  archive old repositories.
-
-Exit gate: production artifacts come from the monorepo, rollback has been
-tested, old releases remain obtainable, and no active automation points to the
-retired source repositories.
-
-## Rollback Strategy
-
-Every phase has a repository rollback and a deployment rollback.
-
-- Before source repos are archived, repository rollback resumes development at
-  the frozen source tips and discards the consolidation branch.
-- After merge but before monorepo releases, revert topology commits without
-  changing deployed artifacts.
-- After a monorepo broker release, deployment rollback restores the last
-  source-repo binary while retaining compatible state; migration tests must
-  prove this before publication.
-- Additive state fields must round-trip safely through old binaries or degrade
-  by revoking/denying unsupported authority rather than granting it.
-- The OpenClaw plugin can be disabled independently; disabling it does not
-  mutate broker grants or delete broker state.
-- `sudo-broker` has no migration rollback until it exists; its first release is
-  additive and independently removable.
-
-Do not archive source repositories, remove legacy release assets, or publish
-irreversible state migrations until the validation window passes.
+If any required check fails before listeners are exposed, abort the cutover and
+keep the old deployment stopped or isolated while the complete new system is
+repaired. Do not deploy a partial monorepo, mix old/new state, or add temporary
+bridges.
 
 ## Principal Risks And Mitigations
 
@@ -629,15 +541,15 @@ irreversible state migrations until the validation window passes.
 | --- | --- |
 | Provider logic leaks into shared runtime | Dependency checks, scoped instructions, provider-neutral conformance fake |
 | Monorepo mistaken for one security boundary | Separate binaries, credentials, state, listeners, threat models, and deploy tests |
-| Git history or tags lost | No-squash imports, migration ledger, ancestry/blame verification, archived sources |
+| Git history or tags lost | No-squash imports, import ledger, ancestry/blame verification, archived sources |
 | Root Go module increases coupling | Internal provider packages, protocol boundary for consumers, path-aware releases |
 | Shared change breaks every broker | Full matrix on shared/protocol changes and component release gates |
 | Plugin becomes a second authority store | Broker-authoritative reconciliation and no independent timeout denial |
 | OpenClaw internals copied into plugin | Use public plugin APIs; contribute one provider-neutral seam upstream if required |
-| npm naming creates premature structure | One provisional unscoped plugin package; no organization or placeholders |
+| npm naming creates premature structure | One exact unscoped plugin package; no organization or placeholders |
 | Sudo privileges spread to other components | Separate process/build/deploy, exact plans, minimal socket access, isolated tests |
-| Old installs stop updating | Stable binary/config names, installer URL migration, retained releases, rollback |
-| Consolidation mixes refactor with import | Separate import commits and explicit phase gates |
+| Old deployment leaks into the new system | Fresh V1 state, no parsers/aliases/dual writes, stopped old listeners |
+| Consolidation mixes refactor with import | Separate import commits inside the single branch and exact verification gates |
 
 ## Acceptance Criteria
 
@@ -649,36 +561,37 @@ Consolidation is complete only when:
   `replace` directives;
 - shared packages contain no Hugging Face, GitHub, or sudo execution branches;
 - each broker remains a separate process with separate credentials and state;
-- binary names and supported configuration/state paths remain compatible;
+- canonical binary names remain while only new configuration/state is loaded;
 - common changes run conformance against every broker;
 - provider-only changes can release only that provider artifact;
 - the OpenClaw plugin is independently installable and contains no
   channel-specific or provider-execution code;
 - browser and channel decisions reach the same broker activation validator;
-- the plugin can be disabled or rolled back without changing broker authority;
+- disabling the plugin does not change broker authority;
 - sudo execution cannot be reached from another broker or plugin process;
-- release tags, checksums, provenance, compatibility, upgrade, and rollback
+- release tags, checksums, provenance, supported-version, and cutover
   documentation are generated and verified; and
-- source repositories are archived only after a successful monorepo release
-  and exercised rollback.
+- source repositories are archived as the final action of the successful
+  coordinated cutover.
 
-## First Implementation Pull Requests
+## Commit Order Inside The Cutover Branch
 
-Keep early reviews small and ordered:
+Keep coherent commits ordered inside the one implementation branch:
 
-1. ADRs, migration ledger, monorepo instructions, and import safety checks.
+1. ADRs, import ledger, monorepo instructions, and import safety checks.
 2. No-squash HF history import, unchanged under its prefix.
 3. No-squash GH history import, unchanged under its prefix.
 4. Root Go module convergence and HF build/test cutover.
 5. GH build/test cutover and unified conformance matrix.
-6. Qualified component release workflows and installer migration tests.
+6. Qualified component release workflows and clean-install tests.
 7. Canonical protocol artifacts and generated TypeScript fixtures.
 8. OpenClaw plugin scaffold and fake-broker integration.
 9. Broker-to-OpenClaw approval projection, reconciliation, and compact UI.
 10. Sudo threat model and structured-command MVP.
 
-Do not combine history import, module convergence, protocol V1 behavior, plugin
-implementation, and source-repository archival into one pull request.
+The complete branch is reviewed and cut over as one program. Source-repository
+archival happens only after every commit's combined result passes the final
+gate.
 
 ## Explicit Decisions
 
@@ -689,11 +602,12 @@ implementation, and source-repository archival into one pull request.
 - Keep provider packages internal and provider executors out of shared code.
 - Keep every broker as a separate deployed security boundary.
 - Use one private JavaScript workspace and one independently released plugin.
-- Start with the unscoped working name `openclaw-brokerkit`; do not create an
+- Use the unscoped name `openclaw-brokerkit`; do not create an
   npm organization merely for package symmetry.
 - Use component-qualified tags for binaries/plugins and the root `vX.Y.Z` tags
   for the BrokerKit Go module.
 - Retain and later archive source repositories; never delete them.
-- Preserve runtime names and state paths through consolidation.
-- Require staged, reversible migration with an exercised rollback before
-  retiring old release paths.
+- Preserve canonical executable product names, but initialize only fresh V1
+  state.
+- Require one fresh-state coordinated cutover; no partial or mixed deployment
+  is supported.

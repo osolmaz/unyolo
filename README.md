@@ -103,6 +103,10 @@ in [docs/CUTOVER_STATUS.md](docs/CUTOVER_STATUS.md).
 The operator backend and trusted web-host integration contract is documented
 in [docs/OPERATOR_INBOX.md](docs/OPERATOR_INBOX.md).
 
+The complete self-contained plan for the BrokerKit monorepo, provider brokers,
+sudo broker, and independent OpenClaw plugin starts at
+[docs/2026-07-11-implementation-handoff.md](docs/2026-07-11-implementation-handoff.md).
+
 ## License
 
 [MIT](LICENSE)

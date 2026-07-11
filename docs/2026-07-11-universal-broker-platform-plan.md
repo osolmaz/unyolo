@@ -98,7 +98,7 @@ This work does not create:
 - OpenAPI and JSON Schema source artifacts;
 - Go client/server helpers and generated-client test fixtures;
 - protocol and security conformance suites; and
-- compatibility, deprecation, and release rules.
+- version, cutover, and release rules.
 
 ### Every provider broker owns
 
@@ -204,10 +204,9 @@ only durable committed uses and advances independently of `revision`.
 `requested_duration_seconds` and `requested_max_uses` are immutable. Approval
 stores effective bounds separately: `active_expires_at` carries effective
 duration, and `granted_max_uses` carries effective uses. The durable grant model
-therefore needs additive original-request fields; it must no longer overwrite
-the only copy of the requested values during narrowing. Existing retained
-records that cannot prove their original bounds are served only on the legacy
-route or deliberately expired/revoked during cutover, never guessed into V1.
+therefore stores original-request fields and never overwrites them during
+narrowing. Cutover starts with fresh V1 state after all existing authority has
+been revoked or allowed to expire; unverifiable retained records are not read.
 
 Keeping usage counters out of `revision` is a security and liveness invariant.
 An agent must not be able to starve emergency revocation by continuously
@@ -311,9 +310,9 @@ approval bounds. This removes duplicate sources of truth.
 The API version identifies the wire contract, not a broker release or provider
 API. V1 resources do not repeat it in every body because the route/media type
 already selects the schema. An unsupported major version is a hard registration
-failure. Additive behavior must first be representable without changing the
-meaning of existing required fields; otherwise publish `/v2` and serve both
-versions through a documented migration window.
+failure. Additive behavior must be representable without changing the meaning
+of existing required fields. A future breaking wire change requires another
+coordinated whole-system cutover; one process does not serve two majors.
 
 Provider adapters version independently of the common protocol. A new GitHub
 operation or Hugging Face transfer mode does not require a Brokerkit protocol
@@ -346,9 +345,9 @@ supervisor can probe them, but they return status only and no version, broker,
 dependency, path, credential, or provider detail. Conformance must pin this
 split so brokers do not diverge.
 
-The existing unversioned `/api/grants` routes remain only during a measured
-consumer migration. The V1 implementation must call the same `operatorinbox`
-and `grants.Store`; it is a new wire adapter, not another lifecycle.
+Only the versioned V1 operator routes are mounted after cutover. Existing
+internal lifecycle/store packages may be reused, but no unversioned operator
+handler, parser, route alias, or dual-write path remains reachable.
 
 ## Queries And Pagination
 
@@ -537,15 +536,12 @@ temporarily_unavailable
 internal_error
 ```
 
-The specification must pin the legacy-to-V1 adapter mapping so handlers cannot
-drift. Initial mappings include `invalid_cursor` and `invalid_query` to
-`invalid_request`, `invalid_command` to `invalid_request` or
-`constraint_exceeded` according to the failed rule, `invalid_state` to
-`invalid_transition`. The legacy successful-decision behavior—committed 200
-plus the safe audit-export diagnostic—is retained. Legacy `audit_failed` 500
-has no V1 equivalent: an uncommitted failed decision returns its normally
-mapped decision error regardless of audit-export outcome, while export failure
-is surfaced only through the diagnostic and metrics.
+Every internal failure maps once into the closed V1 error vocabulary.
+`invalid_cursor`, `invalid_query`, and malformed commands map to
+`invalid_request`; an exceeded approval bound maps to `constraint_exceeded`;
+an invalid state transition maps to `invalid_transition`. A committed decision
+returns success even if post-commit audit export fails; export failure is
+surfaced only through the safe diagnostic and metrics.
 
 `current` is allowed only for a revision conflict after operator authentication
 and contains only the safe request resource. Provider upstream failures map to
@@ -747,8 +743,7 @@ prove:
 - approval can narrow but never widen duration or uses;
 - decisions cannot replace provider state;
 - stable pagination and filter-bound opaque cursors;
-- omission of `next_cursor` on terminal V1 pages even if the legacy internal
-  page type still carries a cursor value;
+- omission of `next_cursor` on terminal V1 pages;
 - first-page event-cursor recovery across multi-page concurrent mutation;
 - SSE reconnect, duplication, retention, and cursor expiry;
 - unknown event-kind recovery;
@@ -759,7 +754,7 @@ prove:
 - process restart preserves decisions, idempotency, events, and cursors.
 - revocation succeeds while an agent continuously reserves and commits uses;
 - presenter fallback cannot change actions or approval bounds; and
-- mixed-version state round trips cannot create executable authority.
+- a fresh cutover state cannot load any unsupported record shape.
 
 Adversarial fixtures should attempt HTML/script injection, control characters,
 oversized facts, secret-shaped values, credential reuse, stale decisions,
@@ -801,123 +796,55 @@ plans, or provider credentials.
 - SSE loss falls back to cursor resume, then bounded refresh on expiry.
 - One unhealthy broker remains visible as stale/unavailable while others work.
 - The hub never synthesizes approval success from cached state.
-- There is no distributed rollback across brokers because one decision targets
+- There is no distributed transaction across brokers because one decision targets
   exactly one source and one request.
 
-## Implementation Phases
+## Implementation Order For The Single Cutover
 
-### Phase 0: freeze decisions and fixtures
+The following work is completed in dependency order on one implementation
+branch. None of the intermediate commits is a supported deployment:
 
-- Approve this ownership boundary and V1 minimal resource.
-- Record an ADR for host-assigned source identity, no browser extensions, and
-  revision as the plan-binding concurrency primitive.
-- Record that revision excludes agent-driven counters and choose the
-  authenticated-principal plus optional `on_behalf_of` attribution model.
-- Capture current unversioned wire fixtures from Brokerkit, HF, and GH.
-- Inventory current consumers and their supported route shapes.
+1. approve the ownership boundary, V1 resource, revision semantics, host source
+   identity, attribution, and canonical plan ownership in ADRs;
+2. add canonical OpenAPI, closed JSON Schemas, examples, error mappings, Go wire
+   types, protocol discovery, and generation/fixture drift checks;
+3. implement fresh V1 durable request fields, same-store decision idempotency,
+   and one `DecisionService` containing provider activation validation;
+4. mount only V1 routes, implement filter-bound list cursors, atomic first-page
+   `event_cursor`, SSE, readiness, the Go source client, and fake;
+5. add `RunOperatorV1`, fuzzing, race/restart/mutation/coverage/leak tests,
+   threat model, and partial-source failure tests;
+6. implement and test HF, GH, and sudo canonical plan binding/presentation on
+   the same contract;
+7. implement the OpenClaw host seams and independent plugin described by the
+   companion plans;
+8. start from fresh state, run the complete broker/plugin/browser/channel/live
+   matrix, and build all release artifacts from the same green commit; and
+9. replace the old deployment atomically with the complete V1 system and
+   archive the source repositories.
 
-Exit gate: no unresolved question changes request identity, decision authority,
-revision meaning, attribution, or canonical plan ownership.
+The implementation is releasable only when every item and acceptance criterion
+passes. There is no dual-route, dual-state, or mixed-source operating window.
 
-### Phase 1: publish V1 artifacts
-
-- Add OpenAPI, closed JSON Schemas, examples, and error mapping.
-- Add protocol discovery.
-- Add V1 Go wire types separate from durable storage structs.
-- Add schema validation and fixture drift tests.
-- Define normative risk meanings and all byte/list/body limits.
-- Add original requested-bound fields and same-store decision-idempotency
-  records as additive durable fields. Do not rewrite/backfill state files.
-
-Exit gate: malformed and hostile fixtures are deterministic; storage changes
-are additive-only with no rewrite/backfill, and older binaries load new state
-without creating authority.
-
-### Phase 2: V1 handler and client
-
-- Mount versioned routes over the existing `operatorinbox.Service`.
-- Add request projection naming without changing canonical grants.
-- Add decision idempotency records and replay behavior.
-- Add one `DecisionService` for operator HTTP and every approval channel, with
-  the provider activation validator inside that common path.
-- Remove redundant `expected_status` from V1 while retaining legacy parsing on
-  legacy routes.
-- Make opaque list cursors bind filters/order and capture `event_cursor` under
-  the cursor-less first-page lock for race-free list-then-watch startup.
-- Add readiness and protocol discovery.
-- Implement the V1 `Source` HTTP client and fake.
-
-Exit gate: legacy and V1 routes mutate the same store and emit the same durable
-event sequence; cross-route race tests pass; revocation succeeds under
-continuous use churn; and no first-party transport reaches a transition except
-through `DecisionService`.
-
-### Phase 3: conformance and security
-
-- Add `RunOperatorV1` and require it in Brokerkit itself.
-- Add fuzzing for JSON, cursors, SSE framing, ids, and decision bodies.
-- Add race, restart, mutation, coverage, and leak tests.
-- Add host-registry and partial-failure reference tests.
-- Produce a threat model and security review checklist.
-
-Exit gate: all common acceptance tests pass with a fake provider that has no HF
-or GitHub concepts.
-
-### Phase 4: provider adoption
-
-- Release a Brokerkit version containing the frozen V1 contract.
-- Upgrade `hf-broker`, run conformance, and verify provider plan binding.
-- Upgrade `gh-broker`, run conformance, and verify provider plan binding.
-- Run mixed-version host tests with one legacy and one V1 source.
-- Run new-binary -> old-binary -> new-binary state-file round trips. Document
-  that an old save may discard unknown idempotency/request-bound fields; a
-  later retry safely degrades to conflict and unsupported authority is revoked.
-
-Exit gate: both providers expose identical common wire behavior while their
-provider tests demonstrate different execution semantics.
-
-### Phase 5: trusted-host integration
-
-- Generate/check a TypeScript client or equivalent schema bindings.
-- Add explicit source registry, cursor persistence, health, aggregation, and
-  safe browser projection in the host repository.
-- Integrate the compact settings-triggered UI against the normalized model.
-- Test one source down, stale revisions, lost decision responses, cursor expiry,
-  browser tampering, and credential non-disclosure.
-
-Exit gate: adding a third conforming broker requires registration and provider
-implementation only, with no provider conditional in the common UI.
-
-### Phase 6: migration and cleanup
-
-- Observe V1/legacy usage and errors through a documented window.
-- Move all trusted consumers to V1.
-- Remove legacy route support in the next breaking Brokerkit release.
-- Remove compatibility fixtures only after retained deployments have an upgrade
-  path and rollback documentation.
-
-Exit gate: one supported operator contract, no duplicate lifecycle, and no
-provider-specific common code.
-
-## Release And Compatibility Policy
+## Release And Version Policy
 
 - Freeze schema fixtures before the first V1 release candidate.
 - Use semantic versioning for Brokerkit releases independently of wire
   `api_version`.
 - Treat a required field, changed enum meaning, changed transition, changed
   error mapping, or changed idempotency/cursor behavior as a wire major change.
-- Treat new event kinds as compatible only because clients must advance unknown
-  kinds safely.
-- Do not delete a served major until every first-party broker and trusted host
-  has passed mixed-version upgrade and rollback tests.
-- Publish a compatibility matrix for Brokerkit, hf-broker, gh-broker, and host
-  versions.
+- Treat new event kinds as additive only because clients advance unknown kinds
+  safely while refreshing the referenced request.
+- Serve one operator wire major. A breaking change is another coordinated
+  cutover, not a second concurrently served route family.
+- Publish an artifact matrix that identifies the single BrokerKit API and
+  minimum OpenClaw host version supported by each complete release.
 
 ## Monorepo Work Breakdown
 
 The components below are logical ownership boundaries inside the focused
-BrokerKit monorepo. The history-preserving repository migration, target layout,
-release model, and rollback procedure are defined in
+BrokerKit monorepo. The history-preserving repository consolidation, target
+layout, release model, and cutover procedure are defined in
 `docs/2026-07-11-monorepo-consolidation-plan.md`.
 
 ### Brokerkit
@@ -926,17 +853,17 @@ release model, and rollback procedure are defined in
 - versioned handler/client/fake;
 - decision idempotency storage;
 - request projection and safe presentation rules;
-- cursor binding and event compatibility;
+- cursor binding and event behavior;
 - conformance, fuzzing, threat model, and release documentation;
 - optional reference registry/aggregation primitives; and
-- legacy migration instrumentation.
+- cutover validation and release instrumentation.
 
 ### hf-broker
 
 - Brokerkit upgrade and V1 mount;
 - HF canonical plan validation and internal digest/audit binding;
 - HF presenter, risk, and safe facts;
-- HF error mapping, conformance, live smoke, and rollback; and
+- HF error mapping, conformance, and live smoke; and
 - no movement of token, Hub, Router, Git/LFS/Xet, mirror, or bucket logic.
 
 ### gh-broker
@@ -944,13 +871,13 @@ release model, and rollback procedure are defined in
 - Brokerkit upgrade and V1 mount;
 - GitHub canonical plan validation and internal digest/audit binding;
 - GitHub presenter, risk, and safe facts;
-- GitHub error/rate-limit mapping, conformance, live smoke, and rollback; and
+- GitHub error/rate-limit mapping, conformance, and live smoke; and
 - no movement of App, installation, Git, REST/GraphQL, PR, webhook, ruleset, or
   branch-protection logic.
 
 ### sudo-broker
 
-- new implementation on the V1 contract with no legacy control plane;
+- new implementation on the V1 contract with no alternate control plane;
 - exact structured plans for declared commands, bounded environment, cwd, and
   runtime;
 - separate least-privileged process and host-specific execution backends;
@@ -983,7 +910,7 @@ The platform is ready when:
 - one broker can fail, restart, rate-limit, or expire its cursor without taking
   down other brokers;
 - schema, conformance, security, race, restart, and provider tests pass;
-- mixed-version upgrade and rollback are documented and exercised; and
+- the coordinated fresh-state cutover is documented and exercised; and
 - adding provider-specific behavior changes only that broker unless a proven
   common concept is deliberately promoted into a future protocol version.
 
