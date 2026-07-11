@@ -143,4 +143,70 @@ describe("BrokerRuntime", () => {
     ]);
     await runtime.stop();
   });
+
+  it("keeps healthy sources available when another source fails discovery", async () => {
+    const server = createServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/.well-known/brokerkit-operator") {
+        return res.end(
+          JSON.stringify({
+            api_version:
+              req.headers.authorization === "Bearer good"
+                ? "brokerkit.io/operator/v1"
+                : "brokerkit.io/operator/v2",
+          }),
+        );
+      }
+      if (req.url?.startsWith("/api/operator/v1/requests?"))
+        return res.end('{"requests":[],"event_cursor":"cursor-1"}');
+      if (req.url === "/api/operator/v1/events?cursor=cursor-1") {
+        res.setHeader("content-type", "text/event-stream");
+        return;
+      }
+      res.statusCode = 404;
+      return res.end('{"error":{"code":"not_found"}}');
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no address");
+    const endpoint = `http://127.0.0.1:${address.port}`;
+    const config = parseConfig({
+      mode: "direct",
+      brokers: [
+        brokerConfig("good", endpoint, "GOOD_SECRET"),
+        brokerConfig("bad", endpoint, "BAD_SECRET"),
+      ],
+      pollIntervalMs: 5000,
+    });
+    if (config.mode !== "direct") throw new Error("unexpected mode");
+    const runtime = new BrokerRuntime(config, {
+      resolveCredential: async (source) => source.id,
+      deliver: async () => undefined,
+      log: () => undefined,
+    });
+    await runtime.start(
+      mkdtempSync(path.join(os.tmpdir(), "brokerkit-runtime-")),
+    );
+    expect(runtime.snapshot().sources).toEqual([
+      expect.objectContaining({ id: "bad", healthy: false }),
+      expect.objectContaining({ id: "good", healthy: true }),
+    ]);
+    await runtime.stop();
+  });
 });
+
+function brokerConfig(id: string, endpoint: string, secret: string) {
+  return {
+    id,
+    label: id,
+    endpoint,
+    operatorCredential: {
+      source: "env" as const,
+      provider: "default",
+      id: secret,
+    },
+  };
+}

@@ -95,6 +95,15 @@ export function App() {
           </button>
         </div>
       )}
+      {(snapshot?.deliveryFailures ?? 0) > 0 && (
+        <div className="warning" role="status">
+          <AlertTriangle size={17} />
+          <span>
+            {snapshot?.deliveryFailures} notification
+            {snapshot?.deliveryFailures === 1 ? "" : "s"} need attention
+          </span>
+        </div>
+      )}
       <section className="sources" aria-label="Source health">
         {snapshot?.sources.map((source) => (
           <div className="source" key={source.id}>

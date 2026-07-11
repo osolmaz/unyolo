@@ -30,4 +30,5 @@ export type Snapshot = {
   sources: SourceHealth[];
   requests: SafeRequest[];
   synchronizedAt: string;
+  deliveryFailures?: number;
 };

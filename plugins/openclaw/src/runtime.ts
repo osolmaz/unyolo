@@ -77,6 +77,7 @@ export class BrokerRuntime {
         b.requested_at.localeCompare(a.requested_at),
       ),
       synchronizedAt: new Date().toISOString(),
+      deliveryFailures: this.store?.failedDeliveryCount() ?? 0,
     };
   }
   async decide(

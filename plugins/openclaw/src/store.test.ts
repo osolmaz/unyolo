@@ -40,6 +40,18 @@ describe("StateStore", () => {
     ).toBe(0o700);
     store.close();
   });
+  it("stops bounded delivery retries and exposes permanent failures", () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
+    const store = new StateStore(directory);
+    const handle = store.handle("hf", "request-1", 1, Date.now() + 60_000);
+    const subscription = store.subscribe({ channel: "test", target: "room" });
+    store.enqueue(handle);
+    for (let attempts = 0; attempts < 8; attempts += 1)
+      store.markDeliveryError(subscription.id, handle, attempts);
+    expect(store.failedDeliveryCount()).toBe(1);
+    expect(store.due(10)).toHaveLength(0);
+    store.close();
+  });
   it("removes stale revisions, expired handles, and removed source cursors", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
     const store = new StateStore(directory);

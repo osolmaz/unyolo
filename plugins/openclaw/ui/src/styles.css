@@ -81,6 +81,18 @@ h2 {
 .error span {
   flex: 1;
 }
+.warning {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid #d8bd72;
+  border-radius: 6px;
+  background: #fff8e6;
+  color: #705400;
+  font-size: 13px;
+}
 .error button {
   border: 0;
   background: transparent;

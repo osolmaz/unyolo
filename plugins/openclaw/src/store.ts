@@ -241,6 +241,14 @@ export class StateStore {
       )
       .run(boundedAttempts, Date.now() + delay, subscriptionId, handle);
   }
+  failedDeliveryCount(): number {
+    const row = this.db
+      .prepare(
+        "SELECT count(*) AS count FROM notification_delivery WHERE state='error' AND attempts>=8",
+      )
+      .get() as { count: number };
+    return row.count;
+  }
   private transaction<T>(operation: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
     try {
