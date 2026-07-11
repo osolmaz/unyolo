@@ -40,8 +40,11 @@ func validateFixture(fixture Fixture) error {
 		return errors.New("conformance runtime is required")
 	}
 	client, err := fixture.Runtime.Clients.AuthenticateHeader("Bearer " + fixture.ClientToken)
-	if err != nil || client != fixture.Request.Client {
-		return fmt.Errorf("fixture client authentication = %q, %v; want %q", client, err, fixture.Request.Client)
+	if err != nil {
+		return fmt.Errorf("fixture client authentication: %w", err)
+	}
+	if client != fixture.Request.Client {
+		return fmt.Errorf("fixture client authentication = %q; want %q", client, fixture.Request.Client)
 	}
 	return nil
 }
