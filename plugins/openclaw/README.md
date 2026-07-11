@@ -72,6 +72,10 @@ For a deployment that treats OpenClaw as untrusted, configure delegated web:
 The trusted backend implements `brokerkit.io/delegated-web/v1`, authenticates
 the human operator, and issues an in-memory decision token lasting no more than
 five minutes. The base path must be a normalized same-origin absolute path.
+The OpenClaw gateway must set `gateway.controlUi.embedSandbox` to `scripts` so
+the approval tab can run while retaining its opaque sandbox origin. Do not use
+`trusted`; delegated authentication is designed for the stricter scripts-only
+sandbox.
 
 ## Commands
 
