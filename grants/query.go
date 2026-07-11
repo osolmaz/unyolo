@@ -2,6 +2,7 @@ package grants
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -43,14 +44,16 @@ type Query struct {
 
 // Page is one deterministic, bounded grant query result.
 type Page struct {
-	Grants     []Grant `json:"grants"`
-	NextCursor string  `json:"next_cursor,omitempty"`
-	HasMore    bool    `json:"has_more"`
+	Grants      []Grant `json:"grants"`
+	NextCursor  string  `json:"next_cursor,omitempty"`
+	HasMore     bool    `json:"has_more"`
+	EventCursor string  `json:"event_cursor,omitempty"`
 }
 
 type grantCursor struct {
 	CreatedAt time.Time `json:"created_at"`
 	ID        string    `json:"id"`
+	QueryHash string    `json:"query_hash"`
 }
 
 // QueryGrants returns grants newest first, with ID as a stable tiebreaker.
@@ -75,7 +78,11 @@ func (s *Store) QueryGrants(query Query) (Page, error) {
 		}
 		s.signalNewEvents(eventSequence, data.NextEvent)
 	}
-	return buildGrantPage(data.Grants, query, cursor), nil
+	page := buildGrantPage(data.Grants, query, cursor)
+	if query.Cursor == "" && data.NextEvent > 1 {
+		page.EventCursor = encodeEventCursor(data.NextEvent - 1)
+	}
+	return page, nil
 }
 
 func buildGrantPage(grants []Grant, query Query, cursor grantCursor) Page {
@@ -93,7 +100,7 @@ func buildGrantPage(grants []Grant, query Query, cursor grantCursor) Page {
 	page.Grants = filtered
 	if len(filtered) > 0 {
 		last := filtered[len(filtered)-1]
-		page.NextCursor = encodeGrantCursor(grantCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		page.NextCursor = encodeGrantCursor(grantCursor{CreatedAt: last.CreatedAt, ID: last.ID, QueryHash: queryFingerprint(query)})
 	}
 	return page
 }
@@ -121,7 +128,17 @@ func normalizeGrantQuery(query Query) (Query, grantCursor, error) {
 		query.Target = &target
 	}
 	cursor, err := decodeGrantCursor(query.Cursor)
+	if err == nil && cursor.ID != "" && cursor.QueryHash != queryFingerprint(query) {
+		err = ErrInvalidGrantCursor
+	}
 	return query, cursor, err
+}
+
+func queryFingerprint(query Query) string {
+	query.Cursor = ""
+	encoded, _ := json.Marshal(query)
+	digest := sha256.Sum256(encoded)
+	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func normalizeQueryTarget(target policy.Target) (policy.Target, error) {
@@ -226,7 +243,7 @@ func decodeGrantCursor(cursor string) (grantCursor, error) {
 	var decoded grantCursor
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decoded); err != nil || decoded.ID == "" || decoded.CreatedAt.IsZero() {
+	if err := decoder.Decode(&decoded); err != nil || decoded.ID == "" || decoded.CreatedAt.IsZero() || decoded.QueryHash == "" {
 		return grantCursor{}, ErrInvalidGrantCursor
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {

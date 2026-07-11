@@ -8,6 +8,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/operatorclient"
@@ -16,12 +17,13 @@ import (
 
 // Options configures a fake server with production handlers and storage behavior.
 type Options struct {
-	Store           *grants.Store
-	Presenter       operatorinbox.Presenter
-	OperatorSecrets map[string]string
-	ClientSecrets   map[string]string
-	Broker          string
-	Audit           operatorapi.AuditRecorder
+	Store               *grants.Store
+	Presenter           operatorinbox.Presenter
+	OperatorSecrets     map[string]string
+	ClientSecrets       map[string]string
+	Broker              string
+	Audit               operatorapi.AuditRecorder
+	ActivationValidator decision.ActivationValidator
 }
 
 // Server is one closeable in-process operator API.
@@ -51,6 +53,7 @@ func New(options Options) (*Server, error) {
 		Store: options.Store, Presenter: options.Presenter,
 		ClientSecrets: clientSecrets, OperatorSecrets: options.OperatorSecrets,
 		Broker: options.Broker, Audit: options.Audit,
+		ActivationValidator: options.ActivationValidator,
 	})
 	if err != nil {
 		return nil, err

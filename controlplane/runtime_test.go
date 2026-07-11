@@ -19,14 +19,14 @@ func TestRuntimeSeparatesClientAndOperatorCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/grants", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/brokerkit-operator", nil)
 	request.Header.Set("Authorization", "Bearer client-secret-abcdefghijklmnopqrstuvwxyz")
 	response := httptest.NewRecorder()
 	runtime.OperatorHandler.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("client credential status = %d, want 401", response.Code)
 	}
-	request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/grants", nil)
+	request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/brokerkit-operator", nil)
 	request.Header.Set("Authorization", "Bearer operator-secret-abcdefghijklmnopqrstuvwxyz")
 	response = httptest.NewRecorder()
 	runtime.OperatorHandler.ServeHTTP(response, request)

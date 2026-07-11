@@ -1,10 +1,9 @@
 {
   "cursor": "AAAAAAAAAAE",
   "kind": "request.created",
-  "grant_id": "grant-example",
-  "status": "pending",
-  "used_count": 0,
-  "reserved_count": 0,
+  "request_id": "request-example",
   "revision": 1,
-  "time": "2026-07-11T01:02:03Z"
+  "status": "pending",
+  "occurred_at": "2026-07-11T01:02:03Z",
+  "used_count": 0
 }

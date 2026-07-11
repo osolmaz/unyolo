@@ -82,12 +82,14 @@ type Item struct {
 	PendingExpiresAt         time.Time     `json:"pending_expires_at"`
 	ActiveExpiresAt          *time.Time    `json:"active_expires_at,omitempty"`
 	RequestedDurationSeconds int64         `json:"requested_duration_seconds"`
+	RequestedMaxUses         int           `json:"requested_max_uses"`
 	MaxUses                  int           `json:"max_uses"`
 	UsedCount                int           `json:"used_count"`
 	ReservedCount            int           `json:"reserved_count"`
 	Reason                   string        `json:"reason,omitempty"`
 	DecidedAt                *time.Time    `json:"decided_at,omitempty"`
 	DecidedBy                string        `json:"decided_by,omitempty"`
+	DecidedOnBehalfOf        string        `json:"decided_on_behalf_of,omitempty"`
 	DecisionReason           string        `json:"decision_reason,omitempty"`
 	Presentation             Presentation  `json:"presentation"`
 	PresentationUnavailable  bool          `json:"presentation_unavailable,omitempty"`
@@ -95,9 +97,10 @@ type Item struct {
 
 // Page is one bounded inbox result.
 type Page struct {
-	Items      []Item `json:"items"`
-	NextCursor string `json:"next_cursor,omitempty"`
-	HasMore    bool   `json:"has_more"`
+	Items       []Item `json:"items"`
+	NextCursor  string `json:"next_cursor,omitempty"`
+	HasMore     bool   `json:"has_more"`
+	EventCursor string `json:"event_cursor,omitempty"`
 }
 
 // Service joins the durable store with one broker-owned presenter.
@@ -120,7 +123,7 @@ func (s *Service) List(ctx context.Context, query grants.Query) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	out := Page{Items: make([]Item, 0, len(page.Grants)), NextCursor: page.NextCursor, HasMore: page.HasMore}
+	out := Page{Items: make([]Item, 0, len(page.Grants)), NextCursor: page.NextCursor, HasMore: page.HasMore, EventCursor: page.EventCursor}
 	for _, grant := range page.Grants {
 		out.Items = append(out.Items, s.project(ctx, grant))
 	}
@@ -143,15 +146,24 @@ func (s *Service) Project(ctx context.Context, grant grants.Grant) Item {
 
 func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 	presentation, unavailable := s.presentation(ctx, grant)
+	requestedDuration := grant.RequestedDuration
+	if requestedDuration <= 0 {
+		requestedDuration = grant.Duration
+	}
+	requestedMaxUses := grant.RequestedMaxUses
+	if requestedMaxUses <= 0 {
+		requestedMaxUses = grant.MaxUses
+	}
 	item := Item{
 		ID: grant.ID, Revision: grant.Revision, Client: safeOrEmpty(grant.Client, maxLabelBytes, false),
 		Operation: safeOrEmpty(grant.Operation, maxTargetBytes, false), Status: grant.Status,
 		RequestedAt: grant.CreatedAt, PendingExpiresAt: grant.PendingExpiresAt,
-		RequestedDurationSeconds: int64(grant.Duration / time.Second), MaxUses: grant.MaxUses,
+		RequestedDurationSeconds: int64(requestedDuration / time.Second), RequestedMaxUses: requestedMaxUses, MaxUses: grant.MaxUses,
 		UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,
 		Reason: safeOrEmpty(grant.Reason, maxReasonBytes, true), DecidedBy: safeOrEmpty(grant.DecidedBy, maxLabelBytes, false),
-		DecisionReason: safeOrEmpty(grant.DecisionReason, maxReasonBytes, true),
-		Presentation:   presentation, PresentationUnavailable: unavailable,
+		DecidedOnBehalfOf: safeOrEmpty(grant.DecidedOnBehalfOf, maxLabelBytes, false),
+		DecisionReason:    safeOrEmpty(grant.DecisionReason, maxReasonBytes, true),
+		Presentation:      presentation, PresentationUnavailable: unavailable,
 	}
 	if !grant.ExpiresAt.IsZero() {
 		expires := grant.ExpiresAt

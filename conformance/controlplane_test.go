@@ -9,7 +9,7 @@ import (
 	"github.com/osolmaz/brokerkit/policy"
 )
 
-func TestRunControlPlane(t *testing.T) {
+func TestRunOperatorV1(t *testing.T) {
 	clientToken := "client-secret-abcdefghijklmnopqrstuvwxyz"
 	operatorToken := "operator-secret-abcdefghijklmnopqrstuvwxyz"
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
@@ -20,7 +20,7 @@ func TestRunControlPlane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	RunControlPlane(t, Fixture{
+	RunOperatorV1(t, Fixture{
 		Runtime: runtime, ClientToken: clientToken, OperatorToken: operatorToken,
 		Request: grants.Request{Client: "bob", Operation: "repo.read", Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"owner/repo"}}}, Reason: "conformance"},
 	})

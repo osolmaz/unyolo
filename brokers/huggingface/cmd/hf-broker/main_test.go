@@ -204,7 +204,7 @@ func waitForHealth(t *testing.T, port int) {
 
 func waitForOperator(t *testing.T, port int, secret string) {
 	t.Helper()
-	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/api/grants"
+	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/.well-known/brokerkit-operator"
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)

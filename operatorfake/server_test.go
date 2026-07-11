@@ -6,6 +6,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorinbox"
+	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/policy"
 )
 
@@ -33,8 +34,8 @@ func TestServerRunsProductionOperatorContract(t *testing.T) {
 	if _, _, err := store.Request(grants.Request{Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"}, Reason: "test"}); err != nil {
 		t.Fatal(err)
 	}
-	page, err := server.Client("operator-secret-with-enough-entropy").List(t.Context(), grants.Query{})
-	if err != nil || len(page.Items) != 1 {
+	page, err := server.Client("operator-secret-with-enough-entropy").List(t.Context(), operatorv1.Query{})
+	if err != nil || len(page.Requests) != 1 {
 		t.Fatalf("List() = %+v, %v", page, err)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
+	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
 // Fixture describes one broker's real shared control-plane assembly.
@@ -21,8 +22,8 @@ type Fixture struct {
 	OperatorToken string
 }
 
-// RunControlPlane verifies the common broker contract against a real HTTP server.
-func RunControlPlane(t *testing.T, fixture Fixture) {
+// RunOperatorV1 verifies the common broker contract against a real HTTP server.
+func RunOperatorV1(t *testing.T, fixture Fixture) {
 	t.Helper()
 	if err := validateFixture(fixture); err != nil {
 		t.Fatal(err)
@@ -61,12 +62,15 @@ func requestGrant(t *testing.T, fixture Fixture) grants.RequestResult {
 func assertOperatorLifecycle(t *testing.T, fixture Fixture, server *httptest.Server, created grants.RequestResult) {
 	t.Helper()
 	client := &operatorclient.Client{BaseURL: server.URL, Token: fixture.OperatorToken, HTTPClient: server.Client()}
-	page, err := client.List(t.Context(), grants.Query{StatusGroup: grants.StatusGroupPending})
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != created.Grant.ID {
+	if descriptor, err := client.Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
+		t.Fatalf("operator discovery = %+v, %v", descriptor, err)
+	}
+	page, err := client.List(t.Context(), operatorv1.Query{Status: grants.StatusGroupPending})
+	if err != nil || len(page.Requests) != 1 || page.Requests[0].ID != created.Grant.ID || page.EventCursor == "" {
 		t.Fatalf("operator list = %+v, %v", page, err)
 	}
-	approved, err := client.Approve(t.Context(), created.Grant.ID, operatorclient.Decision{
-		ExpectedRevision: created.Grant.Revision, ExpectedStatus: grants.StatusPending,
+	approved, err := client.Decide(t.Context(), created.Grant.ID, operatorv1.ActionApprove, operatorv1.Decision{
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "conformance-approve",
 	})
 	if err != nil || approved.Status != grants.StatusActive {
 		t.Fatalf("operator approve = %+v, %v", approved, err)
@@ -79,7 +83,7 @@ func assertOperatorLifecycle(t *testing.T, fixture Fixture, server *httptest.Ser
 
 func assertRejectedCredential(t *testing.T, server *httptest.Server, token string) {
 	t.Helper()
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/grants", nil)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/operator/v1/requests", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
