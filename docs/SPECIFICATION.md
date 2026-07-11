@@ -852,9 +852,10 @@ CI (`.github/workflows/ci.yml`) runs pinned Go tools from
 `docs/2026-07-08-go-tooling-spec.md`: module tidy/verify checks,
 `gofmt`, `go vet ./...`, `go test -race -coverprofile`, `go build`,
 `golangci-lint`, `govulncheck`, coverage gate, and `slophammer-go`
-dry/crap/check plus `scripts/check-go-coverage.sh` and
-`scripts/check-mutation.sh`. Hard targets: coverage ≥ 85, CRAP ≤ 8,
-production DRY = 0. `AGENTS.md` in the repo restates these and the
+dry/crap/check plus `scripts/check-go-coverage.sh`. Hard targets: coverage ≥
+85, CRAP ≤ 8, production DRY = 0. Mutation tooling remains checked in behind
+the opt-in `RUN_MUTATION=true` CI hook, but is disabled and non-blocking by
+default. `AGENTS.md` in the repo restates the required checks and the
 token-secrecy rule for future agents.
 
 ## Testing Strategy

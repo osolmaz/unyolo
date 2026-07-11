@@ -44,7 +44,6 @@ govulncheck ./...
 /home/bob/go/bin/slophammer-go dry .
 /home/bob/go/bin/slophammer-go crap .
 ./scripts/check-go-coverage.sh
-./scripts/check-mutation.sh
 /home/bob/go/bin/slophammer-go check .
 ```
 
@@ -66,12 +65,12 @@ The main CI workflow must:
 - install and run pinned `golangci-lint`
 - install and run pinned `govulncheck`
 - install and run pinned `slophammer-go`
-- run Slophammer DRY, CRAP, the coverage script, the mutation script, and
-  non-executing checks
+- run Slophammer DRY, CRAP, the coverage script, and non-executing checks
 
-`scripts/check-mutation.sh` defaults to mutation scan mode for CI. Set
-`HF_BROKER_FULL_MUTATION=1` to run the current full mutation target; that is
-intentionally a manual hardening path until the target has no survivors.
+Mutation tooling remains checked in but is disabled and non-blocking. The CI
+hook is opt-in through `RUN_MUTATION=true` and must not run in the default
+required workflow until a later explicit decision re-enables it. When opted
+in, `HF_BROKER_FULL_MUTATION=1` selects the full mutation target.
 
 The release workflow must at least run:
 

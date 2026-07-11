@@ -397,9 +397,12 @@ golangci-lint run
 govulncheck ./...
 slophammer-go dry .
 slophammer-go crap .
-./scripts/check-mutation.sh
 slophammer-go check .
 ```
+
+Mutation tooling remains checked in but is disabled and non-blocking. The CI
+hook is opt-in through `RUN_MUTATION=true` and must not run in the default
+required workflow until a later explicit decision re-enables it.
 
 When a tool is installed outside `PATH`, use its absolute path and say so in
 the final report.
