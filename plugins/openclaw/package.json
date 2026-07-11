@@ -13,13 +13,16 @@
   },
   "scripts": {
     "build": "pnpm run clean && vite build && tsc -p tsconfig.build.json",
-    "check": "pnpm run generate:check && tsc --noEmit && eslint . && prettier --check .",
+    "check": "pnpm run generate:check && pnpm run typecheck && pnpm run lint && pnpm run format:check",
     "clean": "rm -rf dist",
     "test": "vitest run --config vitest.config.ts",
     "test:browser": "playwright test",
     "test:package": "node scripts/test-packed-install.mjs",
     "generate": "node scripts/generate-operator-v1.mjs",
-    "generate:check": "node scripts/generate-operator-v1.mjs --check"
+    "generate:check": "node scripts/generate-operator-v1.mjs --check",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format:check": "prettier --check ."
   },
   "peerDependencies": {
     "openclaw": ">=2026.7.1-beta.5"

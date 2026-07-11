@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHttpHandler } from "../index.js";
+import { createHttpHandler } from "./http.js";
 import { BrokerError } from "./client.js";
 
 const servers: Array<ReturnType<typeof createServer>> = [];

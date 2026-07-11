@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleCommand } from "../index.js";
+import { handleCommand } from "./commands.js";
 
 const request = {
   handle: "opaque-handle",
