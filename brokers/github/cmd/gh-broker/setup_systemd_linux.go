@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	bkservice "github.com/osolmaz/brokerkit/service"
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	bkservice "github.com/osolmaz/brokerkit/service"
 )
 
 const (

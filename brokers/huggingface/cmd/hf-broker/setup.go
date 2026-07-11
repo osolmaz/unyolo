@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/clientconfig"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 )
 
 const setupUsage = `usage:

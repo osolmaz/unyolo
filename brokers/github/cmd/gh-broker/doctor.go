@@ -7,10 +7,10 @@ import (
 	"io"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
-	"github.com/osolmaz/brokerkit/envfile"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubdoctor"
+	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	"github.com/osolmaz/brokerkit/envfile"
 )
 
 func runDoctor(ctx context.Context, stdout io.Writer, stderr io.Writer, args []string) error {

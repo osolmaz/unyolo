@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
 const maxDoctorResponseBytes = 1 << 20

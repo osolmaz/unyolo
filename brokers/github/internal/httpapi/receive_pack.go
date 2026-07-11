@@ -3,8 +3,8 @@ package httpapi
 import (
 	"bytes"
 
-	"github.com/osolmaz/brokerkit/gitx"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/gitx"
 )
 
 type receivePackCommand struct {

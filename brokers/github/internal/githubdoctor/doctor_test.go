@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
 func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {

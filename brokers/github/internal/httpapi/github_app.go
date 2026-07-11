@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/httpx"
 )
 
 func configuredGitHubApp(cfg config.Config, apiBaseURL *url.URL, client *http.Client) (*githubapp.Source, error) {

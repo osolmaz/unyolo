@@ -3,8 +3,8 @@ package httpapi
 import (
 	"testing"
 
-	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 )
 
 func TestRetainedGrantAPIStatusIsUnavailable(t *testing.T) {
