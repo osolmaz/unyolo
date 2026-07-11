@@ -8,6 +8,26 @@ executable plans.
 The minimum supported host is `openclaw@2026.7.1-beta.5`, the first published
 SDK used by this package that includes public tab descriptors.
 
+## Install
+
+After the package is published, install an exact release through OpenClaw:
+
+```sh
+openclaw plugins install npm:openclaw-brokerkit@0.1.0
+```
+
+For a local monorepo checkout, build and link the package explicitly:
+
+```sh
+pnpm --filter openclaw-brokerkit build
+openclaw plugins install --link ./plugins/openclaw
+```
+
+This release is a direct cutover. State databases created by the earlier
+prototype schema are rejected rather than migrated; remove the plugin-owned
+`plugins/brokerkit/state.sqlite*` files before the first start when replacing a
+prototype installation. Broker state is not stored in that database.
+
 Choose one explicit trust mode:
 
 - `direct` trusts the OpenClaw process with operator SecretRefs and enables the
@@ -108,3 +128,18 @@ Commands are registered only in direct mode. They require an authorized sender
 and the `operator.approvals` scope.
 Subscriptions use OpenClaw's generic outbound adapter, so this package contains
 no Telegram, Discord, Slack, or other channel-specific implementation.
+
+## Verify
+
+```sh
+pnpm --filter openclaw-brokerkit check
+pnpm --filter openclaw-brokerkit test
+pnpm --filter openclaw-brokerkit test:browser
+pnpm --filter openclaw-brokerkit build
+pnpm --filter openclaw-brokerkit test:package
+```
+
+The browser suite runs direct and delegated hosting in Chromium, Firefox, and
+WebKit at desktop and mobile sizes. The package test installs the tarball in a
+fresh directory beside the exact minimum OpenClaw release and imports the
+public plugin entry.

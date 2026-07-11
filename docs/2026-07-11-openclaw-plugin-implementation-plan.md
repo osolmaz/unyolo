@@ -2,7 +2,8 @@
 
 Date: 2026-07-11
 
-Status: approved, self-contained implementation plan
+Status: feature-complete implementation; final monorepo review, merge,
+publication, and installed-system verification pending
 
 Plugin id: `brokerkit`
 
@@ -204,76 +205,34 @@ plugins/openclaw/
   index.ts
   src/
     config.ts
-    constants.ts
     errors.ts
-    plugin.ts
-    brokerkit/
-      generated/operator-v1.ts
-      generated/operator-v1.schema.ts
-      client.ts
-      error-map.ts
-      sse.ts
-      validate.ts
-    registry/
-      source-registry.ts
-      source-runtime.ts
-    reconcile/
-      coordinator.ts
-      event-loop.ts
-      list-refresh.ts
-      notification-worker.ts
-      backoff.ts
-    state/
-      database.ts
-      schema.ts
-      cursor-store.ts
-      handle-store.ts
-      subscription-store.ts
-      delivery-store.ts
-    channel/
-      commands.ts
-      authorization.ts
-      notifier.ts
-      rendering.ts
-    http/
-      router.ts
-      auth.ts
-      ui-api.ts
-      ui-assets.ts
-      security-headers.ts
-    test/
-      fake-clock.ts
-      fake-openclaw.ts
-      fake-source.ts
+    client.ts
+    commands.ts
+    generated/operator-v1.ts
+    http.ts
+    operator-v1.ts
+    runtime.ts
+    store.ts
+    types.ts
+    *.test.ts
   ui/
     index.html
     src/
       main.tsx
-      app.tsx
       api.ts
-      model.ts
       styles.css
-      components/
-        approval-card.tsx
-        approval-detail.tsx
-        broker-health.tsx
-        decision-dialog.tsx
-        empty-state.tsx
-        source-filter.tsx
-    test/
-    components.json
   test/
-    config.test.ts
-    client.test.ts
-    sse.test.ts
-    state.test.ts
-    reconciliation.test.ts
-    commands.test.ts
-    notifications.test.ts
-    ui-auth.test.ts
-    manifest.test.ts
-    integration.test.ts
+    browser/approvals.spec.ts
+  scripts/
+    generate-operator-v1.mjs
+    test-packed-install.mjs
 ```
+
+The implementation keeps files grouped by security and ownership boundary,
+not by speculative abstraction. `index.ts` only registers public OpenClaw
+surfaces; command, HTTP, broker client, reconciliation, and durable-state logic
+remain independently testable modules. Split a module further only when its
+ownership or tests require it.
 
 Use strict TypeScript. Runtime code uses platform `fetch`, streams,
 `AbortController`, Web Crypto, and `node:sqlite`. The isolated UI may use
@@ -604,14 +563,14 @@ Tests must cover:
 Required plugin commands:
 
 ```sh
-npm ci
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run test:browser
-npm run build
-npm pack --dry-run
+pnpm install --frozen-lockfile
+pnpm --filter openclaw-brokerkit format:check
+pnpm --filter openclaw-brokerkit lint
+pnpm --filter openclaw-brokerkit typecheck
+pnpm --filter openclaw-brokerkit test
+pnpm --filter openclaw-brokerkit test:browser
+pnpm --filter openclaw-brokerkit build
+pnpm --filter openclaw-brokerkit test:package
 ```
 
 Add secret scanning and generated Operator V1 schema drift checks to the root
