@@ -1,53 +1,48 @@
 import { z } from "zod";
+import { operatorV1 } from "./generated/operator-v1.js";
 import type { BrokerEvent, BrokerRequest, RequestPage } from "./types.js";
 
-const boundedText = z.string().min(1).max(4096);
 const timestamp = z.iso.datetime({ offset: true });
 const nonNegativeInteger = z.number().int().nonnegative().safe();
 const positiveInteger = z.number().int().positive().safe();
 
-const status = z.enum([
-  "pending",
-  "active",
-  "denied",
-  "canceled",
-  "expired",
-  "consumed",
-  "revoked",
-]);
-const action = z.enum(["approve", "deny", "cancel", "revoke"]);
+const status = z.enum(operatorV1.statuses);
+const action = z.enum(operatorV1.actions);
 const fact = z.object({
-  label: boundedText,
-  value: z.string().max(16_384),
+  label: z.string().min(1).max(operatorV1.limits.factLabel),
+  value: z.string().min(1).max(operatorV1.limits.factValue),
 });
 const presentation = z.object({
-  risk: z.enum(["unknown", "low", "medium", "high", "critical"]),
-  title: boundedText,
-  summary: z.string().max(32_768).optional(),
-  facts: z.array(fact).max(64).optional(),
+  risk: z.enum(operatorV1.risks),
+  title: z.string().min(1).max(operatorV1.limits.title),
+  summary: z.string().max(operatorV1.limits.summary).optional(),
+  facts: z.array(fact).max(operatorV1.limits.facts).optional(),
 });
 
 export const brokerRequestSchema = z.object({
-  id: boundedText,
+  id: z.string().min(1).max(operatorV1.limits.id),
   revision: positiveInteger,
-  requester: boundedText,
-  operation: boundedText,
+  requester: z.string().min(1).max(operatorV1.limits.requester),
+  operation: z.string().min(1).max(operatorV1.limits.operation),
   status,
   requested_at: timestamp,
   pending_expires_at: timestamp.optional(),
   active_expires_at: timestamp.optional(),
-  requested_duration_seconds: nonNegativeInteger,
+  requested_duration_seconds: positiveInteger,
   requested_max_uses: positiveInteger,
   granted_max_uses: positiveInteger.nullable(),
   used_count: nonNegativeInteger,
-  request_reason: z.string().max(32_768).optional(),
+  request_reason: z.string().max(operatorV1.limits.reason).optional(),
   decided_at: timestamp.optional(),
-  decided_by: z.string().max(4096).optional(),
-  decided_on_behalf_of: z.string().max(4096).optional(),
-  decision_reason: z.string().max(32_768).optional(),
+  decided_by: z.string().max(operatorV1.limits.actor).optional(),
+  decided_on_behalf_of: z.string().max(operatorV1.limits.actor).optional(),
+  decision_reason: z.string().max(operatorV1.limits.reason).optional(),
   presentation,
   presentation_unavailable: z.boolean().optional(),
-  allowed_actions: z.array(action).max(4),
+  allowed_actions: z
+    .array(action)
+    .max(operatorV1.actions.length)
+    .refine((value) => new Set(value).size === value.length),
   approval_bounds: z
     .object({
       max_duration_seconds: nonNegativeInteger,
@@ -57,15 +52,15 @@ export const brokerRequestSchema = z.object({
 });
 
 const requestPageSchema = z.object({
-  requests: z.array(brokerRequestSchema).max(100),
-  next_cursor: z.string().min(1).max(4096).optional(),
-  event_cursor: z.string().min(1).max(4096).optional(),
+  requests: z.array(brokerRequestSchema).max(operatorV1.limits.page),
+  next_cursor: z.string().min(1).max(operatorV1.limits.cursor).optional(),
+  event_cursor: z.string().min(1).max(operatorV1.limits.cursor).optional(),
 });
 
 const brokerEventSchema = z.object({
-  cursor: boundedText,
-  kind: boundedText,
-  request_id: boundedText,
+  cursor: z.string().min(1).max(operatorV1.limits.cursor),
+  kind: z.enum(operatorV1.eventKinds),
+  request_id: z.string().min(1).max(operatorV1.limits.id),
   revision: positiveInteger,
   status,
   occurred_at: timestamp,
@@ -73,15 +68,16 @@ const brokerEventSchema = z.object({
 });
 
 const descriptorSchema = z.object({
-  api_version: z.string().min(1).max(128),
+  api_version: z.literal(operatorV1.apiVersion),
 });
 
 const healthSchema = z.object({ status: z.string().min(1).max(128) });
 
 const errorEnvelopeSchema = z.object({
   error: z.object({
-    code: z.string().min(1).max(128),
-    message: z.string().min(1).max(4096),
+    code: z.enum(operatorV1.errorCodes),
+    message: z.string().min(1).max(operatorV1.limits.errorMessage),
+    correlation_id: z.string().min(1).max(operatorV1.limits.correlationId),
   }),
 });
 
