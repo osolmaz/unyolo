@@ -6,12 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os/user"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
@@ -182,6 +185,13 @@ func (s *Store) Canonical(digest string) ([]byte, error) {
 	return s.content.Get(digest)
 }
 
+func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) (int, error) {
+	if s == nil || s.content == nil {
+		return 0, errors.New("sudo plan store is unavailable")
+	}
+	return s.content.CollectOrphans(referenced, olderThan)
+}
+
 func EncodeCanonical(value Plan) ([]byte, error) { return encode(value) }
 
 func DecodeCanonical(data []byte) (Plan, error) { return decode(data) }
@@ -331,6 +341,9 @@ func decode(data []byte) (Plan, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return Plan{}, err
 	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return Plan{}, errors.New("decode sudo plan: trailing data")
+	}
 	if err := validate(value); err != nil {
 		return Plan{}, err
 	}
@@ -338,11 +351,71 @@ func decode(data []byte) (Plan, error) {
 }
 
 func validate(value Plan) error {
-	if value.Schema != SchemaV1 || value.RequestID == "" || value.ClientID == "" || value.Operation != sudopolicy.OperationExecCommand ||
-		value.CommandID == "" || value.TargetUser == "" || value.Executable == "" || value.WorkingDirectory == "" ||
+	if value.Schema != SchemaV1 || !boundedIdentifier(value.RequestID) || !boundedIdentifier(value.ClientID) || value.Operation != sudopolicy.OperationExecCommand ||
+		!boundedIdentifier(value.CommandID) || !boundedIdentifier(value.TargetUser) || !absoluteClean(value.Executable) || !absoluteClean(value.WorkingDirectory) ||
 		value.TimeoutSeconds == 0 || value.TimeoutSeconds > 3600 || value.MaxOutputBytes > 1<<20 || value.CatalogDigest == "" ||
-		value.RequestedDurationSeconds <= 0 || value.RequestedMaxUses != 1 || value.CreatedAt.IsZero() {
+		value.RequestedDurationSeconds <= 0 || value.RequestedDurationSeconds > int64((24*time.Hour)/time.Second) || value.RequestedMaxUses != 1 || value.CreatedAt.IsZero() {
 		return errors.New("sudo plan is invalid")
+	}
+	if !planstore.ValidDigest(value.CatalogDigest) || len(value.Arguments) > 64 || len(value.Environment) > 128 || len(value.SlotValues) > 64 || len(value.SupplementaryGIDs) > 256 {
+		return errors.New("sudo plan is invalid")
+	}
+	if !slices.IsSorted(value.SupplementaryGIDs) || hasDuplicateIDs(value.SupplementaryGIDs) {
+		return errors.New("sudo plan supplementary groups are invalid")
+	}
+	for _, argument := range value.Arguments {
+		if !boundedPlainValue(argument, 4096) {
+			return errors.New("sudo plan argument is invalid")
+		}
+	}
+	if err := validatePlanEnvironment(value.Environment); err != nil {
+		return err
+	}
+	for key, item := range value.SlotValues {
+		if !boundedIdentifier(key) || !boundedPlainValue(item, 4096) {
+			return errors.New("sudo plan slot value is invalid")
+		}
+	}
+	return nil
+}
+
+func absoluteClean(value string) bool {
+	return filepath.IsAbs(value) && filepath.Clean(value) == value && boundedPlainValue(value, 4096)
+}
+
+func boundedIdentifier(value string) bool {
+	return len(value) >= 1 && len(value) <= 128 && strings.TrimSpace(value) == value && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
+func boundedPlainValue(value string, maximum int) bool {
+	return len(value) <= maximum && !strings.ContainsRune(value, 0) && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
+func hasDuplicateIDs(values []uint32) bool {
+	for index := 1; index < len(values); index++ {
+		if values[index-1] == values[index] {
+			return true
+		}
+	}
+	return false
+}
+
+func validatePlanEnvironment(values []string) error {
+	if !slices.IsSorted(values) {
+		return errors.New("sudo plan environment is not canonical")
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		key, item, ok := strings.Cut(value, "=")
+		if !ok || key == "" || seen[key] || !boundedPlainValue(item, 4096) || strings.HasPrefix(key, "LD_") || strings.HasPrefix(key, "DYLD_") {
+			return errors.New("sudo plan environment is invalid")
+		}
+		for _, character := range key {
+			if (character < 'A' || character > 'Z') && (character < '0' || character > '9') && character != '_' {
+				return errors.New("sudo plan environment is invalid")
+			}
+		}
+		seen[key] = true
 	}
 	return nil
 }

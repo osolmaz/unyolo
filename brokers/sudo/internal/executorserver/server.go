@@ -14,6 +14,8 @@ import (
 	"github.com/osolmaz/brokerkit/planstore"
 )
 
+const defaultMaxConnections = 32
+
 type Runner interface {
 	Run(context.Context, plan.Plan) (executorprotocol.Outcome, error)
 }
@@ -30,6 +32,7 @@ type Config struct {
 	PeerUID         PeerUID
 	Now             func() time.Time
 	RequestTimeout  time.Duration
+	MaxConnections  int
 }
 
 type Server struct {
@@ -42,6 +45,7 @@ type Server struct {
 	peerUID         PeerUID
 	now             func() time.Time
 	requestTimeout  time.Duration
+	connections     chan struct{}
 }
 
 func New(cfg Config) (*Server, error) {
@@ -60,8 +64,16 @@ func New(cfg Config) (*Server, error) {
 	if requestTimeout <= 0 {
 		requestTimeout = 10 * time.Second
 	}
+	maxConnections := cfg.MaxConnections
+	if maxConnections <= 0 {
+		maxConnections = defaultMaxConnections
+	}
+	if maxConnections > 1024 {
+		return nil, errors.New("executor maximum connections is too large")
+	}
 	return &Server{catalog: cfg.Catalog, identities: cfg.Identities, runner: cfg.Runner, state: state,
-		expectedPeerUID: cfg.ExpectedPeerUID, brokerUID: cfg.BrokerUID, peerUID: cfg.PeerUID, now: now, requestTimeout: requestTimeout}, nil
+		expectedPeerUID: cfg.ExpectedPeerUID, brokerUID: cfg.BrokerUID, peerUID: cfg.PeerUID, now: now, requestTimeout: requestTimeout,
+		connections: make(chan struct{}, maxConnections)}, nil
 }
 
 func (s *Server) Serve(ctx context.Context, listener *net.UnixListener) error {
@@ -80,7 +92,17 @@ func (s *Server) Serve(ctx context.Context, listener *net.UnixListener) error {
 			}
 			return err
 		}
-		go s.handleConnection(ctx, connection)
+		select {
+		case s.connections <- struct{}{}:
+			go func() {
+				defer func() { <-s.connections }()
+				s.handleConnection(ctx, connection)
+			}()
+		default:
+			_ = connection.SetWriteDeadline(time.Now().Add(time.Second))
+			_ = executorprotocol.WriteResponse(connection, executorprotocol.NewRejected("server_busy"))
+			_ = connection.Close()
+		}
 	}
 }
 

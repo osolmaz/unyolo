@@ -111,6 +111,7 @@ func TestAgentRoutesRejectUnknownDuplicateAndWrongCredentials(t *testing.T) {
 	for _, body := range []string{
 		`{"client_request_id":"x","client_request_id":"y","command_id":"scale","target_user":"root","arguments":{"replicas":2},"reason":"test"}`,
 		`{"client_request_id":"x","command_id":"scale","target_user":"root","arguments":{"replicas":2},"reason":"test","shell":"/bin/sh"}`,
+		`{"client_request_id":"x","command_id":"scale","target_user":"root","arguments":{"replicas":2},"reason":"test"} {}`,
 	} {
 		response := agentRequest(t, agent, http.MethodPost, "/api/v1/requests", body)
 		if response.Code != http.StatusBadRequest {
@@ -130,6 +131,60 @@ func TestAgentRoutesRejectUnknownDuplicateAndWrongCredentials(t *testing.T) {
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("wrong credential status=%d", response.StatusCode)
 	}
+}
+
+func TestRequestRetryReusesPlanAcrossStoreReload(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	grantPath := filepath.Join(directory, "grants.json")
+	planPath := filepath.Join(directory, "plans")
+	grantStore := grants.New(grantPath, grants.Options{})
+	plans, _ := plan.NewStore(planPath)
+	request, value := restartRequestPlan(t, time.Unix(1_700_000_000, 0))
+	if err := plans.Bind(&request, value); err != nil {
+		t.Fatal(err)
+	}
+	firstDigest := request.Metadata[plan.MetadataDigest]
+	if _, _, err := grantStore.Request(request); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedGrants := grants.New(grantPath, grants.Options{})
+	reloadedPlans, _ := plan.NewStore(planPath)
+	createdAt, found, err := existingPlanCreatedAt(reloadedGrants, reloadedPlans, "bob", "restart-request")
+	if err != nil || !found || !createdAt.Equal(value.CreatedAt) {
+		t.Fatalf("existing plan = %s, %t, %v", createdAt, found, err)
+	}
+	retry, retryPlan := restartRequestPlan(t, createdAt)
+	if err := reloadedPlans.Bind(&retry, retryPlan); err != nil {
+		t.Fatal(err)
+	}
+	if retry.Metadata[plan.MetadataDigest] != firstDigest {
+		t.Fatalf("retry digest = %s, want %s", retry.Metadata[plan.MetadataDigest], firstDigest)
+	}
+	if _, created, err := reloadedGrants.Request(retry); err != nil || created {
+		t.Fatalf("idempotent retry created=%t err=%v", created, err)
+	}
+}
+
+func restartRequestPlan(t *testing.T, createdAt time.Time) (grants.Request, plan.Plan) {
+	t.Helper()
+	snapshot, err := catalog.Parse([]byte(`{"version":1,"commands":[{"id":"echo","executable":"/usr/bin/printf","arguments":[],"target_users":["root"],"working_directory":"/","timeout_seconds":5,"max_output_bytes":100}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := snapshot.Resolve("echo", "root", map[string]json.RawMessage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyRequest := sudopolicy.Request("bob", resolved)
+	request := grants.Request{Client: "bob", ClientRequestID: "restart-request", Operation: policyRequest.Operation,
+		Target: policyRequest.Target, Attrs: policyRequest.Attrs, Reason: "restart", Duration: time.Minute, PendingTimeout: time.Minute, MaxUses: 1}
+	value, err := plan.Build(request, resolved, plan.Identity{Name: "root"}, createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return request, value
 }
 
 func TestSudoBrokerOperatorV1Conformance(t *testing.T) {

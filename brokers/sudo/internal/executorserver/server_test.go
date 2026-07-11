@@ -69,6 +69,16 @@ func TestServerAuthenticatesUnixPeerBeforeReading(t *testing.T) {
 	}
 }
 
+func TestServerRejectsUnboundedConnectionConfiguration(t *testing.T) {
+	t.Parallel()
+	server, _, runner := testServerAndRequest(t)
+	_, err := New(Config{Catalog: server.catalog, Identities: fakeResolver{}, Runner: runner, StatePath: filepath.Join(t.TempDir(), "state"),
+		PeerUID: func(*net.UnixConn) (uint32, error) { return 0, nil }, MaxConnections: 1025})
+	if err == nil {
+		t.Fatal("unbounded connection configuration was accepted")
+	}
+}
+
 func testServerAndRequest(t *testing.T) (*Server, executorprotocol.Request, *fakeRunner) {
 	t.Helper()
 	now := time.Unix(1_700_000_000, 0).UTC()

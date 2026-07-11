@@ -51,3 +51,21 @@ func TestCallErrorTracksDispatchBoundary(t *testing.T) {
 		t.Fatalf("dispatch flags dial=%v read=%v", WasDispatched(dialError), WasDispatched(readError))
 	}
 }
+
+func TestClientRejectsMismatchedExecutionResponse(t *testing.T) {
+	t.Parallel()
+	client, server := net.Pipe()
+	defer func() { _ = server.Close() }()
+	value := &Client{SocketPath: "/test/socket", Dial: func(context.Context, string, string) (net.Conn, error) { return client, nil }}
+	go func() {
+		_, _ = executorprotocol.ReadRequest(server)
+		_ = executorprotocol.WriteResponse(server, executorprotocol.NewCompleted("other-execution", executorprotocol.Outcome{Started: true}))
+	}()
+	_, err := value.exchange(t.Context(), executorprotocol.Request{
+		Version: executorprotocol.Version, Type: executorprotocol.TypeExecute, ExecutionID: "execution-1",
+		Plan: []byte(`{}`), PlanDigest: "digest", GrantID: "grant-1", ReservationID: "reservation-1", ExpiresAt: time.Now().Add(time.Minute),
+	})
+	if err == nil || !WasDispatched(err) {
+		t.Fatalf("mismatched response error = %v", err)
+	}
+}

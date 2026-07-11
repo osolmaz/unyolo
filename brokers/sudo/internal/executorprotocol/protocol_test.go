@@ -38,6 +38,7 @@ func TestProtocolRejectsMalformedFrames(t *testing.T) {
 		frame([]byte(`{"version":1,"version":1,"type":"ping"}`)),
 		frame([]byte(`{"version":1,"type":"ping","unknown":true}`)),
 		frame([]byte(`{"version":2,"type":"ping"}`)),
+		frame([]byte(`{"version":1,"type":"ping"}{}`)),
 		{0xff, 0xff, 0xff, 0xff},
 	}
 	for index, value := range tests {
@@ -47,12 +48,33 @@ func TestProtocolRejectsMalformedFrames(t *testing.T) {
 	}
 }
 
+func TestProtocolHandlesShortWrites(t *testing.T) {
+	t.Parallel()
+	var destination bytes.Buffer
+	writer := &shortWriter{destination: &destination}
+	if err := WriteRequest(writer, Ping()); err != nil {
+		t.Fatal(err)
+	}
+	request, err := ReadRequest(&destination)
+	if err != nil || request.Type != TypePing {
+		t.Fatalf("ReadRequest() = %+v, %v", request, err)
+	}
+}
+
+type shortWriter struct{ destination *bytes.Buffer }
+
+func (w *shortWriter) Write(value []byte) (int, error) {
+	return w.destination.Write(value[:min(1, len(value))])
+}
+
 func TestProtocolRejectsInvalidResponses(t *testing.T) {
 	t.Parallel()
 	for _, response := range []Response{
 		{Version: Version, Status: StatusReady, ErrorCode: "bad"},
 		{Version: Version, Status: StatusCompleted, ExecutionID: "id"},
 		{Version: Version, Status: StatusRejected, ErrorCode: "Unsafe-Code"},
+		NewCompleted("id", Outcome{Duration: -1}),
+		NewCompleted("id", Outcome{Signal: "bad\nsignal"}),
 	} {
 		var wire bytes.Buffer
 		if err := WriteResponse(&wire, response); err == nil {

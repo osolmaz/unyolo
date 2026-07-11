@@ -10,6 +10,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
@@ -109,11 +110,24 @@ func writeFrame(writer io.Writer, value any) error {
 	}
 	var header [4]byte
 	binary.BigEndian.PutUint32(header[:], uint32(len(data)))
-	if _, err := writer.Write(header[:]); err != nil {
+	if err := writeAll(writer, header[:]); err != nil {
 		return err
 	}
-	_, err = writer.Write(data)
-	return err
+	return writeAll(writer, data)
+}
+
+func writeAll(writer io.Writer, data []byte) error {
+	for len(data) > 0 {
+		written, err := writer.Write(data)
+		if err != nil {
+			return err
+		}
+		if written <= 0 || written > len(data) {
+			return io.ErrShortWrite
+		}
+		data = data[written:]
+	}
+	return nil
 }
 
 func readFrame(reader io.Reader, out any) error {
@@ -137,6 +151,9 @@ func readFrame(reader io.Reader, out any) error {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {
 		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("executor protocol frame contains trailing JSON")
 	}
 	return nil
 }
@@ -170,7 +187,7 @@ func validateResponse(response Response) error {
 			return errors.New("executor ready response contains result fields")
 		}
 	case StatusCompleted:
-		if !boundedID(response.ExecutionID) || response.Outcome == nil || response.ErrorCode != "" {
+		if !boundedID(response.ExecutionID) || response.Outcome == nil || response.ErrorCode != "" || !validOutcome(*response.Outcome) {
 			return errors.New("executor completed response is invalid")
 		}
 	case StatusRejected, StatusAmbiguous:
@@ -184,6 +201,18 @@ func validateResponse(response Response) error {
 		return errors.New("executor response status is unsupported")
 	}
 	return nil
+}
+
+func validOutcome(outcome Outcome) bool {
+	if outcome.Duration < 0 || len(outcome.Stdout)+len(outcome.Stderr) > MaxFrameSize || len(outcome.Signal) > 64 {
+		return false
+	}
+	for _, character := range outcome.Signal {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
 }
 
 func boundedID(value string) bool {

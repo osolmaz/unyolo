@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build darwin
 
 package privexec
 
@@ -6,11 +6,15 @@ import (
 	"errors"
 	"syscall"
 
+	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 )
 
 func executePlan(value plan.Plan) error {
 	if err := applyLimits(value); err != nil {
+		return err
+	}
+	if err := hostcheck.ValidateExecution(value, ^uint32(0)); err != nil {
 		return err
 	}
 	groups := make([]int, len(value.SupplementaryGIDs))

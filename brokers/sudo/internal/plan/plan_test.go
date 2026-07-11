@@ -110,6 +110,62 @@ func TestPlanEncodingIsDeterministicAndClosed(t *testing.T) {
 	if _, err := decode(unknown); err == nil {
 		t.Fatal("unknown plan field was accepted")
 	}
+	if _, err := decode(append(first, []byte(` {}`)...)); err == nil {
+		t.Fatal("trailing plan data was accepted")
+	}
+	for name, mutate := range map[string]func(*Plan){
+		"relative executable":  func(value *Plan) { value.Executable = "bin/tool" },
+		"duplicate group":      func(value *Plan) { value.SupplementaryGIDs = []uint32{10, 10} },
+		"unsorted environment": func(value *Plan) { value.Environment = []string{"Z=1", "A=1"} },
+		"loader environment":   func(value *Plan) { value.Environment = []string{"LD_PRELOAD=x"} },
+		"control argument":     func(value *Plan) { value.Arguments = []string{"bad\nvalue"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := value
+			mutate(&changed)
+			if _, err := encode(changed); err == nil {
+				t.Fatal("unsafe plan was accepted")
+			}
+		})
+	}
+}
+
+func TestPlanStoreCollectsOnlyOldOrphans(t *testing.T) {
+	t.Parallel()
+	_, resolved := testResolved(t)
+	request := testGrantRequest(resolved)
+	value, _ := Build(request, resolved, Identity{Name: "root"}, time.Unix(1_700_000_000, 0))
+	plans, _ := NewStore(filepath.Join(t.TempDir(), "plans"))
+	if err := plans.Bind(&request, value); err != nil {
+		t.Fatal(err)
+	}
+	referenced := request.Metadata[MetadataDigest]
+	orphan := value
+	orphan.RequestID = "orphan"
+	orphanDigest, err := plans.content.Put(mustEncode(t, orphan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(plans.content.Path(orphanDigest), old, old); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := plans.CollectOrphans(map[string]bool{referenced: true}, time.Now().Add(-24*time.Hour))
+	if err != nil || removed != 1 {
+		t.Fatalf("CollectOrphans() = %d, %v", removed, err)
+	}
+	if _, err := plans.Get(referenced); err != nil {
+		t.Fatalf("referenced plan removed: %v", err)
+	}
+}
+
+func mustEncode(t *testing.T, value Plan) []byte {
+	t.Helper()
+	data, err := encode(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func testResolved(t *testing.T) (*catalog.Snapshot, catalog.Resolved) {

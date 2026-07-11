@@ -85,5 +85,8 @@ func (c *Client) exchange(ctx context.Context, request executorprotocol.Request)
 	if err != nil {
 		return executorprotocol.Response{}, &CallError{Dispatched: true, cause: err}
 	}
+	if request.Type == executorprotocol.TypeExecute && response.ExecutionID != request.ExecutionID {
+		return executorprotocol.Response{}, &CallError{Dispatched: true, cause: errors.New("sudo helper returned a mismatched execution id")}
+	}
 	return response, nil
 }

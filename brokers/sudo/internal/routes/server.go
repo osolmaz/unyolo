@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -33,6 +35,8 @@ import (
 )
 
 const maxBodyBytes int64 = 32 * 1024
+
+const sudoPlanOrphanGrace = 24 * time.Hour
 
 type DecisionPoller interface {
 	Poll(context.Context, func(context.Context, notify.Decision) notify.DecisionResult)
@@ -69,6 +73,7 @@ type Server struct {
 	audit              *audit.Writer
 	now                func() time.Time
 	operatorConfigured bool
+	requestMu          sync.Mutex
 }
 
 func New(opts Options) (*Server, error) {
@@ -98,6 +103,9 @@ func New(opts Options) (*Server, error) {
 	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: opts.GrantStore, plans: opts.PlanStore,
 		identities: opts.Identities, helper: opts.Helper, validator: validator, notifier: opts.Notifier, poller: opts.Poller,
 		audit: auditWriter, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0}
+	if err := collectPlanOrphans(opts.GrantStore, opts.PlanStore, now().UTC()); err != nil {
+		slog.Default().Warn("collect orphan sudo plans", "error", err)
+	}
 	server.registerRoutes()
 	return server, nil
 }
@@ -209,7 +217,16 @@ func (s *Server) createRequest(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "target user cannot be resolved")
 	}
-	value, err := plan.Build(request, resolved, identity, s.now().UTC())
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	createdAt, exists, err := existingPlanCreatedAt(s.grants, s.plans, request.Client, request.ClientRequestID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "grant state is unavailable")
+	}
+	if !exists {
+		createdAt = s.now().UTC()
+	}
+	value, err := plan.Build(request, resolved, identity, createdAt)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "command plan is invalid")
 	}
@@ -230,6 +247,39 @@ func (s *Server) createRequest(c echo.Context) error {
 		status = http.StatusCreated
 	}
 	return c.JSON(status, map[string]any{"request": view(stored)})
+}
+
+func existingPlanCreatedAt(store *grants.Store, plans *plan.Store, client string, clientRequestID string) (time.Time, bool, error) {
+	items, err := store.ListForClient(client)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	for _, grant := range items {
+		if grant.ClientRequestID != clientRequestID || grant.Status == grants.StatusCanceled {
+			continue
+		}
+		value, err := plans.Get(grant.Metadata[plan.MetadataDigest])
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		return value.CreatedAt, true, nil
+	}
+	return time.Time{}, false, nil
+}
+
+func collectPlanOrphans(store *grants.Store, plans *plan.Store, now time.Time) error {
+	items, err := store.List()
+	if err != nil {
+		return err
+	}
+	referenced := make(map[string]bool, len(items))
+	for _, grant := range items {
+		if grant.Metadata[plan.MetadataSchema] == plan.SchemaV1 {
+			referenced[grant.Metadata[plan.MetadataDigest]] = true
+		}
+	}
+	_, err = plans.CollectOrphans(referenced, now.Add(-sudoPlanOrphanGrace))
+	return err
 }
 
 func (s *Server) getRequest(c echo.Context) error {
@@ -374,6 +424,9 @@ func decodeBody(c echo.Context, out any) error {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request JSON")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request JSON")
 	}
 	return nil
