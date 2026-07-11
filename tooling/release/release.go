@@ -12,12 +12,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
 )
 
 var targets = [][2]string{{"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "amd64"}, {"darwin", "arm64"}}
+
+var brokerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // Options configures release asset generation.
 type Options struct {
@@ -109,7 +112,7 @@ func validate(options Options) error {
 	if options.Directory == "" || options.Broker == "" || options.Command == "" || options.Version == "" || options.Dist == "" {
 		return errors.New("directory, broker, command, version, and dist are required")
 	}
-	if strings.ContainsAny(options.Broker, `/\\`) {
+	if !brokerNamePattern.MatchString(options.Broker) {
 		return errors.New("broker must be a file name")
 	}
 	return nil

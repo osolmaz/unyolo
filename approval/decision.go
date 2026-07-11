@@ -49,11 +49,11 @@ func HandleDecision(ctx context.Context, decider Decider, decision notify.Decisi
 
 // Actor returns a stable audit identity for a channel decision.
 func Actor(decision notify.Decision) string {
-	if decision.OperatorTag != "" {
-		return "telegram:@" + decision.OperatorTag
-	}
 	if decision.OperatorID != 0 {
 		return fmt.Sprintf("telegram:%d", decision.OperatorID)
+	}
+	if decision.OperatorTag != "" {
+		return "telegram:@" + decision.OperatorTag
 	}
 	if decision.Approver != "" {
 		return decision.Approver

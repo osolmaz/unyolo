@@ -37,6 +37,7 @@ func TestActor(t *testing.T) {
 		decision notify.Decision
 		want     string
 	}{
+		{notify.Decision{OperatorID: 42, OperatorTag: "alice"}, "telegram:42"},
 		{notify.Decision{OperatorTag: "alice"}, "telegram:@alice"},
 		{notify.Decision{OperatorID: 42}, "telegram:42"},
 		{notify.Decision{Approver: "fallback"}, "fallback"},

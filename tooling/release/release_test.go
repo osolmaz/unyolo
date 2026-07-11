@@ -17,9 +17,11 @@ func TestValidate(t *testing.T) {
 	if err := validate(valid); err != nil {
 		t.Fatal(err)
 	}
-	valid.Broker = "../bad"
-	if err := validate(valid); err == nil {
-		t.Fatal("validate() accepted path-like broker")
+	for _, broker := range []string{"../bad", "bad\nforged", "bad name", "."} {
+		valid.Broker = broker
+		if err := validate(valid); err == nil {
+			t.Fatalf("validate() accepted broker %q", broker)
+		}
 	}
 }
 
