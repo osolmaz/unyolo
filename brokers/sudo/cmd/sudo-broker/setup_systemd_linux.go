@@ -219,8 +219,8 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 		}}
 	frontendFiles := []bkservice.ManagedFile{
 		{Area: bkservice.ManagedFileConfig, Name: "policy.json", Data: policyData, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
-		{Area: bkservice.ManagedFileConfig, Name: "secrets", Data: []byte(opts.ClientName + " = " + opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		{Area: bkservice.ManagedFileConfig, Name: "operator-secrets", Data: []byte(opts.OperatorID + " = " + opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		frontendSecretFile("secrets", []byte(opts.ClientName+" = "+opts.SharedSecret+"\n")),
+		frontendSecretFile("operator-secrets", []byte(opts.OperatorID+" = "+opts.OperatorSecret+"\n")),
 		{Area: bkservice.ManagedFileConfig, Name: "frontend.env", Data: []byte("# managed by sudo-broker\n"), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	}
 	if opts.TelegramBotTokenFile != "" {
@@ -228,12 +228,16 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 		if readErr != nil {
 			return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, readErr
 		}
-		frontendFiles = append(frontendFiles, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: "telegram-bot-token", Data: data, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
+		frontendFiles = append(frontendFiles, frontendSecretFile("telegram-bot-token", data))
 	}
 	frontendPlan := bkservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker.service", NoStart: opts.NoStart, Unit: frontendUnit, Files: frontendFiles,
 		ReadyCheck: bkservice.HTTPReadyCheck("http://"+net.JoinHostPort(opts.BindAddr, strconv.Itoa(opts.Port))+"/readyz", localHTTPClient())}
 	return helperPlan, frontendPlan, nil
+}
+
+func frontendSecretFile(name string, data []byte) bkservice.ManagedFile {
+	return bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: name, Data: data, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot}
 }
 
 func frontendExec(opts sudoSystemdOptions, paths sudoInstallPaths) string {

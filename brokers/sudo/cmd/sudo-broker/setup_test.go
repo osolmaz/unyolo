@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
@@ -147,5 +148,13 @@ func TestSetupFileAndTelegramBranches(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "--telegram-token-file") {
 		t.Fatalf("Telegram dry-run = %s", output.String())
+	}
+}
+
+func TestFrontendSecretsRemainRootOwned(t *testing.T) {
+	t.Parallel()
+	file := frontendSecretFile("secrets", []byte("secret"))
+	if file.Owner != bkservice.ManagedFileOwnerRoot || file.Mode != 0o640 {
+		t.Fatalf("frontend secret ownership = owner %q mode %04o", file.Owner, file.Mode)
 	}
 }
