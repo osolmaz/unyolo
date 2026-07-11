@@ -57,7 +57,7 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm --filter openclaw-brokerkit exec playwright install --with-deps chromium
+      - run: pnpm --filter openclaw-brokerkit exec playwright install --with-deps
       - run: pnpm --filter openclaw-brokerkit test:browser
       - run: npm pack --dry-run
         working-directory: plugins/openclaw

@@ -11,6 +11,10 @@ type DelegatedBootstrap = {
   basePath: string;
 };
 export type UiBootstrap = DirectBootstrap | DelegatedBootstrap;
+export type UiDecisionOptions = {
+  reason?: string;
+  constraints?: { durationSeconds: number; maxUses: number };
+};
 
 type DelegatedSession = {
   token: string;
@@ -35,13 +39,20 @@ export class BrokerKitUiApi {
     return this.request<SafeRequest>(`/requests/${encodeURIComponent(handle)}`);
   }
 
-  decide(request: SafeRequest, action: Action): Promise<SafeRequest> {
+  decide(
+    request: SafeRequest,
+    action: Action,
+    options: UiDecisionOptions = {},
+  ): Promise<SafeRequest> {
     return this.request<SafeRequest>(
       `/requests/${encodeURIComponent(request.handle)}/${action}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ expectedRevision: request.revision }),
+        body: JSON.stringify({
+          expectedRevision: request.revision,
+          ...options,
+        }),
       },
     );
   }

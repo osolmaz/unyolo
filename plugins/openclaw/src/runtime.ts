@@ -22,6 +22,10 @@ export type RuntimeHooks = {
   deliver(subscription: Subscription, text: string): Promise<void>;
   log(level: "info" | "warn", message: string): void;
 };
+export type DecisionOptions = {
+  reason?: string;
+  constraints?: NonNullable<Decision["constraints"]>;
+};
 
 export class BrokerRuntime {
   private readonly sources = new Map<string, Source>();
@@ -80,7 +84,7 @@ export class BrokerRuntime {
     action: Action,
     expectedRevision: number,
     actor: string,
-    reason?: string,
+    options: DecisionOptions = {},
   ): Promise<SafeRequest> {
     const resolved = this.requireStore().resolve(handle);
     if (!resolved) throw new Error("request_not_found");
@@ -94,6 +98,18 @@ export class BrokerRuntime {
       throw new Error("revision_stale");
     if (!current.allowed_actions.includes(action))
       throw new Error("action_not_allowed");
+    if (options.constraints) {
+      const bounds = current.approval_bounds;
+      if (
+        action !== "approve" ||
+        !bounds ||
+        (options.constraints.duration_seconds !== undefined &&
+          options.constraints.duration_seconds > bounds.max_duration_seconds) ||
+        (options.constraints.max_uses !== undefined &&
+          options.constraints.max_uses > bounds.max_uses)
+      )
+        throw new Error("action_not_allowed");
+    }
     const decision: Decision = {
       expected_revision: expectedRevision,
       idempotency_key: deterministicDecisionKey(
@@ -104,7 +120,8 @@ export class BrokerRuntime {
         actor,
       ),
       on_behalf_of: actor,
-      ...(reason ? { decision_reason: reason } : {}),
+      ...(options.reason ? { decision_reason: options.reason } : {}),
+      ...(options.constraints ? { constraints: options.constraints } : {}),
     };
     const updated = await source.client.decide(
       resolved.requestId,

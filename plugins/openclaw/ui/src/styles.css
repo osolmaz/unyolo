@@ -224,6 +224,81 @@ dd {
 .actions button:disabled {
   opacity: 0.55;
 }
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(18 25 20 / 0.48);
+}
+.dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(440px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+  transform: translate(-50%, -50%);
+  border: 1px solid #cbd3cd;
+  border-radius: 7px;
+  background: #fff;
+  padding: 20px;
+  box-shadow: 0 18px 48px rgb(18 25 20 / 0.22);
+}
+.dialog-content h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.dialog-content > p {
+  margin: 6px 0 18px;
+  color: #5c685f;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.decision-bounds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.dialog-content label {
+  display: grid;
+  gap: 6px;
+  color: #455249;
+  font-size: 12px;
+  font-weight: 650;
+}
+.dialog-content input,
+.dialog-content textarea {
+  width: 100%;
+  border: 1px solid #bcc6be;
+  border-radius: 5px;
+  background: #fff;
+  padding: 9px 10px;
+  color: #18211c;
+  font: inherit;
+  font-weight: 400;
+}
+.reason {
+  margin-top: 14px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.dialog-actions button {
+  min-height: 36px;
+  border-radius: 6px;
+  padding: 0 14px;
+  font-weight: 650;
+}
+.danger {
+  border: 1px solid #9e382b;
+  background: #9e382b;
+  color: #fff;
+}
+.dialog-actions button:disabled {
+  opacity: 0.55;
+}
 .empty {
   text-align: center;
   padding: 60px 20px;
@@ -252,6 +327,9 @@ dd {
     flex-wrap: wrap;
   }
   dl {
+    grid-template-columns: 1fr;
+  }
+  .decision-bounds {
     grid-template-columns: 1fr;
   }
   dd {

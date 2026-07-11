@@ -101,10 +101,18 @@ describe("BrokerRuntime", () => {
     await runtime.start(stateDir);
     await expect.poll(() => delivered.length).toBeGreaterThan(0);
     expect(delivered.length).toBeLessThanOrEqual(2);
-    await runtime.decide(handle!, "approve", 1, "operator:onur");
+    await expect(
+      runtime.decide(handle!, "approve", 1, "operator:onur", {
+        constraints: { duration_seconds: 301, max_uses: 1 },
+      }),
+    ).rejects.toThrow("action_not_allowed");
+    await runtime.decide(handle!, "approve", 1, "operator:onur", {
+      constraints: { duration_seconds: 300, max_uses: 1 },
+    });
     expect(JSON.parse(decisionBody)).toMatchObject({
       expected_revision: 1,
       on_behalf_of: "operator:onur",
+      constraints: { duration_seconds: 300, max_uses: 1 },
     });
     await runtime.stop();
     runtime = new BrokerRuntime(config, hooks);

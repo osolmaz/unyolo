@@ -9,7 +9,21 @@ export default defineConfig({
     reuseExistingServer: false,
   },
   projects: [
-    { name: "desktop", use: { viewport: { width: 1280, height: 800 } } },
-    { name: "mobile", use: { viewport: { width: 390, height: 844 } } },
+    ...["chromium", "firefox", "webkit"].flatMap((browserName) => [
+      {
+        name: `${browserName}-desktop`,
+        use: {
+          browserName: browserName as "chromium" | "firefox" | "webkit",
+          viewport: { width: 1280, height: 800 },
+        },
+      },
+      {
+        name: `${browserName}-mobile`,
+        use: {
+          browserName: browserName as "chromium" | "firefox" | "webkit",
+          viewport: { width: 390, height: 844 },
+        },
+      },
+    ]),
   ],
 });

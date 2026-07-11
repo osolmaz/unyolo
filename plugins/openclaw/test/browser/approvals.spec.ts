@@ -68,18 +68,66 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/plugins/brokerkit/api/v1/snapshot", (route) =>
     route.fulfill({ json: snapshot }),
   );
+  await page.route(
+    "**/plugins/brokerkit/api/v1/requests/*/approve",
+    async (route) => {
+      expect(route.request().headers().authorization).toBe(
+        "Bearer test-capability-that-is-long-enough-1234",
+      );
+      expect(route.request().postDataJSON()).toEqual({
+        expectedRevision: 1,
+        reason: "Reviewed in the operator inbox",
+        constraints: { durationSeconds: 300, maxUses: 1 },
+      });
+      await route.fulfill({
+        json: { ...snapshot.requests[0], status: "active" },
+      });
+    },
+  );
 });
 test("renders a bounded capability-protected approval surface", async ({
   page,
 }, testInfo) => {
   await page.goto(
-    `/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
   );
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
+  await page.getByRole("button", { name: "Deny" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Deny request" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("dialog", { name: "Deny request" }),
+  ).not.toBeVisible();
+  await page.getByRole("button", { name: "Approve" }).click();
+  const dialog = page.getByRole("dialog", { name: "Approve request" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("at revision 1")).toBeVisible();
+  await dialog
+    .getByLabel("Reason (optional)")
+    .fill("Reviewed in the operator inbox");
+  expect(
+    await dialog.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return (
+        box.left >= 0 &&
+        box.top >= 0 &&
+        box.right <= window.innerWidth &&
+        box.bottom <= window.innerHeight
+      );
+    }),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("approval-dialog.png"),
+    fullPage: true,
+  });
+  await dialog.getByRole("button", { name: "Approve" }).click();
+  await expect(dialog).not.toBeVisible();
   await expect(page).not.toHaveURL(/#/);
   const overflow = await page.evaluate(
     () =>
@@ -112,7 +160,7 @@ test("uses delegated web session authority without exposing it in the URL", asyn
     await route.fulfill({ json: snapshot });
   });
   await page.goto(
-    `/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
+    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
   );
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page).not.toHaveURL(/#/);

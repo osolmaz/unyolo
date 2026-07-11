@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   AlertTriangle,
   Check,
@@ -9,7 +10,11 @@ import {
   X,
 } from "lucide-react";
 import type { Action, SafeRequest, Snapshot } from "../../src/types.js";
-import { BrokerKitUiApi, parseUiBootstrap } from "./api.js";
+import {
+  BrokerKitUiApi,
+  parseUiBootstrap,
+  type UiDecisionOptions,
+} from "./api.js";
 import "./styles.css";
 
 const api = new BrokerKitUiApi(parseUiBootstrap(location.hash.slice(1)));
@@ -19,6 +24,10 @@ export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const [decision, setDecision] = useState<{
+    request: SafeRequest;
+    action: Action;
+  }>();
   const load = useCallback(async () => {
     try {
       setError("");
@@ -34,10 +43,15 @@ export function App() {
     const timer = setInterval(() => void load(), 15_000);
     return () => clearInterval(timer);
   }, [load]);
-  const decide = async (request: SafeRequest, action: Action) => {
+  const decide = async (
+    request: SafeRequest,
+    action: Action,
+    options: UiDecisionOptions,
+  ) => {
     setBusy(request.handle);
     try {
-      await api.decide(request, action);
+      await api.decide(request, action, options);
+      setDecision(undefined);
       await load();
     } catch (value) {
       setError(value instanceof Error ? value.message : "Decision failed");
@@ -129,7 +143,7 @@ export function App() {
                 <button
                   className="secondary"
                   disabled={busy === request.handle}
-                  onClick={() => void decide(request, "cancel")}
+                  onClick={() => setDecision({ request, action: "cancel" })}
                 >
                   <CircleX size={16} />
                   Cancel
@@ -139,7 +153,7 @@ export function App() {
                 <button
                   className="secondary"
                   disabled={busy === request.handle}
-                  onClick={() => void decide(request, "revoke")}
+                  onClick={() => setDecision({ request, action: "revoke" })}
                 >
                   <CircleX size={16} />
                   Revoke
@@ -149,7 +163,7 @@ export function App() {
                 <button
                   className="secondary"
                   disabled={busy === request.handle}
-                  onClick={() => void decide(request, "deny")}
+                  onClick={() => setDecision({ request, action: "deny" })}
                 >
                   <CircleX size={16} />
                   Deny
@@ -159,7 +173,7 @@ export function App() {
                 <button
                   className="primary"
                   disabled={busy === request.handle}
-                  onClick={() => void decide(request, "approve")}
+                  onClick={() => setDecision({ request, action: "approve" })}
                 >
                   <Check size={16} />
                   Approve
@@ -179,8 +193,157 @@ export function App() {
           </div>
         )}
       </section>
+      <DecisionDialog
+        decision={decision}
+        busy={Boolean(decision && busy === decision.request.handle)}
+        onClose={() => setDecision(undefined)}
+        onConfirm={decide}
+      />
     </main>
   );
+}
+
+function DecisionDialog({
+  decision,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  decision: { request: SafeRequest; action: Action } | undefined;
+  busy: boolean;
+  onClose(): void;
+  onConfirm(
+    request: SafeRequest,
+    action: Action,
+    options: UiDecisionOptions,
+  ): Promise<void>;
+}) {
+  const request = decision?.request;
+  const bounds = request?.approval_bounds;
+  const [reason, setReason] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState(1);
+  const [maxUses, setMaxUses] = useState(1);
+  useEffect(() => {
+    setReason("");
+    if (!request) return;
+    setDurationSeconds(
+      Math.max(
+        1,
+        Math.min(
+          request.requested_duration_seconds,
+          bounds?.max_duration_seconds ?? request.requested_duration_seconds,
+        ),
+      ),
+    );
+    setMaxUses(
+      Math.min(
+        request.requested_max_uses,
+        bounds?.max_uses ?? request.requested_max_uses,
+      ),
+    );
+  }, [request, bounds]);
+  if (!decision || !request) return null;
+  const approve = decision.action === "approve";
+  const title = `${capitalize(decision.action)} request`;
+  return (
+    <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="dialog-content">
+          <Dialog.Title>{title}</Dialog.Title>
+          <Dialog.Description>
+            {request.presentation.title} at revision {request.revision}
+          </Dialog.Description>
+          {approve && bounds && (
+            <div className="decision-bounds">
+              <label>
+                Duration (seconds)
+                <input
+                  type="number"
+                  min={1}
+                  max={bounds.max_duration_seconds}
+                  value={durationSeconds}
+                  onChange={(event) =>
+                    setDurationSeconds(event.currentTarget.valueAsNumber)
+                  }
+                />
+              </label>
+              <label>
+                Maximum uses
+                <input
+                  type="number"
+                  min={1}
+                  max={bounds.max_uses}
+                  value={maxUses}
+                  onChange={(event) =>
+                    setMaxUses(event.currentTarget.valueAsNumber)
+                  }
+                />
+              </label>
+            </div>
+          )}
+          <label className="reason">
+            Reason (optional)
+            <textarea
+              maxLength={4096}
+              rows={3}
+              value={reason}
+              onChange={(event) => setReason(event.currentTarget.value)}
+            />
+          </label>
+          <div className="dialog-actions">
+            <Dialog.Close asChild>
+              <button className="secondary" disabled={busy}>
+                Cancel
+              </button>
+            </Dialog.Close>
+            <button
+              className={approve ? "primary" : "danger"}
+              disabled={
+                busy || !validBounds(approve, durationSeconds, maxUses, bounds)
+              }
+              onClick={() =>
+                void onConfirm(request, decision.action, {
+                  ...(reason.trim() ? { reason: reason.trim() } : {}),
+                  ...(approve && bounds
+                    ? {
+                        constraints: {
+                          durationSeconds,
+                          maxUses,
+                        },
+                      }
+                    : {}),
+                })
+              }
+            >
+              {capitalize(decision.action)}
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function validBounds(
+  approve: boolean,
+  durationSeconds: number,
+  maxUses: number,
+  bounds: SafeRequest["approval_bounds"],
+): boolean {
+  if (!approve || !bounds) return true;
+  return (
+    Number.isSafeInteger(durationSeconds) &&
+    durationSeconds > 0 &&
+    durationSeconds <= bounds.max_duration_seconds &&
+    Number.isSafeInteger(maxUses) &&
+    maxUses > 0 &&
+    maxUses <= bounds.max_uses
+  );
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 createRoot(document.getElementById("root")!).render(

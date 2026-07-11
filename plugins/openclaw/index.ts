@@ -8,7 +8,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
 import { parseConfig, type BrokerConfig } from "./src/config.js";
-import { BrokerRuntime } from "./src/runtime.js";
+import { BrokerRuntime, type DecisionOptions } from "./src/runtime.js";
 import type { Action } from "./src/types.js";
 
 const configSchema = { parse: parseConfig };
@@ -277,22 +277,13 @@ export function createHttpHandler(
           if (!isJSON(req.headers["content-type"]))
             throw new Error("invalid_input");
           const body = await readJSON(req);
-          if (
-            Object.keys(body).some(
-              (key) => key !== "expectedRevision" && key !== "reason",
-            ) ||
-            !Number.isSafeInteger(body.expectedRevision) ||
-            (body.expectedRevision as number) <= 0 ||
-            (body.reason !== undefined &&
-              (typeof body.reason !== "string" || body.reason.length > 4096))
-          )
-            throw new Error("invalid_input");
+          const input = parseDecisionInput(body, match[2] as Action);
           const result = await runtime().decide(
             decodeHandle(match[1]),
             match[2] as Action,
-            body.expectedRevision as number,
+            input.expectedRevision,
             "openclaw:control-ui",
-            body.reason as string | undefined,
+            input.options,
           );
           return json(res, 200, result);
         }
@@ -400,6 +391,52 @@ function mapHttpError(error: unknown): { code: string; status: number } {
   if (code === "action_not_allowed") return { code, status: 422 };
   if (code === "source_unavailable") return { code, status: 503 };
   return { code: "internal_error", status: 500 };
+}
+
+function parseDecisionInput(
+  body: Record<string, unknown>,
+  action: Action,
+): { expectedRevision: number; options: DecisionOptions } {
+  if (
+    Object.keys(body).some(
+      (key) =>
+        key !== "expectedRevision" && key !== "reason" && key !== "constraints",
+    ) ||
+    !Number.isSafeInteger(body.expectedRevision) ||
+    (body.expectedRevision as number) <= 0 ||
+    (body.reason !== undefined &&
+      (typeof body.reason !== "string" || body.reason.length > 4096))
+  )
+    throw new Error("invalid_input");
+  const options: DecisionOptions = {};
+  if (typeof body.reason === "string" && body.reason.trim())
+    options.reason = body.reason.trim();
+  if (body.constraints !== undefined) {
+    if (action !== "approve" || !record(body.constraints))
+      throw new Error("invalid_input");
+    const constraints = body.constraints;
+    if (
+      Object.keys(constraints).some(
+        (key) => key !== "durationSeconds" && key !== "maxUses",
+      ) ||
+      !positiveSafeInteger(constraints.durationSeconds) ||
+      !positiveSafeInteger(constraints.maxUses)
+    )
+      throw new Error("invalid_input");
+    options.constraints = {
+      duration_seconds: constraints.durationSeconds,
+      max_uses: constraints.maxUses,
+    };
+  }
+  return { expectedRevision: body.expectedRevision as number, options };
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function positiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
 }
 
 function createRateLimiter(limit: number, windowMs: number) {

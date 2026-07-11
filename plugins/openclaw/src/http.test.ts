@@ -36,7 +36,11 @@ describe("OpenClaw HTTP boundary", () => {
     const response = await apiFetch(base, `/requests/${handle}/approve`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ expectedRevision: 2 }),
+      body: JSON.stringify({
+        expectedRevision: 2,
+        reason: " reviewed ",
+        constraints: { durationSeconds: 300, maxUses: 1 },
+      }),
     });
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
@@ -47,7 +51,10 @@ describe("OpenClaw HTTP boundary", () => {
       "approve",
       2,
       "openclaw:control-ui",
-      undefined,
+      {
+        reason: "reviewed",
+        constraints: { duration_seconds: 300, max_uses: 1 },
+      },
     );
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
