@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -7,6 +8,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { StateStore } from "./store.js";
 
@@ -33,7 +35,40 @@ describe("StateStore", () => {
       lstatSync(path.join(directory, "plugins", "brokerkit", "state.sqlite"))
         .mode & 0o777,
     ).toBe(0o600);
+    expect(
+      lstatSync(path.join(directory, "plugins", "brokerkit")).mode & 0o777,
+    ).toBe(0o700);
     store.close();
+  });
+  it("removes stale revisions, expired handles, and removed source cursors", () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
+    const store = new StateStore(directory);
+    store.setCursor("removed", "cursor-old");
+    store.setCursor("kept", "cursor-new");
+    store.retainSources(["kept"]);
+    expect(store.cursor("removed")).toBeUndefined();
+    const old = store.handle("kept", "request-1", 1, Date.now() + 60_000);
+    store.handle("kept", "request-1", 2, Date.now() + 60_000);
+    expect(store.resolve(old)).toBeUndefined();
+    const expired = store.handle("kept", "expired", 1, Date.now() - 1);
+    store.pruneExpired();
+    expect(store.resolve(expired)).toBeUndefined();
+    store.close();
+  });
+  it("rejects an earlier or unknown state schema", () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
+    const database = path.join(
+      directory,
+      "plugins",
+      "brokerkit",
+      "state.sqlite",
+    );
+    mkdirSync(path.dirname(database), { recursive: true, mode: 0o700 });
+    const db = new DatabaseSync(database);
+    db.exec("PRAGMA user_version=1");
+    db.close();
+    chmodSync(database, 0o600);
+    expect(() => new StateStore(directory)).toThrow(/state version 1/);
   });
   it("rejects a symlink database", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
@@ -44,7 +79,7 @@ describe("StateStore", () => {
       "brokerkit",
       "state.sqlite",
     );
-    mkdirSync(path.dirname(database), { recursive: true });
+    mkdirSync(path.dirname(database), { recursive: true, mode: 0o700 });
     writeFileSync(target, "");
     symlinkSync(target, database);
     expect(() => new StateStore(directory)).toThrow(/symlink/);

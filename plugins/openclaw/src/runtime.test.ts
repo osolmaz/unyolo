@@ -43,7 +43,7 @@ describe("BrokerRuntime", () => {
       if (req.url?.startsWith("/api/operator/v1/requests?"))
         return res.end(
           JSON.stringify({
-            requests: status === "pending" ? [request()] : [],
+            requests: req.url.includes(`status=${status}`) ? [request()] : [],
             event_cursor: "cursor-1",
           }),
         );
@@ -106,6 +106,15 @@ describe("BrokerRuntime", () => {
       expected_revision: 1,
       on_behalf_of: "operator:onur",
     });
+    await runtime.stop();
+    runtime = new BrokerRuntime(config, hooks);
+    await runtime.start(stateDir);
+    expect(runtime.snapshot().requests).toEqual([
+      expect.objectContaining({
+        status: "active",
+        allowed_actions: ["revoke"],
+      }),
+    ]);
     await runtime.stop();
   });
 });

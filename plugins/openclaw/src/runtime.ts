@@ -15,6 +15,7 @@ type Source = {
   config: BrokerConfig;
   client: BrokerClient;
   abort?: AbortController;
+  discovered: boolean;
 };
 export type RuntimeHooks = {
   resolveCredential(source: BrokerConfig): Promise<string>;
@@ -41,10 +42,13 @@ export class BrokerRuntime {
           () => hooks.resolveCredential(source),
           source.requestTimeoutMs,
         ),
+        discovered: false,
       });
   }
   async start(stateDir: string): Promise<void> {
     this.store = new StateStore(stateDir);
+    this.store.retainSources([...this.sources.keys()]);
+    this.store.pruneExpired();
     await Promise.all(
       [...this.sources.values()].map((source) => this.startSource(source)),
     );
@@ -125,48 +129,47 @@ export class BrokerRuntime {
   }
   private async startSource(source: Source): Promise<void> {
     try {
-      await source.client.discover();
+      await this.ensureDiscovered(source);
       await this.reconcile(source);
-      this.watch(source);
     } catch (error) {
       this.markUnhealthy(source, error);
     }
+    this.watch(source);
   }
   private async reconcileAll(): Promise<void> {
     await Promise.all(
       [...this.sources.values()].map((source) =>
-        this.reconcile(source).catch((error) =>
-          this.markUnhealthy(source, error),
-        ),
+        this.ensureDiscovered(source)
+          .then(() => this.reconcile(source))
+          .catch((error) => this.markUnhealthy(source, error)),
       ),
     );
   }
   private async reconcile(source: Source): Promise<void> {
-    let cursor: string | undefined;
     const seen = new Set<string>();
     let eventCursor: string | undefined;
-    do {
-      const page = await source.client.list(cursor);
-      eventCursor ??= page.event_cursor;
-      for (const request of page.requests) {
-        seen.add(request.id);
-        this.accept(source, request);
-      }
-      cursor = page.next_cursor;
-    } while (cursor);
+    for (const status of ["pending", "active"] as const) {
+      let cursor: string | undefined;
+      do {
+        const page = await source.client.list(status, cursor);
+        eventCursor ??= page.event_cursor;
+        for (const request of page.requests) {
+          seen.add(request.id);
+          this.accept(source, request);
+        }
+        cursor = page.next_cursor;
+      } while (cursor);
+    }
     for (const request of [...this.requests.values()])
       if (request.sourceId === source.config.id && !seen.has(request.id)) {
         this.requests.delete(request.handle);
         this.requireStore().remove(source.config.id, request.id);
       }
+    this.requireStore().retainRequests(source.config.id, seen);
+    this.requireStore().pruneExpired();
     if (eventCursor)
       this.requireStore().setCursor(source.config.id, eventCursor);
-    this.health.set(source.config.id, {
-      id: source.config.id,
-      label: source.config.label,
-      healthy: true,
-      lastSyncAt: new Date().toISOString(),
-    });
+    this.markHealthy(source);
   }
   private watch(source: Source): void {
     source.abort?.abort();
@@ -176,13 +179,16 @@ export class BrokerRuntime {
       let delay = 250;
       while (!abort.signal.aborted) {
         try {
+          await this.ensureDiscovered(source);
           for await (const event of source.client.events(
             this.requireStore().cursor(source.config.id),
             abort.signal,
           )) {
-            this.requireStore().setCursor(source.config.id, event.cursor);
             const current = await source.client.get(event.request_id);
             this.accept(source, current);
+            this.requireStore().setCursor(source.config.id, event.cursor);
+            this.markHealthy(source);
+            delay = 250;
           }
         } catch (error) {
           if (abort.signal.aborted) return;
@@ -191,13 +197,30 @@ export class BrokerRuntime {
             "code" in error &&
             error.code === "cursor_expired"
           )
-            await this.reconcile(source);
+            try {
+              await this.reconcile(source);
+            } catch (reconcileError) {
+              this.markUnhealthy(source, reconcileError);
+            }
           this.markUnhealthy(source, error);
           await sleep(delay);
           delay = Math.min(delay * 2, 30_000);
         }
       }
     })();
+  }
+  private async ensureDiscovered(source: Source): Promise<void> {
+    if (source.discovered) return;
+    await source.client.discover();
+    source.discovered = true;
+  }
+  private markHealthy(source: Source): void {
+    this.health.set(source.config.id, {
+      id: source.config.id,
+      label: source.config.label,
+      healthy: true,
+      lastSyncAt: new Date().toISOString(),
+    });
   }
   private accept(source: Source, request: BrokerRequest): void {
     if (request.status !== "pending" && request.status !== "active") {
@@ -318,8 +341,9 @@ function notificationText(request: SafeRequest): string {
     `${request.sourceLabel}: ${request.presentation.title}`,
     request.presentation.summary ?? "",
     `Handle: ${request.handle}`,
-    `/brokerkit approve ${request.handle}`,
-    `/brokerkit deny ${request.handle}`,
+    ...request.allowed_actions.map(
+      (action) => `/brokerkit ${action} ${request.handle}`,
+    ),
   ]
     .filter(Boolean)
     .join("\n");

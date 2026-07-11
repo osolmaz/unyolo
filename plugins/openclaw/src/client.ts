@@ -43,10 +43,13 @@ export class BrokerClient {
   async health(): Promise<void> {
     parseHealth(await this.json("/healthz", {}, false));
   }
-  async list(cursor?: string): Promise<RequestPage> {
+  async list(
+    status: "pending" | "active" = "pending",
+    cursor?: string,
+  ): Promise<RequestPage> {
     return parseRequestPage(
       await this.json(
-        `/api/operator/v1/requests?status=pending&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+        `/api/operator/v1/requests?status=${status}&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
       ),
     );
   }
