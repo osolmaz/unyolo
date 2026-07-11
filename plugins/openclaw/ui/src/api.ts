@@ -68,13 +68,7 @@ export class BrokerKitUiApi {
     ) {
       return this.delegatedSession.token;
     }
-    const response = await fetch(`${this.bootstrap.basePath}/session`, {
-      credentials: "include",
-      cache: "no-store",
-      headers: { accept: "application/json" },
-    });
-    if (!response.ok) throw new Error(await safeError(response));
-    const value = (await response.json()) as Record<string, unknown>;
+    const value = await delegatedSession(this.bootstrap.basePath);
     const expiresAtMs = Date.parse(
       typeof value.expires_at === "string" ? value.expires_at : "",
     );
@@ -95,6 +89,63 @@ export class BrokerKitUiApi {
     };
     return this.delegatedSession.token;
   }
+}
+
+async function delegatedSession(
+  basePath: string,
+): Promise<Record<string, unknown>> {
+  if (typeof window === "undefined" || window.parent === window) {
+    const response = await fetch(`${basePath}/session`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(await safeError(response));
+    return (await response.json()) as Record<string, unknown>;
+  }
+  return delegatedSessionFromParent();
+}
+
+function delegatedSessionFromParent(): Promise<Record<string, unknown>> {
+  const nonce = randomNonce();
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Approval authorization expired"));
+    }, 10_000);
+    const receive = (event: MessageEvent) => {
+      if (event.source !== window.parent || !record(event.data)) return;
+      if (
+        event.data.type !== "mlclaw.brokerkit.session.response" ||
+        event.data.nonce !== nonce
+      )
+        return;
+      cleanup();
+      if (!record(event.data.session)) {
+        reject(new Error("Approval authorization expired"));
+        return;
+      }
+      resolve(event.data.session);
+    };
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", receive);
+    };
+    window.addEventListener("message", receive);
+    window.parent.postMessage(
+      { type: "mlclaw.brokerkit.session.request", version: 1, nonce },
+      "*",
+    );
+  });
+}
+
+function randomNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export function parseUiBootstrap(hash: string): UiBootstrap {

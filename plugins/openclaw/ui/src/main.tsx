@@ -45,10 +45,11 @@ export function App() {
       setBusy("");
     }
   };
-  const pending = useMemo(
+  const actionable = useMemo(
     () =>
-      snapshot?.requests.filter((request) => request.status === "pending") ??
-      [],
+      snapshot?.requests.filter(
+        (request) => request.allowed_actions.length > 0,
+      ) ?? [],
     [snapshot],
   );
   return (
@@ -60,8 +61,11 @@ export function App() {
           </p>
           <h1>Approvals</h1>
           <p className="subtle">
-            {pending.length} pending across {snapshot?.sources.length ?? 0}{" "}
-            sources
+            {
+              actionable.filter((request) => request.status === "pending")
+                .length
+            }{" "}
+            pending across {snapshot?.sources.length ?? 0} sources
           </p>
         </div>
         <button className="icon" title="Refresh" onClick={() => void load()}>
@@ -87,7 +91,7 @@ export function App() {
         ))}
       </section>
       <section className="requests">
-        {pending.map((request) => (
+        {actionable.map((request) => (
           <article key={request.handle}>
             <div className="request-head">
               <div>
@@ -121,6 +125,26 @@ export function App() {
               </span>
             </div>
             <div className="actions">
+              {request.allowed_actions.includes("cancel") && (
+                <button
+                  className="secondary"
+                  disabled={busy === request.handle}
+                  onClick={() => void decide(request, "cancel")}
+                >
+                  <CircleX size={16} />
+                  Cancel
+                </button>
+              )}
+              {request.allowed_actions.includes("revoke") && (
+                <button
+                  className="secondary"
+                  disabled={busy === request.handle}
+                  onClick={() => void decide(request, "revoke")}
+                >
+                  <CircleX size={16} />
+                  Revoke
+                </button>
+              )}
               {request.allowed_actions.includes("deny") && (
                 <button
                   className="secondary"
@@ -144,10 +168,10 @@ export function App() {
             </div>
           </article>
         ))}
-        {snapshot && pending.length === 0 && (
+        {snapshot && actionable.length === 0 && (
           <div className="empty">
             <ShieldCheck size={30} />
-            <h2>No pending requests</h2>
+            <h2>No actionable requests</h2>
             <p>
               Approved, denied, expired, and canceled requests clear
               automatically.

@@ -37,6 +37,29 @@ const snapshot = {
       allowed_actions: ["approve", "deny", "cancel"],
       approval_bounds: { max_duration_seconds: 300, max_uses: 1 },
     },
+    {
+      sourceId: "hf",
+      sourceLabel: "Hugging Face",
+      handle: "active-request-handle",
+      id: "request-2",
+      revision: 2,
+      requester: "bob",
+      operation: "repo.update",
+      status: "active",
+      requested_at: "2026-07-11T00:00:00Z",
+      active_expires_at: "2026-07-11T01:00:00Z",
+      requested_duration_seconds: 3600,
+      requested_max_uses: 3,
+      granted_max_uses: 3,
+      used_count: 1,
+      presentation: {
+        risk: "high",
+        title: "Active repository grant",
+        facts: [{ label: "Repository", value: "osolmaz/model" }],
+      },
+      allowed_actions: ["revoke"],
+      approval_bounds: { max_duration_seconds: 3600, max_uses: 3 },
+    },
   ],
   synchronizedAt: "2026-07-11T00:00:00Z",
 };
@@ -57,6 +80,8 @@ test("renders a bounded capability-protected approval surface", async ({
   await expect(
     page.getByRole("button", { name: "Approve once" }),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
   await expect(page).not.toHaveURL(/#/);
   const overflow = await page.evaluate(
     () =>
