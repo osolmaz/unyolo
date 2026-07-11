@@ -66,6 +66,7 @@ describe("BrokerRuntime", () => {
     if (!address || typeof address === "string")
       throw new Error("missing address");
     const config = parseConfig({
+      mode: "direct",
       brokers: [
         {
           id: "test",
@@ -80,6 +81,7 @@ describe("BrokerRuntime", () => {
       ],
       pollIntervalMs: 5000,
     });
+    if (config.mode !== "direct") throw new Error("unexpected mode");
     const stateDir = mkdtempSync(path.join(os.tmpdir(), "brokerkit-runtime-"));
     const delivered: string[] = [];
     const hooks = {

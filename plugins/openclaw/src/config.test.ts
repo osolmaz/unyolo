@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseConfig } from "./config.js";
 
 const valid = {
+  mode: "direct" as const,
   brokers: [
     {
       id: "hf",
@@ -17,7 +18,10 @@ const valid = {
 };
 describe("parseConfig", () => {
   it("accepts strict structured SecretRefs", () => {
-    expect(parseConfig(valid).brokers[0]?.requestTimeoutMs).toBe(10000);
+    const parsed = parseConfig(valid);
+    expect(parsed.mode).toBe("direct");
+    if (parsed.mode !== "direct") throw new Error("unexpected mode");
+    expect(parsed.brokers[0]?.requestTimeoutMs).toBe(10000);
   });
   it("rejects duplicate ids, literal secrets, unknown fields, and remote plaintext", () => {
     expect(() =>
@@ -32,6 +36,42 @@ describe("parseConfig", () => {
     expect(() =>
       parseConfig({
         brokers: [{ ...valid.brokers[0], endpoint: "http://example.com" }],
+      }),
+    ).toThrow();
+  });
+  it("accepts only normalized same-origin delegated web paths", () => {
+    expect(
+      parseConfig({
+        mode: "delegated-web",
+        delegatedWeb: { basePath: "/mlclaw/api/brokerkit" },
+      }),
+    ).toEqual({
+      mode: "delegated-web",
+      delegatedWeb: { basePath: "/mlclaw/api/brokerkit" },
+    });
+    for (const basePath of [
+      "https://example.com/api",
+      "//example.com/api",
+      "/api/../admin",
+      "/api/%2e%2e/admin",
+      "/api?token=x",
+      "/api/",
+    ]) {
+      expect(() =>
+        parseConfig({
+          mode: "delegated-web",
+          delegatedWeb: { basePath },
+        }),
+      ).toThrow();
+    }
+  });
+  it("requires an explicit mode and rejects fields from the other mode", () => {
+    expect(() => parseConfig({ brokers: valid.brokers })).toThrow();
+    expect(() =>
+      parseConfig({
+        mode: "delegated-web",
+        delegatedWeb: { basePath: "/api/brokerkit" },
+        brokers: valid.brokers,
       }),
     ).toThrow();
   });

@@ -49,7 +49,9 @@ test.beforeEach(async ({ page }) => {
 test("renders a bounded capability-protected approval surface", async ({
   page,
 }, testInfo) => {
-  await page.goto("/#test-capability");
+  await page.goto(
+    `/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+  );
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(
@@ -67,3 +69,32 @@ test("renders a bounded capability-protected approval surface", async ({
     fullPage: true,
   });
 });
+
+test("uses delegated web session authority without exposing it in the URL", async ({
+  page,
+}) => {
+  const token = "delegated-decision-token-that-is-long-enough";
+  await page.route("**/mlclaw/api/brokerkit/session", (route) =>
+    route.fulfill({
+      json: {
+        api_version: "brokerkit.io/delegated-web/v1",
+        actor: "osolmaz",
+        decision_token: token,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+      },
+    }),
+  );
+  await page.route("**/mlclaw/api/brokerkit/snapshot", async (route) => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+    await route.fulfill({ json: snapshot });
+  });
+  await page.goto(
+    `/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/mlclaw/api/brokerkit" })}`,
+  );
+  await expect(page.getByText("Hugging Face repository write")).toBeVisible();
+  await expect(page).not.toHaveURL(/#/);
+});
+
+function bootstrap(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}

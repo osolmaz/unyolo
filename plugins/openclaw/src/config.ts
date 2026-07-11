@@ -16,8 +16,9 @@ const broker = z
     requestTimeoutMs: z.number().int().min(1000).max(60000).default(10000),
   })
   .strict();
-export const configSchema = z
+const directConfig = z
   .object({
+    mode: z.literal("direct"),
     brokers: z.array(broker).min(1).max(32),
     pollIntervalMs: z.number().int().min(5000).max(300000).default(30000),
     notificationConcurrency: z.number().int().min(1).max(16).default(4),
@@ -58,8 +59,67 @@ export const configSchema = z
     }
   });
 
+const delegatedWebConfig = z
+  .object({
+    mode: z.literal("delegated-web"),
+    delegatedWeb: z
+      .object({
+        basePath: z.string().superRefine((value, ctx) => {
+          if (!validDelegatedBasePath(value)) {
+            ctx.addIssue({
+              code: "custom",
+              message:
+                "delegated web basePath must be a normalized same-origin absolute path",
+            });
+          }
+        }),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const configSchema = z.discriminatedUnion("mode", [
+  directConfig,
+  delegatedWebConfig,
+]);
+
 export type PluginConfig = z.infer<typeof configSchema>;
-export type BrokerConfig = PluginConfig["brokers"][number];
+export type DirectPluginConfig = z.infer<typeof directConfig>;
+export type BrokerConfig = DirectPluginConfig["brokers"][number];
 export function parseConfig(value: unknown): PluginConfig {
   return configSchema.parse(value);
+}
+
+function validDelegatedBasePath(value: string): boolean {
+  if (
+    value.length < 2 ||
+    value.length > 256 ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.endsWith("/") ||
+    /[?#\\]/u.test(value) ||
+    hasControlCharacter(value)
+  ) {
+    return false;
+  }
+  try {
+    const decoded = decodeURIComponent(value);
+    if (decoded !== value || decoded.includes("..") || decoded.includes("\\")) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  return value
+    .split("/")
+    .every(
+      (segment, index) => index === 0 || /^[A-Za-z0-9._~-]+$/u.test(segment),
+    );
+}
+
+function hasControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code < 32 || code === 127;
+  });
 }

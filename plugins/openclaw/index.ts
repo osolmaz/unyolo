@@ -11,31 +11,53 @@ import { parseConfig, type BrokerConfig } from "./src/config.js";
 import { BrokerRuntime } from "./src/runtime.js";
 import type { Action } from "./src/types.js";
 
-const capability = randomBytes(32).toString("base64url");
 const configSchema = { parse: parseConfig };
 
-export default definePluginEntry({
-  id: "brokerkit",
-  name: "BrokerKit",
-  description: "Provider-neutral BrokerKit approvals",
-  configSchema,
-  register(api: OpenClawPluginApi) {
-    const config = parseConfig(api.pluginConfig);
-    let runtime: BrokerRuntime | undefined;
-    const requireRuntime = () => {
-      if (!runtime) throw new Error("BrokerKit runtime is not running");
-      return runtime;
-    };
-    api.session.controls.registerControlUiDescriptor({
-      surface: "tab",
-      id: "brokerkit",
-      label: "Approvals",
-      description: "Review pending BrokerKit requests.",
-      icon: "shield-check",
-      group: "control",
-      requiredScopes: ["operator.approvals"],
-      path: `/plugins/brokerkit/ui/#${capability}`,
-    });
+type DirectBootstrap = {
+  version: 1;
+  mode: "direct";
+  capability: string;
+};
+type DelegatedBootstrap = {
+  version: 1;
+  mode: "delegated-web";
+  basePath: string;
+};
+
+export function registerBrokerKit(api: OpenClawPluginApi): void {
+  const config = parseConfig(api.pluginConfig);
+  const capability =
+    config.mode === "direct"
+      ? randomBytes(32).toString("base64url")
+      : undefined;
+  const bootstrap: DirectBootstrap | DelegatedBootstrap =
+    config.mode === "direct"
+      ? {
+          version: 1,
+          mode: "direct",
+          capability: requiredCapability(capability),
+        }
+      : {
+          version: 1,
+          mode: "delegated-web",
+          basePath: config.delegatedWeb.basePath,
+        };
+  let runtime: BrokerRuntime | undefined;
+  const requireRuntime = () => {
+    if (!runtime) throw new Error("BrokerKit runtime is not running");
+    return runtime;
+  };
+  api.session.controls.registerControlUiDescriptor({
+    surface: "tab",
+    id: "brokerkit",
+    label: "Approvals",
+    description: "Review pending BrokerKit requests.",
+    icon: "shield-check",
+    group: "control",
+    requiredScopes: ["operator.approvals"],
+    path: `/plugins/brokerkit/ui/#${encodeUiBootstrap(bootstrap)}`,
+  });
+  if (config.mode === "direct") {
     api.registerService({
       id: "brokerkit",
       start: async (ctx) => {
@@ -76,13 +98,36 @@ export default definePluginEntry({
       requiredScopes: ["operator.approvals"],
       handler: (ctx) => handleCommand(requireRuntime(), ctx),
     });
-    api.registerHttpRoute({
-      path: "/plugins/brokerkit",
-      auth: "plugin",
-      match: "prefix",
-      handler: createHttpHandler(requireRuntime, api.rootDir ?? process.cwd()),
-    });
-  },
+  }
+  api.registerHttpRoute({
+    path: "/plugins/brokerkit",
+    auth: "plugin",
+    match: "prefix",
+    handler: createHttpHandler(
+      config.mode === "direct" ? requireRuntime : undefined,
+      api.rootDir ?? process.cwd(),
+      capability,
+    ),
+  });
+}
+
+function encodeUiBootstrap(
+  value: DirectBootstrap | DelegatedBootstrap,
+): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function requiredCapability(value: string | undefined): string {
+  if (!value) throw new Error("BrokerKit UI capability was not initialized");
+  return value;
+}
+
+export default definePluginEntry({
+  id: "brokerkit",
+  name: "BrokerKit",
+  description: "Provider-neutral BrokerKit approvals",
+  configSchema,
+  register: registerBrokerKit,
 });
 
 async function resolveCredential(
@@ -182,7 +227,11 @@ function formatRequest(
     .join("\n");
 }
 
-function createHttpHandler(runtime: () => BrokerRuntime, rootDir: string) {
+function createHttpHandler(
+  runtime: (() => BrokerRuntime) | undefined,
+  rootDir: string,
+  capability: string | undefined,
+) {
   const uiDir = path.join(rootDir, "dist", "ui");
   return async (
     req: import("node:http").IncomingMessage,
@@ -190,7 +239,9 @@ function createHttpHandler(runtime: () => BrokerRuntime, rootDir: string) {
   ): Promise<boolean> => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname.startsWith("/plugins/brokerkit/api/v1/")) {
-      if (!authorized(req.headers.authorization))
+      if (!runtime || !capability)
+        return json(res, 404, { error: { code: "not_found" } });
+      if (!authorized(req.headers.authorization, capability))
         return json(res, 401, { error: { code: "not_authorized" } });
       if (req.headers.origin !== "null")
         return json(res, 403, { error: { code: "not_authorized" } });
@@ -262,7 +313,7 @@ function createHttpHandler(runtime: () => BrokerRuntime, rootDir: string) {
   };
 }
 
-function authorized(header: string | undefined): boolean {
+function authorized(header: string | undefined, capability: string): boolean {
   const token = header?.startsWith("Bearer ") ? header.slice(7) : "";
   const left = Buffer.from(token);
   const right = Buffer.from(capability);

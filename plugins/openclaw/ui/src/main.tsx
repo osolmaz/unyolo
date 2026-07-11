@@ -9,10 +9,11 @@ import {
   X,
 } from "lucide-react";
 import type { Action, SafeRequest, Snapshot } from "../../src/types.js";
+import { BrokerKitUiApi, parseUiBootstrap } from "./api.js";
 import "./styles.css";
 
-const capability = location.hash.slice(1);
-if (capability) history.replaceState(null, "", location.pathname);
+const api = new BrokerKitUiApi(parseUiBootstrap(location.hash.slice(1)));
+history.replaceState(null, "", location.pathname);
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
@@ -21,12 +22,7 @@ export function App() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const response = await fetch("/plugins/brokerkit/api/v1/snapshot", {
-        headers: { authorization: `Bearer ${capability}` },
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error("Approvals are unavailable");
-      setSnapshot((await response.json()) as Snapshot);
+      setSnapshot(await api.snapshot());
     } catch (value) {
       setError(
         value instanceof Error ? value.message : "Approvals are unavailable",
@@ -41,18 +37,7 @@ export function App() {
   const decide = async (request: SafeRequest, action: Action) => {
     setBusy(request.handle);
     try {
-      const response = await fetch(
-        `/plugins/brokerkit/api/v1/requests/${encodeURIComponent(request.handle)}/${action}`,
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${capability}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ expectedRevision: request.revision }),
-        },
-      );
-      if (!response.ok) throw new Error("Decision was not committed");
+      await api.decide(request, action);
       await load();
     } catch (value) {
       setError(value instanceof Error ? value.message : "Decision failed");

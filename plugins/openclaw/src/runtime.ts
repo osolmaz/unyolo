@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { BrokerConfig, PluginConfig } from "./config.js";
+import type { BrokerConfig, DirectPluginConfig } from "./config.js";
 import { BrokerClient } from "./client.js";
 import { StateStore, type Subscription } from "./store.js";
 import type {
@@ -30,7 +30,7 @@ export class BrokerRuntime {
   private timer?: NodeJS.Timeout;
   private delivering = false;
   constructor(
-    private readonly config: PluginConfig,
+    private readonly config: DirectPluginConfig,
     private readonly hooks: RuntimeHooks,
   ) {
     for (const source of config.brokers)
