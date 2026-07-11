@@ -2,8 +2,8 @@
 
 Date: 2026-07-11
 
-Status: implemented; final coordinated review, CI, publication, installation,
-and live provider probes pending
+Status: implementation, coordinated cutover, installation, and live provider
+probes complete; final review and publication pending
 
 Owners: `brokerkit` for the common contract and reusable runtime; each broker
 for its provider adapter; the trusted host for registration and UI aggregation

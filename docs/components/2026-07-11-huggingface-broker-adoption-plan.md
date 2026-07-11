@@ -2,8 +2,8 @@
 
 Date: 2026-07-11
 
-Status: implemented; final monorepo review, merge, release, and live installed
-verification pending
+Status: implementation and live installed verification complete; final
+monorepo review, merge, and release pending
 
 Required companion plans:
 

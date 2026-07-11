@@ -2,8 +2,8 @@
 
 Date: 2026-07-11
 
-Status: feature-complete implementation; final monorepo review, merge,
-publication, and installed-system verification pending
+Status: implementation, packaged installation, and installed-system verification
+complete; final monorepo review, merge, and publication pending
 
 Plugin id: `brokerkit`
 
