@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/grants"
 	bkpolicy "github.com/osolmaz/brokerkit/policy"
 )
@@ -45,9 +46,12 @@ type Input struct {
 }
 
 // Request validates provider fields and creates a canonical grant request.
-func Request(store *grants.Store, input Input) (grants.RequestResult, bool, error) {
+func Request(store *grants.Store, plans *hfplan.Store, input Input) (grants.RequestResult, bool, error) {
 	request, err := CanonicalRequest(input)
 	if err != nil {
+		return grants.RequestResult{}, false, err
+	}
+	if err := plans.Bind(&request); err != nil {
 		return grants.RequestResult{}, false, err
 	}
 	return store.Request(request)
@@ -200,7 +204,13 @@ func Ref(grant grants.Grant) string { return bkpolicy.FirstValue(grant.Target.Fi
 func Mode(grant grants.Grant) string { return grant.Metadata[metadataMode] }
 
 // RequestedMinutes returns the requested active duration in minutes.
-func RequestedMinutes(grant grants.Grant) int { return int(grant.Duration / time.Minute) }
+func RequestedMinutes(grant grants.Grant) int {
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	return int(duration / time.Minute)
+}
 
 // GetForClient returns a grant only when it belongs to client.
 func GetForClient(store *grants.Store, client, id string) (grants.Grant, error) {

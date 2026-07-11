@@ -6,12 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/grants"
 )
 
 func TestCanonicalRequestRoundTrip(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	result, created, err := Request(store, Input{
+	plans, _ := hfplan.NewStore(filepath.Join(t.TempDir(), "plans"))
+	result, created, err := Request(store, plans, Input{
 		Client: "bob", Operation: "git.push.force", Mode: ModeWindow,
 		Target: "model/owner/repo", Ref: "refs/heads/main", Attrs: map[string]any{"max_bytes": int64(42)},
 		Reason: "test", RequestedDuration: 5 * time.Minute, MaxUses: 1,
@@ -64,7 +66,8 @@ func TestCanonicalRequestValidation(t *testing.T) {
 
 func TestStoredGrantAccessorsAndMatching(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	result, _, err := Request(store, Input{
+	plans, _ := hfplan.NewStore(filepath.Join(t.TempDir(), "plans"))
+	result, _, err := Request(store, plans, Input{
 		Client: "bob", Operation: "git.push.force", Target: "model/owner/repo", Ref: "refs/heads/main",
 		Reason: "test", RequestedDuration: 3 * time.Minute, MaxUses: 2,
 	})

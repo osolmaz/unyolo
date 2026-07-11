@@ -23,19 +23,20 @@ import (
 
 	"github.com/labstack/echo/v4"
 	bkauth "github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/controlplane"
-	"github.com/osolmaz/brokerkit/grants"
-	bknotify "github.com/osolmaz/brokerkit/notify"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/jsend"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/grants"
+	bknotify "github.com/osolmaz/brokerkit/notify"
+	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/operatorapi"
 )
 
 const (
@@ -88,6 +89,8 @@ type Server struct {
 	hfToken             string
 	maxBody             int64
 	grants              *grants.Store
+	plans               *hfplan.Store
+	planValidator       hfplan.Validator
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
 
@@ -235,9 +238,15 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
 	})
+	plans, err := hfplan.NewStore(filepath.Join(opts.Config.StateDir, "plans"))
+	if err != nil {
+		return nil, err
+	}
+	planValidator := hfplan.Validator{Store: plans}
 	runtime, err := controlplane.New(controlplane.Options{
 		Broker: "hf-broker", Store: store, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
+		ActivationValidator: planValidator,
 	})
 	if err != nil {
 		return nil, err
@@ -260,6 +269,8 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		hfToken:            opts.Config.HFToken,
 		maxBody:            opts.Config.MaxPackBytes,
 		grants:             store,
+		plans:              plans,
+		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
 		lfsActions:         map[string]lfsAction{},
@@ -662,6 +673,11 @@ func (s *Server) forwardAndRecord(w http.ResponseWriter, r *http.Request, client
 }
 
 func (s *Server) forwardWithReservedGrant(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target string, grant grants.Grant) {
+	if err := s.planValidator.ValidateExecution(grant); err != nil {
+		writePlain(w, http.StatusForbidden, "hf-broker: grant plan is invalid\n")
+		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant plan is invalid", 0)
+		return
+	}
 	reserved, err := s.grants.ReserveUse(grant.ID)
 	if err != nil {
 		writePlain(w, http.StatusForbidden, "hf-broker: grant is not active\n")
@@ -1053,7 +1069,7 @@ func (s *Server) requestAPIGrant(client string, req apiGrantRequestBody, grantPo
 		maxUses = grantPolicy.DefaultMaxUses
 	}
 	ref, _ := grantRefFromTarget(req.Target)
-	result, created, err := hfgrant.Request(s.grants, hfgrant.Input{
+	result, created, err := hfgrant.Request(s.grants, s.plans, hfgrant.Input{
 		Client:            client,
 		ClientRequestID:   req.ClientRequestID,
 		Operation:         string(req.Operation),
@@ -2183,7 +2199,7 @@ func (s *Server) useActiveGrant(client string, operation policy.Operation, targe
 func (s *Server) matchActiveGrant(client string, operation policy.Operation, target, ref string, attrs map[string]any) (grants.Grant, bool, error) {
 	return hfgrant.MatchActiveFunc(s.grants, client, string(operation), target, ref, func(grant grants.Grant) bool {
 		values, err := hfgrant.Attrs(grant)
-		return err == nil && runtimeWindowGrant(grant) && policy.AttrValuesMatch(values, attrs)
+		return err == nil && s.planValidator.ValidateExecution(grant) == nil && runtimeWindowGrant(grant) && policy.AttrValuesMatch(values, attrs)
 	})
 }
 
@@ -2280,6 +2296,10 @@ func grantUseIDs(used []grantUse) []string {
 func (s *Server) reserveGrantUses(uses []grantUse) ([]grants.Grant, error) {
 	reserved := make([]grants.Grant, 0, len(uses))
 	for _, use := range uses {
+		if err := s.planValidator.ValidateExecution(use.grant); err != nil {
+			s.releaseGrantUses(reserved)
+			return nil, err
+		}
 		grant, err := s.grants.ReserveUse(use.grant.ID)
 		if err != nil {
 			s.releaseGrantUses(reserved)

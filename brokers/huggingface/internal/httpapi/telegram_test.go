@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 )
 
 func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
@@ -33,7 +33,7 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	}
 	path := t.TempDir() + "/grants.json"
 	store := grants.New(path, grants.Options{})
-	requested, _, err := requestHFGrant(store, hfgrant.Input{
+	requested, _, err := requestHFGrant(t, store, testPlanStore(t), hfgrant.Input{
 		Client:            "agent",
 		ClientRequestID:   "telegram-restart",
 		Operation:         "git.push.force",
@@ -117,7 +117,7 @@ func TestTelegramCallbackRecoversReferenceAfterAmbiguousSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := grants.New(t.TempDir()+"/grants.json", grants.Options{})
-	requested, _, err := requestHFGrant(store, hfgrant.Input{
+	requested, _, err := requestHFGrant(t, store, testPlanStore(t), hfgrant.Input{
 		Client:    "agent",
 		Operation: "git.push.force",
 		Mode:      hfgrant.ModeWindow,
@@ -164,7 +164,7 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 	}
 	dir := t.TempDir()
 	store := grants.New(dir+"/grants.json", grants.Options{})
-	requested, _, err := requestHFGrant(store, hfgrant.Input{
+	requested, _, err := requestHFGrant(t, store, testPlanStore(t), hfgrant.Input{
 		Client: "agent", Operation: "git.push.force", Mode: hfgrant.ModeWindow,
 		Target: "dataset/acme/repo", Ref: "refs/heads/main", Reason: "recover main",
 	})

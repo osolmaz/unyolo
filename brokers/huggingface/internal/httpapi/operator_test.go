@@ -36,15 +36,19 @@ func TestBrokerkitControlPlaneConformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	request := bkgrants.Request{
+		Client: "bob", ClientRequestID: "conformance", Operation: "git.push.force",
+		Target: bkpolicy.Target{Kind: "hf", Fields: map[string][]string{
+			"name": {"dataset/acme/conformance"}, "ref": {"refs/heads/main"},
+		}},
+		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "verify shared control plane", Duration: 5 * time.Minute, MaxUses: 1,
+	}
+	if err := server.plans.Bind(&request); err != nil {
+		t.Fatal(err)
+	}
 	conformance.RunOperatorV1(t, conformance.Fixture{
 		Runtime: server.control, ClientToken: clientSecret, OperatorToken: operatorSecret,
-		Request: bkgrants.Request{
-			Client: "bob", ClientRequestID: "conformance", Operation: "git.push.force",
-			Target: bkpolicy.Target{Kind: "hf", Fields: map[string][]string{
-				"name": {"dataset/acme/conformance"}, "ref": {"refs/heads/main"},
-			}},
-			Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "verify shared control plane", Duration: 5 * time.Minute,
-		},
+		Request: request,
 	})
 }
 
@@ -64,11 +68,15 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := server.grants.Request(bkgrants.Request{
+	grantRequest := bkgrants.Request{
 		Client: "bob", ClientRequestID: "operator-test", Operation: "git.push.force",
 		Target:   bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "repair branch", Duration: 5 * time.Minute,
-	})
+		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "repair branch", Duration: 5 * time.Minute, MaxUses: 1,
+	}
+	if err := server.plans.Bind(&grantRequest); err != nil {
+		t.Fatal(err)
+	}
+	result, _, err := server.grants.Request(grantRequest)
 	if err != nil {
 		t.Fatal(err)
 	}

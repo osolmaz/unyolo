@@ -22,14 +22,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/notify"
 )
 
 const (
@@ -56,9 +57,19 @@ type requestedGrant struct {
 	DecisionToken string
 }
 
-func requestHFGrant(store *grants.Store, input hfgrant.Input) (requestedGrant, bool, error) {
-	result, created, err := hfgrant.Request(store, input)
+func requestHFGrant(t *testing.T, store *grants.Store, plans *hfplan.Store, input hfgrant.Input) (requestedGrant, bool, error) {
+	t.Helper()
+	result, created, err := hfgrant.Request(store, plans, input)
 	return requestedGrant{Grant: result.Grant, DecisionToken: result.DecisionToken}, created, err
+}
+
+func testPlanStore(t *testing.T) *hfplan.Store {
+	t.Helper()
+	plans, err := hfplan.NewStore(filepath.Join(t.TempDir(), "plans"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plans
 }
 
 func appendOnlyDatasetPolicyJSON(names ...string) string {
@@ -529,7 +540,7 @@ func TestDenyRuleOverridesActiveGrant(t *testing.T) {
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 
-	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
+	grant, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -576,7 +587,7 @@ func TestDenyRuleStopsActiveGrantPushPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := requestHFGrant(store, hfgrant.Input{
+	grant, _, err := requestHFGrant(t, store, testPlanStore(t), hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -608,7 +619,8 @@ func TestDenyRuleStopsActiveGrantPushPreflight(t *testing.T) {
 
 func TestActiveGrantRequiresApprovedAttrs(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := requestHFGrant(store, hfgrant.Input{
+	plans := testPlanStore(t)
+	grant, _, err := requestHFGrant(t, store, plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushAppend),
 		Target:    "dataset/acme/repo",
@@ -622,7 +634,7 @@ func TestActiveGrantRequiresApprovedAttrs(t *testing.T) {
 	if _, err := store.Approve(grant.ID, grant.DecisionToken, "test"); err != nil {
 		t.Fatal(err)
 	}
-	server := &Server{grants: store}
+	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
 	used := map[string]grantUse{}
 
 	matched, err := server.useActiveGrant("agent", policy.OpGitPushAppend, "dataset/acme/repo", "refs/heads/main", refChangeAttrs("non_fast_forward"), used)
@@ -650,7 +662,8 @@ func TestActiveGrantRequiresApprovedAttrs(t *testing.T) {
 
 func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := requestHFGrant(store, hfgrant.Input{
+	plans := testPlanStore(t)
+	grant, _, err := requestHFGrant(t, store, plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Mode:      hfgrant.ModeExecution,
@@ -667,7 +680,7 @@ func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &Server{grants: store}
+	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
 	attrs := refChangeAttrs("non_fast_forward")
 
 	matched, err := server.useActiveGrant("agent", policy.OpGitPushForce, "dataset/acme/repo", "refs/heads/main", attrs, map[string]grantUse{})
@@ -920,7 +933,7 @@ func TestReceivePackDiscoveryChecksLaterActiveGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
+	grant, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitRefDelete),
 		Target:    "dataset/acme/repo",
@@ -997,7 +1010,7 @@ func TestReceivePackDiscoveryRequiresAllowOrActiveGrant(t *testing.T) {
 		t.Fatalf("request-only discovery reached upstream: hits=%d want 0", got)
 	}
 
-	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
+	grant, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -1065,7 +1078,7 @@ func TestReceivePackDiscoveryDeniedPolicyBeatsActiveGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
+	grant, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -1319,7 +1332,7 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant, _, err := requestHFGrant(handler.grants, hfgrant.Input{
+	grant, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitFetch),
 		Target:    "dataset/acme/repo",
@@ -2507,7 +2520,7 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := requestHFGrant(handler.grants, hfgrant.Input{
+	if _, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
 		Client:            "agent",
 		ClientRequestID:   "retry-missing-message",
 		Operation:         string(policy.OpGitPushForce),
@@ -2840,7 +2853,8 @@ func TestGrantRequestRejectsNonEditableNotifier(t *testing.T) {
 func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 	dir := t.TempDir()
 	store := grants.New(filepath.Join(dir, "grants.json"), grants.Options{})
-	grant, _, err := requestHFGrant(store, hfgrant.Input{
+	plans := testPlanStore(t)
+	grant, _, err := requestHFGrant(t, store, plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -2861,7 +2875,7 @@ func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 	defer func() {
 		_ = os.Chmod(dir, 0o700)
 	}()
-	server := &Server{grants: store}
+	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
 
 	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
 	if err == nil {
@@ -2880,7 +2894,8 @@ func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 
 func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := requestHFGrant(store, hfgrant.Input{
+	plans := testPlanStore(t)
+	grant, _, err := requestHFGrant(t, store, plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -2895,7 +2910,7 @@ func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-	server := &Server{grants: store}
+	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
 
 	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
 	if err != nil {
@@ -2913,7 +2928,8 @@ func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
 
 func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	grant, _, err := requestHFGrant(store, hfgrant.Input{
+	plans := testPlanStore(t)
+	grant, _, err := requestHFGrant(t, store, plans, hfgrant.Input{
 		Client:    "agent",
 		Operation: string(policy.OpGitPushForce),
 		Target:    "dataset/acme/repo",
@@ -2930,7 +2946,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-	server := &Server{grants: store}
+	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
 	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
 	if err != nil {
 		t.Fatalf("reserveGrantUses() error = %v", err)
@@ -2956,7 +2972,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) {
 	now := time.Date(2026, 7, 6, 1, 2, 3, 0, time.UTC)
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{Now: func() time.Time { return now }})
-	grant, _, err := requestHFGrant(store, hfgrant.Input{
+	grant, _, err := requestHFGrant(t, store, testPlanStore(t), hfgrant.Input{
 		Client:            "agent",
 		Operation:         string(policy.OpGitPushForce),
 		Target:            "dataset/acme/repo",
