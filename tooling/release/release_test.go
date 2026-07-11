@@ -47,10 +47,15 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 	directory := t.TempDir()
 	writeReleaseFile(t, directory, "go.mod", "module example.test/release\n\ngo 1.25.0\n")
 	writeReleaseFile(t, directory, "main.go", "package main\nvar version = \"dev\"\nfunc main() {}\n")
+	if err := os.Mkdir(filepath.Join(directory, "helper"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeReleaseFile(t, filepath.Join(directory, "helper"), "main.go", "package main\nvar version = \"dev\"\nfunc main() {}\n")
 	writeReleaseFile(t, directory, "README.md", "# test\n")
 	writeReleaseFile(t, directory, "LICENSE", "test license\n")
 	dist := filepath.Join(directory, "dist")
-	options := Options{Directory: directory, Broker: "test-broker", Command: ".", Version: "v0.1.0", Dist: dist}
+	options := Options{Directory: directory, Broker: "test-broker", Command: ".", Version: "v0.1.0", Dist: dist,
+		ExtraCommands: map[string]string{"test-broker-exec": "./helper"}}
 	if err := Run(t.Context(), options); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +64,7 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	asset := filepath.Join(dist, "test-broker_linux_amd64.tar.gz")
-	if names := archiveNames(t, asset); !slices.Equal(names, []string{"test-broker", "README.md", "LICENSE"}) {
+	if names := archiveNames(t, asset); !slices.Equal(names, []string{"test-broker", "test-broker-exec", "README.md", "LICENSE"}) {
 		t.Fatalf("archive names = %v", names)
 	}
 	assertArchiveMetadata(t, asset)
@@ -110,7 +115,7 @@ func assertArchiveMetadata(t *testing.T, path string) {
 			t.Fatal(err)
 		}
 		wantMode := int64(0o644)
-		if header.Name == "test-broker" {
+		if header.Name == "test-broker" || header.Name == "test-broker-exec" {
 			wantMode = 0o755
 		}
 		if header.Mode != wantMode || header.Uid != 0 || header.Gid != 0 || header.Uname != "" || header.Gname != "" {

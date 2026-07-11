@@ -1,0 +1,75 @@
+name: Release broker
+
+on:
+  push:
+    tags:
+      - "hf-broker/v*"
+      - "gh-broker/v*"
+      - "sudo-broker/v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Select component
+        id: component
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=${GITHUB_REF_NAME}
+          version=${tag#*/}
+          case "$tag" in
+            hf-broker/*)
+              echo "broker=hf-broker" >> "$GITHUB_OUTPUT"
+              echo "directory=brokers/huggingface" >> "$GITHUB_OUTPUT"
+              echo "command=./cmd/hf-broker" >> "$GITHUB_OUTPUT"
+              ;;
+            gh-broker/*)
+              echo "broker=gh-broker" >> "$GITHUB_OUTPUT"
+              echo "directory=brokers/github" >> "$GITHUB_OUTPUT"
+              echo "command=./cmd/gh-broker" >> "$GITHUB_OUTPUT"
+              ;;
+            sudo-broker/*)
+              echo "broker=sudo-broker" >> "$GITHUB_OUTPUT"
+              echo "directory=brokers/sudo" >> "$GITHUB_OUTPUT"
+              echo "command=./cmd/sudo-broker" >> "$GITHUB_OUTPUT"
+              echo "extra=--extra-command=sudo-broker-exec=./cmd/sudo-broker-exec" >> "$GITHUB_OUTPUT"
+              ;;
+            *) exit 64 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Build reproducible archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./cmd/brokerkit-release \
+            --broker '${{ steps.component.outputs.broker }}' \
+            --directory '${{ steps.component.outputs.directory }}' \
+            --command '${{ steps.component.outputs.command }}' \
+            --version '${{ steps.component.outputs.version }}' \
+            --dist "$GITHUB_WORKSPACE/dist" \
+            ${{ steps.component.outputs.extra }}
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: dist
+          format: spdx-json
+          output-file: dist/sbom.spdx.json
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes

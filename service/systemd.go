@@ -36,6 +36,10 @@ type SystemdUnit struct {
 	PrivilegeEscalation  PrivilegeEscalation
 	PathValidation       PathValidation
 	ExtraDirectives      []string
+	AfterUnits           []string
+	RequiresUnits        []string
+	RuntimeDirectory     string
+	RuntimeDirectoryMode os.FileMode
 }
 
 // HomeAccess controls service visibility into user home directories.
@@ -125,12 +129,13 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 	if normalizedPrivilegeEscalation(unit.PrivilegeEscalation) == PrivilegeEscalationAllow {
 		noNewPrivileges = "false"
 	}
+	after := append([]string{"network-online.target"}, unit.AfterUnits...)
 	var body strings.Builder
-	_, _ = fmt.Fprintf(&body, `[Unit]
-Description=%s
-After=network-online.target
-Wants=network-online.target
-
+	_, _ = fmt.Fprintf(&body, "[Unit]\nDescription=%s\nAfter=%s\nWants=network-online.target\n", unit.Description, strings.Join(after, " "))
+	if len(unit.RequiresUnits) > 0 {
+		_, _ = fmt.Fprintf(&body, "Requires=%s\n", strings.Join(unit.RequiresUnits, " "))
+	}
+	_, _ = fmt.Fprintf(&body, `
 [Service]
 Type=simple
 User=%s
@@ -145,7 +150,14 @@ ProtectSystem=%s
 ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
+`, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
+	if unit.RuntimeDirectory != "" {
+		mode := unit.RuntimeDirectoryMode
+		if mode == 0 {
+			mode = 0o750
+		}
+		_, _ = fmt.Fprintf(&body, "RuntimeDirectory=%s\nRuntimeDirectoryMode=%04o\n", unit.RuntimeDirectory, mode.Perm())
+	}
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
 		body.WriteByte('\n')
@@ -179,7 +191,61 @@ func (unit SystemdUnit) validate() error {
 	if err := validateSystemdUnitPaths(unit); err != nil {
 		return err
 	}
+	if err := validateUnitDependencies(unit); err != nil {
+		return err
+	}
 	return validateExtraDirectives(unit.ExtraDirectives)
+}
+
+func validateUnitDependencies(unit SystemdUnit) error {
+	dependencies := append(append([]string(nil), unit.AfterUnits...), unit.RequiresUnits...)
+	for _, name := range dependencies {
+		if !validDependencyUnit(name) {
+			return fmt.Errorf("systemd dependency %q is invalid", name)
+		}
+	}
+	if unit.RuntimeDirectory == "" {
+		if unit.RuntimeDirectoryMode != 0 {
+			return errors.New("runtime directory mode requires a runtime directory")
+		}
+		return nil
+	}
+	if filepath.Base(unit.RuntimeDirectory) != unit.RuntimeDirectory || !validRuntimeDirectory(unit.RuntimeDirectory) {
+		return errors.New("runtime directory must be one safe basename")
+	}
+	mode := unit.RuntimeDirectoryMode
+	if mode == 0 {
+		mode = 0o750
+	}
+	if mode.Perm()&0o007 != 0 || mode.Perm()&0o700 == 0 || mode&^os.ModePerm != 0 {
+		return errors.New("runtime directory mode must be private and owner-accessible")
+	}
+	return nil
+}
+
+func validDependencyUnit(value string) bool {
+	if filepath.Base(value) != value || (!strings.HasSuffix(value, ".service") && !strings.HasSuffix(value, ".target")) {
+		return false
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') && !strings.ContainsRune("_.@-", character) {
+			return false
+		}
+	}
+	return true
+}
+
+func validRuntimeDirectory(value string) bool {
+	if len(value) < 1 || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '-' && character != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func validateSystemdPolicies(unit SystemdUnit) error {

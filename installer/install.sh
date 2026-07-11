@@ -6,6 +6,8 @@ REPO="${REPO:-}"
 INSTALL_DIR="${INSTALL_DIR:-}"
 VERSION="${VERSION:-}"
 TAG_PREFIX="${TAG_PREFIX:-}"
+COMPANION_BINARIES="${COMPANION_BINARIES:-}"
+LIBEXEC_DIR="${LIBEXEC_DIR:-}"
 
 fail() {
   label="${BROKER:-broker}"
@@ -32,11 +34,25 @@ validate_inputs() {
   esac
   case "$REPO" in
     *[!A-Za-z0-9._/-]*) fail "REPO contains unsupported characters" ;;
+    *..* | /* | */) fail "REPO contains unsafe path syntax" ;;
   esac
   case "$TAG_PREFIX" in
     "") ;;
     *[!A-Za-z0-9._/-]*) fail "TAG_PREFIX contains unsupported characters" ;;
+    *..* | /*) fail "TAG_PREFIX contains unsafe path syntax" ;;
   esac
+  for directory in "$INSTALL_DIR" "$LIBEXEC_DIR"; do
+    case "$directory" in
+      "") ;;
+      /*) case "$directory/" in *"/../"* | *"/./"* | *"//"*) fail "install directories must be absolute normalized paths" ;; esac ;;
+      *) fail "install directories must be absolute normalized paths" ;;
+    esac
+  done
+  for binary in $COMPANION_BINARIES; do
+    case "$binary" in
+      "" | *[!a-z0-9-]* | "$BROKER") fail "COMPANION_BINARIES contains an invalid binary name" ;;
+    esac
+  done
 }
 
 system_name() {
@@ -129,17 +145,49 @@ verify_checksum() {
 install_binary() {
   source_path="$1"
   dest_dir="$2"
+  binary_name="$3"
   mkdir -p "$dest_dir" 2>/dev/null || true
   if [ -w "$dest_dir" ]; then
-    install -m 0755 "$source_path" "$dest_dir/${BROKER}"
+    install -m 0755 "$source_path" "$dest_dir/${binary_name}"
     return
   fi
   if command -v sudo >/dev/null 2>&1; then
     sudo install -d -m 0755 "$dest_dir"
-    sudo install -m 0755 "$source_path" "$dest_dir/${BROKER}"
+    sudo install -m 0755 "$source_path" "$dest_dir/${binary_name}"
     return
   fi
   fail "cannot write to ${dest_dir}; rerun with INSTALL_DIR set to a writable directory"
+}
+
+choose_libexec_dir() {
+  dest_dir="$1"
+  if [ -n "$LIBEXEC_DIR" ]; then
+    echo "$LIBEXEC_DIR"
+    return
+  fi
+  echo "$(dirname "$dest_dir")/libexec"
+}
+
+validate_archive() {
+  archive="$1"
+  listing="$2"
+  tar -tzf "$archive" > "$listing"
+  while IFS= read -r entry; do
+    case "$entry" in
+      "$BROKER" | README.md | LICENSE) ;;
+      *)
+        allowed=false
+        for binary in $COMPANION_BINARIES; do
+          if [ "$entry" = "$binary" ]; then allowed=true; fi
+        done
+        [ "$allowed" = true ] || fail "release archive contains unexpected path: ${entry}"
+        ;;
+    esac
+  done < "$listing"
+  [ "$(awk -v name="$BROKER" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${BROKER} exactly once"
+  for binary in $COMPANION_BINARIES; do
+    [ "$(awk -v name="$binary" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${binary} exactly once"
+  done
 }
 
 validate_inputs
@@ -179,12 +227,22 @@ curl -fsSL "${base_url}/${asset}" -o "${tmp_dir}/${asset}"
 curl -fsSL "${base_url}/checksums.txt" -o "${tmp_dir}/checksums.txt"
 verify_checksum "$asset" "${tmp_dir}/checksums.txt"
 
+validate_archive "${tmp_dir}/${asset}" "${tmp_dir}/archive.list"
 tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
-dest_dir="$(choose_install_dir)"
-install_binary "${tmp_dir}/${BROKER}" "$dest_dir"
+main_dest_dir="$(choose_install_dir)"
+install_binary "${tmp_dir}/${BROKER}" "$main_dest_dir" "$BROKER"
 
-echo "Installed ${BROKER} to ${dest_dir}/${BROKER}"
-"${dest_dir}/${BROKER}" --version
-if [ "$(command -v "$BROKER" 2>/dev/null || true)" != "${dest_dir}/${BROKER}" ]; then
-  echo "Add ${dest_dir} to PATH to run ${BROKER} directly."
+if [ -n "$COMPANION_BINARIES" ]; then
+  libexec_dir="$(choose_libexec_dir "$main_dest_dir")"
+  for binary in $COMPANION_BINARIES; do
+    install_binary "${tmp_dir}/${binary}" "$libexec_dir" "$binary"
+    echo "Installed ${binary} to ${libexec_dir}/${binary}"
+    "${libexec_dir}/${binary}" --version
+  done
+fi
+
+echo "Installed ${BROKER} to ${main_dest_dir}/${BROKER}"
+"${main_dest_dir}/${BROKER}" --version
+if [ "$(command -v "$BROKER" 2>/dev/null || true)" != "${main_dest_dir}/${BROKER}" ]; then
+  echo "Add ${main_dest_dir} to PATH to run ${BROKER} directly."
 fi

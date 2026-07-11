@@ -40,6 +40,31 @@ func TestInstallerDownloadsVerifiesAndInstalls(t *testing.T) {
 	}
 }
 
+func TestInstallerPlacesCompanionBinaryInLibexec(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAssetEntries(t, filepath.Join(releaseDir, asset), map[string]string{
+		"test-broker": "#!/bin/sh\necho v1.2.3\n", "test-broker-exec": "#!/bin/sh\necho helper-v1.2.3\n",
+	})
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	installDir := filepath.Join(t.TempDir(), "bin")
+	libexecDir := filepath.Join(t.TempDir(), "libexec")
+	command := installerCommand(t, installDir, server.URL, "v1.2.3")
+	command.Env = append(command.Env, "COMPANION_BINARIES=test-broker-exec", "LIBEXEC_DIR="+libexecDir)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("installer failed: %v\n%s", err, output)
+	}
+	if info, err := os.Stat(filepath.Join(libexecDir, "test-broker-exec")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("companion binary info = %+v err=%v", info, err)
+	}
+	if !strings.Contains(string(output), "helper-v1.2.3") {
+		t.Fatalf("installer did not verify helper: %s", output)
+	}
+}
+
 func TestInstallerRejectsChecksumMismatch(t *testing.T) {
 	asset := "test-broker_linux_amd64.tar.gz"
 	releaseDir := t.TempDir()
@@ -100,6 +125,8 @@ func TestInstallerRejectsUnsupportedPlatformAndInvalidInputs(t *testing.T) {
 		{name: "broker", env: []string{"BROKER=../bad", "REPO=example/test-broker"}, want: "BROKER must contain"},
 		{name: "repo", env: []string{"BROKER=test-broker", "REPO=missing"}, want: "owner/name"},
 		{name: "nested repo", env: []string{"BROKER=test-broker", "REPO=example/team/test-broker"}, want: "owner/name"},
+		{name: "unsafe repo", env: []string{"BROKER=test-broker", "REPO=ex..ample/test-broker"}, want: "unsafe path"},
+		{name: "relative install", env: []string{"BROKER=test-broker", "REPO=example/test-broker", "INSTALL_DIR=relative"}, want: "absolute normalized"},
 		{name: "release tag", env: []string{"BROKER=test-broker", "REPO=example/test-broker", "VERSION=../../payload"}, want: "release tag contains unsupported"},
 	}
 	for _, tc := range tests {
@@ -140,6 +167,10 @@ func scriptPath(t *testing.T) string {
 }
 
 func writeReleaseAsset(t *testing.T, path string, binaryName string, body string) {
+	writeReleaseAssetEntries(t, path, map[string]string{binaryName: body})
+}
+
+func writeReleaseAssetEntries(t *testing.T, path string, entries map[string]string) {
 	t.Helper()
 	file, err := os.Create(path) // #nosec G304 -- test writes its private fixture path.
 	if err != nil {
@@ -147,12 +178,14 @@ func writeReleaseAsset(t *testing.T, path string, binaryName string, body string
 	}
 	gzipWriter := gzip.NewWriter(file)
 	tarWriter := tar.NewWriter(gzipWriter)
-	data := []byte(body)
-	if err := tarWriter.WriteHeader(&tar.Header{Name: binaryName, Mode: 0o755, Size: int64(len(data))}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tarWriter.Write(data); err != nil {
-		t.Fatal(err)
+	for name, body := range entries {
+		data := []byte(body)
+		if err := tarWriter.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(data))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tarWriter.Write(data); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := tarWriter.Close(); err != nil {
 		t.Fatal(err)
