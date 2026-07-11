@@ -98,19 +98,36 @@ the approval tab can run while retaining its opaque sandbox origin. Do not use
 sandbox.
 
 When OpenClaw is outside the credential trust boundary, the trusted backend
-must serve the packaged `dist/ui` files at the registered UI path itself. For
-the iframe document response, it may inject this one-shot element into `head`:
+must serve the packaged `dist/ui` files at the registered UI path itself. The
+framed response contains no authority. It injects this marker so the UI renders
+only a launcher:
+
+```html
+<meta name="brokerkit-delegated-top-level" />
+```
+
+The launcher posts this navigation-only message after the operator clicks:
+
+```text
+{ type: "brokerkit.delegated-web.open", version: 1, nonce }
+```
+
+The host verifies the exact opaque-origin frame source, then navigates the
+whole browser tab to that frame's URL. The trusted backend accepts only an
+authenticated top-level document navigation, rejects fetches, sets
+`frame-ancestors 'none'`, and enforces an opaque origin with CSP `sandbox
+allow-scripts`. It injects the short-lived session only into that unframeable
+document:
 
 ```html
 <meta name="brokerkit-delegated-session" content="BASE64URL_SESSION_JSON" />
 ```
 
 The content is the base64url-encoded `brokerkit.io/delegated-web/v1` session
-object. The UI removes the element as soon as it reads it. The host must issue
-such a response only for an authenticated iframe navigation and enforce an
-opaque origin with a response CSP containing `sandbox allow-scripts`; it must
-reject fetches and top-level navigation so parent code cannot read the embedded
-authority.
+object. The UI removes the element as soon as it reads it. Before expiry, it
+renews by posting to `<basePath>/session` with the current decision token as a
+bearer credential, with cookies omitted. The host validates the current token
+and opaque `Origin: null` before returning a replacement session.
 
 When the parent application is trusted, a sandboxed tab that cannot call the
 delegated session endpoint directly may instead use this host-neutral bridge:

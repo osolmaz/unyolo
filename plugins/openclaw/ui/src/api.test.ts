@@ -4,6 +4,10 @@ import {
   DELEGATED_SESSION_REQUEST,
   DELEGATED_SESSION_RESPONSE,
   DELEGATED_SESSION_META,
+  DELEGATED_TOP_LEVEL_META,
+  DELEGATED_OPEN_REQUEST,
+  requestDelegatedTopLevelOpen,
+  takeDelegatedTopLevelLauncher,
   parseUiBootstrap,
 } from "./api.js";
 
@@ -160,6 +164,86 @@ describe("BrokerKitUiApi", () => {
           authorization: `Bearer ${"e".repeat(48)}`,
         }),
       }),
+    );
+  });
+
+  it("renews delegated authority with the current bearer token", async () => {
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const first = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      decision_token: "f".repeat(48),
+      expires_at: new Date(now + 31_000).toISOString(),
+    };
+    const renewed = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      decision_token: "r".repeat(48),
+      expires_at: new Date(now + 60_000).toISOString(),
+    };
+    const meta = { getAttribute: vi.fn(() => encoded(first)), remove: vi.fn() };
+    let embedded: typeof meta | null = meta;
+    const querySelector = vi.fn(() => embedded);
+    vi.stubGlobal("document", { querySelector });
+    vi.stubGlobal("window", { parent: {} });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(renewed)))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            sources: [],
+            requests: [],
+            synchronizedAt: "later",
+          }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    await api.snapshot();
+    now += 2_000;
+    embedded = null;
+    await api.snapshot();
+    expect(fetchMock.mock.calls[1]).toEqual([
+      "/trusted-host/api/brokerkit/session",
+      expect.objectContaining({
+        credentials: "omit",
+        headers: { authorization: `Bearer ${"f".repeat(48)}` },
+      }),
+    ]);
+    expect(fetchMock.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: `Bearer ${"r".repeat(48)}`,
+        }),
+      }),
+    );
+  });
+
+  it("recognizes the trusted top-level launcher and requests navigation", () => {
+    const meta = { remove: vi.fn() };
+    vi.stubGlobal("document", {
+      querySelector: vi.fn((selector: string) => {
+        expect(selector).toBe(`meta[name="${DELEGATED_TOP_LEVEL_META}"]`);
+        return meta;
+      }),
+    });
+    const parent = { postMessage: vi.fn() };
+    vi.stubGlobal("window", { parent });
+    expect(takeDelegatedTopLevelLauncher()).toBe(true);
+    requestDelegatedTopLevelOpen();
+    expect(meta.remove).toHaveBeenCalledOnce();
+    expect(parent.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: DELEGATED_OPEN_REQUEST,
+        version: 1,
+        nonce: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      }),
+      "*",
     );
   });
 

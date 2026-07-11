@@ -13,13 +13,31 @@ import type { Action, SafeRequest, Snapshot } from "../../src/types.js";
 import {
   BrokerKitUiApi,
   parseUiBootstrap,
+  requestDelegatedTopLevelOpen,
+  takeDelegatedTopLevelLauncher,
   type UiDecisionOptions,
 } from "./api.js";
 import { operatorV1 } from "../../src/generated/operator-v1.js";
 import "./styles.css";
 
 const api = new BrokerKitUiApi(parseUiBootstrap(location.hash.slice(1)));
+const topLevelLauncher = takeDelegatedTopLevelLauncher();
 history.replaceState(null, "", location.pathname);
+
+function DelegatedTopLevelLauncher() {
+  return (
+    <main className="launcher">
+      <ShieldCheck size={32} />
+      <h1>Approvals</h1>
+      <p className="subtle">
+        Open the protected approval surface to review and decide requests.
+      </p>
+      <button className="primary" onClick={requestDelegatedTopLevelOpen}>
+        Open approvals
+      </button>
+    </main>
+  );
+}
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
@@ -358,6 +376,6 @@ function capitalize(value: string): string {
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    {topLevelLauncher ? <DelegatedTopLevelLauncher /> : <App />}
   </React.StrictMode>,
 );
