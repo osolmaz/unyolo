@@ -75,7 +75,7 @@ func testServerAndRequest(t *testing.T) (*Server, executorprotocol.Request, *fak
 	directory := t.TempDir()
 	snapshot, err := catalog.Parse([]byte(fmt.Sprintf(`{"version":1,"commands":[{
 		"id":"echo","executable":"/usr/bin/printf","arguments":[{"literal":"ok"}],"target_users":["root"],
-		"working_directory":%q,"timeout_seconds":5,"max_output_bytes":100}]}`, directory)))
+		"working_directory":"/","timeout_seconds":5,"max_output_bytes":100}]}`)))
 	if err != nil {
 		t.Fatal(err)
 	}

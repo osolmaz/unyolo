@@ -118,8 +118,12 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 			return Plan{}, errors.New("sudo plan slot values do not match request")
 		}
 	}
-	environment := make([]string, 0, len(resolved.Environment))
+	boundEnvironment := map[string]string{"LANG": "C", "LC_ALL": "C"}
 	for key, value := range resolved.Environment {
+		boundEnvironment[key] = value
+	}
+	environment := make([]string, 0, len(boundEnvironment))
+	for key, value := range boundEnvironment {
 		environment = append(environment, key+"="+value)
 	}
 	sort.Strings(environment)
@@ -189,7 +193,7 @@ func ValidateForHelper(value Plan, snapshot *catalog.Snapshot, identities Identi
 	if snapshot == nil || identities == nil {
 		return errors.New("sudo helper validation dependencies are unavailable")
 	}
-	if err := snapshot.ValidateResolved(resolvedFromPlan(value)); err != nil {
+	if err := validateCatalogBinding(value, snapshot); err != nil {
 		return err
 	}
 	identity, err := identities.Lookup(value.TargetUser)
@@ -265,8 +269,7 @@ func (v Validator) validateGrant(grant grants.Grant, constraints grants.Approval
 			return errors.New("sudo grant slot values do not match its plan")
 		}
 	}
-	resolved := resolvedFromPlan(value)
-	if err := v.Catalog.ValidateResolved(resolved); err != nil {
+	if err := validateCatalogBinding(value, v.Catalog); err != nil {
 		return err
 	}
 	identity, err := v.Identities.Lookup(value.TargetUser)
@@ -278,6 +281,28 @@ func (v Validator) validateGrant(grant grants.Grant, constraints grants.Approval
 		return grants.ErrConstraintExceeded
 	}
 	return nil
+}
+
+func validateCatalogBinding(value Plan, snapshot *catalog.Snapshot) error {
+	command, ok := snapshot.Command(value.CommandID)
+	if !ok {
+		return errors.New("sudo command no longer exists")
+	}
+	expectedEnvironment := map[string]string{"LANG": "C", "LC_ALL": "C"}
+	for key, item := range command.Environment {
+		expectedEnvironment[key] = item
+	}
+	expectedEntries := make([]string, 0, len(expectedEnvironment))
+	for key, item := range expectedEnvironment {
+		expectedEntries = append(expectedEntries, key+"="+item)
+	}
+	sort.Strings(expectedEntries)
+	if !slices.Equal(expectedEntries, value.Environment) {
+		return errors.New("sudo plan environment no longer matches the catalog")
+	}
+	resolved := resolvedFromPlan(value)
+	resolved.Environment = command.Environment
+	return snapshot.ValidateResolved(resolved)
 }
 
 func resolvedFromPlan(value Plan) catalog.Resolved {

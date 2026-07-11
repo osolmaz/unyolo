@@ -9,6 +9,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/planstore"
 )
@@ -25,6 +26,7 @@ type Config struct {
 	Runner          Runner
 	StatePath       string
 	ExpectedPeerUID uint32
+	BrokerUID       uint32
 	PeerUID         PeerUID
 	Now             func() time.Time
 	RequestTimeout  time.Duration
@@ -36,6 +38,7 @@ type Server struct {
 	runner          Runner
 	state           *executionState
 	expectedPeerUID uint32
+	brokerUID       uint32
 	peerUID         PeerUID
 	now             func() time.Time
 	requestTimeout  time.Duration
@@ -58,7 +61,7 @@ func New(cfg Config) (*Server, error) {
 		requestTimeout = 10 * time.Second
 	}
 	return &Server{catalog: cfg.Catalog, identities: cfg.Identities, runner: cfg.Runner, state: state,
-		expectedPeerUID: cfg.ExpectedPeerUID, peerUID: cfg.PeerUID, now: now, requestTimeout: requestTimeout}, nil
+		expectedPeerUID: cfg.ExpectedPeerUID, brokerUID: cfg.BrokerUID, peerUID: cfg.PeerUID, now: now, requestTimeout: requestTimeout}, nil
 }
 
 func (s *Server) Serve(ctx context.Context, listener *net.UnixListener) error {
@@ -120,6 +123,9 @@ func (s *Server) execute(ctx context.Context, request executorprotocol.Request) 
 	}
 	if err := plan.ValidateForHelper(value, s.catalog, s.identities); err != nil {
 		return executorprotocol.NewRejected("plan_drift")
+	}
+	if err := hostcheck.ValidateExecution(value, s.brokerUID); err != nil {
+		return executorprotocol.NewRejected("unsafe_host_path")
 	}
 	record, claimed, err := s.state.claim(request.ExecutionID, request.PlanDigest)
 	if errors.Is(err, errExecutionConflict) {
