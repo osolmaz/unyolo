@@ -99,9 +99,11 @@ type Grant struct {
 	PendingExpiresAt       time.Time           `json:"pending_expires_at"`
 	ExpiresAt              time.Time           `json:"expires_at,omitzero"`
 	Duration               time.Duration       `json:"duration"`
+	RequestedDuration      time.Duration       `json:"requested_duration"`
 	PendingTimeout         time.Duration       `json:"pending_timeout"`
 	DecidedAt              time.Time           `json:"decided_at,omitzero"`
 	DecidedBy              string              `json:"decided_by,omitempty"`
+	DecidedOnBehalfOf      string              `json:"decided_on_behalf_of,omitempty"`
 	DecisionReason         string              `json:"decision_reason,omitempty"`
 	UsedAt                 time.Time           `json:"used_at,omitzero"`
 	UsedCount              int                 `json:"used_count"`
@@ -111,6 +113,7 @@ type Grant struct {
 	ReservationRetained    bool                `json:"reservation_retained,omitempty"`
 	ReservationRevision    int                 `json:"reservation_revision,omitempty"`
 	MaxUses                int                 `json:"max_uses"`
+	RequestedMaxUses       int                 `json:"requested_max_uses"`
 	ExpiredFrom            Status              `json:"expired_from,omitempty"`
 	Notification           *MessageRef         `json:"notification,omitempty"`
 	NotificationStatus     string              `json:"notification_status,omitempty"`
@@ -123,9 +126,10 @@ type Grant struct {
 }
 
 type fileData struct {
-	Grants    []Grant                `json:"grants"`
-	Events    []lifecycleEventRecord `json:"events,omitempty"`
-	NextEvent uint64                 `json:"next_event,omitempty"`
+	Grants          []Grant                `json:"grants"`
+	Events          []lifecycleEventRecord `json:"events,omitempty"`
+	NextEvent       uint64                 `json:"next_event,omitempty"`
+	DecisionRecords []decisionRecord       `json:"decision_records,omitempty"`
 }
 
 type compatibleValues struct {
@@ -654,8 +658,10 @@ func (s *Store) newGrant(req Request) (Grant, string, error) {
 		CreatedAt:             now,
 		PendingExpiresAt:      now.Add(req.PendingTimeout),
 		Duration:              req.Duration,
+		RequestedDuration:     req.Duration,
 		PendingTimeout:        req.PendingTimeout,
 		MaxUses:               req.MaxUses,
+		RequestedMaxUses:      req.MaxUses,
 	}, token, nil
 }
 
