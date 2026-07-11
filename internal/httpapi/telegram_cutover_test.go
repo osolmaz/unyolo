@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,27 +25,26 @@ func TestTelegramCallbackRecoversAmbiguousNotification(t *testing.T) {
 		t.Fatalf("RetainNotificationClaim() retained=%v err=%v", retained, err)
 	}
 	setCutoverCallback(state, grant, token)
-	offset, err := telegram.PollOnce(context.Background(), 0, server.handleTelegramDecision)
+	offset, err := telegram.PollOnce(context.Background(), 0, server.control.HandleDecision)
 	assertSuccessfulCutoverPoll(t, offset, state, err)
 	assertRecoveredCutoverGrant(t, server, grant.ID, state.messageID)
 }
 
 func TestTelegramCallbackRetriesDurableWriteFailure(t *testing.T) {
 	dir := t.TempDir()
-	server := newTestServer(t)
-	server.grants = grants.New(filepath.Join(dir, "grants.json"), grants.Options{})
+	server := newTestServerWithStateDir(t, dir)
 	state, telegram := newCutoverTelegram(t)
 	server.notifier = telegram
 	server.telegram = telegram
 	grant, token := claimCutoverGrant(t, server)
 	setCutoverCallback(state, grant, token)
 	setCutoverDirectoryMode(t, dir, 0o500)
-	offset, pollErr := telegram.PollOnce(context.Background(), 0, server.handleTelegramDecision)
+	offset, pollErr := telegram.PollOnce(context.Background(), 0, server.control.HandleDecision)
 	setCutoverDirectoryMode(t, dir, 0o700)
 	assertRetryableCutoverPoll(t, offset, state, pollErr)
 	assertPendingCutoverGrant(t, server, grant.ID)
 	state.updateSent = false
-	offset, pollErr = telegram.PollOnce(context.Background(), offset, server.handleTelegramDecision)
+	offset, pollErr = telegram.PollOnce(context.Background(), offset, server.control.HandleDecision)
 	assertSuccessfulCutoverPoll(t, offset, state, pollErr)
 }
 
@@ -150,7 +148,7 @@ type callbackDuringSendNotifier struct {
 
 func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, message notify.ApprovalMessage) (notify.MessageRef, error) {
 	n.ref = notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 7, Text: message.Text}
-	n.result = n.server.handleTelegramDecision(ctx, notify.Decision{
+	n.result = n.server.control.HandleDecision(ctx, notify.Decision{
 		Action: notify.ActionApprove, GrantID: message.GrantID, DecisionToken: message.DecisionToken,
 		ChatID: n.ref.ChatID, MessageID: n.ref.MessageID, MessageText: n.ref.Text, OperatorID: 42,
 	})

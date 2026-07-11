@@ -3,7 +3,6 @@ package security
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/auth"
@@ -15,18 +14,10 @@ type TokenAuth struct {
 	authenticator *auth.Authenticator
 }
 
-func NewTokenAuth(token string) (TokenAuth, error) {
-	return NewTokenAuthForClient(token, "default")
-}
-
-func NewTokenAuthForClient(token string, client string) (TokenAuth, error) {
-	client = strings.TrimSpace(client)
-	if client == "" {
-		return TokenAuth{}, errors.New("client id is required")
-	}
-	authenticator, err := auth.New(map[string]string{client: token}, auth.Options{})
-	if err != nil {
-		return TokenAuth{}, err
+// FromAuthenticator adapts the shared Brokerkit client authenticator to Echo middleware.
+func FromAuthenticator(authenticator *auth.Authenticator) (TokenAuth, error) {
+	if authenticator == nil {
+		return TokenAuth{}, errors.New("client authenticator is required")
 	}
 	return TokenAuth{authenticator: authenticator}, nil
 }

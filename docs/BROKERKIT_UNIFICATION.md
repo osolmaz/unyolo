@@ -35,6 +35,9 @@ Implemented today:
 - optional Telegram approval through `GH_BROKER_TELEGRAM_BOT_TOKEN` and
   `GH_BROKER_TELEGRAM_CHAT_ID`
 - brokerkit-backed generated grants and `/api/grants`
+- Brokerkit control-plane assembly for grant storage, client/operator auth,
+  operator API, audit wiring, and Telegram decisions
+- shared named-secret parsing, coverage measurement, and deterministic release archives
 - Git smart-HTTP fetch and receive-pack route shape
 - narrow GitHub REST routes for repo listing, content reads, and PR creation
 - verified `POST /webhooks/github` with GitHub HMAC signature checks
@@ -61,7 +64,7 @@ template:
 - broker client auth
 - policy parser, registry mechanics, decisions, generated grants, and grant
   policy bounds
-- approval lifecycle and Telegram callback handling
+- control-plane assembly, approval lifecycle, and Telegram callback handling
 - audit event schema and no-secret helpers
 - common doctor checks
 - storage helpers for grant and state files

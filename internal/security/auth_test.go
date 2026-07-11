@@ -7,14 +7,12 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	bkauth "github.com/osolmaz/brokerkit/auth"
 )
 
 func TestTokenAuthAllowsValidBearerToken(t *testing.T) {
 	t.Parallel()
-	auth, err := NewTokenAuthForClient("expected-shared-secret", "bob")
-	if err != nil {
-		t.Fatalf("NewTokenAuthForClient() error = %v", err)
-	}
+	auth := testTokenAuth(t, "bob")
 	called := false
 	handler := auth.Middleware(func(c echo.Context) error {
 		called = true
@@ -37,10 +35,7 @@ func TestTokenAuthAllowsValidBearerToken(t *testing.T) {
 
 func TestTokenAuthAllowsValidBasicPassword(t *testing.T) {
 	t.Parallel()
-	auth, err := NewTokenAuth("expected-shared-secret")
-	if err != nil {
-		t.Fatalf("NewTokenAuth() error = %v", err)
-	}
+	auth := testTokenAuth(t, "default")
 	called := false
 	handler := auth.Middleware(func(c echo.Context) error {
 		called = true
@@ -60,10 +55,7 @@ func TestTokenAuthAllowsValidBasicPassword(t *testing.T) {
 
 func TestTokenAuthRejectsMissingAndInvalidBearerToken(t *testing.T) {
 	t.Parallel()
-	auth, err := NewTokenAuth("expected-shared-secret")
-	if err != nil {
-		t.Fatalf("NewTokenAuth() error = %v", err)
-	}
+	auth := testTokenAuth(t, "default")
 	handler := auth.Middleware(func(c echo.Context) error {
 		return c.NoContent(http.StatusNoContent)
 	})
@@ -78,16 +70,22 @@ func TestTokenAuthRejectsMissingAndInvalidBearerToken(t *testing.T) {
 	}
 }
 
-func TestNewTokenAuthRejectsEmptyToken(t *testing.T) {
+func TestFromAuthenticatorRejectsNil(t *testing.T) {
 	t.Parallel()
-	if _, err := NewTokenAuth(" "); err == nil {
-		t.Fatal("NewTokenAuth() error = nil, want empty token error")
+	if _, err := FromAuthenticator(nil); err == nil {
+		t.Fatal("FromAuthenticator() error = nil, want nil authenticator error")
 	}
 }
 
-func TestNewTokenAuthForClientRejectsEmptyClient(t *testing.T) {
-	t.Parallel()
-	if _, err := NewTokenAuthForClient("expected", " "); err == nil {
-		t.Fatal("NewTokenAuthForClient() error = nil, want empty client error")
+func testTokenAuth(t *testing.T, client string) TokenAuth {
+	t.Helper()
+	authenticator, err := bkauth.New(map[string]string{client: "expected-shared-secret"}, bkauth.Options{})
+	if err != nil {
+		t.Fatal(err)
 	}
+	adapter, err := FromAuthenticator(authenticator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return adapter
 }

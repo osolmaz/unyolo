@@ -9,12 +9,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/conformance"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/gh-broker/internal/config"
 	"github.com/osolmaz/gh-broker/internal/policy"
 )
+
+func TestBrokerkitControlPlaneConformance(t *testing.T) {
+	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
+	operatorSecret := "operator-secret-abcdefghijklmnopqrstuvwxyz"
+	server, _ := newOperatorTestServer(t, clientSecret, operatorSecret)
+	conformance.RunControlPlane(t, conformance.Fixture{
+		Runtime: server.control, ClientToken: clientSecret, OperatorToken: operatorSecret,
+		Request: grants.Request{
+			Client: "bob", ClientRequestID: "conformance", Operation: "git.push.force",
+			Target: corepolicy.Target{Kind: "repo", Fields: map[string][]string{
+				"owner": {"osolmaz"}, "name": {"gh-broker"},
+			}},
+			Attrs: map[string][]string{"ref": {"refs/heads/main"}}, Reason: "verify shared control plane", Duration: 5 * time.Minute,
+		},
+	})
+}
 
 func TestOperatorHandlerSharesCanonicalGitHubGrantState(t *testing.T) {
 	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
@@ -69,11 +86,7 @@ func requestOperatorTestGrant(t *testing.T, server *Server) grants.RequestResult
 
 func newOperatorHTTPServer(t *testing.T, server *Server, cfg config.Config) *httptest.Server {
 	t.Helper()
-	handler, err := server.OperatorHandler(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	operatorServer := httptest.NewServer(handler)
+	operatorServer := httptest.NewServer(server.OperatorHandler())
 	t.Cleanup(operatorServer.Close)
 	return operatorServer
 }

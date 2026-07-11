@@ -1327,7 +1327,7 @@ func createPullRequestGrant(t *testing.T, server *Server, notifier *captureNotif
 
 func approveGrant(t *testing.T, server *Server, grantID string, token string) {
 	t.Helper()
-	decision := server.handleTelegramDecision(context.Background(), notify.Decision{
+	decision := server.control.HandleDecision(context.Background(), notify.Decision{
 		Action:        notify.ActionApprove,
 		GrantID:       grantID,
 		DecisionToken: token,
@@ -1375,7 +1375,7 @@ func createTelegramPullRequestGrant(t *testing.T, server *Server, state *fakeTel
 
 func pollTelegramApproval(t *testing.T, telegram *bktelegram.Client, server *Server) {
 	t.Helper()
-	nextOffset, err := telegram.PollOnce(context.Background(), 0, server.handleTelegramDecision)
+	nextOffset, err := telegram.PollOnce(context.Background(), 0, server.control.HandleDecision)
 	if err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
 	}
@@ -1572,7 +1572,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	denied := server.handleTelegramDecision(context.Background(), notify.Decision{
+	denied := server.control.HandleDecision(context.Background(), notify.Decision{
 		Action:        notify.ActionDeny,
 		GrantID:       result.Grant.ID,
 		DecisionToken: result.DecisionToken,
@@ -1584,7 +1584,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 	if denied.Answer != "Grant denied" {
 		t.Fatalf("deny decision = %+v, want denied", denied)
 	}
-	replay := server.handleTelegramDecision(context.Background(), notify.Decision{
+	replay := server.control.HandleDecision(context.Background(), notify.Decision{
 		Action:        notify.ActionApprove,
 		GrantID:       result.Grant.ID,
 		DecisionToken: result.DecisionToken,
@@ -1594,15 +1594,6 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 	})
 	if replay.Answer != "Grant is no longer pending" {
 		t.Fatalf("replay decision = %+v, want no longer pending", replay)
-	}
-	if got := grantDecisionAnswer(grants.ErrInvalidDecisionToken); got != "Grant decision token did not match" {
-		t.Fatalf("invalid token answer = %q", got)
-	}
-	if got := grantDecisionAnswer(grants.ErrNotFound); got != "Grant not found" {
-		t.Fatalf("not found answer = %q", got)
-	}
-	if got := grantDecisionAnswer(context.Canceled); got != "Grant decision failed" {
-		t.Fatalf("generic answer = %q", got)
 	}
 }
 
@@ -1625,7 +1616,7 @@ func TestDenyTelegramGrantDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	decision := server.handleTelegramDecision(context.Background(), notify.Decision{
+	decision := server.control.HandleDecision(context.Background(), notify.Decision{
 		Action:        notify.ActionDeny,
 		GrantID:       result.Grant.ID,
 		DecisionToken: result.DecisionToken,
@@ -2503,6 +2494,14 @@ func newTestServer(t *testing.T) *Server {
 	})
 }
 
+func newTestServerWithStateDir(t *testing.T, stateDir string) *Server {
+	t.Helper()
+	return newTestServerWithPolicyAndHandlerInStateDir(t, testBrokerPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("proxied"))
+	}, stateDir)
+}
+
 func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 	t.Helper()
 	return newTestServerWithPolicyAndHandler(t, testBrokerPolicy(t), handler)
@@ -2510,13 +2509,18 @@ func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 
 func newTestServerWithPolicyAndHandler(t *testing.T, brokerPolicy *policy.Policy, handler http.HandlerFunc) *Server {
 	t.Helper()
+	return newTestServerWithPolicyAndHandlerInStateDir(t, brokerPolicy, handler, t.TempDir())
+}
+
+func newTestServerWithPolicyAndHandlerInStateDir(t *testing.T, brokerPolicy *policy.Policy, handler http.HandlerFunc, stateDir string) *Server {
+	t.Helper()
 	upstream := httptest.NewServer(handler)
 	t.Cleanup(upstream.Close)
 	server, err := New(config.Config{
 		ClientID:     "bob",
 		SharedSecret: testSharedSecret,
 		GitHubToken:  testGitHubToken,
-		StateDir:     t.TempDir(),
+		StateDir:     stateDir,
 	}, brokerPolicy)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

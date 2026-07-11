@@ -18,13 +18,11 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/operatorapi"
-	"github.com/osolmaz/brokerkit/operatorauth"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/gh-broker/internal/approval"
 	"github.com/osolmaz/gh-broker/internal/config"
 	"github.com/osolmaz/gh-broker/internal/githubapp"
@@ -38,6 +36,7 @@ type Server struct {
 	echo                *echo.Echo
 	policy              *policy.Policy
 	grants              *grants.Store
+	control             *controlplane.Runtime
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
 	githubToken         string
@@ -57,7 +56,8 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		return nil, errors.New("policy is required")
 	}
 	grantStore := grants.New(filepath.Join(stateDir(cfg.StateDir), "grants.json"), grants.Options{})
-	auth, err := security.NewTokenAuthForClient(cfg.SharedSecret, cfg.ClientID)
+	auditWriter := bkaudit.New(os.Stderr)
+	control, auth, err := newControlPlane(cfg, grantStore, auditWriter)
 	if err != nil {
 		return nil, err
 	}
@@ -81,56 +81,55 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		return nil, err
 	}
 	server := &Server{
-		echo:                e,
-		policy:              brokerPolicy,
-		grants:              grantStore,
-		notifier:            notifier,
-		telegram:            telegram,
-		githubToken:         cfg.GitHubToken,
-		githubApp:           appSource,
-		githubWebhookSecret: cfg.GitHubWebhookSecret,
-		githubClient:        githubClient,
-		githubGitBaseURL:    gitBaseURL,
-		githubAPIBaseURL:    apiBaseURL,
-		auditWriter:         bkaudit.New(os.Stderr),
-		logger:              slog.Default(),
-		maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
-		operatorConfigured:  cfg.OperatorSecret != "",
+		echo: e, policy: brokerPolicy, grants: grantStore, control: control, notifier: notifier, telegram: telegram,
+		githubToken: cfg.GitHubToken, githubApp: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
+		githubClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
+		auditWriter: auditWriter, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
+		operatorConfigured: cfg.OperatorSecret != "",
 	}
-	protected := e.Group("")
-	protected.Use(auth.Middleware)
-	protected.Use(validateRouteParams)
-	protected.GET("/api/repos", server.listRepos)
-	protected.POST("/api/grants", server.createGrant)
-	protected.GET("/api/grants", server.listGrants)
-	protected.GET("/api/grants/:id", server.getGrant)
-	protected.GET("/api/repos/:owner/:repo/contents", server.readContents)
-	protected.GET("/api/repos/:owner/:repo/contents/*", server.readContents)
-	protected.POST("/api/repos/:owner/:repo/pulls", server.createPullRequest)
-	protected.GET("/:owner/:repoGit/info/refs", server.gitInfoRefs)
-	protected.POST("/:owner/:repoGit/git-upload-pack", server.gitUploadPack)
-	protected.POST("/:owner/:repoGit/git-receive-pack", server.gitReceivePack)
-	e.POST("/webhooks/github", server.githubWebhook)
+	server.registerRoutes(auth)
 	return server, nil
 }
 
-// OperatorHandler exposes Brokerkit's shared inbox over the canonical grant store.
-func (s *Server) OperatorHandler(cfg config.Config) (http.Handler, error) {
-	authenticator, err := operatorauth.New(
-		map[string]string{cfg.OperatorID: cfg.OperatorSecret},
-		operatorauth.Options{ClientSecrets: map[string]string{cfg.ClientID: cfg.SharedSecret}},
-	)
-	if err != nil {
-		return nil, err
+func newControlPlane(cfg config.Config, grantStore *grants.Store, auditWriter *bkaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
+	operatorSecrets := map[string]string{}
+	if cfg.OperatorSecret != "" {
+		operatorSecrets[cfg.OperatorID] = cfg.OperatorSecret
 	}
-	inbox, err := operatorinbox.New(s.grants, approval.Presenter{})
-	if err != nil {
-		return nil, err
-	}
-	return operatorapi.New(operatorapi.Options{
-		Inbox: inbox, Authorize: authenticator.AuthenticateRequest, Broker: "gh-broker", Audit: s.auditWriter,
+	control, err := controlplane.New(controlplane.Options{
+		Broker: "gh-broker", Store: grantStore,
+		ClientSecrets: map[string]string{cfg.ClientID: cfg.SharedSecret}, OperatorSecrets: operatorSecrets,
+		Presenter: approval.Presenter{}, Audit: auditWriter,
 	})
+	if err != nil {
+		return nil, security.TokenAuth{}, err
+	}
+	auth, err := security.FromAuthenticator(control.Clients)
+	if err != nil {
+		return nil, security.TokenAuth{}, err
+	}
+	return control, auth, nil
 }
+
+func (s *Server) registerRoutes(auth security.TokenAuth) {
+	protected := s.echo.Group("")
+	protected.Use(auth.Middleware)
+	protected.Use(validateRouteParams)
+	protected.GET("/api/repos", s.listRepos)
+	protected.POST("/api/grants", s.createGrant)
+	protected.GET("/api/grants", s.listGrants)
+	protected.GET("/api/grants/:id", s.getGrant)
+	protected.GET("/api/repos/:owner/:repo/contents", s.readContents)
+	protected.GET("/api/repos/:owner/:repo/contents/*", s.readContents)
+	protected.POST("/api/repos/:owner/:repo/pulls", s.createPullRequest)
+	protected.GET("/:owner/:repoGit/info/refs", s.gitInfoRefs)
+	protected.POST("/:owner/:repoGit/git-upload-pack", s.gitUploadPack)
+	protected.POST("/:owner/:repoGit/git-receive-pack", s.gitReceivePack)
+	s.echo.POST("/webhooks/github", s.githubWebhook)
+}
+
+// OperatorHandler exposes Brokerkit's shared inbox over the canonical grant store.
+func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
 
 func githubBaseURLs() (*url.URL, *url.URL, error) {
 	gitBaseURL, err := url.Parse("https://github.com")

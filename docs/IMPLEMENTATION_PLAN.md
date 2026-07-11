@@ -17,11 +17,12 @@ aliases, old policy formats, or local duplicate control-plane runtimes.
 
 - Original GitHub credentials are never returned by HTTP handlers, service methods, logs, errors, audit records, or API responses.
 - gh-broker exposes no credential listing, registration, lookup, export, decrypt, or introspection API.
-- Clients authenticate with a manually configured shared secret.
+- Clients authenticate through Brokerkit's shared control-plane runtime with a
+  manually configured named secret.
 - The authenticated request is assigned one configured client id, currently `GH_BROKER_CLIENT_ID`.
 - `scope.json` is the authorization source of truth.
-- Policy decisions are centralized in `internal/policy` until the brokerkit
-  cutover, then in `brokerkit/policy`.
+- GitHub classification stays in `internal/policy`; matching and decisions run
+  in `brokerkit/policy`.
 - Handlers may reject malformed requests, but valid broker operations are authorized through the policy engine.
 - gh-broker uses a manually configured server-side GitHub token for outbound GitHub requests as the development fallback credential path.
 - Tailnet reachability is a network boundary only; every broker endpoint still requires auth.

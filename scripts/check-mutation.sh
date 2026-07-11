@@ -16,7 +16,6 @@ targets="
 internal/httpapi/grant_notification_ref.go
 internal/httpapi/grant_request_validation.go
 internal/httpapi/grant_retained_status.go
-internal/httpapi/telegram_decision.go
 "
 backup_dir="$(mktemp -d)"
 for target in $targets; do
@@ -34,4 +33,3 @@ trap cleanup EXIT
 slophammer_go mutate . --target internal/httpapi/grant_notification_ref.go
 slophammer_go mutate . --target internal/httpapi/grant_request_validation.go
 slophammer_go mutate . --target internal/httpapi/grant_retained_status.go
-slophammer_go mutate . --target internal/httpapi/telegram_decision.go

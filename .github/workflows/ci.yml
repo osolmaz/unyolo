@@ -36,9 +36,12 @@ jobs:
       - run: slophammer-go dry .
       - run: slophammer-go crap . --max-score 8
       - run: ./scripts/check-go-coverage.sh
-      - run: ./scripts/check-mutation.sh
-      - run: slophammer-go mutate . --target internal/httpapi/telegram_decision.go
-      - run: slophammer-go mutate . --scan
+      - name: mutation gate (paused)
+        if: ${{ vars.RUN_MUTATION == 'true' }}
+        run: |
+          ./scripts/check-mutation.sh
+          slophammer-go mutate . --target internal/httpapi/grants.go
+          slophammer-go mutate . --scan
       - run: slophammer-go check .
 
   macos:

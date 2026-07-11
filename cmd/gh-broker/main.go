@@ -99,11 +99,7 @@ func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error
 	api.Start(ctx)
 	servers := []*http.Server{configuredHTTPServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
 	if cfg.OperatorSecret != "" {
-		handler, err := api.OperatorHandler(cfg)
-		if err != nil {
-			return nil, err
-		}
-		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, handler, cfg))
+		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, api.OperatorHandler(), cfg))
 	}
 	return servers, nil
 }
