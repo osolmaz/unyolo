@@ -48,3 +48,10 @@ and display text, execution, auditing, and the operator transport boundary.
 - no operator response contains GitHub credentials, decision tokens, raw
   request bodies, or unsafe upstream responses;
 - existing narrow GitHub and Git smart-HTTP enforcement remains unchanged.
+
+## Shared Installation
+
+The release installer is a thin, revision-pinned wrapper around Brokerkit's
+shared installer. GH Broker owns only its binary name and repository identity;
+platform detection, release selection, checksum verification, and global
+installation remain implemented and tested once in Brokerkit.
