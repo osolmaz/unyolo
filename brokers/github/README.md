@@ -51,10 +51,10 @@ Install the latest release globally:
 curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
 ```
 
-Pinned install:
+Pin a version from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | VERSION=<version> sh
 ```
 
 Write a client config file from a broker secrets file:

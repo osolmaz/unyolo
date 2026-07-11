@@ -35,26 +35,17 @@ installs it globally:
 curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | sh
 ```
 
-Pin a release with `VERSION`:
+Pin a version from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
+with `VERSION`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | VERSION=v0.2.0 sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | VERSION=<version> sh
 ```
 
 Install to a specific directory with `INSTALL_DIR`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
-```
-
-Manual install is also just a tarball download:
-
-```sh
-curl -LO https://github.com/osolmaz/brokerkit/releases/download/hf-broker/v0.2.0/hf-broker_linux_arm64.tar.gz
-curl -LO https://github.com/osolmaz/brokerkit/releases/download/hf-broker/v0.2.0/checksums.txt
-sha256sum -c checksums.txt --ignore-missing
-tar -xzf hf-broker_linux_arm64.tar.gz
-sudo install -m 0755 hf-broker /usr/local/bin/hf-broker
 ```
 
 For development, install from a BrokerKit checkout with the Go version declared

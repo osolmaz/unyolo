@@ -10,10 +10,11 @@ SDK used by this package that includes public tab descriptors.
 
 ## Install
 
-After the package is published, install an exact release through OpenClaw:
+After the package is published, install an exact release from
+[npm](https://www.npmjs.com/package/openclaw-brokerkit) through OpenClaw:
 
 ```sh
-openclaw plugins install npm:openclaw-brokerkit@0.1.0
+openclaw plugins install npm:openclaw-brokerkit@<version>
 ```
 
 For a local monorepo checkout, build and link the package explicitly:
