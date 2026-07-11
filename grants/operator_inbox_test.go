@@ -11,7 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/policy"
 )
 
-func TestQueryGrantsPaginatesDeterministically(t *testing.T) { //nolint:cyclop // Table setup and assertions are one pagination scenario.
+func TestQueryGrantsPaginatesDeterministically(t *testing.T) {
 	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
 	ids := []string{"grant-a", "token-a", "grant-c", "token-c", "grant-b", "token-b"}
 	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
@@ -41,7 +41,7 @@ func TestQueryGrantsPaginatesDeterministically(t *testing.T) { //nolint:cyclop /
 	}
 }
 
-func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) { //nolint:cyclop // One scenario verifies transition and conflict invariants.
+func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) {
 	store := New(t.TempDir()+"/grants.json", Options{})
 	result, _, err := store.Request(testOperatorRequest("decision"))
 	if err != nil {
@@ -79,7 +79,7 @@ func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) { //n
 	}
 }
 
-func TestLifecycleEventsSurviveRestartAndWakeWaiters(t *testing.T) { //nolint:cyclop // Sequential lifecycle assertions are intentionally explicit.
+func TestLifecycleEventsSurviveRestartAndWakeWaiters(t *testing.T) {
 	path := t.TempDir() + "/grants.json"
 	store := New(path, Options{})
 	result, _, err := store.Request(testOperatorRequest("events"))
@@ -150,7 +150,7 @@ func TestEventRetentionRejectsExpiredCursor(t *testing.T) {
 	}
 }
 
-func TestQueryFiltersStatusGroupsAndValidation(t *testing.T) { //nolint:cyclop,gocognit // Table exercises every query validation branch.
+func TestQueryFiltersStatusGroupsAndValidation(t *testing.T) {
 	store := New(t.TempDir()+"/grants.json", Options{})
 	pending, _, err := store.Request(testOperatorRequest("pending"))
 	if err != nil {
@@ -323,7 +323,7 @@ func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 	}
 }
 
-func TestCursorDecodingAndEventPagingBranches(t *testing.T) { //nolint:cyclop // Cursor and paging branches share one store setup.
+func TestCursorDecodingAndEventPagingBranches(t *testing.T) {
 	invalidJSON := base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"x","unknown":true}`))
 	trailingJSON := base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"x"}{}`))
 	emptyJSON := base64.RawURLEncoding.EncodeToString([]byte(`{}`))

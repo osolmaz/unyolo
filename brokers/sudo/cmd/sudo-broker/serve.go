@@ -111,7 +111,7 @@ func parseServeOptions(args []string) (serveOptions, error) {
 		return serveOptions{}, errors.New("helper socket path must be absolute")
 	}
 	if (opts.telegramToken == "") != (opts.telegramChatID == 0) {
-		return serveOptions{}, errors.New("Telegram token file and chat id must be configured together")
+		return serveOptions{}, errors.New("telegram token file and chat id must be configured together")
 	}
 	if opts.operatorSecrets == "" && opts.telegramToken == "" {
 		return serveOptions{}, errors.New("an operator credential or Telegram approval channel is required")

@@ -551,7 +551,7 @@ func (s *Server) decideRepoWithOptions(client string, operation policy.Operation
 func (s *Server) activeGrantRules(client string) ([]policy.Rule, error) {
 	values, err := s.grants.ListForClient(client)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errGrantStoreUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", errGrantStoreUnavailable, err)
 	}
 	out := make([]policy.Rule, 0, len(values))
 	for _, grant := range values {
@@ -2035,7 +2035,7 @@ func (s *Server) forwardReservedPush(w http.ResponseWriter, r *http.Request, rt 
 		retainedGrants, retainErr := s.retainGrantUseReservations(reservedGrants)
 		result.retainedGrantsToNotify = retainedGrants
 		if retainErr != nil {
-			return result, fmt.Errorf("%w; %v", err, retainErr)
+			return result, fmt.Errorf("%w; %w", err, retainErr)
 		}
 		return result, err
 	}
@@ -2205,7 +2205,7 @@ func policyDenyRefusesGrant(decision policy.Decision) bool {
 func (s *Server) useActiveGrant(client string, operation policy.Operation, target, ref string, attrs map[string]any, used map[string]grantUse) (bool, error) {
 	grant, matched, err := s.matchActiveGrant(client, operation, target, ref, attrs)
 	if err != nil {
-		return false, fmt.Errorf("%w: %v", errGrantStoreUnavailable, err)
+		return false, fmt.Errorf("%w: %w", errGrantStoreUnavailable, err)
 	}
 	if !matched {
 		return false, nil
@@ -2398,6 +2398,7 @@ func (s *Server) sweepGrantNotifications(ctx context.Context) {
 
 func grantStatusUpdateText(update grants.StatusUpdate) string {
 	switch update.Kind {
+	case grants.StatusUpdateLifecycle:
 	case grants.StatusUpdateRetainedReservation:
 		return retainedGrantReservationStatus(update.Grant)
 	case grants.StatusUpdateUsed, grants.StatusUpdateUsedExpired:

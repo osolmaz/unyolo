@@ -59,7 +59,7 @@ func NewStore(directory string, credentialSelector string) (*Store, error) {
 }
 
 func newStore(directory string, credentialSelector string, now func() time.Time) (*Store, error) {
-	if credentialSelector != "github_app" && credentialSelector != "development_pat" {
+	if credentialSelector != "github_app" && credentialSelector != "development_pat" { // #nosec G101 -- these are credential mode identifiers, not credentials.
 		return nil, errors.New("GitHub credential selector is invalid")
 	}
 	shared, err := planstore.New(directory, "GitHub")

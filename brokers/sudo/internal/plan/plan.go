@@ -139,7 +139,7 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 		CommandID: resolved.CommandID, TargetUser: resolved.TargetUser, TargetUID: identity.UID, TargetGID: identity.GID,
 		SupplementaryGIDs: supplementary, Executable: resolved.Executable,
 		Arguments: append([]string(nil), arguments[1:]...), WorkingDirectory: resolved.WorkingDirectory, Environment: environment,
-		TimeoutSeconds: uint32(resolved.TimeoutSeconds), MaxOutputBytes: uint32(resolved.MaxOutputBytes),
+		TimeoutSeconds: uint32(resolved.TimeoutSeconds), MaxOutputBytes: uint32(resolved.MaxOutputBytes), // #nosec G115 -- catalog validation bounds both nonnegative values before resolution.
 		SlotValues: cloneMap(resolved.SlotValues), CatalogDigest: resolved.CatalogDigest,
 		RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses, CreatedAt: now.UTC(),
 	}, nil

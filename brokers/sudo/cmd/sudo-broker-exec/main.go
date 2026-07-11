@@ -115,7 +115,7 @@ func run(ctx context.Context, opts options) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = listener.Close(); _ = os.Remove(opts.socketPath) }()
+	defer func() { _ = listener.Close(); _ = os.Remove(opts.socketPath) }() // #nosec G703 -- socketPath is absolute, normalized, and validated before listener creation.
 	return server.Serve(ctx, listener)
 }
 

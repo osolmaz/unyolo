@@ -9,7 +9,7 @@ import (
 func TestShouldSupersedeNotifier(t *testing.T) {
 	sent := notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 7, Text: "grant text"}
 	different := notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 8, Text: "grant text"}
-	stored := notify.MessageRef(sent)
+	stored := sent
 	if !shouldSupersedeNotifier(nil, sent) {
 		t.Fatal("shouldSupersedeNotifier(nil) = false")
 	}

@@ -601,13 +601,13 @@ func (s *Store) readState() (fileData, error) {
 
 func decodeState(raw []byte) (fileData, error) {
 	if err := strictjson.RejectDuplicateKeys(raw); err != nil {
-		return fileData{}, fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		return fileData{}, fmt.Errorf("%w: %w", ErrUnsupportedState, err)
 	}
 	var data fileData
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&data); err != nil {
-		return fileData{}, fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		return fileData{}, fmt.Errorf("%w: %w", ErrUnsupportedState, err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return fileData{}, ErrUnsupportedState
@@ -634,13 +634,13 @@ func validateLoadedGrants(items []Grant) error {
 
 func validateLoadedGrantMaps(grant Grant) error {
 	if err := validateValueMap("target field", grant.Target.Fields); err != nil {
-		return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		return fmt.Errorf("%w: %w", ErrUnsupportedState, err)
 	}
 	if err := validateValueMap("attr", grant.Attrs); err != nil {
-		return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		return fmt.Errorf("%w: %w", ErrUnsupportedState, err)
 	}
 	if err := validateMetadata(grant.Metadata); err != nil {
-		return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		return fmt.Errorf("%w: %w", ErrUnsupportedState, err)
 	}
 	return nil
 }

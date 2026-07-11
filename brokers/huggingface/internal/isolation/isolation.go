@@ -513,6 +513,7 @@ func runTokenACLChecks(report *Report, path string, stat fileStat) {
 			return
 		case aclUnknown:
 			unknown = true
+		case aclAbsent:
 		}
 	}
 	if unknown {
@@ -590,6 +591,7 @@ func runSocketACLChecks(report *Report, path string) {
 			return
 		case aclUnknown:
 			unknown = true
+		case aclAbsent:
 		}
 	}
 	if unknown {
@@ -1201,6 +1203,7 @@ func overallStatus(checks []Check) Status {
 			return StatusUnsafe
 		case CheckUnknown:
 			unknown = true
+		case CheckPass, CheckWarn:
 		}
 	}
 	if unknown {
@@ -1298,13 +1301,13 @@ func activeProbeArgs(opts Options) []string {
 
 func (i identity) credential() *syscall.Credential {
 	groups := i.credentialGroups()
-	return &syscall.Credential{Uid: uint32(i.uid), Gid: i.primaryCredentialGroup(groups), Groups: groups}
+	return &syscall.Credential{Uid: uint32(i.uid), Gid: i.primaryCredentialGroup(groups), Groups: groups} // #nosec G115 -- resolved Unix IDs are validated nonnegative kernel IDs.
 }
 
 func (i identity) credentialGroups() []uint32 {
 	groups := make([]uint32, 0, len(i.gids))
 	for gid := range i.gids {
-		groups = append(groups, uint32(gid))
+		groups = append(groups, uint32(gid)) // #nosec G115 -- resolved Unix group IDs are validated nonnegative kernel IDs.
 	}
 	sort.Slice(groups, func(a, b int) bool { return groups[a] < groups[b] })
 	return groups
@@ -1312,7 +1315,7 @@ func (i identity) credentialGroups() []uint32 {
 
 func (i identity) primaryCredentialGroup(groups []uint32) uint32 {
 	if i.gidSet {
-		return uint32(i.gid)
+		return uint32(i.gid) // #nosec G115 -- resolved Unix group IDs are validated nonnegative kernel IDs.
 	}
 	return firstCredentialGroup(groups)
 }

@@ -98,7 +98,7 @@ func (s *Service) validate(ctx context.Context, grant grants.Grant, constraints 
 
 // ApproveToken applies a single-use notification-channel approval through the same validator.
 func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	result, err := s.store.ApproveWithNotificationValidated(ctx, id, token, actor, grants.MessageRef(ref), s.validate)
+	result, err := s.store.ApproveWithNotificationValidated(ctx, id, token, actor, ref, s.validate)
 	previous, current := s.tokenAuditGrants(id, result)
 	_ = s.record(previous, current, string(grants.ActionApprove), actor, "", "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
 	if err != nil && !result.Changed {
@@ -109,7 +109,7 @@ func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref
 
 // DenyToken applies a single-use notification-channel denial.
 func (s *Service) DenyToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	result, err := s.store.DenyWithNotificationResult(ctx, id, token, actor, grants.MessageRef(ref))
+	result, err := s.store.DenyWithNotificationResult(ctx, id, token, actor, ref)
 	previous, current := s.tokenAuditGrants(id, result)
 	_ = s.record(previous, current, string(grants.ActionDeny), actor, "", "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
 	if err != nil && !result.Changed {

@@ -287,7 +287,7 @@ func (s *Server) forwardInference(w http.ResponseWriter, downstream *http.Reques
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	response, err := s.inferenceHTTPClient.Do(request)
+	response, err := s.inferenceHTTPClient.Do(request) // #nosec G704 -- destination is derived from the startup-validated operator base URL.
 	if err != nil {
 		s.refuseInference(w, client, operation, target, http.StatusBadGateway, "upstream_unavailable")
 		return

@@ -88,7 +88,7 @@ func (s *Server) Serve(ctx context.Context, listener *net.UnixListener) error {
 		connection, err := listener.AcceptUnix()
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil
+				return nil //nolint:nilerr // listener closure is the expected context-cancellation path.
 			}
 			return err
 		}

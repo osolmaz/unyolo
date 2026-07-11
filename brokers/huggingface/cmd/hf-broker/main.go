@@ -123,7 +123,7 @@ func serveServersWithContext(ctx context.Context, servers []*http.Server, stderr
 		return nil
 	case err := <-errs:
 		_ = shutdownServers(servers)
-		if err == http.ErrServerClosed {
+		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return err

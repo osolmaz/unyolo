@@ -616,7 +616,7 @@ func TestOverlappingReservationsAdvanceRecoveryClock(t *testing.T) {
 	}
 }
 
-func assertOverlappingReservationClock(t *testing.T, name string, settle func(*Store, string) (Grant, error)) { //nolint:cyclop
+func assertOverlappingReservationClock(t *testing.T, name string, settle func(*Store, string) (Grant, error)) {
 	t.Helper()
 	now := time.Date(2026, 7, 10, 3, 0, 0, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{

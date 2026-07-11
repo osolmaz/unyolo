@@ -142,9 +142,9 @@ func testServerAndRequest(t *testing.T) (*Server, executorprotocol.Request, *fak
 	t.Helper()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	directory := t.TempDir()
-	snapshot, err := catalog.Parse([]byte(fmt.Sprintf(`{"version":1,"commands":[{
+	snapshot, err := catalog.Parse([]byte(`{"version":1,"commands":[{
 		"id":"echo","executable":"/usr/bin/printf","arguments":[{"literal":"ok"}],"target_users":["root"],
-		"working_directory":"/","timeout_seconds":5,"max_output_bytes":100}]}`)))
+		"working_directory":"/","timeout_seconds":5,"max_output_bytes":100}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}

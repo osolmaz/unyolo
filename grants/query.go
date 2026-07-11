@@ -157,12 +157,7 @@ func normalizedStatusGroup(group StatusGroup) StatusGroup {
 }
 
 func validStatusGroup(group StatusGroup) bool {
-	switch group {
-	case StatusGroupPending, StatusGroupActive, StatusGroupHistory, StatusGroupAll:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains([]StatusGroup{StatusGroupPending, StatusGroupActive, StatusGroupHistory, StatusGroupAll}, group)
 }
 
 func normalizedGrantLimit(limit int) int {

@@ -12,10 +12,10 @@ import (
 func TestProtectedDefaultBranchWriteFailsBeforeGitDispatch(t *testing.T) {
 	t.Parallel()
 	server, gitCalls := newProtectedWriteTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/repos/dutifuldev/gh-broker":
+		switch r.URL.Path {
+		case "/repos/dutifuldev/gh-broker":
 			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
-		case r.URL.Path == "/repos/dutifuldev/gh-broker/rules/branches/main":
+		case "/repos/dutifuldev/gh-broker/rules/branches/main":
 			_, _ = w.Write([]byte(`[{}]`))
 		default:
 			http.NotFound(w, r)

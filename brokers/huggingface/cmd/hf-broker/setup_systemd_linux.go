@@ -18,7 +18,7 @@ import (
 
 const (
 	hfTokenFileName         = "hf-token"
-	telegramTokenFileName   = "telegram-bot-token"
+	telegramTokenFileName   = "telegram-bot-token" // #nosec G101 -- this is a filename, not a credential.
 	secretsFileName         = "secrets"
 	operatorSecretsFileName = "operator-secrets"
 	scopeFileName           = "scope.json"

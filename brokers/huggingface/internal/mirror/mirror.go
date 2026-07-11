@@ -225,7 +225,7 @@ func (r *Repository) gitWithInputAndEnv(ctx context.Context, dir string, input [
 		ctx, cancel = context.WithTimeout(ctx, r.manager.timeout)
 		defer cancel()
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- executable is fixed and arguments are constructed by the broker.
 	if dir != "" {
 		cmd.Dir = dir
 	}

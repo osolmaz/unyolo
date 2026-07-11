@@ -107,7 +107,7 @@ func writeFrame(writer io.Writer, value any) error {
 		return errors.New("executor protocol frame is too large")
 	}
 	var header [4]byte
-	binary.BigEndian.PutUint32(header[:], uint32(len(data)))
+	binary.BigEndian.PutUint32(header[:], uint32(len(data))) // #nosec G115 -- frame length is bounded by MaxFrameSize above.
 	if err := writeAll(writer, header[:]); err != nil {
 		return err
 	}

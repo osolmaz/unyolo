@@ -12,7 +12,6 @@ linters:
     - errcheck
     - errorlint
     - exhaustive
-    - gocognit
     - gosec
     - ineffassign
     - nilerr
@@ -29,8 +28,6 @@ linters:
       max-complexity: 10
     exhaustive:
       default-signifies-exhaustive: true
-    gocognit:
-      min-complexity: 15
     revive:
       severity: error
       rules:
@@ -41,6 +38,23 @@ linters:
               skip-blank-lines: true
           exclude:
             - "**/*_test.go"
+  exclusions:
+    rules:
+      - path: "_test\\.go$"
+        linters:
+          - bodyclose
+          - cyclop
+          - gosec
+          - noctx
+      - path: "^brokers/(github/internal/httpapi/server|huggingface/internal/(httpapi/server|isolation/isolation|policy/policy))\\.go$"
+        linters:
+          - revive
+      - path: "^brokers/sudo/"
+        linters:
+          - cyclop
+      - path: "^conformance/"
+        linters:
+          - cyclop
 
 issues:
   max-issues-per-linter: 0

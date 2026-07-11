@@ -334,10 +334,12 @@ func coreRequestFromHF(req Request, view coreView) corepolicy.Request {
 
 func coreTargetFromHF(target Target, operation Operation, view coreView) corepolicy.Target {
 	fields := map[string][]string{"owner": {target.Owner}, "name": {target.Name}}
-	if target.Kind == KindRepo {
+	switch target.Kind {
+	case KindRepo:
 		addCoreRepoRequestFields(fields, target, operation, view)
-	} else if target.Kind == KindBucket {
+	case KindBucket:
 		addCoreBucketRequestFields(fields, target, operation)
+	case KindInference:
 	}
 	return corepolicy.Target{Kind: string(target.Kind), Fields: fields}
 }

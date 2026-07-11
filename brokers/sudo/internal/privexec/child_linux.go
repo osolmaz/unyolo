@@ -41,7 +41,7 @@ func executePlan(value plan.Plan) error {
 
 func openTrustedPath(path string, flags int) (int, error) {
 	return unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{
-		Flags: uint64(flags), Resolve: unix.RESOLVE_NO_MAGICLINKS | unix.RESOLVE_NO_SYMLINKS,
+		Flags: uint64(flags), Resolve: unix.RESOLVE_NO_MAGICLINKS | unix.RESOLVE_NO_SYMLINKS, // #nosec G115 -- flags is a fixed nonnegative open-mode bitset.
 	})
 }
 
@@ -88,10 +88,10 @@ func execveat(fd int, argv []string, environment []string) error {
 	}
 	environmentPointer := uintptr(0)
 	if len(environmentPointers) > 0 {
-		environmentPointer = uintptr(unsafe.Pointer(&environmentPointers[0]))
+		environmentPointer = uintptr(unsafe.Pointer(&environmentPointers[0])) // #nosec G103 -- execveat requires stable C pointer arrays for this syscall.
 	}
-	_, _, errno := unix.Syscall6(unix.SYS_EXECVEAT, uintptr(fd), uintptr(unsafe.Pointer(empty)),
-		uintptr(unsafe.Pointer(&argvPointers[0])), environmentPointer, uintptr(unix.AT_EMPTY_PATH), 0)
+	_, _, errno := unix.Syscall6(unix.SYS_EXECVEAT, uintptr(fd), uintptr(unsafe.Pointer(empty)), // #nosec G103 -- direct execveat is required for descriptor-bound execution.
+		uintptr(unsafe.Pointer(&argvPointers[0])), environmentPointer, uintptr(unix.AT_EMPTY_PATH), 0) // #nosec G103 -- argv pointers are NUL-terminated and retained for the syscall.
 	runtime.KeepAlive(argvPointers)
 	runtime.KeepAlive(environmentPointers)
 	if errno != 0 {

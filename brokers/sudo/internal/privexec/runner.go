@@ -53,7 +53,7 @@ func (r *Runner) Run(ctx context.Context, value plan.Plan) (executorprotocol.Out
 	defer func() { _ = readPlan.Close(); _ = writePlan.Close() }()
 	arguments := append([]string(nil), r.ChildArgs...)
 	arguments = append(arguments, "--internal-exec", "3")
-	command := exec.Command(r.SelfPath, arguments...) // #nosec G204 -- root-owned self path and fixed arguments only.
+	command := exec.CommandContext(ctx, r.SelfPath, arguments...) // #nosec G204 -- root-owned self path and fixed arguments only.
 	command.Env = []string{}
 	command.ExtraFiles = []*os.File{readPlan}
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

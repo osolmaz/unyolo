@@ -3,7 +3,7 @@ package gitproxy
 import (
 	"bytes"
 	"compress/zlib"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- Git object IDs and pack trailers require SHA-1 interoperability.
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -123,7 +123,7 @@ func parsePackHeader(pack []byte) (int, bool, error) {
 }
 
 func validatePackChecksum(pack []byte) error {
-	sum := sha1.Sum(pack[:len(pack)-sha1.Size])
+	sum := sha1.Sum(pack[:len(pack)-sha1.Size]) // #nosec G401 -- verifies the Git SHA-1 pack trailer.
 	if !bytes.Equal(sum[:], pack[len(pack)-sha1.Size:]) {
 		return errors.New("packfile: checksum mismatch")
 	}
@@ -288,17 +288,7 @@ func inflateObject(pack []byte, pos int, expectedSize uint64, keepData bool) ([]
 
 func readInflatedObject(r io.Reader, expectedSize uint64, keepData bool) ([]byte, error) {
 	if !keepData {
-		if expectedSize > maxStoredPackObjectBytes {
-			return nil, fmt.Errorf("inflated object exceeds %d bytes", maxStoredPackObjectBytes)
-		}
-		written, err := io.Copy(io.Discard, io.LimitReader(r, int64(expectedSize)+1))
-		if err != nil {
-			return nil, err
-		}
-		if uint64(written) != expectedSize {
-			return nil, errors.New("inflated size mismatch")
-		}
-		return nil, nil
+		return nil, discardInflatedObject(r, expectedSize)
 	}
 	limited := io.LimitReader(r, maxStoredPackObjectBytes+1)
 	data, err := io.ReadAll(limited)
@@ -309,6 +299,20 @@ func readInflatedObject(r io.Reader, expectedSize uint64, keepData bool) ([]byte
 		return nil, fmt.Errorf("inflated object exceeds %d bytes", maxStoredPackObjectBytes)
 	}
 	return data, nil
+}
+
+func discardInflatedObject(reader io.Reader, expectedSize uint64) error {
+	if expectedSize > maxStoredPackObjectBytes {
+		return fmt.Errorf("inflated object exceeds %d bytes", maxStoredPackObjectBytes)
+	}
+	written, err := io.Copy(io.Discard, io.LimitReader(reader, int64(expectedSize)+1))
+	if err != nil {
+		return err
+	}
+	if written < 0 || uint64(written) != expectedSize { // #nosec G115 -- negativity is rejected before conversion.
+		return errors.New("inflated size mismatch")
+	}
+	return nil
 }
 
 type objectResolver struct {
@@ -448,7 +452,7 @@ func objectTypeCode(name string) (int, bool) {
 
 func hashObject(objectType int, data []byte) string {
 	header := fmt.Sprintf("%s %d\x00", objectTypeName(objectType), len(data))
-	hash := sha1.New()
+	hash := sha1.New() // #nosec G401 -- Git object IDs use SHA-1 by protocol definition.
 	hash.Write([]byte(header))
 	hash.Write(data)
 	return hex.EncodeToString(hash.Sum(nil))

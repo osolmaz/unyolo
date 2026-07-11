@@ -47,7 +47,7 @@ func (s *Store) Put(canonical []byte) (string, error) {
 }
 
 func (s *Store) checkExisting(path string, canonical []byte) (bool, error) {
-	current, err := os.ReadFile(path)
+	current, err := os.ReadFile(path) // #nosec G304 -- path is derived from a validated content digest under the configured plan directory.
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}

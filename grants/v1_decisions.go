@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -234,12 +235,7 @@ func validOperatorDecisionText(command OperatorDecision) bool {
 }
 
 func validOperatorAction(action DecisionAction) bool {
-	switch action {
-	case ActionApprove, ActionDeny, ActionCancel, ActionRevoke:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains([]DecisionAction{ActionApprove, ActionDeny, ActionCancel, ActionRevoke}, action)
 }
 
 func hashOperatorDecision(command OperatorDecision) string {

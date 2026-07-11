@@ -11,7 +11,7 @@ import (
 
 func DefaultPeerUID(connection *net.UnixConn) (uint32, error) {
 	if connection == nil {
-		return 0, errors.New("Unix connection is required")
+		return 0, errors.New("unix connection is required")
 	}
 	raw, err := connection.SyscallConn()
 	if err != nil {
