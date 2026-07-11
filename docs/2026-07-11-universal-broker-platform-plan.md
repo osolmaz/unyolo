@@ -816,8 +816,8 @@ branch. None of the intermediate commits is a supported deployment:
    threat model, and partial-source failure tests;
 6. implement and test HF, GH, and sudo canonical plan binding/presentation on
    the same contract;
-7. implement the OpenClaw host seams and independent plugin described by the
-   companion plans;
+7. implement the independent OpenClaw plugin described by the companion plan
+   using only the pinned released public plugin API;
 8. start from fresh state, run the complete broker/plugin/browser/channel/live
    matrix, and build all release artifacts from the same green commit; and
 9. replace the old deployment atomically with the complete V1 system and
@@ -889,8 +889,10 @@ layout, release model, and cutover procedure are defined in
 
 - explicit broker registration and operator SecretRefs;
 - per-source list/watch cursors, health, reconciliation, and safe projection;
-- compact settings-triggered Gateway UI;
-- decisions delivered through the existing OpenClaw approval/channel system;
+- compact Gateway Approvals tab registered through the public plugin API;
+- authenticated `/brokerkit` commands and generic public outbound adapters;
+- plugin-owned SQLite containing only cursors, opaque handles, generic routing
+  coordinates, and delivery bookkeeping;
 - broker authority retained across plugin restarts and lost responses; and
 - no provider executor, upstream credential, or channel-specific transport
   implementation.

@@ -81,8 +81,8 @@ execution plans, or privileged runtime state.
 - The complete `hf-broker` source history and deployable binary.
 - The complete `gh-broker` source history and deployable binary.
 - A new `sudo-broker` implementation built on BrokerKit from its first commit.
-- A new OpenClaw plugin that aggregates conforming brokers and uses OpenClaw's
-  existing approval and channel infrastructure.
+- A new OpenClaw plugin that aggregates conforming brokers through the existing
+  public plugin UI, command, service, HTTP-route, and outbound-channel APIs.
 - Shared conformance, integration, generation, CI, release, and
   security tooling.
 - Existing broker documentation, release notes, and consolidation provenance.
@@ -90,8 +90,8 @@ execution plans, or privileged runtime state.
 ### Excluded
 
 - MLClaw code, Hugging Face Space deployment logic, and MLClaw state.
-- Upstream OpenClaw source, except for ordinary development dependencies and
-  narrowly scoped upstream SDK contributions.
+- Upstream OpenClaw source or contributions; OpenClaw is only a pinned package
+  dependency and public API integration-test target.
 - Provider credentials, operator secrets, client secrets, production policy,
   production grant state, audit logs, or copied configuration.
 - A universal agent-facing provider API.
@@ -213,16 +213,16 @@ independent consumer proves that they are useful.
 
 - consume the versioned operator protocol and generated TypeScript bindings;
 - register configured broker endpoints and SecretRefs;
-- persist safe source mappings, event cursors, and delivery reconciliation
-  state in OpenClaw's supported plugin storage;
-- project broker requests into OpenClaw's provider-neutral approval system;
-- render the compact Gateway approvals UI; and
-- use OpenClaw channel capabilities for Discord, Telegram, Slack, Matrix, and
-  future channels.
+- persist cursors, opaque handles, generic subscriptions, and delivery
+  bookkeeping in plugin-owned SQLite under the supplied service state path;
+- render a compact Approvals tab through a public Control UI descriptor;
+- register authenticated `/brokerkit` commands; and
+- use generic public outbound adapters for any channel supporting text.
 
 It must not import Go broker code, hold upstream provider credentials, accept a
 browser-supplied endpoint or operator secret, duplicate channel-specific
-delivery code, or treat OpenClaw approval state as broker authority.
+delivery code, access OpenClaw private state/approval APIs, or treat plugin
+state as broker authority.
 
 ### Enforced dependency direction
 
@@ -389,14 +389,17 @@ The plugin package includes:
 - configuration schema for a list of BrokerKit sources;
 - SecretRef declarations for operator credentials;
 - broker list/watch/decision client and reconciliation loop;
-- the compact settings-triggered approval interface;
-- portable approval projections for existing OpenClaw channel delivery; and
+- a compact Approvals tab registered through the public Control UI descriptor;
+- authenticated channel commands and generic outbound-adapter delivery;
+- plugin-owned SQLite for cursors, opaque handles, subscriptions, and delivery
+  bookkeeping; and
 - tests with the BrokerKit fake server and conformance fixtures.
 
-Implement the provider-neutral OpenClaw host seams in
-`docs/2026-07-11-openclaw-host-seams-plan.md` before releasing the plugin. Keep
-all BrokerKit-specific behavior in this repository. The production plugin uses
-the compact Settings popover only; it has no tab or side-panel fallback.
+Keep all BrokerKit-specific behavior in this repository. The plugin must run on
+an unmodified released OpenClaw package using only public plugin APIs. It does
+not use private imports, OpenClaw state tables, the internal approval manager,
+or an upstream UI patch. The production UI is the public plugin tab described
+in the companion plugin plan.
 
 The plugin is released through npm and/or ClawHub only after its exact package
 name, manifest contract, minimum host range, provenance, and install flow
@@ -426,9 +429,9 @@ Release archives and installer URLs switch directly to qualified monorepo
 artifacts with checksum verification. Documentation gives one clean install
 procedure, not an old/new URL matrix.
 
-The OpenClaw plugin stores only safe mappings, cursors, and reconciliation
-state. Broker credentials remain SecretRefs resolved server-side. The browser
-never receives them.
+The OpenClaw plugin stores only cursors, opaque handles, routing coordinates,
+and delivery bookkeeping in its own SQLite database. Broker credentials remain
+SecretRefs resolved server-side. The browser never receives them.
 
 ## CI Design
 
@@ -526,7 +529,8 @@ release. They are not supported intermediate deployments:
    toolchain, delete nested modules, and remove duplicated common runtime code;
 5. implement the complete V1 protocol/runtime plus HF/GH canonical plans and
    provider conformance;
-6. implement the provider-neutral OpenClaw host seams and independent plugin;
+6. implement the independent plugin against the pinned released OpenClaw
+   public API without changing OpenClaw;
 7. implement the exact-command sudo broker and isolated privilege tests;
 8. build fresh configs/state, run the full Go/TypeScript/browser/channel/live
    matrix, and produce all qualified artifacts from the same green commit;
@@ -549,7 +553,7 @@ bridges.
 | Root Go module increases coupling | Internal provider packages, protocol boundary for consumers, path-aware releases |
 | Shared change breaks every broker | Full matrix on shared/protocol changes and component release gates |
 | Plugin becomes a second authority store | Broker-authoritative reconciliation and no independent timeout denial |
-| OpenClaw internals copied into plugin | Use public plugin APIs; contribute one provider-neutral seam upstream if required |
+| OpenClaw internals copied into plugin | Use only pinned public plugin APIs and stop if the plan cannot be met without a host edit |
 | npm naming creates premature structure | One exact unscoped plugin package; no organization or placeholders |
 | Sudo privileges spread to other components | Separate process/build/deploy, exact plans, minimal socket access, isolated tests |
 | Old deployment leaks into the new system | Fresh V1 state, no parsers/aliases/dual writes, stopped old listeners |
@@ -590,7 +594,8 @@ Keep coherent commits ordered inside the one implementation branch:
 6. Qualified component release workflows and clean-install tests.
 7. Canonical protocol artifacts and generated TypeScript fixtures.
 8. OpenClaw plugin scaffold and fake-broker integration.
-9. Broker-to-OpenClaw approval projection, reconciliation, and compact UI.
+9. Broker reconciliation, authenticated channel commands/delivery, and compact
+   Approvals tab.
 10. Sudo threat model and structured-command MVP.
 
 The complete branch is reviewed and cut over as one program. Source-repository

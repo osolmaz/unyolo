@@ -2,8 +2,7 @@
 
 Date: 2026-07-11
 
-Status: proposed; implementation-ready after the host seams in
-`docs/2026-07-11-openclaw-host-seams-plan.md` are released
+Status: approved, self-contained implementation plan
 
 Plugin id: `brokerkit`
 
@@ -11,10 +10,61 @@ Npm package: `openclaw-brokerkit`
 
 Monorepo path: `plugins/openclaw`
 
-## What The Operator Configures
+## Outcome
 
-The smallest valid OpenClaw configuration registers one BrokerKit source with
-one server-resolved operator credential:
+Build one independently packaged OpenClaw plugin that connects the Gateway to
+any number of BrokerKit Operator V1 sources. It must use only OpenClaw's
+existing public plugin API and must require no OpenClaw source change, private
+import, patched build, or upstream contribution.
+
+The plugin provides:
+
+- a packaged Approvals tab in the Gateway Control UI;
+- authenticated, revision-bound approve, deny, cancel, and revoke actions;
+- broker request notifications and decisions in configured OpenClaw channels;
+- source health, event reconciliation, bounded retry, and restart recovery;
+- plugin-owned durable cursor, handle, subscription, and delivery state; and
+- one provider-neutral implementation with no Hugging Face, GitHub, sudo,
+  MLClaw, Discord, Telegram, or other provider/channel branch.
+
+Each broker remains the sole authority for requests, decisions, grants,
+execution plans, and audit. OpenClaw is a presentation and delivery host.
+
+## Existing OpenClaw API Baseline
+
+The implementation targets the public plugin APIs audited at OpenClaw commit
+`fe261b0f59aa1582e8e4a7dc8e372eb82c8eb0cd`:
+
+- `api.registerService` for the background source reconciler;
+- `api.registerHttpRoute` for packaged UI assets and the UI API;
+- `api.registerCommand` for channel-neutral operator commands;
+- `api.session.controls.registerControlUiDescriptor` with `surface: "tab"`;
+- `api.runtime.channel.outbound.loadAdapter(channel)` for generic outbound
+  text delivery; and
+- the standard command context authorization fields and required scopes.
+
+Before implementation, pin a released OpenClaw package containing these APIs
+and compile/test against that exact package. If a public signature has changed,
+adapt the plugin to the released API without editing OpenClaw.
+
+The current public API does not render third-party `surface: "settings"`
+descriptors, expose the internal approval manager to background plugins, grant
+external plugins access to OpenClaw's trusted keyed store, or provide an
+authenticated parent-to-iframe RPC channel. Therefore:
+
+- the UI is an Approvals tab, not a Settings-button popup;
+- channel decisions use authenticated plugin commands, not OpenClaw's internal
+  approval objects or native approval buttons;
+- durable state is plugin-owned SQLite under the supplied state directory; and
+- the iframe authenticates to plugin HTTP routes with a restart-scoped random
+  capability carried in the descriptor URL fragment.
+
+These are deliberate product boundaries. An implementation must not alter
+OpenClaw to recreate the earlier popup concept.
+
+## Operator Configuration
+
+The smallest valid configuration is:
 
 ```json5
 {
@@ -42,74 +92,66 @@ one server-resolved operator credential:
 }
 ```
 
-The Gateway popover works with only this configuration. To mirror approval
-requests into OpenClaw channels, the operator separately uses OpenClaw's
-existing delivery configuration:
+Configuration schema:
 
-```json5
-{
-  approvals: {
-    plugin: {
-      enabled: true,
-      mode: "targets",
-      targets: [
-        { channel: "discord", to: "123456789012345678" },
-        { channel: "telegram", to: "123456789" }
-      ]
-    }
-  }
-}
+```ts
+type BrokerKitPluginConfig = {
+  brokers: Array<{
+    id: string;
+    label: string;
+    endpoint: string;
+    operatorCredential: SecretRef;
+    requestTimeoutMs?: number;
+  }>;
+  pollIntervalMs?: number;
+  notificationConcurrency?: number;
+};
 ```
 
-The plugin does not define Discord, Telegram, Slack, Matrix, WhatsApp, Signal,
-iMessage, or future channel configuration. OpenClaw owns channel rendering,
-routing, approver authorization, buttons/reactions/commands, and resolution
-updates.
+Rules:
 
-## Outcome
+- `brokers` is non-empty and source ids are unique stable slugs.
+- `label` is local presentation text; a broker cannot replace it.
+- `endpoint` is an absolute `http:` or `https:` URL without credentials,
+  query, fragment, or path outside an explicitly allowed base path.
+- non-loopback plaintext HTTP is rejected.
+- `operatorCredential` is a structured OpenClaw `SecretRef`; literal secret
+  strings are rejected.
+- resolved credentials exist only in server memory and are never serialized,
+  logged, returned to the browser, or inserted into an error.
+- unknown config fields are rejected.
+- source additions, removals, and credential changes take effect after a
+  normal plugin/Gateway restart.
 
-Build one independent OpenClaw plugin that:
+Channel destinations are not duplicated in plugin configuration. An
+authorized operator subscribes the current OpenClaw conversation with
+`/brokerkit subscribe`; the plugin records the generic routing coordinates
+already resolved by OpenClaw.
 
-- registers any number of conforming BrokerKit operator sources from static
-  OpenClaw configuration;
-- resolves each source's operator credential through OpenClaw SecretRefs;
-- consumes BrokerKit Operator V1 list and SSE APIs;
-- keeps a bounded in-memory safe projection plus durable per-source cursors and
-  approval-mirror records;
-- renders a compact Approvals popover tied to the Gateway Settings button;
-- submits revision-bound approve, deny, cancel, and revoke decisions;
-- mirrors pending requests through OpenClaw's existing approval/channel system;
-- reconciles restart, timeout, expiry, stale revision, lost response, and one
-  unavailable source without inventing authority; and
-- contains no Hugging Face, GitHub, sudo, MLClaw, or channel-specific branch.
-
-BrokerKit brokers remain the only durable authority. OpenClaw is an operator UI
-and decision-delivery host.
-
-## Hard Boundaries
+## Hard Security Boundaries
 
 The plugin must never:
 
-- receive or expose an upstream Hugging Face token, GitHub credential, sudo
-  privilege, provider request body, or canonical execution plan;
-- accept a broker endpoint, operator credential, provider payload, operation,
-  target, `on_behalf_of`, or request revision from an untrusted location other
-  than the fields explicitly allowed in a decision command;
-- persist resolved operator credentials;
-- turn an OpenClaw timeout, restart, channel failure, or plugin disable into a
-  broker deny/revoke;
-- offer `allow-always` for a broker request;
-- execute provider operations itself;
-- use OpenClaw private imports, raw state tables, raw approval managers, or
-  Gateway RPC loopback calls;
-- implement a second durable request/grant lifecycle; or
-- silently run against an OpenClaw host missing required public SDK seams.
+- receive or expose an upstream provider credential, provider request body, or
+  canonical executable plan;
+- accept broker endpoints, source ids, credentials, operations, targets,
+  requester identity, or request revisions from browser- or channel-provided
+  data except the opaque handle and expected revision required for a decision;
+- persist a resolved operator credential, broker request snapshot, safe
+  presentation body, or execution plan;
+- turn an OpenClaw timeout, restart, disable, delivery error, or unsubscribe
+  action into a broker decision;
+- offer permanent approval or execute a provider operation itself;
+- import OpenClaw internals or access OpenClaw-owned database tables;
+- store Gateway bearer credentials in the UI; or
+- treat a notification delivery as evidence that a request was approved.
 
-## Required Contracts
+All broker decision calls are revision-bound and idempotent. The broker's
+response is authoritative when local state disagrees.
 
-### BrokerKit Operator V1
+## BrokerKit Operator V1 Contract
 
-Every configured endpoint must provide:
+Every configured source provides:
 
 ```text
 GET  /.well-known/brokerkit-operator
@@ -122,38 +164,17 @@ POST /api/operator/v1/requests/{id}/cancel
 POST /api/operator/v1/requests/{id}/revoke
 ```
 
-Discovery must return exactly the supported API discriminator:
+Discovery must return:
 
 ```json
 { "api_version": "brokerkit.io/operator/v1" }
 ```
 
-The source id and label come only from OpenClaw configuration. A remote broker
-cannot assert or replace them. The composite request identity is
-`(sourceId, brokerRequestId)`.
-
-The request projection used by this plugin contains the common fields defined
-in `docs/2026-07-11-universal-broker-platform-plan.md`: opaque id, positive
-decision revision, requester, operation, status, request/expiry timestamps,
-requested/granted bounds, used count, safe presentation, allowed actions, and
-approval bounds. Unknown response fields are ignored after required fields are
-validated. Unknown command fields are rejected.
-
-### OpenClaw host
-
-The minimum host must publicly support:
-
-- background plugin services;
-- scoped plugin Gateway methods;
-- manifest-declared SecretRef inputs;
-- manifest-gated shared keyed state for this installed plugin;
-- background approval requests with pre-resolution settlement;
-- settings descriptors rendered in the compact footer popover; and
-- the credential-free plugin iframe bridge.
-
-The exact minimum OpenClaw and plugin API versions are pinned only after the
-host seams land. Registration must hard-fail with one actionable diagnostic on
-an older host. There is no alternate implementation for older hosts.
+The plugin validates required response fields, bounds response sizes, ignores
+unknown response fields, and rejects unknown decision input fields. Composite
+identity is `(sourceId, brokerRequestId)`. The safe request projection is the
+Operator V1 projection defined in the universal platform plan; no provider
+payload is inferred from display text.
 
 ## Package Layout
 
@@ -164,67 +185,56 @@ plugins/openclaw/
   tsconfig.json
   vite.config.ts
   index.ts
-
   src/
     config.ts
     constants.ts
     errors.ts
     plugin.ts
-
     brokerkit/
-      generated/
-        operator-v1.ts
-        operator-v1.schema.ts
+      generated/operator-v1.ts
+      generated/operator-v1.schema.ts
       client.ts
       error-map.ts
       sse.ts
-      types.ts
       validate.ts
-
     registry/
       source-registry.ts
       source-runtime.ts
-      source-state.ts
-
     reconcile/
       coordinator.ts
-      list-refresh.ts
       event-loop.ts
-      mirror-controller.ts
-      decision-settler.ts
+      list-refresh.ts
+      notification-worker.ts
       backoff.ts
-
     state/
-      keys.ts
+      database.ts
+      schema.ts
       cursor-store.ts
-      mirror-store.ts
-      models.ts
-
-    gateway/
-      methods.ts
-      snapshot.ts
-      decision.ts
-      actor.ts
-
+      handle-store.ts
+      subscription-store.ts
+      delivery-store.ts
+    channel/
+      commands.ts
+      authorization.ts
+      notifier.ts
+      rendering.ts
     http/
-      ui-route.ts
+      router.ts
+      auth.ts
+      ui-api.ts
+      ui-assets.ts
       security-headers.ts
-
     test/
       fake-clock.ts
       fake-openclaw.ts
       fake-source.ts
-      fixtures.ts
-
   ui/
     index.html
     src/
       main.tsx
       app.tsx
-      bridge.ts
       api.ts
       model.ts
-      state.ts
       styles.css
       components/
         approval-card.tsx
@@ -232,90 +242,39 @@ plugins/openclaw/
         broker-health.tsx
         decision-dialog.tsx
         empty-state.tsx
-        error-state.tsx
-        loading-state.tsx
         source-filter.tsx
     test/
     components.json
-
   test/
     config.test.ts
     client.test.ts
     sse.test.ts
+    state.test.ts
     reconciliation.test.ts
-    settlement.test.ts
-    restart.test.ts
-    gateway-methods.test.ts
-    ui-route.test.ts
+    commands.test.ts
+    notifications.test.ts
+    ui-auth.test.ts
     manifest.test.ts
     integration.test.ts
 ```
 
-Use TypeScript with strict mode. The service/runtime code stays dependency-light
-and uses the platform `fetch`, streams, `AbortController`, Web Crypto, and
-OpenClaw SDK types. The iframe UI may use React, Vite, Tailwind, and shadcn/Radix
-source components because its bundle and DOM are isolated from OpenClaw's Lit
-Control UI. It must not load CDN resources at runtime.
+Use strict TypeScript. Runtime code uses platform `fetch`, streams,
+`AbortController`, Web Crypto, and `node:sqlite`. The isolated UI may use
+React, Vite, Tailwind, and shadcn/Radix source components. It loads no runtime
+CDN asset and introduces no React dependency into OpenClaw itself.
 
-Do not create a separately published TypeScript SDK until there is an
-independent consumer. Generated wire types remain internal to the plugin
-package.
+## Plugin Manifest And Registration
 
-## Plugin Manifest
-
-`openclaw.plugin.json` starts with this shape, updated to the final released
-host contract names:
+Use only fields accepted by the released OpenClaw manifest schema. Do not
+invent declarations for state, approvals, settings surfaces, or iframe RPC.
+The manifest declares plugin id, name, version, config schema, UI metadata,
+the package entry point, and this existing secret-input contract:
 
 ```json
 {
-  "id": "brokerkit",
-  "name": "BrokerKit",
-  "description": "Review and deliver approval requests from configured BrokerKit brokers.",
-  "activation": { "onStartup": true },
-  "configSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": ["brokers"],
-    "properties": {
-      "brokers": {
-        "type": "array",
-        "minItems": 1,
-        "maxItems": 32,
-        "items": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["id", "label", "endpoint", "operatorCredential"],
-          "properties": {
-            "id": {
-              "type": "string",
-              "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
-            },
-            "label": { "type": "string", "minLength": 1, "maxLength": 64 },
-            "endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 },
-            "operatorCredential": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["source", "provider", "id"],
-              "properties": {
-                "source": { "enum": ["env", "file", "exec"] },
-                "provider": { "type": "string", "minLength": 1 },
-                "id": { "type": "string", "minLength": 1 }
-              }
-            },
-            "enabled": { "type": "boolean", "default": true }
-          }
-        }
-      }
-    }
-  },
-  "contracts": {
-    "pluginStateNamespaces": {
-      "brokerkit.cursors.v1": { "maxEntries": 32 },
-      "brokerkit.mirrors.v1": { "maxEntries": 10000 }
-    }
-  },
   "configContracts": {
     "secretInputs": {
+      "bundledDefaultEnabled": false,
       "paths": [
         {
           "path": "brokers.*.operatorCredential",
@@ -327,674 +286,350 @@ host contract names:
 }
 ```
 
-The final SecretRef schema must reuse the exact OpenClaw manifest-supported
-SecretInput schema rather than maintaining a divergent copy if the manifest
-format exposes one.
+OpenClaw resolves those references into the active server configuration
+snapshot before plugin activation. Runtime parsing accepts the resolved string
+at that boundary while setup/static validation requires the persisted value to
+be a structured SecretRef. Test both views without ever logging the resolved
+value.
 
-`package.json` is private at the monorepo root but publishable in this
-directory. It declares ESM, the built plugin entry, packaged UI assets, an
-optional OpenClaw peer dependency, exact `openclaw.extensions`, install
-metadata, `minHostVersion`, plugin API range, and npm/ClawHub release
-metadata. The exact package name is `openclaw-brokerkit`; it returned npm
-registry 404 on 2026-07-11. Claim it during the coordinated release and fail
-the release rather than silently renaming it if npm no longer accepts it.
-
-## Configuration Rules
-
-### `brokers`
-
-`brokers` is required and contains 1-32 source objects. Source order affects UI
-tie-breaking only; it does not create authority or cross-source ordering.
-
-Duplicate ids are invalid. Endpoint duplication is allowed because one
-operator listener may expose separate configured identities, but the source id
-must still be unique.
-
-### `id`
-
-The id is a stable local key, 1-63 characters, lowercase ASCII letters,
-digits, and interior hyphens. It must not change when the label changes. A
-changed id is a new source with a new cursor and mirror namespace.
-
-Valid: `hf-primary`, `github-work`, `sudo-laptop`
-
-Invalid: `HF`, `-github`, `github_1`, an endpoint URL
-
-### `label`
-
-The label is bounded display text. Normalize Unicode to NFC, trim surrounding
-whitespace, reject control/bidi override characters and empty results, and
-escape it in every HTML/message surface. It is not an identifier.
-
-### `endpoint`
-
-The endpoint is an absolute base URL parsed once at startup. It must:
-
-- use HTTPS, or HTTP only with `localhost`, an IPv4 loopback address, or an IPv6
-  loopback address;
-- contain no username, password, query, or fragment;
-- use a normalized path prefix with no dot-segment escape;
-- disable HTTP redirects for every operator request;
-- never come from the browser, broker response, event, or request body; and
-- remain fixed in the immutable source runtime until config reload restarts it.
-
-V1 does not add custom CA, client certificate, proxy, or arbitrary header
-fields. Operators needing those features terminate them in trusted local
-infrastructure or install trust in the host OS.
-
-### `operatorCredential`
-
-The source config value must be a structured SecretRef. Plaintext config is
-rejected. OpenClaw resolves it only in the server runtime snapshot. The plugin
-receives a non-empty resolved string for the Authorization header and never
-stores, hashes, returns, interpolates into errors, or logs it.
-
-An unresolved SecretRef makes only that source unavailable. Other sources and
-the Gateway remain usable.
-
-### `enabled`
-
-Omitted means true. A false source is displayed as disabled, makes no network
-request, owns no live approval mirror, and retains its cursor so re-enabling can
-resume. Disabling a source cancels OpenClaw mirrors without denying broker
-requests.
-
-## Runtime Object Model
-
-`BrokerkitPlugin` owns one immutable `SourceRegistry`, one reconciliation
-coordinator, two keyed state namespaces, a current safe snapshot, and Gateway
-method handlers.
-
-Each `SourceRuntime` owns:
-
-- normalized local id/label/endpoint;
-- an in-memory resolved credential inaccessible to UI types;
-- one bounded HTTP client;
-- one event-loop AbortController;
-- one serialized refresh queue;
-- current safe request map keyed by opaque broker id;
-- in-memory health/backoff state; and
-- live OpenClaw approval handles keyed by request revision.
-
-No provider subclass or provider-type discriminator exists. A new broker is
-added through config after it passes Operator V1 conformance.
-
-## Broker HTTP Client
-
-The client uses these fixed defaults:
-
-- discovery/connect timeout: 5 seconds;
-- ordinary request timeout: 10 seconds;
-- decision timeout: 15 seconds;
-- response headers/body limits from the Operator V1 schema;
-- no redirects;
-- `Accept: application/json` for JSON and `text/event-stream` for events;
-- `Authorization: Bearer <resolved operator credential>`;
-- generated safe correlation id;
-- no automatic decision retry except with the same idempotency key; and
-- bounded exponential reconnect delay with full jitter from 1 to 30 seconds.
-
-Authentication failure is terminal until configuration reload. Unsupported
-discovery version is terminal. Rate limiting honors a bounded `Retry-After`.
-Network and 5xx failures retry only reads/events. Decisions recover through the
-same idempotency key and a current-request fetch.
-
-The JSON decoder validates required V1 fields and limits before returning safe
-types. It drops unknown response fields. Error parsing exposes only the closed
-BrokerKit error code, safe message, correlation id, and optional current safe
-request. Raw bodies and headers never enter UI/log errors.
-
-## Durable Plugin State
-
-The broker remains authoritative; durable plugin state is only delivery and
-resume metadata.
-
-### Cursor namespace
-
-Namespace: `brokerkit.cursors.v1`
-
-Key: source id
-
-Value:
+Registration is conceptually:
 
 ```ts
-type CursorRecord = {
-  cursor: string;
-};
-```
+export default function register(api: OpenClawPluginApi): void {
+  const runtime = createBrokerKitRuntime(api);
 
-The cursor is opaque, at most the BrokerKit wire limit, and never parsed or
-compared. The keyed-store entry already records creation time, so the value
-does not duplicate a timestamp. Persist it only after the corresponding event has been accepted as an
-invalidation and queued/applied for reconciliation. A cursor-expired response
-deletes it only after a successful bounded refresh captures the replacement
-first-page `event_cursor`.
+  api.registerService({
+    id: "brokerkit-reconciler",
+    start: () => runtime.start(),
+    stop: () => runtime.stop()
+  });
 
-### Mirror namespace
+  api.registerHttpRoute({
+    path: "/plugins/brokerkit",
+    handler: runtime.httpHandler,
+    auth: "plugin"
+  });
 
-Namespace: `brokerkit.mirrors.v1`
+  api.registerCommand(createBrokerKitCommand(runtime));
 
-Key:
-`v1:<base64url(sourceId)>:<base64url(brokerRequestId)>`
-
-The decoded components must fit the configured 63-byte source id and V1
-128-byte request id limits. Keys never include display text.
-
-Value:
-
-```ts
-type MirrorState = "offered" | "settling" | "stale" | "retryable_error";
-
-type MirrorRecord = {
-  revision: number;
-  approvalId: string;
-  state: MirrorState;
-  decision?: "approve" | "deny";
-  idempotencyKey?: string;
-  updatedAtMs: number;
-  errorCode?: string;
-};
-```
-
-Conditional fields are valid only as follows:
-
-- `decision` and `idempotencyKey` are required in `settling` and may be
-  retained in `retryable_error`;
-- they are absent in `offered` and `stale`;
-- `errorCode` is present only for `retryable_error`;
-- `approvalId` identifies an OpenClaw delivery mirror, never broker authority.
-
-At startup all stored `offered` and `settling` records are treated as stale
-until broker refresh proves the request still pending and a live OpenClaw
-handle is re-established. Terminal or missing broker requests delete their
-mirror records. Records older than 24 hours whose broker request is no longer
-pending are pruned. No provider content, request snapshot, operator credential,
-decision reason, or human attribution is stored here.
-
-The schema has no separate version field because the namespace and key are
-versioned. A future incompatible state shape uses a new namespace and performs
-an explicit all-or-nothing cutover; V1 code never guesses an unknown shape.
-
-## Startup And Reconciliation Algorithm
-
-Startup is deterministic:
-
-1. parse and strictly validate the source-form configuration;
-2. resolve SecretRefs through the active OpenClaw runtime snapshot;
-3. normalize endpoints and build immutable source runtimes;
-4. open exactly the two declared keyed-state namespaces;
-5. load cursor/mirror records and validate their closed shapes;
-6. mark stored mirrors stale in memory without changing broker state;
-7. run discovery for all enabled sources with bounded concurrency four;
-8. for each healthy source, fetch the cursor-less first page, save its
-   `event_cursor`, finish bounded live pagination, and materialize the safe
-   request map;
-9. reconcile stored mirrors against current broker requests;
-10. start one SSE loop per healthy source from its committed cursor; and
-11. become ready and serve the current snapshot to scoped Gateway callers.
-
-One source failure does not abort startup after config/schema validation. The
-source appears unavailable with a safe code. A corrupt plugin state entry is
-quarantined/deleted only according to a documented closed rule and triggers a
-full refresh; it never blocks broker decisions or grants authority.
-
-### Event handling
-
-For each SSE message:
-
-1. enforce framing, line, event, and JSON limits;
-2. ignore a duplicate cursor;
-3. advance unknown event kinds safely and refresh the referenced request when
-   possible;
-4. ignore an older decision revision while applying monotonic
-   `max(used_count)`;
-5. fetch the current request when status, presentation, actions, or bounds may
-   have changed;
-6. update the safe in-memory map and mirror state;
-7. persist the cursor after reconciliation work is accepted; and
-8. expose the updated immutable snapshot to the next Gateway poll.
-
-The event stream heartbeat deadline is 20 seconds, allowing the required
-15-second broker heartbeat plus scheduling tolerance. Missing heartbeat,
-invalid framing, body overflow, or connection loss aborts and reconnects with
-backoff. `410 cursor_expired` performs a full list refresh before reconnect.
-
-### Refresh serialization
-
-Each source has one serialized refresh queue. Multiple events for the same
-request coalesce to the newest known revision/counter. A full refresh supersedes
-queued item refreshes. A source never has two concurrent decisions for the same
-request revision.
-
-## Approval Mirror Algorithm
-
-A broker request is mirror-eligible when:
-
-- status is `pending`;
-- current time is before `pending_expires_at`;
-- allowed actions include `approve` or `deny`; and
-- the current `(request id, revision)` has no live approval handle.
-
-The plugin builds bounded prompt text only from source label and safe BrokerKit
-presentation:
-
-- title: presentation title, truncated within the OpenClaw limit;
-- description: source label, presentation summary, and at most the highest
-  priority safe facts within the description limit;
-- severity: `critical` for BrokerKit high risk, `warning` for medium, `info`
-  for low;
-- decisions: `allow-once` when approve is allowed, `deny` when deny is allowed;
-- expiry: the earlier of broker pending expiry and OpenClaw maximum lifetime;
-  and
-- stable key: a hash-safe encoding of source id, request id, and revision.
-
-Provider facts remain plain text. The plugin does not interpret repositories,
-branches, models, buckets, pull requests, commands, money, or provider
-extensions.
-
-An OpenClaw mirror expires once for a request revision. The plugin does not
-automatically spam a replacement for the same revision after ordinary timeout.
-The Gateway panel offers **Send to channels again**, which calls
-`brokerkit.resend`; a new broker revision is independently eligible.
-
-When the broker request becomes active, denied, canceled, expired, consumed,
-revoked, missing, or a different revision, cancel the live OpenClaw handle and
-delete/replace the mirror record. Cancellation never submits a broker action.
-
-## Channel Decision Settlement
-
-OpenClaw calls the mirror's settlement callback before resolving its approval.
-
-Map decisions:
-
-| OpenClaw decision | Broker action |
-| --- | --- |
-| `allow-once` | `approve` |
-| `deny` | `deny` |
-
-The plugin derives a BrokerKit idempotency key from the OpenClaw settlement
-`attemptId`, source id, request id, revision, and action. It persists the
-settling mirror before the network call. It derives `on_behalf_of` from
-OpenClaw's authenticated `resolvedBy` value, bounds/normalizes it, and never
-accepts that field from browser or broker data.
-
-Settlement outcomes:
-
-- successful commit or same-command broker replay -> `committed`;
-- revision conflict, terminal/missing request, action no longer allowed, or
-  expired request -> refresh and return `superseded`;
-- network loss -> retry the same broker command/idempotency key once through
-  recovery; if still unknown, fetch current state;
-- current state proves the requested transition committed -> `committed`;
-- current state proves it did not commit and the error is transient ->
-  `retryable`;
-- authentication/version/configuration failure -> source unavailable and
-  `superseded`, because retrying the operator button cannot repair it; and
-- unclassifiable result -> fail closed as `retryable`, retain correlation, and
-  never claim authority.
-
-The BrokerKit activation validator remains inside the broker's one decision
-service. Neither OpenClaw nor this plugin bypasses or recreates it.
-
-## Gateway Methods
-
-Register exactly three plugin-owned methods, all scoped to
-`operator.approvals`.
-
-### `brokerkit.snapshot`
-
-Request: closed empty object.
-
-Response:
-
-```ts
-type BrokerkitSnapshot = {
-  sources: Array<{
-    id: string;
-    label: string;
-    state: "ready" | "degraded" | "unavailable" | "disabled";
-    errorCode?: string;
-  }>;
-  requests: Array<{
-    sourceId: string;
-    request: BrokerkitOperatorV1Request;
-    mirror?: {
-      state: MirrorState;
-      errorCode?: string;
-    };
-  }>;
-};
-```
-
-Return only safe in-memory projections. Sort pending first, then
-`requested_at` descending, then configured source order, then broker id.
-
-### `brokerkit.decide`
-
-Request:
-
-```ts
-type BrokerkitDecisionCommand = {
-  sourceId: string;
-  requestId: string;
-  expectedRevision: number;
-  action: "approve" | "deny" | "cancel" | "revoke";
-  idempotencyKey: string;
-  reason?: string;
-  constraints?: {
-    durationSeconds?: number;
-    maxUses?: number;
-  };
-};
-```
-
-Rules:
-
-- reject unknown fields and non-canonical numbers;
-- source/request/revision/action must match the current safe cache and current
-  broker fetch before submission;
-- action must appear in `allowed_actions`;
-- constraints are valid only for approve and may only narrow advertised bounds;
-- idempotency key is a UI-generated UUID/ULID, 16-128 safe characters, reused
-  for a retry of the identical command;
-- reason is optional bounded UTF-8, maps to BrokerKit `decision_reason`, and is
-  never added automatically;
-- actor attribution comes from authenticated Gateway context, never params;
-- endpoint and credential come only from the registry; and
-- response maps to this closed safe result:
-
-```ts
-type BrokerkitDecisionResult =
-  | {
-      ok: true;
-      request: BrokerkitOperatorV1Request;
-    }
-  | {
-      ok: false;
-      code:
-        | "invalid_request"
-        | "source_unavailable"
-        | "request_changed"
-        | "action_unavailable"
-        | "broker_rejected"
-        | "temporary_failure";
-      request?: BrokerkitOperatorV1Request;
-    };
-```
-
-`request` is the resulting authoritative safe projection on success and the
-latest safe projection when an error such as `request_changed` can provide it.
-The UI maps closed codes to local copy; broker error messages are not forwarded.
-
-### `brokerkit.resend`
-
-Request:
-
-```ts
-{
-  sourceId: string;
-  requestId: string;
-  expectedRevision: number;
+  api.session.controls.registerControlUiDescriptor({
+    surface: "tab",
+    id: "approvals",
+    label: "Approvals",
+    description: "Review BrokerKit requests",
+    icon: "shield-check",
+    group: "control",
+    order: 60,
+    path: `/plugins/brokerkit/ui/#${runtime.uiCapability}`,
+    requiredScopes: ["operator.approvals"]
+  });
 }
 ```
 
-The request must still be pending and mirror-eligible. Cancel any stale local
-handle, create a fresh delivery attempt, persist it, and return its safe state.
-It does not change broker authority.
+Adjust exact registration object shapes to the pinned released SDK types. The
+behavior and security properties above are fixed.
 
-## Gateway UI
+## Plugin-Owned SQLite State
 
-The plugin registers:
-
-```ts
-api.session.controls.registerControlUiDescriptor({
-  surface: "settings",
-  placement: "footer-popover",
-  id: "approvals",
-  label: "Approvals",
-  description: "Review authority requested by connected brokers.",
-  icon: "shield-check",
-  path: "/plugins/brokerkit/ui/",
-  requiredScopes: ["operator.approvals"],
-  bridge: {
-    gatewayMethods: [
-      "brokerkit.snapshot",
-      "brokerkit.decide",
-      "brokerkit.resend"
-    ]
-  }
-});
-```
-
-The panel is deliberately compact:
+Store the database at:
 
 ```text
-┌ Approvals ─────────────────────────── × ┐
-│ HF ready · GitHub ready · sudo down    │
-│ [All 3] [HF 1] [GitHub 2]             │
-│                                        │
-│ High · Hugging Face repository write   │
-│ osolmaz/model · refs/heads/main         │
-│ Requested by bob · expires in 4m       │
-│                         [Deny] [Review] │
-│                                        │
-│ GitHub pull request merge              │
-│ org/repo · #42                          │
-│                         [Deny] [Review] │
-└────────────────────────────────────────┘
+<service-context-stateDir>/plugins/brokerkit/state.sqlite
 ```
 
-Selecting Review opens detail inside the same popover, not a side panel. It
-shows all bounded presentation facts, request reason, requested bounds, use
-count, expiry, source, and only currently allowed actions. Approve opens a
-confirmation/narrowing dialog when bounds exist. Deny/revoke require a concise
-confirmation. Cancel appears only when the broker advertises it.
+Create parent directories with mode `0700`, request mode `0600` for the file,
+enable WAL, set a finite busy timeout, use foreign keys, and wrap state changes
+in transactions. Refuse symlinks and unsafe ownership/permissions where the
+platform exposes the required checks.
 
-The UI never invents provider forms. Provider-specific wording is already in
-the broker's bounded presentation. HTML is escaped; links are not created from
-fact text in V1.
+The database contains only restart coordination metadata:
 
-Accessibility requirements:
+```text
+source_cursor(
+  source_id TEXT PRIMARY KEY,
+  cursor TEXT NOT NULL
+)
 
-- keyboard operation and visible focus for every action;
-- focus trap and restoration to Settings gear;
-- Escape/back behavior that never submits;
-- `aria-live` only for concise state changes;
-- risk not encoded by color alone;
-- minimum target sizes and responsive bottom sheet on narrow screens;
-- reduced-motion support; and
-- deterministic loading, empty, unavailable, conflict, and retry states.
+request_handle(
+  handle TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision > 0),
+  expires_at_ms INTEGER NOT NULL,
+  UNIQUE(source_id, request_id, revision)
+)
 
-The React bundle talks only through the OpenClaw iframe bridge. While visible,
-it polls `brokerkit.snapshot` every two seconds and immediately after a command;
-polling stops when hidden or closed. CSP has `connect-src 'none'`; the browser
-never receives broker endpoints, operator credentials, or Gateway credentials.
+channel_subscription(
+  id TEXT PRIMARY KEY, -- deterministic hash of normalized routing tuple
+  channel TEXT NOT NULL,
+  target TEXT NOT NULL,
+  account_id TEXT,
+  thread_id TEXT,
+  UNIQUE(channel, target, account_id, thread_id)
+)
 
-## Static UI Route
+notification_delivery(
+  subscription_id TEXT NOT NULL REFERENCES channel_subscription(id)
+    ON DELETE CASCADE,
+  handle TEXT NOT NULL REFERENCES request_handle(handle) ON DELETE CASCADE,
+  state TEXT NOT NULL CHECK (state IN ('pending', 'sent', 'error')),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  next_attempt_at_ms INTEGER NOT NULL,
+  PRIMARY KEY(subscription_id, handle)
+)
+```
 
-Register a prefix route at `/plugins/brokerkit/ui/` with plugin-managed auth
-that serves only immutable packaged UI assets. It must:
+Use cryptographically random, URL-safe request handles with at least 128 bits
+of entropy. Derive a subscription id from a domain-separated hash of the
+normalized `(channel, target, accountId, threadId)` tuple; it is not an
+independent identity. Persist the delivery attempt count and next-attempt time
+so restart cannot reset bounded retry policy. Handles are safe opaque
+references for chat and UI; they reveal no broker id. Delete terminal/expired
+handles and delivery rows after a bounded
+retention interval; terminal reconciliation deletes the handle instead of
+persisting a second lifecycle state. Delete cursor rows for removed source ids
+after startup validation. Never store request presentation, credentials,
+decisions, operator identities, delivery error text, or broker response bodies.
 
-- normalize/decode once and reject traversal, encoded separators, dot segments,
-  NUL, and unknown assets;
-- map a closed asset manifest rather than arbitrary filesystem paths;
-- set exact content types, `X-Content-Type-Options: nosniff`, no-store for HTML,
-  immutable caching for hashed assets, frame policy compatible only with the
-  Gateway host, and the restrictive tested CSP;
-- contain no request data, config, endpoints, credentials, source labels, or
-  inline environment values; and
-- return bounded generic errors.
+Create only the schema required by this release. Schema creation is atomic and
+versioned through `PRAGMA user_version`; an unrecognized version fails closed
+with an actionable diagnostic.
 
-The route is safe to fetch without Gateway bearer auth because it serves only
-the inert shell. All data and actions pass through the authenticated parent
-bridge and scoped Gateway methods.
+## Source Runtime And Reconciliation
 
-## Health, Errors, And Observability
+At service start:
 
-Source states:
+1. validate all configuration before opening the database or network clients;
+2. resolve operator SecretRefs server-side;
+3. discover every broker and require Operator V1;
+4. load each source cursor and reconcile the bounded pending request list;
+5. allocate durable handles for pending `(source, request, revision)` tuples;
+6. enqueue missing subscription deliveries transactionally; and
+7. start one supervised SSE loop per healthy source.
 
-- `ready`: discovery, list, and event loop healthy;
-- `degraded`: last safe snapshot remains visible but events/retries are lagging;
-- `unavailable`: no usable current snapshot due to auth, version, config, or
-  repeated connectivity failure;
-- `disabled`: explicitly disabled in config.
+SSE processing persists the cursor only after the event projection and any
+delivery work commit. On cursor rejection, perform a bounded list reconcile and
+resume from the broker-provided position. On disconnect, retry with capped
+exponential backoff and jitter. A failing source becomes visibly unhealthy but
+does not block other sources.
 
-Use closed safe error codes such as `auth_failed`, `unsupported_version`,
-`invalid_response`, `timeout`, `rate_limited`, `cursor_expired`,
-`state_unavailable`, and `network_error`. Logs include source id, operation,
-safe code, duration, retry count, and correlation id. They exclude endpoint
-userinfo (forbidden), Authorization, SecretRef ids where avoidable, response
-bodies, reasons, facts, targets, and broker ids unless debug policy explicitly
-permits bounded opaque ids.
+Periodic list reconciliation repairs missed events, marks handles terminal
+when the broker says the request is terminal, and prunes expired data. It never
+manufactures a decision. Memory is bounded by configured source count, pending
+request limits, response byte limits, and delivery concurrency.
 
-Metrics use bounded labels only:
+For every browser or command decision:
 
-- source health and reconnect count;
-- list/event/decision latency and result category;
-- cursor expiry and refresh count;
-- pending/mirrored/settling counts;
-- stale/superseded/retryable settlements; and
-- UI snapshot/decision method results.
+1. authenticate and authorize the operator;
+2. resolve the opaque handle from local state;
+3. refetch the request from the configured source;
+4. require the stored and submitted expected revision to match the broker;
+5. require the action to be currently allowed;
+6. submit the BrokerKit decision with a deterministic idempotency key derived
+   from source, request, revision, action, and authenticated actor;
+7. return the broker result without translating uncertainty into success; and
+8. reconcile the handle and notification state from broker truth.
 
-No metric label contains request id, requester, operation, target, reason,
-presentation, endpoint, credential, or arbitrary provider value.
+## Gateway Approvals Tab
 
-## Config Reload And Shutdown
+The `surface: "tab"` descriptor is visible only to Gateway clients with
+`operator.approvals`. The iframe contains a compact centered approval surface,
+not a permanent side panel. It shows:
 
-Register restart reload behavior for changes under
-`plugins.entries.brokerkit.config`. A restart is preferred over hot mutation in
-V1 so resolved credentials, endpoints, event loops, and source identities are
-replaced atomically.
+- source health and last successful synchronization;
+- pending cards grouped/filterable by source;
+- safe operation, target, requester, expiry, use bounds, and broker-provided
+  presentation;
+- revision-aware approve/deny dialogs and revoke/cancel when allowed;
+- explicit stale, expired, unavailable, loading, and empty states; and
+- a manual refresh action.
 
-On stop:
+The browser never receives operator credentials or a Gateway bearer token.
+At plugin start, generate a random 256-bit UI capability and place it only in
+the descriptor path fragment. URL fragments are not sent in HTTP requests.
+The static shell reads the fragment into memory, removes it from the displayed
+URL when browser behavior allows, and sends it as a bearer capability to the
+plugin UI API. It is never written to storage, logs, DOM text, analytics, or
+error reports and rotates on restart.
 
-1. stop accepting new Gateway decisions;
-2. abort event/list work;
-3. cancel live OpenClaw mirrors with `plugin-stop` without broker action;
-4. wait a bounded five seconds for active broker settlements;
-5. persist accepted cursors/mirror state already committed; and
-6. discard credentials and in-memory snapshots.
+The UI HTTP API:
 
-A settlement that has reached the broker uses its idempotency key for recovery
-after restart. Shutdown never rewrites a broker decision.
+- accepts only the exact plugin route prefix;
+- validates the capability in constant time before returning request data or
+  accepting an action;
+- accepts `Origin: null` only because the sandboxed plugin iframe has an opaque
+  origin, and only with a valid bearer capability;
+- uses no cookies and rejects query-string credentials;
+- sends `Cache-Control: no-store`, restrictive CSP, frame policy compatible
+  only with the Gateway host, `X-Content-Type-Options: nosniff`, and a strict
+  referrer policy;
+- limits bodies, methods, content types, and request rates; and
+- returns generic errors without endpoints, secrets, headers, or broker bodies.
 
-## Testing
+The public static shell is inert without the capability. Test the complete
+fragment, sandbox, CORS, and header behavior in Chromium, Firefox, and WebKit.
 
-### Pure unit tests
+UI endpoints are intentionally small:
 
-- strict config and SecretRef source/runtime validation;
-- source id/label/endpoint normalization and SSRF/redirect rejection;
-- state key encoding/decoding and closed record validation;
-- Operator V1 JSON/error/SSE parsers with hostile limits;
-- risk/presentation mapping and prompt truncation;
-- decision constraints and idempotency derivation;
-- retry/backoff with fake clock; and
-- log/error redaction.
+```text
+GET  /plugins/brokerkit/ui/
+GET  /plugins/brokerkit/ui/assets/{content-hash}
+GET  /plugins/brokerkit/api/v1/snapshot
+GET  /plugins/brokerkit/api/v1/requests/{handle}
+POST /plugins/brokerkit/api/v1/requests/{handle}/approve
+POST /plugins/brokerkit/api/v1/requests/{handle}/deny
+POST /plugins/brokerkit/api/v1/requests/{handle}/cancel
+POST /plugins/brokerkit/api/v1/requests/{handle}/revoke
+```
 
-### Property and fuzz tests
+Decision bodies contain only `expectedRevision` and Operator V1 action bounds
+allowed for that action. Unknown fields fail validation.
 
-- arbitrary JSON, Unicode, control/bidi characters, timestamps, integers,
-  cursors, SSE lines, event ordering, composite keys, and URL encodings;
-- unknown fields and event kinds;
-- duplicate/out-of-order events and monotonically increasing used count;
-- request ids at byte limits; and
-- no generated UI/message/log output contains seeded secret canaries.
+## Channel-Neutral Notifications And Decisions
 
-### State/restart tests
+Register one `/brokerkit` command with `requireAuth: true` and
+`requiredScopes: ["operator.approvals"]`. Supported subcommands are:
 
-- initial list-then-watch race closure;
-- crash before/after cursor persistence;
-- crash before settlement, during unknown broker response, and after broker
-  commit;
-- stale stored mirror revalidation;
-- broker request terminal while plugin is offline;
-- OpenClaw approval timeout without broker mutation;
-- resend without duplicate authority;
-- cursor expiry/full refresh; and
-- corrupt keyed-state entry fail-closed refresh.
+```text
+/brokerkit subscribe
+/brokerkit unsubscribe
+/brokerkit pending
+/brokerkit show <handle>
+/brokerkit approve <handle>
+/brokerkit deny <handle>
+/brokerkit revoke <handle>
+/brokerkit cancel <handle>
+```
 
-### Multi-source tests
+For decision commands, require OpenClaw's generic authorized-sender result and
+the registered `operator.approvals` scope policy. External plugins cannot
+request disclosure of OpenClaw's private owner-status marker, so the plugin
+must not depend on it. Record the channel-scoped `senderId` as the
+server-attributed actor identifier used for the broker audit call and reject a
+decision when it is absent. Never trust an actor name supplied in command
+arguments.
 
-- HF and GH fake sources with different presentations but one UI path;
-- one auth failure, one rate limit, and one healthy source;
-- same broker request id under different source ids;
-- independent cursors and ordering;
-- source disable/re-enable; and
-- no provider conditional in plugin source outside test fixture names.
+`subscribe` captures only generic command context routing fields: `channel`,
+`to` (persisted as `target`), optional `accountId`, and optional message
+`threadId`. It does not inspect
+Discord-, Telegram-, Slack-, or other channel-shaped payloads. If the current
+adapter cannot supply a stable destination, return an actionable error and do
+not create a row.
 
-### OpenClaw integration tests
+For each subscription, load the adapter with
+`api.runtime.channel.outbound.loadAdapter(channel)` and call its generic
+`sendText` operation using the stored destination fields. Notifications contain
+safe projection text, expiry, source label, opaque handle, and exact decision
+commands. No provider plan, credential, raw request body, or operator secret is
+rendered. Channels without `sendText` are reported as unsupported; the plugin
+does not add an adapter.
 
-- manifest discovery, config UI, SecretRef audit/resolution, and restart policy;
-- installed-plugin keyed state contract;
-- background approval settlement through ordinary Gateway UI;
-- Discord/Telegram or channel fakes using existing forwarder contracts;
-- authenticated actor attribution and unauthorized decision rejection;
-- compact Settings popover and iframe bridge;
-- token/endpoint absence from frame messages and browser network log;
-- browser tests in Chromium, Firefox, and WebKit; and
-- disable/uninstall/restart while a request is pending.
+Delivery is at-least-once and deduplicated by `(subscription, handle)`.
+Transient errors retry with bounded backoff. A permanent delivery error is
+visible in health output and never changes the broker request. Commands always
+refetch broker truth, so duplicated chat delivery or command retry is safe.
 
-### Live broker smoke tests
+## Error Semantics
 
-Use disposable, least-authority test accounts/resources. Verify one HF request,
-one GH request, and later one sudo command plan through the same plugin. No test
-uses production credentials. Provider tests prove provider behavior in broker
-directories; plugin tests prove only the common contract.
+Use stable plugin error codes for UI and commands:
 
-## Implementation Order For The Single Cutover
+```text
+source_unavailable
+source_protocol_error
+request_not_found
+request_terminal
+revision_stale
+action_not_allowed
+not_authorized
+subscription_unsupported
+delivery_failed
+invalid_input
+internal_error
+```
 
-These are dependency-ordered commits in one implementation branch and one
-coordinated cutover, not separately supported releases:
+Map BrokerKit structured errors deliberately. Preserve retryability without
+exposing raw upstream details. A lost decision response remains uncertain until
+the plugin refetches the request with the same idempotency context.
 
-1. land/release the provider-neutral OpenClaw host seams;
-2. add plugin package/build/manifest/config validation;
-3. generate Operator V1 TypeScript types and fixture tests;
-4. implement strict BrokerKit client and SSE parser;
-5. implement keyed cursor/mirror stores and source registry;
-6. implement list/watch/reconciliation and multi-source snapshot;
-7. implement background channel mirrors and pre-resolution settlement;
-8. implement scoped Gateway snapshot/decision/resend methods;
-9. implement static UI route, bridge client, and React/shadcn popover UI;
-10. complete restart, adversarial, browser, channel, and live conformance tests;
-11. pin the released OpenClaw host version, verify package name, and build
-    reproducible npm/ClawHub artifacts; and
-12. enable the plugin only when all brokers and the monorepo cutover are ready.
+## Testing And Quality Gates
 
-No commit in the sequence is a supported deployment. The first supported
-state is the complete cutover commit/release with all required checks green.
+Tests must cover:
 
-## Clean Cutover Rules
+- strict config validation and SecretRef-only credentials;
+- discovery, list, detail, SSE parsing, bounds, cancellation, and timeouts;
+- SQLite permissions, transactions, uniqueness, pruning, restart recovery, and
+  rejection of an unknown schema version;
+- event/list races, disconnects, cursor rejection, stale revisions, expiry,
+  duplicate events, lost responses, and one unhealthy source;
+- every command's authentication, scope policy, parsing, actor attribution, and
+  generic routing capture;
+- outbound delivery through at least two fake channel adapters without a
+  channel-specific implementation branch;
+- UI capability entropy, rotation, constant-time validation, fragment handling,
+  `Origin: null` behavior, CSP, no-store, rate/body limits, and redaction;
+- approve, deny, cancel, and revoke end to end against the BrokerKit fake;
+- browser accessibility, keyboard operation, narrow viewport, and all status
+  states in Chromium, Firefox, and WebKit;
+- package contents, manifest schema, deterministic UI build, and no runtime CDN
+  dependency; and
+- integration against the pinned released OpenClaw package using only its
+  public exports.
 
-- No MLClaw overlay code is imported or retained as a fallback.
-- No unversioned BrokerKit operator route is called.
-- No pre-V1 request, cursor, decision, or state shape is parsed.
-- No old OpenClaw tab/side-panel UI remains in the production package.
-- No plaintext broker credential config is accepted.
-- No mixed old/new broker source is registered.
-- No aliases, config converters, dual writes, or route probes are
-  added.
-- Existing pending/active authority is revoked or expires before cutover; the
-  plugin starts from a fresh V1 list/cursor snapshot.
-- Failure before release aborts the cutover. Failure after release disables the
-  complete new plugin/broker set; it does not activate alternate code.
+Required plugin commands:
 
-## Acceptance Criteria
+```sh
+npm ci
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run test:browser
+npm run build
+npm pack --dry-run
+```
 
-The plugin is complete when another agent can run the documented commands and
-prove all of the following without making an architectural decision:
+Add secret scanning and generated Operator V1 schema drift checks to the root
+monorepo workflow. Logs and test snapshots must use canary secrets to prove
+redaction.
 
-- config and manifest schemas are closed and validated;
-- credentials remain SecretRefs/server-only;
-- all configured V1 brokers appear through one provider-neutral registry;
-- per-source list/watch cursors survive restart;
-- pending requests render in the compact Settings popover;
-- direct UI decisions are revision-bound, scoped, idempotent, and actor-derived;
-- channel decisions use OpenClaw's existing transport/authorization and settle
-  at the broker before resolution;
-- timeout/restart/channel/source failure never synthesizes broker authority;
-- HF, GH, and sudo-specific behavior remains exclusively in those brokers;
-- no private OpenClaw import or channel implementation exists in the plugin;
-- no browser/frame/log/state/metric leaks credentials or plans;
-- all unit, race/concurrency, fuzz, restart, integration, browser, conformance,
-  package, provenance, and live smoke gates pass; and
-- only the complete V1 monorepo/plugin system is supported after cutover.
+## Implementation Order
+
+Complete this work as one coordinated cutover:
+
+1. pin the released OpenClaw SDK baseline and add a compile-only public API
+   contract test;
+2. scaffold the package, strict config parser, manifest, and build tooling;
+3. generate Operator V1 types and implement the bounded client/SSE parser;
+4. implement plugin-owned SQLite and its stores;
+5. implement source discovery, list reconciliation, SSE supervision, and
+   durable handles;
+6. implement authenticated commands, subscriptions, generic outbound delivery,
+   and restart recovery;
+7. implement the UI capability, static routes, HTTP API, and security headers;
+8. implement the React/shadcn Approvals tab;
+9. run unit, integration, browser, channel, security, packaging, and monorepo
+   gates from fresh state; and
+10. publish/install the plugin with broker endpoints still isolated, validate
+    end to end, then expose the complete system together.
+
+No step authorizes OpenClaw source edits. If an expected public API is absent in
+the pinned release, redesign the plugin within available public APIs or stop
+and update this plan; do not patch the host.
+
+## Definition Of Done
+
+The plugin is complete when:
+
+- it installs on an unmodified released OpenClaw package;
+- disabling/removing it leaves OpenClaw code and state untouched outside the
+  plugin-owned directory;
+- multiple BrokerKit sources reconcile independently;
+- the packaged Approvals tab renders and decides requests securely;
+- authorized channel conversations can subscribe and decide through generic
+  commands on adapters that support text delivery;
+- no provider- or channel-specific branch exists;
+- no provider credential, executable plan, or resolved operator secret crosses
+  the broker boundary or appears in state/logs/UI/chat;
+- restart, expiry, stale revision, duplicate delivery, and lost-response tests
+  preserve broker authority; and
+- all plugin and root monorepo gates pass from a clean checkout.

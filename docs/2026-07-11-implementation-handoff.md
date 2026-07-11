@@ -18,8 +18,7 @@ Read these files in order:
 4. `docs/components/2026-07-11-huggingface-broker-adoption-plan.md`
 5. `docs/components/2026-07-11-github-broker-adoption-plan.md`
 6. `docs/components/2026-07-11-sudo-broker-implementation-plan.md`
-7. `docs/2026-07-11-openclaw-host-seams-plan.md`
-8. `docs/2026-07-11-openclaw-plugin-implementation-plan.md`
+7. `docs/2026-07-11-openclaw-plugin-implementation-plan.md`
 
 Together they are the implementation specification. Existing BrokerKit design
 documents remain useful codebase background, but they do not override this
@@ -34,12 +33,12 @@ Deliver one focused `brokerkit` monorepo containing:
 - `hf-broker` with Hugging Face-specific plans and execution;
 - `gh-broker` with GitHub-specific plans and execution;
 - a new exact-command `sudo-broker` with a separate privileged helper; and
-- the independent `openclaw-brokerkit` plugin with compact Gateway UI and
-  OpenClaw-native approval/channel delivery.
+- the independent `openclaw-brokerkit` plugin with a compact Gateway tab and
+  public-API channel delivery.
 
-MLClaw and upstream OpenClaw remain separate repositories. The implementation
-may contribute only the three generic host seams specified in the OpenClaw
-plan; no BrokerKit/provider id enters OpenClaw core.
+MLClaw and upstream OpenClaw remain separate repositories. OpenClaw itself is
+not modified: the integration is delivered entirely by the independently
+packaged plugin using the released public plugin API.
 
 The project is complete only as one coordinated clean cutover. Ordered commits
 and dependency gates are for engineering control, not supported intermediate
@@ -58,8 +57,8 @@ Re-verify these before the first implementation commit:
 
 If a source tip has moved, freeze the new tip, rerun its required checks, and
 record it in the import ledger. Do not silently drop commits. If an audited
-OpenClaw seam changed, map the plan to the new public API and update the host
-plan before coding; do not use private imports as a shortcut.
+OpenClaw public API changed, map the plugin plan to the released public API;
+do not edit OpenClaw or use private imports as a shortcut.
 
 ## Locked Decisions
 
@@ -87,11 +86,16 @@ The implementing agent does not need to choose these:
   strings only in the server runtime;
 - the plugin UI uses React/TypeScript/Vite/Tailwind/shadcn inside a sandboxed
   iframe; it does not add React to OpenClaw's Lit UI;
-- the UI appears in a compact Settings popover/bottom sheet, never a permanent
-  side panel;
-- channel delivery goes through existing `approvals.plugin` and channel
-  capabilities; the plugin contains no channel-specific code;
-- channel approval offers only `allow-once` and `deny`;
+- the UI appears as a packaged Approvals tab containing a compact centered
+  surface, never a permanent side panel;
+- the iframe uses a restart-scoped capability and plugin HTTP routes because
+  the public API does not expose a parent authentication bridge;
+- channel delivery uses authenticated `/brokerkit` commands and generic public
+  outbound adapters; the plugin contains no channel-specific code;
+- plugin restart metadata lives only in plugin-owned SQLite under the service
+  state directory, never in OpenClaw's private state store;
+- a pending channel request offers only approve-once and deny; cancel/revoke
+  commands appear only when the broker reports that action as allowed;
 - OpenClaw timeout/restart/cancel never changes broker authority;
 - browser decisions are revision-bound, idempotent, and server-attributed;
 - provider-specific behavior remains in its broker directory;
@@ -104,14 +108,13 @@ The implementing agent does not need to choose these:
 ~/repos/brokerkit                 authoritative monorepo
 ~/repos/hf-broker                 frozen import source
 ~/repos/gh-broker                 frozen import source
-~/oc/openclaw                     separate upstream host work
+~/oc/openclaw                     read-only public API audit checkout
 ~/repos/mlclaw                    separate deployment product
 ```
 
-OpenClaw work uses a normal worktree next to `~/oc/openclaw` under
-`~/oc/openclaw-worktrees/<task>`. Do not develop an OpenClaw pull request on the
-main checkout. OpenClaw commits/pull requests must use the main author account,
-never `dutifulbob`, and must follow the repository contribution instructions.
+The OpenClaw checkout is used only to audit released public types and run
+integration tests. Do not create an OpenClaw worktree, commit, patch, issue, or
+pull request for this implementation.
 
 ## Authority And Data Flow
 
@@ -121,8 +124,8 @@ agent request
   -> immutable provider-owned canonical plan
   -> BrokerKit pending request and Operator V1
   -> OpenClaw plugin safe source projection
-       -> compact Gateway Settings popover
-       -> existing OpenClaw approval/channel system
+       -> packaged Gateway Approvals tab
+       -> authenticated commands and generic outbound channel adapters
   -> revision-bound decision returns to the same broker
   -> broker activation validator checks the stored plan
   -> provider broker executes and audits
@@ -146,14 +149,15 @@ Work in this dependency order on one implementation program:
 6. implement HF and GH plan binding/hardening against V1;
 7. implement sudo catalog, plans, helper, host checks, settlement, and isolated
    privilege tests;
-8. implement and release the three generic OpenClaw host seams;
-9. implement the independent plugin runtime, state, reconciliation, Gateway
-   methods, static UI route, iframe bridge client, and compact UI;
-10. run the complete unit/race/fuzz/security/restart/browser/channel/
+8. implement the independent plugin runtime, plugin-owned SQLite,
+   reconciliation, static/UI API routes, capability-authenticated iframe,
+   commands, outbound delivery, and compact Approvals tab using only existing
+   public OpenClaw APIs;
+9. run the complete unit/race/fuzz/security/restart/browser/channel/
     provider/live matrix from fresh state;
-11. build reproducible signed/checksummed/provenance artifacts from one green
+10. build reproducible signed/checksummed/provenance artifacts from one green
     commit and claim/publish `openclaw-brokerkit`;
-12. revoke/expire existing authority, stop old deployments, archive old state,
+11. revoke/expire existing authority, stop old deployments, archive old state,
     install and validate the complete new system, expose listeners, redirect
     development/issues, and archive source repositories.
 
@@ -165,9 +169,8 @@ Use Conventional Commits. Keep coherent imports/refactors/features/tests in
 separate commits so review can verify history and security boundaries, but keep
 them on the same cutover branch/program. Never squash imported source history.
 
-OpenClaw pull-request branch commits must be frequent and working because that
-repository explicitly requires coherent slices. The final BrokerKit release
-still waits for the full system.
+The implementation creates no OpenClaw branch or commit. The final BrokerKit
+release waits for the full system.
 
 ## Required Quality Gates
 
@@ -212,7 +215,8 @@ Before stopping old deployments:
 - new configs validate without starting listeners;
 - new secrets resolve without being printed;
 - broker/operator listeners bind only intended addresses/sockets;
-- the plugin's minimum OpenClaw host and public SDK seams are present;
+- the pinned unmodified OpenClaw release exposes every public API used by the
+  plugin;
 - all fresh-state readiness and end-to-end probes pass in isolation;
 - release artifacts/checksums match the tested commit; and
 - an operator explicitly authorizes the production traffic switch.
@@ -249,8 +253,8 @@ The handoff is implemented only when:
 - HF, GH, and sudo pass the same common conformance while retaining distinct
   plans/executors;
 - the independent plugin registers all brokers without provider branches;
-- compact Gateway and existing channel decisions settle through the same
-  broker activation validator;
+- Gateway-tab and authenticated channel-command decisions settle through the
+  same broker activation validator;
 - restart, expiry, stale revision, lost response, one source down, and one
   channel down all fail closed without invented authority;
 - no credential, plan, unsafe provider payload, or privileged capability leaks
