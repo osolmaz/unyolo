@@ -42,6 +42,24 @@
         "default_max_uses": 1,
         "max_uses": 3
       }
+    },
+    {
+      "id": "allow-router-model-list",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["inference.models.list"],
+      "targets": [
+        {"kind": "inference", "owner": "router", "name": "models"}
+      ]
+    },
+    {
+      "id": "allow-acme-router-chat",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["inference.chat.complete"],
+      "targets": [
+        {"kind": "inference", "owner": "acme", "name": "*"}
+      ]
     }
   ]
 }

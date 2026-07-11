@@ -5,6 +5,7 @@ BROKER="${BROKER:-}"
 REPO="${REPO:-}"
 INSTALL_DIR="${INSTALL_DIR:-}"
 VERSION="${VERSION:-}"
+TAG_PREFIX="${TAG_PREFIX:-}"
 
 fail() {
   label="${BROKER:-broker}"
@@ -31,6 +32,10 @@ validate_inputs() {
   esac
   case "$REPO" in
     *[!A-Za-z0-9._/-]*) fail "REPO contains unsupported characters" ;;
+  esac
+  case "$TAG_PREFIX" in
+    "") ;;
+    *[!A-Za-z0-9._/-]*) fail "TAG_PREFIX contains unsupported characters" ;;
   esac
 }
 
@@ -69,10 +74,18 @@ normalize_arch() {
 }
 
 latest_version() {
-  url="${BROKERKIT_LATEST_RELEASE_URL:-https://api.github.com/repos/${REPO}/releases/latest}"
+  if [ -z "$TAG_PREFIX" ]; then
+    url="${BROKERKIT_LATEST_RELEASE_URL:-https://api.github.com/repos/${REPO}/releases/latest}"
+    curl -fsSL "$url" |
+      sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' |
+      head -n 1
+    return
+  fi
+  url="${BROKERKIT_RELEASES_URL:-https://api.github.com/repos/${REPO}/releases?per_page=100}"
   curl -fsSL "$url" |
+    tr '{' '\n' |
     sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' |
-    head -n 1
+    awk -v prefix="$TAG_PREFIX" 'index($0, prefix) == 1 { print; exit }'
 }
 
 choose_install_dir() {
@@ -135,6 +148,7 @@ need tar
 need install
 need awk
 need sed
+need tr
 need head
 need mktemp
 need dirname
@@ -144,8 +158,16 @@ os="$(normalize_os)"
 arch="$(normalize_arch)"
 if [ -z "$VERSION" ]; then
   VERSION="$(latest_version)"
+elif [ -n "$TAG_PREFIX" ]; then
+  case "$VERSION" in
+    "$TAG_PREFIX"*) ;;
+    *) VERSION="${TAG_PREFIX}${VERSION}" ;;
+  esac
 fi
 [ -n "$VERSION" ] || fail "could not resolve latest release version; set VERSION=vX.Y.Z"
+case "$VERSION" in
+  /* | */ | *..* | *[!A-Za-z0-9._/-]*) fail "release tag contains unsupported characters" ;;
+esac
 
 asset="${BROKER}_${os}_${arch}.tar.gz"
 base_url="${BROKERKIT_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${VERSION}}"

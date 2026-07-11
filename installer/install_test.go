@@ -55,6 +55,21 @@ func TestInstallerRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestInstallerSelectsQualifiedComponentRelease(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAsset(t, filepath.Join(releaseDir, asset), "test-broker", "#!/bin/sh\necho component-v1.2.3\n")
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	command := installerCommand(t, t.TempDir(), server.URL, "")
+	command.Env = append(command.Env, "TAG_PREFIX=test-broker/", "BROKERKIT_RELEASES_URL="+server.URL+"/releases")
+	output, err := command.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), "test-broker/v1.2.3") {
+		t.Fatalf("qualified installer err=%v output=%s", err, output)
+	}
+}
+
 func TestInstallerVerifiesInstalledBinaryInsteadOfEarlierPATHEntry(t *testing.T) {
 	asset := "test-broker_linux_amd64.tar.gz"
 	releaseDir := t.TempDir()
@@ -85,6 +100,7 @@ func TestInstallerRejectsUnsupportedPlatformAndInvalidInputs(t *testing.T) {
 		{name: "broker", env: []string{"BROKER=../bad", "REPO=example/test-broker"}, want: "BROKER must contain"},
 		{name: "repo", env: []string{"BROKER=test-broker", "REPO=missing"}, want: "owner/name"},
 		{name: "nested repo", env: []string{"BROKER=test-broker", "REPO=example/team/test-broker"}, want: "owner/name"},
+		{name: "release tag", env: []string{"BROKER=test-broker", "REPO=example/test-broker", "VERSION=../../payload"}, want: "release tag contains unsupported"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,6 +184,8 @@ func releaseServer(t *testing.T, dir string, asset string) *httptest.Server {
 		switch r.URL.Path {
 		case "/latest":
 			_, _ = io.WriteString(w, `{"tag_name":"v1.2.3"}`)
+		case "/releases":
+			_, _ = io.WriteString(w, `[{"tag_name":"openclaw-brokerkit/v9.0.0"},{"tag_name":"test-broker/v1.2.3"}]`)
 		case "/release/" + asset:
 			http.ServeFile(w, r, filepath.Join(dir, asset))
 		case "/release/checksums.txt":

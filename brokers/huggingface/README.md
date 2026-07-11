@@ -1,11 +1,11 @@
 # hf-broker
 
-hf-broker is a self-hosted credential broker that sits between a coding agent
-and Hugging Face. It provides authenticated Router inference and lets the agent push to Hub repos
-directly — no human click per change — while refusing anything
-irreversible: force-pushes, branch and tag deletion, and tag moves are
-rejected per request, and the agent never sees a real Hub token, only a
-revocable broker secret.
+hf-broker is a self-hosted credential broker between a coding agent and
+Hugging Face. It exposes only registered, policy-gated Git, LFS, repository,
+bucket, and Router operations. Broad Hugging Face credentials remain inside
+the broker; agents receive only revocable broker credentials. Dangerous
+operations can require a short-lived approval without weakening append-only or
+execution-time provider checks.
 
 It is the level-2 companion to
 [hf-auth-helper](https://github.com/osolmaz/hf-auth-helper) (level 1,
@@ -32,35 +32,36 @@ The recommended install path downloads a prebuilt release binary and
 installs it globally:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/hf-broker/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | sh
 ```
 
 Pin a release with `VERSION`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/hf-broker/main/install.sh | VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | VERSION=v0.2.0 sh
 ```
 
 Install to a specific directory with `INSTALL_DIR`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/hf-broker/main/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
 Manual install is also just a tarball download:
 
 ```sh
-curl -LO https://github.com/osolmaz/hf-broker/releases/download/v0.1.0/hf-broker_linux_arm64.tar.gz
-curl -LO https://github.com/osolmaz/hf-broker/releases/download/v0.1.0/checksums.txt
+curl -LO https://github.com/osolmaz/brokerkit/releases/download/hf-broker/v0.2.0/hf-broker_linux_arm64.tar.gz
+curl -LO https://github.com/osolmaz/brokerkit/releases/download/hf-broker/v0.2.0/checksums.txt
 sha256sum -c checksums.txt --ignore-missing
 tar -xzf hf-broker_linux_arm64.tar.gz
 sudo install -m 0755 hf-broker /usr/local/bin/hf-broker
 ```
 
-For development, install from source with Go 1.23+:
+For development, install from a BrokerKit checkout with the Go version declared
+by the root module:
 
 ```sh
-go install github.com/osolmaz/hf-broker/cmd/hf-broker@latest
+go install ./brokers/huggingface/cmd/hf-broker
 ```
 
 ## Run
@@ -81,9 +82,34 @@ API key  = value from HF_BROKER_SHARED_SECRET
 
 The agent listener exposes only `GET /v1/models` and
 `POST /v1/chat/completions` for inference. Requests are authenticated with the
-broker client secret, forwarded to the Hugging Face Router with the real token,
-and audited without prompts, completions, tool arguments, or credentials.
-Other `/v1/*` routes fail closed.
+broker client secret and then evaluated against `scope.json`. They are
+forwarded to the Hugging Face Router with the real token only when an explicit
+allow rule matches. Prompts, completions, tool arguments, and credentials are
+excluded from audit output. Other `/v1/*` routes fail closed.
+
+Inference defaults to denied. This rule allows one client to list Router models
+and call models under one owner:
+
+```json
+{
+  "rules": [
+    {
+      "id": "allow-acme-inference",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["inference.models.list"],
+      "targets": [{"kind": "inference", "owner": "router", "name": "models"}]
+    },
+    {
+      "id": "allow-acme-chat",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["inference.chat.complete"],
+      "targets": [{"kind": "inference", "owner": "acme", "name": "*"}]
+    }
+  ]
+}
+```
 
 For a hardened same-host deployment, prefer a broker-only token file
 over placing the token value in the broker environment:

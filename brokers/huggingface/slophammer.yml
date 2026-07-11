@@ -34,6 +34,7 @@ go:
         - internal/gitproxy
         - internal/gitproxy/pktline
         - internal/hfgrant
+        - internal/hfplan
         - internal/jsend
         - internal/mirror
         - internal/policy
@@ -57,7 +58,15 @@ go:
     - from: internal/audit
       allow: []
     - from: internal/hfgrant
-      allow: []
+      allow:
+        - internal/hfplan
+        - internal/policy
+    - from: internal/hfplan
+      allow:
+        - internal/policy
+    - from: internal/approval
+      allow:
+        - internal/policy
     - from: internal/jsend
       allow: []
     - from: internal/approval

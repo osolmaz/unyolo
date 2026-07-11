@@ -1,10 +1,12 @@
 # AGENTS.md
 
-These instructions apply to this repository.
+These instructions apply to the Hugging Face broker subtree in the BrokerKit
+monorepo. Root `AGENTS.md` and root quality gates also apply.
 
 ## Project Rules
 
-- This is hf-broker: a self-hosted append-only credential broker for
+- This is hf-broker: the Hugging Face provider adapter for BrokerKit and a
+  self-hosted append-only credential broker for
   Hugging Face repos. The full design is `docs/SPECIFICATION.md`; read it
   before changing enforcement, routing, or configuration behavior.
 - Secret material is write-only inside the broker. No API, log line,
@@ -33,13 +35,13 @@ git diff --exit-code -- go.mod go.sum
 go mod verify
 gofmt -l .            # must print nothing
 go vet ./...
-go test -race ./...
-go build ./cmd/hf-broker
+go test -race ./brokers/huggingface/...
+go build ./brokers/huggingface/cmd/hf-broker
 golangci-lint run
 govulncheck ./...
-/home/bob/go/bin/slophammer-go dry .
-/home/bob/go/bin/slophammer-go crap .
-/home/bob/go/bin/slophammer-go check .
+slophammer-go dry .
+slophammer-go crap .
+slophammer-go check .
 ```
 
 If a tool is installed outside `PATH`, run it by absolute path and report

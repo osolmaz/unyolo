@@ -9,18 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 func TestInstallWrapperDelegatesToBrokerkit(t *testing.T) {
 	dir := t.TempDir()
 	delegate := filepath.Join(dir, "delegate.sh")
-	if err := os.WriteFile(delegate, []byte("#!/bin/sh\nprintf '%s|%s|%s|%s\\n' \"$BROKER\" \"$REPO\" \"$VERSION\" \"$INSTALL_DIR\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(delegate, []byte("#!/bin/sh\nprintf '%s|%s|%s|%s|%s\\n' \"$BROKER\" \"$REPO\" \"$TAG_PREFIX\" \"$VERSION\" \"$INSTALL_DIR\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(context.Background(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
 	command.Env = append(os.Environ(),
 		"BROKERKIT_INSTALLER_FILE="+delegate,
-		"REPO=example/hf-broker",
 		"VERSION=v1.2.3",
 		"INSTALL_DIR=/tmp/broker-bin",
 	)
@@ -28,8 +29,18 @@ func TestInstallWrapperDelegatesToBrokerkit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install wrapper: %v: %s", err, output)
 	}
-	if got := strings.TrimSpace(string(output)); got != "hf-broker|example/hf-broker|v1.2.3|/tmp/broker-bin" {
+	if got := strings.TrimSpace(string(output)); got != "hf-broker|osolmaz/brokerkit|hf-broker/|v1.2.3|/tmp/broker-bin" {
 		t.Fatalf("delegated environment = %q", got)
+	}
+}
+
+func TestScopeExampleParses(t *testing.T) {
+	data, err := os.ReadFile("scope.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := policy.Parse(data); err != nil {
+		t.Fatalf("scope.example.json: %v", err)
 	}
 }
 
