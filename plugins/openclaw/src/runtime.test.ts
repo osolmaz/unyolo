@@ -196,6 +196,60 @@ describe("BrokerRuntime", () => {
     ]);
     await runtime.stop();
   });
+
+  it("reconciles an expired event cursor without marking the source unhealthy", async () => {
+    let listCalls = 0;
+    const server = createServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/.well-known/brokerkit-operator")
+        return res.end('{"api_version":"brokerkit.io/operator/v1"}');
+      if (req.url?.startsWith("/api/operator/v1/requests?")) {
+        listCalls += 1;
+        return res.end('{"requests":[],"event_cursor":"cursor-1"}');
+      }
+      if (req.url === "/api/operator/v1/events?cursor=cursor-1") {
+        res.statusCode = 410;
+        return res.end(
+          '{"error":{"code":"cursor_expired","message":"expired","correlation_id":"test"}}',
+        );
+      }
+      res.statusCode = 404;
+      return res.end(
+        '{"error":{"code":"not_found","message":"missing","correlation_id":"test"}}',
+      );
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no address");
+    const config = parseConfig({
+      mode: "direct",
+      brokers: [
+        brokerConfig(
+          "source",
+          `http://127.0.0.1:${address.port}`,
+          "SOURCE_SECRET",
+        ),
+      ],
+      pollIntervalMs: 5000,
+    });
+    if (config.mode !== "direct") throw new Error("unexpected mode");
+    const runtime = new BrokerRuntime(config, {
+      resolveCredential: async () => "source",
+      deliver: async () => undefined,
+      log: () => undefined,
+    });
+    await runtime.start(
+      mkdtempSync(path.join(os.tmpdir(), "brokerkit-runtime-")),
+    );
+    await expect.poll(() => listCalls).toBeGreaterThanOrEqual(4);
+    expect(runtime.snapshot().sources).toEqual([
+      expect.objectContaining({ id: "source", healthy: true }),
+    ]);
+    await runtime.stop();
+  });
 });
 
 function brokerConfig(id: string, endpoint: string, secret: string) {

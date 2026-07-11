@@ -235,17 +235,20 @@ export class BrokerRuntime {
           }
         } catch (error) {
           if (abort.signal.aborted) return;
+          let recovered = false;
           if (
             error instanceof Error &&
             "code" in error &&
             error.code === "cursor_expired"
-          )
+          ) {
             try {
               await this.reconcile(source);
+              recovered = true;
             } catch (reconcileError) {
               this.markUnhealthy(source, reconcileError);
             }
-          this.markUnhealthy(source, error);
+          }
+          if (!recovered) this.markUnhealthy(source, error);
           await sleep(delay);
           delay = Math.min(delay * 2, 30_000);
         }

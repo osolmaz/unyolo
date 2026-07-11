@@ -387,6 +387,7 @@ async function readJSON(
     const text = new TextDecoder("utf-8", { fatal: true }).decode(
       Buffer.concat(chunks),
     );
+    assertUniqueObjectKeys(text);
     const value = JSON.parse(text) as unknown;
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new Error("invalid_input");
@@ -394,6 +395,90 @@ async function readJSON(
   } catch {
     throw new Error("invalid_input");
   }
+}
+
+function assertUniqueObjectKeys(text: string): void {
+  let index = 0;
+  const whitespace = () => {
+    while (/\s/u.test(text[index] ?? "")) index += 1;
+  };
+  const string = (): string => {
+    const start = index;
+    if (text[index] !== '"') throw new Error("invalid_input");
+    index += 1;
+    while (index < text.length) {
+      if (text[index] === "\\") {
+        index += 2;
+        continue;
+      }
+      if (text[index] === '"') {
+        index += 1;
+        return JSON.parse(text.slice(start, index)) as string;
+      }
+      index += 1;
+    }
+    throw new Error("invalid_input");
+  };
+  const value = (depth: number): void => {
+    if (depth > 32) throw new Error("invalid_input");
+    whitespace();
+    if (text[index] === '"') {
+      string();
+      return;
+    }
+    if (text[index] === "{") {
+      index += 1;
+      whitespace();
+      const keys = new Set<string>();
+      if (text[index] === "}") {
+        index += 1;
+        return;
+      }
+      for (;;) {
+        whitespace();
+        const key = string();
+        if (keys.has(key)) throw new Error("invalid_input");
+        keys.add(key);
+        whitespace();
+        if (text[index] !== ":") throw new Error("invalid_input");
+        index += 1;
+        value(depth + 1);
+        whitespace();
+        if (text[index] === "}") {
+          index += 1;
+          return;
+        }
+        if (text[index] !== ",") throw new Error("invalid_input");
+        index += 1;
+      }
+    }
+    if (text[index] === "[") {
+      index += 1;
+      whitespace();
+      if (text[index] === "]") {
+        index += 1;
+        return;
+      }
+      for (;;) {
+        value(depth + 1);
+        whitespace();
+        if (text[index] === "]") {
+          index += 1;
+          return;
+        }
+        if (text[index] !== ",") throw new Error("invalid_input");
+        index += 1;
+      }
+    }
+    const start = index;
+    while (index < text.length && !/[\s,}\]]/u.test(text[index] ?? ""))
+      index += 1;
+    if (start === index) throw new Error("invalid_input");
+    JSON.parse(text.slice(start, index));
+  };
+  value(0);
+  whitespace();
+  if (index !== text.length) throw new Error("invalid_input");
 }
 function json(
   res: import("node:http").ServerResponse,
