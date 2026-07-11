@@ -50,7 +50,7 @@ Choose one explicit trust mode:
             {
               id: "hf-primary",
               label: "Hugging Face",
-              endpoint: "http://127.0.0.1:8081",
+              endpoint: "http://127.0.0.1:18080",
               operatorCredential: {
                 source: "env",
                 provider: "default",
@@ -66,6 +66,7 @@ Choose one explicit trust mode:
 ```
 
 Literal operator credentials are rejected. Non-loopback sources require HTTPS.
+Each `endpoint` is the broker's Operator V1 listener, not its agent listener.
 The plugin stores only cursors, opaque handles, generic channel destinations,
 and delivery bookkeeping under the OpenClaw service state directory.
 

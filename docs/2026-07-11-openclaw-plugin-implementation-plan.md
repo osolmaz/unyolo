@@ -85,7 +85,7 @@ The smallest valid direct configuration is:
             {
               id: "hf-primary",
               label: "Hugging Face",
-              endpoint: "http://127.0.0.1:8081",
+              endpoint: "http://127.0.0.1:18080",
               operatorCredential: {
                 source: "env",
                 provider: "default",
@@ -128,8 +128,9 @@ Rules:
 
 - `brokers` is non-empty and source ids are unique stable slugs.
 - `label` is local presentation text; a broker cannot replace it.
-- `endpoint` is an absolute `http:` or `https:` URL without credentials,
-  query, fragment, or path outside an explicitly allowed base path.
+- `endpoint` is the broker's Operator V1 listener, not its agent listener, and
+  is an absolute `http:` or `https:` URL without credentials, query, fragment,
+  or path outside an explicitly allowed base path.
 - non-loopback plaintext HTTP is rejected.
 - `operatorCredential` is a structured OpenClaw `SecretRef`; literal secret
   strings are rejected.
