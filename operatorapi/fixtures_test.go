@@ -6,8 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operatorinbox"
+	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
 func TestContractFixturesRoundTripAndContainNoAuthority(t *testing.T) {
@@ -15,16 +14,16 @@ func TestContractFixturesRoundTripAndContainNoAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var page operatorinbox.Page
-	if err := json.Unmarshal(listData, &page); err != nil || len(page.Items) != 1 {
+	var page operatorv1.Page
+	if err := json.Unmarshal(listData, &page); err != nil || len(page.Requests) != 1 {
 		t.Fatalf("list fixture = %+v, %v", page, err)
 	}
 	eventData, err := os.ReadFile("testdata/event.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var event grants.Event
-	if err := json.Unmarshal(eventData, &event); err != nil || event.Kind != grants.EventRequestCreated {
+	var event operatorv1.Event
+	if err := json.Unmarshal(eventData, &event); err != nil || event.Kind != "request.created" {
 		t.Fatalf("event fixture = %+v, %v", event, err)
 	}
 	combined := strings.ToLower(string(append(listData, eventData...)))

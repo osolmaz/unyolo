@@ -30,8 +30,8 @@ Each broker owns only its platform adapter:
 - `hf-broker`: Hugging Face Git, LFS, Xet, Hub tokens, mirrors, and HF wording
 - `gh-broker`: GitHub REST/Git, GitHub App tokens, PRs, webhooks, rulesets, and
   GitHub wording
-- `sudo-broker`: Unix users, command catalogs, shells, sudo/systemd/launchd or
-  privileged helpers, and Unix wording
+- `sudo-broker`: Unix users, exact command catalogs, the privileged helper,
+  systemd/host integration, and Unix wording
 
 brokerkit must not grow provider-specific credentials, API calls, command
 execution, or user-facing approval text.

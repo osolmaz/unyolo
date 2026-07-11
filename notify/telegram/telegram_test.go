@@ -315,6 +315,36 @@ func TestCallbackDataRoundTripsDelimiterCharacters(t *testing.T) {
 	}
 }
 
+func TestCallbackDataFitsTelegramLimitForProductionIdentifiers(t *testing.T) {
+	data := CallbackData(notify.ActionApprove, "abcdefghijklmnopqrstuv", "abcdefghijklmnop")
+	if len(data) > 64 {
+		t.Fatalf("callback_data length = %d, want at most 64", len(data))
+	}
+}
+
+func FuzzParseCallbackData(f *testing.F) {
+	f.Add(CallbackData(notify.ActionApprove, "grant-1", "token-1"))
+	f.Add("bk:bad:grant:token")
+	f.Add("")
+	f.Fuzz(func(t *testing.T, data string) {
+		action, grantID, token, ok := ParseCallbackData(data)
+		if !ok {
+			return
+		}
+		if action != notify.ActionApprove && action != notify.ActionDeny {
+			t.Fatalf("accepted action %q", action)
+		}
+		if grantID == "" || token == "" {
+			t.Fatal("accepted empty callback authority")
+		}
+		roundTrip := CallbackData(action, grantID, token)
+		nextAction, nextGrantID, nextToken, nextOK := ParseCallbackData(roundTrip)
+		if !nextOK || nextAction != action || nextGrantID != grantID || nextToken != token {
+			t.Fatalf("callback round trip = %q %q %q %v", nextAction, nextGrantID, nextToken, nextOK)
+		}
+	})
+}
+
 func TestNewValidation(t *testing.T) {
 	if _, err := New("", 1, nil, ""); err == nil {
 		t.Fatal("New(empty token) error = nil, want error")

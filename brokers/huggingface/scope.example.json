@@ -1,0 +1,65 @@
+{
+  "rules": [
+    {
+      "id": "list-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["repo.list", "repo.metadata.read"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    },
+    {
+      "id": "read-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["repo.contents.read", "git.fetch"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    },
+    {
+      "id": "append-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["git.push.append"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    },
+    {
+      "id": "request-dangerous-git-updates",
+      "effect": "request",
+      "clients": ["default"],
+      "operations": ["git.push.force", "git.ref.delete", "git.tag.update"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ],
+      "grant_policy": {
+        "default_minutes": 5,
+        "max_minutes": 60,
+        "request_ttl_minutes": 5,
+        "default_max_uses": 1,
+        "max_uses": 3
+      }
+    },
+    {
+      "id": "allow-router-model-list",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["inference.models.list"],
+      "targets": [
+        {"kind": "inference", "owner": "router", "name": "models"}
+      ]
+    },
+    {
+      "id": "allow-acme-router-chat",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["inference.chat.complete"],
+      "targets": [
+        {"kind": "inference", "owner": "acme", "name": "*"}
+      ]
+    }
+  ]
+}

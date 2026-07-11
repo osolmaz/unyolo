@@ -11,7 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/policy"
 )
 
-func TestQueryGrantsPaginatesDeterministically(t *testing.T) { //nolint:cyclop // Table setup and assertions are one pagination scenario.
+func TestQueryGrantsPaginatesDeterministically(t *testing.T) {
 	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
 	ids := []string{"grant-a", "token-a", "grant-c", "token-c", "grant-b", "token-b"}
 	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
@@ -41,7 +41,7 @@ func TestQueryGrantsPaginatesDeterministically(t *testing.T) { //nolint:cyclop /
 	}
 }
 
-func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) { //nolint:cyclop // One scenario verifies transition and conflict invariants.
+func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) {
 	store := New(t.TempDir()+"/grants.json", Options{})
 	result, _, err := store.Request(testOperatorRequest("decision"))
 	if err != nil {
@@ -74,12 +74,12 @@ func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) { //n
 		DecisionCommand: DecisionCommand{ID: second.Grant.ID, Approver: "onur", ExpectedRevision: second.Grant.Revision},
 		Duration:        second.Grant.Duration + time.Second,
 	})
-	if !errors.Is(err, ErrInvalidCommand) {
+	if !errors.Is(err, ErrConstraintExceeded) {
 		t.Fatalf("overbroad approval error = %v", err)
 	}
 }
 
-func TestLifecycleEventsSurviveRestartAndWakeWaiters(t *testing.T) { //nolint:cyclop // Sequential lifecycle assertions are intentionally explicit.
+func TestLifecycleEventsSurviveRestartAndWakeWaiters(t *testing.T) {
 	path := t.TempDir() + "/grants.json"
 	store := New(path, Options{})
 	result, _, err := store.Request(testOperatorRequest("events"))
@@ -150,7 +150,7 @@ func TestEventRetentionRejectsExpiredCursor(t *testing.T) {
 	}
 }
 
-func TestQueryFiltersStatusGroupsAndValidation(t *testing.T) { //nolint:cyclop,gocognit // Table exercises every query validation branch.
+func TestQueryFiltersStatusGroupsAndValidation(t *testing.T) {
 	store := New(t.TempDir()+"/grants.json", Options{})
 	pending, _, err := store.Request(testOperatorRequest("pending"))
 	if err != nil {
@@ -309,7 +309,7 @@ func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.OperatorDeny(DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision, ExpectedStatus: StatusActive}); !errors.Is(err, ErrRevisionConflict) {
+	if _, err := store.OperatorDeny(DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision + 1}); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("status conflict error = %v", err)
 	}
 	for _, command := range []ApproveCommand{
@@ -317,13 +317,13 @@ func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: -1},
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: bounds.Grant.MaxUses + 1},
 	} {
-		if _, err := store.OperatorApprove(command); !errors.Is(err, ErrInvalidCommand) {
+		if _, err := store.OperatorApprove(command); !errors.Is(err, ErrConstraintExceeded) {
 			t.Fatalf("OperatorApprove(%+v) error = %v", command, err)
 		}
 	}
 }
 
-func TestCursorDecodingAndEventPagingBranches(t *testing.T) { //nolint:cyclop // Cursor and paging branches share one store setup.
+func TestCursorDecodingAndEventPagingBranches(t *testing.T) {
 	invalidJSON := base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"x","unknown":true}`))
 	trailingJSON := base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"x"}{}`))
 	emptyJSON := base64.RawURLEncoding.EncodeToString([]byte(`{}`))
@@ -348,6 +348,26 @@ func TestCursorDecodingAndEventPagingBranches(t *testing.T) { //nolint:cyclop //
 	if latest, err := store.LatestEvent(page.Events[0].GrantID); err != nil || latest.Cursor == "" {
 		t.Fatalf("LatestEvent() = %+v, %v", latest, err)
 	}
+}
+
+func FuzzDecodeOperatorCursors(f *testing.F) {
+	f.Add("")
+	f.Add("!!!")
+	f.Add(base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"request-1","query_hash":"hash"}`)))
+	f.Fuzz(func(t *testing.T, cursor string) {
+		grantCursor, grantErr := decodeGrantCursor(cursor)
+		if grantErr == nil && cursor != "" {
+			if _, err := decodeGrantCursor(encodeGrantCursor(grantCursor)); err != nil {
+				t.Fatalf("grant cursor round trip: %v", err)
+			}
+		}
+		sequence, eventErr := decodeEventCursor(cursor)
+		if eventErr == nil {
+			if decoded, err := decodeEventCursor(encodeEventCursor(sequence)); err != nil || decoded != sequence {
+				t.Fatalf("event cursor round trip = %d, %v", decoded, err)
+			}
+		}
+	})
 }
 
 func TestWaitForEventsEmitsTimeDrivenExpiry(t *testing.T) {

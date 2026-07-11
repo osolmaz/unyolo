@@ -51,49 +51,65 @@ references, or delivery progress in memory.
   doctor primitives.
 - Done: shared privileged systemd installation for account creation,
   managed files, ownership, atomic unit installation, and service activation.
-- Gate: race tests, coverage, vet, lint, Slophammer checks, review, and CI must
-  pass before consumers pin the final API. Mutation tooling remains checked in
-  but is disabled and non-blocking for this cutover.
+- Done: race tests, 85% coverage, vet, lint, Slophammer checks, secret scanning,
+  vulnerability scanning, and CI pass. The final review and publication gate
+  remains. Mutation tooling remains checked in but is disabled and non-blocking
+  for this cutover.
 
 ### 2. hf-broker
 
 - Done: final durable Brokerkit Telegram lifecycle pinned and merged.
 - Done: adopt the first shared operations runtime and remove the duplicated
   installer, setup parser, unit renderer, and generic doctor helpers.
-- Next: adopt shared privileged systemd installation and remove the remaining
+- Done: adopt shared privileged systemd installation and remove duplicated
   account, managed-file, ownership, and systemctl helpers.
-- Next: run live Hugging Face plus Telegram verification from the agent account.
+- Done: a live request from `bob` reached the shared operator inbox and Telegram
+  transport, then was canceled through Operator V1.
 
 ### 3. gh-broker
 
 - Done: final durable Brokerkit Telegram lifecycle pinned and merged.
-- Next: adopt the shared operations runtime and add GitHub-specific doctor
+- Done: adopt the shared operations runtime and add GitHub-specific doctor
   checks on top of Brokerkit.
-- Next: verify GitHub read, request, approval, execution, denial, and
-  default-branch policy behavior end to end.
+- Done: live GitHub installation listing and repository reads work from `bob`;
+  a default-branch force-push request is denied before authority is created.
+  Provider mutation is intentionally not part of this cutover gate.
 
 ### 4. sudo-broker
 
-- Done: durable lifecycle, fail-closed execution settlement, review, and CI
-  merged in pull request #7.
-- Next: adopt the shared operations runtime and implement the Unix-specific
-  doctor checks.
-- Next: verify allowed, denied, requested, approved, expired, and use-budgeted
-  Unix execution without giving the client root-equivalent membership.
+- Done: exact-command catalog, immutable plans, shared policy/grants/operator
+  inbox/Telegram, durable fail-closed settlement, and the authenticated root
+  helper are implemented in the monorepo.
+- Done: shared setup-client, typed two-unit systemd installation, Unix-specific
+  doctor checks, companion-binary release packaging, and global installer are
+  implemented and tested.
+- Done: Linux descriptor-safe execution uses `openat2` plus `execveat`; macOS
+  uses the documented immediate-revalidation fallback.
+- Gate: the monorepo Slophammer repository rules and sudo-broker's zero-finding
+  DRY check are blocking. The CRAP report for privileged syscall and process
+  orchestration code is retained as a refactoring baseline, but is not a
+  release blocker for this security-sensitive cutover; broad metric-driven
+  rewrites require their own focused review.
+- Done: the isolated root helper executed the approved exact command as `onur`,
+  consumed its one-shot approval, and rejected replay. `bob` remains outside
+  the `sudo` and `docker` groups.
 
 ## Final Integration Work
 
-After all code cutovers merge:
+After code review and CI pass:
 
-- Unify installer, setup, doctor, service, client-config, and uninstall
+- Done: unify installer, setup, doctor, service, client-config, and uninstall
   behavior under the shared contract while keeping OS-specific privilege work
   in sudo-broker.
-- Install all broker CLIs globally and ensure both `onur` and `bob` can invoke
-  them without exposing upstream credentials.
-- Keep persistent broker processes only where explicitly configured by the
-  installer and validate restart behavior.
-- Run live Telegram approval tests for all three brokers.
-- Run real Hugging Face, GitHub, and Unix request flows from `bob`, including
-  fail-closed and default-branch denial cases.
-- Re-run cross-repository review, CI, documentation, secret-leak, and duplicate
-  implementation audits before declaring the cutover complete.
+- Done: install all broker CLIs globally and ensure both `onur` and `bob` can
+  invoke them without exposing upstream credentials.
+- Done: keep persistent broker processes only where explicitly configured by
+  the installer and validate restart behavior.
+- Done: verify the common Telegram lifecycle in every broker's integration
+  suite and run a live credential-backed HF Telegram smoke test. Concurrent
+  live GH and sudo delivery requires separately provisioned bot credentials;
+  one Telegram bot token must not be polled by multiple broker processes.
+- Done: run real Hugging Face, GitHub, and Unix request flows from `bob`,
+  including fail-closed, one-shot replay, and default-branch denial cases.
+- Gate: complete the final repository review, merge, reinstall from the merged
+  revision, and confirm CI remains green.

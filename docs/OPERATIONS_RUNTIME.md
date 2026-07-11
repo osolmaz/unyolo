@@ -10,13 +10,17 @@ adapters and provider-specific service inputs.
 
 ```text
 BROKER=hf-broker
-REPO=osolmaz/hf-broker
+REPO=osolmaz/brokerkit
+TAG_PREFIX=hf-broker/
 ```
 
 and executes the Brokerkit script. The runtime detects Linux or macOS and
-amd64 or arm64, resolves the latest release unless `VERSION` is set, downloads
-the matching tarball and `checksums.txt`, verifies the archive from its download
-directory, and installs only the binary.
+amd64 or arm64, resolves the latest qualified component release unless
+`VERSION` is set, downloads the matching tarball and `checksums.txt`, verifies
+the archive from its download directory, and installs the declared executable
+set. HF and GitHub declare one CLI. Sudo additionally declares its privileged
+`sudo-broker-exec` companion, which is installed outside the ordinary `PATH` in
+the adjacent `libexec` directory.
 
 The installer does not create users, credentials, config, state, or services.
 Those changes belong to an explicit broker setup command.
@@ -74,15 +78,16 @@ outside user-controlled home directories.
 Provider credentials and policy do not enter Brokerkit.
 
 Home access is an explicit typed policy. The default is `deny`; `read-only` is
-available for read-only integrations; and privileged brokers such as
-sudo-broker select `allow` when approved commands or shells must operate in user
-home directories. On systemd, `allow` adds explicit writable exceptions for
+available for read-only integrations; and a future provider may select `allow`
+only when its reviewed operations must access user home directories. sudo-broker
+V1 keeps home access denied and requires root-trusted executable and working
+directory chains. On systemd, `allow` adds explicit writable exceptions for
 `/home`, `/root`, and `/run/user`; the rest of the filesystem remains protected
 by `ProtectSystem=strict`. The writable state path may never be `/`.
 
 Privilege escalation is a separate typed policy and is denied by default with
-`NoNewPrivileges=true`. A broker that deliberately delegates through a mature
-setuid boundary, such as sudo-broker's sudo runner, must explicitly select
+`NoNewPrivileges=true`. A broker that deliberately performs an identity
+transition, such as sudo-broker's root helper, must explicitly select
 `PrivilegeEscalationAllow`; Brokerkit then renders `NoNewPrivileges=false`.
 Writable state, read-only config, the service executable, and the environment
 file must occupy non-overlapping paths.

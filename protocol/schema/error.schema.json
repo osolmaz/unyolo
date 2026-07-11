@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.dev/schema/operator/v1/error.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error"],
+  "properties": {"error": {"type": "object", "additionalProperties": false, "required": ["code", "message", "correlation_id"], "properties": {
+    "code": {"enum": ["invalid_request", "unauthorized", "forbidden", "not_found", "revision_conflict", "invalid_transition", "constraint_exceeded", "idempotency_conflict", "cursor_expired", "rate_limited", "temporarily_unavailable", "internal_error"]},
+    "message": {"type": "string", "minLength": 1, "maxLength": 500},
+    "correlation_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "current": {"$ref": "request.schema.json"}
+  }}}
+}

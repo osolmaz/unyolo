@@ -2,7 +2,8 @@
 
 Date: 2026-07-11
 
-Status: proposed; included in the single BrokerKit cutover
+Status: implemented; final repository review, CI, live isolated privilege test,
+and coordinated installation remain
 
 Monorepo destination: `brokers/sudo`
 
@@ -66,16 +67,15 @@ brokers/sudo/
       main.go
   internal/
     catalog/
-    classify/
-    config/
     executorclient/
+    executorprotocol/
     executorserver/
     hostcheck/
     plan/
     presenter/
-    provideraudit/
+    privexec/
     routes/
-    settle/
+    sudopolicy/
   docs/
     threat-model.md
     operations.md
@@ -489,3 +489,30 @@ supported intermediate releases:
 - Operator V1, adversarial, restart, replay, privilege-boundary, doctor, audit,
   and secret-leak tests pass; and
 - only the complete new V1 format/runtime is supported.
+
+## Implemented Status
+
+The monorepo implementation now includes:
+
+- strict catalog, request, helper protocol, execution-state, and immutable-plan
+  schemas with duplicate-key, unknown-field, trailing-data, size, and count
+  rejection;
+- restart-stable request idempotency and old orphan-plan collection;
+- one-shot reserve/commit/release settlement with ambiguous outcomes retained;
+- a root helper authenticated by Unix peer credentials on a private socket;
+- durable execution-id replay protection with uncertain records retained and
+  only old completed outcomes eligible for cleanup;
+- Linux `openat2` plus `execveat` descriptor execution and a documented macOS
+  immediate-revalidation fallback;
+- empty-baseline environment construction, identity dropping, resource limits,
+  process-group timeout/output termination, and bounded outcomes;
+- shared Operator V1, Telegram, policy, grant, audit, setup-client, typed
+  systemd, release, installer, and doctor integration;
+- a two-binary checksummed release archive and libexec helper installation; and
+- unit, race, restart, malformed-state, protocol, CLI, setup, release,
+  installer, conformance, and isolated child-setup tests.
+
+The final coordinated cutover still requires the repository-wide review/CI
+loop and a live disposable-host test that runs a harmless catalog command
+through the installed root helper. That operational gate does not change the
+implemented V1 API or storage format.

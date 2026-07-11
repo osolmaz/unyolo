@@ -36,6 +36,10 @@ type SystemdUnit struct {
 	PrivilegeEscalation  PrivilegeEscalation
 	PathValidation       PathValidation
 	ExtraDirectives      []string
+	AfterUnits           []string
+	RequiresUnits        []string
+	RuntimeDirectory     string
+	RuntimeDirectoryMode os.FileMode
 }
 
 // HomeAccess controls service visibility into user home directories.
@@ -108,29 +112,14 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 	if err := unit.validate(); err != nil {
 		return "", err
 	}
-	restartSec := unit.RestartSec
-	if restartSec <= 0 {
-		restartSec = 5
-	}
+	restartSec := normalizedRestartSec(unit.RestartSec)
 	protectHome := protectHomeValue(unit.HomeAccess)
-	protectSystem := "strict"
-	if normalizedHostFilesystemAccess(unit.HostFilesystemAccess) == HostFilesystemAccessAllow {
-		protectSystem = "false"
-	}
-	readWritePaths := unit.StateDir
-	if normalizedHomeAccess(unit.HomeAccess) == HomeAccessAllow {
-		readWritePaths += " -/home -/root -/run/user"
-	}
-	noNewPrivileges := "true"
-	if normalizedPrivilegeEscalation(unit.PrivilegeEscalation) == PrivilegeEscalationAllow {
-		noNewPrivileges = "false"
-	}
+	protectSystem, readWritePaths, noNewPrivileges := systemdProtectionValues(unit)
+	after := append([]string{"network-online.target"}, unit.AfterUnits...)
 	var body strings.Builder
-	_, _ = fmt.Fprintf(&body, `[Unit]
-Description=%s
-After=network-online.target
-Wants=network-online.target
-
+	_, _ = fmt.Fprintf(&body, "[Unit]\nDescription=%s\nAfter=%s\nWants=network-online.target\n", unit.Description, strings.Join(after, " "))
+	writeRequires(&body, unit.RequiresUnits)
+	_, _ = fmt.Fprintf(&body, `
 [Service]
 Type=simple
 User=%s
@@ -145,13 +134,53 @@ ProtectSystem=%s
 ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.Description, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
+`, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
+	writeRuntimeDirectory(&body, unit.RuntimeDirectory, unit.RuntimeDirectoryMode)
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
 		body.WriteByte('\n')
 	}
 	body.WriteString("\n[Install]\nWantedBy=multi-user.target\n")
 	return body.String(), nil
+}
+
+func normalizedRestartSec(value int) int {
+	if value <= 0 {
+		return 5
+	}
+	return value
+}
+
+func systemdProtectionValues(unit SystemdUnit) (string, string, string) {
+	protectSystem := "strict"
+	if normalizedHostFilesystemAccess(unit.HostFilesystemAccess) == HostFilesystemAccessAllow {
+		protectSystem = "false"
+	}
+	readWritePaths := unit.StateDir
+	if normalizedHomeAccess(unit.HomeAccess) == HomeAccessAllow {
+		readWritePaths += " -/home -/root -/run/user"
+	}
+	noNewPrivileges := "true"
+	if normalizedPrivilegeEscalation(unit.PrivilegeEscalation) == PrivilegeEscalationAllow {
+		noNewPrivileges = "false"
+	}
+	return protectSystem, readWritePaths, noNewPrivileges
+}
+
+func writeRequires(body *strings.Builder, units []string) {
+	if len(units) > 0 {
+		_, _ = fmt.Fprintf(body, "Requires=%s\n", strings.Join(units, " "))
+	}
+}
+
+func writeRuntimeDirectory(body *strings.Builder, directory string, mode os.FileMode) {
+	if directory == "" {
+		return
+	}
+	if mode == 0 {
+		mode = 0o750
+	}
+	_, _ = fmt.Fprintf(body, "RuntimeDirectory=%s\nRuntimeDirectoryMode=%04o\n", directory, mode.Perm())
 }
 
 func (unit SystemdUnit) validate() error {
@@ -179,8 +208,91 @@ func (unit SystemdUnit) validate() error {
 	if err := validateSystemdUnitPaths(unit); err != nil {
 		return err
 	}
+	if err := validateUnitDependencies(unit); err != nil {
+		return err
+	}
 	return validateExtraDirectives(unit.ExtraDirectives)
 }
+
+func validateUnitDependencies(unit SystemdUnit) error {
+	dependencies := append(append([]string(nil), unit.AfterUnits...), unit.RequiresUnits...)
+	if err := validateDependencyNames(dependencies); err != nil {
+		return err
+	}
+	return validateRuntimeDirectory(unit.RuntimeDirectory, unit.RuntimeDirectoryMode)
+}
+
+func validateDependencyNames(dependencies []string) error {
+	for _, name := range dependencies {
+		if !validDependencyUnit(name) {
+			return fmt.Errorf("systemd dependency %q is invalid", name)
+		}
+	}
+	return nil
+}
+
+func validateRuntimeDirectory(directory string, mode os.FileMode) error {
+	if directory == "" {
+		if mode != 0 {
+			return errors.New("runtime directory mode requires a runtime directory")
+		}
+		return nil
+	}
+	if filepath.Base(directory) != directory || !validRuntimeDirectory(directory) {
+		return errors.New("runtime directory must be one safe basename")
+	}
+	if mode == 0 {
+		mode = 0o750
+	}
+	if !validRuntimeDirectoryMode(mode) {
+		return errors.New("runtime directory mode must be private and owner-accessible")
+	}
+	return nil
+}
+
+func validRuntimeDirectoryMode(mode os.FileMode) bool {
+	return mode.Perm()&0o007 == 0 && mode.Perm()&0o700 != 0 && mode&^os.ModePerm == 0
+}
+
+func validDependencyUnit(value string) bool {
+	if filepath.Base(value) != value || (!strings.HasSuffix(value, ".service") && !strings.HasSuffix(value, ".target")) {
+		return false
+	}
+	for _, character := range value {
+		if !validDependencyCharacter(character) {
+			return false
+		}
+	}
+	return true
+}
+
+func validDependencyCharacter(character rune) bool {
+	return asciiLetter(character) || asciiDigit(character) || strings.ContainsRune("_.@-", character)
+}
+
+func validRuntimeDirectory(value string) bool {
+	if len(value) < 1 || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if !validRuntimeDirectoryCharacter(character) {
+			return false
+		}
+	}
+	return true
+}
+
+func validRuntimeDirectoryCharacter(character rune) bool {
+	return asciiLower(character) || asciiDigit(character) || character == '-' || character == '_'
+}
+
+func asciiLetter(character rune) bool {
+	return asciiLower(character) || (character >= 'A' && character <= 'Z')
+}
+
+func asciiLower(character rune) bool { return character >= 'a' && character <= 'z' }
+
+func asciiDigit(character rune) bool { return character >= '0' && character <= '9' }
 
 func validateSystemdPolicies(unit SystemdUnit) error {
 	validators := []func() error{

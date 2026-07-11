@@ -16,12 +16,15 @@ func TestRenderSystemd(t *testing.T) {
 		Description: "test broker", User: "broker", Group: "broker",
 		EnvironmentFile: "/etc/test/env", ExecStart: "/usr/bin/test serve",
 		StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
+		AfterUnits: []string{"test-helper.service"}, RequiresUnits: []string{"test-helper.service"},
+		RuntimeDirectory: "test-broker", RuntimeDirectoryMode: 0o750,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
 		"After=network-online.target", "EnvironmentFile=/etc/test/env", "ExecStart=/usr/bin/test serve",
+		"After=network-online.target test-helper.service", "Requires=test-helper.service", "RuntimeDirectory=test-broker", "RuntimeDirectoryMode=0750",
 		"ProtectSystem=strict", "ProtectHome=true", "ReadWritePaths=/var/lib/test", "NoNewPrivileges=true", "WantedBy=multi-user.target",
 	} {
 		if !strings.Contains(body, want) {
@@ -60,6 +63,10 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"User=root"} },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"ProtectSystem=false"} },
 		func(unit *SystemdUnit) { unit.ExtraDirectives = []string{"ExecStart=/bin/sh"} },
+		func(unit *SystemdUnit) { unit.AfterUnits = []string{"bad unit.service"} },
+		func(unit *SystemdUnit) { unit.RequiresUnits = []string{"../helper.service"} },
+		func(unit *SystemdUnit) { unit.RuntimeDirectory = "../run" },
+		func(unit *SystemdUnit) { unit.RuntimeDirectoryMode = 0o777 },
 	} {
 		unit := base
 		mutate(&unit)

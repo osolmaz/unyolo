@@ -1,15 +1,20 @@
 package conformance
 
 import (
+	"net"
+	"net/http"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/operatorclient"
+	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/policy"
 )
 
-func TestRunControlPlane(t *testing.T) {
+func TestRunOperatorV1(t *testing.T) {
 	clientToken := "client-secret-abcdefghijklmnopqrstuvwxyz"
 	operatorToken := "operator-secret-abcdefghijklmnopqrstuvwxyz"
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
@@ -20,10 +25,43 @@ func TestRunControlPlane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	RunControlPlane(t, Fixture{
+	RunOperatorV1(t, Fixture{
 		Runtime: runtime, ClientToken: clientToken, OperatorToken: operatorToken,
 		Request: grants.Request{Client: "bob", Operation: "repo.read", Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"owner/repo"}}}, Reason: "conformance"},
 	})
+}
+
+func TestOperatorV1MountsOnUnixSocket(t *testing.T) {
+	t.Parallel()
+	operatorToken := "operator-secret-abcdefghijklmnopqrstuvwxyz"
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	runtime, err := controlplane.New(controlplane.Options{
+		Broker: "unix-test", Store: store,
+		ClientSecrets:   map[string]string{"bob": "client-secret-abcdefghijklmnopqrstuvwxyz"},
+		OperatorSecrets: map[string]string{"onur": operatorToken},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	socketPath := filepath.Join(t.TempDir(), "operator.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: runtime.OperatorHandler, ReadHeaderTimeout: 5 * time.Second}
+	t.Cleanup(func() {
+		_ = server.Close()
+		_ = listener.Close()
+	})
+	go func() { _ = server.Serve(listener) }()
+	client, err := operatorclient.NewUnix(socketPath, operatorToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor, err := client.Discover(t.Context())
+	if err != nil || descriptor.APIVersion != operatorv1.APIVersion {
+		t.Fatalf("Discover() = %+v, %v", descriptor, err)
+	}
 }
 
 func TestRunControlPlaneRejectsUnknownClientCredential(t *testing.T) {

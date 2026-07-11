@@ -18,16 +18,57 @@ jobs:
           go-version: "1.26.5"
           cache: true
       - run: go mod download
-      - run: go fmt ./...
+      - run: go mod tidy
+      - run: git diff --exit-code -- go.mod go.sum
+      - run: go mod verify
+      - name: gofmt check
+        run: test -z "$(gofmt -l .)"
+      - run: ./scripts/check-architecture.sh
+      - run: go test ./protocol
       - run: go vet ./...
       - run: go test -race ./...
       - run: ./scripts/check-go-coverage.sh
       - run: GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
       - run: golangci-lint run
+      - run: GOTOOLCHAIN=go1.26.5 go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+      - run: govulncheck ./...
+      - run: GOTOOLCHAIN=go1.26.5 go install github.com/zricethezav/gitleaks/v8@v8.28.0
+      - run: gitleaks git --no-banner --redact .
       - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
-      - run: slophammer-go dry .
-      - run: slophammer-go crap .
+      - name: Slophammer DRY gates
+        run: |
+          slophammer-go dry .
+          (cd brokers/huggingface && slophammer-go dry .)
+          (cd brokers/github && slophammer-go dry .)
+          (cd brokers/sudo && slophammer-go dry .)
+      - name: Slophammer complexity gates
+        run: |
+          slophammer-go crap .
+          (cd brokers/huggingface && slophammer-go crap .)
+          (cd brokers/github && slophammer-go crap .)
       - name: mutate4go gate (opt-in)
         if: ${{ vars.RUN_MUTATION == 'true' }}
         run: ./scripts/check-mutation.sh
-      - run: slophammer-go check .
+      - name: Slophammer complete gates
+        run: slophammer-go check .
+
+  openclaw-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm --filter openclaw-brokerkit exec playwright install --with-deps
+      - run: pnpm --filter openclaw-brokerkit test:browser
+      - run: npm pack --dry-run
+        working-directory: plugins/openclaw
+      - run: pnpm --filter openclaw-brokerkit test:package

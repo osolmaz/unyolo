@@ -2,7 +2,8 @@
 
 Date: 2026-07-11
 
-Status: approved, self-contained implementation plan
+Status: implementation, packaged installation, and installed-system verification
+complete; final monorepo review, merge, and publication pending
 
 Plugin id: `brokerkit`
 
@@ -64,7 +65,13 @@ OpenClaw to recreate the earlier popup concept.
 
 ## Operator Configuration
 
-The smallest valid configuration is:
+The plugin supports two explicit trust modes. `direct` lets OpenClaw own source
+reconciliation, operator credentials, commands, and channel delivery.
+`delegated-web` packages only the approval UI and delegates authenticated API
+requests to a same-origin trusted host. The delegated host is an interface and
+must not introduce a host-product branch into this package.
+
+The smallest valid direct configuration is:
 
 ```json5
 {
@@ -73,47 +80,57 @@ The smallest valid configuration is:
       brokerkit: {
         enabled: true,
         config: {
+          mode: "direct",
           brokers: [
             {
               id: "hf-primary",
               label: "Hugging Face",
-              endpoint: "http://127.0.0.1:8081",
+              endpoint: "http://127.0.0.1:18080",
               operatorCredential: {
                 source: "env",
                 provider: "default",
-                id: "HF_BROKER_OPERATOR_SECRET"
-              }
-            }
-          ]
-        }
-      }
-    }
-  }
+                id: "HF_BROKER_OPERATOR_SECRET",
+              },
+            },
+          ],
+        },
+      },
+    },
+  },
 }
 ```
 
 Configuration schema:
 
 ```ts
-type BrokerKitPluginConfig = {
-  brokers: Array<{
-    id: string;
-    label: string;
-    endpoint: string;
-    operatorCredential: SecretRef;
-    requestTimeoutMs?: number;
-  }>;
-  pollIntervalMs?: number;
-  notificationConcurrency?: number;
+type BrokerSource = {
+  id: string;
+  label: string;
+  endpoint: string;
+  operatorCredential: SecretRef;
+  requestTimeoutMs?: number;
 };
+
+type BrokerKitPluginConfig =
+  | {
+      mode: "direct";
+      brokers: Array<BrokerSource>;
+      pollIntervalMs?: number;
+      notificationConcurrency?: number;
+    }
+  | {
+      mode: "delegated-web";
+      delegatedWeb: { basePath: string };
+    };
 ```
 
 Rules:
 
 - `brokers` is non-empty and source ids are unique stable slugs.
 - `label` is local presentation text; a broker cannot replace it.
-- `endpoint` is an absolute `http:` or `https:` URL without credentials,
-  query, fragment, or path outside an explicitly allowed base path.
+- `endpoint` is the broker's Operator V1 listener, not its agent listener, and
+  is an absolute `http:` or `https:` URL without credentials, query, fragment,
+  or path outside an explicitly allowed base path.
 - non-loopback plaintext HTTP is rejected.
 - `operatorCredential` is a structured OpenClaw `SecretRef`; literal secret
   strings are rejected.
@@ -122,6 +139,8 @@ Rules:
 - unknown config fields are rejected.
 - source additions, removals, and credential changes take effect after a
   normal plugin/Gateway restart.
+- delegated mode registers no source service, command, or channel delivery and
+  receives no operator credential.
 
 Channel destinations are not duplicated in plugin configuration. An
 authorized operator subscribes the current OpenClaw conversation with
@@ -187,76 +206,34 @@ plugins/openclaw/
   index.ts
   src/
     config.ts
-    constants.ts
     errors.ts
-    plugin.ts
-    brokerkit/
-      generated/operator-v1.ts
-      generated/operator-v1.schema.ts
-      client.ts
-      error-map.ts
-      sse.ts
-      validate.ts
-    registry/
-      source-registry.ts
-      source-runtime.ts
-    reconcile/
-      coordinator.ts
-      event-loop.ts
-      list-refresh.ts
-      notification-worker.ts
-      backoff.ts
-    state/
-      database.ts
-      schema.ts
-      cursor-store.ts
-      handle-store.ts
-      subscription-store.ts
-      delivery-store.ts
-    channel/
-      commands.ts
-      authorization.ts
-      notifier.ts
-      rendering.ts
-    http/
-      router.ts
-      auth.ts
-      ui-api.ts
-      ui-assets.ts
-      security-headers.ts
-    test/
-      fake-clock.ts
-      fake-openclaw.ts
-      fake-source.ts
+    client.ts
+    commands.ts
+    generated/operator-v1.ts
+    http.ts
+    operator-v1.ts
+    runtime.ts
+    store.ts
+    types.ts
+    *.test.ts
   ui/
     index.html
     src/
       main.tsx
-      app.tsx
       api.ts
-      model.ts
       styles.css
-      components/
-        approval-card.tsx
-        approval-detail.tsx
-        broker-health.tsx
-        decision-dialog.tsx
-        empty-state.tsx
-        source-filter.tsx
-    test/
-    components.json
   test/
-    config.test.ts
-    client.test.ts
-    sse.test.ts
-    state.test.ts
-    reconciliation.test.ts
-    commands.test.ts
-    notifications.test.ts
-    ui-auth.test.ts
-    manifest.test.ts
-    integration.test.ts
+    browser/approvals.spec.ts
+  scripts/
+    generate-operator-v1.mjs
+    test-packed-install.mjs
 ```
+
+The implementation keeps files grouped by security and ownership boundary,
+not by speculative abstraction. `index.ts` only registers public OpenClaw
+surfaces; command, HTTP, broker client, reconciliation, and durable-state logic
+remain independently testable modules. Split a module further only when its
+ownership or tests require it.
 
 Use strict TypeScript. Runtime code uses platform `fetch`, streams,
 `AbortController`, Web Crypto, and `node:sqlite`. The isolated UI may use
@@ -301,13 +278,13 @@ export default function register(api: OpenClawPluginApi): void {
   api.registerService({
     id: "brokerkit-reconciler",
     start: () => runtime.start(),
-    stop: () => runtime.stop()
+    stop: () => runtime.stop(),
   });
 
   api.registerHttpRoute({
     path: "/plugins/brokerkit",
     handler: runtime.httpHandler,
-    auth: "plugin"
+    auth: "plugin",
   });
 
   api.registerCommand(createBrokerKitCommand(runtime));
@@ -321,7 +298,7 @@ export default function register(api: OpenClawPluginApi): void {
     group: "control",
     order: 60,
     path: `/plugins/brokerkit/ui/#${runtime.uiCapability}`,
-    requiredScopes: ["operator.approvals"]
+    requiredScopes: ["operator.approvals"],
   });
 }
 ```
@@ -452,6 +429,15 @@ URL when browser behavior allows, and sends it as a bearer capability to the
 plugin UI API. It is never written to storage, logs, DOM text, analytics, or
 error reports and rotates on restart.
 
+In `delegated-web` mode the fragment contains only the versioned mode and
+same-origin base path. The UI obtains a short-lived decision token from
+`POST <basePath>/session`. A sandboxed frame may ask its parent for that same
+session through the host-neutral messages
+`brokerkit.delegated-web.session.request` and
+`brokerkit.delegated-web.session.response`; requests carry a fresh 128-bit
+nonce and responses must echo it. No product-specific message namespace or
+payload is part of the plugin contract.
+
 The UI HTTP API:
 
 - accepts only the exact plugin route prefix;
@@ -578,14 +564,14 @@ Tests must cover:
 Required plugin commands:
 
 ```sh
-npm ci
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run test:browser
-npm run build
-npm pack --dry-run
+pnpm install --frozen-lockfile
+pnpm --filter openclaw-brokerkit format:check
+pnpm --filter openclaw-brokerkit lint
+pnpm --filter openclaw-brokerkit typecheck
+pnpm --filter openclaw-brokerkit test
+pnpm --filter openclaw-brokerkit test:browser
+pnpm --filter openclaw-brokerkit build
+pnpm --filter openclaw-brokerkit test:package
 ```
 
 Add secret scanning and generated Operator V1 schema drift checks to the root

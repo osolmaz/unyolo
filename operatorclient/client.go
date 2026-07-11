@@ -1,4 +1,4 @@
-// Package operatorclient is a small Go client for the Brokerkit operator API.
+// Package operatorclient implements the BrokerKit Operator V1 Source contract.
 package operatorclient
 
 import (
@@ -9,63 +9,94 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operatorinbox"
+	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
 const maxResponseBytes = 2 * 1024 * 1024
 
-// Client calls one protected operator API.
 type Client struct {
 	BaseURL    string
 	Token      string
 	HTTPClient *http.Client
 }
 
-// Error is one stable safe API error.
+// NewUnix returns a Source client connected to an operator-only Unix socket.
+func NewUnix(socketPath, token string) (*Client, error) {
+	if socketPath == "" || !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath || strings.ContainsRune(socketPath, '\x00') {
+		return nil, errors.New("operator Unix socket path is invalid")
+	}
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "unix", socketPath)
+		},
+	}
+	return &Client{
+		BaseURL: "http://brokerkit",
+		Token:   token,
+		HTTPClient: &http.Client{
+			Transport: transport,
+			Timeout:   30 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}, nil
+}
+
 type Error struct {
-	Status  int
-	Code    string
-	Message string
-	Current *operatorinbox.Item
+	Status        int
+	Code          string
+	Message       string
+	CorrelationID string
+	Current       *operatorv1.Request
+	RetryAfter    time.Duration
 }
 
 func (e *Error) Error() string {
 	return fmt.Sprintf("operator API %s (%d): %s", e.Code, e.Status, e.Message)
 }
 
-// Decision supplies optimistic concurrency and optional narrowing values.
-type Decision struct {
-	ExpectedRevision int64
-	ExpectedStatus   grants.Status
-	Reason           string
-	Duration         time.Duration
-	MaxUses          int
+func (c *Client) Discover(ctx context.Context) (operatorv1.Descriptor, error) {
+	var descriptor operatorv1.Descriptor
+	err := c.doJSON(ctx, http.MethodGet, "/.well-known/brokerkit-operator", nil, &descriptor)
+	if err == nil && descriptor.APIVersion != operatorv1.APIVersion {
+		return operatorv1.Descriptor{}, fmt.Errorf("unsupported operator API version %q", descriptor.APIVersion)
+	}
+	return descriptor, err
 }
 
-type receiverError struct{ error }
-
-// List returns one bounded operator-inbox page.
-func (c *Client) List(ctx context.Context, query grants.Query) (operatorinbox.Page, error) {
-	values := encodeQuery(query)
-	var page operatorinbox.Page
-	err := c.doJSON(ctx, http.MethodGet, "/api/grants?"+values.Encode(), nil, &page)
-	return page, err
+func (c *Client) Health(ctx context.Context) error {
+	var status struct {
+		Status string `json:"status"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/healthz", nil, &status); err != nil {
+		return err
+	}
+	if status.Status != "ok" {
+		return errors.New("operator source is unhealthy")
+	}
+	return nil
 }
 
-func encodeQuery(query grants.Query) url.Values {
-	values := make(url.Values)
-	setNonempty(values, "status", string(query.StatusGroup))
-	setNonempty(values, "client", query.Client)
-	setNonempty(values, "operation", query.Operation)
-	setNonempty(values, "cursor", query.Cursor)
-	setNonempty(values, "limit", nonzeroInt(query.Limit))
+func (c *Client) List(ctx context.Context, query operatorv1.Query) (operatorv1.Page, error) {
+	values := url.Values{}
+	set(values, "status", string(query.Status))
+	set(values, "requester", query.Requester)
+	set(values, "operation", query.Operation)
+	set(values, "cursor", query.Cursor)
+	if query.Limit != 0 {
+		values.Set("limit", strconv.Itoa(query.Limit))
+	}
 	if query.Target != nil {
 		values.Set("target_kind", query.Target.Kind)
 		for key, list := range query.Target.Fields {
@@ -74,125 +105,33 @@ func encodeQuery(query grants.Query) url.Values {
 			}
 		}
 	}
-	return values
-}
-
-func setNonempty(values url.Values, key string, value string) {
-	if value != "" {
-		values.Set(key, value)
+	path := "/api/operator/v1/requests"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
 	}
+	var page operatorv1.Page
+	err := c.doJSON(ctx, http.MethodGet, path, nil, &page)
+	return page, err
 }
 
-func nonzeroInt(value int) string {
-	if value == 0 {
-		return ""
-	}
-	return strconv.Itoa(value)
+func (c *Client) Get(ctx context.Context, id string) (operatorv1.Request, error) {
+	var request operatorv1.Request
+	err := c.doJSON(ctx, http.MethodGet, "/api/operator/v1/requests/"+url.PathEscape(id), nil, &request)
+	return request, err
 }
 
-// Get returns one operator-safe inbox item.
-func (c *Client) Get(ctx context.Context, id string) (operatorinbox.Item, error) {
-	var item operatorinbox.Item
-	err := c.doJSON(ctx, http.MethodGet, "/api/grants/"+url.PathEscape(id), nil, &item)
-	return item, err
+func (c *Client) Decide(ctx context.Context, id string, action operatorv1.Action, decision operatorv1.Decision) (operatorv1.Request, error) {
+	var request operatorv1.Request
+	err := c.doJSON(ctx, http.MethodPost, "/api/operator/v1/requests/"+url.PathEscape(id)+"/"+string(action), decision, &request)
+	return request, err
 }
 
-func (c *Client) Approve(ctx context.Context, id string, decision Decision) (operatorinbox.Item, error) {
-	return c.decide(ctx, id, "approve", decision)
-}
-
-func (c *Client) Deny(ctx context.Context, id string, decision Decision) (operatorinbox.Item, error) {
-	return c.decide(ctx, id, "deny", decision)
-}
-
-func (c *Client) Cancel(ctx context.Context, id string, decision Decision) (operatorinbox.Item, error) {
-	return c.decide(ctx, id, "cancel", decision)
-}
-
-func (c *Client) Revoke(ctx context.Context, id string, decision Decision) (operatorinbox.Item, error) {
-	return c.decide(ctx, id, "revoke", decision)
-}
-
-func (c *Client) decide(ctx context.Context, id string, action string, decision Decision) (operatorinbox.Item, error) {
-	if decision.Duration > 0 && decision.Duration < time.Second {
-		return operatorinbox.Item{}, errors.New("operator approval duration must be at least one second")
-	}
-	body := struct {
-		ExpectedRevision int64         `json:"expected_revision"`
-		ExpectedStatus   grants.Status `json:"expected_status,omitempty"`
-		Reason           string        `json:"reason,omitempty"`
-		DurationSeconds  int64         `json:"duration_seconds,omitempty"`
-		MaxUses          int           `json:"max_uses,omitempty"`
-	}{decision.ExpectedRevision, decision.ExpectedStatus, decision.Reason, int64(decision.Duration / time.Second), decision.MaxUses}
-	var item operatorinbox.Item
-	err := c.doJSON(ctx, http.MethodPost, "/api/grants/"+url.PathEscape(id)+"/"+action, body, &item)
-	return item, err
-}
-
-// StreamEvents reconnects from the last durable cursor until ctx is canceled.
-func (c *Client) StreamEvents(ctx context.Context, cursor string, receive func(grants.Event) error) error {
-	if receive == nil {
-		return errors.New("event receiver is required")
-	}
-	backoff := 100 * time.Millisecond
-	for {
-		last, err := c.streamOnce(ctx, cursor, receive)
-		if last != "" {
-			cursor = last
-		}
-		if terminal := terminalStreamError(ctx, err); terminal != nil {
-			return terminal
-		}
-		if err := waitForReconnect(ctx, backoff); err != nil {
-			return err
-		}
-		if backoff < 2*time.Second {
-			backoff *= 2
-		}
-	}
-}
-
-func terminalStreamError(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	var callbackErr receiverError
-	if errors.As(err, &callbackErr) {
-		return callbackErr.error
-	}
-	var apiErr *Error
-	if errors.As(err, &apiErr) && (apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusGone) {
-		return err
-	}
-	return nil
-}
-
-func waitForReconnect(ctx context.Context, delay time.Duration) error {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-func (c *Client) streamOnce(ctx context.Context, cursor string, receive func(grants.Event) error) (string, error) {
-	response, err := c.openEventStream(ctx, cursor)
-	if err != nil {
-		return cursor, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	return consumeEventStream(response.Body, cursor, receive)
-}
-
-func (c *Client) openEventStream(ctx context.Context, cursor string) (*http.Response, error) {
-	endpoint := "/api/grants/events"
+func (c *Client) Watch(ctx context.Context, cursor string) (operatorv1.EventStream, error) {
+	path := "/api/operator/v1/events"
 	if cursor != "" {
-		endpoint += "?cursor=" + url.QueryEscape(cursor)
+		path += "?cursor=" + url.QueryEscape(cursor)
 	}
-	request, err := c.newRequest(ctx, http.MethodGet, endpoint, nil)
+	request, err := c.newRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -206,113 +145,122 @@ func (c *Client) openEventStream(ctx context.Context, cursor string) (*http.Resp
 		_ = response.Body.Close()
 		return nil, err
 	}
-	return response, nil
+	if !hasMediaType(response.Header.Get("Content-Type"), "text/event-stream") {
+		_ = response.Body.Close()
+		return nil, errors.New("operator event response has invalid content type")
+	}
+	return &eventStream{body: response.Body, scanner: newSSEScanner(response.Body)}, nil
 }
 
-func consumeEventStream(reader io.Reader, cursor string, receive func(grants.Event) error) (string, error) {
+type eventStream struct {
+	body    io.ReadCloser
+	scanner *bufio.Scanner
+}
+
+func (s *eventStream) Receive(ctx context.Context) (operatorv1.Event, error) {
+	type result struct {
+		event operatorv1.Event
+		err   error
+	}
+	resultc := make(chan result, 1)
+	go func() {
+		event, err := s.receiveNext()
+		resultc <- result{event, err}
+	}()
+	select {
+	case <-ctx.Done():
+		_ = s.body.Close()
+		return operatorv1.Event{}, ctx.Err()
+	case result := <-resultc:
+		if result.err == nil && result.event.Cursor == "" {
+			result.err = errors.New("operator event cursor is required")
+		}
+		return result.event, result.err
+	}
+}
+
+func (s *eventStream) receiveNext() (operatorv1.Event, error) {
+	for s.scanner.Scan() {
+		line := s.scanner.Text()
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			var event operatorv1.Event
+			err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &event)
+			return event, err
+		}
+	}
+	return operatorv1.Event{}, s.scanner.Err()
+}
+
+func (s *eventStream) Close() error { return s.body.Close() }
+
+func newSSEScanner(reader io.Reader) *bufio.Scanner {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 4*1024), 128*1024)
-	decoder := sseDecoder{}
-	for scanner.Scan() {
-		event, err := decoder.addLine(scanner.Text())
-		if err != nil {
-			return cursor, err
-		}
-		if event != nil {
-			if err := receive(*event); err != nil {
-				return cursor, receiverError{err}
-			}
-			cursor = event.Cursor
-		}
-	}
-	return cursor, scanner.Err()
+	return scanner
 }
 
-type sseDecoder struct {
-	eventID string
-	data    strings.Builder
-}
-
-func (d *sseDecoder) addLine(line string) (*grants.Event, error) {
-	switch {
-	case strings.HasPrefix(line, "id:"):
-		d.eventID = strings.TrimSpace(strings.TrimPrefix(line, "id:"))
-	case strings.HasPrefix(line, "data:"):
-		if d.data.Len() > 0 {
-			d.data.WriteByte('\n')
-		}
-		d.data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-	case line == "":
-		return d.finishEvent()
-	}
-	return nil, nil
-}
-
-func (d *sseDecoder) finishEvent() (*grants.Event, error) {
-	if d.data.Len() == 0 {
-		return nil, nil
-	}
-	var event grants.Event
-	if err := json.Unmarshal([]byte(d.data.String()), &event); err != nil {
-		return nil, fmt.Errorf("decode operator event: %w", err)
-	}
-	if d.eventID == "" || event.Cursor != d.eventID {
-		return nil, errors.New("operator event cursor mismatch")
-	}
-	d.eventID = ""
-	d.data.Reset()
-	return &event, nil
-}
-
-func (c *Client) doJSON(ctx context.Context, method string, path string, body any, target any) error {
-	encoded, err := encodeJSONBody(body)
+func (c *Client) doJSON(ctx context.Context, method, path string, body, target any) error {
+	reader, err := encodeRequestBody(body)
 	if err != nil {
 		return err
 	}
-	request, err := c.newRequest(ctx, method, path, encoded)
+	request, err := c.newRequest(ctx, method, path, reader)
 	if err != nil {
 		return err
 	}
+	request.Header.Set("Accept", "application/json")
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	request.Header.Set("Accept", "application/json")
 	response, err := c.httpClient().Do(request)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return decodeAPIError(response)
-	}
-	return decodeJSONResponse(response.Body, target)
+	return decodeJSONResponse(response, target)
 }
 
-func encodeJSONBody(body any) (io.Reader, error) {
+func encodeRequestBody(body any) (io.Reader, error) {
 	if body == nil {
 		return nil, nil
 	}
-	data, err := json.Marshal(body)
+	encoded, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	return bytes.NewReader(data), nil
+	return bytes.NewReader(encoded), nil
 }
 
-func decodeJSONResponse(body io.Reader, target any) error {
-	decoder := json.NewDecoder(io.LimitReader(body, maxResponseBytes))
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("decode operator response: %w", err)
+func decodeJSONResponse(response *http.Response, target any) error {
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return decodeAPIError(response)
 	}
-	return nil
+	if !hasMediaType(response.Header.Get("Content-Type"), "application/json") {
+		return errors.New("operator response has invalid content type")
+	}
+	return decodeBounded(response.Body, target)
 }
 
-func (c *Client) newRequest(ctx context.Context, method string, path string, body io.Reader) (*http.Request, error) {
-	base := strings.TrimSuffix(c.BaseURL, "/")
-	if base == "" {
-		return nil, errors.New("operator API base URL is required")
+func hasMediaType(value, expected string) bool {
+	mediaType, _, err := mime.ParseMediaType(value)
+	return err == nil && mediaType == expected
+}
+
+func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	base, err := parseBaseURL(c.BaseURL)
+	if err != nil {
+		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, method, base+path, body)
+	relative, err := parseRequestPath(path)
+	if err != nil {
+		return nil, err
+	}
+	base.Path = strings.TrimSuffix(base.Path, "/") + relative.Path
+	base.RawQuery = relative.RawQuery
+	request, err := http.NewRequestWithContext(ctx, method, base.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -322,23 +270,69 @@ func (c *Client) newRequest(ctx context.Context, method string, path string, bod
 	return request, nil
 }
 
+func parseBaseURL(value string) (*url.URL, error) {
+	base, err := url.Parse(value)
+	if err != nil || !validBaseURL(base) {
+		return nil, errors.New("operator base URL is invalid")
+	}
+	return base, nil
+}
+
+func validBaseURL(base *url.URL) bool {
+	return (base.Scheme == "http" || base.Scheme == "https") && base.Host != "" && base.User == nil && base.RawQuery == "" && base.Fragment == ""
+}
+
+func parseRequestPath(value string) (*url.URL, error) {
+	relative, err := url.Parse(value)
+	if err != nil || !strings.HasPrefix(relative.Path, "/") {
+		return nil, errors.New("operator request path is invalid")
+	}
+	return relative, nil
+}
+
 func (c *Client) httpClient() *http.Client {
 	if c.HTTPClient != nil {
 		return c.HTTPClient
 	}
-	return http.DefaultClient
+	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 func decodeAPIError(response *http.Response) error {
-	var envelope struct {
-		Error struct {
-			Code    string              `json:"code"`
-			Message string              `json:"message"`
-			Current *operatorinbox.Item `json:"current"`
-		} `json:"error"`
+	if !hasMediaType(response.Header.Get("Content-Type"), "application/json") {
+		return &Error{Status: response.StatusCode, Code: "internal_error", Message: "invalid operator error response"}
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes)).Decode(&envelope); err != nil {
-		return &Error{Status: response.StatusCode, Code: "http_error", Message: http.StatusText(response.StatusCode)}
+	var envelope operatorv1.ErrorEnvelope
+	if err := decodeBounded(response.Body, &envelope); err != nil {
+		return &Error{Status: response.StatusCode, Code: "internal_error", Message: "invalid operator error response"}
 	}
-	return &Error{Status: response.StatusCode, Code: envelope.Error.Code, Message: envelope.Error.Message, Current: envelope.Error.Current}
+	retry, _ := strconv.Atoi(response.Header.Get("Retry-After"))
+	return &Error{Status: response.StatusCode, Code: envelope.Error.Code, Message: envelope.Error.Message,
+		CorrelationID: envelope.Error.CorrelationID, Current: envelope.Error.Current, RetryAfter: time.Duration(retry) * time.Second}
 }
+
+func decodeBounded(reader io.Reader, target any) error {
+	limited := io.LimitReader(reader, maxResponseBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return err
+	}
+	if len(data) > maxResponseBytes {
+		return errors.New("operator response exceeds size limit")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("decode operator response: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("decode operator response: trailing data")
+	}
+	return nil
+}
+
+func set(values url.Values, key, value string) {
+	if value != "" {
+		values.Set(key, value)
+	}
+}
+
+var _ operatorv1.Source = (*Client)(nil)

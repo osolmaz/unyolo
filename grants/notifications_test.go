@@ -430,22 +430,6 @@ func TestCancelPendingGrantAndIgnoreTerminalGrant(t *testing.T) {
 	}
 }
 
-func TestNormalizeLoadedReservation(t *testing.T) {
-	now := time.Now()
-	grant := Grant{ReservedCount: -1, ReservedAt: now, ReservationRetained: true}
-	if !normalizeLoadedReservation(&grant) || grant.ReservedCount != 0 || !grant.ReservedAt.IsZero() || grant.ReservationRetained {
-		t.Fatalf("normalizeLoadedReservation(negative) = %+v", grant)
-	}
-	active := Grant{ReservedCount: 1, ReservedAt: now, ReservationRetained: true}
-	if normalizeLoadedReservation(&active) || active.ReservedCount != 1 || !active.ReservationRetained {
-		t.Fatalf("normalizeLoadedReservation(active) changed %+v", active)
-	}
-	empty := Grant{}
-	if normalizeLoadedReservation(&empty) {
-		t.Fatal("normalizeLoadedReservation(empty) changed clean grant")
-	}
-}
-
 func TestReservationIsStale(t *testing.T) {
 	now := time.Now()
 	cases := []struct {
@@ -632,7 +616,7 @@ func TestOverlappingReservationsAdvanceRecoveryClock(t *testing.T) {
 	}
 }
 
-func assertOverlappingReservationClock(t *testing.T, name string, settle func(*Store, string) (Grant, error)) { //nolint:cyclop
+func assertOverlappingReservationClock(t *testing.T, name string, settle func(*Store, string) (Grant, error)) {
 	t.Helper()
 	now := time.Date(2026, 7, 10, 3, 0, 0, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{

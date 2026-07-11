@@ -1,7 +1,9 @@
 go:
-  targets:
-    - .
   exclude:
+    - pattern: "brokers/**"
+      reason: each broker has an independently enforced Slophammer configuration
+    - pattern: "plugins/**"
+      reason: TypeScript packages use their native lint, typecheck, test, and build gates
     - pattern: "cmd/brokerkit-*/**"
       reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
     - pattern: "conformance/**"
@@ -12,6 +14,12 @@ go:
       - .
     exclude:
       - "**/*_test.go"
+      - pattern: "brokers/**"
+        reason: each broker has an independently enforced Slophammer configuration
+      - pattern: "cmd/brokerkit-*/**"
+        reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
+      - pattern: "conformance/**"
+        reason: reusable black-box test harness code is exercised by consumer repositories rather than shipped at runtime
     structural:
       enabled: true
       threshold: 0.82

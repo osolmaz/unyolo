@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -24,11 +25,12 @@ var brokerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // Options configures release asset generation.
 type Options struct {
-	Directory string
-	Broker    string
-	Command   string
-	Version   string
-	Dist      string
+	Directory     string
+	Broker        string
+	Command       string
+	Version       string
+	Dist          string
+	ExtraCommands map[string]string
 }
 
 // Run builds all supported release assets and checksums.
@@ -121,11 +123,24 @@ func canonicalPath(path string) (string, error) {
 }
 
 func validate(options Options) error {
-	if options.Directory == "" || options.Broker == "" || options.Command == "" || options.Version == "" || options.Dist == "" {
+	if !requiredReleaseOptions(options) {
 		return errors.New("directory, broker, command, version, and dist are required")
 	}
 	if !brokerNamePattern.MatchString(options.Broker) {
 		return errors.New("broker must be a file name")
+	}
+	return validateExtraCommands(options.Broker, options.ExtraCommands)
+}
+
+func requiredReleaseOptions(options Options) bool {
+	return options.Directory != "" && options.Broker != "" && options.Command != "" && options.Version != "" && options.Dist != ""
+}
+
+func validateExtraCommands(broker string, commands map[string]string) error {
+	for name, command := range commands {
+		if !brokerNamePattern.MatchString(name) || name == broker || strings.TrimSpace(command) == "" {
+			return errors.New("extra commands must use unique safe binary names and nonempty packages")
+		}
 	}
 	return nil
 }
@@ -136,20 +151,45 @@ func build(ctx context.Context, options Options, goos, goarch string) (string, e
 		return "", err
 	}
 	defer func() { _ = os.RemoveAll(work) }()
+	binaries := make(map[string]string, len(options.ExtraCommands)+1)
 	binary := filepath.Join(work, options.Broker)
+	if err := buildExecutable(ctx, options, options.Command, binary, goos, goarch); err != nil {
+		return "", err
+	}
+	binaries[options.Broker] = binary
+	names := make([]string, 0, len(options.ExtraCommands))
+	for name := range options.ExtraCommands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		path := filepath.Join(work, name)
+		if err := buildExecutable(ctx, options, options.ExtraCommands[name], path, goos, goarch); err != nil {
+			return "", err
+		}
+		binaries[name] = path
+	}
+	asset := filepath.Join(options.Dist, fmt.Sprintf("%s_%s_%s.tar.gz", options.Broker, goos, goarch))
+	return asset, archiveBinaries(asset, options, binaries)
+}
+
+func buildExecutable(ctx context.Context, options Options, command string, binary string, goos string, goarch string) error {
 	// #nosec G204 -- the executable and flags are fixed; values come from the release operator.
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+options.Version, "-o", binary, options.Command)
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+options.Version, "-o", binary, command)
 	cmd.Dir = options.Directory
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("build %s/%s: %w", goos, goarch, err)
+		return fmt.Errorf("build %s/%s: %w", goos, goarch, err)
 	}
-	asset := filepath.Join(options.Dist, fmt.Sprintf("%s_%s_%s.tar.gz", options.Broker, goos, goarch))
-	return asset, archive(asset, options, binary)
+	return nil
 }
 
 func archive(asset string, options Options, binary string) error {
+	return archiveBinaries(asset, options, map[string]string{options.Broker: binary})
+}
+
+func archiveBinaries(asset string, options Options, binaries map[string]string) error {
 	file, err := os.OpenFile(asset, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // #nosec G304 -- validated release output path.
 	if err != nil {
 		return err
@@ -157,17 +197,12 @@ func archive(asset string, options Options, binary string) error {
 	gzipWriter := gzip.NewWriter(file)
 	gzipWriter.ModTime = time.Unix(0, 0).UTC()
 	tarWriter := tar.NewWriter(gzipWriter)
-	files := []struct {
-		path string
-		mode int64
-	}{{binary, 0o755}, {filepath.Join(options.Directory, "README.md"), 0o644}, {filepath.Join(options.Directory, "LICENSE"), 0o644}}
-	for _, source := range files {
-		if err := addFile(tarWriter, source.path, filepath.Base(source.path), source.mode); err != nil {
-			_ = tarWriter.Close()
-			_ = gzipWriter.Close()
-			_ = file.Close()
-			return err
-		}
+	files := archiveFiles(options, binaries)
+	if err := writeArchiveFiles(tarWriter, files); err != nil {
+		_ = tarWriter.Close()
+		_ = gzipWriter.Close()
+		_ = file.Close()
+		return err
 	}
 	if err := tarWriter.Close(); err != nil {
 		return err
@@ -176,6 +211,38 @@ func archive(asset string, options Options, binary string) error {
 		return err
 	}
 	return file.Close()
+}
+
+type archiveFile struct {
+	path string
+	name string
+	mode int64
+}
+
+func archiveFiles(options Options, binaries map[string]string) []archiveFile {
+	files := make([]archiveFile, 0, len(binaries)+2)
+	names := make([]string, 0, len(binaries))
+	for name := range binaries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		files = append(files, archiveFile{binaries[name], name, 0o755})
+	}
+	files = append(files,
+		archiveFile{filepath.Join(options.Directory, "README.md"), "README.md", 0o644},
+		archiveFile{filepath.Join(options.Directory, "LICENSE"), "LICENSE", 0o644},
+	)
+	return files
+}
+
+func writeArchiveFiles(writer *tar.Writer, files []archiveFile) error {
+	for _, source := range files {
+		if err := addFile(writer, source.path, source.name, source.mode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addFile(writer *tar.Writer, source, name string, mode int64) (returnErr error) {

@@ -1,10 +1,19 @@
 package grants
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 )
+
+// TokenDecisionResult correlates one token-bound transition with its durable event.
+type TokenDecisionResult struct {
+	Grant       Grant
+	Previous    Grant
+	EventCursor string
+	Changed     bool
+}
 
 // Approve activates a pending grant.
 func (s *Store) Approve(id string, decisionToken string, approver string) (Grant, error) {
@@ -14,7 +23,14 @@ func (s *Store) Approve(id string, decisionToken string, approver string) (Grant
 // ApproveWithNotification atomically approves a pending grant and records a
 // callback-carried notification when no notification is already stored.
 func (s *Store) ApproveWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
-	return s.decideWithNotification(id, decisionToken, approver, StatusActive, ref)
+	return s.decideWithNotificationGrant(id, decisionToken, approver, StatusActive, ref)
+}
+
+// ApproveWithNotificationValidated atomically validates and approves a pending
+// notification-channel grant. The validation runs against the committed grant
+// while the store lock is held.
+func (s *Store) ApproveWithNotificationValidated(ctx context.Context, id string, decisionToken string, approver string, ref MessageRef, validate ActivationCheck) (TokenDecisionResult, error) {
+	return s.decideWithNotification(ctx, id, decisionToken, approver, StatusActive, ref, validate)
 }
 
 // Deny denies a pending grant.
@@ -25,53 +41,91 @@ func (s *Store) Deny(id string, decisionToken string, approver string) (Grant, e
 // DenyWithNotification atomically denies a pending grant and records a
 // callback-carried notification when no notification is already stored.
 func (s *Store) DenyWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
-	return s.decideWithNotification(id, decisionToken, approver, StatusDenied, ref)
+	return s.decideWithNotificationGrant(id, decisionToken, approver, StatusDenied, ref)
+}
+
+func (s *Store) decideWithNotificationGrant(id string, decisionToken string, approver string, status Status, ref MessageRef) (Grant, error) {
+	result, err := s.decideWithNotification(context.Background(), id, decisionToken, approver, status, ref, nil)
+	return notificationGrant(result, err)
+}
+
+func notificationGrant(result TokenDecisionResult, err error) (Grant, error) {
+	if err != nil && !result.Changed {
+		return Grant{}, err
+	}
+	return result.Grant, err
+}
+
+// DenyWithNotificationResult atomically denies a pending notification-channel
+// grant and returns its exact transition correlation.
+func (s *Store) DenyWithNotificationResult(ctx context.Context, id string, decisionToken string, approver string, ref MessageRef) (TokenDecisionResult, error) {
+	return s.decideWithNotification(ctx, id, decisionToken, approver, StatusDenied, ref, nil)
 }
 
 func (s *Store) decide(id string, token string, approver string, status Status) (Grant, error) {
-	return s.decideAndNotify(id, token, approver, status, nil)
-}
-
-func (s *Store) decideWithNotification(id string, token string, approver string, status Status, ref MessageRef) (Grant, error) {
-	if err := validateMessageRef(ref); err != nil {
+	result, err := s.decideAndNotify(context.Background(), id, token, approver, status, nil, nil)
+	if err != nil && !result.Changed {
 		return Grant{}, err
 	}
-	return s.decideAndNotify(id, token, approver, status, &ref)
+	return result.Grant, err
 }
 
-func (s *Store) decideAndNotify(id string, token string, approver string, status Status, ref *MessageRef) (Grant, error) {
+func (s *Store) decideWithNotification(ctx context.Context, id string, token string, approver string, status Status, ref MessageRef, validate ActivationCheck) (TokenDecisionResult, error) {
+	if err := validateMessageRef(ref); err != nil {
+		return TokenDecisionResult{}, err
+	}
+	return s.decideAndNotify(ctx, id, token, approver, status, &ref, validate)
+}
+
+func (s *Store) decideAndNotify(ctx context.Context, id string, token string, approver string, status Status, ref *MessageRef, validate ActivationCheck) (TokenDecisionResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	data, err := s.load()
 	if err != nil {
-		return Grant{}, err
+		return TokenDecisionResult{}, err
 	}
 	before := grantSnapshots(data.Grants)
 	eventSequence := data.NextEvent
 	index, grant, err := findGrant(data.Grants, id)
 	if err != nil {
-		return Grant{}, err
+		return TokenDecisionResult{}, err
 	}
 	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
-		return Grant{}, ErrInvalidDecisionToken
+		return TokenDecisionResult{Grant: grant, Previous: grant}, ErrInvalidDecisionToken
+	}
+	if err := s.validateTokenDecision(ctx, grant, status, validate); err != nil {
+		return TokenDecisionResult{Grant: grant, Previous: grant}, err
 	}
 	updated, changed, decisionErr := s.prepareDecision(grant, approver, status)
-	if ref != nil && updated.Notification == nil {
-		updated.Notification = ref
-		updated.NotificationStatus = string(StatusPending)
-		clearNotificationClaim(&updated)
-		changed = true
-	}
+	updated, notificationChanged := attachDecisionNotification(updated, ref)
+	changed = changed || notificationChanged
 	if !changed {
-		return Grant{}, decisionErr
+		return TokenDecisionResult{Grant: grant, Previous: grant}, decisionErr
 	}
 	data.Grants[index] = updated
 	s.reconcileLifecycle(&data, before)
 	if err := s.save(data); err != nil {
-		return Grant{}, err
+		return TokenDecisionResult{}, err
 	}
 	s.signalNewEvents(eventSequence, data.NextEvent)
-	return data.Grants[index], decisionErr
+	return TokenDecisionResult{Grant: data.Grants[index], Previous: grant, EventCursor: currentEventCursor(data), Changed: true}, decisionErr
+}
+
+func (s *Store) validateTokenDecision(ctx context.Context, grant Grant, status Status, validate ActivationCheck) error {
+	if status != StatusActive || validate == nil || grant.Status != StatusPending || !s.opts.Now().UTC().Before(grant.PendingExpiresAt) {
+		return nil
+	}
+	return validate(ctx, grant, ApprovalConstraints{})
+}
+
+func attachDecisionNotification(grant Grant, ref *MessageRef) (Grant, bool) {
+	if ref == nil || grant.Notification != nil {
+		return grant, false
+	}
+	grant.Notification = ref
+	grant.NotificationStatus = string(StatusPending)
+	clearNotificationClaim(&grant)
+	return grant, true
 }
 
 func decisionTokenVerifier(token string) string {

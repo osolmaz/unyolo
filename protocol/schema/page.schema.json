@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.dev/schema/operator/v1/page.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requests"],
+  "properties": {
+    "requests": {"type": "array", "maxItems": 100, "items": {"$ref": "request.schema.json"}},
+    "next_cursor": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "event_cursor": {"type": "string", "minLength": 1, "maxLength": 1024}
+  }
+}

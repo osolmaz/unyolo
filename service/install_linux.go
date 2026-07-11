@@ -64,21 +64,22 @@ type ReadinessCheck func(context.Context) error
 
 // SystemdInstallPlan describes one complete broker systemd installation.
 type SystemdInstallPlan struct {
-	User          string
-	Group         string
-	ConfigDir     string
-	StateDir      string
-	SystemdDir    string
-	UnitName      string
-	Files         []ManagedFile
-	RemoveFiles   []ManagedFileRef
-	ReadyCheck    ReadinessCheck
-	ReadyTimeout  time.Duration
-	ReadyInterval time.Duration
-	Unit          SystemdUnit
-	NoStart       bool
-	AllowNonRoot  bool
-	Runner        CommandRunner
+	User           string
+	Group          string
+	ConfigDir      string
+	StateDir       string
+	SharedStateDir string
+	SystemdDir     string
+	UnitName       string
+	Files          []ManagedFile
+	RemoveFiles    []ManagedFileRef
+	ReadyCheck     ReadinessCheck
+	ReadyTimeout   time.Duration
+	ReadyInterval  time.Duration
+	Unit           SystemdUnit
+	NoStart        bool
+	AllowNonRoot   bool
+	Runner         CommandRunner
 }
 
 // InstallSystemd installs one broker service from a validated typed plan.
@@ -220,7 +221,35 @@ func validateInstallPaths(plan SystemdInstallPlan) error {
 	if installRootsOverlap(plan) {
 		return errors.New("config, state, and systemd directories must not overlap")
 	}
+	if err := validateSharedStateDir(plan); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateSharedStateDir(plan SystemdInstallPlan) error {
+	if plan.SharedStateDir == "" {
+		return nil
+	}
+	if !validSharedStatePath(plan.SharedStateDir) {
+		return errors.New("shared state directory must be an absolute normalized non-root path")
+	}
+	relative, err := filepath.Rel(plan.SharedStateDir, plan.StateDir)
+	if err != nil || !isStrictDescendant(relative) {
+		return errors.New("shared state directory must be a strict ancestor of the state directory")
+	}
+	return nil
+}
+
+func validSharedStatePath(path string) bool {
+	return filepath.IsAbs(path) &&
+		filepath.Clean(path) == path &&
+		path != string(filepath.Separator)
+}
+
+func isStrictDescendant(relative string) bool {
+	return relative != "." && relative != ".." &&
+		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func validateInstallPathValues(paths map[string]string) error {
@@ -343,11 +372,11 @@ func validateManagedFileRef(file ManagedFileRef) error {
 }
 
 func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
-	if len(plan.RemoveFiles) == 0 {
-		return nil
-	}
 	if plan.ReadyCheck == nil {
-		return errors.New("managed file retirement requires a readiness check")
+		if len(plan.RemoveFiles) > 0 {
+			return errors.New("managed file retirement requires a readiness check")
+		}
+		return nil
 	}
 	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
 	defer cancel()
@@ -487,6 +516,11 @@ type installRoots struct {
 
 func prepareInstallRoots(plan SystemdInstallPlan, serviceUID uint64, serviceGID uint64) (installRoots, error) {
 	rootUID, rootGID := installRootIDs(plan)
+	if plan.SharedStateDir != "" {
+		if err := prepareInstallDirectory(plan.SharedStateDir, 0o750, rootUID, serviceGID, plan.AllowNonRoot, false); err != nil {
+			return installRoots{}, fmt.Errorf("prepare shared state directory: %w", err)
+		}
+	}
 	if err := prepareInstallDirectory(plan.ConfigDir, 0o750, rootUID, serviceGID, plan.AllowNonRoot, false); err != nil {
 		return installRoots{}, fmt.Errorf("prepare config directory: %w", err)
 	}
