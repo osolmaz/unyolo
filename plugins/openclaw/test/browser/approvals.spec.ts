@@ -77,9 +77,7 @@ test("renders a bounded capability-protected approval surface", async ({
   );
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Approve once" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
   await expect(page).not.toHaveURL(/#/);

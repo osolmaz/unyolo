@@ -162,7 +162,7 @@ export function App() {
                   onClick={() => void decide(request, "approve")}
                 >
                   <Check size={16} />
-                  Approve once
+                  Approve
                 </button>
               )}
             </div>
