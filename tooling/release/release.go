@@ -33,20 +33,32 @@ type Options struct {
 
 // Run builds all supported release assets and checksums.
 func Run(ctx context.Context, options Options) error {
-	if err := validate(options); err != nil {
-		return err
-	}
-	directory, dist, err := safePaths(options.Directory, options.Dist)
+	normalized, err := normalizeOptions(options)
 	if err != nil {
 		return err
 	}
+	if err := os.RemoveAll(normalized.Dist); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(normalized.Dist, 0o750); err != nil {
+		return err
+	}
+	return buildAssets(ctx, normalized)
+}
+
+func normalizeOptions(options Options) (Options, error) {
+	if err := validate(options); err != nil {
+		return Options{}, err
+	}
+	directory, dist, err := safePaths(options.Directory, options.Dist)
+	if err != nil {
+		return Options{}, err
+	}
 	options.Directory, options.Dist = directory, dist
-	if err := os.RemoveAll(options.Dist); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(options.Dist, 0o750); err != nil {
-		return err
-	}
+	return options, nil
+}
+
+func buildAssets(ctx context.Context, options Options) error {
 	var checksums strings.Builder
 	for _, target := range targets {
 		asset, err := build(ctx, options, target[0], target[1])

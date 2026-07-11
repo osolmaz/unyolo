@@ -39,13 +39,11 @@ func ParseBytes(data []byte) (map[string]string, error) {
 	}
 	secrets := make(map[string]string)
 	for lineNumber, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		name, secret, ok := parseLine(line)
+		if !ok {
 			continue
 		}
-		name, secret, found := strings.Cut(trimmed, "=")
-		name, secret = strings.TrimSpace(name), strings.TrimSpace(secret)
-		if !found || !validName(name) || secret == "" {
+		if !validName(name) || secret == "" {
 			return nil, fmt.Errorf("line %d: expected `name = secret`", lineNumber+1)
 		}
 		if _, exists := secrets[name]; exists {
@@ -57,6 +55,18 @@ func ParseBytes(data []byte) (map[string]string, error) {
 		return nil, errors.New("named secrets contain no identities")
 	}
 	return secrets, nil
+}
+
+func parseLine(line string) (string, string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return "", "", false
+	}
+	name, secret, found := strings.Cut(trimmed, "=")
+	if !found {
+		return "", "", true
+	}
+	return strings.TrimSpace(name), strings.TrimSpace(secret), true
 }
 
 // Render returns sorted `name = secret` records.

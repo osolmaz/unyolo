@@ -1,6 +1,11 @@
 go:
   targets:
     - .
+  exclude:
+    - pattern: "cmd/brokerkit-*/**"
+      reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
+    - pattern: "conformance/**"
+      reason: reusable black-box test harness code is exercised by consumer repositories rather than shipped at runtime
   dry:
     max_findings: 0
     paths:

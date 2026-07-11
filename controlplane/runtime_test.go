@@ -44,3 +44,18 @@ func TestRuntimeAllowsDisabledOperatorSurface(t *testing.T) {
 		t.Fatalf("New() = %+v, %v", runtime, err)
 	}
 }
+
+func TestRuntimeRejectsInvalidAssembly(t *testing.T) {
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
+	for _, options := range []Options{
+		{Store: store, ClientSecrets: map[string]string{"bob": clientSecret}},
+		{Broker: "test-broker", ClientSecrets: map[string]string{"bob": clientSecret}},
+		{Broker: "test-broker", Store: store},
+		{Broker: "test-broker", Store: store, ClientSecrets: map[string]string{"bob": clientSecret}, OperatorSecrets: map[string]string{"onur": clientSecret}},
+	} {
+		if _, err := New(options); err == nil {
+			t.Fatalf("New(%+v) unexpectedly succeeded", options)
+		}
+	}
+}

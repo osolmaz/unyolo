@@ -72,6 +72,31 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 	}
 }
 
+func TestRunReportsBuildFailure(t *testing.T) {
+	directory := t.TempDir()
+	writeReleaseFile(t, directory, "go.mod", "module example.test/release-failure\n\ngo 1.25.0\n")
+	writeReleaseFile(t, directory, "README.md", "# test\n")
+	writeReleaseFile(t, directory, "LICENSE", "test license\n")
+	err := Run(t.Context(), Options{
+		Directory: directory, Broker: "test-broker", Command: "./cmd/missing", Version: "v0.1.0",
+		Dist: filepath.Join(directory, "dist"),
+	})
+	if err == nil {
+		t.Fatal("Run() accepted a missing command")
+	}
+}
+
+func TestArchiveReportsMissingInput(t *testing.T) {
+	directory := t.TempDir()
+	binary := filepath.Join(directory, "test-broker")
+	writeReleaseFile(t, directory, "test-broker", "binary")
+	writeReleaseFile(t, directory, "LICENSE", "test license\n")
+	err := archive(filepath.Join(directory, "asset.tar.gz"), Options{Directory: directory}, binary)
+	if err == nil {
+		t.Fatal("archive() accepted a missing README")
+	}
+}
+
 func assertArchiveMetadata(t *testing.T, path string) {
 	t.Helper()
 	reader, closeArchive := openArchive(t, path)

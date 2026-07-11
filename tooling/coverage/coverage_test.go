@@ -33,6 +33,24 @@ func TestRunExecutesCoverageGate(t *testing.T) {
 	}
 }
 
+func TestRunReportsTestAndCoverageFailures(t *testing.T) {
+	failing := t.TempDir()
+	writeTestFile(t, failing, "go.mod", "module example.test/failing\n\ngo 1.25.0\n")
+	writeTestFile(t, failing, "value.go", "package value\nfunc Value() int { return 1 }\n")
+	writeTestFile(t, failing, "value_test.go", "package value\nimport \"testing\"\nfunc TestValue(t *testing.T) { t.Fail() }\n")
+	if _, err := Run(t.Context(), failing, 0); err == nil {
+		t.Fatal("Run() accepted failing tests")
+	}
+
+	low := t.TempDir()
+	writeTestFile(t, low, "go.mod", "module example.test/low\n\ngo 1.25.0\n")
+	writeTestFile(t, low, "value.go", "package value\nfunc Covered() int { return 1 }\nfunc Uncovered() int { return 2 }\n")
+	writeTestFile(t, low, "value_test.go", "package value\nimport \"testing\"\nfunc TestCovered(t *testing.T) { if Covered() != 1 { t.Fail() } }\n")
+	if _, err := Run(t.Context(), low, 100); err == nil {
+		t.Fatal("Run() accepted coverage below the threshold")
+	}
+}
+
 func writeTestFile(t *testing.T, directory, name, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0o600); err != nil {

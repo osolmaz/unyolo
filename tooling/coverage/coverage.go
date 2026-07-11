@@ -35,6 +35,10 @@ func Run(ctx context.Context, directory string, minimum float64) (float64, error
 	if err != nil {
 		return 0, fmt.Errorf("summarize coverage: %w", err)
 	}
+	return enforceMinimum(output, minimum)
+}
+
+func enforceMinimum(output []byte, minimum float64) (float64, error) {
 	total, err := parseTotal(output)
 	if err != nil {
 		return 0, err

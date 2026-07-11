@@ -54,30 +54,34 @@ func New(options Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	recorder := options.Audit
-	if recorder == nil {
-		recorder = audit.New(io.Discard)
-	}
-	var handler http.Handler
-	if len(options.OperatorSecrets) > 0 {
-		operators, err := operatorauth.New(options.OperatorSecrets, operatorauth.Options{ClientSecrets: options.ClientSecrets})
-		if err != nil {
-			return nil, err
-		}
-		inbox, err := operatorinbox.New(options.Store, options.Presenter)
-		if err != nil {
-			return nil, err
-		}
-		handler, err = operatorapi.New(operatorapi.Options{
-			Inbox: inbox, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: recorder,
-		})
-		if err != nil {
-			return nil, err
-		}
+	handler, err := operatorHandler(options)
+	if err != nil {
+		return nil, err
 	}
 	decider := options.Decider
 	if decider == nil {
 		decider = approval.StoreDecider{Store: options.Store}
 	}
 	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider}, nil
+}
+
+func operatorHandler(options Options) (http.Handler, error) {
+	if len(options.OperatorSecrets) == 0 {
+		return nil, nil
+	}
+	operators, err := operatorauth.New(options.OperatorSecrets, operatorauth.Options{ClientSecrets: options.ClientSecrets})
+	if err != nil {
+		return nil, err
+	}
+	inbox, err := operatorinbox.New(options.Store, options.Presenter)
+	if err != nil {
+		return nil, err
+	}
+	recorder := options.Audit
+	if recorder == nil {
+		recorder = audit.New(io.Discard)
+	}
+	return operatorapi.New(operatorapi.Options{
+		Inbox: inbox, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: recorder,
+	})
 }
