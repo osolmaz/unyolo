@@ -1,0 +1,64 @@
+go:
+  coverage:
+    threshold: 85
+  targets:
+    - .
+  exclude:
+    - "fixtures/**"
+  dry:
+    max_findings: 0
+    paths:
+      - cmd
+      - internal
+    exclude:
+      - "**/*_test.go"
+      - pattern: "internal/isolation/isolation_darwin.go"
+        reason: platform backend mirrors Linux isolation checks with OS-specific process and syscall behavior
+      - "fixtures/**"
+    structural:
+      enabled: true
+      threshold: 0.82
+      min_lines: 4
+      min_nodes: 20
+    copied_blocks:
+      enabled: true
+      min_tokens: 100
+  crap:
+    max_score: 8
+  dependency_boundaries:
+    - from: internal/httpapi
+      allow:
+        - internal/audit
+        - internal/approval
+        - internal/config
+        - internal/gitproxy
+        - internal/gitproxy/pktline
+        - internal/hfgrant
+        - internal/jsend
+        - internal/mirror
+        - internal/policy
+    - from: internal/gitproxy
+      allow:
+        - internal/audit
+        - internal/config
+        - internal/gitproxy/pktline
+    - from: internal/mirror
+      allow:
+        - internal/audit
+        - internal/config
+    - from: internal/policy
+      allow: []
+    - from: internal/config
+      allow: []
+    - from: internal/isolation
+      allow: []
+    - from: internal/gitproxy/pktline
+      allow: []
+    - from: internal/audit
+      allow: []
+    - from: internal/hfgrant
+      allow: []
+    - from: internal/jsend
+      allow: []
+    - from: internal/approval
+      allow: []

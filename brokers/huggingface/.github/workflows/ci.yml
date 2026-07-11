@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - run: go mod download
+      - name: go mod tidy check
+        run: go mod tidy && git diff --exit-code -- go.mod go.sum
+      - run: go mod verify
+      - name: gofmt check
+        run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -race -coverprofile=coverage.out ./...
+      - run: go build ./cmd/hf-broker
+      - run: GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+      - run: golangci-lint run
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
+      - run: govulncheck ./...
+      - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
+      - run: slophammer-go dry .
+      - run: slophammer-go crap .
+      - run: ./scripts/check-go-coverage.sh
+      - name: mutation gate (paused)
+        if: ${{ vars.RUN_MUTATION == 'true' }}
+        run: |
+          ./scripts/check-mutation.sh
+          slophammer-go mutate . --scan
+      - run: slophammer-go check .
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - run: go mod download
+      - run: go mod verify
+      - run: go test ./...
+      - run: go build ./cmd/hf-broker
+      - run: GOOS=darwin GOARCH=amd64 go build ./cmd/hf-broker
+      - run: GOOS=darwin GOARCH=arm64 go build ./cmd/hf-broker
