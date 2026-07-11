@@ -1,0 +1,14 @@
+packages:
+  - plugins/*
+
+allowBuilds:
+  "@google/genai": false
+  "@tailwindcss/oxide": true
+  esbuild: true
+  openclaw: false
+  protobufjs: false
+  tree-sitter-bash: false
+
+minimumReleaseAgeExclude:
+  - '@openclaw/ai@2026.7.1-beta.5'
+  - openclaw@2026.7.1-beta.5

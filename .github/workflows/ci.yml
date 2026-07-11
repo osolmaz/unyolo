@@ -41,3 +41,23 @@ jobs:
         if: ${{ vars.RUN_MUTATION == 'true' }}
         run: ./scripts/check-mutation.sh
       - run: slophammer-go check .
+
+  openclaw-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm --filter openclaw-brokerkit exec playwright install --with-deps chromium
+      - run: pnpm --filter openclaw-brokerkit test:browser
+      - run: npm pack --dry-run
+        working-directory: plugins/openclaw
