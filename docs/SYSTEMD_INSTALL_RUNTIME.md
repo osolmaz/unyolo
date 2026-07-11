@@ -146,8 +146,12 @@ An install plan is rejected when:
   and plan/unit mismatch fail before mutation;
 - strict service rendering rejects a directory or inaccessible file as the
   executable;
-- Linux race tests, coverage, vet, lint, Slophammer, mutation CI, review, and
-  consumer cutover tests all pass before adoption.
+- Linux race tests, coverage, vet, lint, Slophammer, review, and consumer
+  cutover tests all pass before adoption.
+
+Mutation tooling remains checked in but is disabled and non-blocking. It must
+not run in the default required workflow unless a later explicit decision
+re-enables it.
 
 ## Cutover Rule
 

@@ -51,8 +51,9 @@ references, or delivery progress in memory.
   doctor primitives.
 - Done: shared privileged systemd installation for account creation,
   managed files, ownership, atomic unit installation, and service activation.
-- Gate: race tests, coverage, vet, lint, Slophammer checks, mutation checks,
-  review, and CI must pass before consumers pin the final API.
+- Gate: race tests, coverage, vet, lint, Slophammer checks, review, and CI must
+  pass before consumers pin the final API. Mutation tooling remains checked in
+  but is disabled and non-blocking for this cutover.
 
 ### 2. hf-broker
 

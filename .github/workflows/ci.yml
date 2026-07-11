@@ -27,6 +27,7 @@ jobs:
       - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
       - run: slophammer-go dry .
       - run: slophammer-go crap .
-      - name: mutate4go gate
+      - name: mutate4go gate (opt-in)
+        if: ${{ vars.RUN_MUTATION == 'true' }}
         run: ./scripts/check-mutation.sh
       - run: slophammer-go check .

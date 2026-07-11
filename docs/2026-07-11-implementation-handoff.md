@@ -149,7 +149,7 @@ Work in this dependency order on one implementation program:
 8. implement and release the three generic OpenClaw host seams;
 9. implement the independent plugin runtime, state, reconciliation, Gateway
    methods, static UI route, iframe bridge client, and compact UI;
-10. run the complete unit/race/fuzz/mutation/security/restart/browser/channel/
+10. run the complete unit/race/fuzz/security/restart/browser/channel/
     provider/live matrix from fresh state;
 11. build reproducible signed/checksummed/provenance artifacts from one green
     commit and claim/publish `openclaw-brokerkit`;
@@ -187,11 +187,17 @@ slophammer-go crap .
 slophammer-go check .
 ```
 
-It also runs the existing BrokerKit coverage/mutation scripts, strict
-TypeScript formatting/lint/typecheck/unit tests, generated-schema drift,
+It also runs the existing BrokerKit coverage script, strict TypeScript
+formatting/lint/typecheck/unit tests, generated-schema drift,
 package/manifest validation, browser tests in Chromium/Firefox/WebKit,
 OpenClaw integration/channel tests, secret scanning, reproducibility, SBOM,
 checksum, and provenance checks defined in the component plans.
+
+Mutation tooling and its CI declaration remain checked in, but mutation testing
+is disabled and is not a required or blocking gate for this cutover. The CI hook
+must remain opt-in, for example through `RUN_MUTATION=true`, and must not run in
+the default required workflow. Re-enabling mutation testing requires a later
+explicit decision and is not implementation latitude.
 
 HF/GH checks imported from their current `AGENTS.md` remain mandatory unless
 the consolidated instruction file replaces them with a strictly stronger

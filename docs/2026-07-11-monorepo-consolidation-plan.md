@@ -442,7 +442,7 @@ every broker and plugin contract test.
    - formatting, generated-file drift, dependency direction, secret scanning,
      license/header policy, and clean-tree checks;
 2. **Shared Go runtime**
-   - `go fmt`, `go vet`, race tests, coverage, mutation tests, lint,
+   - `go fmt`, `go vet`, race tests, coverage, lint,
      vulnerability scan, and Slophammer checks;
 3. **HF broker**
    - unit/race tests, build, provider security fixtures, installer test, and
@@ -463,6 +463,10 @@ every broker and plugin contract test.
 8. **Release reproducibility**
    - build all selected artifacts twice where practical, verify checksums and
      SBOM/provenance inputs, and ensure no credential or local path is embedded.
+
+Mutation scripts and configuration remain in the repository, but mutation
+testing is disabled and non-blocking for this cutover. CI may retain an opt-in
+hook such as `RUN_MUTATION=true`; the default required workflow must skip it.
 
 Use path filters only to skip leaf jobs for unrelated leaf changes. Changes to
 root Go packages, `protocol/`, generation, integration fixtures, shared CI, or

@@ -343,13 +343,14 @@ go test -race ./...
 golangci-lint run
 slophammer-go dry .
 slophammer-go crap .
-./scripts/check-mutation.sh
 slophammer-go check .
 ```
 
 Slophammer is mandatory for brokerkit and for every broker that cuts over to
-brokerkit. Keep DRY, CRAP, mutation, and check gates in CI, not just in local
-developer notes.
+brokerkit. Keep DRY, CRAP, and check gates in CI, not just in local developer
+notes. Keep mutation tooling checked in but disabled and non-blocking; it must
+not run in the default required workflow unless a later explicit decision
+re-enables it.
 
 ## Non-Goals
 

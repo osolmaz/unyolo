@@ -185,8 +185,9 @@ the broker-family contract.
 
 The `conformance` package runs the shared contract against real HTTP handlers.
 Every broker invokes it in its own tests. `brokerkit-coverage` and
-`brokerkit-release` provide common quality and release behavior; mutation
-targets remain broker-local.
+`brokerkit-release` provide common quality and release behavior. Mutation
+targets remain broker-local and checked in, but are disabled and non-blocking
+until a later explicit decision re-enables them.
 
 This is the only supported lifecycle. There is no in-memory Telegram tracking
 mode and no compatibility option that enables one.

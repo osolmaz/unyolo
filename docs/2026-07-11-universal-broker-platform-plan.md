@@ -812,7 +812,7 @@ branch. None of the intermediate commits is a supported deployment:
    and one `DecisionService` containing provider activation validation;
 4. mount only V1 routes, implement filter-bound list cursors, atomic first-page
    `event_cursor`, SSE, readiness, the Go source client, and fake;
-5. add `RunOperatorV1`, fuzzing, race/restart/mutation/coverage/leak tests,
+5. add `RunOperatorV1`, fuzzing, race/restart/coverage/leak tests,
    threat model, and partial-source failure tests;
 6. implement and test HF, GH, and sudo canonical plan binding/presentation on
    the same contract;

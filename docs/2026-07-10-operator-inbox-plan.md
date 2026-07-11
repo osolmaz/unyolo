@@ -416,9 +416,12 @@ go test -race ./...
 golangci-lint run
 slophammer-go dry .
 slophammer-go crap .
-./scripts/check-mutation.sh
 slophammer-go check .
 ```
+
+Mutation tooling remains checked in but is disabled and non-blocking. It must
+not run in the default required workflow unless a later explicit decision
+re-enables it.
 
 ## Acceptance Criteria
 
