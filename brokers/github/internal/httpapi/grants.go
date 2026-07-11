@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 )
 
 const maxGrantRequestBodyBytes int64 = 32 * 1024
@@ -68,7 +68,7 @@ func (s *Server) createGrant(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	result, created, err := s.grants.Request(plan.storeRequest())
+	result, created, err := s.requestGrant(plan.storeRequest())
 	if err != nil {
 		return grantStoreHTTPError(err)
 	}
@@ -78,6 +78,13 @@ func (s *Server) createGrant(c echo.Context) error {
 	}
 	s.audit(c, plan.request, "requires_grant", "operator approval requested", 0, plan.decision.MatchedRuleIDs)
 	return c.JSON(grantCreateStatus(created), map[string]any{"grant": apiGrantFromStore(stored), "notification": apiNotification(ref)})
+}
+
+func (s *Server) requestGrant(request grants.Request) (grants.RequestResult, bool, error) {
+	if err := s.plans.Bind(&request); err != nil {
+		return grants.RequestResult{}, false, fmt.Errorf("store immutable GitHub plan: %w", err)
+	}
+	return s.grants.Request(request)
 }
 
 func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {

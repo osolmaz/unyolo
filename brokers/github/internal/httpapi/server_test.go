@@ -26,12 +26,12 @@ import (
 
 	"github.com/labstack/echo/v4"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/notify"
+	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
 
 const testSharedSecret = "0123456789abcdef0123456789abcdef"
@@ -772,7 +772,7 @@ func TestDenyOverridesActiveGrant(t *testing.T) {
 		upstreamCalls++
 		w.WriteHeader(http.StatusOK)
 	})
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -951,7 +951,7 @@ func TestUnresolvedGrantNotificationReclaimsAfterLease(t *testing.T) {
 func createUnresolvedNotificationClaim(t *testing.T, server *Server, now func() time.Time) (grants.Grant, grants.NotificationClaim) {
 	t.Helper()
 	server.grants = grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{Now: now})
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1069,7 +1069,7 @@ func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
 	server := newTestServer(t)
 	notifier := &captureNotifier{}
 	server.notifier = notifier
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1097,7 +1097,7 @@ func TestRetainingMultiUseGrantClosesRemainingAccess(t *testing.T) {
 	server := newTestServer(t)
 	request := grantsRequestForMainPush(t)
 	request.MaxUses = 3
-	result, _, err := server.grants.Request(request)
+	result, _, err := server.requestGrant(request)
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1124,7 +1124,7 @@ func TestRetainingMultiUseGrantClosesRemainingAccess(t *testing.T) {
 func TestPreDispatchFailureReleasesGrantUse(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1151,7 +1151,7 @@ func TestGrantStatusDeliveryRetriesFailedEdit(t *testing.T) {
 	server := newTestServer(t)
 	notifier := &captureNotifier{updateErr: errors.New("telegram unavailable")}
 	server.notifier = notifier
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1211,7 +1211,7 @@ func TestGrantStatusText(t *testing.T) {
 func TestReleaseReservedGrantUse(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1229,7 +1229,7 @@ func TestReleaseReservedGrantUse(t *testing.T) {
 func TestWaitForGrantNotificationHonorsCancellation(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1243,7 +1243,7 @@ func TestWaitForGrantNotificationHonorsCancellation(t *testing.T) {
 func TestWaitForGrantNotificationReturnsStoredReference(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
@@ -1260,7 +1260,7 @@ func TestWaitForGrantNotificationReturnsStoredReference(t *testing.T) {
 func TestWaitForGrantNotificationReturnsTerminalGrant(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	terminal, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	terminal, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request(terminal) error = %v", err)
 	}
@@ -1284,7 +1284,7 @@ func TestWaitForGrantNotificationRejectsMissingGrant(t *testing.T) {
 func TestWaitForGrantNotificationTimesOut(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	pending, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	pending, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request(timeout) error = %v", err)
 	}
@@ -1403,7 +1403,7 @@ func TestGetGrantDirect(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
-	result, _, err := server.grants.Request(grants.Request{
+	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "get-direct",
 		Operation:       string(policy.OperationPullRequestCreate),
@@ -1558,7 +1558,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
-	result, _, err := server.grants.Request(grants.Request{
+	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "deny-pr",
 		Operation:       string(policy.OperationPullRequestCreate),
@@ -1602,7 +1602,7 @@ func TestDenyTelegramGrantDirect(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
-	result, _, err := server.grants.Request(grants.Request{
+	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "deny-direct",
 		Operation:       string(policy.OperationPullRequestCreate),
@@ -2619,7 +2619,7 @@ func requestMainPushPolicy(t *testing.T) *policy.Policy {
 
 func approveMainPushGrant(t *testing.T, server *Server) string {
 	t.Helper()
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}

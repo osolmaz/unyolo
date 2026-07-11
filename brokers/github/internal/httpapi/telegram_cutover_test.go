@@ -88,7 +88,7 @@ func setCutoverCallback(state *fakeTelegramState, grant grants.Grant, token stri
 
 func claimCutoverGrant(t *testing.T, server *Server) (grants.Grant, string) {
 	t.Helper()
-	result, _, err := server.grants.Request(grantsRequestForMainPush(t))
+	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatal(err)
 	}

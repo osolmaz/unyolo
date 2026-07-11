@@ -22,15 +22,19 @@ func TestBrokerkitControlPlaneConformance(t *testing.T) {
 	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
 	operatorSecret := "operator-secret-abcdefghijklmnopqrstuvwxyz"
 	server, _ := newOperatorTestServer(t, clientSecret, operatorSecret)
+	request := grants.Request{
+		Client: "bob", ClientRequestID: "conformance", Operation: "git.push.force",
+		Target: corepolicy.Target{Kind: "repo", Fields: map[string][]string{
+			"owner": {"osolmaz"}, "name": {"gh-broker"},
+		}},
+		Attrs: map[string][]string{"ref": {"refs/heads/main"}}, Reason: "verify shared control plane", Duration: 5 * time.Minute, MaxUses: 1,
+	}
+	if err := server.plans.Bind(&request); err != nil {
+		t.Fatal(err)
+	}
 	conformance.RunOperatorV1(t, conformance.Fixture{
 		Runtime: server.control, ClientToken: clientSecret, OperatorToken: operatorSecret,
-		Request: grants.Request{
-			Client: "bob", ClientRequestID: "conformance", Operation: "git.push.force",
-			Target: corepolicy.Target{Kind: "repo", Fields: map[string][]string{
-				"owner": {"osolmaz"}, "name": {"gh-broker"},
-			}},
-			Attrs: map[string][]string{"ref": {"refs/heads/main"}}, Reason: "verify shared control plane", Duration: 5 * time.Minute,
-		},
+		Request: request,
 	})
 }
 
@@ -77,7 +81,7 @@ func newOperatorTestServer(t *testing.T, clientSecret string, operatorSecret str
 
 func requestOperatorTestGrant(t *testing.T, server *Server) grants.RequestResult {
 	t.Helper()
-	result, _, err := server.grants.Request(grants.Request{
+	result, _, err := server.requestGrant(grants.Request{
 		Client: "bob", ClientRequestID: "operator-test", Operation: "git.push.force",
 		Target: corepolicy.Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"gh-broker"}}},
 		Attrs:  map[string][]string{"ref": {"refs/heads/main"}}, Reason: "repair branch", Duration: 5 * time.Minute, MaxUses: 1,

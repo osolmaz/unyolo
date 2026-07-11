@@ -18,16 +18,17 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 )
 
 const maxPullRequestBodyBytes int64 = 64 * 1024
@@ -36,6 +37,8 @@ type Server struct {
 	echo                *echo.Echo
 	policy              *policy.Policy
 	grants              *grants.Store
+	plans               *ghplan.Store
+	planValidator       ghplan.Validator
 	control             *controlplane.Runtime
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
@@ -56,8 +59,14 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		return nil, errors.New("policy is required")
 	}
 	grantStore := grants.New(filepath.Join(stateDir(cfg.StateDir), "grants.json"), grants.Options{})
+	credentialMode := githubCredentialMode(cfg)
+	plans, err := ghplan.NewStore(filepath.Join(stateDir(cfg.StateDir), "plans"), credentialMode)
+	if err != nil {
+		return nil, err
+	}
+	planValidator := ghplan.Validator{Store: plans}
 	auditWriter := bkaudit.New(os.Stderr)
-	control, auth, err := newControlPlane(cfg, grantStore, auditWriter)
+	control, auth, err := newControlPlane(cfg, grantStore, planValidator, auditWriter)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +90,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		return nil, err
 	}
 	server := &Server{
-		echo: e, policy: brokerPolicy, grants: grantStore, control: control, notifier: notifier, telegram: telegram,
+		echo: e, policy: brokerPolicy, grants: grantStore, plans: plans, planValidator: planValidator, control: control, notifier: notifier, telegram: telegram,
 		githubToken: cfg.GitHubToken, githubApp: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
 		githubClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
 		auditWriter: auditWriter, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
@@ -91,7 +100,14 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	return server, nil
 }
 
-func newControlPlane(cfg config.Config, grantStore *grants.Store, auditWriter *bkaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
+func githubCredentialMode(cfg config.Config) string {
+	if strings.TrimSpace(cfg.GitHubAppID) != "" && len(cfg.GitHubAppPrivateKey) > 0 {
+		return "github_app"
+	}
+	return "development_pat"
+}
+
+func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator ghplan.Validator, auditWriter *bkaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
 	operatorSecrets := map[string]string{}
 	if cfg.OperatorSecret != "" {
 		operatorSecrets[cfg.OperatorID] = cfg.OperatorSecret
@@ -99,7 +115,7 @@ func newControlPlane(cfg config.Config, grantStore *grants.Store, auditWriter *b
 	control, err := controlplane.New(controlplane.Options{
 		Broker: "gh-broker", Store: grantStore,
 		ClientSecrets: map[string]string{cfg.ClientID: cfg.SharedSecret}, OperatorSecrets: operatorSecrets,
-		Presenter: approval.Presenter{}, Audit: auditWriter,
+		Presenter: approval.Presenter{}, ActivationValidator: planValidator, Audit: auditWriter,
 	})
 	if err != nil {
 		return nil, security.TokenAuth{}, err

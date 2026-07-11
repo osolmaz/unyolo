@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
 
 const defaultStateDir = "./state"
@@ -146,6 +146,10 @@ func (s *Server) reserveGrantUse(id string) ([]grants.Grant, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := s.planValidator.ValidateExecution(grant); err != nil {
+		_, _ = s.grants.ReleaseUse(grant.ID)
+		return nil, err
+	}
 	return []grants.Grant{grant}, nil
 }
 
@@ -159,6 +163,10 @@ func (s *Server) reserveAuthorizedGrants(authorized []authorizedReceivePackReque
 		}
 		grant, err := s.grants.ReserveUse(id)
 		if err != nil {
+			return reserved, err
+		}
+		if err := s.planValidator.ValidateExecution(grant); err != nil {
+			_, _ = s.grants.ReleaseUse(grant.ID)
 			return reserved, err
 		}
 		seen[id] = true

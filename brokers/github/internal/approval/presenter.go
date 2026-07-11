@@ -4,7 +4,6 @@ package approval
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorinbox"
@@ -46,14 +45,25 @@ func targetSummary(grant grants.Grant) string {
 }
 
 func risk(operation string) operatorinbox.Risk {
-	switch {
-	case strings.Contains(operation, "force"), strings.Contains(operation, "delete"), strings.Contains(operation, "merge"):
-		return operatorinbox.RiskCritical
-	case strings.Contains(operation, "push"), strings.Contains(operation, "create"), strings.Contains(operation, "update"):
-		return operatorinbox.RiskHigh
-	case strings.Contains(operation, "read"), strings.Contains(operation, "fetch"), strings.Contains(operation, "list"):
-		return operatorinbox.RiskLow
-	default:
-		return operatorinbox.RiskMedium
+	risks := map[string]operatorinbox.Risk{
+		"git.fetch":               operatorinbox.RiskLow,
+		"git.push.advertise":      operatorinbox.RiskMedium,
+		"git.push.branch_create":  operatorinbox.RiskHigh,
+		"git.push.fast_forward":   operatorinbox.RiskHigh,
+		"git.push.force":          operatorinbox.RiskCritical,
+		"git.ref.delete":          operatorinbox.RiskCritical,
+		"git.tag.update":          operatorinbox.RiskHigh,
+		"pr.create":               operatorinbox.RiskHigh,
+		"pr.update":               operatorinbox.RiskHigh,
+		"pr.merge":                operatorinbox.RiskCritical,
+		"checks.read":             operatorinbox.RiskLow,
+		"repo.metadata.read":      operatorinbox.RiskLow,
+		"contents.read":           operatorinbox.RiskLow,
+		"installation.repos.list": operatorinbox.RiskLow,
+		"webhook.github.receive":  operatorinbox.RiskMedium,
 	}
+	if value, ok := risks[operation]; ok {
+		return value
+	}
+	return operatorinbox.RiskUnknown
 }

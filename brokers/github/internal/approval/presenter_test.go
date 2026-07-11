@@ -22,3 +22,13 @@ func TestPresenter(t *testing.T) {
 		t.Fatalf("presentation = %+v", presentation)
 	}
 }
+
+func TestRiskUsesExplicitOperationTable(t *testing.T) {
+	t.Parallel()
+	if got := risk("git.push.force"); got != operatorinbox.RiskCritical {
+		t.Fatalf("known risk = %q", got)
+	}
+	if got := risk("custom.force"); got != operatorinbox.RiskUnknown {
+		t.Fatalf("unknown risk = %q", got)
+	}
+}
