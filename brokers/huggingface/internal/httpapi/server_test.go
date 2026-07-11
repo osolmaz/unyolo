@@ -59,6 +59,9 @@ type requestedGrant struct {
 
 func requestHFGrant(t *testing.T, store *grants.Store, plans *hfplan.Store, input hfgrant.Input) (requestedGrant, bool, error) {
 	t.Helper()
+	if input.ClientRequestID == "" {
+		input.ClientRequestID = strings.NewReplacer("/", "-", " ", "-").Replace(t.Name())
+	}
 	result, created, err := hfgrant.Request(store, plans, input)
 	return requestedGrant{Grant: result.Grant, DecisionToken: result.DecisionToken}, created, err
 }
@@ -704,12 +707,13 @@ func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 
 func TestRetainedReservationDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
-		Client:    "agent",
-		Operation: string(policy.OpGitPushForce),
-		Target:    "dataset/acme/repo",
-		Ref:       "refs/heads/main",
-		Attrs:     refChangeAttrs("non_fast_forward"),
-		Reason:    "test retained reservation",
+		Client:          "agent",
+		ClientRequestID: "retained-reservation",
+		Operation:       string(policy.OpGitPushForce),
+		Target:          "dataset/acme/repo",
+		Ref:             "refs/heads/main",
+		Attrs:           refChangeAttrs("non_fast_forward"),
+		Reason:          "test retained reservation",
 	})
 	if err != nil {
 		t.Fatal(err)

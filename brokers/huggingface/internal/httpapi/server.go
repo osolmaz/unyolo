@@ -44,6 +44,8 @@ const (
 	lfsActionTTL   = time.Hour
 )
 
+const hfPlanOrphanGrace = 24 * time.Hour
+
 const (
 	grantNotificationClaimLease = 2 * time.Minute
 	grantNotificationClaimWait  = 10 * time.Second
@@ -93,6 +95,7 @@ type Server struct {
 	planValidator       hfplan.Validator
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
+	planGCOnce          sync.Once
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
@@ -279,6 +282,21 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	return server, nil
 }
 
+func collectHFPlanOrphans(grantStore *grants.Store, plans *hfplan.Store, now time.Time) error {
+	items, err := grantStore.List()
+	if err != nil {
+		return err
+	}
+	referenced := make(map[string]bool, len(items))
+	for _, grant := range items {
+		if grant.Metadata[hfplan.MetadataSchema] == hfplan.SchemaV1 {
+			referenced[grant.Metadata[hfplan.MetadataDigest]] = true
+		}
+	}
+	_, err = plans.CollectOrphans(referenced, now.Add(-hfPlanOrphanGrace))
+	return err
+}
+
 func newRouter(server *Server) *echo.Echo {
 	router := echo.New()
 	router.HideBanner = true
@@ -341,6 +359,11 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if writeHealth(w, r) {
 		return
 	}
+	s.planGCOnce.Do(func() {
+		if err := collectHFPlanOrphans(s.grants, s.plans, time.Now().UTC()); err != nil {
+			s.record("system", "plan.gc", "plans", audit.DecisionRefused, "plan_gc_failed", 0)
+		}
+	})
 	if isAPIPath(r.URL.Path) {
 		s.serveAPI(w, r)
 		return
@@ -2919,6 +2942,12 @@ func (s *Server) record(client, operation, target, decision, reason string, upst
 }
 
 func (s *Server) recordGrantUsed(client, operation, target string, upstreamStatus int, grantIDs []string) {
+	planDigest := ""
+	if len(grantIDs) > 0 {
+		if grant, err := s.grants.Get(grantIDs[0]); err == nil {
+			planDigest = grant.Metadata[hfplan.MetadataDigest]
+		}
+	}
 	s.recordAudit(audit.Entry{
 		Client:              client,
 		Operation:           operation,
@@ -2928,6 +2957,7 @@ func (s *Server) recordGrantUsed(client, operation, target string, upstreamStatu
 		UpstreamStatus:      upstreamStatus,
 		MatchedGrantRuleIDs: grantIDs,
 		GrantID:             firstString(grantIDs),
+		PlanDigest:          planDigest,
 	})
 }
 

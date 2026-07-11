@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 	bkpolicy "github.com/osolmaz/brokerkit/policy"
 )
 
@@ -47,14 +50,44 @@ type Input struct {
 
 // Request validates provider fields and creates a canonical grant request.
 func Request(store *grants.Store, plans *hfplan.Store, input Input) (grants.RequestResult, bool, error) {
+	if store == nil || plans == nil {
+		return grants.RequestResult{}, false, errors.New("grant and plan stores are required")
+	}
 	request, err := CanonicalRequest(input)
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
-	if err := plans.Bind(&request); err != nil {
+	createdAt, exists, err := existingPlanCreatedAt(store, plans, request.Client, request.ClientRequestID)
+	if err != nil {
+		return grants.RequestResult{}, false, err
+	}
+	if exists {
+		err = plans.BindAt(&request, createdAt)
+	} else {
+		err = plans.Bind(&request)
+	}
+	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
 	return store.Request(request)
+}
+
+func existingPlanCreatedAt(store *grants.Store, plans *hfplan.Store, client, clientRequestID string) (time.Time, bool, error) {
+	values, err := store.ListForClient(client)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	for _, grant := range values {
+		if grant.ClientRequestID != clientRequestID || grant.Status == grants.StatusCanceled {
+			continue
+		}
+		plan, err := plans.Get(grant.Metadata[hfplan.MetadataDigest])
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		return plan.CreatedAt, true, nil
+	}
+	return time.Time{}, false, nil
 }
 
 // CanonicalRequest validates and converts one HF request.
@@ -84,11 +117,11 @@ func CanonicalRequest(input Input) (grants.Request, error) {
 }
 
 func normalizeIdentity(input Input) (string, string, error) {
-	if input.Client == "" || input.Operation == "" || input.Target == "" {
+	if input.Client == "" || !hfpolicy.IsOperation(input.Operation) || input.Target == "" {
 		return "", "", errors.New("client, operation, and target are required")
 	}
 	clientRequestID := strings.TrimSpace(input.ClientRequestID)
-	if len(clientRequestID) > 128 || strings.ContainsAny(clientRequestID, " \t\r\n") {
+	if clientRequestID == "" || len(clientRequestID) > 128 || strings.ContainsAny(clientRequestID, " \t\r\n") {
 		return "", "", errors.New("client_request_id must be 1-128 non-whitespace bytes")
 	}
 	reason := strings.TrimSpace(input.Reason)
@@ -178,11 +211,17 @@ func Attrs(grant grants.Grant) (map[string]any, error) {
 		if len(values) != 1 {
 			return nil, fmt.Errorf("stored grant attr %q is invalid", key)
 		}
+		if err := strictjson.RejectDuplicateKeys([]byte(values[0])); err != nil {
+			return nil, fmt.Errorf("decode stored grant attr %q: %w", key, err)
+		}
 		decoder := json.NewDecoder(bytes.NewBufferString(values[0]))
 		decoder.UseNumber()
 		var value any
 		if err := decoder.Decode(&value); err != nil {
 			return nil, fmt.Errorf("decode stored grant attr %q: %w", key, err)
+		}
+		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("decode stored grant attr %q: trailing data", key)
 		}
 		if number, ok := value.(json.Number); ok {
 			if integer, err := number.Int64(); err == nil {

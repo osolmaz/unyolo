@@ -28,7 +28,7 @@ func TestTelegramLiveSendApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
-		Client: "local-smoke", Operation: "git.push.force", Mode: hfgrant.ModeWindow,
+		Client: "local-smoke", ClientRequestID: "live-telegram-smoke", Operation: "git.push.force", Mode: hfgrant.ModeWindow,
 		Target: "dataset/dutifulbob/hf-broker-smoke", Ref: "refs/heads/main",
 		Reason: "live Telegram delivery smoke test", RequestedDuration: 5 * time.Minute, MaxUses: 1,
 	})

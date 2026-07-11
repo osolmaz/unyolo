@@ -142,6 +142,9 @@ func coreTargetMatcher(target TargetMatcher, operation Operation, view coreView)
 		addCoreRepoMatcherFields(out, target, operation, view)
 		return out
 	}
+	if target.Kind == KindInference {
+		return out
+	}
 	addCoreBucketMatcherFields(out, target, operation)
 	return out
 }
@@ -278,6 +281,10 @@ func hfRegistry() corepolicy.Registry {
 				"keys":         {Match: corepolicy.MatchRecursivePathGlob},
 				"mutable_keys": {Match: corepolicy.MatchPathOutsidePrefix},
 			}},
+			string(KindInference): {Fields: map[string]corepolicy.FieldSpec{
+				"owner": {Required: true},
+				"name":  {Required: true},
+			}},
 		},
 		Attrs: map[string]corepolicy.AttrSpec{
 			"max_bytes": {
@@ -329,7 +336,7 @@ func coreTargetFromHF(target Target, operation Operation, view coreView) corepol
 	fields := map[string][]string{"owner": {target.Owner}, "name": {target.Name}}
 	if target.Kind == KindRepo {
 		addCoreRepoRequestFields(fields, target, operation, view)
-	} else {
+	} else if target.Kind == KindBucket {
 		addCoreBucketRequestFields(fields, target, operation)
 	}
 	return corepolicy.Target{Kind: string(target.Kind), Fields: fields}

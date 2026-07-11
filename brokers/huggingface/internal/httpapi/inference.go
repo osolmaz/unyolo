@@ -10,8 +10,11 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 const (
@@ -21,8 +24,18 @@ const (
 
 var inferenceModelPartPattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$`)
 
-type inferenceRequest struct {
-	Model string `json:"model"`
+var inferenceTopLevelFields = map[string]bool{
+	"model": true, "messages": true, "audio": true, "frequency_penalty": true, "function_call": true,
+	"functions": true, "logit_bias": true, "logprobs": true, "max_completion_tokens": true, "max_tokens": true,
+	"metadata": true, "modalities": true, "n": true, "parallel_tool_calls": true, "prediction": true,
+	"presence_penalty": true, "reasoning_effort": true, "response_format": true, "seed": true, "service_tier": true,
+	"stop": true, "store": true, "stream": true, "stream_options": true, "temperature": true, "tool_choice": true,
+	"tools": true, "top_logprobs": true, "top_p": true, "user": true, "verbosity": true, "web_search_options": true,
+}
+
+var inferenceMessageFields = map[string]bool{
+	"role": true, "content": true, "name": true, "tool_call_id": true, "tool_calls": true, "function_call": true,
+	"audio": true, "refusal": true,
 }
 
 func isInferencePath(path string) bool {
@@ -40,7 +53,12 @@ func (s *Server) serveInference(w http.ResponseWriter, r *http.Request, client s
 			s.refuseInference(w, client, "inference.models.list", "models", http.StatusBadRequest, "query_not_allowed")
 			return
 		}
-		s.forwardInference(w, r, client, "inference.models.list", "models", nil)
+		const operation = policy.OpInferenceModels
+		target := policy.Target{Kind: policy.KindInference, Owner: "router", Name: "models"}
+		if !s.inferenceAllowed(w, client, operation, target, 0) {
+			return
+		}
+		s.forwardInference(w, r, client, string(operation), "models", nil)
 	case "/v1/chat/completions":
 		s.serveChatCompletion(w, r, client)
 	}
@@ -70,7 +88,44 @@ func (s *Server) serveChatCompletion(w http.ResponseWriter, r *http.Request, cli
 		s.refuseInference(w, client, operation, "", http.StatusBadRequest, "invalid_model")
 		return
 	}
+	target, ok := inferencePolicyTarget(model)
+	if !ok {
+		s.refuseInference(w, client, operation, model, http.StatusBadRequest, "invalid_model")
+		return
+	}
+	if !s.inferenceAllowed(w, client, policy.OpInferenceChat, target, len(body)) {
+		return
+	}
 	s.forwardInference(w, r, client, operation, model, body)
+}
+
+func inferencePolicyTarget(model string) (policy.Target, bool) {
+	base, provider, _ := strings.Cut(model, ":")
+	parts := strings.Split(base, "/")
+	if len(parts) != 2 {
+		return policy.Target{}, false
+	}
+	name := parts[1]
+	if provider != "" {
+		name += ":" + provider
+	}
+	return policy.Target{Kind: policy.KindInference, Owner: parts[0], Name: name}, true
+}
+
+func (s *Server) inferenceAllowed(w http.ResponseWriter, client string, operation policy.Operation, target policy.Target, bodyBytes int) bool {
+	attrs := map[string]any{}
+	if bodyBytes > 0 {
+		attrs["max_bytes"] = int64(bodyBytes)
+	}
+	decision := s.policy.Decide(policy.Request{Client: client, Operation: operation, Target: target, Attrs: attrs}, nil, time.Now(), false)
+	targetName := target.Owner + "/" + target.Name
+	if decision.Effect != policy.EffectAllow {
+		writeInferenceError(w, http.StatusForbidden, "policy_denied")
+		s.recordPolicyDecision(client, string(operation), targetName, audit.DecisionRefused, decision.Reason, 0, decision)
+		return false
+	}
+	s.recordPolicyDecision(client, string(operation), targetName, audit.DecisionAllowed, "", 0, decision)
+	return true
 }
 
 func jsonContentType(value string) bool {
@@ -91,11 +146,65 @@ func readInferenceRequest(w http.ResponseWriter, r *http.Request) ([]byte, int, 
 }
 
 func inferenceRequestModel(body []byte) (string, bool) {
-	var request inferenceRequest
-	if len(body) == 0 || json.Unmarshal(body, &request) != nil || !validInferenceModel(request.Model) {
+	if strictjson.RejectDuplicateKeys(body) != nil {
 		return "", false
 	}
-	return request.Model, true
+	var request map[string]json.RawMessage
+	if len(body) == 0 || json.Unmarshal(body, &request) != nil || len(request) == 0 {
+		return "", false
+	}
+	for field := range request {
+		if !inferenceTopLevelFields[field] {
+			return "", false
+		}
+	}
+	var model string
+	if json.Unmarshal(request["model"], &model) != nil || !validInferenceModel(model) || !validInferenceMessages(request["messages"]) {
+		return "", false
+	}
+	if raw, ok := request["stream"]; ok {
+		var stream bool
+		if json.Unmarshal(raw, &stream) != nil {
+			return "", false
+		}
+	}
+	return model, true
+}
+
+func validInferenceMessages(raw json.RawMessage) bool {
+	var messages []json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &messages) != nil || len(messages) == 0 || len(messages) > 128 {
+		return false
+	}
+	for _, rawMessage := range messages {
+		if strictjson.RejectDuplicateKeys(rawMessage) != nil {
+			return false
+		}
+		var message map[string]json.RawMessage
+		if json.Unmarshal(rawMessage, &message) != nil {
+			return false
+		}
+		for field := range message {
+			if !inferenceMessageFields[field] {
+				return false
+			}
+		}
+		var role string
+		if json.Unmarshal(message["role"], &role) != nil || !validInferenceRole(role) {
+			return false
+		}
+		content, hasContent := message["content"]
+		_, hasToolCalls := message["tool_calls"]
+		_, hasFunctionCall := message["function_call"]
+		if (!hasContent || len(content) == 0 || string(content) == "null") && !hasToolCalls && !hasFunctionCall {
+			return false
+		}
+	}
+	return true
+}
+
+func validInferenceRole(role string) bool {
+	return role == "developer" || role == "system" || role == "user" || role == "assistant" || role == "tool"
 }
 
 func validInferenceModel(model string) bool {

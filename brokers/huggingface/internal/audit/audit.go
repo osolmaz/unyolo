@@ -29,6 +29,7 @@ type Entry struct {
 	MatchedAllowRuleIDs   []string // policy allow rules that matched this request
 	MatchedRequestRuleIDs []string // policy request rules that matched this request
 	GrantID               string   // generated grant id when policy allowed through a grant
+	PlanDigest            string   // private immutable-plan correlation; never exposed to clients
 }
 
 // Logger writes audit entries as JSON lines.
@@ -55,6 +56,7 @@ func (l *Logger) Record(e Entry) {
 		"matched_allow_rule_ids", nonNilStrings(e.MatchedAllowRuleIDs),
 		"matched_request_rule_ids", nonNilStrings(e.MatchedRequestRuleIDs),
 		"grant_id", e.GrantID,
+		"plan_digest", e.PlanDigest,
 	)
 }
 

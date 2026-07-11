@@ -126,6 +126,9 @@ func TestInferenceValidationFailsBeforeUpstream(t *testing.T) {
 		{name: "chat media type", method: http.MethodPost, path: "/v1/chat/completions", contentType: "text/plain", body: `{"model":"acme/model"}`, want: http.StatusUnsupportedMediaType},
 		{name: "chat invalid json", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{`, want: http.StatusBadRequest},
 		{name: "chat missing model", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"messages":[]}`, want: http.StatusBadRequest},
+		{name: "chat empty messages", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","messages":[]}`, want: http.StatusBadRequest},
+		{name: "chat duplicate model", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","model":"other/model","messages":[{"role":"user","content":"hello"}]}`, want: http.StatusBadRequest},
+		{name: "chat unknown field", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","messages":[{"role":"user","content":"hello"}],"proxy_url":"https://other.test"}`, want: http.StatusBadRequest},
 		{name: "chat unsafe model", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"https://other.test/model"}`, want: http.StatusBadRequest},
 		{name: "unknown typed route", method: http.MethodPost, path: "/v1/embeddings", contentType: "application/json", body: `{"model":"acme/model"}`, want: http.StatusNotFound},
 	}
@@ -171,7 +174,7 @@ func TestInferenceRejectsOversizedBodyAndBoundsTimeout(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	resp = inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[]}`)
+	resp = inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("timeout status = %d", resp.StatusCode)
 	}
@@ -195,7 +198,7 @@ func TestInferenceRefusesUpstreamRedirect(t *testing.T) {
 	broker, auditLog := newInferenceBroker(t, router.URL, 2*time.Second)
 	defer broker.Close()
 
-	resp := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[]}`)
+	resp := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("redirect status = %d", resp.StatusCode)
 	}
@@ -219,7 +222,7 @@ func TestInferenceDoesNotCommitInterruptedJSONResponse(t *testing.T) {
 	broker, auditLog := newInferenceBroker(t, router.URL, 2*time.Second)
 	defer broker.Close()
 
-	resp := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[]}`)
+	resp := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`)
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusBadGateway || !strings.Contains(string(body), "upstream_response_failed") {
@@ -231,7 +234,7 @@ func TestInferenceDoesNotCommitInterruptedJSONResponse(t *testing.T) {
 }
 
 func TestInferenceRejectsInvalidRouterOrigin(t *testing.T) {
-	scp, err := policy.Parse([]byte(emptyPolicyJSON()))
+	scp, err := policy.Parse([]byte(inferenceAllowPolicyJSON()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,6 +244,19 @@ func TestInferenceRejectsInvalidRouterOrigin(t *testing.T) {
 	})
 	if err == nil || strings.Contains(err.Error(), "user") || strings.Contains(err.Error(), "token") {
 		t.Fatalf("invalid Router URL error = %v", err)
+	}
+}
+
+func TestInferenceDefaultsToPolicyDeny(t *testing.T) {
+	t.Parallel()
+	var hits atomic.Int32
+	router := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer router.Close()
+	broker, _ := newInferenceBrokerWithPolicy(t, router.URL, time.Second, emptyPolicyJSON())
+	response := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`)
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusForbidden || hits.Load() != 0 {
+		t.Fatalf("default-deny response = %d, upstream hits = %d", response.StatusCode, hits.Load())
 	}
 }
 
@@ -311,7 +327,12 @@ func TestHubOriginValidationDoesNotLeakConfiguration(t *testing.T) {
 
 func newInferenceBroker(t *testing.T, routerURL string, timeout time.Duration) (*httptest.Server, *bytes.Buffer) {
 	t.Helper()
-	scp, err := policy.Parse([]byte(emptyPolicyJSON()))
+	return newInferenceBrokerWithPolicy(t, routerURL, timeout, inferenceAllowPolicyJSON())
+}
+
+func newInferenceBrokerWithPolicy(t *testing.T, routerURL string, timeout time.Duration, policyJSON string) (*httptest.Server, *bytes.Buffer) {
+	t.Helper()
+	scp, err := policy.Parse([]byte(policyJSON))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,6 +348,14 @@ func newInferenceBroker(t *testing.T, routerURL string, timeout time.Duration) (
 		t.Fatal(err)
 	}
 	return httptest.NewServer(handler), &auditLog
+}
+
+func inferenceAllowPolicyJSON() string {
+	return `{"rules":[{
+		"id":"allow-inference","effect":"allow","clients":["agent"],
+		"operations":["inference.models.list","inference.chat.complete"],
+		"targets":[{"kind":"inference","owner":"*","name":"*"}]
+	}]}`
 }
 
 func inferenceRequestToBroker(t *testing.T, broker *httptest.Server, body string) *http.Response {

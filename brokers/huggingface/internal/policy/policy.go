@@ -47,6 +47,8 @@ const (
 	OpBucketObjectRead  Operation = "bucket.object.read"
 	OpBucketObjectWrite Operation = "bucket.object.write"
 	OpBucketObjectDel   Operation = "bucket.object.delete"
+	OpInferenceModels   Operation = "inference.models.list"
+	OpInferenceChat     Operation = "inference.chat.complete"
 )
 
 type Effect string
@@ -61,8 +63,9 @@ const (
 type TargetKind string
 
 const (
-	KindRepo   TargetKind = "repo"
-	KindBucket TargetKind = "bucket"
+	KindRepo      TargetKind = "repo"
+	KindBucket    TargetKind = "bucket"
+	KindInference TargetKind = "inference"
 )
 
 type RepoType string
@@ -223,12 +226,15 @@ var operations = map[Operation]operationInfo{
 	OpBucketObjectRead:  {mode: GrantModeWindow},
 	OpBucketObjectWrite: {mode: GrantModeWindow},
 	OpBucketObjectDel:   {mode: GrantModeExecution},
+	OpInferenceModels:   {mode: GrantModeNone},
+	OpInferenceChat:     {mode: GrantModeNone},
 }
 
 var operationFamilyPrefixes = map[string]string{
-	"repo.*":   "repo.",
-	"git.*":    "git.",
-	"bucket.*": "bucket.",
+	"repo.*":      "repo.",
+	"git.*":       "git.",
+	"bucket.*":    "bucket.",
+	"inference.*": "inference.",
 }
 
 var refScopedOperations = map[Operation]bool{
@@ -422,7 +428,26 @@ func operationTargetKind(op Operation) TargetKind {
 	if strings.HasPrefix(string(op), "bucket.") {
 		return KindBucket
 	}
+	if strings.HasPrefix(string(op), "inference.") {
+		return KindInference
+	}
 	return KindRepo
+}
+
+// IsOperation reports whether value is in the closed HF operation registry.
+func IsOperation(value string) bool {
+	_, ok := operations[Operation(value)]
+	return ok
+}
+
+// Operations returns the complete registered HF operation set.
+func Operations() []Operation {
+	out := make([]Operation, 0, len(operations))
+	for operation := range operations {
+		out = append(out, operation)
+	}
+	slices.Sort(out)
+	return out
 }
 
 func parseRuleID(rule *Rule, prefix string, raw rawRule) error {
@@ -616,9 +641,18 @@ func validateTarget(pathName string, target *TargetMatcher) error {
 		return validateRepoTarget(pathName, target)
 	case KindBucket:
 		return validateBucketTarget(pathName, target)
+	case KindInference:
+		return validateInferenceTarget(pathName, target)
 	default:
-		return fmt.Errorf("%s.kind: must be repo or bucket", pathName)
+		return fmt.Errorf("%s.kind: must be repo, bucket, or inference", pathName)
 	}
+}
+
+func validateInferenceTarget(pathName string, target *TargetMatcher) error {
+	if target.typeSet || target.refsSet || target.pathsSet || target.visibilitySet || target.keysSet || target.snapshotPrefixSet {
+		return fmt.Errorf("%s: inference targets accept only owner and name", pathName)
+	}
+	return validateOwnerNameGlobs(pathName, target.Owner, target.Name)
 }
 
 func validateRepoTarget(pathName string, target *TargetMatcher) error {
@@ -1143,9 +1177,18 @@ func validateRequestTarget(target Target) error {
 		return validateRepoRequestTarget(target)
 	case KindBucket:
 		return validateBucketRequestTarget(target)
+	case KindInference:
+		return validateInferenceRequestTarget(target)
 	default:
 		return fmt.Errorf("invalid target kind")
 	}
+}
+
+func validateInferenceRequestTarget(target Target) error {
+	if !validRequestSegment(target.Owner) || !validRequestSegment(target.Name) {
+		return fmt.Errorf("invalid inference target")
+	}
+	return nil
 }
 
 func validateRepoRequestTarget(target Target) error {
