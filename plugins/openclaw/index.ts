@@ -227,12 +227,13 @@ function formatRequest(
     .join("\n");
 }
 
-function createHttpHandler(
+export function createHttpHandler(
   runtime: (() => BrokerRuntime) | undefined,
   rootDir: string,
   capability: string | undefined,
 ) {
   const uiDir = path.join(rootDir, "dist", "ui");
+  const rateLimit = createRateLimiter(120, 60_000);
   return async (
     req: import("node:http").IncomingMessage,
     res: import("node:http").ServerResponse,
@@ -245,49 +246,64 @@ function createHttpHandler(
         return json(res, 401, { error: { code: "not_authorized" } });
       if (req.headers.origin !== "null")
         return json(res, 403, { error: { code: "not_authorized" } });
+      if (url.search)
+        return json(res, 400, { error: { code: "invalid_input" } });
+      const rateKey = req.socket.remoteAddress ?? "local";
+      if (!rateLimit(rateKey))
+        return json(res, 429, { error: { code: "rate_limited" } });
       res.setHeader("cache-control", "no-store");
-      if (
-        req.method === "GET" &&
-        url.pathname === "/plugins/brokerkit/api/v1/snapshot"
-      )
-        return json(res, 200, runtime().snapshot());
-      const detail = url.pathname.match(
-        /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)$/,
-      );
-      if (req.method === "GET" && detail) {
-        const handle = decodeURIComponent(detail[1] ?? "");
-        const request = runtime()
-          .snapshot()
-          .requests.find((value) => value.handle === handle);
-        return request
-          ? json(res, 200, request)
-          : json(res, 404, { error: { code: "request_not_found" } });
-      }
-      const match = url.pathname.match(
-        /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)\/(approve|deny|cancel|revoke)$/,
-      );
-      if (req.method === "POST" && match) {
-        const body = await readJSON(req);
+      try {
         if (
-          Object.keys(body).some(
-            (key) => key !== "expectedRevision" && key !== "reason",
-          )
+          req.method === "GET" &&
+          url.pathname === "/plugins/brokerkit/api/v1/snapshot"
         )
-          return json(res, 400, { error: { code: "invalid_input" } });
-        const handle = decodeURIComponent(match[1] ?? "");
-        const revision =
-          typeof body.expectedRevision === "number" ? body.expectedRevision : 0;
-        const result = await runtime().decide(
-          handle,
-          match[2] as Action,
-          revision,
-          "openclaw-browser",
-          typeof body.reason === "string" ? body.reason : undefined,
+          return json(res, 200, runtime().snapshot());
+        const detail = url.pathname.match(
+          /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)$/,
         );
-        return json(res, 200, result);
+        if (req.method === "GET" && detail) {
+          const handle = decodeHandle(detail[1]);
+          const request = runtime()
+            .snapshot()
+            .requests.find((value) => value.handle === handle);
+          return request
+            ? json(res, 200, request)
+            : json(res, 404, { error: { code: "request_not_found" } });
+        }
+        const match = url.pathname.match(
+          /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)\/(approve|deny|cancel|revoke)$/,
+        );
+        if (req.method === "POST" && match) {
+          if (!isJSON(req.headers["content-type"]))
+            throw new Error("invalid_input");
+          const body = await readJSON(req);
+          if (
+            Object.keys(body).some(
+              (key) => key !== "expectedRevision" && key !== "reason",
+            ) ||
+            !Number.isSafeInteger(body.expectedRevision) ||
+            (body.expectedRevision as number) <= 0 ||
+            (body.reason !== undefined &&
+              (typeof body.reason !== "string" || body.reason.length > 4096))
+          )
+            throw new Error("invalid_input");
+          const result = await runtime().decide(
+            decodeHandle(match[1]),
+            match[2] as Action,
+            body.expectedRevision as number,
+            "openclaw:control-ui",
+            body.reason as string | undefined,
+          );
+          return json(res, 200, result);
+        }
+      } catch (error) {
+        const mapped = mapHttpError(error);
+        return json(res, mapped.status, { error: { code: mapped.code } });
       }
       return json(res, 404, { error: { code: "not_found" } });
     }
+    if (url.search || !url.pathname.startsWith("/plugins/brokerkit/ui/"))
+      return json(res, 404, { error: { code: "not_found" } });
     if (req.method !== "GET")
       return json(res, 405, { error: { code: "invalid_input" } });
     const relative =
@@ -308,6 +324,7 @@ function createHttpHandler(
       "content-security-policy",
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'self'",
     );
+    securityHeaders(res);
     createReadStream(file).pipe(res);
     return true;
   };
@@ -330,10 +347,17 @@ async function readJSON(
     if (size > 16_384) throw new Error("invalid_input");
     chunks.push(value);
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<
-    string,
-    unknown
-  >;
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(
+      Buffer.concat(chunks),
+    );
+    const value = JSON.parse(text) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("invalid_input");
+    return value as Record<string, unknown>;
+  } catch {
+    throw new Error("invalid_input");
+  }
 }
 function json(
   res: import("node:http").ServerResponse,
@@ -342,9 +366,54 @@ function json(
 ): true {
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
-  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("content-security-policy", "default-src 'none'");
+  securityHeaders(res);
   res.end(JSON.stringify(value));
   return true;
+}
+
+function securityHeaders(res: import("node:http").ServerResponse): void {
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("referrer-policy", "no-referrer");
+  res.setHeader("cross-origin-resource-policy", "same-origin");
+}
+
+function decodeHandle(value: string | undefined): string {
+  if (!value || value.length > 256) throw new Error("invalid_input");
+  const decoded = decodeURIComponent(value);
+  if (!/^[A-Za-z0-9_-]{22,256}$/u.test(decoded))
+    throw new Error("invalid_input");
+  return decoded;
+}
+
+function isJSON(value: string | undefined): boolean {
+  return Boolean(value && /^application\/json(?:\s*;|$)/iu.test(value));
+}
+
+function mapHttpError(error: unknown): { code: string; status: number } {
+  const code = error instanceof Error ? error.message : "internal_error";
+  if (code === "invalid_input") return { code, status: 400 };
+  if (code === "request_not_found") return { code, status: 404 };
+  if (code === "revision_stale" || code === "request_terminal")
+    return { code, status: 409 };
+  if (code === "action_not_allowed") return { code, status: 422 };
+  if (code === "source_unavailable") return { code, status: 503 };
+  return { code: "internal_error", status: 500 };
+}
+
+function createRateLimiter(limit: number, windowMs: number) {
+  const entries = new Map<string, { count: number; resetAt: number }>();
+  return (key: string): boolean => {
+    const now = Date.now();
+    const current = entries.get(key);
+    if (!current || current.resetAt <= now) {
+      entries.set(key, { count: 1, resetAt: now + windowMs });
+      return true;
+    }
+    current.count += 1;
+    return current.count <= limit;
+  };
 }
 function contentType(file: string): string {
   if (file.endsWith(".js")) return "text/javascript";
