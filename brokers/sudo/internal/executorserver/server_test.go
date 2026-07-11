@@ -102,6 +102,16 @@ func TestServerAuthenticatesUnixPeerBeforeReading(t *testing.T) {
 	}
 }
 
+func TestRootPeerMayOnlyPing(t *testing.T) {
+	t.Parallel()
+	if !knownPeer(0, 1000) || !knownPeer(1000, 1000) || knownPeer(1001, 1000) {
+		t.Fatal("knownPeer() authorization mismatch")
+	}
+	if peerMayExecute(0, 1000) || !peerMayExecute(1000, 1000) {
+		t.Fatal("root peer execution authorization mismatch")
+	}
+}
+
 func TestServerRejectsUnboundedConnectionConfiguration(t *testing.T) {
 	t.Parallel()
 	server, _, runner := testServerAndRequest(t)

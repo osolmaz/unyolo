@@ -44,6 +44,8 @@ Doctor fails when the agent is root-equivalent, the frontend shares the agent
 uid, trusted paths are mutable, the socket is unsafe, the helper is offline, or
 Linux descriptor execution is unavailable. macOS reports its path
 revalidation fallback as a warning.
+The helper accepts UID 0 only for its bounded readiness ping so root-run host
+diagnostics work; execution frames remain restricted to the frontend UID.
 
 The live acceptance probe must use a disposable harmless catalog command. Test
 request, approval, one execution, replay with the same execution id, denial,

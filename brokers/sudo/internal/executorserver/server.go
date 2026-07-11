@@ -115,7 +115,7 @@ func (s *Server) handleConnection(ctx context.Context, connection *net.UnixConn)
 
 func (s *Server) Handle(ctx context.Context, connection *net.UnixConn) executorprotocol.Response {
 	uid, err := s.peerUID(connection)
-	if err != nil || uid != s.expectedPeerUID {
+	if err != nil || !knownPeer(uid, s.expectedPeerUID) {
 		return executorprotocol.NewRejected("peer_not_authorized")
 	}
 	request, err := executorprotocol.ReadRequest(connection)
@@ -125,8 +125,15 @@ func (s *Server) Handle(ctx context.Context, connection *net.UnixConn) executorp
 	if request.Type == executorprotocol.TypePing {
 		return executorprotocol.Response{Version: executorprotocol.Version, Status: executorprotocol.StatusReady}
 	}
+	if !peerMayExecute(uid, s.expectedPeerUID) {
+		return executorprotocol.NewRejected("peer_not_authorized")
+	}
 	return s.execute(ctx, request)
 }
+
+func knownPeer(uid uint32, expected uint32) bool { return uid == expected || uid == 0 }
+
+func peerMayExecute(uid uint32, expected uint32) bool { return uid == expected }
 
 func (s *Server) execute(ctx context.Context, request executorprotocol.Request) executorprotocol.Response {
 	now := s.now().UTC()
