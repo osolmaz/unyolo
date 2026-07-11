@@ -62,19 +62,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if brokerPolicy == nil {
 		return nil, errors.New("policy is required")
 	}
-	grantStore := grants.New(filepath.Join(stateDir(cfg.StateDir), "grants.json"), grants.Options{})
-	credentialMode := githubCredentialMode(cfg)
-	plans, err := ghplan.NewStore(filepath.Join(stateDir(cfg.StateDir), "plans"), credentialMode)
-	if err != nil {
-		return nil, err
-	}
-	planValidator := ghplan.Validator{Store: plans}
-	auditWriter := bkaudit.New(os.Stderr)
-	control, auth, err := newControlPlane(cfg, grantStore, planValidator, auditWriter)
-	if err != nil {
-		return nil, err
-	}
-	notifier, telegram, err := configuredNotifier(cfg)
+	grantStore, plans, planValidator, auditWriter, control, auth, notifier, telegram, err := newCoreDependencies(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +72,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	e.Use(middleware.Recover())
 	e.Use(noStore)
 	e.GET("/healthz", health)
-	gitBaseURL, apiBaseURL, err := githubBaseURLs()
-	if err != nil {
-		return nil, err
-	}
-	githubClient := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
-	appSource, err := configuredGitHubApp(cfg, apiBaseURL, githubClient)
+	gitBaseURL, apiBaseURL, githubClient, appSource, err := newGitHubDependencies(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +88,32 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	}
 	server.registerRoutes(auth)
 	return server, nil
+}
+
+func newCoreDependencies(cfg config.Config) (*grants.Store, *ghplan.Store, ghplan.Validator, *bkaudit.Writer, *controlplane.Runtime, security.TokenAuth, notify.Notifier, *bktelegram.Client, error) {
+	grantStore := grants.New(filepath.Join(stateDir(cfg.StateDir), "grants.json"), grants.Options{})
+	plans, err := ghplan.NewStore(filepath.Join(stateDir(cfg.StateDir), "plans"), githubCredentialMode(cfg))
+	if err != nil {
+		return nil, nil, ghplan.Validator{}, nil, nil, security.TokenAuth{}, nil, nil, err
+	}
+	validator := ghplan.Validator{Store: plans}
+	auditWriter := bkaudit.New(os.Stderr)
+	control, auth, err := newControlPlane(cfg, grantStore, validator, auditWriter)
+	if err != nil {
+		return nil, nil, ghplan.Validator{}, nil, nil, security.TokenAuth{}, nil, nil, err
+	}
+	notifier, telegram, err := configuredNotifier(cfg)
+	return grantStore, plans, validator, auditWriter, control, auth, notifier, telegram, err
+}
+
+func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubapp.Source, error) {
+	gitBaseURL, apiBaseURL, err := githubBaseURLs()
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	client := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
+	app, err := configuredGitHubApp(cfg, apiBaseURL, client)
+	return gitBaseURL, apiBaseURL, client, app, err
 }
 
 func collectGitHubPlanOrphans(grantStore *grants.Store, plans *ghplan.Store, now time.Time) error {

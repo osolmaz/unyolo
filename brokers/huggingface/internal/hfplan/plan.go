@@ -167,24 +167,41 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if err != nil {
 		return err
 	}
-	requestedDuration := grant.RequestedDuration
-	if requestedDuration <= 0 {
-		requestedDuration = grant.Duration
-	}
-	requestedMaxUses := grant.RequestedMaxUses
-	if requestedMaxUses <= 0 {
-		requestedMaxUses = grant.MaxUses
-	}
-	if plan.ClientID != grant.Client || plan.ClientRequestID != grant.ClientRequestID || plan.Operation != grant.Operation || plan.TargetKind != grant.Target.Kind ||
-		!equalValues(plan.Target, grant.Target.Fields) || !equalValues(plan.Constraints.Attributes, grant.Attrs) ||
-		plan.Constraints.Mode != grant.Metadata["hf_grant_mode"] || plan.Constraints.RequestedDurationSeconds != int64(requestedDuration.Seconds()) ||
-		plan.Constraints.RequestedMaxUses != requestedMaxUses {
+	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
+	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("HF grant does not match its immutable plan")
 	}
 	if constraints.Duration > requestedDuration || constraints.MaxUses > requestedMaxUses {
 		return grants.ErrConstraintExceeded
 	}
 	return nil
+}
+
+func requestedGrantBounds(grant grants.Grant) (time.Duration, int) {
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	maxUses := grant.RequestedMaxUses
+	if maxUses <= 0 {
+		maxUses = grant.MaxUses
+	}
+	return duration, maxUses
+}
+
+func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses int) bool {
+	return planMatchesGrantIdentity(plan, grant) && planMatchesGrantValues(plan, grant) &&
+		plan.Constraints.Mode == grant.Metadata["hf_grant_mode"] &&
+		plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) && plan.Constraints.RequestedMaxUses == maxUses
+}
+
+func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
+	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID &&
+		plan.Operation == grant.Operation && plan.TargetKind == grant.Target.Kind
+}
+
+func planMatchesGrantValues(plan Plan, grant grants.Grant) bool {
+	return equalValues(plan.Target, grant.Target.Fields) && equalValues(plan.Constraints.Attributes, grant.Attrs)
 }
 
 func encode(plan Plan) ([]byte, error) {
@@ -195,13 +212,10 @@ func encode(plan Plan) ([]byte, error) {
 }
 
 func validate(plan Plan) error {
-	if plan.SchemaVersion != SchemaV1 || (plan.Kind != "capability_window" && plan.Kind != "single_execution") ||
-		strings.TrimSpace(plan.ClientID) == "" || strings.TrimSpace(plan.ClientRequestID) == "" || !hfpolicy.IsOperation(plan.Operation) ||
-		plan.TargetKind != "hf" || len(plan.Target) == 0 || strings.TrimSpace(plan.Constraints.Mode) == "" || plan.Constraints.RequestedDurationSeconds <= 0 ||
-		plan.Constraints.RequestedMaxUses <= 0 || plan.CredentialSelector != "primary" || plan.CreatedAt.IsZero() {
+	if !validPlanIdentity(plan) || !validPlanConstraints(plan) {
 		return errors.New("HF plan is invalid")
 	}
-	if plan.Kind == "single_execution" && plan.Constraints.Mode != "execution" || plan.Kind == "capability_window" && plan.Constraints.Mode != "window" {
+	if !planKindMatchesMode(plan.Kind, plan.Constraints.Mode) {
 		return errors.New("HF plan kind and mode do not match")
 	}
 	if err := validatePlanValues(plan.Target); err != nil {
@@ -213,13 +227,28 @@ func validate(plan Plan) error {
 	return nil
 }
 
+func planKindMatchesMode(kind string, mode string) bool {
+	return kind == "single_execution" && mode == "execution" || kind == "capability_window" && mode == "window"
+}
+
+func validPlanIdentity(plan Plan) bool {
+	return plan.SchemaVersion == SchemaV1 && validPlanKind(plan.Kind) && strings.TrimSpace(plan.ClientID) != "" &&
+		strings.TrimSpace(plan.ClientRequestID) != "" && hfpolicy.IsOperation(plan.Operation) && plan.TargetKind == "hf" && len(plan.Target) > 0
+}
+
+func validPlanKind(kind string) bool {
+	return kind == "capability_window" || kind == "single_execution"
+}
+
+func validPlanConstraints(plan Plan) bool {
+	return strings.TrimSpace(plan.Constraints.Mode) != "" && plan.Constraints.RequestedDurationSeconds > 0 &&
+		plan.Constraints.RequestedMaxUses > 0 && plan.CredentialSelector == "primary" && !plan.CreatedAt.IsZero()
+}
+
 func validatePlanValues(values map[string][]string) error {
 	for key, list := range values {
-		normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
-		for _, marker := range []string{"authorization", "credential", "password", "privatekey", "secret", "token", "cookie"} {
-			if strings.Contains(normalized, marker) {
-				return errors.New("HF plan contains a sensitive field")
-			}
+		if sensitivePlanKey(key) {
+			return errors.New("HF plan contains a sensitive field")
 		}
 		if strings.TrimSpace(key) == "" || len(list) == 0 {
 			return errors.New("HF plan contains an invalid value map")
@@ -231,6 +260,16 @@ func validatePlanValues(values map[string][]string) error {
 		}
 	}
 	return nil
+}
+
+func sensitivePlanKey(key string) bool {
+	normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
+	for _, marker := range []string{"authorization", "credential", "password", "privatekey", "secret", "token", "cookie"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneValues(values map[string][]string) map[string][]string {

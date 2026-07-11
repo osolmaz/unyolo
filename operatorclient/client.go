@@ -164,19 +164,8 @@ func (s *eventStream) Receive(ctx context.Context) (operatorv1.Event, error) {
 	}
 	resultc := make(chan result, 1)
 	go func() {
-		for s.scanner.Scan() {
-			line := s.scanner.Text()
-			if strings.HasPrefix(line, ":") {
-				continue
-			}
-			if strings.HasPrefix(line, "data:") {
-				var event operatorv1.Event
-				err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &event)
-				resultc <- result{event, err}
-				return
-			}
-		}
-		resultc <- result{err: s.scanner.Err()}
+		event, err := s.receiveNext()
+		resultc <- result{event, err}
 	}()
 	select {
 	case <-ctx.Done():
@@ -190,6 +179,21 @@ func (s *eventStream) Receive(ctx context.Context) (operatorv1.Event, error) {
 	}
 }
 
+func (s *eventStream) receiveNext() (operatorv1.Event, error) {
+	for s.scanner.Scan() {
+		line := s.scanner.Text()
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			var event operatorv1.Event
+			err := json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &event)
+			return event, err
+		}
+	}
+	return operatorv1.Event{}, s.scanner.Err()
+}
+
 func (s *eventStream) Close() error { return s.body.Close() }
 
 func newSSEScanner(reader io.Reader) *bufio.Scanner {
@@ -199,13 +203,9 @@ func newSSEScanner(reader io.Reader) *bufio.Scanner {
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body, target any) error {
-	var reader io.Reader
-	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		reader = bytes.NewReader(encoded)
+	reader, err := encodeRequestBody(body)
+	if err != nil {
+		return err
 	}
 	request, err := c.newRequest(ctx, method, path, reader)
 	if err != nil {
@@ -220,6 +220,21 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, target a
 		return err
 	}
 	defer func() { _ = response.Body.Close() }()
+	return decodeJSONResponse(response, target)
+}
+
+func encodeRequestBody(body any) (io.Reader, error) {
+	if body == nil {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(encoded), nil
+}
+
+func decodeJSONResponse(response *http.Response, target any) error {
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return decodeAPIError(response)
 	}
@@ -235,13 +250,13 @@ func hasMediaType(value, expected string) bool {
 }
 
 func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
-	base, err := url.Parse(c.BaseURL)
-	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
-		return nil, errors.New("operator base URL is invalid")
+	base, err := parseBaseURL(c.BaseURL)
+	if err != nil {
+		return nil, err
 	}
-	relative, err := url.Parse(path)
-	if err != nil || !strings.HasPrefix(relative.Path, "/") {
-		return nil, errors.New("operator request path is invalid")
+	relative, err := parseRequestPath(path)
+	if err != nil {
+		return nil, err
 	}
 	base.Path = strings.TrimSuffix(base.Path, "/") + relative.Path
 	base.RawQuery = relative.RawQuery
@@ -253,6 +268,26 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body io.Re
 		request.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 	return request, nil
+}
+
+func parseBaseURL(value string) (*url.URL, error) {
+	base, err := url.Parse(value)
+	if err != nil || !validBaseURL(base) {
+		return nil, errors.New("operator base URL is invalid")
+	}
+	return base, nil
+}
+
+func validBaseURL(base *url.URL) bool {
+	return (base.Scheme == "http" || base.Scheme == "https") && base.Host != "" && base.User == nil && base.RawQuery == "" && base.Fragment == ""
+}
+
+func parseRequestPath(value string) (*url.URL, error) {
+	relative, err := url.Parse(value)
+	if err != nil || !strings.HasPrefix(relative.Path, "/") {
+		return nil, errors.New("operator request path is invalid")
+	}
+	return relative, nil
 }
 
 func (c *Client) httpClient() *http.Client {

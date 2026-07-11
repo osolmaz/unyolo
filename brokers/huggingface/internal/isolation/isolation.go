@@ -737,7 +737,7 @@ func parentPassMessage(name string) string {
 }
 
 func runActiveProbeChecks(ctx context.Context, report *Report, agent identity, opts Options) {
-	if opts.HelperPath == "" || (opts.TokenFile == "" && opts.BrokerPID <= 0 && opts.Socket == "") {
+	if activeProbeUnavailable(opts) {
 		add(report, CheckWarn, "active_probe", "active probe skipped; no helper path or probe target supplied")
 		return
 	}
@@ -751,6 +751,10 @@ func runActiveProbeChecks(ctx context.Context, report *Report, agent identity, o
 		return
 	}
 	addActiveProbeResult(report, opts, result)
+}
+
+func activeProbeUnavailable(opts Options) bool {
+	return opts.HelperPath == "" || opts.TokenFile == "" && opts.BrokerPID <= 0 && opts.Socket == ""
 }
 
 func addActiveProbeResult(report *Report, opts Options, result ProbeResult) {

@@ -52,13 +52,24 @@ type handler struct {
 }
 
 func New(options Options) (http.Handler, error) {
-	if options.Inbox == nil || options.Decisions == nil {
-		return nil, errors.New("operator inbox and decision service are required")
-	}
-	if options.Authorize == nil || strings.TrimSpace(options.Broker) == "" || options.Audit == nil {
-		return nil, errors.New("operator authorizer, broker, and audit recorder are required")
+	if err := validateOptions(options); err != nil {
+		return nil, err
 	}
 	return &handler{options.Inbox, options.Decisions, options.Authorize, options.Broker, options.Audit}, nil
+}
+
+func validateOptions(options Options) error {
+	if options.Inbox == nil || options.Decisions == nil {
+		return errors.New("operator inbox and decision service are required")
+	}
+	if !validOperatorDependencies(options) {
+		return errors.New("operator authorizer, broker, and audit recorder are required")
+	}
+	return nil
+}
+
+func validOperatorDependencies(options Options) bool {
+	return options.Authorize != nil && strings.TrimSpace(options.Broker) != "" && options.Audit != nil
 }
 
 func (h *handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -70,35 +81,49 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		h.status(writer, request)
 		return
 	}
+	actor, ok := h.authenticate(writer, request)
+	if !ok {
+		return
+	}
+	h.serveAuthorized(writer, request, path, actor)
+}
+
+func (h *handler) authenticate(writer http.ResponseWriter, request *http.Request) (string, bool) {
 	actor, err := h.authorize(request)
 	if err != nil || strings.TrimSpace(actor) == "" {
 		_ = h.audit.Record(audit.Event{Broker: h.broker, Decision: "operator_auth", ErrorCode: "unauthorized"})
 		writer.Header().Set("WWW-Authenticate", `Bearer realm="broker-operator"`)
 		h.writeError(writer, http.StatusUnauthorized, "unauthorized", "operator authentication required", nil)
-		return
+		return "", false
 	}
+	return actor, true
+}
+
+func (h *handler) serveAuthorized(writer http.ResponseWriter, request *http.Request, path string, actor string) {
 	switch path {
 	case "/.well-known/brokerkit-operator":
-		if request.Method != http.MethodGet {
-			h.methodNotAllowed(writer, http.MethodGet)
-			return
+		if h.requireMethod(writer, request, http.MethodGet) {
+			h.writeJSON(writer, http.StatusOK, operatorv1.Descriptor{APIVersion: operatorv1.APIVersion})
 		}
-		h.writeJSON(writer, http.StatusOK, operatorv1.Descriptor{APIVersion: operatorv1.APIVersion})
 	case "/api/operator/v1/requests":
-		if request.Method != http.MethodGet {
-			h.methodNotAllowed(writer, http.MethodGet)
-			return
+		if h.requireMethod(writer, request, http.MethodGet) {
+			h.list(writer, request)
 		}
-		h.list(writer, request)
 	case "/api/operator/v1/events":
-		if request.Method != http.MethodGet {
-			h.methodNotAllowed(writer, http.MethodGet)
-			return
+		if h.requireMethod(writer, request, http.MethodGet) {
+			h.events(writer, request)
 		}
-		h.events(writer, request)
 	default:
 		h.requestPath(writer, request, path, actor)
 	}
+}
+
+func (h *handler) requireMethod(writer http.ResponseWriter, request *http.Request, method string) bool {
+	if request.Method == method {
+		return true
+	}
+	h.methodNotAllowed(writer, method)
+	return false
 }
 
 func (h *handler) status(writer http.ResponseWriter, request *http.Request) {
@@ -168,13 +193,8 @@ func (h *handler) decide(writer http.ResponseWriter, request *http.Request, id s
 		h.writeError(writer, http.StatusNotFound, "not_found", "route not found", nil)
 		return
 	}
-	if mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type")); err != nil || mediaType != "application/json" {
-		h.writeError(writer, http.StatusUnsupportedMediaType, "invalid_request", "content type must be application/json", nil)
-		return
-	}
 	var command operatorv1.Decision
-	if err := decodeStrictJSON(writer, request, &command); err != nil {
-		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
+	if !h.decodeDecision(writer, request, &command) {
 		return
 	}
 	result, err := h.decisions.Decide(request.Context(), id, action, actor, command)
@@ -190,6 +210,19 @@ func (h *handler) decide(writer http.ResponseWriter, request *http.Request, id s
 		writer.Header().Set("Idempotency-Replayed", "true")
 	}
 	h.writeJSON(writer, http.StatusOK, item)
+}
+
+func (h *handler) decodeDecision(writer http.ResponseWriter, request *http.Request, command *operatorv1.Decision) bool {
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		h.writeError(writer, http.StatusUnsupportedMediaType, "invalid_request", "content type must be application/json", nil)
+		return false
+	}
+	if err := decodeStrictJSON(writer, request, command); err != nil {
+		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
+		return false
+	}
+	return true
 }
 
 func project(item operatorinbox.Item) operatorv1.Request {
@@ -254,23 +287,26 @@ func (h *handler) events(writer http.ResponseWriter, request *http.Request) {
 			return
 		}
 		flusher.Flush()
-		if page.HasMore {
-			page, err = h.inbox.Store().EventsAfter(cursor, 100)
-		} else {
-			ctx, cancel := context.WithTimeout(request.Context(), eventHeartbeat)
-			page, err = h.inbox.Store().WaitForEvents(ctx, cursor)
-			cancel()
-			if errors.Is(err, context.DeadlineExceeded) {
-				_, _ = io.WriteString(writer, ": heartbeat\n\n")
-				flusher.Flush()
-				err = nil
-				page = grants.EventPage{}
-			}
-		}
+		page, err = h.nextEventPage(writer, flusher, request, page, cursor)
 		if err != nil {
 			return
 		}
 	}
+}
+
+func (h *handler) nextEventPage(writer io.Writer, flusher http.Flusher, request *http.Request, current grants.EventPage, cursor string) (grants.EventPage, error) {
+	if current.HasMore {
+		return h.inbox.Store().EventsAfter(cursor, 100)
+	}
+	ctx, cancel := context.WithTimeout(request.Context(), eventHeartbeat)
+	defer cancel()
+	page, err := h.inbox.Store().WaitForEvents(ctx, cursor)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return page, err
+	}
+	_, _ = io.WriteString(writer, ": heartbeat\n\n")
+	flusher.Flush()
+	return grants.EventPage{}, nil
 }
 
 func writeEventPage(writer io.Writer, page grants.EventPage, cursor string) (string, error) {
@@ -292,36 +328,41 @@ func writeEventPage(writer io.Writer, page grants.EventPage, cursor string) (str
 }
 
 func publicEvent(event grants.Event) (operatorv1.Event, bool) {
-	kind := string(event.Kind)
-	switch event.Kind {
-	case grants.EventGrantRevoked:
-		kind = "request.revoked"
-	case grants.EventGrantConsumed:
-		if event.Status == grants.StatusConsumed {
-			kind = "request.consumed"
-		} else {
-			kind = "request.updated"
-		}
-	case grants.EventGrantReserved, grants.EventGrantReleased, grants.EventExecutionSucceeded, grants.EventExecutionFailed, grants.EventExecutionAmbiguous:
+	kind, visible := publicEventKind(event)
+	if !visible {
 		return operatorv1.Event{}, false
 	}
 	return operatorv1.Event{Cursor: event.Cursor, Kind: kind, RequestID: event.GrantID,
 		Revision: event.Revision, Status: event.Status, OccurredAt: event.Time, UsedCount: event.UsedCount}, true
 }
 
+func publicEventKind(event grants.Event) (string, bool) {
+	hidden := map[grants.EventKind]bool{
+		grants.EventGrantReserved: true, grants.EventGrantReleased: true, grants.EventExecutionSucceeded: true,
+		grants.EventExecutionFailed: true, grants.EventExecutionAmbiguous: true,
+	}
+	if hidden[event.Kind] {
+		return "", false
+	}
+	if event.Kind == grants.EventGrantRevoked {
+		return "request.revoked", true
+	}
+	if event.Kind == grants.EventGrantConsumed {
+		return consumedEventKind(event.Status), true
+	}
+	return string(event.Kind), true
+}
+
+func consumedEventKind(status grants.Status) string {
+	if status == grants.StatusConsumed {
+		return "request.consumed"
+	}
+	return "request.updated"
+}
+
 func parseQuery(request *http.Request) (grants.Query, error) {
 	values := request.URL.Query()
-	for key := range values {
-		if key != "status" && key != "requester" && key != "operation" && key != "target_kind" && key != "cursor" && key != "limit" && !strings.HasPrefix(key, "target.") {
-			return grants.Query{}, grants.ErrInvalidQuery
-		}
-	}
-	for _, key := range []string{"status", "requester", "operation", "target_kind", "cursor", "limit"} {
-		if len(values[key]) > 1 {
-			return grants.Query{}, grants.ErrInvalidQuery
-		}
-	}
-	if _, present := values["target."]; present {
+	if !validQueryKeys(values) || !singleValueQueryKeys(values) {
 		return grants.Query{}, grants.ErrInvalidQuery
 	}
 	limit, err := parseLimit(values.Get("limit"))
@@ -331,6 +372,26 @@ func parseQuery(request *http.Request) (grants.Query, error) {
 	query := grants.Query{StatusGroup: grants.StatusGroup(values.Get("status")), Client: values.Get("requester"), Operation: values.Get("operation"), Cursor: values.Get("cursor"), Limit: limit}
 	query.Target, err = parseTargetFilter(values)
 	return query, err
+}
+
+func validQueryKeys(values map[string][]string) bool {
+	allowed := map[string]bool{"status": true, "requester": true, "operation": true, "target_kind": true, "cursor": true, "limit": true}
+	for key := range values {
+		if !allowed[key] && !strings.HasPrefix(key, "target.") {
+			return false
+		}
+	}
+	_, emptyTarget := values["target."]
+	return !emptyTarget
+}
+
+func singleValueQueryKeys(values map[string][]string) bool {
+	for _, key := range []string{"status", "requester", "operation", "target_kind", "cursor", "limit"} {
+		if len(values[key]) > 1 {
+			return false
+		}
+	}
+	return true
 }
 
 func parseLimit(value string) (int, error) {
@@ -346,19 +407,24 @@ func parseLimit(value string) (int, error) {
 
 func parseTargetFilter(values map[string][]string) (*policy.Target, error) {
 	kind := policy.FirstValue(values["target_kind"])
+	fields := targetFilterFields(values)
+	if kind == "" {
+		if len(fields) == 0 {
+			return nil, nil
+		}
+		return nil, grants.ErrInvalidQuery
+	}
+	return &policy.Target{Kind: kind, Fields: fields}, nil
+}
+
+func targetFilterFields(values map[string][]string) map[string][]string {
 	fields := make(map[string][]string)
 	for key, list := range values {
 		if strings.HasPrefix(key, "target.") && len(key) > len("target.") {
 			fields[strings.TrimPrefix(key, "target.")] = append([]string(nil), list...)
 		}
 	}
-	if kind == "" && len(fields) == 0 {
-		return nil, nil
-	}
-	if kind == "" {
-		return nil, grants.ErrInvalidQuery
-	}
-	return &policy.Target{Kind: kind, Fields: fields}, nil
+	return fields
 }
 
 func parseRequestPath(path string) (string, string, bool) {
@@ -367,14 +433,17 @@ func parseRequestPath(path string) (string, string, bool) {
 		return "", "", false
 	}
 	parts := strings.Split(remainder, "/")
-	if len(parts) == 1 && parts[0] != "" {
-		return parts[0], "", true
+	switch len(parts) {
+	case 1:
+		return parts[0], "", validPathPart(parts[0])
+	case 2:
+		return parts[0], parts[1], validPathPart(parts[0]) && validPathPart(parts[1])
+	default:
+		return "", "", false
 	}
-	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-		return parts[0], parts[1], true
-	}
-	return "", "", false
 }
+
+func validPathPart(value string) bool { return value != "" }
 
 func validAction(action operatorv1.Action) bool {
 	return action == operatorv1.ActionApprove || action == operatorv1.ActionDeny || action == operatorv1.ActionCancel || action == operatorv1.ActionRevoke
@@ -420,22 +489,25 @@ func (h *handler) writeMappedError(writer http.ResponseWriter, request *http.Req
 }
 
 func errorCode(err error) string {
-	switch {
-	case errors.Is(err, grants.ErrNotFound):
-		return "not_found"
-	case errors.Is(err, grants.ErrInvalidCursor), errors.Is(err, grants.ErrInvalidGrantCursor), errors.Is(err, grants.ErrInvalidQuery), errors.Is(err, grants.ErrInvalidCommand):
-		return "invalid_request"
-	case errors.Is(err, grants.ErrCursorExpired):
-		return "cursor_expired"
-	case errors.Is(err, grants.ErrIdempotencyConflict):
-		return "idempotency_conflict"
-	case errors.Is(err, grants.ErrConstraintExceeded):
-		return "constraint_exceeded"
-	case errors.Is(err, grants.ErrInvalidTransition), errors.Is(err, grants.ErrNotPending), errors.Is(err, grants.ErrNotActive):
-		return "invalid_transition"
-	default:
-		return "internal_error"
+	classifications := []struct {
+		code   string
+		errors []error
+	}{
+		{"not_found", []error{grants.ErrNotFound}},
+		{"invalid_request", []error{grants.ErrInvalidCursor, grants.ErrInvalidGrantCursor, grants.ErrInvalidQuery, grants.ErrInvalidCommand}},
+		{"cursor_expired", []error{grants.ErrCursorExpired}},
+		{"idempotency_conflict", []error{grants.ErrIdempotencyConflict}},
+		{"constraint_exceeded", []error{grants.ErrConstraintExceeded}},
+		{"invalid_transition", []error{grants.ErrInvalidTransition, grants.ErrNotPending, grants.ErrNotActive}},
 	}
+	for _, classification := range classifications {
+		for _, candidate := range classification.errors {
+			if errors.Is(err, candidate) {
+				return classification.code
+			}
+		}
+	}
+	return "internal_error"
 }
 
 func (h *handler) methodNotAllowed(writer http.ResponseWriter, allowed string) {

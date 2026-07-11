@@ -1210,16 +1210,13 @@ func (s *Server) waitForAPIGrantNotificationResponse(w http.ResponseWriter, r *h
 }
 
 func apiGrantNotificationWaitError(err error) (int, string, string) {
-	switch {
-	case errors.Is(err, errGrantNotificationCanceled):
+	if errors.Is(err, errGrantNotificationCanceled) || errors.Is(err, errGrantNotificationUnresolved) {
 		return http.StatusBadGateway, "could not notify operator", "upstream_error"
-	case errors.Is(err, errGrantNotificationUnresolved):
-		return http.StatusBadGateway, "could not notify operator", "upstream_error"
-	case errors.Is(err, errGrantNotificationStillQueued):
-		return http.StatusBadGateway, "operator notification is still pending", "internal_error"
-	default:
-		return http.StatusBadGateway, "could not confirm operator notification", "internal_error"
 	}
+	if errors.Is(err, errGrantNotificationStillQueued) {
+		return http.StatusBadGateway, "operator notification is still pending", "internal_error"
+	}
+	return http.StatusBadGateway, "could not confirm operator notification", "internal_error"
 }
 
 func (s *Server) handleAPIGrantGet(w http.ResponseWriter, r *http.Request, client string) {
@@ -1591,9 +1588,7 @@ func grantRefMatchesOperation(operation policy.Operation, ref string) bool {
 	switch operation {
 	case policy.OpGitPushAppend:
 		return !isReplaceRef(ref)
-	case policy.OpGitPushForce:
-		return !isTagRef(ref) && !isReplaceRef(ref)
-	case policy.OpGitRefDelete:
+	case policy.OpGitPushForce, policy.OpGitRefDelete:
 		return !isTagRef(ref) && !isReplaceRef(ref)
 	case policy.OpGitTagUpdate:
 		return isTagRef(ref)
@@ -2808,20 +2803,25 @@ func brokerLFSActionRoute(rt route, oid, size, action string) (route, bool) {
 	if !isLFSOID(oid) {
 		return route{}, false
 	}
-	tail := "info/lfs/objects/" + oid
-	switch action {
-	case "download":
-	case "upload":
-		if !isDecimal(size) {
-			return route{}, false
-		}
-		tail += "/" + size
-	case "verify":
-		tail += "/verify"
-	default:
+	tail, ok := lfsActionTail(oid, size, action)
+	if !ok {
 		return route{}, false
 	}
 	return route{repoType: rt.repoType, owner: rt.owner, name: rt.name, tail: tail}, true
+}
+
+func lfsActionTail(oid, size, action string) (string, bool) {
+	tail := "info/lfs/objects/" + oid
+	switch action {
+	case "download":
+		return tail, true
+	case "upload":
+		return tail + "/" + size, isDecimal(size)
+	case "verify":
+		return tail + "/verify", true
+	default:
+		return "", false
+	}
 }
 
 func sameRoute(a, b route) bool {

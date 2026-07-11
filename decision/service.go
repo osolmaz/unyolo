@@ -160,18 +160,22 @@ func (s *Service) record(previous, current grants.Grant, action, actor, onBehalf
 }
 
 func decisionErrorCode(err error) string {
-	switch {
-	case errors.Is(err, grants.ErrNotFound):
-		return "not_found"
-	case errors.Is(err, grants.ErrInvalidDecisionToken):
-		return "invalid_decision_token"
-	case errors.Is(err, grants.ErrIdempotencyConflict):
-		return "idempotency_conflict"
-	case errors.Is(err, grants.ErrConstraintExceeded):
-		return "constraint_exceeded"
-	case errors.Is(err, grants.ErrInvalidTransition), errors.Is(err, grants.ErrNotPending), errors.Is(err, grants.ErrNotActive):
-		return "invalid_transition"
-	default:
-		return "decision_failed"
+	classifications := []struct {
+		code   string
+		errors []error
+	}{
+		{"not_found", []error{grants.ErrNotFound}},
+		{"invalid_decision_token", []error{grants.ErrInvalidDecisionToken}},
+		{"idempotency_conflict", []error{grants.ErrIdempotencyConflict}},
+		{"constraint_exceeded", []error{grants.ErrConstraintExceeded}},
+		{"invalid_transition", []error{grants.ErrInvalidTransition, grants.ErrNotPending, grants.ErrNotActive}},
 	}
+	for _, classification := range classifications {
+		for _, candidate := range classification.errors {
+			if errors.Is(err, candidate) {
+				return classification.code
+			}
+		}
+	}
+	return "decision_failed"
 }

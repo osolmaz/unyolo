@@ -1,6 +1,4 @@
 go:
-  targets:
-    - .
   exclude:
     - pattern: "brokers/**"
       reason: each broker has an independently enforced Slophammer configuration

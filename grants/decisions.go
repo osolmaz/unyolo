@@ -93,18 +93,12 @@ func (s *Store) decideAndNotify(ctx context.Context, id string, token string, ap
 	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
 		return TokenDecisionResult{Grant: grant, Previous: grant}, ErrInvalidDecisionToken
 	}
-	if status == StatusActive && validate != nil && grant.Status == StatusPending && s.opts.Now().UTC().Before(grant.PendingExpiresAt) {
-		if err := validate(ctx, grant, ApprovalConstraints{}); err != nil {
-			return TokenDecisionResult{Grant: grant, Previous: grant}, err
-		}
+	if err := s.validateTokenDecision(ctx, grant, status, validate); err != nil {
+		return TokenDecisionResult{Grant: grant, Previous: grant}, err
 	}
 	updated, changed, decisionErr := s.prepareDecision(grant, approver, status)
-	if ref != nil && updated.Notification == nil {
-		updated.Notification = ref
-		updated.NotificationStatus = string(StatusPending)
-		clearNotificationClaim(&updated)
-		changed = true
-	}
+	updated, notificationChanged := attachDecisionNotification(updated, ref)
+	changed = changed || notificationChanged
 	if !changed {
 		return TokenDecisionResult{Grant: grant, Previous: grant}, decisionErr
 	}
@@ -115,6 +109,23 @@ func (s *Store) decideAndNotify(ctx context.Context, id string, token string, ap
 	}
 	s.signalNewEvents(eventSequence, data.NextEvent)
 	return TokenDecisionResult{Grant: data.Grants[index], Previous: grant, EventCursor: currentEventCursor(data), Changed: true}, decisionErr
+}
+
+func (s *Store) validateTokenDecision(ctx context.Context, grant Grant, status Status, validate ActivationCheck) error {
+	if status != StatusActive || validate == nil || grant.Status != StatusPending || !s.opts.Now().UTC().Before(grant.PendingExpiresAt) {
+		return nil
+	}
+	return validate(ctx, grant, ApprovalConstraints{})
+}
+
+func attachDecisionNotification(grant Grant, ref *MessageRef) (Grant, bool) {
+	if ref == nil || grant.Notification != nil {
+		return grant, false
+	}
+	grant.Notification = ref
+	grant.NotificationStatus = string(StatusPending)
+	clearNotificationClaim(&grant)
+	return grant, true
 }
 
 func decisionTokenVerifier(token string) string {

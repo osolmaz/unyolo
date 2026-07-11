@@ -1,10 +1,6 @@
 go:
   coverage:
     threshold: 85
-  targets:
-    - .
-  exclude:
-    - "fixtures/**"
   dry:
     max_findings: 0
     paths:

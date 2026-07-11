@@ -123,14 +123,22 @@ func canonicalPath(path string) (string, error) {
 }
 
 func validate(options Options) error {
-	if options.Directory == "" || options.Broker == "" || options.Command == "" || options.Version == "" || options.Dist == "" {
+	if !requiredReleaseOptions(options) {
 		return errors.New("directory, broker, command, version, and dist are required")
 	}
 	if !brokerNamePattern.MatchString(options.Broker) {
 		return errors.New("broker must be a file name")
 	}
-	for name, command := range options.ExtraCommands {
-		if !brokerNamePattern.MatchString(name) || name == options.Broker || strings.TrimSpace(command) == "" {
+	return validateExtraCommands(options.Broker, options.ExtraCommands)
+}
+
+func requiredReleaseOptions(options Options) bool {
+	return options.Directory != "" && options.Broker != "" && options.Command != "" && options.Version != "" && options.Dist != ""
+}
+
+func validateExtraCommands(broker string, commands map[string]string) error {
+	for name, command := range commands {
+		if !brokerNamePattern.MatchString(name) || name == broker || strings.TrimSpace(command) == "" {
 			return errors.New("extra commands must use unique safe binary names and nonempty packages")
 		}
 	}
@@ -189,42 +197,12 @@ func archiveBinaries(asset string, options Options, binaries map[string]string) 
 	gzipWriter := gzip.NewWriter(file)
 	gzipWriter.ModTime = time.Unix(0, 0).UTC()
 	tarWriter := tar.NewWriter(gzipWriter)
-	files := []struct {
-		path string
-		name string
-		mode int64
-	}{}
-	names := make([]string, 0, len(binaries))
-	for name := range binaries {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		files = append(files, struct {
-			path string
-			name string
-			mode int64
-		}{binaries[name], name, 0o755})
-	}
-	files = append(files,
-		struct {
-			path string
-			name string
-			mode int64
-		}{filepath.Join(options.Directory, "README.md"), "README.md", 0o644},
-		struct {
-			path string
-			name string
-			mode int64
-		}{filepath.Join(options.Directory, "LICENSE"), "LICENSE", 0o644},
-	)
-	for _, source := range files {
-		if err := addFile(tarWriter, source.path, source.name, source.mode); err != nil {
-			_ = tarWriter.Close()
-			_ = gzipWriter.Close()
-			_ = file.Close()
-			return err
-		}
+	files := archiveFiles(options, binaries)
+	if err := writeArchiveFiles(tarWriter, files); err != nil {
+		_ = tarWriter.Close()
+		_ = gzipWriter.Close()
+		_ = file.Close()
+		return err
 	}
 	if err := tarWriter.Close(); err != nil {
 		return err
@@ -233,6 +211,38 @@ func archiveBinaries(asset string, options Options, binaries map[string]string) 
 		return err
 	}
 	return file.Close()
+}
+
+type archiveFile struct {
+	path string
+	name string
+	mode int64
+}
+
+func archiveFiles(options Options, binaries map[string]string) []archiveFile {
+	files := make([]archiveFile, 0, len(binaries)+2)
+	names := make([]string, 0, len(binaries))
+	for name := range binaries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		files = append(files, archiveFile{binaries[name], name, 0o755})
+	}
+	files = append(files,
+		archiveFile{filepath.Join(options.Directory, "README.md"), "README.md", 0o644},
+		archiveFile{filepath.Join(options.Directory, "LICENSE"), "LICENSE", 0o644},
+	)
+	return files
+}
+
+func writeArchiveFiles(writer *tar.Writer, files []archiveFile) error {
+	for _, source := range files {
+		if err := addFile(writer, source.path, source.name, source.mode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addFile(writer *tar.Writer, source, name string, mode int64) (returnErr error) {

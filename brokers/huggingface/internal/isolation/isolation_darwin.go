@@ -909,6 +909,10 @@ func runActiveProbeChecks(ctx context.Context, report *Report, agent identity, o
 		add(report, CheckUnknown, "active_probe", "active probe could not run under the agent identity from this user")
 		return
 	}
+	addDarwinActiveProbeResult(report, opts, result)
+}
+
+func addDarwinActiveProbeResult(report *Report, opts Options, result ProbeResult) {
 	if opts.TokenFile != "" {
 		addActiveProbeOpenResult(report, result.TokenFileReadable, "active_probe_token_file", "the token file")
 		addActiveProbeWriteResult(report, result.TokenFileWritable, "active_probe_token_file_writable", "the token file")

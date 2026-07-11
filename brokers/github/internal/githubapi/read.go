@@ -69,18 +69,30 @@ func (r Reader) getJSON(ctx context.Context, token string, endpoint *url.URL, ou
 	if r.BaseURL == nil || r.HTTPClient == nil {
 		return errors.New("GitHub API reader is not configured")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
+	request, err := githubRequest(ctx, token, endpoint)
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Authorization", "Bearer "+token)
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	response, err := r.HTTPClient.Do(request)
 	if err != nil {
 		return errors.New("GitHub API request failed")
 	}
 	defer func() { _ = response.Body.Close() }()
+	return decodeGitHubResponse(response, out)
+}
+
+func githubRequest(ctx context.Context, token string, endpoint *url.URL) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	return request, nil
+}
+
+func decodeGitHubResponse(response *http.Response, out any) error {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return StatusError{Code: response.StatusCode}
 	}

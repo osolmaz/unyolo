@@ -79,11 +79,8 @@ func (s *Store) ApplyOperatorDecision(ctx context.Context, command OperatorDecis
 	if err != nil {
 		return OperatorDecisionResult{}, err
 	}
-	if record, ok := findDecisionRecord(data.DecisionRecords, scope); ok {
-		if record.CommandHash != hash {
-			return OperatorDecisionResult{}, s.saveDecisionError(data, eventSequence, lifecycleChanged, ErrIdempotencyConflict)
-		}
-		return OperatorDecisionResult{Grant: record.Result, Previous: record.Previous, EventCursor: record.EventCursor, Replay: true}, s.saveDecisionError(data, eventSequence, lifecycleChanged, nil)
+	if replay, found, replayErr := replayOperatorDecision(data.DecisionRecords, scope, hash); found {
+		return replay, s.saveDecisionError(data, eventSequence, lifecycleChanged, replayErr)
 	}
 	index, current, err := findGrant(data.Grants, command.ID)
 	if err != nil {
@@ -119,53 +116,9 @@ func currentEventCursor(data fileData) string {
 
 func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command OperatorDecision, validate ActivationCheck) (Grant, error) {
 	now := s.opts.Now().UTC()
-	switch command.Action {
-	case ActionApprove:
-		if grant.Status != StatusPending {
-			return grant, ErrInvalidTransition
-		}
-		requestedDuration := grant.RequestedDuration
-		if requestedDuration <= 0 {
-			requestedDuration = grant.Duration
-		}
-		requestedMaxUses := grant.RequestedMaxUses
-		if requestedMaxUses <= 0 {
-			requestedMaxUses = grant.MaxUses
-		}
-		if command.Constraints.Duration < 0 || command.Constraints.Duration > requestedDuration ||
-			command.Constraints.MaxUses < 0 || command.Constraints.MaxUses > requestedMaxUses {
-			return grant, ErrConstraintExceeded
-		}
-		if validate != nil {
-			if err := validate(ctx, grant, command.Constraints); err != nil {
-				return grant, err
-			}
-		}
-		if command.Constraints.Duration > 0 {
-			grant.Duration = command.Constraints.Duration
-		}
-		if command.Constraints.MaxUses > 0 {
-			grant.MaxUses = command.Constraints.MaxUses
-		}
-		grant.Status = StatusActive
-		grant.ExpiresAt = now.Add(grant.Duration)
-	case ActionDeny:
-		if grant.Status != StatusPending {
-			return grant, ErrInvalidTransition
-		}
-		grant.Status = StatusDenied
-	case ActionCancel:
-		if grant.Status != StatusPending {
-			return grant, ErrInvalidTransition
-		}
-		grant.Status = StatusCanceled
-	case ActionRevoke:
-		if grant.Status != StatusActive {
-			return grant, ErrInvalidTransition
-		}
-		grant.Status = StatusRevoked
-	default:
-		return grant, ErrInvalidCommand
+	grant, err := s.applyDecisionAction(ctx, grant, command, validate, now)
+	if err != nil {
+		return grant, err
 	}
 	grant.DecidedAt = now
 	grant.DecidedBy = command.Approver
@@ -175,30 +128,118 @@ func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command 
 	return grant, nil
 }
 
+func (s *Store) applyDecisionAction(ctx context.Context, grant Grant, command OperatorDecision, validate ActivationCheck, now time.Time) (Grant, error) {
+	if command.Action == ActionApprove {
+		return applyApprovalMutation(ctx, grant, command.Constraints, validate, now)
+	}
+	return applyTerminalDecisionAction(grant, command.Action)
+}
+
+func applyTerminalDecisionAction(grant Grant, action DecisionAction) (Grant, error) {
+	status, required, valid := terminalDecisionTransition(action)
+	if !valid {
+		return grant, ErrInvalidCommand
+	}
+	if grant.Status != required {
+		return grant, ErrInvalidTransition
+	}
+	grant.Status = status
+	return grant, nil
+}
+
+func terminalDecisionTransition(action DecisionAction) (Status, Status, bool) {
+	switch action {
+	case ActionDeny:
+		return StatusDenied, StatusPending, true
+	case ActionCancel:
+		return StatusCanceled, StatusPending, true
+	case ActionRevoke:
+		return StatusRevoked, StatusActive, true
+	default:
+		return "", "", false
+	}
+}
+
+func applyApprovalMutation(ctx context.Context, grant Grant, constraints ApprovalConstraints, validate ActivationCheck, now time.Time) (Grant, error) {
+	if grant.Status != StatusPending {
+		return grant, ErrInvalidTransition
+	}
+	requestedDuration, requestedMaxUses := requestedApprovalBounds(grant)
+	if !validApprovalConstraints(constraints, requestedDuration, requestedMaxUses) {
+		return grant, ErrConstraintExceeded
+	}
+	if validate != nil {
+		if err := validate(ctx, grant, constraints); err != nil {
+			return grant, err
+		}
+	}
+	grant = applyApprovalConstraints(grant, constraints)
+	grant.Status = StatusActive
+	grant.ExpiresAt = now.Add(grant.Duration)
+	return grant, nil
+}
+
+func requestedApprovalBounds(grant Grant) (time.Duration, int) {
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	maxUses := grant.RequestedMaxUses
+	if maxUses <= 0 {
+		maxUses = grant.MaxUses
+	}
+	return duration, maxUses
+}
+
+func validApprovalConstraints(constraints ApprovalConstraints, duration time.Duration, maxUses int) bool {
+	return constraints.Duration >= 0 && constraints.Duration <= duration && constraints.MaxUses >= 0 && constraints.MaxUses <= maxUses
+}
+
+func applyApprovalConstraints(grant Grant, constraints ApprovalConstraints) Grant {
+	if constraints.Duration > 0 {
+		grant.Duration = constraints.Duration
+	}
+	if constraints.MaxUses > 0 {
+		grant.MaxUses = constraints.MaxUses
+	}
+	return grant
+}
+
 func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, error) {
 	command.ID = strings.TrimSpace(command.ID)
 	command.Approver = strings.TrimSpace(command.Approver)
 	command.OnBehalfOf = strings.TrimSpace(command.OnBehalfOf)
 	command.IdempotencyKey = strings.TrimSpace(command.IdempotencyKey)
 	command.Reason = strings.TrimSpace(command.Reason)
-	if command.ID == "" || command.Approver == "" || command.ExpectedRevision < 1 || command.IdempotencyKey == "" {
+	if !operatorDecisionRequired(command) {
 		return OperatorDecision{}, fmt.Errorf("%w: id, approver, revision, and idempotency key are required", ErrInvalidCommand)
 	}
-	if len(command.IdempotencyKey) > 200 || !safeOperatorIdentity(command.IdempotencyKey) ||
-		!safeOperatorIdentity(command.Approver) ||
-		(command.OnBehalfOf != "" && !safeOperatorIdentity(command.OnBehalfOf)) ||
-		!safeOperatorText(command.Reason, maxDecisionReasonBytes) {
-		return OperatorDecision{}, ErrInvalidCommand
-	}
-	switch command.Action {
-	case ActionApprove, ActionDeny, ActionCancel, ActionRevoke:
-	default:
+	if !validOperatorDecisionText(command) || !validOperatorAction(command.Action) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
 	if command.Action != ActionApprove && (command.Constraints.Duration != 0 || command.Constraints.MaxUses != 0) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
 	return command, nil
+}
+
+func operatorDecisionRequired(command OperatorDecision) bool {
+	return command.ID != "" && command.Approver != "" && command.ExpectedRevision >= 1 && command.IdempotencyKey != ""
+}
+
+func validOperatorDecisionText(command OperatorDecision) bool {
+	return len(command.IdempotencyKey) <= 200 && safeOperatorIdentity(command.IdempotencyKey) &&
+		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf)) &&
+		safeOperatorText(command.Reason, maxDecisionReasonBytes)
+}
+
+func validOperatorAction(action DecisionAction) bool {
+	switch action {
+	case ActionApprove, ActionDeny, ActionCancel, ActionRevoke:
+		return true
+	default:
+		return false
+	}
 }
 
 func hashOperatorDecision(command OperatorDecision) string {
@@ -218,6 +259,17 @@ func findDecisionRecord(records []decisionRecord, scope string) (decisionRecord,
 		}
 	}
 	return decisionRecord{}, false
+}
+
+func replayOperatorDecision(records []decisionRecord, scope string, hash string) (OperatorDecisionResult, bool, error) {
+	record, found := findDecisionRecord(records, scope)
+	if !found {
+		return OperatorDecisionResult{}, false, nil
+	}
+	if record.CommandHash != hash {
+		return OperatorDecisionResult{}, true, ErrIdempotencyConflict
+	}
+	return OperatorDecisionResult{Grant: record.Result, Previous: record.Previous, EventCursor: record.EventCursor, Replay: true}, true, nil
 }
 
 func (s *Store) saveDecisionError(data fileData, eventSequence uint64, lifecycleChanged bool, commandErr error) error {

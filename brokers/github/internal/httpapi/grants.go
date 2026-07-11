@@ -345,12 +345,10 @@ func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requ
 }
 
 func grantStoreHTTPError(err error) error {
-	switch {
-	case errors.Is(err, grants.ErrIdempotencyConflict):
+	if errors.Is(err, grants.ErrIdempotencyConflict) {
 		return echo.NewHTTPError(http.StatusConflict, "idempotency conflict")
-	default:
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 }
 
 func apiGrantFromStore(grant grants.Grant) apiGrant {

@@ -596,6 +596,10 @@ func (s *Store) readState() (fileData, error) {
 	if err != nil {
 		return fileData{}, err
 	}
+	return decodeState(raw)
+}
+
+func decodeState(raw []byte) (fileData, error) {
 	if err := strictjson.RejectDuplicateKeys(raw); err != nil {
 		return fileData{}, fmt.Errorf("%w: %v", ErrUnsupportedState, err)
 	}
@@ -617,27 +621,47 @@ func (s *Store) readState() (fileData, error) {
 func validateLoadedGrants(items []Grant) error {
 	seen := make(map[string]bool, len(items))
 	for _, grant := range items {
-		if grant.ID == "" || seen[grant.ID] || grant.DecisionTokenVerifier == "" || grant.Client == "" || grant.Operation == "" || grant.Target.Kind == "" || grant.Reason == "" {
+		if !validGrantIdentity(grant, seen) || !validGrantLifecycle(grant) || !validGrantUsage(grant) || !validGrantReservation(grant) {
 			return ErrUnsupportedState
 		}
 		seen[grant.ID] = true
-		if !validStoredStatus(grant.Status) || grant.Revision < 1 || grant.CreatedAt.IsZero() || grant.PendingExpiresAt.IsZero() ||
-			grant.Duration <= 0 || grant.RequestedDuration <= 0 || grant.PendingTimeout <= 0 || grant.MaxUses <= 0 || grant.RequestedMaxUses <= 0 ||
-			grant.UsedCount < 0 || grant.ReservedCount < 0 || grant.UseRevision < grant.UsedCount ||
-			(grant.ReservedCount > 0 && (grant.ReservedAt.IsZero() || grant.ReservationRevision < 1)) {
-			return ErrUnsupportedState
-		}
-		if err := validateValueMap("target field", grant.Target.Fields); err != nil {
-			return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
-		}
-		if err := validateValueMap("attr", grant.Attrs); err != nil {
-			return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
-		}
-		if err := validateMetadata(grant.Metadata); err != nil {
-			return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		if err := validateLoadedGrantMaps(grant); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func validateLoadedGrantMaps(grant Grant) error {
+	if err := validateValueMap("target field", grant.Target.Fields); err != nil {
+		return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+	}
+	if err := validateValueMap("attr", grant.Attrs); err != nil {
+		return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+	}
+	if err := validateMetadata(grant.Metadata); err != nil {
+		return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+	}
+	return nil
+}
+
+func validGrantIdentity(grant Grant, seen map[string]bool) bool {
+	return grant.ID != "" && !seen[grant.ID] && grant.DecisionTokenVerifier != "" && grant.Client != "" &&
+		grant.Operation != "" && grant.Target.Kind != "" && grant.Reason != ""
+}
+
+func validGrantLifecycle(grant Grant) bool {
+	return validStoredStatus(grant.Status) && grant.Revision >= 1 && !grant.CreatedAt.IsZero() &&
+		!grant.PendingExpiresAt.IsZero() && grant.Duration > 0 && grant.RequestedDuration > 0 && grant.PendingTimeout > 0
+}
+
+func validGrantUsage(grant Grant) bool {
+	return grant.MaxUses > 0 && grant.RequestedMaxUses > 0 && grant.UsedCount >= 0 &&
+		grant.ReservedCount >= 0 && grant.UseRevision >= grant.UsedCount
+}
+
+func validGrantReservation(grant Grant) bool {
+	return grant.ReservedCount == 0 || (!grant.ReservedAt.IsZero() && grant.ReservationRevision >= 1)
 }
 
 func validStoredStatus(status Status) bool {

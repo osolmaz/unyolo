@@ -61,15 +61,18 @@ func Request(store *grants.Store, plans *hfplan.Store, input Input) (grants.Requ
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
-	if exists {
-		err = plans.BindAt(&request, createdAt)
-	} else {
-		err = plans.Bind(&request)
-	}
+	err = bindRequestPlan(plans, &request, createdAt, exists)
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
 	return store.Request(request)
+}
+
+func bindRequestPlan(plans *hfplan.Store, request *grants.Request, createdAt time.Time, exists bool) error {
+	if exists {
+		return plans.BindAt(request, createdAt)
+	}
+	return plans.Bind(request)
 }
 
 func existingPlanCreatedAt(store *grants.Store, plans *hfplan.Store, client, clientRequestID string) (time.Time, bool, error) {
@@ -117,7 +120,7 @@ func CanonicalRequest(input Input) (grants.Request, error) {
 }
 
 func normalizeIdentity(input Input) (string, string, error) {
-	if input.Client == "" || !hfpolicy.IsOperation(input.Operation) || input.Target == "" {
+	if !validInputIdentity(input) {
 		return "", "", errors.New("client, operation, and target are required")
 	}
 	clientRequestID := strings.TrimSpace(input.ClientRequestID)
@@ -132,6 +135,10 @@ func normalizeIdentity(input Input) (string, string, error) {
 		return "", "", errors.New("grant reason is longer than 512 bytes")
 	}
 	return clientRequestID, reason, nil
+}
+
+func validInputIdentity(input Input) bool {
+	return input.Client != "" && hfpolicy.IsOperation(input.Operation) && input.Target != ""
 }
 
 func normalizeGrant(input Input) (string, time.Duration, int, error) {
@@ -208,29 +215,44 @@ func Attrs(grant grants.Grant) (map[string]any, error) {
 	}
 	out := make(map[string]any, len(grant.Attrs))
 	for key, values := range grant.Attrs {
-		if len(values) != 1 {
-			return nil, fmt.Errorf("stored grant attr %q is invalid", key)
-		}
-		if err := strictjson.RejectDuplicateKeys([]byte(values[0])); err != nil {
-			return nil, fmt.Errorf("decode stored grant attr %q: %w", key, err)
-		}
-		decoder := json.NewDecoder(bytes.NewBufferString(values[0]))
-		decoder.UseNumber()
-		var value any
-		if err := decoder.Decode(&value); err != nil {
-			return nil, fmt.Errorf("decode stored grant attr %q: %w", key, err)
-		}
-		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("decode stored grant attr %q: trailing data", key)
-		}
-		if number, ok := value.(json.Number); ok {
-			if integer, err := number.Int64(); err == nil {
-				value = integer
-			}
+		value, err := decodeAttr(key, values)
+		if err != nil {
+			return nil, err
 		}
 		out[key] = value
 	}
 	return out, nil
+}
+
+func decodeAttr(key string, values []string) (any, error) {
+	if len(values) != 1 {
+		return nil, fmt.Errorf("stored grant attr %q is invalid", key)
+	}
+	if err := strictjson.RejectDuplicateKeys([]byte(values[0])); err != nil {
+		return nil, fmt.Errorf("decode stored grant attr %q: %w", key, err)
+	}
+	decoder := json.NewDecoder(bytes.NewBufferString(values[0]))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, fmt.Errorf("decode stored grant attr %q: %w", key, err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("decode stored grant attr %q: trailing data", key)
+	}
+	return normalizeAttrNumber(value), nil
+}
+
+func normalizeAttrNumber(value any) any {
+	number, ok := value.(json.Number)
+	if !ok {
+		return value
+	}
+	integer, err := number.Int64()
+	if err != nil {
+		return value
+	}
+	return integer
 }
 
 // Target returns the canonical exact HF resource name.

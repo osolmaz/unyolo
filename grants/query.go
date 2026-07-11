@@ -72,17 +72,25 @@ func (s *Store) QueryGrants(query Query) (Page, error) {
 	eventSequence := data.NextEvent
 	changed := s.prepareLifecycle(&data)
 	changed = s.reconcileLifecycle(&data, before) || changed
-	if changed {
-		if err := s.save(data); err != nil {
-			return Page{}, err
-		}
-		s.signalNewEvents(eventSequence, data.NextEvent)
+	if err := s.persistQueryLifecycle(data, eventSequence, changed); err != nil {
+		return Page{}, err
 	}
 	page := buildGrantPage(data.Grants, query, cursor)
 	if query.Cursor == "" && data.NextEvent > 1 {
 		page.EventCursor = encodeEventCursor(data.NextEvent - 1)
 	}
 	return page, nil
+}
+
+func (s *Store) persistQueryLifecycle(data fileData, eventSequence uint64, changed bool) error {
+	if !changed {
+		return nil
+	}
+	if err := s.save(data); err != nil {
+		return err
+	}
+	s.signalNewEvents(eventSequence, data.NextEvent)
+	return nil
 }
 
 func buildGrantPage(grants []Grant, query Query, cursor grantCursor) Page {
@@ -106,32 +114,62 @@ func buildGrantPage(grants []Grant, query Query, cursor grantCursor) Page {
 }
 
 func normalizeGrantQuery(query Query) (Query, grantCursor, error) {
-	if query.StatusGroup == "" {
-		query.StatusGroup = StatusGroupAll
-	}
-	switch query.StatusGroup {
-	case StatusGroupPending, StatusGroupActive, StatusGroupHistory, StatusGroupAll:
-	default:
+	query.StatusGroup = normalizedStatusGroup(query.StatusGroup)
+	if !validStatusGroup(query.StatusGroup) {
 		return Query{}, grantCursor{}, fmt.Errorf("%w: invalid status group %q", ErrInvalidQuery, query.StatusGroup)
 	}
-	if query.Limit == 0 {
-		query.Limit = 50
-	}
+	query.Limit = normalizedGrantLimit(query.Limit)
 	if query.Limit < 1 || query.Limit > maxGrantPageSize {
 		return Query{}, grantCursor{}, fmt.Errorf("%w: grant limit must be between 1 and %d", ErrInvalidQuery, maxGrantPageSize)
 	}
-	if query.Target != nil {
-		target, err := normalizeQueryTarget(*query.Target)
-		if err != nil {
-			return Query{}, grantCursor{}, err
-		}
-		query.Target = &target
+	var err error
+	query.Target, err = normalizeOptionalQueryTarget(query.Target)
+	if err != nil {
+		return Query{}, grantCursor{}, err
 	}
 	cursor, err := decodeGrantCursor(query.Cursor)
-	if err == nil && cursor.ID != "" && cursor.QueryHash != queryFingerprint(query) {
-		err = ErrInvalidGrantCursor
+	return query, cursor, validateGrantCursorQuery(cursor, query, err)
+}
+
+func normalizeOptionalQueryTarget(target *policy.Target) (*policy.Target, error) {
+	if target == nil {
+		return nil, nil
 	}
-	return query, cursor, err
+	normalized, err := normalizeQueryTarget(*target)
+	return &normalized, err
+}
+
+func validateGrantCursorQuery(cursor grantCursor, query Query, decodeErr error) error {
+	if decodeErr != nil {
+		return decodeErr
+	}
+	if cursor.ID != "" && cursor.QueryHash != queryFingerprint(query) {
+		return ErrInvalidGrantCursor
+	}
+	return nil
+}
+
+func normalizedStatusGroup(group StatusGroup) StatusGroup {
+	if group == "" {
+		return StatusGroupAll
+	}
+	return group
+}
+
+func validStatusGroup(group StatusGroup) bool {
+	switch group {
+	case StatusGroupPending, StatusGroupActive, StatusGroupHistory, StatusGroupAll:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizedGrantLimit(limit int) int {
+	if limit == 0 {
+		return 50
+	}
+	return limit
 }
 
 func queryFingerprint(query Query) string {
@@ -240,6 +278,10 @@ func decodeGrantCursor(cursor string) (grantCursor, error) {
 	if err != nil {
 		return grantCursor{}, ErrInvalidGrantCursor
 	}
+	return decodeGrantCursorData(data)
+}
+
+func decodeGrantCursorData(data []byte) (grantCursor, error) {
 	var decoded grantCursor
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()

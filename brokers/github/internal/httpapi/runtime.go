@@ -40,9 +40,17 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 }
 
 func (s *Server) Start(ctx context.Context) {
+	s.startTelegram(ctx)
+	s.startNotificationSweeper(ctx)
+}
+
+func (s *Server) startTelegram(ctx context.Context) {
 	if s.telegram != nil {
 		go s.telegram.Poll(ctx, s.control.HandleDecision)
 	}
+}
+
+func (s *Server) startNotificationSweeper(ctx context.Context) {
 	if s.notifier != nil {
 		go s.runGrantNotificationSweeper(ctx)
 	}

@@ -33,18 +33,31 @@ func (s *Store) Put(canonical []byte) (string, error) {
 	}
 	digest := Digest(canonical)
 	path := s.Path(digest)
-	if current, err := os.ReadFile(path); err == nil {
-		if !bytes.Equal(bytes.TrimSpace(current), canonical) {
-			return "", fmt.Errorf("%s plan digest collision", s.label)
-		}
+	found, err := s.checkExisting(path, canonical)
+	if err != nil {
+		return "", err
+	}
+	if found {
 		return digest, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("read %s plan: %w", s.label, err)
 	}
 	if err := store.WriteFileAtomic(path, append(append([]byte(nil), canonical...), '\n'), 0o600); err != nil {
 		return "", err
 	}
 	return digest, nil
+}
+
+func (s *Store) checkExisting(path string, canonical []byte) (bool, error) {
+	current, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read %s plan: %w", s.label, err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(current), canonical) {
+		return false, fmt.Errorf("%s plan digest collision", s.label)
+	}
+	return true, nil
 }
 
 func (s *Store) Get(digest string) ([]byte, error) {
@@ -75,26 +88,38 @@ func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) 
 	}
 	removed := 0
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-			continue
-		}
-		digest := strings.TrimSuffix(entry.Name(), ".json")
-		if !ValidDigest(digest) || referenced[digest] {
-			continue
-		}
-		info, err := entry.Info()
+		wasRemoved, err := s.removeOrphan(entry, referenced, olderThan)
 		if err != nil {
 			return removed, err
 		}
-		if !info.ModTime().Before(olderThan) {
-			continue
+		if wasRemoved {
+			removed++
 		}
-		if err := os.Remove(filepath.Join(s.directory, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return removed, err
-		}
-		removed++
 	}
 	return removed, nil
+}
+
+func (s *Store) removeOrphan(entry os.DirEntry, referenced map[string]bool, olderThan time.Time) (bool, error) {
+	if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+		return false, nil
+	}
+	digest := strings.TrimSuffix(entry.Name(), ".json")
+	if !ValidDigest(digest) || referenced[digest] {
+		return false, nil
+	}
+	info, err := entry.Info()
+	if err != nil || !info.ModTime().Before(olderThan) {
+		return false, err
+	}
+	err = os.Remove(filepath.Join(s.directory, entry.Name()))
+	return err == nil, ignoreMissing(err)
+}
+
+func ignoreMissing(err error) error {
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func (s *Store) Path(digest string) string { return filepath.Join(s.directory, digest+".json") }

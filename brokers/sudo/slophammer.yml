@@ -1,8 +1,6 @@
 go:
   coverage:
     threshold: 85
-  targets:
-    - .
   dry:
     max_findings: 0
     paths:

@@ -649,7 +649,8 @@ func validateTarget(pathName string, target *TargetMatcher) error {
 }
 
 func validateInferenceTarget(pathName string, target *TargetMatcher) error {
-	if target.typeSet || target.refsSet || target.pathsSet || target.visibilitySet || target.keysSet || target.snapshotPrefixSet {
+	unsupported := []bool{target.typeSet, target.refsSet, target.pathsSet, target.visibilitySet, target.keysSet, target.snapshotPrefixSet}
+	if slices.Contains(unsupported, true) {
 		return fmt.Errorf("%s: inference targets accept only owner and name", pathName)
 	}
 	return validateOwnerNameGlobs(pathName, target.Owner, target.Name)

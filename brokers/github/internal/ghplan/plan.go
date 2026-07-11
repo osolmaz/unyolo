@@ -193,24 +193,41 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if err != nil {
 		return err
 	}
-	requestedDuration := grant.RequestedDuration
-	if requestedDuration <= 0 {
-		requestedDuration = grant.Duration
-	}
-	requestedMaxUses := grant.RequestedMaxUses
-	if requestedMaxUses <= 0 {
-		requestedMaxUses = grant.MaxUses
-	}
-	if plan.Kind != grant.Metadata[MetadataMode] || plan.ClientID != grant.Client || plan.ClientRequestID != grant.ClientRequestID ||
-		plan.Operation != grant.Operation || plan.TargetKind != grant.Target.Kind || !equalValues(plan.Target, grant.Target.Fields) ||
-		!equalValues(plan.Constraints.Attributes, grant.Attrs) || plan.CredentialSelector != v.Store.credentialSelector ||
-		plan.Constraints.RequestedDurationSeconds != int64(requestedDuration.Seconds()) || plan.Constraints.RequestedMaxUses != requestedMaxUses {
+	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
+	if !planMatchesGrant(plan, grant, v.Store.credentialSelector, requestedDuration, requestedMaxUses) {
 		return errors.New("GitHub grant does not match its immutable plan")
 	}
 	if constraints.Duration > requestedDuration || constraints.MaxUses > requestedMaxUses {
 		return grants.ErrConstraintExceeded
 	}
 	return nil
+}
+
+func requestedGrantBounds(grant grants.Grant) (time.Duration, int) {
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	maxUses := grant.RequestedMaxUses
+	if maxUses <= 0 {
+		maxUses = grant.MaxUses
+	}
+	return duration, maxUses
+}
+
+func planMatchesGrant(plan Plan, grant grants.Grant, selector string, duration time.Duration, maxUses int) bool {
+	return planMatchesGrantIdentity(plan, grant) && planMatchesGrantValues(plan, grant) &&
+		plan.CredentialSelector == selector && plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) &&
+		plan.Constraints.RequestedMaxUses == maxUses
+}
+
+func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
+	return plan.Kind == grant.Metadata[MetadataMode] && plan.ClientID == grant.Client &&
+		plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation && plan.TargetKind == grant.Target.Kind
+}
+
+func planMatchesGrantValues(plan Plan, grant grants.Grant) bool {
+	return equalValues(plan.Target, grant.Target.Fields) && equalValues(plan.Constraints.Attributes, grant.Attrs)
 }
 
 func encode(plan Plan) ([]byte, error) {
@@ -222,17 +239,28 @@ func encode(plan Plan) ([]byte, error) {
 
 func validate(plan Plan) error {
 	kind, grantable := kindForOperation(plan.Operation)
-	if plan.SchemaVersion != SchemaV1 || !grantable || plan.Kind != kind || strings.TrimSpace(plan.ClientID) == "" ||
-		strings.TrimSpace(plan.ClientRequestID) == "" || plan.TargetKind != "repo" || !validTarget(plan.Target) ||
-		!validAttrs(plan.Operation, plan.Constraints.Attributes) ||
-		(plan.CredentialSelector != "github_app" && plan.CredentialSelector != "development_pat") ||
-		plan.Constraints.RequestedDurationSeconds <= 0 || plan.Constraints.RequestedMaxUses <= 0 || plan.CreatedAt.IsZero() {
+	if !validPlanIdentity(plan, kind, grantable) || !validPlanConstraints(plan) {
 		return errors.New("GitHub plan is invalid")
 	}
 	if err := validatePlanValues(plan.Target); err != nil {
 		return err
 	}
 	return validatePlanValues(plan.Constraints.Attributes)
+}
+
+func validPlanIdentity(plan Plan, kind string, grantable bool) bool {
+	return plan.SchemaVersion == SchemaV1 && grantable && plan.Kind == kind && strings.TrimSpace(plan.ClientID) != "" &&
+		strings.TrimSpace(plan.ClientRequestID) != "" && plan.TargetKind == "repo" && validTarget(plan.Target) &&
+		validAttrs(plan.Operation, plan.Constraints.Attributes)
+}
+
+func validPlanConstraints(plan Plan) bool {
+	return validCredentialSelector(plan.CredentialSelector) && plan.Constraints.RequestedDurationSeconds > 0 &&
+		plan.Constraints.RequestedMaxUses > 0 && !plan.CreatedAt.IsZero()
+}
+
+func validCredentialSelector(value string) bool {
+	return value == "github_app" || value == "development_pat"
 }
 
 func validTarget(target map[string][]string) bool {
@@ -257,22 +285,36 @@ func validAttrs(operation string, attrs map[string][]string) bool {
 
 func validatePlanValues(values map[string][]string) error {
 	for key, list := range values {
-		normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
-		for _, marker := range []string{"authorization", "credential", "password", "privatekey", "secret", "token", "cookie"} {
-			if strings.Contains(normalized, marker) {
-				return errors.New("GitHub plan contains a sensitive field")
-			}
+		if sensitivePlanKey(key) {
+			return errors.New("GitHub plan contains a sensitive field")
 		}
-		if strings.TrimSpace(key) == "" || len(list) == 0 {
+		if !validPlanValueEntry(key, list) {
 			return errors.New("GitHub plan contains an invalid value map")
-		}
-		for _, value := range list {
-			if strings.TrimSpace(value) == "" {
-				return errors.New("GitHub plan contains an invalid value map")
-			}
 		}
 	}
 	return nil
+}
+
+func validPlanValueEntry(key string, values []string) bool {
+	if strings.TrimSpace(key) == "" || len(values) == 0 {
+		return false
+	}
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func sensitivePlanKey(key string) bool {
+	normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
+	for _, marker := range []string{"authorization", "credential", "password", "privatekey", "secret", "token", "cookie"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func oneNonEmpty(values []string) bool {

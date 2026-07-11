@@ -146,29 +146,49 @@ func readInferenceRequest(w http.ResponseWriter, r *http.Request) ([]byte, int, 
 }
 
 func inferenceRequestModel(body []byte) (string, bool) {
-	if strictjson.RejectDuplicateKeys(body) != nil {
+	request, ok := decodeInferenceObject(body)
+	if !ok {
 		return "", false
 	}
-	var request map[string]json.RawMessage
-	if len(body) == 0 || json.Unmarshal(body, &request) != nil || len(request) == 0 {
+	if !knownInferenceFields(request, inferenceTopLevelFields) {
 		return "", false
-	}
-	for field := range request {
-		if !inferenceTopLevelFields[field] {
-			return "", false
-		}
 	}
 	var model string
 	if json.Unmarshal(request["model"], &model) != nil || !validInferenceModel(model) || !validInferenceMessages(request["messages"]) {
 		return "", false
 	}
-	if raw, ok := request["stream"]; ok {
-		var stream bool
-		if json.Unmarshal(raw, &stream) != nil {
-			return "", false
-		}
+	if !validOptionalStream(request["stream"]) {
+		return "", false
 	}
 	return model, true
+}
+
+func decodeInferenceObject(body []byte) (map[string]json.RawMessage, bool) {
+	if len(body) == 0 || strictjson.RejectDuplicateKeys(body) != nil {
+		return nil, false
+	}
+	var request map[string]json.RawMessage
+	if json.Unmarshal(body, &request) != nil || len(request) == 0 {
+		return nil, false
+	}
+	return request, true
+}
+
+func knownInferenceFields(request map[string]json.RawMessage, allowed map[string]bool) bool {
+	for field := range request {
+		if !allowed[field] {
+			return false
+		}
+	}
+	return true
+}
+
+func validOptionalStream(raw json.RawMessage) bool {
+	if raw == nil {
+		return true
+	}
+	var stream bool
+	return json.Unmarshal(raw, &stream) == nil
 }
 
 func validInferenceMessages(raw json.RawMessage) bool {
@@ -177,30 +197,33 @@ func validInferenceMessages(raw json.RawMessage) bool {
 		return false
 	}
 	for _, rawMessage := range messages {
-		if strictjson.RejectDuplicateKeys(rawMessage) != nil {
-			return false
-		}
-		var message map[string]json.RawMessage
-		if json.Unmarshal(rawMessage, &message) != nil {
-			return false
-		}
-		for field := range message {
-			if !inferenceMessageFields[field] {
-				return false
-			}
-		}
-		var role string
-		if json.Unmarshal(message["role"], &role) != nil || !validInferenceRole(role) {
-			return false
-		}
-		content, hasContent := message["content"]
-		_, hasToolCalls := message["tool_calls"]
-		_, hasFunctionCall := message["function_call"]
-		if (!hasContent || len(content) == 0 || string(content) == "null") && !hasToolCalls && !hasFunctionCall {
+		if !validInferenceMessage(rawMessage) {
 			return false
 		}
 	}
 	return true
+}
+
+func validInferenceMessage(raw json.RawMessage) bool {
+	if strictjson.RejectDuplicateKeys(raw) != nil {
+		return false
+	}
+	var message map[string]json.RawMessage
+	if json.Unmarshal(raw, &message) != nil || !knownInferenceFields(message, inferenceMessageFields) {
+		return false
+	}
+	var role string
+	if json.Unmarshal(message["role"], &role) != nil || !validInferenceRole(role) {
+		return false
+	}
+	return inferenceMessageHasContent(message)
+}
+
+func inferenceMessageHasContent(message map[string]json.RawMessage) bool {
+	content, hasContent := message["content"]
+	_, hasToolCalls := message["tool_calls"]
+	_, hasFunctionCall := message["function_call"]
+	return hasContent && len(content) > 0 && string(content) != "null" || hasToolCalls || hasFunctionCall
 }
 
 func validInferenceRole(role string) bool {

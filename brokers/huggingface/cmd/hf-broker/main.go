@@ -55,6 +55,10 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 	if len(args) == 0 {
 		return runServer(ctx, getenv, stdout, stderr)
 	}
+	return runCommand(ctx, getenv, stdout, stderr, args)
+}
+
+func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
 	switch args[0] {
 	case "--version", "version":
 		_, err := fmt.Fprintln(stdout, version)
