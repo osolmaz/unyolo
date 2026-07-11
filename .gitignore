@@ -2,6 +2,7 @@
 /dist/
 /*.test
 /target/
+**/target/
 /policy/target/
 node_modules/
 plugins/openclaw/dist/
