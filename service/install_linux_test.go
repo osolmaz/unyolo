@@ -41,6 +41,19 @@ func TestInstallSystemdNonRootFixture(t *testing.T) {
 	assertMode(t, plan.SystemdDir, 0o755)
 }
 
+func TestInstallSystemdPreparesGroupTraversableSharedStateDirectory(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	plan.SharedStateDir = filepath.Join(filepath.Dir(plan.StateDir), "shared")
+	plan.StateDir = filepath.Join(plan.SharedStateDir, "service")
+	plan.Unit.StateDir = plan.StateDir
+	plan.Runner = &recordingCommandRunner{}
+	if err := InstallSystemd(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	assertMode(t, plan.SharedStateDir, 0o750)
+	assertMode(t, plan.StateDir, 0o750)
+}
+
 func TestInstallSystemdRejectsInvalidOrUnprivilegedPlan(t *testing.T) {
 	invalid := nonRootInstallPlan(t)
 	invalid.UnitName = "invalid"
@@ -225,6 +238,9 @@ func TestSystemdInstallPlanValidation(t *testing.T) {
 		"path overlap": func(plan *SystemdInstallPlan) {
 			plan.StateDir = plan.ConfigDir + "/state"
 			plan.Unit.StateDir = plan.StateDir
+		},
+		"shared state not ancestor": func(plan *SystemdInstallPlan) {
+			plan.SharedStateDir = filepath.Join(filepath.Dir(plan.StateDir), "other")
 		},
 		"identity":        func(plan *SystemdInstallPlan) { plan.Unit.User = "other" },
 		"directory":       func(plan *SystemdInstallPlan) { plan.Unit.ConfigDir = plan.StateDir },

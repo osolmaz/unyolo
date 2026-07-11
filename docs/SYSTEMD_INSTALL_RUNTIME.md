@@ -87,6 +87,10 @@ Root-owned managed files use `root:<service-group>`. Service-owned managed files
 use `<service-user>:<service-group>`. The unit is always `root:root` and mode
 `0644`. The config directory is `root:<service-group>` mode `0750`; the state
 directory is `<service-user>:<service-group>` mode `0750`.
+When two cooperating units keep separate state beneath one parent, the plan may
+declare that shared state directory explicitly. Brokerkit then installs it as
+`root:<service-group>` mode `0750`, allowing both units to traverse to their
+separately owned state roots without making the parent writable.
 
 ## Install Order
 
@@ -117,6 +121,8 @@ starts a partially configured service.
 An install plan is rejected when:
 
 - a path is relative, contains parent traversal, or overlaps another root;
+- a shared state directory is not a normalized strict ancestor of the unit's
+  state directory;
 - the unit identity or config/state paths differ from the install plan;
 - the unit name is not a literal `.service` basename;
 - a managed file name is not a literal direct child basename;

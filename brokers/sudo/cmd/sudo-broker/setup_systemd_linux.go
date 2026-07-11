@@ -211,7 +211,8 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 		EnvironmentFile: paths.frontendEnv, ExecStart: frontendExec(opts, paths), StateDir: opts.StateDir, ConfigDir: opts.ConfigDir,
 		PathValidation: pathValidation, AfterUnits: []string{"sudo-broker-exec.service"}, RequiresUnits: []string{"sudo-broker-exec.service"},
 		ExtraDirectives: hardeningDirectives(true)}
-	helperPlan := bkservice.SystemdInstallPlan{User: "root", Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.HelperStateDir,
+	sharedStateDir := sharedStateDirectory(opts.StateDir, opts.HelperStateDir)
+	helperPlan := bkservice.SystemdInstallPlan{User: "root", Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.HelperStateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker-exec.service", NoStart: true, Unit: helperUnit,
 		Files: []bkservice.ManagedFile{
 			{Area: bkservice.ManagedFileConfig, Name: "catalog.json", Data: catalogData, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
@@ -230,10 +231,18 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 		}
 		frontendFiles = append(frontendFiles, frontendSecretFile("telegram-bot-token", data))
 	}
-	frontendPlan := bkservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir,
+	frontendPlan := bkservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker.service", NoStart: opts.NoStart, Unit: frontendUnit, Files: frontendFiles,
 		ReadyCheck: bkservice.HTTPReadyCheck("http://"+net.JoinHostPort(opts.BindAddr, strconv.Itoa(opts.Port))+"/readyz", localHTTPClient())}
 	return helperPlan, frontendPlan, nil
+}
+
+func sharedStateDirectory(frontend string, helper string) string {
+	parent := filepath.Dir(frontend)
+	if parent != filepath.Dir(helper) || strings.Count(strings.Trim(parent, string(filepath.Separator)), string(filepath.Separator)) < 2 {
+		return ""
+	}
+	return parent
 }
 
 func frontendSecretFile(name string, data []byte) bkservice.ManagedFile {

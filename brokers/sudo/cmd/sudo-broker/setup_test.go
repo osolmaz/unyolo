@@ -158,3 +158,16 @@ func TestFrontendSecretsRemainRootOwned(t *testing.T) {
 		t.Fatalf("frontend secret ownership = owner %q mode %04o", file.Owner, file.Mode)
 	}
 }
+
+func TestSharedStateDirectoryRequiresOneDeepCommonParent(t *testing.T) {
+	t.Parallel()
+	if got := sharedStateDirectory("/var/lib/sudo-broker/frontend", "/var/lib/sudo-broker/helper"); got != "/var/lib/sudo-broker" {
+		t.Fatalf("sharedStateDirectory() = %q", got)
+	}
+	if got := sharedStateDirectory("/var/lib/frontend", "/var/lib/helper"); got != "" {
+		t.Fatalf("sharedStateDirectory(shallow) = %q", got)
+	}
+	if got := sharedStateDirectory("/srv/a/frontend", "/srv/b/helper"); got != "" {
+		t.Fatalf("sharedStateDirectory(different) = %q", got)
+	}
+}
