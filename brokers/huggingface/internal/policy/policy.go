@@ -1176,17 +1176,17 @@ func validateRequestTarget(target Target) error {
 	case KindRepo:
 		return validateRepoRequestTarget(target)
 	case KindBucket:
-		return validateBucketRequestTarget(target)
+		return validateNamedRequestTarget(target, "bucket")
 	case KindInference:
-		return validateInferenceRequestTarget(target)
+		return validateNamedRequestTarget(target, "inference")
 	default:
 		return fmt.Errorf("invalid target kind")
 	}
 }
 
-func validateInferenceRequestTarget(target Target) error {
+func validateNamedRequestTarget(target Target, kind string) error {
 	if !validRequestSegment(target.Owner) || !validRequestSegment(target.Name) {
-		return fmt.Errorf("invalid inference target")
+		return fmt.Errorf("invalid %s target", kind)
 	}
 	return nil
 }
@@ -1194,13 +1194,6 @@ func validateInferenceRequestTarget(target Target) error {
 func validateRepoRequestTarget(target Target) error {
 	if !validConcreteRepoType(target.Type) || !validRequestSegment(target.Owner) || !validRequestSegment(target.Name) {
 		return fmt.Errorf("invalid repo target")
-	}
-	return nil
-}
-
-func validateBucketRequestTarget(target Target) error {
-	if !validRequestSegment(target.Owner) || !validRequestSegment(target.Name) {
-		return fmt.Errorf("invalid bucket target")
 	}
 	return nil
 }

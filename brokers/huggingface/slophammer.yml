@@ -69,5 +69,3 @@ go:
         - internal/policy
     - from: internal/jsend
       allow: []
-    - from: internal/approval
-      allow: []

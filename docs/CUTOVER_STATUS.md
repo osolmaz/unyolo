@@ -60,14 +60,14 @@ references, or delivery progress in memory.
 - Done: final durable Brokerkit Telegram lifecycle pinned and merged.
 - Done: adopt the first shared operations runtime and remove the duplicated
   installer, setup parser, unit renderer, and generic doctor helpers.
-- Next: adopt shared privileged systemd installation and remove the remaining
+- Done: adopt shared privileged systemd installation and remove duplicated
   account, managed-file, ownership, and systemctl helpers.
 - Next: run live Hugging Face plus Telegram verification from the agent account.
 
 ### 3. gh-broker
 
 - Done: final durable Brokerkit Telegram lifecycle pinned and merged.
-- Next: adopt the shared operations runtime and add GitHub-specific doctor
+- Done: adopt the shared operations runtime and add GitHub-specific doctor
   checks on top of Brokerkit.
 - Next: verify GitHub read, request, approval, execution, denial, and
   default-branch policy behavior end to end.
@@ -88,9 +88,9 @@ references, or delivery progress in memory.
 
 ## Final Integration Work
 
-After all code cutovers merge:
+After code review and CI pass:
 
-- Unify installer, setup, doctor, service, client-config, and uninstall
+- Done: unify installer, setup, doctor, service, client-config, and uninstall
   behavior under the shared contract while keeping OS-specific privilege work
   in sudo-broker.
 - Install all broker CLIs globally and ensure both `onur` and `bob` can invoke

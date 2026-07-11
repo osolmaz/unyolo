@@ -178,9 +178,6 @@ func TestRouteInputAndGrantValidationHelpers(t *testing.T) {
 	if err := grantError(grants.ErrIdempotencyConflict); err == nil {
 		t.Fatal("idempotency conflict was not mapped")
 	}
-	if id, err := randomID("test-"); err != nil || !strings.HasPrefix(id, "test-") {
-		t.Fatalf("random id = %q, %v", id, err)
-	}
 }
 
 func TestNotificationFailureRetentionAndCancellation(t *testing.T) {

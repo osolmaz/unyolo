@@ -4,7 +4,6 @@ package routes
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -527,12 +526,4 @@ func (s *Server) record(request corepolicy.Request, decision string, reason stri
 	_ = s.audit.Record(audit.Event{Broker: "sudo-broker", Client: request.Client, Operation: request.Operation,
 		Target: corepolicy.FirstValue(request.Target.Fields[sudopolicy.TargetName]), Decision: decision, Reason: reason,
 		MatchedRuleIDs: rules, GrantID: grantID, Attrs: map[string]string{"command_id": corepolicy.FirstValue(request.Attrs[sudopolicy.AttrCommandID])}})
-}
-
-func randomID(prefix string) (string, error) {
-	data := make([]byte, 18)
-	if _, err := rand.Read(data); err != nil {
-		return "", err
-	}
-	return prefix + base64.RawURLEncoding.EncodeToString(data), nil
 }

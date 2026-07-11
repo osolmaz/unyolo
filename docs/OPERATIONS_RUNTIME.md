@@ -10,13 +10,17 @@ adapters and provider-specific service inputs.
 
 ```text
 BROKER=hf-broker
-REPO=osolmaz/hf-broker
+REPO=osolmaz/brokerkit
+TAG_PREFIX=hf-broker/
 ```
 
 and executes the Brokerkit script. The runtime detects Linux or macOS and
-amd64 or arm64, resolves the latest release unless `VERSION` is set, downloads
-the matching tarball and `checksums.txt`, verifies the archive from its download
-directory, and installs only the binary.
+amd64 or arm64, resolves the latest qualified component release unless
+`VERSION` is set, downloads the matching tarball and `checksums.txt`, verifies
+the archive from its download directory, and installs the declared executable
+set. HF and GitHub declare one CLI. Sudo additionally declares its privileged
+`sudo-broker-exec` companion, which is installed outside the ordinary `PATH` in
+the adjacent `libexec` directory.
 
 The installer does not create users, credentials, config, state, or services.
 Those changes belong to an explicit broker setup command.

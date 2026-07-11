@@ -1,0 +1,24 @@
+go:
+  coverage:
+    threshold: 85
+  targets:
+    - .
+  dry:
+    max_findings: 0
+    paths:
+      - cmd
+      - internal
+    exclude:
+      - "**/*_test.go"
+      - pattern: "internal/executorserver/peercred_darwin.go"
+        reason: platform backend mirrors Linux peer credential handling with Darwin-specific socket APIs
+    structural:
+      enabled: true
+      threshold: 0.82
+      min_lines: 4
+      min_nodes: 20
+    copied_blocks:
+      enabled: true
+      min_tokens: 100
+  crap:
+    max_score: 8

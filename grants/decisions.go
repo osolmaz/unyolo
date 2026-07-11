@@ -23,11 +23,7 @@ func (s *Store) Approve(id string, decisionToken string, approver string) (Grant
 // ApproveWithNotification atomically approves a pending grant and records a
 // callback-carried notification when no notification is already stored.
 func (s *Store) ApproveWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
-	result, err := s.decideWithNotification(context.Background(), id, decisionToken, approver, StatusActive, ref, nil)
-	if err != nil && !result.Changed {
-		return Grant{}, err
-	}
-	return result.Grant, err
+	return s.decideWithNotificationGrant(id, decisionToken, approver, StatusActive, ref)
 }
 
 // ApproveWithNotificationValidated atomically validates and approves a pending
@@ -45,7 +41,15 @@ func (s *Store) Deny(id string, decisionToken string, approver string) (Grant, e
 // DenyWithNotification atomically denies a pending grant and records a
 // callback-carried notification when no notification is already stored.
 func (s *Store) DenyWithNotification(id string, decisionToken string, approver string, ref MessageRef) (Grant, error) {
-	result, err := s.decideWithNotification(context.Background(), id, decisionToken, approver, StatusDenied, ref, nil)
+	return s.decideWithNotificationGrant(id, decisionToken, approver, StatusDenied, ref)
+}
+
+func (s *Store) decideWithNotificationGrant(id string, decisionToken string, approver string, status Status, ref MessageRef) (Grant, error) {
+	result, err := s.decideWithNotification(context.Background(), id, decisionToken, approver, status, ref, nil)
+	return notificationGrant(result, err)
+}
+
+func notificationGrant(result TokenDecisionResult, err error) (Grant, error) {
 	if err != nil && !result.Changed {
 		return Grant{}, err
 	}

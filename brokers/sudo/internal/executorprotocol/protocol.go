@@ -65,39 +65,37 @@ type Response struct {
 func Ping() Request { return Request{Version: Version, Type: TypePing} }
 
 func WriteRequest(writer io.Writer, request Request) error {
-	if err := validateRequest(request); err != nil {
-		return err
-	}
-	return writeFrame(writer, request)
+	return writeValidated(writer, request, validateRequest)
 }
 
 func ReadRequest(reader io.Reader) (Request, error) {
-	var request Request
-	if err := readFrame(reader, &request); err != nil {
-		return Request{}, err
-	}
-	if err := validateRequest(request); err != nil {
-		return Request{}, err
-	}
-	return request, nil
+	return readValidated(reader, validateRequest)
 }
 
 func WriteResponse(writer io.Writer, response Response) error {
-	if err := validateResponse(response); err != nil {
-		return err
-	}
-	return writeFrame(writer, response)
+	return writeValidated(writer, response, validateResponse)
 }
 
 func ReadResponse(reader io.Reader) (Response, error) {
-	var response Response
-	if err := readFrame(reader, &response); err != nil {
-		return Response{}, err
+	return readValidated(reader, validateResponse)
+}
+
+func writeValidated[T any](writer io.Writer, value T, validate func(T) error) error {
+	if err := validate(value); err != nil {
+		return err
 	}
-	if err := validateResponse(response); err != nil {
-		return Response{}, err
+	return writeFrame(writer, value)
+}
+
+func readValidated[T any](reader io.Reader, validate func(T) error) (T, error) {
+	var value T
+	if err := readFrame(reader, &value); err != nil {
+		return value, err
 	}
-	return response, nil
+	if err := validate(value); err != nil {
+		return value, err
+	}
+	return value, nil
 }
 
 func writeFrame(writer io.Writer, value any) error {

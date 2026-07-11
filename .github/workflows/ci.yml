@@ -35,12 +35,27 @@ jobs:
       - run: GOTOOLCHAIN=go1.26.5 go install github.com/zricethezav/gitleaks/v8@v8.28.0
       - run: gitleaks git --no-banner --redact .
       - run: go install github.com/dutifuldev/slophammer/go/cmd/slophammer-go@v0.4.0
-      - run: slophammer-go dry .
-      - run: slophammer-go crap .
+      - name: Slophammer DRY gates
+        run: |
+          slophammer-go dry .
+          (cd brokers/huggingface && slophammer-go dry .)
+          (cd brokers/github && slophammer-go dry .)
+          (cd brokers/sudo && slophammer-go dry .)
+      - name: Slophammer complexity gates
+        run: |
+          slophammer-go crap .
+          (cd brokers/huggingface && slophammer-go crap .)
+          (cd brokers/github && slophammer-go crap .)
+          (cd brokers/sudo && slophammer-go crap .)
       - name: mutate4go gate (opt-in)
         if: ${{ vars.RUN_MUTATION == 'true' }}
         run: ./scripts/check-mutation.sh
-      - run: slophammer-go check .
+      - name: Slophammer complete gates
+        run: |
+          slophammer-go check .
+          (cd brokers/huggingface && slophammer-go check .)
+          (cd brokers/github && slophammer-go check .)
+          (cd brokers/sudo && slophammer-go check .)
 
   openclaw-plugin:
     runs-on: ubuntu-latest
