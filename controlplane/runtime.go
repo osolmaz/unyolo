@@ -54,23 +54,26 @@ func New(options Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	operators, err := operatorauth.New(options.OperatorSecrets, operatorauth.Options{ClientSecrets: options.ClientSecrets})
-	if err != nil {
-		return nil, err
-	}
-	inbox, err := operatorinbox.New(options.Store, options.Presenter)
-	if err != nil {
-		return nil, err
-	}
 	recorder := options.Audit
 	if recorder == nil {
 		recorder = audit.New(io.Discard)
 	}
-	handler, err := operatorapi.New(operatorapi.Options{
-		Inbox: inbox, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: recorder,
-	})
-	if err != nil {
-		return nil, err
+	var handler http.Handler
+	if len(options.OperatorSecrets) > 0 {
+		operators, err := operatorauth.New(options.OperatorSecrets, operatorauth.Options{ClientSecrets: options.ClientSecrets})
+		if err != nil {
+			return nil, err
+		}
+		inbox, err := operatorinbox.New(options.Store, options.Presenter)
+		if err != nil {
+			return nil, err
+		}
+		handler, err = operatorapi.New(operatorapi.Options{
+			Inbox: inbox, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: recorder,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	decider := options.Decider
 	if decider == nil {

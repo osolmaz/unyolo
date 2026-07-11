@@ -34,3 +34,13 @@ func TestRuntimeSeparatesClientAndOperatorCredentials(t *testing.T) {
 		t.Fatalf("operator credential status = %d, want 200: %s", response.Code, response.Body.String())
 	}
 }
+
+func TestRuntimeAllowsDisabledOperatorSurface(t *testing.T) {
+	runtime, err := New(Options{
+		Broker: "test-broker", Store: grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{}),
+		ClientSecrets: map[string]string{"bob": "client-secret-abcdefghijklmnopqrstuvwxyz"},
+	})
+	if err != nil || runtime.OperatorHandler != nil {
+		t.Fatalf("New() = %+v, %v", runtime, err)
+	}
+}
