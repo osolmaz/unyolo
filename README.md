@@ -1,18 +1,26 @@
-# brokerkit
+# BrokerKit
 
-brokerkit is a Go library for building broker-style access-control services.
-It provides shared primitives for projects where an untrusted client receives a
-broker secret while the service keeps the real credential or privilege boundary
-server-side.
+BrokerKit is a monorepo and Go toolkit for brokered access-control services.
+It keeps protected credentials and Unix privilege boundaries in dedicated
+services while untrusted clients receive only narrowly scoped broker access.
 
-The first intended users are `hf-broker`, `gh-broker`, and `sudo-broker`.
-brokerkit is the long-term shared base for those projects. Each broker should
-cut over to brokerkit for shared auth, policy, grants, approval workflow,
-audit, notification, Telegram approval transport, common storage/config
-helpers, and generic Git parsing helpers instead of maintaining a parallel
-compatibility runtime.
+This repository contains the shared runtime plus three separate broker
+executables:
 
-brokerkit should stay small: it is not a full broker framework, and it should
+- [HF Broker](brokers/huggingface/README.md) for Hugging Face credentials and
+  Git, LFS, Hub, and inference operations.
+- [GH Broker](brokers/github/README.md) for GitHub App credentials, repository
+  reads, Git operations, and pull requests.
+- [Sudo Broker](brokers/sudo/README.md) for approved exact-command execution as
+  another Unix user.
+- [OpenClaw BrokerKit](plugins/openclaw/README.md), an independently packaged
+  approvals UI and channel integration.
+
+All brokers use BrokerKit for authentication, policy, grants, operator APIs,
+audit, notification state, Telegram transport, setup, and installation. Each
+broker remains a separate process with separate credentials and provider logic.
+
+BrokerKit stays focused: it is not a full application framework, and it does
 not contain provider-specific Hugging Face, GitHub, or Unix privilege logic.
 
 The `controlplane` package is the standard assembly path for grant storage,
@@ -59,9 +67,9 @@ The shared install, setup, policy, grant, approval, audit, doctor, and release
 contract is in
 [docs/UNIFIED_BROKER_CONTRACT.md](docs/UNIFIED_BROKER_CONTRACT.md).
 
-## Packages
+## Shared Packages
 
-Implemented package candidates are:
+The main reusable packages are:
 
 - `auth`: shared-secret bearer/basic authentication for named clients
 - `policy`: generic rule evaluation with broker-owned operation registries
@@ -83,32 +91,23 @@ Implemented package candidates are:
 - `operatorinbox`, `operatorauth`, and `operatorapi`: bounded safe operator
   projections, separate operator authority, typed decisions, and durable SSE
 - `operatorclient` and `operatorfake`: trusted-host integration and contract
-  testing for web applications such as mlclaw
-- `gitx`: generic Git smart-HTTP parsing helpers, if shared cleanly by
-  `hf-broker` and `gh-broker`
-- `store`: atomic file storage and lock helpers, if needed by grants/audit
+  testing for operator applications
+- `gitx`: generic Git smart-HTTP parsing helpers shared by HF and GH brokers
+- `store`: atomic file storage and lock helpers used by grants and audit
 
 Provider-specific execution code does not belong in brokerkit.
 
-The packages above have initial Go implementations.
-
 ## Status
 
-This repository now contains the shared Go packages plus the design documents
-that define the cutover boundary. Telegram delivery is deliberately stateless:
+The brokers and OpenClaw plugin use the shared Operator V1 control plane.
+Telegram delivery is deliberately stateless:
 brokers persist notification references and use `brokerkit/grants` to drive
 every status transition and retry after a restart. The shared operational
 runtime is described in
 [docs/OPERATIONS_RUNTIME.md](docs/OPERATIONS_RUNTIME.md).
 
-The live cross-repository implementation order and remaining work are tracked
-in [docs/CUTOVER_STATUS.md](docs/CUTOVER_STATUS.md).
 The operator backend and trusted web-host integration contract is documented
 in [docs/OPERATOR_INBOX.md](docs/OPERATOR_INBOX.md).
-
-The complete self-contained plan for the BrokerKit monorepo, provider brokers,
-sudo broker, and independent OpenClaw plugin starts at
-[docs/2026-07-11-implementation-handoff.md](docs/2026-07-11-implementation-handoff.md).
 The deployment cutover uses only fresh state as documented in
 [docs/cutover/FRESH_STATE.md](docs/cutover/FRESH_STATE.md).
 
