@@ -48,7 +48,7 @@ func TestBrokerkitControlPlaneConformance(t *testing.T) {
 	}
 	conformance.RunOperatorV1(t, conformance.Fixture{
 		Runtime: server.control, ClientToken: clientSecret, OperatorToken: operatorSecret,
-		Request: request,
+		Request: request, Prepare: server.plans.Bind,
 	})
 }
 

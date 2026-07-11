@@ -21,6 +21,7 @@ import (
 type Fixture struct {
 	Runtime       *controlplane.Runtime
 	Request       grants.Request
+	Prepare       func(*grants.Request) error
 	ClientToken   string
 	OperatorToken string
 }
@@ -163,6 +164,11 @@ func requestGrantWithSuffix(t *testing.T, fixture Fixture, suffix string) grants
 	t.Helper()
 	request := fixture.Request
 	request.ClientRequestID += "-" + suffix
+	if fixture.Prepare != nil {
+		if err := fixture.Prepare(&request); err != nil {
+			t.Fatalf("prepare %s grant: %v", suffix, err)
+		}
+	}
 	created, _, err := fixture.Runtime.Store.Request(request)
 	if err != nil {
 		t.Fatalf("request %s grant: %v", suffix, err)

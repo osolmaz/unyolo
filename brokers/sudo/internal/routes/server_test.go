@@ -146,7 +146,16 @@ func TestSudoBrokerOperatorV1Conformance(t *testing.T) {
 	if err := server.plans.Bind(&request, value); err != nil {
 		t.Fatal(err)
 	}
-	conformance.RunOperatorV1(t, conformance.Fixture{Runtime: server.control, Request: request, ClientToken: testClientSecret, OperatorToken: testOperatorSecret})
+	conformance.RunOperatorV1(t, conformance.Fixture{
+		Runtime: server.control, Request: request, ClientToken: testClientSecret, OperatorToken: testOperatorSecret,
+		Prepare: func(next *grants.Request) error {
+			planned, err := plan.Build(*next, resolved, plan.Identity{Name: "root", UID: 0, GID: 0}, time.Unix(1_700_000_000, 0))
+			if err != nil {
+				return err
+			}
+			return server.plans.Bind(next, planned)
+		},
+	})
 }
 
 func testServer(t *testing.T) (*Server, *fakeHelper, *bytes.Buffer) {
