@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseConfig } from "./config.js";
 import { BrokerRuntime } from "./runtime.js";
+import type { Subscription } from "./store.js";
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 afterEach(() => {
@@ -83,11 +84,11 @@ describe("BrokerRuntime", () => {
     });
     if (config.mode !== "direct") throw new Error("unexpected mode");
     const stateDir = mkdtempSync(path.join(os.tmpdir(), "brokerkit-runtime-"));
-    const delivered: string[] = [];
+    const delivered: Array<{ channel: string; text: string }> = [];
     const hooks = {
       resolveCredential: async () => "operator",
-      deliver: async (_subscription: unknown, text: string) => {
-        delivered.push(text);
+      deliver: async (subscription: Subscription, text: string) => {
+        delivered.push({ channel: subscription.channel, text });
       },
       log: () => undefined,
     };
@@ -95,12 +96,17 @@ describe("BrokerRuntime", () => {
     await runtime.start(stateDir);
     const handle = runtime.snapshot().requests[0]?.handle;
     expect(handle).toBeTruthy();
-    runtime.subscribe({ channel: "test", target: "room" });
+    runtime.subscribe({ channel: "adapter-one", target: "room-one" });
+    runtime.subscribe({ channel: "adapter-two", target: "room-two" });
     await runtime.stop();
     runtime = new BrokerRuntime(config, hooks);
     await runtime.start(stateDir);
-    await expect.poll(() => delivered.length).toBeGreaterThan(0);
-    expect(delivered.length).toBeLessThanOrEqual(2);
+    await expect
+      .poll(() => new Set(delivered.map((item) => item.channel)).size)
+      .toBe(2);
+    expect(
+      delivered.every((item) => item.text.includes("/brokerkit approve")),
+    ).toBe(true);
     await expect(
       runtime.decide(handle!, "approve", 1, "operator:onur", {
         constraints: { duration_seconds: 301, max_uses: 1 },

@@ -8,6 +8,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
 import { parseConfig, type BrokerConfig } from "./src/config.js";
+import { BrokerError } from "./src/client.js";
 import { BrokerRuntime, type DecisionOptions } from "./src/runtime.js";
 import type { Action } from "./src/types.js";
 
@@ -145,15 +146,18 @@ async function resolveCredential(
   return resolved.value;
 }
 
-async function handleCommand(
+export async function handleCommand(
   runtime: BrokerRuntime,
   ctx: PluginCommandContext,
 ) {
   if (!ctx.isAuthorizedSender || !ctx.senderId)
     return { text: "Not authorized." };
-  const [command = "pending", handle] = (ctx.args ?? "").trim().split(/\s+/, 2);
+  const tokens = (ctx.args ?? "").trim().split(/\s+/).filter(Boolean);
+  const command = tokens[0] ?? "pending";
+  const handle = tokens[1];
   if (command === "subscribe" || command === "unsubscribe") {
-    if (!ctx.to)
+    if (tokens.length !== 1) return { text: "Invalid BrokerKit command." };
+    if (!validRouting(ctx.channel, ctx.to, ctx.accountId, ctx.messageThreadId))
       return { text: "This conversation has no stable delivery target." };
     const value = {
       channel: ctx.channel,
@@ -177,6 +181,7 @@ async function handleCommand(
     };
   }
   if (command === "pending") {
+    if (tokens.length > 1) return { text: "Invalid BrokerKit command." };
     const snapshot = runtime.snapshot();
     const lines = snapshot.requests
       .filter((request) => request.status === "pending")
@@ -188,7 +193,8 @@ async function handleCommand(
       text: lines.length ? lines.join("\n") : "No pending BrokerKit requests.",
     };
   }
-  if (!handle) return { text: "A request handle is required." };
+  if (!handle || tokens.length !== 2)
+    return { text: "A single request handle is required." };
   if (command === "show") {
     const request = runtime
       .snapshot()
@@ -200,15 +206,59 @@ async function handleCommand(
       .snapshot()
       .requests.find((item) => item.handle === handle);
     if (!request) return { text: "Request not found." };
-    const updated = await runtime.decide(
-      handle,
-      command as Action,
-      request.revision,
-      ctx.senderId,
-    );
-    return { text: `${command} committed for ${updated.presentation.title}.` };
+    try {
+      const updated = await runtime.decide(
+        handle,
+        command as Action,
+        request.revision,
+        ctx.senderId,
+      );
+      return {
+        text: `${capitalize(command)} committed for ${updated.presentation.title}.`,
+      };
+    } catch (error) {
+      return { text: commandError(error) };
+    }
   }
   return { text: "Unknown BrokerKit command." };
+}
+
+function validRouting(
+  channel: string,
+  target: string | undefined,
+  accountId: string | undefined,
+  threadId: string | number | undefined,
+): target is string {
+  return Boolean(
+    channel &&
+      channel.length <= 128 &&
+      target &&
+      target.length <= 4096 &&
+      (!accountId || accountId.length <= 512) &&
+      (threadId === undefined || String(threadId).length <= 512),
+  );
+}
+
+function commandError(error: unknown): string {
+  const code =
+    error instanceof BrokerError
+      ? error.code
+      : error instanceof Error
+        ? error.message
+        : "internal_error";
+  if (code === "revision_stale")
+    return "This request changed. Review it again before deciding.";
+  if (code === "request_not_found" || code === "request_terminal")
+    return "This request is no longer actionable.";
+  if (code === "action_not_allowed")
+    return "That action is not allowed for this request.";
+  if (code === "source_unavailable")
+    return "The approval source is unavailable. No decision was reported.";
+  return "The decision could not be confirmed. No success was reported.";
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function formatRequest(
