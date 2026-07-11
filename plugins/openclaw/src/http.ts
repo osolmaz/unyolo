@@ -270,13 +270,16 @@ function parseDecisionInput(
         key !== "expectedRevision" && key !== "reason" && key !== "constraints",
     ) ||
     !positiveSafeInteger(body.expectedRevision) ||
-    (body.reason !== undefined &&
-      (typeof body.reason !== "string" || body.reason.length > 4096))
+    (body.reason !== undefined && typeof body.reason !== "string")
   )
     throw new Error("invalid_input");
   const options: DecisionOptions = {};
-  if (typeof body.reason === "string" && body.reason.trim())
-    options.reason = body.reason.trim();
+  if (typeof body.reason === "string" && body.reason.trim()) {
+    const reason = body.reason.trim();
+    if (Buffer.byteLength(reason, "utf8") > 2000)
+      throw new Error("invalid_input");
+    options.reason = reason;
+  }
   if (body.constraints !== undefined) {
     if (action !== "approve" || !record(body.constraints))
       throw new Error("invalid_input");

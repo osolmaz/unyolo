@@ -51,6 +51,19 @@ type handler struct {
 	audit     AuditRecorder
 }
 
+type decisionInput struct {
+	ExpectedRevision int64                     `json:"expected_revision"`
+	IdempotencyKey   string                    `json:"idempotency_key"`
+	DecisionReason   string                    `json:"decision_reason,omitempty"`
+	OnBehalfOf       string                    `json:"on_behalf_of,omitempty"`
+	Constraints      *decisionConstraintsInput `json:"constraints,omitempty"`
+}
+
+type decisionConstraintsInput struct {
+	DurationSeconds *int64 `json:"duration_seconds,omitempty"`
+	MaxUses         *int   `json:"max_uses,omitempty"`
+}
+
 func New(options Options) (http.Handler, error) {
 	if err := validateOptions(options); err != nil {
 		return nil, err
@@ -218,11 +231,37 @@ func (h *handler) decodeDecision(writer http.ResponseWriter, request *http.Reque
 		h.writeError(writer, http.StatusUnsupportedMediaType, "invalid_request", "content type must be application/json", nil)
 		return false
 	}
-	if err := decodeStrictJSON(writer, request, command); err != nil {
+	var input decisionInput
+	if err := decodeStrictJSON(writer, request, &input); err != nil || !validDecisionConstraints(input.Constraints) {
 		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
 		return false
 	}
+	*command = input.decision()
 	return true
+}
+
+func validDecisionConstraints(value *decisionConstraintsInput) bool {
+	return value == nil ||
+		((value.DurationSeconds == nil || *value.DurationSeconds > 0) &&
+			(value.MaxUses == nil || *value.MaxUses > 0))
+}
+
+func (input decisionInput) decision() operatorv1.Decision {
+	result := operatorv1.Decision{
+		ExpectedRevision: input.ExpectedRevision, IdempotencyKey: input.IdempotencyKey,
+		DecisionReason: input.DecisionReason, OnBehalfOf: input.OnBehalfOf,
+	}
+	if input.Constraints == nil {
+		return result
+	}
+	result.Constraints = &operatorv1.Constraints{}
+	if input.Constraints.DurationSeconds != nil {
+		result.Constraints.DurationSeconds = *input.Constraints.DurationSeconds
+	}
+	if input.Constraints.MaxUses != nil {
+		result.Constraints.MaxUses = *input.Constraints.MaxUses
+	}
+	return result
 }
 
 func project(item operatorinbox.Item) operatorv1.Request {

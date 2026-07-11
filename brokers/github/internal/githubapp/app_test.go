@@ -90,6 +90,9 @@ func TestInstallationsFiltersInvalidIDs(t *testing.T) {
 		if r.URL.Path != "/app/installations" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
+		if r.URL.Query().Get("per_page") != "100" || r.URL.Query().Get("page") != "1" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
 		writeJSON(w, `[{"id":42},{"id":0},{"id":77}]`)
 	}))
 	t.Cleanup(server.Close)
@@ -100,6 +103,32 @@ func TestInstallationsFiltersInvalidIDs(t *testing.T) {
 	}
 	if got := strings.Join([]string{strconv.FormatInt(ids[0], 10), strconv.FormatInt(ids[1], 10)}, ","); got != "42,77" {
 		t.Fatalf("ids = %v", ids)
+	}
+}
+
+func TestInstallationsPaginates(t *testing.T) {
+	t.Parallel()
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page == 1 {
+			items := make([]map[string]int64, installationPageSize)
+			for index := range items {
+				items[index] = map[string]int64{"id": int64(index + 1)}
+			}
+			_ = json.NewEncoder(w).Encode(items)
+			return
+		}
+		writeJSON(w, `[{"id":101}]`)
+	}))
+	t.Cleanup(server.Close)
+	ids, err := newTestSource(t, server).Installations(context.Background())
+	if err != nil || len(ids) != 101 || ids[100] != 101 || requests != 2 {
+		t.Fatalf("Installations() = %v, %v requests=%d", ids, err, requests)
 	}
 }
 

@@ -24,9 +24,11 @@ import (
 )
 
 const (
-	jwtLifetime        = 9 * time.Minute
-	jwtIssuedAtSkew    = time.Minute
-	maxGitHubBodyBytes = 1 << 20
+	jwtLifetime          = 9 * time.Minute
+	jwtIssuedAtSkew      = time.Minute
+	maxGitHubBodyBytes   = 1 << 20
+	installationPageSize = 100
+	maxInstallationPages = 100
 )
 
 // Token is one short-lived GitHub App installation token.
@@ -130,19 +132,47 @@ func (s *Source) InstallationToken(ctx context.Context, installationID int64) (T
 
 // Installations lists installations visible to the app.
 func (s *Source) Installations(ctx context.Context) ([]int64, error) {
-	var payload []struct {
-		ID int64 `json:"id"`
-	}
-	if err := s.doAppJSON(ctx, http.MethodGet, []string{"app", "installations"}, nil, &payload); err != nil {
-		return nil, err
-	}
-	ids := make([]int64, 0, len(payload))
-	for _, item := range payload {
-		if item.ID > 0 {
-			ids = append(ids, item.ID)
+	ids := make([]int64, 0, installationPageSize)
+	for page := 1; page <= maxInstallationPages; page++ {
+		payload, err := s.installationPage(ctx, page)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range payload {
+			if item.ID > 0 {
+				ids = append(ids, item.ID)
+			}
+		}
+		if len(payload) < installationPageSize {
+			return ids, nil
 		}
 	}
-	return ids, nil
+	return nil, errors.New("github app installation listing exceeded page limit")
+}
+
+type installation struct {
+	ID int64 `json:"id"`
+}
+
+func (s *Source) installationPage(ctx context.Context, page int) ([]installation, error) {
+	request, err := s.newAppRequest(ctx, http.MethodGet, []string{"app", "installations"}, nil)
+	if err != nil {
+		return nil, err
+	}
+	query := request.URL.Query()
+	query.Set("per_page", strconv.Itoa(installationPageSize))
+	query.Set("page", strconv.Itoa(page))
+	request.URL.RawQuery = query.Encode()
+	response, err := s.httpClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("github app request failed: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	var payload []installation
+	if err := decodeAppResponse(response, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 func (s *Source) doAppJSON(ctx context.Context, method string, path []string, body []byte, out any) error {

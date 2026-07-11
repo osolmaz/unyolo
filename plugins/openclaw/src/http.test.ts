@@ -75,6 +75,8 @@ describe("OpenClaw HTTP boundary", () => {
       [
         '{"expectedRevision":1,"constraints":{"durationSeconds":300,"durationSeconds":60,"maxUses":1}}',
       ],
+      [JSON.stringify({ expectedRevision: 1, reason: "x".repeat(2001) })],
+      [JSON.stringify({ expectedRevision: 1, reason: "😀".repeat(501) })],
       [JSON.stringify({ expectedRevision: 1 }), "text/plain"],
     ] as const) {
       const response = await apiFetch(base, `/requests/${handle}/deny`, {

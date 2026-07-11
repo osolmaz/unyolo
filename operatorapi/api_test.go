@@ -79,6 +79,15 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	if unknown.status != http.StatusBadRequest || !strings.Contains(unknown.body, "invalid_request") {
 		t.Fatalf("unknown input = %+v", unknown)
 	}
+	for name, body := range map[string]string{
+		"zero duration": `{"expected_revision":1,"idempotency_key":"zero-duration","constraints":{"duration_seconds":0}}`,
+		"zero uses":     `{"expected_revision":1,"idempotency_key":"zero-uses","constraints":{"max_uses":0}}`,
+	} {
+		response := rawRequest(t, client.HTTPClient, http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/approve", testOperatorSecret, body)
+		if response.status != http.StatusBadRequest || !strings.Contains(response.body, "invalid_request") {
+			t.Fatalf("%s = %+v", name, response)
+		}
+	}
 	duplicate := rawRequest(t, client.HTTPClient, http.MethodGet, server.URL()+"/api/operator/v1/requests?status=pending&status=active", testOperatorSecret, "")
 	if duplicate.status != http.StatusBadRequest || !strings.Contains(duplicate.body, "invalid_request") {
 		t.Fatalf("duplicate query = %+v", duplicate)

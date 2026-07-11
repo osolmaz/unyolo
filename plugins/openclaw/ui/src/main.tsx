@@ -294,7 +294,7 @@ function DecisionDialog({
           <label className="reason">
             Reason (optional)
             <textarea
-              maxLength={4096}
+              maxLength={2000}
               rows={3}
               value={reason}
               onChange={(event) => setReason(event.currentTarget.value)}
