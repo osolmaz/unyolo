@@ -212,6 +212,19 @@ func TestInstallSystemdPreservesRetiredFileWhenReadinessFails(t *testing.T) {
 	}
 }
 
+func TestInstallSystemdRunsConfiguredReadinessWithoutRetirement(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	calls := 0
+	plan.ReadyCheck = func(context.Context) error {
+		calls++
+		return nil
+	}
+	installActivatedFixture(t, plan, &recordingCommandRunner{})
+	if calls != 1 {
+		t.Fatalf("readiness calls = %d, want 1", calls)
+	}
+}
+
 func TestInstallSystemdRejectsReadinessThatSucceedsAfterTimeout(t *testing.T) {
 	plan := nonRootInstallPlan(t)
 	retired := prepareRetiredManagedFile(t, plan, "retired-secret")

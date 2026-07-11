@@ -372,11 +372,11 @@ func validateManagedFileRef(file ManagedFileRef) error {
 }
 
 func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
-	if len(plan.RemoveFiles) == 0 {
-		return nil
-	}
 	if plan.ReadyCheck == nil {
-		return errors.New("managed file retirement requires a readiness check")
+		if len(plan.RemoveFiles) > 0 {
+			return errors.New("managed file retirement requires a readiness check")
+		}
+		return nil
 	}
 	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
 	defer cancel()
