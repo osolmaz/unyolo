@@ -30,6 +30,7 @@ type Plan struct {
 	ClientID           string              `json:"client_id"`
 	ClientRequestID    string              `json:"client_request_id"`
 	Operation          string              `json:"operation"`
+	TargetKind         string              `json:"target_kind"`
 	Target             map[string][]string `json:"target"`
 	Constraints        Constraints         `json:"constraints"`
 	CredentialSelector string              `json:"credential_selector"`
@@ -68,7 +69,7 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 	if request.Metadata["hf_grant_mode"] == "execution" {
 		kind = "single_execution"
 	}
-	return Plan{SchemaVersion: SchemaV1, Kind: kind, ClientID: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation,
+	return Plan{SchemaVersion: SchemaV1, Kind: kind, ClientID: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, TargetKind: request.Target.Kind,
 		Target: cloneValues(request.Target.Fields), CredentialSelector: "primary", CreatedAt: createdAt.UTC(),
 		Constraints: Constraints{Attributes: cloneValues(request.Attrs), Mode: request.Metadata["hf_grant_mode"],
 			RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses}}
@@ -174,7 +175,7 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if requestedMaxUses <= 0 {
 		requestedMaxUses = grant.MaxUses
 	}
-	if plan.ClientID != grant.Client || plan.ClientRequestID != grant.ClientRequestID || plan.Operation != grant.Operation ||
+	if plan.ClientID != grant.Client || plan.ClientRequestID != grant.ClientRequestID || plan.Operation != grant.Operation || plan.TargetKind != grant.Target.Kind ||
 		!equalValues(plan.Target, grant.Target.Fields) || !equalValues(plan.Constraints.Attributes, grant.Attrs) ||
 		plan.Constraints.Mode != grant.Metadata["hf_grant_mode"] || plan.Constraints.RequestedDurationSeconds != int64(requestedDuration.Seconds()) ||
 		plan.Constraints.RequestedMaxUses != requestedMaxUses {
@@ -196,7 +197,7 @@ func encode(plan Plan) ([]byte, error) {
 func validate(plan Plan) error {
 	if plan.SchemaVersion != SchemaV1 || (plan.Kind != "capability_window" && plan.Kind != "single_execution") ||
 		strings.TrimSpace(plan.ClientID) == "" || strings.TrimSpace(plan.ClientRequestID) == "" || !hfpolicy.IsOperation(plan.Operation) ||
-		len(plan.Target) == 0 || strings.TrimSpace(plan.Constraints.Mode) == "" || plan.Constraints.RequestedDurationSeconds <= 0 ||
+		plan.TargetKind != "hf" || len(plan.Target) == 0 || strings.TrimSpace(plan.Constraints.Mode) == "" || plan.Constraints.RequestedDurationSeconds <= 0 ||
 		plan.Constraints.RequestedMaxUses <= 0 || plan.CredentialSelector != "primary" || plan.CreatedAt.IsZero() {
 		return errors.New("HF plan is invalid")
 	}

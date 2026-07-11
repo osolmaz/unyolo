@@ -54,6 +54,11 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 	if err := validator.ValidateExecution(mutated); err == nil {
 		t.Fatal("validator accepted mutated grant")
 	}
+	mutated = created.Grant
+	mutated.Target.Kind = "other"
+	if err := validator.ValidateExecution(mutated); err == nil {
+		t.Fatal("validator accepted a mutated target kind")
+	}
 	if err := validator.ValidateActivation(context.Background(), created.Grant, grants.ApprovalConstraints{Duration: 10 * time.Minute}); !errors.Is(err, grants.ErrConstraintExceeded) {
 		t.Fatalf("widening error = %v", err)
 	}
@@ -70,14 +75,14 @@ func TestCanonicalPlanDigestFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = "3ae8e49aef2ca88c5b0dd29709621edb76fbdccc1853e7d4ac92306afca35295"
+	const expected = "b81f9373519474f5d95ecbebe58f04c86bc651c9b3c810c4e948f07c05107a36"
 	if got := planstore.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}
 }
 
 func TestDecodeRejectsUnknownDuplicateAndSensitiveFields(t *testing.T) {
-	valid := `{"schema_version":"hf-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target":{"name":["dataset/acme/demo"]},"constraints":{"mode":"window","requested_duration_seconds":300,"requested_max_uses":1},"credential_selector":"primary","created_at":"2026-07-11T12:00:00Z"}`
+	valid := `{"schema_version":"hf-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"hf","target":{"name":["dataset/acme/demo"]},"constraints":{"mode":"window","requested_duration_seconds":300,"requested_max_uses":1},"credential_selector":"primary","created_at":"2026-07-11T12:00:00Z"}`
 	for _, value := range []string{
 		strings.Replace(valid, `"kind":`, `"unknown":true,"kind":`, 1),
 		strings.Replace(valid, `"kind":"capability_window"`, `"kind":"capability_window","kind":"single_execution"`, 1),
@@ -94,7 +99,7 @@ func TestDecodeRejectsUnknownDuplicateAndSensitiveFields(t *testing.T) {
 }
 
 func FuzzDecodePlan(f *testing.F) {
-	f.Add([]byte(`{"schema_version":"hf-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target":{"name":["dataset/acme/demo"]},"constraints":{"mode":"window","requested_duration_seconds":300,"requested_max_uses":1},"credential_selector":"primary","created_at":"2026-07-11T12:00:00Z"}`))
+	f.Add([]byte(`{"schema_version":"hf-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"hf","target":{"name":["dataset/acme/demo"]},"constraints":{"mode":"window","requested_duration_seconds":300,"requested_max_uses":1},"credential_selector":"primary","created_at":"2026-07-11T12:00:00Z"}`))
 	f.Add([]byte(`{"schema_version":"unknown"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		plan, err := decode(data)
