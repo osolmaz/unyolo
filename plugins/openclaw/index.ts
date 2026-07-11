@@ -240,12 +240,7 @@ function validRouting(
 }
 
 function commandError(error: unknown): string {
-  const code =
-    error instanceof BrokerError
-      ? error.code
-      : error instanceof Error
-        ? error.message
-        : "internal_error";
+  const code = pluginErrorCode(error);
   if (code === "revision_stale")
     return "This request changed. Review it again before deciding.";
   if (code === "request_not_found" || code === "request_terminal")
@@ -433,7 +428,7 @@ function isJSON(value: string | undefined): boolean {
 }
 
 function mapHttpError(error: unknown): { code: string; status: number } {
-  const code = error instanceof Error ? error.message : "internal_error";
+  const code = pluginErrorCode(error);
   if (code === "invalid_input") return { code, status: 400 };
   if (code === "request_not_found") return { code, status: 404 };
   if (code === "revision_stale" || code === "request_terminal")
@@ -441,6 +436,20 @@ function mapHttpError(error: unknown): { code: string; status: number } {
   if (code === "action_not_allowed") return { code, status: 422 };
   if (code === "source_unavailable") return { code, status: 503 };
   return { code: "internal_error", status: 500 };
+}
+
+function pluginErrorCode(error: unknown): string {
+  const code =
+    error instanceof BrokerError
+      ? error.code
+      : error instanceof Error
+        ? error.message
+        : "internal_error";
+  if (code === "revision_conflict") return "revision_stale";
+  if (code === "not_found") return "request_not_found";
+  if (code === "invalid_transition" || code === "constraint_exceeded")
+    return "action_not_allowed";
+  return code;
 }
 
 function parseDecisionInput(

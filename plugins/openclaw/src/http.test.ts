@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHttpHandler } from "../index.js";
+import { BrokerError } from "./client.js";
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 const capability = "c".repeat(43);
@@ -83,6 +84,25 @@ describe("OpenClaw HTTP boundary", () => {
       });
     }
     expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("normalizes Operator V1 errors to stable plugin codes", async () => {
+    const decide = vi.fn(async () => {
+      throw new BrokerError("revision_conflict", "upstream detail", 409);
+    });
+    const base = await serve({
+      snapshot: () => ({ sources: [], requests: [], synchronizedAt: "now" }),
+      decide,
+    });
+    const response = await apiFetch(base, `/requests/${handle}/deny`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedRevision: 2 }),
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: { code: "revision_stale" },
+    });
   });
 
   it("serves only the packaged UI prefix with restrictive headers", async () => {

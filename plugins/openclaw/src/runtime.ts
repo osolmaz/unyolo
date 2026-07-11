@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { BrokerConfig, DirectPluginConfig } from "./config.js";
-import { BrokerClient } from "./client.js";
+import { BrokerClient, BrokerError } from "./client.js";
 import { StateStore, type Subscription } from "./store.js";
 import type {
   Action,
@@ -123,7 +123,8 @@ export class BrokerRuntime {
       ...(options.reason ? { decision_reason: options.reason } : {}),
       ...(options.constraints ? { constraints: options.constraints } : {}),
     };
-    const updated = await source.client.decide(
+    const updated = await this.decideWithRecovery(
+      source,
       resolved.requestId,
       action,
       decision,
@@ -152,6 +153,30 @@ export class BrokerRuntime {
       this.markUnhealthy(source, error);
     }
     this.watch(source);
+  }
+  private async decideWithRecovery(
+    source: Source,
+    requestId: string,
+    action: Action,
+    decision: Decision,
+  ): Promise<BrokerRequest> {
+    try {
+      return await source.client.decide(requestId, action, decision);
+    } catch (error) {
+      if (error instanceof BrokerError) throw error;
+      try {
+        const observed = await source.client.get(requestId);
+        this.accept(source, observed);
+      } catch {
+        throw new Error("source_unavailable");
+      }
+      try {
+        return await source.client.decide(requestId, action, decision);
+      } catch (retryError) {
+        if (retryError instanceof BrokerError) throw retryError;
+        throw new Error("source_unavailable");
+      }
+    }
   }
   private async reconcileAll(): Promise<void> {
     await Promise.all(

@@ -16,6 +16,8 @@ describe("BrokerRuntime", () => {
   it("recovers handles and subscriptions, delivers generically, and decides", async () => {
     let status = "pending";
     let decisionBody = "";
+    let decisionAttempts = 0;
+    const decisionBodies: string[] = [];
     const request = () => ({
       id: "request-1",
       revision: status === "pending" ? 1 : 2,
@@ -53,7 +55,15 @@ describe("BrokerRuntime", () => {
         return;
       }
       if (req.method === "POST") {
-        for await (const chunk of req) decisionBody += chunk;
+        let attemptBody = "";
+        for await (const chunk of req) attemptBody += chunk;
+        decisionAttempts += 1;
+        decisionBodies.push(attemptBody);
+        if (decisionAttempts === 1) {
+          req.socket.destroy();
+          return;
+        }
+        decisionBody = attemptBody;
         status = "active";
         return res.end(JSON.stringify(request()));
       }
@@ -120,6 +130,8 @@ describe("BrokerRuntime", () => {
       on_behalf_of: "operator:onur",
       constraints: { duration_seconds: 300, max_uses: 1 },
     });
+    expect(decisionAttempts).toBe(2);
+    expect(decisionBodies[1]).toBe(decisionBodies[0]);
     await runtime.stop();
     runtime = new BrokerRuntime(config, hooks);
     await runtime.start(stateDir);
