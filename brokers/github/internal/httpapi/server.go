@@ -31,7 +31,10 @@ import (
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
 
-const maxPullRequestBodyBytes int64 = 64 * 1024
+const (
+	maxPullRequestBodyBytes int64 = 64 * 1024
+	githubPlanOrphanGrace         = 24 * time.Hour
+)
 
 type Server struct {
 	echo                *echo.Echo
@@ -97,8 +100,26 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		auditWriter: auditWriter, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
 	}
+	if err := collectGitHubPlanOrphans(grantStore, plans, time.Now().UTC()); err != nil {
+		server.logger.Warn("collect orphan GitHub plans", "error", err)
+	}
 	server.registerRoutes(auth)
 	return server, nil
+}
+
+func collectGitHubPlanOrphans(grantStore *grants.Store, plans *ghplan.Store, now time.Time) error {
+	items, err := grantStore.List()
+	if err != nil {
+		return err
+	}
+	referenced := make(map[string]bool, len(items))
+	for _, grant := range items {
+		if grant.Metadata[ghplan.MetadataSchema] == ghplan.SchemaV1 {
+			referenced[grant.Metadata[ghplan.MetadataDigest]] = true
+		}
+	}
+	_, err = plans.CollectOrphans(referenced, now.Add(-githubPlanOrphanGrace))
+	return err
 }
 
 func githubCredentialMode(cfg config.Config) string {

@@ -48,13 +48,13 @@ make run
 Install the latest release globally:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/gh-broker/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
 ```
 
 Pinned install:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/gh-broker/main/install.sh | VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | VERSION=v0.1.0 sh
 ```
 
 Write a client config file from a broker secrets file:

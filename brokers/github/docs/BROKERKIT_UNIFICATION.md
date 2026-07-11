@@ -16,7 +16,7 @@ Implemented today:
 - global Go binary can be built and installed manually
 - `gh-broker --version`
 - `install.sh`
-- release tarballs and checksums through `scripts/release.sh`
+- qualified `gh-broker/vX.Y.Z` releases through the root monorepo workflow
 - `gh-broker setup client`
 - `gh-broker setup systemd --dev-token-fallback`
 - shared brokerkit setup parsing, client config, privileged systemd account,
@@ -96,7 +96,7 @@ or installation-token semantics.
 Binary install:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/gh-broker/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
 ```
 
 Linux service setup:

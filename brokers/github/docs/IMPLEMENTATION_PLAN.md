@@ -6,8 +6,8 @@ and service-account target is specified in
 broker-family install and setup cutover is specified in
 [BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md).
 
-Cutover direction: gh-broker now lives at `github.com/osolmaz/gh-broker` and
-should use `github.com/osolmaz/brokerkit` for shared auth, policy, grants,
+Cutover direction: gh-broker now lives under `brokers/github` in the
+`github.com/osolmaz/brokerkit` monorepo and uses its shared auth, policy, grants,
 approval workflow, audit helpers, notification interfaces, Telegram approval
 transport, shared storage/config helpers, and generic Git parsing helpers.
 There is no backward-compatibility requirement for old import paths, old route
@@ -139,10 +139,9 @@ The brokerkit cutover is complete only when tests prove:
 - audit never contains GitHub credentials, request bodies, pack contents,
   approval tokens, or Telegram bot tokens
 
-## Implementation Readiness
+## Cutover Boundary
 
-The brokerkit cutover is ready to implement when the slice can satisfy this
-contract:
+The completed brokerkit cutover satisfies this contract:
 
 - gh-broker imports brokerkit for shared auth, policy, grants, approval state,
   notification interfaces, Telegram transport, audit helpers, storage/config
@@ -169,7 +168,7 @@ request classification, and audit-facing rule-id mapping.
 Implemented in the current brokerkit cutover slice:
 
 - `install.sh`
-- release tarballs and checksums through `scripts/release.sh`
+- qualified `gh-broker/vX.Y.Z` releases through the root monorepo workflow
 - `gh-broker setup client`
 - `gh-broker setup systemd --dev-token-fallback`
 - shared brokerkit privileged systemd account, directory, file, unit, and
@@ -200,6 +199,16 @@ Implemented in the current brokerkit cutover slice:
   message reference, and durable write failures retain the Telegram offset for
   retry
 - every API grant request requires a `client_request_id`
+- every requestable operation is bound to a canonical immutable plan containing
+  the client and request identity, operation, target, requested constraints,
+  credential selector, and original creation time
+- retries across process restarts reuse the original plan creation time and
+  digest, so grant idempotency does not depend on process lifetime
+- malformed plans, duplicate JSON keys, unknown fields, sensitive field names,
+  changed request identity or target, and credential-selector changes fail
+  closed
+- unreferenced plans older than the startup grace period are collected through
+  brokerkit's shared content-addressed plan store
 - retained grants are quarantined and report no usable remaining capacity
 - ambiguous upstream or grant-commit results retain the reservation or close
   the grant instead of making the approved use available again

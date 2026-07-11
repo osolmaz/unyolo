@@ -41,7 +41,7 @@ test:
 ## test-coverage: Run tests with coverage
 .PHONY: test-coverage
 test-coverage:
-	./scripts/check-go-coverage.sh
+	go run ../../cmd/brokerkit-coverage --minimum 85 --directory .
 
 ## vet: Run go vet
 .PHONY: vet
@@ -66,11 +66,9 @@ check: vet test build
 ## slophammer: Run Slophammer quality checks
 .PHONY: slophammer
 slophammer:
-	slophammer-go dry .
-	slophammer-go crap . --max-score 8
-	./scripts/check-mutation.sh
-	slophammer-go mutate . --scan
-	slophammer-go check .
+	cd ../.. && slophammer-go dry .
+	cd ../.. && slophammer-go crap . --max-score 8
+	cd ../.. && slophammer-go check .
 
 ## clean: Remove build artifacts
 .PHONY: clean

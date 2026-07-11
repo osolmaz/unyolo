@@ -2,10 +2,11 @@
 set -eu
 
 BROKER=gh-broker
-REPO="${REPO:-osolmaz/gh-broker}"
-BROKERKIT_INSTALLER_REV="${BROKERKIT_INSTALLER_REV:-2af4deb6809a2b3d5edd7ffe47e3c0182c68bbcd}"
+REPO="${REPO:-osolmaz/brokerkit}"
+TAG_PREFIX="${TAG_PREFIX:-gh-broker/}"
+BROKERKIT_INSTALLER_REV="${BROKERKIT_INSTALLER_REV:-main}"
 BROKERKIT_INSTALLER_URL="${BROKERKIT_INSTALLER_URL:-https://raw.githubusercontent.com/osolmaz/brokerkit/${BROKERKIT_INSTALLER_REV}/installer/install.sh}"
-export BROKER REPO
+export BROKER REPO TAG_PREFIX
 
 if [ -n "${BROKERKIT_INSTALLER_FILE:-}" ]; then
   exec sh "$BROKERKIT_INSTALLER_FILE"

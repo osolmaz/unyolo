@@ -4,18 +4,17 @@ package ghplan
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/store"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/planstore"
 )
 
 const (
@@ -31,40 +30,58 @@ const (
 )
 
 type Plan struct {
-	Schema                   string              `json:"schema"`
-	Kind                     string              `json:"kind"`
-	Operation                string              `json:"operation"`
-	Target                   map[string][]string `json:"target"`
+	SchemaVersion      string              `json:"schema_version"`
+	Kind               string              `json:"kind"`
+	ClientID           string              `json:"client_id"`
+	ClientRequestID    string              `json:"client_request_id"`
+	Operation          string              `json:"operation"`
+	TargetKind         string              `json:"target_kind"`
+	Target             map[string][]string `json:"target"`
+	Constraints        Constraints         `json:"constraints"`
+	CredentialSelector string              `json:"credential_selector"`
+	CreatedAt          time.Time           `json:"created_at"`
+}
+
+type Constraints struct {
 	Attributes               map[string][]string `json:"attributes,omitempty"`
-	CredentialMode           string              `json:"credential_mode"`
 	RequestedDurationSeconds int64               `json:"requested_duration_seconds"`
 	RequestedMaxUses         int                 `json:"requested_max_uses"`
 }
 
 type Store struct {
-	directory      string
-	credentialMode string
+	shared             *planstore.Store
+	credentialSelector string
+	now                func() time.Time
 }
 
-func NewStore(directory string, credentialMode string) (*Store, error) {
-	if strings.TrimSpace(directory) == "" {
-		return nil, errors.New("GitHub plan directory is required")
-	}
-	if credentialMode != "github_app" && credentialMode != "development_pat" {
-		return nil, errors.New("GitHub credential mode is invalid")
-	}
-	return &Store{directory: directory, credentialMode: credentialMode}, nil
+func NewStore(directory string, credentialSelector string) (*Store, error) {
+	return newStore(directory, credentialSelector, time.Now)
 }
 
-func FromRequest(request grants.Request, credentialMode string) Plan {
+func newStore(directory string, credentialSelector string, now func() time.Time) (*Store, error) {
+	if credentialSelector != "github_app" && credentialSelector != "development_pat" {
+		return nil, errors.New("GitHub credential selector is invalid")
+	}
+	shared, err := planstore.New(directory, "GitHub")
+	if err != nil {
+		return nil, err
+	}
+	if now == nil {
+		now = time.Now
+	}
+	return &Store{shared: shared, credentialSelector: credentialSelector, now: now}, nil
+}
+
+func FromRequest(request grants.Request, credentialSelector string, createdAt time.Time) Plan {
 	kind := request.Metadata[MetadataMode]
 	if kind == "" {
 		kind, _ = kindForOperation(request.Operation)
 	}
 	return Plan{
-		Schema: SchemaV1, Kind: kind, Operation: request.Operation,
-		Target: cloneValues(request.Target.Fields), Attributes: cloneValues(request.Attrs), CredentialMode: credentialMode,
-		RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses,
+		SchemaVersion: SchemaV1, Kind: kind, ClientID: request.Client, ClientRequestID: request.ClientRequestID,
+		Operation: request.Operation, TargetKind: request.Target.Kind, Target: cloneValues(request.Target.Fields),
+		Constraints:        Constraints{Attributes: cloneValues(request.Attrs), RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses},
+		CredentialSelector: credentialSelector, CreatedAt: createdAt.UTC(),
 	}
 }
 
@@ -80,45 +97,39 @@ func kindForOperation(operation string) (string, bool) {
 }
 
 func (s *Store) Put(plan Plan) (string, error) {
+	if s == nil || s.shared == nil {
+		return "", errors.New("GitHub plan store is unavailable")
+	}
 	encoded, err := encode(plan)
 	if err != nil {
 		return "", err
 	}
-	digest := digest(encoded)
-	path := s.path(digest)
-	if current, err := os.ReadFile(path); err == nil {
-		if !bytes.Equal(bytes.TrimSpace(current), encoded) {
-			return "", errors.New("GitHub plan digest collision")
-		}
-		return digest, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
-	}
-	if err := store.WriteFileAtomic(path, append(encoded, '\n'), 0o600); err != nil {
-		return "", err
-	}
-	return digest, nil
+	return s.shared.Put(encoded)
 }
 
-func (s *Store) Get(value string) (Plan, error) {
-	if len(value) != sha256.Size*2 {
-		return Plan{}, errors.New("GitHub plan digest is invalid")
+func (s *Store) Get(digest string) (Plan, error) {
+	if s == nil || s.shared == nil {
+		return Plan{}, errors.New("GitHub plan store is unavailable")
 	}
-	if _, err := hex.DecodeString(value); err != nil {
-		return Plan{}, errors.New("GitHub plan digest is invalid")
-	}
-	data, err := os.ReadFile(s.path(value))
+	data, err := s.shared.Get(digest)
 	if err != nil {
-		return Plan{}, fmt.Errorf("read GitHub plan: %w", err)
+		return Plan{}, err
 	}
-	if digest(bytes.TrimSpace(data)) != value {
-		return Plan{}, errors.New("GitHub plan content digest mismatch")
+	return decode(data)
+}
+
+func decode(data []byte) (Plan, error) {
+	if err := strictjson.RejectDuplicateKeys(data); err != nil {
+		return Plan{}, fmt.Errorf("decode GitHub plan: %w", err)
 	}
 	var plan Plan
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&plan); err != nil {
 		return Plan{}, fmt.Errorf("decode GitHub plan: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return Plan{}, errors.New("decode GitHub plan: trailing data")
 	}
 	if err := validate(plan); err != nil {
 		return Plan{}, err
@@ -127,24 +138,38 @@ func (s *Store) Get(value string) (Plan, error) {
 }
 
 func (s *Store) Bind(request *grants.Request) error {
-	if s == nil || request == nil {
+	if s == nil {
 		return errors.New("GitHub grant request is required")
 	}
-	if request.Metadata == nil {
-		request.Metadata = map[string]string{}
+	return s.BindAt(request, s.now().UTC())
+}
+
+func (s *Store) BindAt(request *grants.Request, createdAt time.Time) error {
+	if s == nil || request == nil {
+		return errors.New("GitHub grant request is required")
 	}
 	kind, ok := kindForOperation(request.Operation)
 	if !ok {
 		return fmt.Errorf("GitHub operation %q is not grantable", request.Operation)
 	}
+	if request.Metadata == nil {
+		request.Metadata = map[string]string{}
+	}
 	request.Metadata[MetadataMode] = kind
-	digest, err := s.Put(FromRequest(*request, s.credentialMode))
+	digest, err := s.Put(FromRequest(*request, s.credentialSelector, createdAt))
 	if err != nil {
 		return err
 	}
 	request.Metadata[MetadataSchema] = SchemaV1
 	request.Metadata[MetadataDigest] = digest
 	return nil
+}
+
+func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) (int, error) {
+	if s == nil || s.shared == nil {
+		return 0, errors.New("GitHub plan store is unavailable")
+	}
+	return s.shared.CollectOrphans(referenced, olderThan)
 }
 
 type Validator struct{ Store *Store }
@@ -176,10 +201,10 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if requestedMaxUses <= 0 {
 		requestedMaxUses = grant.MaxUses
 	}
-	if plan.Kind != grant.Metadata[MetadataMode] || plan.Operation != grant.Operation ||
-		!equalValues(plan.Target, grant.Target.Fields) || !equalValues(plan.Attributes, grant.Attrs) ||
-		plan.CredentialMode != v.Store.credentialMode || plan.RequestedDurationSeconds != int64(requestedDuration.Seconds()) ||
-		plan.RequestedMaxUses != requestedMaxUses {
+	if plan.Kind != grant.Metadata[MetadataMode] || plan.ClientID != grant.Client || plan.ClientRequestID != grant.ClientRequestID ||
+		plan.Operation != grant.Operation || plan.TargetKind != grant.Target.Kind || !equalValues(plan.Target, grant.Target.Fields) ||
+		!equalValues(plan.Constraints.Attributes, grant.Attrs) || plan.CredentialSelector != v.Store.credentialSelector ||
+		plan.Constraints.RequestedDurationSeconds != int64(requestedDuration.Seconds()) || plan.Constraints.RequestedMaxUses != requestedMaxUses {
 		return errors.New("GitHub grant does not match its immutable plan")
 	}
 	if constraints.Duration > requestedDuration || constraints.MaxUses > requestedMaxUses {
@@ -197,12 +222,17 @@ func encode(plan Plan) ([]byte, error) {
 
 func validate(plan Plan) error {
 	kind, grantable := kindForOperation(plan.Operation)
-	if plan.Schema != SchemaV1 || !grantable || plan.Kind != kind || !validTarget(plan.Target) || !validAttrs(plan.Operation, plan.Attributes) ||
-		(plan.CredentialMode != "github_app" && plan.CredentialMode != "development_pat") ||
-		plan.RequestedDurationSeconds <= 0 || plan.RequestedMaxUses <= 0 {
+	if plan.SchemaVersion != SchemaV1 || !grantable || plan.Kind != kind || strings.TrimSpace(plan.ClientID) == "" ||
+		strings.TrimSpace(plan.ClientRequestID) == "" || plan.TargetKind != "repo" || !validTarget(plan.Target) ||
+		!validAttrs(plan.Operation, plan.Constraints.Attributes) ||
+		(plan.CredentialSelector != "github_app" && plan.CredentialSelector != "development_pat") ||
+		plan.Constraints.RequestedDurationSeconds <= 0 || plan.Constraints.RequestedMaxUses <= 0 || plan.CreatedAt.IsZero() {
 		return errors.New("GitHub plan is invalid")
 	}
-	return nil
+	if err := validatePlanValues(plan.Target); err != nil {
+		return err
+	}
+	return validatePlanValues(plan.Constraints.Attributes)
 }
 
 func validTarget(target map[string][]string) bool {
@@ -225,13 +255,29 @@ func validAttrs(operation string, attrs map[string][]string) bool {
 	return true
 }
 
+func validatePlanValues(values map[string][]string) error {
+	for key, list := range values {
+		normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
+		for _, marker := range []string{"authorization", "credential", "password", "privatekey", "secret", "token", "cookie"} {
+			if strings.Contains(normalized, marker) {
+				return errors.New("GitHub plan contains a sensitive field")
+			}
+		}
+		if strings.TrimSpace(key) == "" || len(list) == 0 {
+			return errors.New("GitHub plan contains an invalid value map")
+		}
+		for _, value := range list {
+			if strings.TrimSpace(value) == "" {
+				return errors.New("GitHub plan contains an invalid value map")
+			}
+		}
+	}
+	return nil
+}
+
 func oneNonEmpty(values []string) bool {
 	return len(values) == 1 && strings.TrimSpace(values[0]) != ""
 }
-
-func digest(data []byte) string { value := sha256.Sum256(data); return hex.EncodeToString(value[:]) }
-
-func (s *Store) path(value string) string { return filepath.Join(s.directory, value+".json") }
 
 func cloneValues(values map[string][]string) map[string][]string {
 	out := make(map[string][]string, len(values))

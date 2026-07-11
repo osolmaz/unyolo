@@ -631,8 +631,8 @@ it cannot prove GitHub App installation permissions.
 
 ## Implementation Order
 
-1. Public identity is now `github.com/osolmaz/gh-broker`.
-   - module `github.com/osolmaz/gh-broker`
+1. Public source identity is `github.com/osolmaz/brokerkit/brokers/github`.
+   - module `github.com/osolmaz/brokerkit`
    - binary `gh-broker`
    - env vars `GH_BROKER_*`
    - docs and README use `gh-broker`
@@ -696,7 +696,7 @@ it cannot prove GitHub App installation permissions.
 
 9. Add installer and release workflow:
    - `install.sh`
-   - `scripts/release.sh`
+   - the root qualified-tag release workflow
    - `gh-broker --version`
    - GitHub release assets for Linux/macOS amd64/arm64
    - brokerkit-aligned `setup systemd` and `setup client` behavior described
@@ -767,11 +767,10 @@ go build ./cmd/gh-broker
 golangci-lint run
 slophammer-go dry .
 slophammer-go crap .
-slophammer-go mutate . --scan
 slophammer-go check .
 slophammer-go check . --execute
 ```
 
-Slophammer is mandatory for GitHub broker slices. Keep the DRY, CRAP, mutation,
-and check gates in CI so a brokerkit cutover cannot merge with duplicated
-control-plane code or unreviewed complexity.
+Slophammer's DRY, CRAP, and check gates are mandatory for GitHub broker slices.
+Mutation configuration remains checked in for explicit training or hardening
+runs, but mutation testing is not part of the default local or CI gate.

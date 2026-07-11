@@ -14,7 +14,7 @@ import (
 func TestInstallWrapperDelegatesToBrokerkit(t *testing.T) {
 	dir := t.TempDir()
 	delegate := filepath.Join(dir, "delegate.sh")
-	if err := os.WriteFile(delegate, []byte("#!/bin/sh\nprintf '%s|%s|%s|%s\\n' \"$BROKER\" \"$REPO\" \"$VERSION\" \"$INSTALL_DIR\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(delegate, []byte("#!/bin/sh\nprintf '%s|%s|%s|%s|%s\\n' \"$BROKER\" \"$REPO\" \"$TAG_PREFIX\" \"$VERSION\" \"$INSTALL_DIR\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(context.Background(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
@@ -28,7 +28,7 @@ func TestInstallWrapperDelegatesToBrokerkit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install wrapper: %v: %s", err, output)
 	}
-	if got := strings.TrimSpace(string(output)); got != "gh-broker|example/gh-broker|v1.2.3|/tmp/broker-bin" {
+	if got := strings.TrimSpace(string(output)); got != "gh-broker|example/gh-broker|gh-broker/|v1.2.3|/tmp/broker-bin" {
 		t.Fatalf("delegated environment = %q", got)
 	}
 }

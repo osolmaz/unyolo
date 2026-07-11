@@ -92,21 +92,6 @@ func assertString(t *testing.T, name string, got string, want string) {
 	}
 }
 
-func TestLoadSupportsLegacyCBAEnvironmentFallback(t *testing.T) {
-	t.Setenv("CBA_BIND_ADDR", "127.0.0.3")
-	t.Setenv("CBA_PORT", "8081")
-	t.Setenv("CBA_SHARED_SECRET", strings.Repeat("b", minimumSharedSecretBytes))
-	t.Setenv("CBA_GITHUB_TOKEN", "github-token")
-	t.Setenv("CBA_GITHUB_ACCESS_FILE", "/tmp/legacy-scope.json")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.BindAddr != "127.0.0.3" || cfg.ScopeFile != "/tmp/legacy-scope.json" || cfg.ClientID != "bob" {
-		t.Fatalf("Load() = %+v, want legacy fallback values", cfg)
-	}
-}
-
 func TestLoadReadsGitHubTokenFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "github-token")
 	if err := os.WriteFile(path, []byte(" token-from-file\n"), 0600); err != nil {

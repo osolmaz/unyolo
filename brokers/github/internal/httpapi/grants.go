@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 	"github.com/osolmaz/brokerkit/grants"
@@ -81,10 +82,37 @@ func (s *Server) createGrant(c echo.Context) error {
 }
 
 func (s *Server) requestGrant(request grants.Request) (grants.RequestResult, bool, error) {
-	if err := s.plans.Bind(&request); err != nil {
+	createdAt, exists, err := existingGitHubPlanCreatedAt(s.grants, s.plans, request.Client, request.ClientRequestID)
+	if err != nil {
+		return grants.RequestResult{}, false, err
+	}
+	if exists {
+		err = s.plans.BindAt(&request, createdAt)
+	} else {
+		err = s.plans.Bind(&request)
+	}
+	if err != nil {
 		return grants.RequestResult{}, false, fmt.Errorf("store immutable GitHub plan: %w", err)
 	}
 	return s.grants.Request(request)
+}
+
+func existingGitHubPlanCreatedAt(store *grants.Store, plans *ghplan.Store, client string, clientRequestID string) (time.Time, bool, error) {
+	items, err := store.ListForClient(client)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	for _, grant := range items {
+		if grant.ClientRequestID != clientRequestID || grant.Status == grants.StatusCanceled {
+			continue
+		}
+		plan, err := plans.Get(grant.Metadata[ghplan.MetadataDigest])
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		return plan.CreatedAt, true, nil
+	}
+	return time.Time{}, false, nil
 }
 
 func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {
