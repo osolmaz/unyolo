@@ -35,6 +35,9 @@ func executePlan(value plan.Plan) error {
 	if err := dropIdentity(value); err != nil {
 		return err
 	}
+	if err := applyPostIdentityLimits(); err != nil {
+		return err
+	}
 	argv := append([]string{value.Executable}, value.Arguments...)
 	return execveat(executable, argv, append([]string(nil), value.Environment...))
 }

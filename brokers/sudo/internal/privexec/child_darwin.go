@@ -33,6 +33,9 @@ func executePlan(value plan.Plan) error {
 	if err := syscall.Setuid(int(value.TargetUID)); err != nil {
 		return errors.New("drop target uid")
 	}
+	if err := applyPostIdentityLimits(); err != nil {
+		return err
+	}
 	argv := append([]string{value.Executable}, value.Arguments...)
 	return syscall.Exec(value.Executable, argv, append([]string(nil), value.Environment...))
 }
