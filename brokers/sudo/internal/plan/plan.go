@@ -79,22 +79,30 @@ func (SystemIdentityResolver) Lookup(name string) (Identity, error) {
 	if err != nil {
 		return Identity{}, errors.New("target user gid is invalid")
 	}
-	groups, err := account.GroupIds()
+	supplementary, err := supplementaryGroups(account, gid)
 	if err != nil {
-		return Identity{}, errors.New("target supplementary groups cannot be resolved")
-	}
-	supplementary := make([]uint32, 0, len(groups))
-	for _, value := range groups {
-		groupID, err := parseID(value)
-		if err != nil {
-			return Identity{}, errors.New("target supplementary group is invalid")
-		}
-		if groupID != gid && !slices.Contains(supplementary, groupID) {
-			supplementary = append(supplementary, groupID)
-		}
+		return Identity{}, err
 	}
 	slices.Sort(supplementary)
 	return Identity{Name: account.Username, UID: uid, GID: gid, SupplementaryGIDs: supplementary}, nil
+}
+
+func supplementaryGroups(account *user.User, primary uint32) ([]uint32, error) {
+	groups, err := account.GroupIds()
+	if err != nil {
+		return nil, errors.New("target supplementary groups cannot be resolved")
+	}
+	result := make([]uint32, 0, len(groups))
+	for _, value := range groups {
+		groupID, err := parseID(value)
+		if err != nil {
+			return nil, errors.New("target supplementary group is invalid")
+		}
+		if groupID != primary && !slices.Contains(result, groupID) {
+			result = append(result, groupID)
+		}
+	}
+	return result, nil
 }
 
 type Store struct{ content *planstore.Store }
@@ -108,12 +116,10 @@ func NewStore(directory string) (*Store, error) {
 }
 
 func Build(request grants.Request, resolved catalog.Resolved, identity Identity, now time.Time) (Plan, error) {
-	if request.Operation != sudopolicy.OperationExecCommand || request.Client == "" || request.ClientRequestID == "" ||
-		request.Duration <= 0 || request.MaxUses != 1 || identity.Name != resolved.TargetUser {
+	if !validBuildRequest(request, resolved, identity) {
 		return Plan{}, errors.New("sudo plan input is invalid")
 	}
-	if request.Target.Kind != sudopolicy.TargetUser || corepolicy.FirstValue(request.Target.Fields[sudopolicy.TargetName]) != resolved.TargetUser ||
-		corepolicy.FirstValue(request.Attrs[sudopolicy.AttrCommandID]) != resolved.CommandID {
+	if !buildRequestMatchesResolved(request, resolved) {
 		return Plan{}, errors.New("sudo plan request does not match resolved command")
 	}
 	for slot, value := range resolved.SlotValues {
@@ -121,15 +127,7 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 			return Plan{}, errors.New("sudo plan slot values do not match request")
 		}
 	}
-	boundEnvironment := map[string]string{"LANG": "C", "LC_ALL": "C"}
-	for key, value := range resolved.Environment {
-		boundEnvironment[key] = value
-	}
-	environment := make([]string, 0, len(boundEnvironment))
-	for key, value := range boundEnvironment {
-		environment = append(environment, key+"="+value)
-	}
-	sort.Strings(environment)
+	environment := boundEnvironment(resolved.Environment)
 	arguments := append([]string(nil), resolved.Arguments...)
 	if len(arguments) == 0 || arguments[0] != resolved.Executable {
 		return Plan{}, errors.New("sudo resolved argv is invalid")
@@ -145,6 +143,30 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 		SlotValues: cloneMap(resolved.SlotValues), CatalogDigest: resolved.CatalogDigest,
 		RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses, CreatedAt: now.UTC(),
 	}, nil
+}
+
+func validBuildRequest(request grants.Request, resolved catalog.Resolved, identity Identity) bool {
+	return request.Operation == sudopolicy.OperationExecCommand && request.Client != "" && request.ClientRequestID != "" &&
+		request.Duration > 0 && request.MaxUses == 1 && identity.Name == resolved.TargetUser
+}
+
+func buildRequestMatchesResolved(request grants.Request, resolved catalog.Resolved) bool {
+	return request.Target.Kind == sudopolicy.TargetUser &&
+		corepolicy.FirstValue(request.Target.Fields[sudopolicy.TargetName]) == resolved.TargetUser &&
+		corepolicy.FirstValue(request.Attrs[sudopolicy.AttrCommandID]) == resolved.CommandID
+}
+
+func boundEnvironment(values map[string]string) []string {
+	bound := map[string]string{"LANG": "C", "LC_ALL": "C"}
+	for key, value := range values {
+		bound[key] = value
+	}
+	result := make([]string, 0, len(bound))
+	for key, value := range bound {
+		result = append(result, key+"="+value)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func (s *Store) Bind(request *grants.Request, value Plan) error {
@@ -207,11 +229,15 @@ func ValidateForHelper(value Plan, snapshot *catalog.Snapshot, identities Identi
 		return err
 	}
 	identity, err := identities.Lookup(value.TargetUser)
-	if err != nil || identity.Name != value.TargetUser || identity.UID != value.TargetUID || identity.GID != value.TargetGID ||
-		!slices.Equal(identity.SupplementaryGIDs, value.SupplementaryGIDs) {
+	if err != nil || !identityMatchesPlan(identity, value) {
 		return errors.New("sudo target identity does not match the execution plan")
 	}
 	return nil
+}
+
+func identityMatchesPlan(identity Identity, value Plan) bool {
+	return identity.Name == value.TargetUser && identity.UID == value.TargetUID && identity.GID == value.TargetGID &&
+		slices.Equal(identity.SupplementaryGIDs, value.SupplementaryGIDs)
 }
 
 type Readiness interface {
@@ -249,48 +275,89 @@ func (v Validator) ValidateExecution(ctx context.Context, grant grants.Grant) (P
 }
 
 func (v Validator) validateGrant(grant grants.Grant, constraints grants.ApprovalConstraints) error {
-	if v.Store == nil || v.Catalog == nil || v.Identities == nil {
-		return errors.New("sudo plan validator is unavailable")
-	}
-	if grant.Metadata[MetadataSchema] != SchemaV1 {
-		return errors.New("sudo grant plan schema is missing or unsupported")
-	}
-	value, err := v.Store.Get(grant.Metadata[MetadataDigest])
+	value, requestedDuration, err := v.loadGrantPlan(grant)
 	if err != nil {
 		return err
-	}
-	requestedDuration := grant.RequestedDuration
-	if requestedDuration <= 0 {
-		requestedDuration = grant.Duration
-	}
-	requestedMaxUses := grant.RequestedMaxUses
-	if requestedMaxUses <= 0 {
-		requestedMaxUses = grant.MaxUses
-	}
-	if value.RequestID != grant.ClientRequestID || value.ClientID != grant.Client || value.Operation != grant.Operation ||
-		value.Operation != sudopolicy.OperationExecCommand || value.TargetUser != corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName]) ||
-		value.CommandID != corepolicy.FirstValue(grant.Attrs[sudopolicy.AttrCommandID]) ||
-		grant.Target.Kind != sudopolicy.TargetUser || len(grant.Target.Fields) != 1 || len(grant.Attrs) != len(value.SlotValues)+1 ||
-		value.RequestedDurationSeconds != int64(requestedDuration.Seconds()) || value.RequestedMaxUses != requestedMaxUses || requestedMaxUses != 1 {
-		return errors.New("sudo grant does not match its immutable plan")
-	}
-	for slot, expected := range value.SlotValues {
-		if corepolicy.FirstValue(grant.Attrs[sudopolicy.ArgumentPrefix+slot]) != expected {
-			return errors.New("sudo grant slot values do not match its plan")
-		}
 	}
 	if err := validateCatalogBinding(value, v.Catalog); err != nil {
 		return err
 	}
-	identity, err := v.Identities.Lookup(value.TargetUser)
-	if err != nil || identity.Name != value.TargetUser || identity.UID != value.TargetUID || identity.GID != value.TargetGID ||
-		!slices.Equal(identity.SupplementaryGIDs, value.SupplementaryGIDs) {
+	if err := validateCurrentIdentity(v.Identities, value); err != nil {
 		return errors.New("sudo target identity changed after request")
 	}
-	if constraints.Duration > requestedDuration || constraints.MaxUses > 1 {
+	if !constraintsWithinGrant(constraints, requestedDuration) {
 		return grants.ErrConstraintExceeded
 	}
 	return nil
+}
+
+func (v Validator) loadGrantPlan(grant grants.Grant) (Plan, time.Duration, error) {
+	if v.Store == nil || v.Catalog == nil || v.Identities == nil {
+		return Plan{}, 0, errors.New("sudo plan validator is unavailable")
+	}
+	if grant.Metadata[MetadataSchema] != SchemaV1 {
+		return Plan{}, 0, errors.New("sudo grant plan schema is missing or unsupported")
+	}
+	value, err := v.Store.Get(grant.Metadata[MetadataDigest])
+	if err != nil {
+		return Plan{}, 0, err
+	}
+	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
+	if !planMatchesGrant(value, grant, requestedDuration, requestedMaxUses) {
+		return Plan{}, 0, errors.New("sudo grant does not match its immutable plan")
+	}
+	if !grantSlotsMatch(value, grant) {
+		return Plan{}, 0, errors.New("sudo grant slot values do not match its plan")
+	}
+	return value, requestedDuration, nil
+}
+
+func grantSlotsMatch(value Plan, grant grants.Grant) bool {
+	for slot, expected := range value.SlotValues {
+		if corepolicy.FirstValue(grant.Attrs[sudopolicy.ArgumentPrefix+slot]) != expected {
+			return false
+		}
+	}
+	return true
+}
+
+func validateCurrentIdentity(resolver IdentityResolver, value Plan) error {
+	identity, err := resolver.Lookup(value.TargetUser)
+	if err != nil || !identityMatchesPlan(identity, value) {
+		return errors.New("sudo target identity changed after request")
+	}
+	return nil
+}
+
+func constraintsWithinGrant(constraints grants.ApprovalConstraints, duration time.Duration) bool {
+	return constraints.Duration <= duration && constraints.MaxUses <= 1
+}
+
+func requestedGrantBounds(grant grants.Grant) (time.Duration, int) {
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	maxUses := grant.RequestedMaxUses
+	if maxUses <= 0 {
+		maxUses = grant.MaxUses
+	}
+	return duration, maxUses
+}
+
+func planMatchesGrant(value Plan, grant grants.Grant, duration time.Duration, maxUses int) bool {
+	return planMatchesGrantIdentity(value, grant) && planMatchesGrantShape(value, grant) &&
+		value.RequestedDurationSeconds == int64(duration.Seconds()) && value.RequestedMaxUses == maxUses && maxUses == 1
+}
+
+func planMatchesGrantIdentity(value Plan, grant grants.Grant) bool {
+	return value.RequestID == grant.ClientRequestID && value.ClientID == grant.Client && value.Operation == grant.Operation &&
+		value.Operation == sudopolicy.OperationExecCommand && value.TargetUser == corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName]) &&
+		value.CommandID == corepolicy.FirstValue(grant.Attrs[sudopolicy.AttrCommandID])
+}
+
+func planMatchesGrantShape(value Plan, grant grants.Grant) bool {
+	return grant.Target.Kind == sudopolicy.TargetUser && len(grant.Target.Fields) == 1 && len(grant.Attrs) == len(value.SlotValues)+1
 }
 
 func validateCatalogBinding(value Plan, snapshot *catalog.Snapshot) error {
@@ -351,32 +418,64 @@ func decode(data []byte) (Plan, error) {
 }
 
 func validate(value Plan) error {
-	if value.Schema != SchemaV1 || !boundedIdentifier(value.RequestID) || !boundedIdentifier(value.ClientID) || value.Operation != sudopolicy.OperationExecCommand ||
-		!boundedIdentifier(value.CommandID) || !boundedIdentifier(value.TargetUser) || !absoluteClean(value.Executable) || !absoluteClean(value.WorkingDirectory) ||
-		value.TimeoutSeconds == 0 || value.TimeoutSeconds > 3600 || value.MaxOutputBytes > 1<<20 || value.CatalogDigest == "" ||
-		value.RequestedDurationSeconds <= 0 || value.RequestedDurationSeconds > int64((24*time.Hour)/time.Second) || value.RequestedMaxUses != 1 || value.CreatedAt.IsZero() {
+	if !validPlanIdentity(value) || !validPlanLimits(value) {
 		return errors.New("sudo plan is invalid")
 	}
-	if !planstore.ValidDigest(value.CatalogDigest) || len(value.Arguments) > 64 || len(value.Environment) > 128 || len(value.SlotValues) > 64 || len(value.SupplementaryGIDs) > 256 {
+	if !validPlanCollectionLimits(value) {
 		return errors.New("sudo plan is invalid")
 	}
-	if !slices.IsSorted(value.SupplementaryGIDs) || hasDuplicateIDs(value.SupplementaryGIDs) {
+	if !validSupplementaryGroups(value.SupplementaryGIDs) {
 		return errors.New("sudo plan supplementary groups are invalid")
 	}
-	for _, argument := range value.Arguments {
-		if !boundedPlainValue(argument, 4096) {
-			return errors.New("sudo plan argument is invalid")
-		}
+	if !validPlanArguments(value.Arguments) {
+		return errors.New("sudo plan argument is invalid")
 	}
 	if err := validatePlanEnvironment(value.Environment); err != nil {
 		return err
 	}
-	for key, item := range value.SlotValues {
-		if !boundedIdentifier(key) || !boundedPlainValue(item, 4096) {
-			return errors.New("sudo plan slot value is invalid")
-		}
+	if !validPlanSlots(value.SlotValues) {
+		return errors.New("sudo plan slot value is invalid")
 	}
 	return nil
+}
+
+func validPlanCollectionLimits(value Plan) bool {
+	return planstore.ValidDigest(value.CatalogDigest) && len(value.Arguments) <= 64 && len(value.Environment) <= 128 &&
+		len(value.SlotValues) <= 64 && len(value.SupplementaryGIDs) <= 256
+}
+
+func validSupplementaryGroups(values []uint32) bool {
+	return slices.IsSorted(values) && !hasDuplicateIDs(values)
+}
+
+func validPlanIdentity(value Plan) bool {
+	return value.Schema == SchemaV1 && boundedIdentifier(value.RequestID) && boundedIdentifier(value.ClientID) &&
+		value.Operation == sudopolicy.OperationExecCommand && boundedIdentifier(value.CommandID) && boundedIdentifier(value.TargetUser) &&
+		absoluteClean(value.Executable) && absoluteClean(value.WorkingDirectory)
+}
+
+func validPlanLimits(value Plan) bool {
+	return value.TimeoutSeconds > 0 && value.TimeoutSeconds <= 3600 && value.MaxOutputBytes <= 1<<20 && value.CatalogDigest != "" &&
+		value.RequestedDurationSeconds > 0 && value.RequestedDurationSeconds <= int64((24*time.Hour)/time.Second) &&
+		value.RequestedMaxUses == 1 && !value.CreatedAt.IsZero()
+}
+
+func validPlanArguments(values []string) bool {
+	for _, value := range values {
+		if !boundedPlainValue(value, 4096) {
+			return false
+		}
+	}
+	return true
+}
+
+func validPlanSlots(values map[string]string) bool {
+	for key, value := range values {
+		if !boundedIdentifier(key) || !boundedPlainValue(value, 4096) {
+			return false
+		}
+	}
+	return true
 }
 
 func absoluteClean(value string) bool {
@@ -407,17 +506,25 @@ func validatePlanEnvironment(values []string) error {
 	seen := map[string]bool{}
 	for _, value := range values {
 		key, item, ok := strings.Cut(value, "=")
-		if !ok || key == "" || seen[key] || !boundedPlainValue(item, 4096) || strings.HasPrefix(key, "LD_") || strings.HasPrefix(key, "DYLD_") {
+		if !validEnvironmentEntry(key, item, ok, seen[key]) {
 			return errors.New("sudo plan environment is invalid")
 		}
 		for _, character := range key {
-			if (character < 'A' || character > 'Z') && (character < '0' || character > '9') && character != '_' {
+			if !validEnvironmentKeyCharacter(character) {
 				return errors.New("sudo plan environment is invalid")
 			}
 		}
 		seen[key] = true
 	}
 	return nil
+}
+
+func validEnvironmentEntry(key, value string, cut bool, seen bool) bool {
+	return cut && key != "" && !seen && boundedPlainValue(value, 4096) && !strings.HasPrefix(key, "LD_") && !strings.HasPrefix(key, "DYLD_")
+}
+
+func validEnvironmentKeyCharacter(character rune) bool {
+	return character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '_'
 }
 
 func parseID(value string) (uint32, error) {

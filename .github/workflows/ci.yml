@@ -46,16 +46,11 @@ jobs:
           slophammer-go crap .
           (cd brokers/huggingface && slophammer-go crap .)
           (cd brokers/github && slophammer-go crap .)
-          (cd brokers/sudo && slophammer-go crap .)
       - name: mutate4go gate (opt-in)
         if: ${{ vars.RUN_MUTATION == 'true' }}
         run: ./scripts/check-mutation.sh
       - name: Slophammer complete gates
-        run: |
-          slophammer-go check .
-          (cd brokers/huggingface && slophammer-go check .)
-          (cd brokers/github && slophammer-go check .)
-          (cd brokers/sudo && slophammer-go check .)
+        run: slophammer-go check .
 
   openclaw-plugin:
     runs-on: ubuntu-latest

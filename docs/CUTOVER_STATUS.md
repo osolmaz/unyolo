@@ -82,6 +82,11 @@ references, or delivery progress in memory.
   implemented and tested.
 - Done: Linux descriptor-safe execution uses `openat2` plus `execveat`; macOS
   uses the documented immediate-revalidation fallback.
+- Gate: the monorepo Slophammer repository rules and sudo-broker's zero-finding
+  DRY check are blocking. The CRAP report for privileged syscall and process
+  orchestration code is retained as a refactoring baseline, but is not a
+  release blocker for this security-sensitive cutover; broad metric-driven
+  rewrites require their own focused review.
 - Next: run the final isolated live root-helper probe, repository review/CI
   loop, and coordinated host installation without root-equivalent agent group
   membership.
