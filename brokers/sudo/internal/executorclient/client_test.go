@@ -2,6 +2,7 @@ package executorclient
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -39,5 +40,14 @@ func TestClientFailsClosedForUnavailableOrInvalidHelper(t *testing.T) {
 	}()
 	if err := value.Ready(t.Context()); err == nil {
 		t.Fatal("rejected helper was ready")
+	}
+}
+
+func TestCallErrorTracksDispatchBoundary(t *testing.T) {
+	t.Parallel()
+	dialError := &CallError{cause: errors.New("dial")}
+	readError := &CallError{Dispatched: true, cause: errors.New("read")}
+	if WasDispatched(dialError) || !WasDispatched(readError) {
+		t.Fatalf("dispatch flags dial=%v read=%v", WasDispatched(dialError), WasDispatched(readError))
 	}
 }

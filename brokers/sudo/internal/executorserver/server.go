@@ -118,6 +118,19 @@ func (s *Server) execute(ctx context.Context, request executorprotocol.Request) 
 	if err != nil {
 		return executorprotocol.NewRejected("invalid_plan")
 	}
+	existing, found, err := s.state.lookup(request.ExecutionID, request.PlanDigest, request.GrantID, request.ReservationID)
+	if errors.Is(err, errExecutionConflict) {
+		return executorprotocol.NewRejected("execution_id_conflict")
+	}
+	if err != nil {
+		return executorprotocol.NewRejected("state_unavailable")
+	}
+	if found {
+		if existing.Status == executionComplete && existing.Outcome != nil {
+			return executorprotocol.NewCompleted(request.ExecutionID, *existing.Outcome)
+		}
+		return executorprotocol.NewAmbiguous(request.ExecutionID, "execution_incomplete")
+	}
 	if request.ExpiresAt.Sub(now) > time.Duration(value.RequestedDurationSeconds)*time.Second {
 		return executorprotocol.NewRejected("invalid_expiry")
 	}
@@ -127,7 +140,7 @@ func (s *Server) execute(ctx context.Context, request executorprotocol.Request) 
 	if err := hostcheck.ValidateExecution(value, s.brokerUID); err != nil {
 		return executorprotocol.NewRejected("unsafe_host_path")
 	}
-	record, claimed, err := s.state.claim(request.ExecutionID, request.PlanDigest)
+	record, claimed, err := s.state.claim(request.ExecutionID, request.PlanDigest, request.GrantID, request.ReservationID)
 	if errors.Is(err, errExecutionConflict) {
 		return executorprotocol.NewRejected("execution_id_conflict")
 	}

@@ -52,7 +52,7 @@ func TestServerRejectsExpiredDriftedAndInterruptedExecution(t *testing.T) {
 	if response := server.execute(t.Context(), changed); response.ErrorCode != "plan_drift" {
 		t.Fatalf("drift response=%+v", response)
 	}
-	_, _, _ = server.state.claim(request.ExecutionID, request.PlanDigest)
+	_, _, _ = server.state.claim(request.ExecutionID, request.PlanDigest, request.GrantID, request.ReservationID)
 	if response := server.execute(t.Context(), request); response.Status != executorprotocol.StatusAmbiguous || runner.calls != 0 {
 		t.Fatalf("interrupted response=%+v calls=%d", response, runner.calls)
 	}

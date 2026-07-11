@@ -19,13 +19,15 @@ const (
 var errExecutionConflict = errors.New("execution id already binds another plan")
 
 type executionRecord struct {
-	ID          string                    `json:"id"`
-	PlanDigest  string                    `json:"plan_digest"`
-	Status      string                    `json:"status"`
-	ClaimedAt   time.Time                 `json:"claimed_at"`
-	StartedAt   time.Time                 `json:"started_at,omitempty"`
-	CompletedAt time.Time                 `json:"completed_at,omitempty"`
-	Outcome     *executorprotocol.Outcome `json:"outcome,omitempty"`
+	ID            string                    `json:"id"`
+	PlanDigest    string                    `json:"plan_digest"`
+	GrantID       string                    `json:"grant_id"`
+	ReservationID string                    `json:"reservation_id"`
+	Status        string                    `json:"status"`
+	ClaimedAt     time.Time                 `json:"claimed_at"`
+	StartedAt     time.Time                 `json:"started_at,omitempty"`
+	CompletedAt   time.Time                 `json:"completed_at,omitempty"`
+	Outcome       *executorprotocol.Outcome `json:"outcome,omitempty"`
 }
 
 type executionFile struct {
@@ -49,7 +51,7 @@ func newExecutionState(path string, now func() time.Time) (*executionState, erro
 	return &executionState{path: path, now: now}, nil
 }
 
-func (s *executionState) claim(id string, digest string) (executionRecord, bool, error) {
+func (s *executionState) lookup(id string, digest string, grantID string, reservationID string) (executionRecord, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	data, err := s.load()
@@ -60,17 +62,40 @@ func (s *executionState) claim(id string, digest string) (executionRecord, bool,
 		if record.ID != id {
 			continue
 		}
-		if record.PlanDigest != digest {
+		if !sameExecutionBinding(record, digest, grantID, reservationID) {
+			return executionRecord{}, false, errExecutionConflict
+		}
+		return record, true, nil
+	}
+	return executionRecord{}, false, nil
+}
+
+func (s *executionState) claim(id string, digest string, grantID string, reservationID string) (executionRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return executionRecord{}, false, err
+	}
+	for _, record := range data.Executions {
+		if record.ID != id {
+			continue
+		}
+		if !sameExecutionBinding(record, digest, grantID, reservationID) {
 			return executionRecord{}, false, errExecutionConflict
 		}
 		return record, false, nil
 	}
-	record := executionRecord{ID: id, PlanDigest: digest, Status: executionClaimed, ClaimedAt: s.now().UTC()}
+	record := executionRecord{ID: id, PlanDigest: digest, GrantID: grantID, ReservationID: reservationID, Status: executionClaimed, ClaimedAt: s.now().UTC()}
 	data.Executions = append(data.Executions, record)
 	if err := s.save(data); err != nil {
 		return executionRecord{}, false, err
 	}
 	return record, true, nil
+}
+
+func sameExecutionBinding(record executionRecord, digest string, grantID string, reservationID string) bool {
+	return record.PlanDigest == digest && record.GrantID == grantID && record.ReservationID == reservationID
 }
 
 func (s *executionState) markStarted(id string) error {
@@ -126,7 +151,8 @@ func (s *executionState) load() (executionFile, error) {
 		return executionFile{}, errors.New("helper execution state version is unsupported")
 	}
 	for index, record := range data.Executions {
-		if record.ID == "" || record.PlanDigest == "" || (record.Status != executionClaimed && record.Status != executionStarted && record.Status != executionComplete) {
+		if record.ID == "" || record.PlanDigest == "" || record.GrantID == "" || record.ReservationID == "" ||
+			(record.Status != executionClaimed && record.Status != executionStarted && record.Status != executionComplete) {
 			return executionFile{}, fmt.Errorf("helper execution state record %d is invalid", index)
 		}
 	}

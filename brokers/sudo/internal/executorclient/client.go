@@ -18,6 +18,20 @@ type Client struct {
 	Dial       func(context.Context, string, string) (net.Conn, error)
 }
 
+type CallError struct {
+	Dispatched bool
+	cause      error
+}
+
+func (e *CallError) Error() string { return e.cause.Error() }
+
+func (e *CallError) Unwrap() error { return e.cause }
+
+func WasDispatched(err error) bool {
+	var callErr *CallError
+	return errors.As(err, &callErr) && callErr.Dispatched
+}
+
 func (c *Client) Ready(ctx context.Context) error {
 	response, err := c.exchange(ctx, executorprotocol.Ping())
 	if err != nil {
@@ -58,14 +72,18 @@ func (c *Client) exchange(ctx context.Context, request executorprotocol.Request)
 	defer cancel()
 	connection, err := dial(exchangeCtx, "unix", c.SocketPath)
 	if err != nil {
-		return executorprotocol.Response{}, errors.New("sudo helper is unavailable")
+		return executorprotocol.Response{}, &CallError{cause: errors.New("sudo helper is unavailable")}
 	}
 	defer func() { _ = connection.Close() }()
 	if deadline, ok := exchangeCtx.Deadline(); ok {
 		_ = connection.SetDeadline(deadline)
 	}
 	if err := executorprotocol.WriteRequest(connection, request); err != nil {
-		return executorprotocol.Response{}, err
+		return executorprotocol.Response{}, &CallError{Dispatched: true, cause: err}
 	}
-	return executorprotocol.ReadResponse(connection)
+	response, err := executorprotocol.ReadResponse(connection)
+	if err != nil {
+		return executorprotocol.Response{}, &CallError{Dispatched: true, cause: err}
+	}
+	return response, nil
 }
