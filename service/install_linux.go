@@ -231,14 +231,25 @@ func validateSharedStateDir(plan SystemdInstallPlan) error {
 	if plan.SharedStateDir == "" {
 		return nil
 	}
-	if !filepath.IsAbs(plan.SharedStateDir) || filepath.Clean(plan.SharedStateDir) != plan.SharedStateDir || filepath.Clean(plan.SharedStateDir) == string(filepath.Separator) {
+	if !validSharedStatePath(plan.SharedStateDir) {
 		return errors.New("shared state directory must be an absolute normalized non-root path")
 	}
 	relative, err := filepath.Rel(plan.SharedStateDir, plan.StateDir)
-	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+	if err != nil || !isStrictDescendant(relative) {
 		return errors.New("shared state directory must be a strict ancestor of the state directory")
 	}
 	return nil
+}
+
+func validSharedStatePath(path string) bool {
+	return filepath.IsAbs(path) &&
+		filepath.Clean(path) == path &&
+		path != string(filepath.Separator)
+}
+
+func isStrictDescendant(relative string) bool {
+	return relative != "." && relative != ".." &&
+		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func validateInstallPathValues(paths map[string]string) error {
