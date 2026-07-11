@@ -64,7 +64,13 @@ OpenClaw to recreate the earlier popup concept.
 
 ## Operator Configuration
 
-The smallest valid configuration is:
+The plugin supports two explicit trust modes. `direct` lets OpenClaw own source
+reconciliation, operator credentials, commands, and channel delivery.
+`delegated-web` packages only the approval UI and delegates authenticated API
+requests to a same-origin trusted host. The delegated host is an interface and
+must not introduce a host-product branch into this package.
+
+The smallest valid direct configuration is:
 
 ```json5
 {
@@ -73,6 +79,7 @@ The smallest valid configuration is:
       brokerkit: {
         enabled: true,
         config: {
+          mode: "direct",
           brokers: [
             {
               id: "hf-primary",
@@ -81,31 +88,39 @@ The smallest valid configuration is:
               operatorCredential: {
                 source: "env",
                 provider: "default",
-                id: "HF_BROKER_OPERATOR_SECRET"
-              }
-            }
-          ]
-        }
-      }
-    }
-  }
+                id: "HF_BROKER_OPERATOR_SECRET",
+              },
+            },
+          ],
+        },
+      },
+    },
+  },
 }
 ```
 
 Configuration schema:
 
 ```ts
-type BrokerKitPluginConfig = {
-  brokers: Array<{
-    id: string;
-    label: string;
-    endpoint: string;
-    operatorCredential: SecretRef;
-    requestTimeoutMs?: number;
-  }>;
-  pollIntervalMs?: number;
-  notificationConcurrency?: number;
+type BrokerSource = {
+  id: string;
+  label: string;
+  endpoint: string;
+  operatorCredential: SecretRef;
+  requestTimeoutMs?: number;
 };
+
+type BrokerKitPluginConfig =
+  | {
+      mode: "direct";
+      brokers: Array<BrokerSource>;
+      pollIntervalMs?: number;
+      notificationConcurrency?: number;
+    }
+  | {
+      mode: "delegated-web";
+      delegatedWeb: { basePath: string };
+    };
 ```
 
 Rules:
@@ -122,6 +137,8 @@ Rules:
 - unknown config fields are rejected.
 - source additions, removals, and credential changes take effect after a
   normal plugin/Gateway restart.
+- delegated mode registers no source service, command, or channel delivery and
+  receives no operator credential.
 
 Channel destinations are not duplicated in plugin configuration. An
 authorized operator subscribes the current OpenClaw conversation with
@@ -301,13 +318,13 @@ export default function register(api: OpenClawPluginApi): void {
   api.registerService({
     id: "brokerkit-reconciler",
     start: () => runtime.start(),
-    stop: () => runtime.stop()
+    stop: () => runtime.stop(),
   });
 
   api.registerHttpRoute({
     path: "/plugins/brokerkit",
     handler: runtime.httpHandler,
-    auth: "plugin"
+    auth: "plugin",
   });
 
   api.registerCommand(createBrokerKitCommand(runtime));
@@ -321,7 +338,7 @@ export default function register(api: OpenClawPluginApi): void {
     group: "control",
     order: 60,
     path: `/plugins/brokerkit/ui/#${runtime.uiCapability}`,
-    requiredScopes: ["operator.approvals"]
+    requiredScopes: ["operator.approvals"],
   });
 }
 ```
@@ -451,6 +468,15 @@ The static shell reads the fragment into memory, removes it from the displayed
 URL when browser behavior allows, and sends it as a bearer capability to the
 plugin UI API. It is never written to storage, logs, DOM text, analytics, or
 error reports and rotates on restart.
+
+In `delegated-web` mode the fragment contains only the versioned mode and
+same-origin base path. The UI obtains a short-lived decision token from
+`POST <basePath>/session`. A sandboxed frame may ask its parent for that same
+session through the host-neutral messages
+`brokerkit.delegated-web.session.request` and
+`brokerkit.delegated-web.session.response`; requests carry a fresh 128-bit
+nonce and responses must echo it. No product-specific message namespace or
+payload is part of the plugin contract.
 
 The UI HTTP API:
 

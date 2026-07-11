@@ -10,7 +10,7 @@ describe("plugin registration", () => {
     registerBrokerKit({
       pluginConfig: {
         mode: "delegated-web",
-        delegatedWeb: { basePath: "/mlclaw/api/brokerkit" },
+        delegatedWeb: { basePath: "/trusted-host/api/brokerkit" },
       },
       session: { controls: { registerControlUiDescriptor } },
       registerService,
@@ -34,7 +34,7 @@ describe("plugin registration", () => {
     expect(bootstrap).toEqual({
       version: 1,
       mode: "delegated-web",
-      basePath: "/mlclaw/api/brokerkit",
+      basePath: "/trusted-host/api/brokerkit",
     });
   });
 });

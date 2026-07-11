@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BrokerKitUiApi, parseUiBootstrap } from "./api.js";
+import {
+  BrokerKitUiApi,
+  DELEGATED_SESSION_REQUEST,
+  DELEGATED_SESSION_RESPONSE,
+  parseUiBootstrap,
+} from "./api.js";
 
 const direct = encoded({
   version: 1,
@@ -9,7 +14,7 @@ const direct = encoded({
 const delegated = encoded({
   version: 1,
   mode: "delegated-web",
-  basePath: "/mlclaw/api/brokerkit",
+  basePath: "/trusted-host/api/brokerkit",
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -20,7 +25,7 @@ describe("parseUiBootstrap", () => {
     expect(parseUiBootstrap(delegated)).toEqual({
       version: 1,
       mode: "delegated-web",
-      basePath: "/mlclaw/api/brokerkit",
+      basePath: "/trusted-host/api/brokerkit",
     });
   });
 
@@ -102,11 +107,11 @@ describe("BrokerKitUiApi", () => {
     const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
     await api.snapshot();
     expect(fetchMock.mock.calls[0]).toEqual([
-      "/mlclaw/api/brokerkit/session",
+      "/trusted-host/api/brokerkit/session",
       expect.objectContaining({ credentials: "include" }),
     ]);
     expect(fetchMock.mock.calls[1]).toEqual([
-      "/mlclaw/api/brokerkit/snapshot",
+      "/trusted-host/api/brokerkit/snapshot",
       expect.objectContaining({
         credentials: "omit",
         headers: expect.objectContaining({
@@ -134,6 +139,59 @@ describe("BrokerKitUiApi", () => {
     );
     const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
     await expect(api.snapshot()).rejects.toThrow("session is invalid");
+  });
+
+  it("uses the host-neutral nonce-bound parent bridge", async () => {
+    let receive: ((event: MessageEvent) => void) | undefined;
+    const parent = {
+      postMessage: vi.fn((message: Record<string, unknown>) => {
+        expect(message.type).toBe(DELEGATED_SESSION_REQUEST);
+        expect(message.version).toBe(1);
+        expect(message.nonce).toMatch(/^[a-f0-9]{32}$/u);
+        receive?.({
+          source: parent,
+          data: {
+            type: DELEGATED_SESSION_RESPONSE,
+            nonce: message.nonce,
+            session: {
+              api_version: "brokerkit.io/delegated-web/v1",
+              decision_token: "d".repeat(48),
+              expires_at: new Date(Date.now() + 60_000).toISOString(),
+            },
+          },
+        } as unknown as MessageEvent);
+      }),
+    };
+    const fakeWindow = {
+      parent,
+      setTimeout,
+      clearTimeout,
+      addEventListener: vi.fn((_name: string, callback: typeof receive) => {
+        receive = callback;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal("window", fakeWindow);
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new BrokerKitUiApi(parseUiBootstrap(delegated)).snapshot();
+
+    expect(parent.postMessage).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/trusted-host/api/brokerkit/snapshot",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: `Bearer ${"d".repeat(48)}`,
+        }),
+      }),
+    );
   });
 });
 

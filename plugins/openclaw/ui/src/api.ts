@@ -17,6 +17,11 @@ type DelegatedSession = {
   expiresAtMs: number;
 };
 
+export const DELEGATED_SESSION_REQUEST =
+  "brokerkit.delegated-web.session.request";
+export const DELEGATED_SESSION_RESPONSE =
+  "brokerkit.delegated-web.session.response";
+
 export class BrokerKitUiApi {
   private delegatedSession?: DelegatedSession;
 
@@ -117,7 +122,7 @@ function delegatedSessionFromParent(): Promise<Record<string, unknown>> {
     const receive = (event: MessageEvent) => {
       if (event.source !== window.parent || !record(event.data)) return;
       if (
-        event.data.type !== "mlclaw.brokerkit.session.response" ||
+        event.data.type !== DELEGATED_SESSION_RESPONSE ||
         event.data.nonce !== nonce
       )
         return;
@@ -134,7 +139,7 @@ function delegatedSessionFromParent(): Promise<Record<string, unknown>> {
     };
     window.addEventListener("message", receive);
     window.parent.postMessage(
-      { type: "mlclaw.brokerkit.session.request", version: 1, nonce },
+      { type: DELEGATED_SESSION_REQUEST, version: 1, nonce },
       "*",
     );
   });

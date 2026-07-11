@@ -77,6 +77,20 @@ the approval tab can run while retaining its opaque sandbox origin. Do not use
 `trusted`; delegated authentication is designed for the stricter scripts-only
 sandbox.
 
+When the sandboxed tab cannot call the delegated session endpoint directly,
+it requests a session from its parent with this host-neutral bridge:
+
+```text
+request:  { type: "brokerkit.delegated-web.session.request", version: 1, nonce }
+response: { type: "brokerkit.delegated-web.session.response", nonce, session }
+```
+
+The parent must answer only requests from the embedded BrokerKit frame and must
+bind each response to the supplied 128-bit nonce. `session` is the same
+`brokerkit.io/delegated-web/v1` object returned by `POST <basePath>/session`.
+The bridge is a BrokerKit interface; it contains no host-product namespace or
+host-specific payload.
+
 ## Commands
 
 ```text

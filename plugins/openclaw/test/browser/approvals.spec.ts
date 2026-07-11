@@ -97,7 +97,7 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   page,
 }) => {
   const token = "delegated-decision-token-that-is-long-enough";
-  await page.route("**/mlclaw/api/brokerkit/session", (route) =>
+  await page.route("**/trusted-host/api/brokerkit/session", (route) =>
     route.fulfill({
       json: {
         api_version: "brokerkit.io/delegated-web/v1",
@@ -107,12 +107,12 @@ test("uses delegated web session authority without exposing it in the URL", asyn
       },
     }),
   );
-  await page.route("**/mlclaw/api/brokerkit/snapshot", async (route) => {
+  await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
     expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
     await route.fulfill({ json: snapshot });
   });
   await page.goto(
-    `/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/mlclaw/api/brokerkit" })}`,
+    `/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
   );
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page).not.toHaveURL(/#/);
