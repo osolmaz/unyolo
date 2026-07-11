@@ -92,6 +92,28 @@ func TestClientWatchesOperatorV1Events(t *testing.T) {
 	}
 }
 
+func TestClientRejectsNonCanonicalResponses(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{
+		`{"api_version":"operator.v1","unknown":true}`,
+		`{"api_version":"operator.v1"}{}`,
+	} {
+		body := body
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				_, _ = writer.Write([]byte(body))
+			}))
+			defer server.Close()
+			if _, err := (&Client{BaseURL: server.URL, HTTPClient: server.Client()}).Discover(t.Context()); err == nil {
+				t.Fatal("Discover() accepted a non-canonical response")
+			}
+		})
+	}
+	if _, err := NewUnix("relative.sock", "token"); err == nil {
+		t.Fatal("NewUnix() accepted a relative socket path")
+	}
+}
+
 func writeError(writer http.ResponseWriter, status int, code string) {
 	writer.WriteHeader(status)
 	_ = json.NewEncoder(writer).Encode(operatorv1.ErrorEnvelope{Error: operatorv1.Error{Code: code, Message: "failed", CorrelationID: "correlation"}})

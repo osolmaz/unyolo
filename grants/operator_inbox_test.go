@@ -74,7 +74,7 @@ func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) { //n
 		DecisionCommand: DecisionCommand{ID: second.Grant.ID, Approver: "onur", ExpectedRevision: second.Grant.Revision},
 		Duration:        second.Grant.Duration + time.Second,
 	})
-	if !errors.Is(err, ErrInvalidCommand) {
+	if !errors.Is(err, ErrConstraintExceeded) {
 		t.Fatalf("overbroad approval error = %v", err)
 	}
 }
@@ -309,7 +309,7 @@ func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.OperatorDeny(DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision, ExpectedStatus: StatusActive}); !errors.Is(err, ErrRevisionConflict) {
+	if _, err := store.OperatorDeny(DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision + 1}); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("status conflict error = %v", err)
 	}
 	for _, command := range []ApproveCommand{
@@ -317,7 +317,7 @@ func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: -1},
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: bounds.Grant.MaxUses + 1},
 	} {
-		if _, err := store.OperatorApprove(command); !errors.Is(err, ErrInvalidCommand) {
+		if _, err := store.OperatorApprove(command); !errors.Is(err, ErrConstraintExceeded) {
 			t.Fatalf("OperatorApprove(%+v) error = %v", command, err)
 		}
 	}
@@ -348,6 +348,26 @@ func TestCursorDecodingAndEventPagingBranches(t *testing.T) { //nolint:cyclop //
 	if latest, err := store.LatestEvent(page.Events[0].GrantID); err != nil || latest.Cursor == "" {
 		t.Fatalf("LatestEvent() = %+v, %v", latest, err)
 	}
+}
+
+func FuzzDecodeOperatorCursors(f *testing.F) {
+	f.Add("")
+	f.Add("!!!")
+	f.Add(base64.RawURLEncoding.EncodeToString([]byte(`{"created_at":"2026-07-11T01:02:03Z","id":"request-1","query_hash":"hash"}`)))
+	f.Fuzz(func(t *testing.T, cursor string) {
+		grantCursor, grantErr := decodeGrantCursor(cursor)
+		if grantErr == nil && cursor != "" {
+			if _, err := decodeGrantCursor(encodeGrantCursor(grantCursor)); err != nil {
+				t.Fatalf("grant cursor round trip: %v", err)
+			}
+		}
+		sequence, eventErr := decodeEventCursor(cursor)
+		if eventErr == nil {
+			if decoded, err := decodeEventCursor(encodeEventCursor(sequence)); err != nil || decoded != sequence {
+				t.Fatalf("event cursor round trip = %d, %v", decoded, err)
+			}
+		}
+	})
 }
 
 func TestWaitForEventsEmitsTimeDrivenExpiry(t *testing.T) {

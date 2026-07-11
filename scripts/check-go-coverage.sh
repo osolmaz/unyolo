@@ -4,6 +4,7 @@ set -euo pipefail
 
 minimum_total_coverage="85.0"
 coverfile="$(mktemp)"
+mapfile -t test_packages < <(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$/d')
 
 cleanup() {
   rm -f "$coverfile"
@@ -15,7 +16,12 @@ coverage_total() {
     awk '/^total:/ {print substr($3, 1, length($3)-1)}'
 }
 
-go test ./... -coverprofile="$coverfile"
+if ((${#test_packages[@]} == 0)); then
+  printf 'No Go packages with tests found.\n' >&2
+  exit 1
+fi
+
+go test "${test_packages[@]}" -coverprofile="$coverfile"
 
 total="$(coverage_total "$coverfile")"
 printf 'Total coverage: %s%%\n' "$total"

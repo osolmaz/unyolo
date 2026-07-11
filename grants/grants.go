@@ -2,20 +2,26 @@
 package grants
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/osolmaz/brokerkit/internal/copyx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/store"
 )
 
 const (
+	grantFileVersion          = 1
 	defaultPendingTimeout     = 5 * time.Minute
 	defaultDuration           = 5 * time.Minute
 	defaultMaxDuration        = time.Hour
@@ -41,6 +47,7 @@ var (
 	ErrNotPending           = errors.New("grant is not pending")
 	ErrNotActive            = errors.New("grant is not active")
 	ErrIdempotencyConflict  = errors.New("idempotency conflict")
+	ErrUnsupportedState     = errors.New("unsupported grant state")
 )
 
 // Status is a grant lifecycle state.
@@ -122,54 +129,11 @@ type Grant struct {
 }
 
 type fileData struct {
+	Version         int                    `json:"version"`
 	Grants          []Grant                `json:"grants"`
 	Events          []lifecycleEventRecord `json:"events,omitempty"`
 	NextEvent       uint64                 `json:"next_event,omitempty"`
 	DecisionRecords []decisionRecord       `json:"decision_records,omitempty"`
-}
-
-func canonicalizeLoadedGrants(grants []Grant) bool {
-	changed := false
-	for index := range grants {
-		grant := &grants[index]
-		grant.Target.Fields = copyx.CanonicalStringSliceMap(grant.Target.Fields)
-		grant.Attrs = copyx.CanonicalStringSliceMap(grant.Attrs)
-		grant.Metadata = copyx.StringMap(grant.Metadata)
-		reservationChanged := normalizeLoadedReservation(grant)
-		revisionChanged := normalizeLoadedRevisions(grant)
-		changed = reservationChanged || revisionChanged || changed
-	}
-	return changed
-}
-
-func normalizeLoadedRevisions(grant *Grant) bool {
-	changed := false
-	if grant.UseRevision < grant.UsedCount {
-		grant.UseRevision = grant.UsedCount
-		changed = true
-	}
-	if grant.ReservedCount > 0 && grant.ReservationRevision <= 0 {
-		grant.ReservationRevision = 1
-		changed = true
-	}
-	if grant.Revision <= 0 {
-		grant.Revision = 1
-		changed = true
-	}
-	return changed
-}
-
-func normalizeLoadedReservation(grant *Grant) bool {
-	changed := grant.ReservedCount < 0
-	if changed {
-		grant.ReservedCount = 0
-	}
-	if grant.ReservedCount != 0 || (grant.ReservedAt.IsZero() && !grant.ReservationRetained) {
-		return changed
-	}
-	grant.ReservedAt = time.Time{}
-	grant.ReservationRetained = false
-	return true
 }
 
 // Store owns one durable grant file.
@@ -606,14 +570,12 @@ func (s *Store) update(mutator func(*fileData) error) error {
 }
 
 func (s *Store) load() (fileData, error) {
-	var data fileData
-	if err := store.ReadJSON(s.path, &data); err != nil {
+	data, err := s.readState()
+	if err != nil {
 		return fileData{}, err
 	}
-	if canonicalizeLoadedGrants(data.Grants) {
-		if err := s.save(data); err != nil {
-			return fileData{}, err
-		}
+	if err := validateLoadedGrants(data.Grants); err != nil {
+		return fileData{}, err
 	}
 	if err := normalizeLoadedEvents(&data); err != nil {
 		return fileData{}, err
@@ -622,7 +584,69 @@ func (s *Store) load() (fileData, error) {
 }
 
 func (s *Store) save(data fileData) error {
+	data.Version = grantFileVersion
 	return store.WriteJSONAtomic(s.path, data, 0o600)
+}
+
+func (s *Store) readState() (fileData, error) {
+	raw, err := os.ReadFile(s.path) // #nosec G304 -- the state path is operator configured.
+	if errors.Is(err, os.ErrNotExist) || (err == nil && len(bytes.TrimSpace(raw)) == 0) {
+		return fileData{Version: grantFileVersion, NextEvent: 1}, nil
+	}
+	if err != nil {
+		return fileData{}, err
+	}
+	if err := strictjson.RejectDuplicateKeys(raw); err != nil {
+		return fileData{}, fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+	}
+	var data fileData
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&data); err != nil {
+		return fileData{}, fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return fileData{}, ErrUnsupportedState
+	}
+	if data.Version != grantFileVersion {
+		return fileData{}, fmt.Errorf("%w: version %d", ErrUnsupportedState, data.Version)
+	}
+	return data, nil
+}
+
+func validateLoadedGrants(items []Grant) error {
+	seen := make(map[string]bool, len(items))
+	for _, grant := range items {
+		if grant.ID == "" || seen[grant.ID] || grant.DecisionTokenVerifier == "" || grant.Client == "" || grant.Operation == "" || grant.Target.Kind == "" || grant.Reason == "" {
+			return ErrUnsupportedState
+		}
+		seen[grant.ID] = true
+		if !validStoredStatus(grant.Status) || grant.Revision < 1 || grant.CreatedAt.IsZero() || grant.PendingExpiresAt.IsZero() ||
+			grant.Duration <= 0 || grant.RequestedDuration <= 0 || grant.PendingTimeout <= 0 || grant.MaxUses <= 0 || grant.RequestedMaxUses <= 0 ||
+			grant.UsedCount < 0 || grant.ReservedCount < 0 || grant.UseRevision < grant.UsedCount ||
+			(grant.ReservedCount > 0 && (grant.ReservedAt.IsZero() || grant.ReservationRevision < 1)) {
+			return ErrUnsupportedState
+		}
+		if err := validateValueMap("target field", grant.Target.Fields); err != nil {
+			return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		}
+		if err := validateValueMap("attr", grant.Attrs); err != nil {
+			return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		}
+		if err := validateMetadata(grant.Metadata); err != nil {
+			return fmt.Errorf("%w: %v", ErrUnsupportedState, err)
+		}
+	}
+	return nil
+}
+
+func validStoredStatus(status Status) bool {
+	switch status {
+	case StatusPending, StatusActive, StatusDenied, StatusExpired, StatusConsumed, StatusRevoked, StatusCanceled:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Store) expireDue(data *fileData) bool {

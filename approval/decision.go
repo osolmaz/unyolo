@@ -16,17 +16,6 @@ type Decider interface {
 	Deny(context.Context, string, string, string, notify.MessageRef) (grants.Grant, error)
 }
 
-// StoreDecider applies decisions directly to a Brokerkit grant store.
-type StoreDecider struct{ Store *grants.Store }
-
-func (d StoreDecider) Approve(_ context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	return d.Store.ApproveWithNotification(id, token, actor, ref)
-}
-
-func (d StoreDecider) Deny(_ context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	return d.Store.DenyWithNotification(id, token, actor, ref)
-}
-
 // HandleDecision maps a channel callback onto a durable broker decision.
 func HandleDecision(ctx context.Context, decider Decider, decision notify.Decision) notify.DecisionResult {
 	if decider == nil {

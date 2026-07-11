@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +26,30 @@ type Client struct {
 	BaseURL    string
 	Token      string
 	HTTPClient *http.Client
+}
+
+// NewUnix returns a Source client connected to an operator-only Unix socket.
+func NewUnix(socketPath, token string) (*Client, error) {
+	if socketPath == "" || !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath || strings.ContainsRune(socketPath, '\x00') {
+		return nil, errors.New("operator Unix socket path is invalid")
+	}
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "unix", socketPath)
+		},
+	}
+	return &Client{
+		BaseURL: "http://brokerkit",
+		Token:   token,
+		HTTPClient: &http.Client{
+			Transport: transport,
+			Timeout:   30 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}, nil
 }
 
 type Error struct {
@@ -241,8 +267,13 @@ func decodeBounded(reader io.Reader, target any) error {
 	if len(data) > maxResponseBytes {
 		return errors.New("operator response exceeds size limit")
 	}
-	if err := json.Unmarshal(data, target); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("decode operator response: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("decode operator response: trailing data")
 	}
 	return nil
 }

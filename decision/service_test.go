@@ -1,12 +1,15 @@
 package decision
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorv1"
@@ -17,13 +20,13 @@ func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
 	t.Parallel()
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	calls := 0
-	service, err := New(store, ActivationValidatorFunc(func(_ context.Context, _ grants.Grant, constraints grants.ApprovalConstraints) error {
+	service, err := New(Options{Store: store, Validator: ActivationValidatorFunc(func(_ context.Context, _ grants.Grant, constraints grants.ApprovalConstraints) error {
 		calls++
 		if calls == 1 && constraints.MaxUses != 1 {
 			t.Fatalf("constraints = %+v", constraints)
 		}
 		return nil
-	}))
+	})})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,14 +44,59 @@ func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
 	}
 }
 
+func TestServiceAuditsRevisionAndTokenBindings(t *testing.T) {
+	t.Parallel()
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	var output bytes.Buffer
+	service, err := New(Options{Store: store, Broker: "test-broker", Audit: audit.New(&output)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := create(t, store, "audit-revision")
+	if _, err := service.Decide(t.Context(), first.Grant.ID, operatorv1.ActionApprove, "operator:onur", operatorv1.Decision{
+		ExpectedRevision: first.Grant.Revision, IdempotencyKey: "audit-1", OnBehalfOf: "onur",
+		Constraints: &operatorv1.Constraints{DurationSeconds: 60, MaxUses: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second := create(t, store, "audit-token")
+	if _, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:42", notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2}); err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n"))
+	if len(lines) != 2 {
+		t.Fatalf("audit lines = %d\n%s", len(lines), output.String())
+	}
+	var events [2]audit.Event
+	for index := range lines {
+		if err := json.Unmarshal(lines[index], &events[index]); err != nil {
+			t.Fatal(err)
+		}
+		if events[index].Extensions["previous_status"] != string(grants.StatusPending) ||
+			events[index].Extensions["current_status"] != string(grants.StatusActive) ||
+			events[index].Extensions["event_cursor"] == "" {
+			t.Fatalf("audit event = %+v", events[index])
+		}
+	}
+	if events[0].Extensions["binding"] != "revision" || events[0].Extensions["expected_revision"] != "1" || events[0].Extensions["on_behalf_of"] != "onur" {
+		t.Fatalf("revision audit = %+v", events[0])
+	}
+	if events[1].Extensions["binding"] != "token:telegram" || events[1].Approver != "telegram:42" {
+		t.Fatalf("token audit = %+v", events[1])
+	}
+	if bytes.Contains(output.Bytes(), []byte(second.DecisionToken)) {
+		t.Fatal("audit output leaked a decision token")
+	}
+}
+
 func TestServiceRejectsInvalidInputAndValidatorFailure(t *testing.T) {
 	t.Parallel()
-	if _, err := New(nil, nil); err == nil {
+	if _, err := New(Options{}); err == nil {
 		t.Fatal("New(nil) succeeded")
 	}
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	rejected := errors.New("plan invalid")
-	service, _ := New(store, ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error { return rejected }))
+	service, _ := New(Options{Store: store, Validator: ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error { return rejected })})
 	created := create(t, store, "request")
 	if _, err := service.Decide(t.Context(), created.Grant.ID, operatorv1.ActionApprove, "operator:onur", operatorv1.Decision{
 		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "decision", Constraints: &operatorv1.Constraints{DurationSeconds: -1},
@@ -71,11 +119,11 @@ func TestTokenApprovalValidationAndCommitAreAtomic(t *testing.T) {
 	created := create(t, store, "atomic-token")
 	validationStarted := make(chan struct{})
 	releaseValidation := make(chan struct{})
-	service, err := New(store, ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error {
+	service, err := New(Options{Store: store, Validator: ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error {
 		close(validationStarted)
 		<-releaseValidation
 		return nil
-	}))
+	})})
 	if err != nil {
 		t.Fatal(err)
 	}

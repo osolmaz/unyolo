@@ -430,22 +430,6 @@ func TestCancelPendingGrantAndIgnoreTerminalGrant(t *testing.T) {
 	}
 }
 
-func TestNormalizeLoadedReservation(t *testing.T) {
-	now := time.Now()
-	grant := Grant{ReservedCount: -1, ReservedAt: now, ReservationRetained: true}
-	if !normalizeLoadedReservation(&grant) || grant.ReservedCount != 0 || !grant.ReservedAt.IsZero() || grant.ReservationRetained {
-		t.Fatalf("normalizeLoadedReservation(negative) = %+v", grant)
-	}
-	active := Grant{ReservedCount: 1, ReservedAt: now, ReservationRetained: true}
-	if normalizeLoadedReservation(&active) || active.ReservedCount != 1 || !active.ReservationRetained {
-		t.Fatalf("normalizeLoadedReservation(active) changed %+v", active)
-	}
-	empty := Grant{}
-	if normalizeLoadedReservation(&empty) {
-		t.Fatal("normalizeLoadedReservation(empty) changed clean grant")
-	}
-}
-
 func TestReservationIsStale(t *testing.T) {
 	now := time.Now()
 	cases := []struct {

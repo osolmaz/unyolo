@@ -198,7 +198,7 @@ func TestGrantMetadataValidation(t *testing.T) {
 
 func TestLoadRejectsLegacyScalarGrantValues(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grants.json")
-	data := `{"grants":[{
+	data := `{"version":1,"next_event":1,"grants":[{
 		"id":"grant-1",
 		"decision_token_verifier":"verifier",
 		"client":"bob",

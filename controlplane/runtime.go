@@ -56,7 +56,14 @@ func New(options Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	decisions, err := decision.New(options.Store, options.ActivationValidator)
+	recorder := options.Audit
+	if recorder == nil {
+		recorder = audit.New(io.Discard)
+	}
+	options.Audit = recorder
+	decisions, err := decision.New(decision.Options{
+		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: recorder,
+	})
 	if err != nil {
 		return nil, err
 	}

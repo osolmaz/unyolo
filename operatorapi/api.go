@@ -106,6 +106,12 @@ func (h *handler) status(writer http.ResponseWriter, request *http.Request) {
 		h.methodNotAllowed(writer, http.MethodGet)
 		return
 	}
+	if strings.TrimSuffix(request.URL.Path, "/") == "/readyz" {
+		if _, err := h.inbox.Store().QueryGrants(grants.Query{Limit: 1}); err != nil {
+			h.writeError(writer, http.StatusServiceUnavailable, "temporarily_unavailable", "operator source is not ready", nil)
+			return
+		}
+	}
 	h.writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -171,35 +177,19 @@ func (h *handler) decide(writer http.ResponseWriter, request *http.Request, id s
 		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
 		return
 	}
-	previous, _ := h.inbox.Get(request.Context(), id)
 	result, err := h.decisions.Decide(request.Context(), id, action, actor, command)
 	if err != nil {
-		_ = h.recordDecision(action, actor, command, previous, nil, false, err)
 		h.writeMappedError(writer, request, err)
 		return
 	}
 	item := project(h.inbox.Project(request.Context(), result.Grant))
-	if err := h.recordDecision(action, actor, command, previous, &item, result.Replay, nil); err != nil {
+	if result.AuditExportFailed {
 		writer.Header().Set("X-Broker-Audit-Export", "failed")
 	}
 	if result.Replay {
 		writer.Header().Set("Idempotency-Replayed", "true")
 	}
 	h.writeJSON(writer, http.StatusOK, item)
-}
-
-func (h *handler) recordDecision(action operatorv1.Action, actor string, command operatorv1.Decision, previous operatorinbox.Item, current *operatorv1.Request, replay bool, decisionErr error) error {
-	event := audit.Event{Broker: h.broker, Client: previous.Client, Operation: previous.Operation,
-		Decision: string(action), Reason: command.DecisionReason, GrantID: previous.ID, Approver: actor,
-		Extensions: map[string]string{"expected_revision": strconv.FormatInt(command.ExpectedRevision, 10), "idempotency_replay": strconv.FormatBool(replay)}}
-	if current != nil {
-		event.Extensions["next_status"] = string(current.Status)
-		event.Extensions["actual_revision"] = strconv.FormatInt(current.Revision, 10)
-	}
-	if decisionErr != nil {
-		event.ErrorCode = errorCode(decisionErr)
-	}
-	return h.audit.Record(event)
 }
 
 func project(item operatorinbox.Item) operatorv1.Request {
@@ -325,6 +315,14 @@ func parseQuery(request *http.Request) (grants.Query, error) {
 		if key != "status" && key != "requester" && key != "operation" && key != "target_kind" && key != "cursor" && key != "limit" && !strings.HasPrefix(key, "target.") {
 			return grants.Query{}, grants.ErrInvalidQuery
 		}
+	}
+	for _, key := range []string{"status", "requester", "operation", "target_kind", "cursor", "limit"} {
+		if len(values[key]) > 1 {
+			return grants.Query{}, grants.ErrInvalidQuery
+		}
+	}
+	if _, present := values["target."]; present {
+		return grants.Query{}, grants.ErrInvalidQuery
 	}
 	limit, err := parseLimit(values.Get("limit"))
 	if err != nil {

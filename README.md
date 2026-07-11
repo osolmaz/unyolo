@@ -52,6 +52,8 @@ domain boundary:
   and sudo/systemd/launchd integration.
 
 The canonical ownership boundary is in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
+The security boundaries and fail-closed behavior are in
+[docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md).
 The shared install, setup, policy, grant, approval, audit, doctor, and release
 contract is in
 [docs/UNIFIED_BROKER_CONTRACT.md](docs/UNIFIED_BROKER_CONTRACT.md).
@@ -106,6 +108,8 @@ in [docs/OPERATOR_INBOX.md](docs/OPERATOR_INBOX.md).
 The complete self-contained plan for the BrokerKit monorepo, provider brokers,
 sudo broker, and independent OpenClaw plugin starts at
 [docs/2026-07-11-implementation-handoff.md](docs/2026-07-11-implementation-handoff.md).
+The deployment cutover uses only fresh state as documented in
+[docs/cutover/FRESH_STATE.md](docs/cutover/FRESH_STATE.md).
 
 ## License
 

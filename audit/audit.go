@@ -30,6 +30,11 @@ type Event struct {
 	Extensions     map[string]string `json:"extensions,omitempty"`
 }
 
+// Recorder accepts one secret-safe audit event.
+type Recorder interface {
+	Record(Event) error
+}
+
 // Writer writes audit events as JSON lines.
 type Writer struct {
 	mu  sync.Mutex

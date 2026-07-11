@@ -49,14 +49,18 @@ type ActivationCheck func(context.Context, Grant, ApprovalConstraints) error
 
 // OperatorDecisionResult reports the originally committed representation on replay.
 type OperatorDecisionResult struct {
-	Grant  Grant
-	Replay bool
+	Grant       Grant
+	Previous    Grant
+	EventCursor string
+	Replay      bool
 }
 
 type decisionRecord struct {
 	Scope       string    `json:"scope"`
 	CommandHash string    `json:"command_hash"`
 	Result      Grant     `json:"result"`
+	Previous    Grant     `json:"previous"`
+	EventCursor string    `json:"event_cursor"`
 	CommittedAt time.Time `json:"committed_at"`
 }
 
@@ -79,7 +83,7 @@ func (s *Store) ApplyOperatorDecision(ctx context.Context, command OperatorDecis
 		if record.CommandHash != hash {
 			return OperatorDecisionResult{}, s.saveDecisionError(data, eventSequence, lifecycleChanged, ErrIdempotencyConflict)
 		}
-		return OperatorDecisionResult{Grant: record.Result, Replay: true}, s.saveDecisionError(data, eventSequence, lifecycleChanged, nil)
+		return OperatorDecisionResult{Grant: record.Result, Previous: record.Previous, EventCursor: record.EventCursor, Replay: true}, s.saveDecisionError(data, eventSequence, lifecycleChanged, nil)
 	}
 	index, current, err := findGrant(data.Grants, command.ID)
 	if err != nil {
@@ -87,22 +91,30 @@ func (s *Store) ApplyOperatorDecision(ctx context.Context, command OperatorDecis
 	}
 	if command.ExpectedRevision != current.Revision {
 		err := &RevisionConflictError{Current: current}
-		return OperatorDecisionResult{Grant: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
+		return OperatorDecisionResult{Grant: current, Previous: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
 	}
 	updated, err := s.applyDecisionMutation(ctx, current, command, validate)
 	if err != nil {
-		return OperatorDecisionResult{Grant: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
+		return OperatorDecisionResult{Grant: current, Previous: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
 	}
 	data.Grants[index] = updated
 	s.reconcileOperatorMutation(&data, before, current, lifecycleChanged)
 	result := data.Grants[index]
+	eventCursor := currentEventCursor(data)
 	data.DecisionRecords = append(data.DecisionRecords, decisionRecord{
-		Scope: scope, CommandHash: hash, Result: result, CommittedAt: s.opts.Now().UTC(),
+		Scope: scope, CommandHash: hash, Result: result, Previous: current, EventCursor: eventCursor, CommittedAt: s.opts.Now().UTC(),
 	})
 	if err := s.persistOperatorDecision(data, eventSequence); err != nil {
 		return OperatorDecisionResult{}, err
 	}
-	return OperatorDecisionResult{Grant: result}, nil
+	return OperatorDecisionResult{Grant: result, Previous: current, EventCursor: eventCursor}, nil
+}
+
+func currentEventCursor(data fileData) string {
+	if data.NextEvent <= 1 {
+		return ""
+	}
+	return encodeEventCursor(data.NextEvent - 1)
 }
 
 func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command OperatorDecision, validate ActivationCheck) (Grant, error) {

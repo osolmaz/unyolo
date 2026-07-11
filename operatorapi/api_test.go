@@ -5,10 +5,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
@@ -76,6 +79,14 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	if unknown.status != http.StatusBadRequest || !strings.Contains(unknown.body, "invalid_request") {
 		t.Fatalf("unknown input = %+v", unknown)
 	}
+	duplicate := rawRequest(t, client.HTTPClient, http.MethodGet, server.URL()+"/api/operator/v1/requests?status=pending&status=active", testOperatorSecret, "")
+	if duplicate.status != http.StatusBadRequest || !strings.Contains(duplicate.body, "invalid_request") {
+		t.Fatalf("duplicate query = %+v", duplicate)
+	}
+	emptyTargetField := rawRequest(t, client.HTTPClient, http.MethodGet, server.URL()+"/api/operator/v1/requests?target.=value", testOperatorSecret, "")
+	if emptyTargetField.status != http.StatusBadRequest || !strings.Contains(emptyTargetField.body, "invalid_request") {
+		t.Fatalf("empty target field = %+v", emptyTargetField)
+	}
 	_, err := client.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, operatorv1.Decision{ExpectedRevision: grant.Revision, IdempotencyKey: "decision-1"})
 	if !hasCode(err, "internal_error") {
 		t.Fatalf("validator error = %v", err)
@@ -83,6 +94,30 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	current, _ := store.Get(grant.ID)
 	if current.Status != grants.StatusPending {
 		t.Fatalf("validator committed state: %+v", current)
+	}
+}
+
+func TestOperatorV1ReadinessChecksDurableState(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "grants.json")
+	store := grants.New(path, grants.Options{})
+	server, err := operatorfake.New(operatorfake.Options{
+		Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(server.Close)
+	ready := rawRequest(t, http.DefaultClient, http.MethodGet, server.URL()+"/readyz", "", "")
+	if ready.status != http.StatusOK {
+		t.Fatalf("initial readiness = %+v", ready)
+	}
+	if err := os.WriteFile(path, []byte("not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	notReady := rawRequest(t, http.DefaultClient, http.MethodGet, server.URL()+"/readyz", "", "")
+	if notReady.status != http.StatusServiceUnavailable || !strings.Contains(notReady.body, "temporarily_unavailable") {
+		t.Fatalf("corrupt-state readiness = %+v", notReady)
 	}
 }
 
@@ -101,6 +136,32 @@ func TestOperatorV1EventStream(t *testing.T) {
 		t.Fatalf("Receive() = %+v, %v", event, err)
 	}
 }
+
+func TestOperatorV1ReportsPostCommitAuditFailure(t *testing.T) {
+	t.Parallel()
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	server, err := operatorfake.New(operatorfake.Options{
+		Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret}, Audit: failingAudit{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(server.Close)
+	grant := requestGrant(t, store, "audit-failure")
+	body := `{"expected_revision":1,"idempotency_key":"audit-failure"}`
+	response := rawRequest(t, http.DefaultClient, http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/approve", testOperatorSecret, body)
+	if response.status != http.StatusOK || response.auditExport != "failed" {
+		t.Fatalf("decision response = %+v", response)
+	}
+	current, err := store.Get(grant.ID)
+	if err != nil || current.Status != grants.StatusActive {
+		t.Fatalf("committed grant = %+v, %v", current, err)
+	}
+}
+
+type failingAudit struct{}
+
+func (failingAudit) Record(audit.Event) error { return errors.New("audit unavailable") }
 
 func newOperatorServer(t *testing.T, validator decision.ActivationValidator) (*grants.Store, *operatorfake.Server, *operatorclient.Client) {
 	t.Helper()
@@ -132,6 +193,7 @@ type rawResponse struct {
 	status       int
 	body         string
 	cacheControl string
+	auditExport  string
 }
 
 func rawRequest(t *testing.T, client *http.Client, method, url, token, body string) rawResponse {
@@ -152,7 +214,7 @@ func rawRequest(t *testing.T, client *http.Client, method, url, token, body stri
 	}
 	defer func() { _ = response.Body.Close() }()
 	data, _ := io.ReadAll(response.Body)
-	return rawResponse{response.StatusCode, string(data), response.Header.Get("Cache-Control")}
+	return rawResponse{response.StatusCode, string(data), response.Header.Get("Cache-Control"), response.Header.Get("X-Broker-Audit-Export")}
 }
 
 func hasCode(err error, code string) bool {

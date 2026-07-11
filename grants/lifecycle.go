@@ -174,10 +174,7 @@ func normalizeLoadedEvents(data *fileData) error {
 		}
 		previous = event.Sequence
 	}
-	if data.NextEvent == 0 {
-		data.NextEvent = previous + 1
-	}
-	if data.NextEvent <= previous {
+	if data.NextEvent == 0 || data.NextEvent <= previous {
 		return errors.New("grant lifecycle next event is invalid")
 	}
 	return nil
