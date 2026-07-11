@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/hf-broker/internal/isolation"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/isolation"
 )
 
 func runDoctor(ctx context.Context, stdout, stderr io.Writer, args []string) error {

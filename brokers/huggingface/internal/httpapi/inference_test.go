@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/hf-broker/internal/audit"
-	"github.com/osolmaz/hf-broker/internal/config"
-	"github.com/osolmaz/hf-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 func TestInferenceModelsForwardsWithUpstreamCredentialAndSafeHeaders(t *testing.T) {

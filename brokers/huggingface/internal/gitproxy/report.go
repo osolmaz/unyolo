@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/osolmaz/hf-broker/internal/gitproxy/pktline"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
 )
 
 const defaultCascadeReason = "push refused by hf-broker because another ref failed"

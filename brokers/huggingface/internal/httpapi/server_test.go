@@ -24,12 +24,12 @@ import (
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
-	"github.com/osolmaz/hf-broker/internal/audit"
-	"github.com/osolmaz/hf-broker/internal/config"
-	"github.com/osolmaz/hf-broker/internal/gitproxy"
-	"github.com/osolmaz/hf-broker/internal/gitproxy/pktline"
-	"github.com/osolmaz/hf-broker/internal/hfgrant"
-	"github.com/osolmaz/hf-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/osolmaz/hf-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 func validateAPIGrantRequestShape(req apiGrantRequestBody) (int, string, string) {

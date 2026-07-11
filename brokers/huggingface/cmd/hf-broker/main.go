@@ -14,10 +14,10 @@ import (
 	"time"
 
 	bkaudit "github.com/osolmaz/brokerkit/audit"
-	"github.com/osolmaz/hf-broker/internal/audit"
-	"github.com/osolmaz/hf-broker/internal/config"
-	"github.com/osolmaz/hf-broker/internal/httpapi"
-	"github.com/osolmaz/hf-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 var version = "dev"

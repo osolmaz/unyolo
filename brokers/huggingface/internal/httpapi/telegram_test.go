@@ -15,7 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/hf-broker/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 )
 
 func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {

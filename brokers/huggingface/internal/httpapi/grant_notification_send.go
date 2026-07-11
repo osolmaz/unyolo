@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/hf-broker/internal/audit"
-	"github.com/osolmaz/hf-broker/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 )
 
 func (s *Server) notifyAPICreatedGrant(w http.ResponseWriter, r *http.Request, client string, claim grants.NotificationClaim) (grants.Grant, bool) {

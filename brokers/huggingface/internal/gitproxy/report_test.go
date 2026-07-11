@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/hf-broker/internal/gitproxy/pktline"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
 )
 
 func TestReceivePackAcceptedParsesReports(t *testing.T) {

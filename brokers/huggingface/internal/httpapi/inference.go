@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/osolmaz/hf-broker/internal/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 )
 
 const (

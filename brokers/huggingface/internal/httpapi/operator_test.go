@@ -13,8 +13,8 @@ import (
 	bkgrants "github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
 	bkpolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/hf-broker/internal/config"
-	"github.com/osolmaz/hf-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 func TestBrokerkitControlPlaneConformance(t *testing.T) {

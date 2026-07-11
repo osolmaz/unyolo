@@ -28,14 +28,14 @@ import (
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
-	"github.com/osolmaz/hf-broker/internal/approval"
-	"github.com/osolmaz/hf-broker/internal/audit"
-	"github.com/osolmaz/hf-broker/internal/config"
-	"github.com/osolmaz/hf-broker/internal/gitproxy"
-	"github.com/osolmaz/hf-broker/internal/hfgrant"
-	"github.com/osolmaz/hf-broker/internal/jsend"
-	"github.com/osolmaz/hf-broker/internal/mirror"
-	"github.com/osolmaz/hf-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/jsend"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 const (

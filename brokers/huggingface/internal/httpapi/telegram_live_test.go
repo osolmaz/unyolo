@@ -10,7 +10,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/grants"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/hf-broker/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 )
 
 func TestTelegramLiveSendApproval(t *testing.T) {

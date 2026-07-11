@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/hf-broker/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 func TestRetainedGrantAPIStatusIsUnavailable(t *testing.T) {

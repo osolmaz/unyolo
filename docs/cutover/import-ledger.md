@@ -50,7 +50,7 @@ go test -race ./...
 
 | Component | Destination | Import merge | Verification |
 | --- | --- | --- | --- |
-| HF broker | `brokers/huggingface` | pending | pending |
+| HF broker | `brokers/huggingface` | `1bba2bc16c01b84bd973b14f891daaaa228222f3` | ancestor and tree identity verified |
 | GH broker | `brokers/github` | pending | pending |
 
 The temporary source remotes are removed after ancestry and tree verification.

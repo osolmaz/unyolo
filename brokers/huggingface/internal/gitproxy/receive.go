@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/osolmaz/hf-broker/internal/gitproxy/pktline"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
 )
 
 const zeroSHA = "0000000000000000000000000000000000000000"
