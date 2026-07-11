@@ -97,15 +97,30 @@ the approval tab can run while retaining its opaque sandbox origin. Do not use
 `trusted`; delegated authentication is designed for the stricter scripts-only
 sandbox.
 
-When the sandboxed tab cannot call the delegated session endpoint directly,
-it requests a session from its parent with this host-neutral bridge:
+When OpenClaw is outside the credential trust boundary, the trusted backend
+must serve the packaged `dist/ui` files at the registered UI path itself. For
+the iframe document response, it may inject this one-shot element into `head`:
+
+```html
+<meta name="brokerkit-delegated-session" content="BASE64URL_SESSION_JSON" />
+```
+
+The content is the base64url-encoded `brokerkit.io/delegated-web/v1` session
+object. The UI removes the element as soon as it reads it. The host must issue
+such a response only for an authenticated iframe navigation and enforce an
+opaque origin with a response CSP containing `sandbox allow-scripts`; it must
+reject fetches and top-level navigation so parent code cannot read the embedded
+authority.
+
+When the parent application is trusted, a sandboxed tab that cannot call the
+delegated session endpoint directly may instead use this host-neutral bridge:
 
 ```text
 request:  { type: "brokerkit.delegated-web.session.request", version: 1, nonce }
 response: { type: "brokerkit.delegated-web.session.response", nonce, session }
 ```
 
-The parent must answer only requests from the embedded BrokerKit frame and must
+The trusted parent must answer only requests from the embedded BrokerKit frame and must
 bind each response to the supplied 128-bit nonce. `session` is the same
 `brokerkit.io/delegated-web/v1` object returned by `POST <basePath>/session`.
 The bridge is a BrokerKit interface; it contains no host-product namespace or

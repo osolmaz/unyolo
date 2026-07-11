@@ -25,6 +25,7 @@ export const DELEGATED_SESSION_REQUEST =
   "brokerkit.delegated-web.session.request";
 export const DELEGATED_SESSION_RESPONSE =
   "brokerkit.delegated-web.session.response";
+export const DELEGATED_SESSION_META = "brokerkit-delegated-session";
 
 export class BrokerKitUiApi {
   private delegatedSession?: DelegatedSession;
@@ -110,6 +111,8 @@ export class BrokerKitUiApi {
 async function delegatedSession(
   basePath: string,
 ): Promise<Record<string, unknown>> {
+  const embedded = embeddedDelegatedSession();
+  if (embedded) return embedded;
   if (typeof window === "undefined" || window.parent === window) {
     const response = await fetch(`${basePath}/session`, {
       method: "POST",
@@ -121,6 +124,25 @@ async function delegatedSession(
     return (await response.json()) as Record<string, unknown>;
   }
   return delegatedSessionFromParent();
+}
+
+function embeddedDelegatedSession(): Record<string, unknown> | undefined {
+  if (typeof document === "undefined") return undefined;
+  const element = document.querySelector(
+    `meta[name="${DELEGATED_SESSION_META}"]`,
+  );
+  if (!element) return undefined;
+  const encoded = element.getAttribute("content") ?? "";
+  element.remove();
+  if (!encoded || encoded.length > 8192) return {};
+  try {
+    const normalized = encoded.replace(/-/gu, "+").replace(/_/gu, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const value = JSON.parse(atob(padded)) as unknown;
+    return record(value) ? value : {};
+  } catch {
+    return {};
+  }
 }
 
 function delegatedSessionFromParent(): Promise<Record<string, unknown>> {

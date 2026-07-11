@@ -3,6 +3,7 @@ import {
   BrokerKitUiApi,
   DELEGATED_SESSION_REQUEST,
   DELEGATED_SESSION_RESPONSE,
+  DELEGATED_SESSION_META,
   parseUiBootstrap,
 } from "./api.js";
 
@@ -119,6 +120,47 @@ describe("BrokerKitUiApi", () => {
         }),
       }),
     ]);
+  });
+
+  it("consumes a one-shot delegated session embedded by a trusted sandbox host", async () => {
+    const session = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      actor: "osolmaz",
+      decision_token: "e".repeat(48),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const meta = {
+      getAttribute: vi.fn(() => encoded(session)),
+      remove: vi.fn(),
+    };
+    vi.stubGlobal("document", {
+      querySelector: vi.fn((selector: string) => {
+        expect(selector).toBe(`meta[name="${DELEGATED_SESSION_META}"]`);
+        return meta;
+      }),
+    });
+    vi.stubGlobal("window", { parent: { postMessage: vi.fn() } });
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new BrokerKitUiApi(parseUiBootstrap(delegated)).snapshot();
+
+    expect(meta.remove).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/trusted-host/api/brokerkit/snapshot",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: `Bearer ${"e".repeat(48)}`,
+        }),
+      }),
+    );
   });
 
   it("rejects overlong delegated sessions", async () => {
