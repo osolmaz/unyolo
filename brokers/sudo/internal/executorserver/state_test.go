@@ -118,3 +118,66 @@ func TestExecutionStateLeavesInterruptedClaimsAmbiguous(t *testing.T) {
 		t.Fatalf("duplicate started = %+v, %v, %v", record, claimed, err)
 	}
 }
+
+func TestExecutionRecordValidationRejectsInconsistentStates(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	base := executionRecord{ID: "execution", PlanDigest: strings.Repeat("a", 64), GrantID: "grant", ReservationID: "reservation", ClaimedAt: now}
+	valid := base
+	valid.Status, valid.StartedAt, valid.CompletedAt = executionComplete, now.Add(time.Second), now.Add(2*time.Second)
+	valid.Outcome = &executorprotocol.Outcome{Started: true}
+	if err := validateExecutionRecord(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*executionRecord){
+		func(record *executionRecord) { record.ID = "" },
+		func(record *executionRecord) { record.Status = "unknown" },
+		func(record *executionRecord) { record.Status = executionClaimed; record.StartedAt = now },
+		func(record *executionRecord) { record.Status = executionStarted; record.StartedAt = time.Time{} },
+		func(record *executionRecord) { record.Outcome = nil },
+		func(record *executionRecord) { record.CompletedAt = record.ClaimedAt.Add(-time.Second) },
+	} {
+		changed := valid
+		mutate(&changed)
+		if err := validateExecutionRecord(changed); err == nil {
+			t.Fatalf("invalid record was accepted: %+v", changed)
+		}
+	}
+}
+
+func TestExecutionStateRejectsInvalidOperationsAndCapacity(t *testing.T) {
+	t.Parallel()
+	if _, err := newExecutionState("", nil); err == nil {
+		t.Fatal("empty state path was accepted")
+	}
+	state, _ := newExecutionState(filepath.Join(t.TempDir(), "state.json"), nil)
+	if err := state.markStarted("missing"); err == nil {
+		t.Fatal("missing execution was started")
+	}
+	digest := strings.Repeat("a", 64)
+	_, _, _ = state.claim("execution", digest, "grant", "reservation")
+	if err := state.complete("execution", executorprotocol.Outcome{}); err == nil {
+		t.Fatal("claimed execution completed before start")
+	}
+	if err := state.markStarted("execution"); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.complete("execution", executorprotocol.Outcome{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.complete("execution", executorprotocol.Outcome{}); err == nil {
+		t.Fatal("completed execution was completed twice")
+	}
+	tooMany := executionFile{Version: 1, Executions: make([]executionRecord, maxStateRecords+1)}
+	if err := state.save(tooMany); err == nil {
+		t.Fatal("oversized execution state was saved")
+	}
+	emptyPath := filepath.Join(t.TempDir(), "empty.json")
+	if err := os.WriteFile(emptyPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	empty, _ := newExecutionState(emptyPath, nil)
+	if _, _, err := empty.lookup("id", digest, "grant", "reservation"); err == nil {
+		t.Fatal("empty durable state was accepted")
+	}
+}

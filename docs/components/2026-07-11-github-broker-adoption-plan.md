@@ -2,7 +2,8 @@
 
 Date: 2026-07-11
 
-Status: proposed; depends on the Brokerkit Operator V1 contract
+Status: implemented; final monorepo review, merge, release, and live installed
+verification pending
 
 Required companion plans:
 

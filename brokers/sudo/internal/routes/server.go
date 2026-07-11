@@ -218,9 +218,9 @@ func (s *Server) createRequest(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "target user cannot be resolved")
 	}
 	s.requestMu.Lock()
-	defer s.requestMu.Unlock()
 	createdAt, exists, err := existingPlanCreatedAt(s.grants, s.plans, request.Client, request.ClientRequestID)
 	if err != nil {
+		s.requestMu.Unlock()
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "grant state is unavailable")
 	}
 	if !exists {
@@ -228,12 +228,15 @@ func (s *Server) createRequest(c echo.Context) error {
 	}
 	value, err := plan.Build(request, resolved, identity, createdAt)
 	if err != nil {
+		s.requestMu.Unlock()
 		return echo.NewHTTPError(http.StatusBadRequest, "command plan is invalid")
 	}
 	if err := s.plans.Bind(&request, value); err != nil {
+		s.requestMu.Unlock()
 		return echo.NewHTTPError(http.StatusInternalServerError, "command plan could not be stored")
 	}
 	result, created, err := s.grants.Request(request)
+	s.requestMu.Unlock()
 	if err != nil {
 		return grantError(err)
 	}

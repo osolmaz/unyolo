@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
@@ -23,6 +25,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/conformance"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorclient"
 	"github.com/osolmaz/brokerkit/operatorv1"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
@@ -82,6 +85,169 @@ func TestRequestApproveAndExecuteExactCommand(t *testing.T) {
 	}
 }
 
+func TestReadinessStatusAndNotificationLifecycle(t *testing.T) {
+	t.Parallel()
+	server, _, _ := testServer(t)
+	agent := httptest.NewServer(server.Handler())
+	defer agent.Close()
+	ready := httptest.NewRecorder()
+	server.Handler().ServeHTTP(ready, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", http.NoBody))
+	if ready.Code != http.StatusOK {
+		t.Fatalf("ready status = %d", ready.Code)
+	}
+	memory := &notify.Memory{}
+	server.notifier = memory
+	server.operatorConfigured = false
+	created := agentRequest(t, agent, http.MethodPost, "/api/v1/requests", `{"client_request_id":"notified","command_id":"scale","target_user":"root","arguments":{"replicas":2},"reason":"notify"}`)
+	if created.Code != http.StatusCreated || len(memory.Messages) != 1 {
+		t.Fatalf("notification request status=%d messages=%d body=%s", created.Code, len(memory.Messages), created.Body.String())
+	}
+	var response struct {
+		Request requestView `json:"request"`
+	}
+	decodeRecorder(t, created, &response)
+	status := agentRequest(t, agent, http.MethodGet, "/api/v1/requests/"+response.Request.ID, "")
+	if status.Code != http.StatusOK {
+		t.Fatalf("request status = %d: %s", status.Code, status.Body.String())
+	}
+	missing := agentRequest(t, agent, http.MethodGet, "/api/v1/requests/missing", "")
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing request status = %d", missing.Code)
+	}
+}
+
+func TestExecutionSettlementVariants(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		response executorprotocol.Response
+		callErr  error
+		status   int
+		retained bool
+	}{
+		{name: "before dispatch", callErr: errors.New("dial"), status: http.StatusServiceUnavailable},
+		{name: "rejected", response: executorprotocol.NewRejected("plan_drift"), status: http.StatusConflict},
+		{name: "ambiguous", response: executorprotocol.NewAmbiguous("execution", "lost"), status: http.StatusServiceUnavailable, retained: true},
+		{name: "missing outcome", response: executorprotocol.Response{Status: executorprotocol.StatusCompleted}, status: http.StatusServiceUnavailable, retained: true},
+		{name: "not started", response: executorprotocol.NewCompleted("execution", executorprotocol.Outcome{}), status: http.StatusConflict},
+		{name: "unknown", response: executorprotocol.Response{Status: "unknown"}, status: http.StatusServiceUnavailable, retained: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server, _, _ := testServer(t)
+			grant := requestAndApprove(t, server)
+			reserved, err := server.grants.ReserveUse(grant.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, _ := server.catalog.Resolve("scale", "root", map[string]json.RawMessage{"replicas": json.RawMessage(`2`)})
+			request := sudopolicy.Request("bob", resolved)
+			recorder := httptest.NewRecorder()
+			context := server.echo.NewContext(httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", http.NoBody), recorder)
+			err = server.settleExecution(context, request, reserved, test.response, test.callErr)
+			var httpError *echo.HTTPError
+			if !errors.As(err, &httpError) || httpError.Code != test.status {
+				t.Fatalf("settlement error = %#v", err)
+			}
+			stored, _ := server.grants.Get(grant.ID)
+			if stored.ReservationRetained != test.retained {
+				t.Fatalf("retained=%t want=%t grant=%+v", stored.ReservationRetained, test.retained, stored)
+			}
+		})
+	}
+}
+
+func TestRouteInputAndGrantValidationHelpers(t *testing.T) {
+	t.Parallel()
+	for _, input := range []requestInput{
+		{},
+		{commandInput: commandInput{CommandID: "x", TargetUser: "root"}, ClientRequestID: "id", Reason: "bad\nreason"},
+		{commandInput: commandInput{CommandID: "x", TargetUser: "root"}, ClientRequestID: "id", Reason: "ok", Minutes: -1},
+	} {
+		if err := validateRequestInput(input); err == nil {
+			t.Fatalf("request input %+v was accepted", input)
+		}
+	}
+	if err := validateExecutionInput(executionInput{commandInput: commandInput{CommandID: "x", TargetUser: "root"}}); err == nil {
+		t.Fatal("execution without id was accepted")
+	}
+	invalidPolicy := &corepolicy.GrantPolicy{Mode: string(corepolicy.GrantModeWindow), DefaultMaxUses: 1, MaxUses: 1}
+	if _, _, err := grantBounds(invalidPolicy, 1); err == nil {
+		t.Fatal("window grant was accepted")
+	}
+	if err := grantError(grants.ErrIdempotencyConflict); err == nil {
+		t.Fatal("idempotency conflict was not mapped")
+	}
+	if id, err := randomID("test-"); err != nil || !strings.HasPrefix(id, "test-") {
+		t.Fatalf("random id = %q, %v", id, err)
+	}
+}
+
+func TestNotificationFailureRetentionAndCancellation(t *testing.T) {
+	t.Parallel()
+	for _, operatorConfigured := range []bool{true, false} {
+		server, _, _ := testServer(t)
+		server.operatorConfigured = operatorConfigured
+		server.notifier = errorNotifier{}
+		resolved, _ := server.catalog.Resolve("scale", "root", map[string]json.RawMessage{"replicas": json.RawMessage(`2`)})
+		policyRequest := sudopolicy.Request("bob", resolved)
+		request := grants.Request{Client: "bob", ClientRequestID: fmt.Sprintf("notify-failure-%t", operatorConfigured), Operation: policyRequest.Operation,
+			Target: policyRequest.Target, Attrs: policyRequest.Attrs, Reason: "notify", Duration: time.Minute, PendingTimeout: time.Minute, MaxUses: 1}
+		value, _ := plan.Build(request, resolved, plan.Identity{Name: "root"}, time.Unix(1_700_000_000, 0))
+		_ = server.plans.Bind(&request, value)
+		result, _, err := server.grants.Request(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := server.notifyRequest(t.Context(), result)
+		if operatorConfigured {
+			if err != nil || stored.NotificationClaimedAt.IsZero() {
+				t.Fatalf("retained notification = %+v, %v", stored, err)
+			}
+		} else if err == nil {
+			t.Fatal("notification failure without operator was accepted")
+		}
+	}
+}
+
+func TestServerStartAndReadinessFailure(t *testing.T) {
+	t.Parallel()
+	server, _, _ := testServer(t)
+	poller := &fakePoller{called: make(chan struct{}, 1)}
+	server.poller = poller
+	ctx, cancel := context.WithCancel(context.Background())
+	server.Start(ctx)
+	select {
+	case <-poller.called:
+	case <-time.After(time.Second):
+		t.Fatal("decision poller did not start")
+	}
+	cancel()
+	server.helper = &executorclient.Client{SocketPath: "/missing", Dial: func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("offline")
+	}}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", http.NoBody))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("offline readiness status = %d", response.Code)
+	}
+	if _, err := New(Options{}); err == nil {
+		t.Fatal("server without dependencies was accepted")
+	}
+	plain, _, _ := testServer(t)
+	created, err := New(Options{Policy: plain.policy, Catalog: plain.catalog, GrantStore: plain.grants, PlanStore: plain.plans,
+		Identities: plain.identities, Helper: plain.helper, ClientSecrets: map[string]string{"bob": testClientSecret},
+		OperatorSecrets: map[string]string{"onur": testOperatorSecret}})
+	if err != nil || created == nil {
+		t.Fatalf("server defaults = %+v, %v", created, err)
+	}
+	if _, err := New(Options{Policy: plain.policy, Catalog: plain.catalog, GrantStore: plain.grants, PlanStore: plain.plans,
+		Identities: plain.identities, Helper: plain.helper, ClientSecrets: map[string]string{"bob": testClientSecret},
+		OperatorSecrets: map[string]string{"onur": testClientSecret}}); err == nil {
+		t.Fatal("overlapping client/operator credential was accepted")
+	}
+}
+
 func TestExecutionMismatchAndAmbiguityFailClosed(t *testing.T) {
 	t.Parallel()
 	server, helper, _ := testServer(t)
@@ -130,6 +296,44 @@ func TestAgentRoutesRejectUnknownDuplicateAndWrongCredentials(t *testing.T) {
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("wrong credential status=%d", response.StatusCode)
+	}
+}
+
+func TestRequestPolicyApprovalAndIdempotencyFailures(t *testing.T) {
+	t.Parallel()
+	server, _, _ := testServer(t)
+	agent := httptest.NewServer(server.Handler())
+	defer agent.Close()
+	body := `{"client_request_id":"retry","command_id":"scale","target_user":"root","arguments":{"replicas":2},"reason":"test"}`
+	first := agentRequest(t, agent, http.MethodPost, "/api/v1/requests", body)
+	second := agentRequest(t, agent, http.MethodPost, "/api/v1/requests", body)
+	if first.Code != http.StatusCreated || second.Code != http.StatusOK {
+		t.Fatalf("idempotent statuses = %d, %d", first.Code, second.Code)
+	}
+	conflict := agentRequest(t, agent, http.MethodPost, "/api/v1/requests", strings.Replace(body, `"reason":"test"`, `"reason":"changed"`, 1))
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("idempotency conflict status = %d: %s", conflict.Code, conflict.Body.String())
+	}
+	denied := agentRequest(t, agent, http.MethodPost, "/api/v1/requests", strings.Replace(body, `"replicas":2`, `"replicas":3`, 1))
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("policy denial status = %d", denied.Code)
+	}
+	server.operatorConfigured = false
+	server.notifier = nil
+	unconfigured := agentRequest(t, agent, http.MethodPost, "/api/v1/requests", strings.Replace(body, `"retry"`, `"other"`, 1))
+	if unconfigured.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured approval status = %d", unconfigured.Code)
+	}
+}
+
+func TestExecutionRequiresActiveMatchingGrant(t *testing.T) {
+	t.Parallel()
+	server, helper, _ := testServer(t)
+	agent := httptest.NewServer(server.Handler())
+	defer agent.Close()
+	response := agentRequest(t, agent, http.MethodPost, "/api/v1/executions", `{"execution_id":"none","command_id":"scale","target_user":"root","arguments":{"replicas":2}}`)
+	if response.Code != http.StatusForbidden || helper.executions != 0 {
+		t.Fatalf("unapproved execution status=%d calls=%d", response.Code, helper.executions)
 	}
 }
 
@@ -274,6 +478,20 @@ func (fakeIdentities) Lookup(string) (plan.Identity, error) {
 type fakeHelper struct {
 	status     string
 	executions int
+}
+
+type errorNotifier struct{}
+
+func (errorNotifier) SendApproval(context.Context, notify.ApprovalMessage) (notify.MessageRef, error) {
+	return notify.MessageRef{}, errors.New("offline")
+}
+func (errorNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error { return nil }
+
+type fakePoller struct{ called chan struct{} }
+
+func (poller *fakePoller) Poll(ctx context.Context, _ func(context.Context, notify.Decision) notify.DecisionResult) {
+	poller.called <- struct{}{}
+	<-ctx.Done()
 }
 
 func (f *fakeHelper) dial(_ context.Context, _, _ string) (net.Conn, error) {

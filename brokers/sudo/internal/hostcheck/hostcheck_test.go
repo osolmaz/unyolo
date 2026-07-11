@@ -15,6 +15,25 @@ func TestValidateExecutionAcceptsTrustedSystemPaths(t *testing.T) {
 	if err := ValidateExecution(plan.Plan{Executable: "/usr/bin/printf", WorkingDirectory: "/", TargetUID: 0}, uint32(os.Getuid())); err != nil { // #nosec G115 -- uid is non-negative.
 		t.Fatal(err)
 	}
+	if err := ValidateRootFile("/usr/bin/true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateRootDirectory("/"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateStaleSocket("/definitely-missing-sudo-broker-test.sock", uint32(os.Getuid())); err != nil { // #nosec G115 -- uid is non-negative.
+		t.Fatal(err)
+	}
+	strong, err := KernelExecutionSafety()
+	if err != nil || !strong {
+		t.Fatalf("kernel safety = %t, %v", strong, err)
+	}
+	if err := validatePathACL("/usr/bin/true", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePathACL("/definitely-missing-sudo-broker-acl", false); err == nil {
+		t.Fatal("missing ACL path was accepted")
+	}
 }
 
 func TestValidateExecutionRejectsWritableAndSymlinkedPaths(t *testing.T) {
@@ -33,5 +52,11 @@ func TestValidateExecutionRejectsWritableAndSymlinkedPaths(t *testing.T) {
 	}
 	if err := ValidateRootFile(link); err == nil {
 		t.Fatal("symlinked file was accepted")
+	}
+	if err := ValidateRootFile("/"); err == nil {
+		t.Fatal("directory was accepted as root file")
+	}
+	if err := ValidateStaleSocket(executable, uint32(os.Getuid())); err == nil { // #nosec G115 -- uid is non-negative.
+		t.Fatal("regular file was accepted as stale socket")
 	}
 }

@@ -88,6 +88,9 @@ func validateTrustedChain(path string, finalFile bool, brokerUID uint32, targetU
 		if info.Mode().Perm()&0o022 != 0 {
 			return fmt.Errorf("%s is group- or world-writable", current)
 		}
+		if err := validatePathACL(current, info.IsDir()); err != nil {
+			return fmt.Errorf("%s ACL is unsafe: %w", current, err)
+		}
 		last := index == len(components)-1
 		if !last || !finalFile {
 			if !info.IsDir() {

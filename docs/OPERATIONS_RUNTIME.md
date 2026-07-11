@@ -74,15 +74,16 @@ outside user-controlled home directories.
 Provider credentials and policy do not enter Brokerkit.
 
 Home access is an explicit typed policy. The default is `deny`; `read-only` is
-available for read-only integrations; and privileged brokers such as
-sudo-broker select `allow` when approved commands or shells must operate in user
-home directories. On systemd, `allow` adds explicit writable exceptions for
+available for read-only integrations; and a future provider may select `allow`
+only when its reviewed operations must access user home directories. sudo-broker
+V1 keeps home access denied and requires root-trusted executable and working
+directory chains. On systemd, `allow` adds explicit writable exceptions for
 `/home`, `/root`, and `/run/user`; the rest of the filesystem remains protected
 by `ProtectSystem=strict`. The writable state path may never be `/`.
 
 Privilege escalation is a separate typed policy and is denied by default with
-`NoNewPrivileges=true`. A broker that deliberately delegates through a mature
-setuid boundary, such as sudo-broker's sudo runner, must explicitly select
+`NoNewPrivileges=true`. A broker that deliberately performs an identity
+transition, such as sudo-broker's root helper, must explicitly select
 `PrivilegeEscalationAllow`; Brokerkit then renders `NoNewPrivileges=false`.
 Writable state, read-only config, the service executable, and the environment
 file must occupy non-overlapping paths.

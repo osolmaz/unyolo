@@ -2,7 +2,8 @@
 
 Date: 2026-07-11
 
-Status: proposed
+Status: implemented; final coordinated review, CI, source-repository archival,
+publication, and installed-system verification pending
 
 Target repository: `github.com/osolmaz/brokerkit`
 

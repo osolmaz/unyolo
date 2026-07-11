@@ -108,10 +108,10 @@ Each broker must register its own vocabulary.
 
 `sudo-broker` owns:
 
-- operations such as `exec.command` and `session.shell`
-- target kinds such as `user`, `group`, and `host`
-- attrs such as `command_id`, `cwd`, `tty`, and `timeout_seconds`
-- command catalogs, shell sessions, and OS-specific execution backends
+- the V1 `exec.command` operation
+- the V1 `user` target kind
+- attrs such as `command_id` and bounded typed argument values
+- exact command catalogs and OS-specific execution backends
 - Unix-specific approval text
 
 ## Security Invariants

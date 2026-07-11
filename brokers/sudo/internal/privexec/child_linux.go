@@ -86,8 +86,12 @@ func execveat(fd int, argv []string, environment []string) error {
 	if err != nil {
 		return err
 	}
+	environmentPointer := uintptr(0)
+	if len(environmentPointers) > 0 {
+		environmentPointer = uintptr(unsafe.Pointer(&environmentPointers[0]))
+	}
 	_, _, errno := unix.Syscall6(unix.SYS_EXECVEAT, uintptr(fd), uintptr(unsafe.Pointer(empty)),
-		uintptr(unsafe.Pointer(&argvPointers[0])), uintptr(unsafe.Pointer(&environmentPointers[0])), uintptr(unix.AT_EMPTY_PATH), 0)
+		uintptr(unsafe.Pointer(&argvPointers[0])), environmentPointer, uintptr(unix.AT_EMPTY_PATH), 0)
 	runtime.KeepAlive(argvPointers)
 	runtime.KeepAlive(environmentPointers)
 	if errno != 0 {

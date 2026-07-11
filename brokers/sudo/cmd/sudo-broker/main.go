@@ -33,9 +33,11 @@ func mainCode(args []string, stdout io.Writer, stderr io.Writer) int {
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: sudo-broker <serve|request|run|status|version>")
+		return errors.New("usage: sudo-broker <serve|request|run|status|setup|version>")
 	}
 	switch args[0] {
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr)
 	case "serve":
 		return runServe(ctx, args[1:], stdout, stderr)
 	case "request":
@@ -44,6 +46,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		return runCommand(ctx, args[1:], stdout, stderr)
 	case "status":
 		return runStatus(ctx, args[1:], stdout)
+	case "setup":
+		return runSetup(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
 		_, err := fmt.Fprintln(stdout, version)
 		return err

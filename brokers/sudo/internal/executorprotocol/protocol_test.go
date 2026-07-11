@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,55 @@ func TestProtocolRejectsInvalidResponses(t *testing.T) {
 		}
 	}
 }
+
+func TestProtocolErrorConstructors(t *testing.T) {
+	t.Parallel()
+	rejected := NewRejected("denied")
+	ambiguous := NewAmbiguous("execution", "lost")
+	if rejected.Status != StatusRejected || rejected.ErrorCode != "denied" || ambiguous.Status != StatusAmbiguous || ambiguous.ExecutionID != "execution" {
+		t.Fatalf("responses = %+v / %+v", rejected, ambiguous)
+	}
+	for _, response := range []Response{rejected, ambiguous, {Version: Version, Status: StatusReady}} {
+		var wire bytes.Buffer
+		if err := WriteResponse(&wire, response); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ReadResponse(&wire); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, request := range []Request{
+		{},
+		{Version: Version, Type: TypePing, ExecutionID: "extra"},
+		{Version: Version, Type: TypeExecute, ExecutionID: "missing"},
+		{Version: Version, Type: "unknown"},
+	} {
+		if err := WriteRequest(&bytes.Buffer{}, request); err == nil {
+			t.Fatalf("invalid request was written: %+v", request)
+		}
+	}
+}
+
+func TestProtocolPropagatesTransportFailures(t *testing.T) {
+	t.Parallel()
+	if err := WriteRequest(failingWriter{}, Ping()); err == nil {
+		t.Fatal("writer failure was ignored")
+	}
+	if err := writeAll(zeroWriter{}, []byte("x")); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("zero write error = %v", err)
+	}
+	if _, err := ReadResponse(bytes.NewReader(frame([]byte(`{"version":1,"status":"unknown"}`)))); err == nil {
+		t.Fatal("invalid response frame was accepted")
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+type zeroWriter struct{}
+
+func (zeroWriter) Write([]byte) (int, error) { return 0, nil }
 
 func frame(data []byte) []byte {
 	value := make([]byte, 4+len(data))

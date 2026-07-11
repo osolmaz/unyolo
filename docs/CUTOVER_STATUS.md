@@ -74,12 +74,17 @@ references, or delivery progress in memory.
 
 ### 4. sudo-broker
 
-- Done: durable lifecycle, fail-closed execution settlement, review, and CI
-  merged in pull request #7.
-- Next: adopt the shared operations runtime and implement the Unix-specific
-  doctor checks.
-- Next: verify allowed, denied, requested, approved, expired, and use-budgeted
-  Unix execution without giving the client root-equivalent membership.
+- Done: exact-command catalog, immutable plans, shared policy/grants/operator
+  inbox/Telegram, durable fail-closed settlement, and the authenticated root
+  helper are implemented in the monorepo.
+- Done: shared setup-client, typed two-unit systemd installation, Unix-specific
+  doctor checks, companion-binary release packaging, and global installer are
+  implemented and tested.
+- Done: Linux descriptor-safe execution uses `openat2` plus `execveat`; macOS
+  uses the documented immediate-revalidation fallback.
+- Next: run the final isolated live root-helper probe, repository review/CI
+  loop, and coordinated host installation without root-equivalent agent group
+  membership.
 
 ## Final Integration Work
 

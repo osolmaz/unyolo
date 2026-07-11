@@ -57,6 +57,41 @@ func TestParseAndResolveTypedCommand(t *testing.T) {
 	if again.TargetUsers[0] != "root" {
 		t.Fatal("Command returned aliased data")
 	}
+	if slots := snapshot.SlotNames(); strings.Join(slots, ",") != "artifact,environment,replicas" {
+		t.Fatalf("slot names = %v", slots)
+	}
+	if err := snapshot.ValidateResolved(resolved); err != nil {
+		t.Fatal(err)
+	}
+	changed := resolved
+	changed.Arguments = append([]string(nil), resolved.Arguments...)
+	changed.Arguments[1] = "staging"
+	if err := snapshot.ValidateResolved(changed); err == nil {
+		t.Fatal("changed resolved command was accepted")
+	}
+}
+
+func TestLoadAndNilSnapshotBehavior(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	document := `{"version":1,"commands":[{"id":"true","executable":"/usr/bin/true","arguments":[],"target_users":["root"],"working_directory":"/","timeout_seconds":1,"max_output_bytes":0}]}`
+	if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := Load(path)
+	if err != nil || snapshot.Digest() == "" {
+		t.Fatalf("Load() = %+v, %v", snapshot, err)
+	}
+	if _, err := Load(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("missing catalog was loaded")
+	}
+	var empty *Snapshot
+	if empty.Digest() != "" || empty.SlotNames() != nil {
+		t.Fatal("nil snapshot returned data")
+	}
+	if _, ok := empty.Command("true"); ok {
+		t.Fatal("nil snapshot returned a command")
+	}
 }
 
 func TestResolveRejectsArgumentEscapes(t *testing.T) {
@@ -89,6 +124,7 @@ func TestParseRejectsClosedSchemaAndUnsafeCatalogs(t *testing.T) {
 	directory := t.TempDir()
 	valid := fmt.Sprintf(`{"version":1,"commands":[{"id":"safe-id","executable":"/usr/bin/id","arguments":[],"target_users":["root"],"working_directory":%q,"timeout_seconds":1,"max_output_bytes":0}]}`, directory)
 	tests := []string{
+		`{"version":1,"commands":[]}`,
 		strings.Replace(valid, `"version":1`, `"version":1,"version":1`, 1),
 		strings.Replace(valid, `"timeout_seconds":1`, `"timeout_seconds":1,"unknown":true`, 1),
 		strings.Replace(valid, `"safe-id"`, `"Bad_ID"`, 1),
@@ -98,6 +134,17 @@ func TestParseRejectsClosedSchemaAndUnsafeCatalogs(t *testing.T) {
 		strings.Replace(valid, `"arguments":[]`, `"arguments":[{"slot":"raw","type":"regex"}]`, 1),
 		strings.Replace(valid, `"arguments":[]`, `"arguments":[{"literal":"ok","slot":"bad"}]`, 1),
 		strings.Replace(valid, `"max_output_bytes":0`, `"max_output_bytes":0,"environment":{"LD_PRELOAD":"x"}`, 1),
+		strings.Replace(valid, `"arguments":[]`, `"arguments":[{"slot":"count","type":"integer","minimum":2,"maximum":1}]`, 1),
+		strings.Replace(valid, `"arguments":[]`, `"arguments":[{"slot":"kind","type":"enum","values":["x","x"]}]`, 1),
+		strings.Replace(valid, `"arguments":[]`, `"arguments":[{"slot":"path","type":"path_beneath","roots":["relative"],"file_type":"regular"}]`, 1),
+		strings.Replace(valid, `"arguments":[]`, `"arguments":[{"literal":"bad\nvalue"}]`, 1),
+		strings.Replace(valid, `"/usr/bin/id"`, `"usr/bin/id"`, 1),
+		strings.Replace(valid, `"working_directory":`+fmt.Sprintf("%q", directory), `"working_directory":"relative"`, 1),
+		strings.Replace(valid, `"timeout_seconds":1`, `"timeout_seconds":0`, 1),
+		strings.Replace(valid, `"max_output_bytes":0`, `"max_output_bytes":0,"risk":"critical"`, 1),
+		strings.Replace(valid, `"max_output_bytes":0`, `"max_output_bytes":0,"description":"bad\ntext"`, 1),
+		strings.Replace(valid, `"max_output_bytes":0`, `"max_output_bytes":0,"environment":{"lower":"x"}`, 1),
+		strings.Replace(valid, `}]}`, `},`+strings.TrimPrefix(strings.TrimPrefix(valid, `{"version":1,"commands":[`), " "), 1),
 	}
 	for index, value := range tests {
 		if _, err := Parse([]byte(value)); err == nil {

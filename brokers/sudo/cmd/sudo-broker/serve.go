@@ -43,14 +43,22 @@ type serveOptions struct {
 }
 
 func runServe(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
-	if os.Geteuid() == 0 {
+	return runServeWith(ctx, args, stdout, stderr, os.Geteuid, buildServer, serveHTTP)
+}
+
+func runServeWith(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, geteuid func() int,
+	build func(serveOptions, io.Writer) (*routes.Server, error), serve func(context.Context, []*http.Server) error) error {
+	if geteuid == nil || build == nil || serve == nil {
+		return errors.New("serve runtime dependencies are required")
+	}
+	if geteuid() == 0 {
 		return errors.New("frontend must run as a dedicated non-root user")
 	}
 	opts, err := parseServeOptions(args)
 	if err != nil {
 		return err
 	}
-	server, err := buildServer(opts, stderr)
+	server, err := build(opts, stderr)
 	if err != nil {
 		return err
 	}
@@ -65,7 +73,7 @@ func runServe(ctx context.Context, args []string, stdout io.Writer, stderr io.Wr
 	for _, value := range servers {
 		_, _ = fmt.Fprintf(stdout, "sudo-broker listening on http://%s\n", value.Addr)
 	}
-	return serveHTTP(ctx, servers)
+	return serve(ctx, servers)
 }
 
 func parseServeOptions(args []string) (serveOptions, error) {
@@ -112,9 +120,16 @@ func parseServeOptions(args []string) (serveOptions, error) {
 }
 
 func buildServer(opts serveOptions, stderr io.Writer) (*routes.Server, error) {
+	return buildServerWithValidator(opts, stderr, hostcheck.ValidateRootFile)
+}
+
+func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootFile func(string) error) (*routes.Server, error) {
+	if validateRootFile == nil {
+		return nil, errors.New("security-sensitive file validator is required")
+	}
 	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken} {
 		if path != "" {
-			if err := hostcheck.ValidateRootFile(path); err != nil {
+			if err := validateRootFile(path); err != nil {
 				return nil, fmt.Errorf("security-sensitive file %s is unsafe: %w", path, err)
 			}
 		}

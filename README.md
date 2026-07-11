@@ -48,8 +48,9 @@ domain boundary:
   token use.
 - `gh-broker` owns GitHub API/Git behavior, pull requests, installations, and
   GitHub ruleset compatibility.
-- `sudo-broker` should own Unix user switching, command catalogs, TTY sessions,
-  and sudo/systemd/launchd integration.
+- `sudo-broker` owns exact cataloged Unix command execution, target identity
+  switching, the privileged helper, and OS-specific host validation. V1 has no
+  shell or TTY mode.
 
 The canonical ownership boundary is in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 The security boundaries and fail-closed behavior are in

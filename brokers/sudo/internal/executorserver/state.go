@@ -127,7 +127,7 @@ func (s *executionState) markStarted(id string) error {
 
 func (s *executionState) complete(id string, outcome executorprotocol.Outcome) error {
 	return s.update(id, func(record *executionRecord) error {
-		if record.Status != executionClaimed && record.Status != executionStarted {
+		if record.Status != executionStarted {
 			return errors.New("execution cannot be completed")
 		}
 		record.Status = executionComplete

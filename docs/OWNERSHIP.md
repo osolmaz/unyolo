@@ -312,17 +312,18 @@ gh-broker owns:
 
 sudo-broker owns:
 
-- Unix user, group, and host lookup
+- Unix target-user and group-id lookup
 - command catalog parsing and validation
-- command execution
-- shell/session lifecycle
-- TTY handling
-- sudo, systemd, launchd, or privileged-helper integration
+- exact command execution
+- the peer-authenticated privileged helper and systemd integration
 - local isolation doctor checks
 - OS-specific installer and service files
 - sudo-specific request classification
 - sudo-specific audit extension fields
 - sudo-specific approval wording
+
+V1 does not include shell/session lifecycle, TTY handling, stdin, arbitrary
+argv/environment input, or a launchd installer.
 
 ## Cutover Tests
 

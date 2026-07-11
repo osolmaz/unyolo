@@ -1,0 +1,20 @@
+{
+  "rules": [
+    {
+      "id": "bob-request-nginx-reload",
+      "effect": "request",
+      "clients": ["bob"],
+      "operations": ["exec.command"],
+      "targets": [{ "kind": "user", "name": "root" }],
+      "attrs": { "command_id": ["nginx-reload"] },
+      "grant_policy": {
+        "mode": "execution",
+        "default_minutes": 5,
+        "max_minutes": 5,
+        "request_ttl_minutes": 10,
+        "default_max_uses": 1,
+        "max_uses": 1
+      }
+    }
+  ]
+}

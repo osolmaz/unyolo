@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +49,45 @@ func TestPlanBindsGrantAndValidatesActivationAndExecution(t *testing.T) {
 	}
 	if err := validator.ValidateActivation(context.Background(), created.Grant, grants.ApprovalConstraints{Duration: 10 * time.Minute}); !errors.Is(err, grants.ErrConstraintExceeded) {
 		t.Fatalf("widening error = %v", err)
+	}
+}
+
+func TestPlanCanonicalHelpersAndIndependentHelperValidation(t *testing.T) {
+	t.Parallel()
+	snapshot, resolved := testResolved(t)
+	request := testGrantRequest(resolved)
+	identity := Identity{Name: "root", UID: 0, GID: 0}
+	value, err := Build(request, resolved, identity, time.Unix(1_700_000_000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := EncodeCanonical(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeCanonical(canonical)
+	if err != nil || decoded.CommandID != value.CommandID {
+		t.Fatalf("DecodeCanonical() = %+v, %v", decoded, err)
+	}
+	if err := ValidateForHelper(decoded, snapshot, fakeIdentities{identity: identity}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateForHelper(decoded, nil, fakeIdentities{}); err == nil {
+		t.Fatal("nil helper catalog was accepted")
+	}
+	plans, _ := NewStore(filepath.Join(t.TempDir(), "plans"))
+	if err := plans.Bind(&request, value); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := plans.Canonical(request.Metadata[MetadataDigest])
+	if err != nil || string(stored) != string(canonical) {
+		t.Fatalf("Canonical() = %q, %v", stored, err)
+	}
+	current, err := user.Current()
+	if err == nil {
+		if got, lookupErr := (SystemIdentityResolver{}).Lookup(current.Username); lookupErr != nil || got.Name == "" {
+			t.Fatalf("system identity = %+v, %v", got, lookupErr)
+		}
 	}
 }
 
@@ -156,6 +197,44 @@ func TestPlanStoreCollectsOnlyOldOrphans(t *testing.T) {
 	}
 	if _, err := plans.Get(referenced); err != nil {
 		t.Fatalf("referenced plan removed: %v", err)
+	}
+}
+
+func TestPlanFailsClosedForInvalidInputsAndUnavailableStores(t *testing.T) {
+	t.Parallel()
+	_, resolved := testResolved(t)
+	request := testGrantRequest(resolved)
+	identity := Identity{Name: "root"}
+	for _, mutate := range []func(*grants.Request, *catalog.Resolved, *Identity){
+		func(value *grants.Request, _ *catalog.Resolved, _ *Identity) { value.Operation = "other" },
+		func(_ *grants.Request, value *catalog.Resolved, _ *Identity) { value.TargetUser = "other" },
+		func(_ *grants.Request, _ *catalog.Resolved, value *Identity) { value.Name = "other" },
+		func(value *grants.Request, _ *catalog.Resolved, _ *Identity) { value.Attrs = map[string][]string{} },
+	} {
+		changedRequest, changedResolved, changedIdentity := request, resolved, identity
+		mutate(&changedRequest, &changedResolved, &changedIdentity)
+		if _, err := Build(changedRequest, changedResolved, changedIdentity, time.Now()); err == nil {
+			t.Fatal("invalid plan input was accepted")
+		}
+	}
+	var plans *Store
+	if err := plans.Bind(&request, Plan{}); err == nil {
+		t.Fatal("nil plan store accepted a bind")
+	}
+	if _, err := plans.Get(strings.Repeat("a", 64)); err == nil {
+		t.Fatal("nil plan store returned a plan")
+	}
+	if _, err := plans.Canonical(strings.Repeat("a", 64)); err == nil {
+		t.Fatal("nil plan store returned canonical bytes")
+	}
+	if _, err := plans.CollectOrphans(nil, time.Now()); err == nil {
+		t.Fatal("nil plan store collected plans")
+	}
+	if _, err := (SystemIdentityResolver{}).Lookup("definitely-missing-sudo-broker-user"); err == nil {
+		t.Fatal("missing system identity was resolved")
+	}
+	if _, err := parseID("not-a-number"); err == nil {
+		t.Fatal("invalid numeric id was parsed")
 	}
 }
 

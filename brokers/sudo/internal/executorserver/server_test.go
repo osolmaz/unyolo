@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +33,38 @@ func TestServerExecutesAndReplaysExactlyOnce(t *testing.T) {
 	request.PlanDigest = strings.Repeat("f", 64)
 	if response := server.execute(t.Context(), request); response.Status != executorprotocol.StatusRejected {
 		t.Fatalf("changed plan response=%+v", response)
+	}
+}
+
+func TestServerServesPingAndStopsWithContext(t *testing.T) {
+	t.Parallel()
+	server, _, _ := testServerAndRequest(t)
+	path := filepath.Join(t.TempDir(), "helper.sock")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx, listener) }()
+	connection, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executorprotocol.WriteRequest(connection, executorprotocol.Ping()); err != nil {
+		t.Fatal(err)
+	}
+	response, err := executorprotocol.ReadResponse(connection)
+	_ = connection.Close()
+	if err != nil || response.Status != executorprotocol.StatusReady {
+		t.Fatalf("ping response = %+v, %v", response, err)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
 	}
 }
 
@@ -79,6 +112,32 @@ func TestServerRejectsUnboundedConnectionConfiguration(t *testing.T) {
 	}
 }
 
+func TestServerRejectsMissingListenerAndRunnerPrestartFailure(t *testing.T) {
+	t.Parallel()
+	server, request, runner := testServerAndRequest(t)
+	if err := server.Serve(t.Context(), nil); err == nil {
+		t.Fatal("nil listener was accepted")
+	}
+	runner.err = fmt.Errorf("prestart")
+	runner.outcome = executorprotocol.Outcome{}
+	response := server.execute(t.Context(), request)
+	if response.Status != executorprotocol.StatusCompleted || response.Outcome == nil || response.Outcome.Started {
+		t.Fatalf("prestart response = %+v", response)
+	}
+	invalid := request
+	invalid.Plan = []byte(`{}`)
+	invalid.PlanDigest = planstore.Digest(invalid.Plan)
+	if response := server.execute(t.Context(), invalid); response.ErrorCode != "invalid_plan" {
+		t.Fatalf("invalid plan response = %+v", response)
+	}
+	tooLong := request
+	tooLong.ExecutionID = "other"
+	tooLong.ExpiresAt = time.Unix(1_700_000_000, 0).Add(10 * time.Minute)
+	if response := server.execute(t.Context(), tooLong); response.ErrorCode != "invalid_expiry" {
+		t.Fatalf("long expiry response = %+v", response)
+	}
+}
+
 func testServerAndRequest(t *testing.T) (*Server, executorprotocol.Request, *fakeRunner) {
 	t.Helper()
 	now := time.Unix(1_700_000_000, 0).UTC()
@@ -117,9 +176,10 @@ func (f fakeResolver) Lookup(string) (plan.Identity, error) { return f.identity,
 type fakeRunner struct {
 	calls   int
 	outcome executorprotocol.Outcome
+	err     error
 }
 
 func (f *fakeRunner) Run(context.Context, plan.Plan) (executorprotocol.Outcome, error) {
 	f.calls++
-	return f.outcome, nil
+	return f.outcome, f.err
 }
