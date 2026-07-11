@@ -27,7 +27,7 @@ migrated.
 Install the latest release globally:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/hf-broker/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | sh
 ```
 
 ## Configure systemd
