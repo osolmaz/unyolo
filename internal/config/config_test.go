@@ -3,12 +3,17 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestLoadReadsEnvironment(t *testing.T) {
+	telegramTokenFile := filepath.Join(t.TempDir(), "telegram-token")
+	if err := os.WriteFile(telegramTokenFile, []byte("telegram-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("GH_BROKER_ENVIRONMENT", "test")
 	t.Setenv("GH_BROKER_BIND_ADDR", "127.0.0.2")
 	t.Setenv("GH_BROKER_PORT", "9090")
@@ -17,7 +22,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", "/tmp/scope.json")
 	t.Setenv("GH_BROKER_STATE_DIR", "/tmp/gh-state")
-	t.Setenv("GH_BROKER_TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", telegramTokenFile)
 	t.Setenv("GH_BROKER_TELEGRAM_CHAT_ID", "123456")
 	t.Setenv("GH_BROKER_GITHUB_HTTP_TIMEOUT", "11")
 	t.Setenv("GH_BROKER_MAX_RECEIVE_PACK_BYTES", "12345")
@@ -31,14 +36,18 @@ func TestLoadReadsEnvironment(t *testing.T) {
 }
 
 func TestLoadFromLookupUsesInjectedValues(t *testing.T) {
+	telegramTokenFile := filepath.Join(t.TempDir(), "telegram-token")
+	if err := os.WriteFile(telegramTokenFile, []byte("telegram-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	values := map[string]string{
-		"GH_BROKER_BIND_ADDR":          "127.0.0.9",
-		"GH_BROKER_SHARED_SECRET":      strings.Repeat("s", minimumSharedSecretBytes),
-		"GH_BROKER_GITHUB_TOKEN":       "github-token",
-		"GH_BROKER_SCOPE_FILE":         "/etc/gh-broker/scope.json",
-		"GH_BROKER_STATE_DIR":          "/var/lib/gh-broker",
-		"GH_BROKER_TELEGRAM_CHAT_ID":   "42",
-		"GH_BROKER_TELEGRAM_BOT_TOKEN": "telegram-token",
+		"GH_BROKER_BIND_ADDR":               "127.0.0.9",
+		"GH_BROKER_SHARED_SECRET":           strings.Repeat("s", minimumSharedSecretBytes),
+		"GH_BROKER_GITHUB_TOKEN":            "github-token",
+		"GH_BROKER_SCOPE_FILE":              "/etc/gh-broker/scope.json",
+		"GH_BROKER_STATE_DIR":               "/var/lib/gh-broker",
+		"GH_BROKER_TELEGRAM_CHAT_ID":        "42",
+		"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE": telegramTokenFile,
 	}
 	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
 	if err != nil {
@@ -111,6 +120,38 @@ func TestLoadReadsGitHubTokenFile(t *testing.T) {
 	}
 	if cfg.GitHubToken != "token-from-file" {
 		t.Fatalf("GitHubToken = %q, want token-from-file", cfg.GitHubToken)
+	}
+}
+
+func TestLoadReadsTelegramBotTokenFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "telegram-token")
+	if err := os.WriteFile(path, []byte(" telegram-from-file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{
+		"GH_BROKER_SHARED_SECRET":           strings.Repeat("a", minimumSharedSecretBytes),
+		"GH_BROKER_GITHUB_TOKEN":            "github-token",
+		"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE": path,
+		"GH_BROKER_TELEGRAM_CHAT_ID":        "123",
+	}
+	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TelegramBotToken != "telegram-from-file" || cfg.TelegramBotTokenFile != path {
+		t.Fatalf("telegram config = %+v", cfg)
+	}
+}
+
+func TestLoadRejectsInlineTelegramToken(t *testing.T) {
+	values := map[string]string{
+		"GH_BROKER_SHARED_SECRET":      strings.Repeat("a", minimumSharedSecretBytes),
+		"GH_BROKER_GITHUB_TOKEN":       "github-token",
+		"GH_BROKER_TELEGRAM_BOT_TOKEN": "inline-token",
+		"GH_BROKER_TELEGRAM_CHAT_ID":   "123",
+	}
+	if _, err := LoadFromLookup(func(key string) string { return values[key] }); err == nil {
+		t.Fatal("inline Telegram token unexpectedly enabled notifications")
 	}
 }
 
@@ -370,5 +411,16 @@ func TestInt64EnvFallsBackForInvalidValue(t *testing.T) {
 	t.Setenv("GH_BROKER_BAD_INT", "bad")
 	if got := int64Env(42, "GH_BROKER_BAD_INT"); got != 42 {
 		t.Fatalf("int64Env() = %d, want fallback", got)
+	}
+}
+
+func TestTelegramChatIDAcceptsSignedInt64Values(t *testing.T) {
+	for _, value := range []string{"-1001234567890", "9223372036854775807"} {
+		values := map[string]string{"GH_BROKER_TELEGRAM_CHAT_ID": value}
+		got := telegramChatIDEnvFrom(func(key string) string { return values[key] }, "GH_BROKER_TELEGRAM_CHAT_ID")
+		want, _ := strconv.ParseInt(value, 10, 64)
+		if got != want {
+			t.Fatalf("telegramChatIDEnvFrom(%q) = %d, want %d", value, got, want)
+		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +23,7 @@ const (
 	githubAppIDFileName         = "github-app-id"
 	githubAppPrivateKeyFileName = "github-app-private-key.pem"
 	githubWebhookSecretFileName = "github-webhook-secret" // #nosec G101 -- this is a config filename, not a secret value.
+	ghTelegramTokenFileName     = "telegram-bot-token"    // #nosec G101 -- this is a config filename, not a secret value.
 	ghSecretsFileName           = "secrets"
 	ghOperatorSecretsFileName   = "operator-secrets"
 	ghScopeFileName             = "scope.json"
@@ -36,6 +38,7 @@ type systemdPlan struct {
 	appIDPath           string
 	appPrivateKeyPath   string
 	webhookSecretPath   string
+	telegramTokenPath   string
 	secretsPath         string
 	operatorSecretsPath string
 	scopePath           string
@@ -79,6 +82,7 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 		appIDPath:           filepath.Join(opts.ConfigDir, githubAppIDFileName),
 		appPrivateKeyPath:   filepath.Join(opts.ConfigDir, githubAppPrivateKeyFileName),
 		webhookSecretPath:   filepath.Join(opts.ConfigDir, githubWebhookSecretFileName),
+		telegramTokenPath:   filepath.Join(opts.ConfigDir, ghTelegramTokenFileName),
 		secretsPath:         filepath.Join(opts.ConfigDir, ghSecretsFileName),
 		operatorSecretsPath: filepath.Join(opts.ConfigDir, ghOperatorSecretsFileName),
 		scopePath:           filepath.Join(opts.ConfigDir, ghScopeFileName),
@@ -95,6 +99,12 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
+	removeFiles := []bkservice.ManagedFileRef(nil)
+	var readyCheck bkservice.ReadinessCheck
+	if plan.opts.TelegramBotTokenFile == "" {
+		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName})
+		readyCheck = bkservice.HTTPReadyCheck(brokerURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", localReadinessHTTPClient())
+	}
 	return bkservice.SystemdInstallPlan{
 		User:         plan.opts.User,
 		Group:        plan.opts.Group,
@@ -103,11 +113,19 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		SystemdDir:   plan.opts.SystemdDir,
 		UnitName:     ghUnitFileName,
 		Files:        files,
+		RemoveFiles:  removeFiles,
+		ReadyCheck:   readyCheck,
 		Unit:         systemdUnit(plan),
 		NoStart:      plan.opts.NoStart,
 		AllowNonRoot: plan.opts.AllowNonRoot,
 		Runner:       plan.opts.CommandRunner,
 	}, nil
+}
+
+func localReadinessHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return &http.Client{Transport: transport}
 }
 
 func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
@@ -125,6 +143,13 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghScopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghEnvFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	)
+	if plan.opts.TelegramBotTokenFile != "" {
+		token, readErr := readRequiredSetupFile(plan.opts.TelegramBotTokenFile, "--telegram-bot-token-file")
+		if readErr != nil {
+			return nil, readErr
+		}
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
+	}
 	return files, nil
 }
 
@@ -199,6 +224,10 @@ func renderEnvFile(plan systemdPlan) string {
 		"GH_BROKER_OPERATOR_PORT=" + strconv.Itoa(opts.OperatorPort) + "\n" +
 		"GH_BROKER_GITHUB_HTTP_TIMEOUT=30\n" +
 		"GH_BROKER_MAX_RECEIVE_PACK_BYTES=26214400\n"
+	if opts.TelegramBotTokenFile != "" {
+		body += "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +
+			"GH_BROKER_TELEGRAM_CHAT_ID=" + strconv.FormatInt(opts.TelegramChatID, 10) + "\n"
+	}
 	if opts.DevTokenFallback {
 		return body + "GH_BROKER_GITHUB_TOKEN_FILE=" + plan.tokenPath + "\n"
 	}
@@ -245,6 +274,7 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   app id file:     %s
   app private key: %s
   webhook secret:  %s
+  telegram token:  %s
   secrets file:    %s
   operator file:   %s
   scope file:      %s
@@ -252,7 +282,7 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   state dir:       %s
   unit file:       %s
   broker URL:      %s
-`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port))
+`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), showPath(plan.opts.TelegramBotTokenFile != "", plan.telegramTokenPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port))
 	return err
 }
 

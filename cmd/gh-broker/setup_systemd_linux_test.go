@@ -137,6 +137,7 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	currentUser, currentGroup := currentUserAndGroup(t)
 	dir := t.TempDir()
 	tokenFile := writeFixture(t, dir, "source-token", "ghp_token\n")
+	telegramTokenFile := writeFixture(t, dir, "telegram-token", "123:telegram-secret\n")
 	scopeFile := writeFixture(t, dir, "scope.json", minimalScopeJSON())
 	var stdout bytes.Buffer
 	runner := &recordingRunner{}
@@ -147,15 +148,17 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
 			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, AllowNonRoot: true, NoStart: true,
 		},
-		GitHubTokenFile:  tokenFile,
-		ScopeFile:        scopeFile,
-		SharedSecret:     strings.Repeat("s", 32),
-		OperatorID:       "onur",
-		OperatorSecret:   strings.Repeat("o", 32),
-		OperatorBindAddr: "127.0.0.1",
-		OperatorPort:     8082,
-		DevTokenFallback: true,
-		CommandRunner:    runner,
+		GitHubTokenFile:      tokenFile,
+		ScopeFile:            scopeFile,
+		SharedSecret:         strings.Repeat("s", 32),
+		OperatorID:           "onur",
+		OperatorSecret:       strings.Repeat("o", 32),
+		OperatorBindAddr:     "127.0.0.1",
+		OperatorPort:         8082,
+		TelegramBotTokenFile: telegramTokenFile,
+		TelegramChatID:       123,
+		DevTokenFallback:     true,
+		CommandRunner:        runner,
 	})
 	if err != nil {
 		t.Fatalf("runSetupSystemd() error = %v", err)
@@ -170,6 +173,7 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 		filepath.Join(dir, "etc", "gh-broker", "github-token"),
 		filepath.Join(dir, "etc", "gh-broker", "secrets"),
 		filepath.Join(dir, "etc", "gh-broker", "operator-secrets"),
+		filepath.Join(dir, "etc", "gh-broker", "telegram-bot-token"),
 		filepath.Join(dir, "etc", "gh-broker", "scope.json"),
 		filepath.Join(dir, "etc", "gh-broker", "env"),
 		filepath.Join(dir, "systemd", "gh-broker.service"),
@@ -189,13 +193,21 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 		"GH_BROKER_STATE_DIR=",
 		"GH_BROKER_OPERATOR_SECRETS_FILE=",
 		"GH_BROKER_OPERATOR_PORT=8082",
+		"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE=",
+		"GH_BROKER_TELEGRAM_CHAT_ID=123",
 	} {
 		if !strings.Contains(envText, want) {
 			t.Fatalf("env missing %q:\n%s", want, envText)
 		}
 	}
-	if strings.Contains(envText, strings.Repeat("s", 32)) {
-		t.Fatalf("env leaked broker secret:\n%s", envText)
+	assertTextExcludes(t, envText, strings.Repeat("s", 32))
+	assertTextExcludes(t, envText, "123:telegram-secret")
+}
+
+func assertTextExcludes(t *testing.T, text string, value string) {
+	t.Helper()
+	if strings.Contains(text, value) {
+		t.Fatalf("text leaked protected value:\n%s", text)
 	}
 }
 
@@ -224,6 +236,9 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 	installPlan, err := brokerkitSystemdInstallPlan(plan)
 	if err != nil {
 		t.Fatalf("brokerkitSystemdInstallPlan() error = %v", err)
+	}
+	if installPlan.ReadyCheck == nil {
+		t.Fatal("Telegram credential retirement requires a readiness check")
 	}
 	wantOwners := map[string]bkservice.ManagedFileOwner{
 		githubAppIDFileName:         bkservice.ManagedFileOwnerRoot,
@@ -285,6 +300,8 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		func(opts *setupSystemdOptions) { opts.OperatorBindAddr = "" },
 		func(opts *setupSystemdOptions) { opts.OperatorPort = opts.Port },
 		func(opts *setupSystemdOptions) { opts.OperatorSecret = opts.SharedSecret },
+		func(opts *setupSystemdOptions) { opts.TelegramBotTokenFile = "/tmp/token" },
+		func(opts *setupSystemdOptions) { opts.TelegramChatID = 123 },
 	}
 	for _, mutate := range cases {
 		opts := valid

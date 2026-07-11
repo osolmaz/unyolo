@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"os"
 	"strconv"
@@ -38,6 +37,7 @@ type Config struct {
 	ScopeFile               string
 	StateDir                string
 	TelegramBotToken        string
+	TelegramBotTokenFile    string
 	TelegramChatID          int64
 	GitHubHTTPTimeout       time.Duration
 	MaxReceivePackBytes     int64
@@ -74,8 +74,8 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 		GitHubWebhookSecretFile: getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"),
 		ScopeFile:               getEnvFrom(getenv, "scope.json", "GH_BROKER_SCOPE_FILE", "CBA_GITHUB_ACCESS_FILE"),
 		StateDir:                getEnvFrom(getenv, "./state", "GH_BROKER_STATE_DIR", "CBA_STATE_DIR"),
-		TelegramBotToken:        getEnvFrom(getenv, "", "GH_BROKER_TELEGRAM_BOT_TOKEN"),
-		TelegramChatID:          int64EnvFrom(getenv, 0, "GH_BROKER_TELEGRAM_CHAT_ID"),
+		TelegramBotTokenFile:    getEnvFrom(getenv, "", "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"),
+		TelegramChatID:          telegramChatIDEnvFrom(getenv, "GH_BROKER_TELEGRAM_CHAT_ID"),
 		GitHubHTTPTimeout:       durationEnvFrom(getenv, 30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT", "CBA_GITHUB_HTTP_TIMEOUT"),
 		MaxReceivePackBytes:     int64EnvFrom(getenv, 25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES", "CBA_MAX_RECEIVE_PACK_BYTES"),
 		ReadHeaderTimeout:       durationEnvFrom(getenv, 5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT", "CBA_READ_HEADER_TIMEOUT"),
@@ -95,7 +95,7 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 func (c *Config) loadCredentialFiles() error {
 	loaders := []func() error{
 		c.loadGitHubTokenFile, c.loadGitHubAppFiles, c.loadGitHubWebhookSecretFile,
-		c.loadBrokerSecretFile, c.loadOperatorSecretFile,
+		c.loadBrokerSecretFile, c.loadOperatorSecretFile, c.loadTelegramBotTokenFile,
 	}
 	for _, load := range loaders {
 		if err := load(); err != nil {
@@ -103,6 +103,10 @@ func (c *Config) loadCredentialFiles() error {
 		}
 	}
 	return nil
+}
+
+func (c *Config) loadTelegramBotTokenFile() error {
+	return loadOptionalSecretFile(&c.TelegramBotToken, c.TelegramBotTokenFile, "telegram bot token file")
 }
 
 func (c *Config) loadGitHubTokenFile() error {
@@ -293,7 +297,7 @@ func telegramPair(token string, chatID int64) error {
 		return nil
 	}
 	if token == "" || chatID == 0 {
-		return errors.New("GH_BROKER_TELEGRAM_BOT_TOKEN and GH_BROKER_TELEGRAM_CHAT_ID must be set together")
+		return errors.New("a Telegram bot token and GH_BROKER_TELEGRAM_CHAT_ID must be set together")
 	}
 	return nil
 }
@@ -333,8 +337,16 @@ func int64EnvFrom(getenv func(string) string, fallback int64, keys ...string) in
 		return fallback
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || parsed <= 0 || parsed > math.MaxInt32 {
+	if err != nil || parsed <= 0 {
 		return fallback
+	}
+	return parsed
+}
+
+func telegramChatIDEnvFrom(getenv func(string) string, key string) int64 {
+	parsed, err := strconv.ParseInt(strings.TrimSpace(getenv(key)), 10, 64)
+	if err != nil || parsed == 0 {
+		return 0
 	}
 	return parsed
 }

@@ -52,7 +52,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options) (bkdoctor.Report,
 }
 
 func localSecretChecks(cfg config.Config, agent bkdoctor.Identity) []bkdoctor.Check {
-	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubWebhookSecretFile, cfg.SecretsFile}
+	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubWebhookSecretFile, cfg.SecretsFile, cfg.TelegramBotTokenFile}
 	checks := make([]bkdoctor.Check, 0, len(paths)*5)
 	for _, path := range paths {
 		if path != "" {
@@ -68,7 +68,7 @@ func inlineCredentialChecks(cfg config.Config) []bkdoctor.Check {
 	checks = appendInlineCredentialCheck(checks, cfg.SharedSecret != "" && cfg.SecretsFile == "", "broker_client_secret")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubToken != "" && cfg.GitHubTokenFile == "", "github_token")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubWebhookSecret != "" && cfg.GitHubWebhookSecretFile == "", "github_webhook_secret")
-	checks = appendInlineCredentialCheck(checks, cfg.TelegramBotToken != "", "telegram_bot_token")
+	checks = appendInlineCredentialCheck(checks, cfg.TelegramBotToken != "" && cfg.TelegramBotTokenFile == "", "telegram_bot_token")
 	return checks
 }
 

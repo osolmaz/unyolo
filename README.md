@@ -89,10 +89,22 @@ sudo gh-broker setup systemd \
   --scope-file ./scope.json
 ```
 
+Add Telegram notifications by passing the bot token as a protected file:
+
+```sh
+sudo gh-broker setup systemd \
+  --dev-token-fallback \
+  --github-token-file ./github-token \
+  --scope-file ./scope.json \
+  --telegram-bot-token-file ./telegram-bot-token \
+  --telegram-chat-id 123456789
+```
+
 Use `--no-start` to write files without enabling or starting the service.
-The setup command writes `/etc/gh-broker/secrets` and
-`/etc/gh-broker/operator-secrets`. It does not place broker client secrets,
-operator secrets, or GitHub credentials directly in the env file. The operator
+The setup command writes `/etc/gh-broker/secrets`,
+`/etc/gh-broker/operator-secrets`, and the optional Telegram token as protected
+files. It does not place broker client secrets, operator secrets, GitHub
+credentials, or Telegram credentials directly in the env file. The operator
 API uses a separate credential and listener at `http://127.0.0.1:8082` by
 default. Use `--operator-secret-file`, `--operator-bind-addr`, and
 `--operator-port` to supply or change them.
@@ -267,8 +279,9 @@ Deployment safety defaults:
 - `GH_BROKER_STATE_DIR` defaults to `./state`.
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
 - `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
-- `GH_BROKER_TELEGRAM_BOT_TOKEN` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
-  Telegram notifications for requestable grants.
+- `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
+  Telegram notifications for requestable grants. Telegram tokens are loaded
+  only from protected files.
 - Audit logs record client, operation, owner, repo, method, path, outcome,
   status, reason, matched rule ids, GitHub installation id when one was minted
   for the request, and verified webhook event metadata.

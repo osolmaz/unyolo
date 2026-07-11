@@ -34,6 +34,8 @@ type setupSystemdOptions struct {
 	OperatorSecret          string
 	OperatorBindAddr        string
 	OperatorPort            int
+	TelegramBotTokenFile    string
+	TelegramChatID          int64
 	DevTokenFallback        bool
 	CommandRunner           bkservice.CommandRunner
 }
@@ -126,6 +128,8 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
 	fs.StringVar(&opts.OperatorBindAddr, "operator-bind-addr", "127.0.0.1", "operator inbox listen address")
 	fs.IntVar(&opts.OperatorPort, "operator-port", 8082, "operator inbox listen port")
+	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
+	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = io.Copy(stderr, strings.NewReader(flagOutput.String()))
@@ -163,6 +167,9 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 	}
 	if err := validateSetupSystemdClientOptions(opts); err != nil {
 		return err
+	}
+	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
+		return errors.New("--telegram-bot-token-file and --telegram-chat-id must be set together")
 	}
 	return validateSetupSystemdOperatorOptions(opts)
 }
