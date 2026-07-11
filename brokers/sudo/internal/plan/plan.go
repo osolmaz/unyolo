@@ -171,6 +171,35 @@ func (s *Store) Get(digest string) (Plan, error) {
 	return decode(data)
 }
 
+func (s *Store) Canonical(digest string) ([]byte, error) {
+	if s == nil || s.content == nil {
+		return nil, errors.New("sudo plan store is unavailable")
+	}
+	return s.content.Get(digest)
+}
+
+func EncodeCanonical(value Plan) ([]byte, error) { return encode(value) }
+
+func DecodeCanonical(data []byte) (Plan, error) { return decode(data) }
+
+func ValidateForHelper(value Plan, snapshot *catalog.Snapshot, identities IdentityResolver) error {
+	if err := validate(value); err != nil {
+		return err
+	}
+	if snapshot == nil || identities == nil {
+		return errors.New("sudo helper validation dependencies are unavailable")
+	}
+	if err := snapshot.ValidateResolved(resolvedFromPlan(value)); err != nil {
+		return err
+	}
+	identity, err := identities.Lookup(value.TargetUser)
+	if err != nil || identity.Name != value.TargetUser || identity.UID != value.TargetUID || identity.GID != value.TargetGID ||
+		!slices.Equal(identity.SupplementaryGIDs, value.SupplementaryGIDs) {
+		return errors.New("sudo target identity does not match the execution plan")
+	}
+	return nil
+}
+
 type Readiness interface {
 	Ready(context.Context) error
 }

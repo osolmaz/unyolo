@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -260,9 +260,9 @@ func (s *Snapshot) ValidateResolved(resolved Resolved) error {
 		return err
 	}
 	if again.Executable != resolved.Executable || !slices.Equal(again.Arguments, resolved.Arguments) ||
-		again.WorkingDirectory != resolved.WorkingDirectory || !reflect.DeepEqual(again.Environment, resolved.Environment) ||
+		again.WorkingDirectory != resolved.WorkingDirectory || !maps.Equal(again.Environment, resolved.Environment) ||
 		again.TimeoutSeconds != resolved.TimeoutSeconds || again.MaxOutputBytes != resolved.MaxOutputBytes ||
-		!reflect.DeepEqual(again.SlotValues, resolved.SlotValues) {
+		!maps.Equal(again.SlotValues, resolved.SlotValues) {
 		return errors.New("resolved command does not match the current catalog")
 	}
 	return nil
