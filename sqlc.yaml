@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "state/migrations"
+    queries: "state/queries.sql"
+    gen:
+      go:
+        package: "dbsql"
+        out: "state/internal/dbsql"
+        emit_empty_slices: true
+        emit_sql_as_comment: true

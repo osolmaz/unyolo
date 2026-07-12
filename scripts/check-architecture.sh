@@ -34,6 +34,13 @@ then
   exit 1
 fi
 
+if grep -R -n --include='*.go' -E 'gorm\.io/|github\.com/jmoiron/sqlx|github\.com/mattn/go-sqlite3' \
+  . --exclude-dir=.git 2>/dev/null
+then
+  echo 'BrokerKit state must use database/sql with modernc SQLite and sqlc only' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.ts' --include='*.tsx' -E 'mlclaw\.|(telegram|discord|slack)' \
   plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
   --exclude='*.test.ts' 2>/dev/null; then
