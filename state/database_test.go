@@ -3,6 +3,8 @@ package state
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -58,5 +60,40 @@ func TestStateLeasePreventsASecondProcessOwner(t *testing.T) {
 func TestOpenRejectsMissingDirectory(t *testing.T) {
 	if _, err := Open(t.Context(), "", Options{}); err == nil {
 		t.Fatal("Open() accepted an empty state directory")
+	}
+}
+
+func TestOpenRejectsAStatePathUnderAFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(t.Context(), filepath.Join(path, "state"), Options{}); err == nil {
+		t.Fatal("Open() accepted a state path below a regular file")
+	}
+}
+
+func TestNilDatabaseCloseIsSafe(t *testing.T) {
+	var database *Database
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenRejectsCanceledMigration(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := Open(ctx, t.TempDir(), Options{}); err == nil {
+		t.Fatal("Open() migrated with a canceled context")
+	}
+}
+
+func TestOpenRejectsAnUnusableLeasePath(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(directory, leaseFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(t.Context(), directory, Options{}); err == nil {
+		t.Fatal("Open() accepted a directory as its lease file")
 	}
 }

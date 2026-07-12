@@ -38,3 +38,33 @@ func TestPlanRepositoryIsContentAddressed(t *testing.T) {
 		t.Fatal("PutPlan() accepted an empty schema")
 	}
 }
+
+func TestPlanRepositoryRejectsCorruptRows(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		column string
+		value  any
+	}{
+		{name: "timestamp", column: "created_at", value: "invalid"},
+		{name: "content", column: "canonical", value: []byte(`{"changed":true}`)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database, err := Open(t.Context(), t.TempDir(), Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = database.Close() })
+			canonical := []byte(`{"schema":"v1"}`)
+			digest, err := database.PutPlan(t.Context(), "provider/v1", canonical, time.Now().UTC())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := database.SQL().ExecContext(t.Context(), "UPDATE plans SET "+test.column+" = ? WHERE digest = ?", test.value, digest); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := database.Plan(t.Context(), digest); err == nil {
+				t.Fatal("Plan() accepted a corrupt row")
+			}
+		})
+	}
+}

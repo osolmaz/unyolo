@@ -23,6 +23,9 @@ func TestOperationRepositoryLifecycle(t *testing.T) {
 	if err := database.InsertOperation(t.Context(), record); err != nil {
 		t.Fatal(err)
 	}
+	if count, err := database.CountOperations(t.Context()); err != nil || count != 1 {
+		t.Fatalf("CountOperations() = %d, %v", count, err)
+	}
 	if err := database.InsertOperation(t.Context(), record); err == nil {
 		t.Fatal("duplicate operation unexpectedly inserted")
 	}
@@ -56,5 +59,32 @@ func TestOperationRepositoryLifecycle(t *testing.T) {
 	}
 	if deleted, err := database.DeleteTerminalOperationsBefore(t.Context(), now.Add(2*time.Minute)); err != nil || deleted != 1 {
 		t.Fatalf("DeleteTerminalOperationsBefore() = %d, %v", deleted, err)
+	}
+}
+
+func TestOperationRepositoryRejectsCorruptTimestamps(t *testing.T) {
+	database, err := Open(t.Context(), t.TempDir(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Date(2026, 7, 13, 1, 0, 0, 0, time.UTC)
+	record := OperationRecord{ID: "op", APIVersion: "brokerkit.io/agent/v1", Broker: "test", ClientID: "client",
+		IdempotencyKey: "key", Operation: "test", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), State: "pending",
+		Revision: 1, CreatedAt: now, UpdatedAt: now, PresentationJSON: []byte(`{}`)}
+	if err := database.InsertOperation(t.Context(), record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.SQL().ExecContext(t.Context(), "UPDATE operations SET created_at = 'invalid' WHERE id = 'op'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.OperationByID(t.Context(), "op"); err == nil {
+		t.Fatal("OperationByID() accepted a corrupt required timestamp")
+	}
+	if _, err := database.SQL().ExecContext(t.Context(), "UPDATE operations SET created_at = ?, terminal_at = 'invalid' WHERE id = 'op'", formatTime(now)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.OperationByID(t.Context(), "op"); err == nil {
+		t.Fatal("OperationByID() accepted a corrupt optional timestamp")
 	}
 }
