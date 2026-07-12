@@ -70,6 +70,7 @@ brokerkit may contain:
 - proxy-safe HTTP header filters
 - generic Git pkt-line, receive-pack command, ref update classification, and
   pack/body redaction helpers
+- provider-neutral Agent Operations V1 wire types and schemas
 
 ## What Does Not Belong Here
 

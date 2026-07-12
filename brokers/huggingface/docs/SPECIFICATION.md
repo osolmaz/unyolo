@@ -569,10 +569,11 @@ Unknown fields are rejected fail-closed, so a typo cannot silently widen
 access. There is no API to read or reload this file at runtime; changing
 scope is edit-file-then-restart.
 
-The current grantable git operations are `git.push.force`,
-`git.ref.delete`, and `git.tag.update`. The broker does not currently
-grant repository administration, settings, members, create, delete, or generic
-Hub API operations.
+The grantable operations include `repo.create`, `git.push.force`,
+`git.ref.delete`, and `git.tag.update`. Repository creation is available only
+through Agent Operations V1 and an immutable execution plan. The broker does
+not expose repository settings, members, deletion, transfer, or a generic Hub
+API proxy.
 
 ## Request Handling
 
@@ -606,6 +607,13 @@ refuses redirects, bounds responses, and applies explicit connection, response
 header, TLS, and total timeouts. Every other `/v1/*` path is refused before any
 upstream contact. Inference audit entries contain the operation, model, status,
 and decision, never prompts, completions, tools, images, or credentials.
+
+The authenticated Agent Operations V1 surface is fixed to discovery, submit,
+status, and bounded long-poll routes under `/api/agent/v1/operations`. The
+Hugging Face adapter accepts only `repo.create`. Approval binds the exact
+repository type, owner, name, privacy, Space SDK, client, and idempotency key.
+hf-broker executes the stored request with the upstream credential and returns
+only the repository ID and URL.
 
 Hub and Git paths map by repo type:
 
@@ -656,7 +664,13 @@ state/
   mirrors/{type}/{owner}/{repo}.git/    commits-only bare mirror per repo
   grants/grants.json                    active + pending grants
   plans/                                immutable request plans
+  operations/operations.json            durable Agent Operations V1 records
 ```
+
+The operation ledger is bounded to 2,048 records. Terminal records older than
+30 days are pruned when a new operation is accepted. If nonterminal or recent
+records fill the bound, new submissions fail closed until capacity becomes
+available.
 
 - Mirrors are created lazily on first push to a repo and refreshed per
   push. They contain no file contents, only commit graph. Safe to delete;

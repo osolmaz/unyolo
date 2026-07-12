@@ -427,12 +427,15 @@ registry entry, default grant mode, and tests.
 
 Operation-family globs are allowed only as full first-segment families:
 `repo.*`, `git.*`, and `inference.*`. A family glob matches all registered
-operations whose name starts with that family prefix. Arbitrary partial
-operation globs such as `repo.*.read` or `git.push.*` are invalid.
+operations whose name starts with that family prefix, except explicit-only
+high-risk operations. `repo.create` is explicit-only and must always be named
+directly. Arbitrary partial operation globs such as `repo.*.read` or
+`git.push.*` are invalid.
 
 | Operation | Default grant mode | Meaning |
 |-----------|--------------------|---------|
 | `repo.list` | none | List repositories explicitly disclosed by exact policy targets. |
+| `repo.create` | execution | Create one exact model, dataset, or Space repository through the typed Agent Operations API. |
 | `repo.metadata.read` | none | Read broker-exposed repository metadata: type, owner, and name only. |
 | `repo.contents.read` | window | Read repo files, file listings, README/card text, branches, tags, commits, or raw blobs. |
 | `git.fetch` | window | Git clone/fetch. This is content read. |
@@ -449,8 +452,9 @@ Never grantable through hf-broker, even with this policy format:
 - generic Hugging Face API proxying
 - arbitrary HTTP requests
 - upstream token, secret, webhook, or credential changes
-- repo administration, settings, members, creation, deletion, transfer,
-  namespace move, or ownership changes
+- repo administration other than the fixed typed `repo.create` operation;
+  settings, members, deletion, transfer, namespace move, and ownership changes
+  remain unsupported
 - org roles or resource groups
 - billing, paid hardware, storage tier, or quota changes
 - Space secrets or variables that may expose credentials

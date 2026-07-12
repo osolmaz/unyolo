@@ -1,0 +1,11 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "BrokerKit Agent Operations API", "version": "1.0.0"},
+  "paths": {
+    "/.well-known/brokerkit-agent": {"get": {"security": [{"agentBearer": []}], "responses": {"200": {"description": "Agent Operations V1 discovery", "content": {"application/json": {"schema": {"$ref": "../agent-schema/discovery.schema.json"}}}}}}},
+    "/api/agent/v1/operations": {"post": {"security": [{"agentBearer": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "../agent-schema/submit.schema.json"}}}}, "responses": {"200": {"description": "Existing or completed operation", "content": {"application/json": {"schema": {"$ref": "../agent-schema/operation.schema.json"}}}}, "202": {"description": "Pending operation", "content": {"application/json": {"schema": {"$ref": "../agent-schema/operation.schema.json"}}}}}}},
+    "/api/agent/v1/operations/{id}": {"get": {"security": [{"agentBearer": []}], "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}], "responses": {"200": {"description": "Operation", "content": {"application/json": {"schema": {"$ref": "../agent-schema/operation.schema.json"}}}}}}},
+    "/api/agent/v1/operations/{id}/events": {"get": {"security": [{"agentBearer": []}], "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "after_revision", "in": "query", "schema": {"type": "integer", "minimum": 0}}, {"name": "wait_seconds", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 30}}], "responses": {"200": {"description": "Current operation after a revision change or timeout", "content": {"application/json": {"schema": {"$ref": "../agent-schema/operation.schema.json"}}}}}}}
+  },
+  "components": {"securitySchemes": {"agentBearer": {"type": "http", "scheme": "bearer"}}}
+}

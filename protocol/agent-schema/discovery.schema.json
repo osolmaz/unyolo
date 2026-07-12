@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/agent/v1/discovery.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version"],
+  "properties": {"api_version": {"const": "brokerkit.io/agent/v1"}}
+}

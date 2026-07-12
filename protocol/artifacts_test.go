@@ -44,3 +44,37 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 		t.Fatal("OpenAPI contains legacy route")
 	}
 }
+
+func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
+	files, err := filepath.Glob("agent-schema/*.schema.json")
+	if err != nil || len(files) != 4 {
+		t.Fatalf("agent schemas = %v, %v", files, err)
+	}
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(data, &schema); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if schema["type"] != "object" || schema["additionalProperties"] != false {
+			t.Fatalf("%s is not a closed object", path)
+		}
+	}
+	openAPI, err := os.ReadFile("openapi/agent-v1.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(openAPI, &document); err != nil {
+		t.Fatalf("Agent OpenAPI must remain machine-readable JSON/YAML: %v", err)
+	}
+	text := string(openAPI)
+	for _, route := range []string{"/.well-known/brokerkit-agent", "/api/agent/v1/operations", "/events"} {
+		if !strings.Contains(text, route) {
+			t.Fatalf("Agent OpenAPI missing %s", route)
+		}
+	}
+}

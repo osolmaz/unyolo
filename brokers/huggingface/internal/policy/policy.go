@@ -36,6 +36,7 @@ type Operation string
 
 const (
 	OpRepoList          Operation = "repo.list"
+	OpRepoCreate        Operation = "repo.create"
 	OpRepoMetadataRead  Operation = "repo.metadata.read"
 	OpRepoContentsRead  Operation = "repo.contents.read"
 	OpGitFetch          Operation = "git.fetch"
@@ -208,13 +209,15 @@ type targetMatcherJSON struct {
 }
 
 type operationInfo struct {
-	mode GrantMode
+	mode         GrantMode
+	explicitOnly bool
 }
 
 type ruleFieldParser func(*Rule, string, rawRule) error
 
 var operations = map[Operation]operationInfo{
 	OpRepoList:          {mode: GrantModeNone},
+	OpRepoCreate:        {mode: GrantModeExecution, explicitOnly: true},
 	OpRepoMetadataRead:  {mode: GrantModeNone},
 	OpRepoContentsRead:  {mode: GrantModeWindow},
 	OpGitFetch:          {mode: GrantModeWindow},
@@ -252,7 +255,9 @@ var validRepoVisibilities = map[string]bool{
 
 var knownAttrs = map[string]bool{
 	"max_bytes":  true,
+	"private":    true,
 	"ref_change": true,
+	"sdk":        true,
 }
 
 var validRefChangeAttrs = map[string]bool{
@@ -611,8 +616,8 @@ func expandOperationFamily(value string) ([]Operation, error) {
 		return nil, fmt.Errorf("invalid operation-family glob %q", value)
 	}
 	var out []Operation
-	for op := range operations {
-		if strings.HasPrefix(string(op), prefix) {
+	for op, info := range operations {
+		if strings.HasPrefix(string(op), prefix) && !info.explicitOnly {
 			out = append(out, op)
 		}
 	}
@@ -917,17 +922,34 @@ func AttrConstraintsFromValues(attrs map[string]any) (map[string]AttrConstraint,
 func validateAttrConstraint(key string, constraint AttrConstraint) error {
 	switch key {
 	case "max_bytes":
-		if constraint.Number == nil {
-			return fmt.Errorf("must be a non-negative integer")
-		}
+		return validateMaximumConstraint(constraint)
 	case "ref_change":
-		if len(constraint.Values) == 0 {
-			return fmt.Errorf("must be a ref change value")
-		}
-		for _, value := range constraint.Values {
-			if !validRefChangeAttrs[value] {
-				return fmt.Errorf("unsupported ref change %q", value)
+		return validateNamedConstraint(constraint, "a ref change value", validRefChangeAttrs, "unsupported ref change")
+	case "private":
+		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
+	case "sdk":
+		return validateNamedConstraint(constraint, "a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK")
+	}
+	return nil
+}
+
+func validateMaximumConstraint(constraint AttrConstraint) error {
+	if constraint.Number == nil {
+		return fmt.Errorf("must be a non-negative integer")
+	}
+	return nil
+}
+
+func validateNamedConstraint(constraint AttrConstraint, required string, allowed map[string]bool, invalid string) error {
+	if len(constraint.Values) == 0 {
+		return fmt.Errorf("must be %s", required)
+	}
+	for _, value := range constraint.Values {
+		if !allowed[value] {
+			if strings.HasPrefix(invalid, "must") {
+				return errors.New(invalid)
 			}
+			return fmt.Errorf("%s %q", invalid, value)
 		}
 	}
 	return nil
