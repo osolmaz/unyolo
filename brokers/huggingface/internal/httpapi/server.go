@@ -468,9 +468,8 @@ func (s *Server) serveAuthenticated(w http.ResponseWriter, r *http.Request, clie
 		s.handleReceivePackDiscovery(w, r, client, classified, target)
 		return
 	}
-	decision, err := s.decideForwardRepo(client, r, classified)
-	if err != nil {
-		s.writeGrantStoreError(w, client, string(classified.operation), target)
+	result, decision, err := s.authorizeForwardRepo(client, r, classified, target)
+	if s.writeForwardAuthorizationResponse(w, client, classified.operation, target, result, decision, err) {
 		return
 	}
 	if s.forwardAllowedDecision(w, r, client, classified, target, decision) {
@@ -478,6 +477,29 @@ func (s *Server) serveAuthenticated(w http.ResponseWriter, r *http.Request, clie
 	}
 	writePlain(w, http.StatusForbidden, "hf-broker: "+decision.Reason+"\n")
 	s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, decision.Reason, 0, decision)
+}
+
+func (s *Server) writeForwardAuthorizationResponse(w http.ResponseWriter, client string, operation policy.Operation, target string, result bkauthorization.Result, decision policy.Decision, err error) bool {
+	if err != nil {
+		return s.writeForwardAuthorizationError(w, client, operation, target, result, decision)
+	}
+	if result.Request.Grant.ID == "" {
+		return false
+	}
+	reason := approvalRetryReason(result.Request.Grant.ID)
+	writePlain(w, http.StatusForbidden, "hf-broker: "+reason+"\n")
+	s.recordPolicyDecision(client, string(operation), target, audit.DecisionRefused, "approval_required", 0, decision)
+	return true
+}
+
+func (s *Server) writeForwardAuthorizationError(w http.ResponseWriter, client string, operation policy.Operation, target string, result bkauthorization.Result, decision policy.Decision) bool {
+	if result.Decision.Effect == "" {
+		s.writeGrantStoreError(w, client, string(operation), target)
+		return true
+	}
+	writePlain(w, http.StatusForbidden, "hf-broker: "+decision.Reason+"\n")
+	s.recordPolicyDecision(client, string(operation), target, audit.DecisionRefused, decision.Reason, 0, decision)
+	return true
 }
 
 func (s *Server) forwardAllowedDecision(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target string, decision policy.Decision) bool {
@@ -598,8 +620,52 @@ func (s *Server) decideRepo(client string, operation policy.Operation, rt route,
 	return s.decideRepoWithOptions(client, operation, rt, refs, attrs, grantRequest, false)
 }
 
-func (s *Server) decideForwardRepo(client string, r *http.Request, classified classifiedRequest) (policy.Decision, error) {
-	return s.decideRepoWithOptions(client, classified.operation, classified.route, nil, classified.attrs, false, lfsUploadRequest(r, classified))
+func (s *Server) authorizeForwardRepo(client string, r *http.Request, classified classifiedRequest, target string) (bkauthorization.Result, policy.Decision, error) {
+	if lfsUploadRequest(r, classified) {
+		decision, err := s.decideRepoWithOptions(client, classified.operation, classified.route, nil, classified.attrs, false, true)
+		return bkauthorization.Result{}, decision, err
+	}
+	providerRequest := policy.Request{
+		Client: client, Operation: classified.operation, Target: routeTarget(classified.route, nil), Attrs: classified.attrs,
+	}
+	authorizationRequest := policy.AuthorizationRequest(providerRequest)
+	result, err := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+		return s.prepareForwardIntent(client, classified.operation, target, classified.attrs, authorizationRequest, decision)
+	})
+	return result, s.policy.AuthorizationDecision(result.Decision), err
+}
+
+func (s *Server) prepareForwardIntent(client string, operation policy.Operation, target string, attrs map[string]any, authorizationRequest corepolicy.Request, decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+	bounds, err := s.forwardApprovalBounds(operation, decision.GrantPolicy)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	id, err := approvalRequestID("http", authorizationRequest, decision.MatchedRequestRuleIDs)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
+		Client: client, ClientRequestID: id, Operation: string(operation), Mode: hfgrant.ModeWindow,
+		Target: target, Attrs: attrs, Reason: string(operation) + " requires approval",
+		RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
+		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: bounds.DefaultMaxUses,
+	})
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	return bkauthorization.GrantIntent{
+		Mode: corepolicy.GrantModeWindow, Authorization: authorizationRequest, Request: request, Plan: plan,
+	}, nil
+}
+
+func (s *Server) forwardApprovalBounds(operation policy.Operation, bounds *corepolicy.GrantPolicy) (*corepolicy.GrantPolicy, error) {
+	if !s.hasApprovalChannel() {
+		return nil, errors.New("approval channel is not configured")
+	}
+	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeWindow || operationNeedsRef(operation) {
+		return nil, errors.New("operation requires an exact window approval")
+	}
+	return bounds, nil
 }
 
 func (s *Server) decideRepoWithOptions(client string, operation policy.Operation, rt route, refs []string, attrs map[string]any, grantRequest bool, ignoreRefs bool) (policy.Decision, error) {
@@ -2207,7 +2273,7 @@ func (s *Server) preparePushIntent(client string, operation policy.Operation, ta
 	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeWindow {
 		return bkauthorization.GrantIntent{}, errors.New("Git push requires a window approval")
 	}
-	id, err := pushApprovalRequestID(authorizationRequest, decision.MatchedRequestRuleIDs)
+	id, err := approvalRequestID("git", authorizationRequest, decision.MatchedRequestRuleIDs)
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
@@ -2225,7 +2291,7 @@ func (s *Server) preparePushIntent(client string, operation policy.Operation, ta
 	}, nil
 }
 
-func pushApprovalRequestID(request corepolicy.Request, ruleIDs []string) (string, error) {
+func approvalRequestID(prefix string, request corepolicy.Request, ruleIDs []string) (string, error) {
 	encoded, err := json.Marshal(struct {
 		Request corepolicy.Request `json:"request"`
 		Rules   []string           `json:"rules"`
@@ -2233,7 +2299,7 @@ func pushApprovalRequestID(request corepolicy.Request, ruleIDs []string) (string
 	if err != nil {
 		return "", err
 	}
-	return "git-" + plandigest.Digest(encoded)[:48], nil
+	return prefix + "-" + plandigest.Digest(encoded)[:48], nil
 }
 
 func approvalRetryReason(id string) string {

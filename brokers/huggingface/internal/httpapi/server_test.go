@@ -2071,12 +2071,19 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 	infoRefs := broker.URL + "/datasets/acme/repo.git/info/refs?service=git-upload-pack"
 
 	beforeGrant := upstream.totalHits()
-	resp, _ := doRequest(t, http.MethodGet, infoRefs, "Bearer "+testSecret, nil)
+	resp, refusal := doRequest(t, http.MethodGet, infoRefs, "Bearer "+testSecret, nil)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("fetch before grant = %d, want 403", resp.StatusCode)
 	}
 	if got := upstream.totalHits(); got != beforeGrant {
 		t.Fatalf("fetch before grant reached upstream: hits=%d want %d", got, beforeGrant)
+	}
+	automatic, err := handler.grants.ListForClient("agent")
+	if err != nil || len(automatic) != 1 || !strings.Contains(refusal, automatic[0].ID) {
+		t.Fatalf("automatic fetch approval = %+v, err=%v, refusal=%q", automatic, err, refusal)
+	}
+	if err := handler.grants.Cancel(automatic[0].ID); err != nil {
+		t.Fatal(err)
 	}
 
 	body := apiGrantRequestJSON(policy.OpGitFetch, "", "read once", "fetch-once", 0, 0)
@@ -2159,12 +2166,19 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	oid := strings.Repeat("b", 64)
 	batchURL := broker.URL + "/datasets/acme/repo/info/lfs/objects/batch"
 	beforeGrant := upstream.totalHits()
-	resp, _ := doRequest(t, http.MethodPost, batchURL, "Bearer "+testSecret, strings.NewReader(fmt.Sprintf(`{"operation":"download","objects":[{"oid":%q,"size":123}]}`, oid)))
+	resp, refusal := doRequest(t, http.MethodPost, batchURL, "Bearer "+testSecret, strings.NewReader(fmt.Sprintf(`{"operation":"download","objects":[{"oid":%q,"size":123}]}`, oid)))
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("LFS batch before grant = %d, want 403", resp.StatusCode)
 	}
 	if got := upstream.totalHits(); got != beforeGrant {
 		t.Fatalf("LFS batch before grant reached upstream: hits=%d want %d", got, beforeGrant)
+	}
+	automatic, err := handler.grants.ListForClient("agent")
+	if err != nil || len(automatic) != 1 || !strings.Contains(refusal, automatic[0].ID) {
+		t.Fatalf("automatic LFS approval = %+v, err=%v, refusal=%q", automatic, err, refusal)
+	}
+	if err := handler.grants.Cancel(automatic[0].ID); err != nil {
+		t.Fatal(err)
 	}
 
 	grantBody := apiGrantRequestJSON(policy.OpRepoContentsRead, "", "download one LFS object", "lfs-download", 0, 0)
