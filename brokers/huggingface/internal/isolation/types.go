@@ -57,9 +57,4 @@ type AgentInfo struct {
 type Check = bkdoctor.Check
 
 // ProbeResult is emitted by the active probe helper.
-type ProbeResult struct {
-	TokenFileReadable bool `json:"token_file_readable"`
-	TokenFileWritable bool `json:"token_file_writable"`
-	BrokerEnvReadable bool `json:"broker_env_readable"`
-	SocketConnectable bool `json:"socket_connectable"`
-}
+type ProbeResult = bkdoctor.ProbeResult

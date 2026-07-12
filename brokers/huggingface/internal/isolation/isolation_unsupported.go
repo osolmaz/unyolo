@@ -16,8 +16,3 @@ func Run(context.Context, Options) (Report, error) {
 func RunProbe(string, int, string) ProbeResult {
 	return ProbeResult{}
 }
-
-// DialUnix is unavailable through the isolation package on unsupported platforms.
-func DialUnix(context.Context, string) bool {
-	return false
-}

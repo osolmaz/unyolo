@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -998,8 +997,8 @@ func lstatOrStat(path string, followSymlink bool) (os.FileInfo, error) {
 func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {
 	var result ProbeResult
 	if tokenFile != "" {
-		result.TokenFileReadable = canOpen(tokenFile)
-		result.TokenFileWritable = canOpenForWrite(tokenFile)
+		result.TokenFileReadable = bkdoctor.CanOpen(tokenFile)
+		result.TokenFileWritable = bkdoctor.CanOpenForWrite(tokenFile)
 	}
 	if brokerPID > 0 {
 		result.BrokerEnvReadable = false
@@ -1008,24 +1007,6 @@ func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {
 		result.SocketConnectable = dialUnixWithTimeout(socket)
 	}
 	return result
-}
-
-func canOpen(path string) bool {
-	file, err := os.Open(path) // #nosec G304 -- operator-supplied local path for an isolation probe.
-	if err != nil {
-		return false
-	}
-	_ = file.Close()
-	return true
-}
-
-func canOpenForWrite(path string) bool {
-	file, err := os.OpenFile(path, os.O_WRONLY, 0) // #nosec G304 -- operator-supplied local path for an isolation probe.
-	if err != nil {
-		return false
-	}
-	_ = file.Close()
-	return true
 }
 
 func runActiveProbe(ctx context.Context, agent identity, opts Options) (ProbeResult, bool, error) {
@@ -1105,19 +1086,8 @@ func firstCredentialGroup(groups []uint32) uint32 {
 	return groups[0]
 }
 
-// DialUnix reports whether the current process can connect to socket.
-func DialUnix(ctx context.Context, socket string) bool {
-	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "unix", socket)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-	return true
-}
-
 func dialUnixWithTimeout(socket string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	return DialUnix(ctx, socket)
+	return bkdoctor.DialUnix(ctx, socket)
 }
