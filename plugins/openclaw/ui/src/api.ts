@@ -19,6 +19,8 @@ export type UiDecisionOptions = {
 type DelegatedSession = {
   token: string;
   expiresAtMs: number;
+  access: "read" | "decide";
+  renewalTransport: "direct" | "parent";
 };
 
 export const DELEGATED_SESSION_REQUEST =
@@ -31,12 +33,19 @@ export const DELEGATED_OPEN_REQUEST = "brokerkit.delegated-web.open";
 
 export class BrokerKitUiApi {
   private delegatedSession?: DelegatedSession;
-  private delegatedRefresh: Promise<string> | undefined;
+  private delegatedRefresh: Promise<DelegatedSession> | undefined;
 
   constructor(private readonly bootstrap: UiBootstrap) {}
 
   snapshot(): Promise<Snapshot> {
     return this.request<Snapshot>("/snapshot");
+  }
+
+  canDecide(): boolean {
+    return (
+      this.bootstrap.mode === "direct" ||
+      this.delegatedSession?.access === "decide"
+    );
   }
 
   detail(handle: string): Promise<SafeRequest> {
@@ -73,20 +82,27 @@ export class BrokerKitUiApi {
       cache: "no-store",
       headers: {
         ...init.headers,
-        authorization: `Bearer ${auth}`,
+        authorization: `Bearer ${auth.token}`,
       },
     });
     if (!response.ok) throw new Error(await safeError(response));
     return (await response.json()) as T;
   }
 
-  private async authorization(): Promise<string> {
-    if (this.bootstrap.mode === "direct") return this.bootstrap.capability;
+  private async authorization(): Promise<DelegatedSession> {
+    if (this.bootstrap.mode === "direct") {
+      return {
+        token: this.bootstrap.capability,
+        expiresAtMs: Number.POSITIVE_INFINITY,
+        access: "decide",
+        renewalTransport: "direct",
+      };
+    }
     if (
       this.delegatedSession &&
       this.delegatedSession.expiresAtMs > Date.now() + 30_000
     ) {
-      return this.delegatedSession.token;
+      return this.delegatedSession;
     }
     if (this.delegatedRefresh) return this.delegatedRefresh;
     this.delegatedRefresh = this.refreshDelegatedAuthorization();
@@ -97,53 +113,61 @@ export class BrokerKitUiApi {
     }
   }
 
-  private async refreshDelegatedAuthorization(): Promise<string> {
+  private async refreshDelegatedAuthorization(): Promise<DelegatedSession> {
     if (this.bootstrap.mode !== "delegated-web")
       throw new Error("Delegated approval session is invalid");
-    const value = await delegatedSession(
+    const value = await delegatedSessionPayload(
       this.bootstrap.basePath,
-      this.delegatedSession?.token,
+      this.delegatedSession,
     );
     const expiresAtMs = Date.parse(
       typeof value.expires_at === "string" ? value.expires_at : "",
     );
+    const keys = Object.keys(value).sort().join(",");
     if (
+      keys !== "access,api_version,expires_at,renewal_transport,token" ||
       value.api_version !== "brokerkit.io/delegated-web/v1" ||
-      typeof value.decision_token !== "string" ||
-      value.decision_token.length < 32 ||
-      value.decision_token.length > 4096 ||
+      typeof value.token !== "string" ||
+      value.token.length < 32 ||
+      value.token.length > 4096 ||
+      (value.access !== "read" && value.access !== "decide") ||
+      (value.renewal_transport !== "direct" &&
+        value.renewal_transport !== "parent") ||
       !Number.isFinite(expiresAtMs) ||
       expiresAtMs <= Date.now() ||
-      expiresAtMs > Date.now() + 5 * 60_000
+      expiresAtMs > Date.now() + 5 * 60_000 ||
+      (framed() && value.access !== "read")
     ) {
       throw new Error("Delegated approval session is invalid");
     }
     this.delegatedSession = {
-      token: value.decision_token,
+      token: value.token,
       expiresAtMs,
+      access: value.access,
+      renewalTransport: value.renewal_transport,
     };
-    return this.delegatedSession.token;
+    return this.delegatedSession;
   }
 }
 
-async function delegatedSession(
+async function delegatedSessionPayload(
   basePath: string,
-  renewalToken?: string,
+  current?: DelegatedSession,
 ): Promise<Record<string, unknown>> {
   const embedded = embeddedDelegatedSession();
   if (embedded) return embedded;
-  const topLevel = typeof window === "undefined" || window.parent === window;
-  if (renewalToken && topLevel) {
+  if (current && (current.renewalTransport === "direct" || !framed())) {
     const response = await fetch(`${basePath}/session`, {
       method: "POST",
       credentials: "omit",
       cache: "no-store",
-      headers: { authorization: `Bearer ${renewalToken}` },
+      headers: { authorization: `Bearer ${current.token}` },
     });
     if (!response.ok) throw new Error(await safeError(response));
     return (await response.json()) as Record<string, unknown>;
   }
-  if (topLevel) {
+  if (current) return delegatedSessionFromParent();
+  if (!framed()) {
     const response = await fetch(`${basePath}/session`, {
       method: "POST",
       credentials: "include",
@@ -182,7 +206,6 @@ function embeddedDelegatedSession(): Record<string, unknown> | undefined {
   if (!element) return undefined;
   const encoded = element.getAttribute("content") ?? "";
   element.remove();
-  if (typeof window === "undefined" || window.parent !== window) return {};
   if (!encoded || encoded.length > 8192) return {};
   try {
     const normalized = encoded.replace(/-/gu, "+").replace(/_/gu, "/");
@@ -192,6 +215,10 @@ function embeddedDelegatedSession(): Record<string, unknown> | undefined {
   } catch {
     return {};
   }
+}
+
+function framed(): boolean {
+  return typeof window !== "undefined" && window.parent !== window;
 }
 
 function delegatedSessionFromParent(): Promise<Record<string, unknown>> {

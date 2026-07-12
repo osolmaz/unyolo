@@ -42,6 +42,7 @@ function DelegatedTopLevelLauncher() {
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
+  const [canDecide, setCanDecide] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [decision, setDecision] = useState<{
@@ -51,7 +52,9 @@ export function App() {
   const load = useCallback(async () => {
     try {
       setError("");
-      setSnapshot(await api.snapshot());
+      const next = await api.snapshot();
+      setSnapshot(next);
+      setCanDecide(api.canDecide());
     } catch (value) {
       setError(
         value instanceof Error ? value.message : "Approvals are unavailable",
@@ -168,7 +171,16 @@ export function App() {
               </span>
             </div>
             <div className="actions">
-              {request.allowed_actions.includes("cancel") && (
+              {!canDecide && (
+                <button
+                  className="primary"
+                  onClick={requestDelegatedTopLevelOpen}
+                >
+                  <ShieldCheck size={16} />
+                  Review securely
+                </button>
+              )}
+              {canDecide && request.allowed_actions.includes("cancel") && (
                 <button
                   className="secondary"
                   disabled={busy === request.handle}
@@ -178,7 +190,7 @@ export function App() {
                   Cancel
                 </button>
               )}
-              {request.allowed_actions.includes("revoke") && (
+              {canDecide && request.allowed_actions.includes("revoke") && (
                 <button
                   className="secondary"
                   disabled={busy === request.handle}
@@ -188,7 +200,7 @@ export function App() {
                   Revoke
                 </button>
               )}
-              {request.allowed_actions.includes("deny") && (
+              {canDecide && request.allowed_actions.includes("deny") && (
                 <button
                   className="secondary"
                   disabled={busy === request.handle}
@@ -198,7 +210,7 @@ export function App() {
                   Deny
                 </button>
               )}
-              {request.allowed_actions.includes("approve") && (
+              {canDecide && request.allowed_actions.includes("approve") && (
                 <button
                   className="primary"
                   disabled={busy === request.handle}

@@ -95,37 +95,55 @@ the approval tab can run while retaining its opaque sandbox origin. Do not use
 sandbox.
 
 When OpenClaw is outside the credential trust boundary, the trusted backend
-must serve the packaged `dist/ui` files at the registered UI path itself. The
-framed response contains no authority. It injects this marker so the UI renders
-only a launcher:
+must serve the packaged `dist/ui` files at the registered UI path itself. A
+framed popover may receive only a server-enforced read session. It can show
+requests, but its decision endpoints must reject that token. The UI also
+rejects a decision-capable delegated session whenever it is framed.
 
-```html
-<meta name="brokerkit-delegated-top-level" />
-```
-
-The launcher posts this navigation-only message after the operator clicks:
-
-```text
-{ type: "brokerkit.delegated-web.open", version: 1, nonce }
-```
-
-The host verifies the exact opaque-origin frame source, then navigates the
-whole browser tab to that frame's URL. The trusted backend accepts only an
-authenticated top-level document navigation, rejects fetches, sets
-`frame-ancestors 'none'`, and enforces an opaque origin with CSP `sandbox
-allow-scripts`. It injects the short-lived session only into that unframeable
-document:
+The host injects the short-lived read session into the sandboxed response:
 
 ```html
 <meta name="brokerkit-delegated-session" content="BASE64URL_SESSION_JSON" />
 ```
 
-The content is the base64url-encoded `brokerkit.io/delegated-web/v1` session
-object. The UI removes the element as soon as it reads it and rejects embedded
-sessions unless it is running as the top-level document. Before expiry, it
-renews by posting to `<basePath>/session` with the current decision token as a
-bearer credential, with cookies omitted. The host validates the current token
-and opaque `Origin: null` before returning a replacement session.
+Each actionable request renders a **Review securely** button instead of
+decision controls. The button posts this navigation-only message:
+
+```text
+{ type: "brokerkit.delegated-web.open", version: 1, nonce }
+```
+
+The host verifies the exact opaque-origin frame source and navigates the whole
+browser tab to the trusted UI URL. The top-level response is unframeable and
+contains a server-enforced decision session, so approval, denial, cancellation,
+and revocation require a second explicit action in the trusted document.
+
+A host that does not provide a read-only framed inbox can inject this marker so
+the UI renders only the secure-navigation launcher:
+
+```html
+<meta name="brokerkit-delegated-top-level" />
+```
+
+The content is a base64url-encoded `brokerkit.io/delegated-web/v1` session
+object. The UI removes the element as soon as it reads it. Version 1 uses this
+closed payload:
+
+```json
+{
+  "api_version": "brokerkit.io/delegated-web/v1",
+  "token": "opaque-short-lived-bearer-token",
+  "expires_at": "2026-07-12T13:30:00Z",
+  "access": "read",
+  "renewal_transport": "direct"
+}
+```
+
+`access` is `read` or `decide`; the host enforces it on every endpoint.
+`renewal_transport` is `direct` or `parent`. Direct renewal posts to
+`<basePath>/session` with the current token as a bearer credential and omits
+cookies. Parent renewal uses the nonce-bound bridge below. The host preserves
+the token's access when it returns a replacement session.
 
 When the parent application is trusted, a sandboxed tab that cannot call the
 delegated session endpoint directly may instead use this host-neutral bridge:
