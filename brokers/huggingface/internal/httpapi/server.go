@@ -97,6 +97,7 @@ type Server struct {
 	planValidator       hfplan.Validator
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
+	lifecycleContext    context.Context
 	planGCOnce          sync.Once
 
 	lfsMu      sync.Mutex
@@ -174,6 +175,7 @@ func prepareServer(opts Options) (*Server, context.Context, error) {
 }
 
 func startServer(ctx context.Context, server *Server, opts Options) (*Server, error) {
+	server.lifecycleContext = ctx
 	if err := server.startTelegram(ctx, opts); err != nil {
 		return nil, err
 	}

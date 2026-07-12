@@ -134,6 +134,38 @@ func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 	}
 }
 
+func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+	notifier := &contextCheckingNotifier{}
+	server, handler, cancelServer := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
+	defer cancelServer()
+	defer server.Close()
+	ctx, cancelRequest := context.WithCancel(context.Background())
+	cancelRequest()
+	body := `{"idempotency_key":"disconnect","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"survive disconnect"}`
+	request := httptest.NewRequest(http.MethodPost, agentOperationsPath, strings.NewReader(body)).WithContext(ctx)
+	recorder := httptest.NewRecorder()
+	handler.handleAgentOperationSubmit(recorder, request, "agent")
+	if recorder.Code != http.StatusAccepted || !notifier.sent {
+		t.Fatalf("submit = %d %s, sent = %v", recorder.Code, recorder.Body.String(), notifier.sent)
+	}
+}
+
+type contextCheckingNotifier struct{ sent bool }
+
+func (n *contextCheckingNotifier) SendApproval(ctx context.Context, _ bknotify.ApprovalMessage) (bknotify.MessageRef, error) {
+	if err := ctx.Err(); err != nil {
+		return bknotify.MessageRef{}, err
+	}
+	n.sent = true
+	return bknotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
+}
+
+func (*contextCheckingNotifier) UpdateStatus(context.Context, bknotify.MessageRef, string) error {
+	return nil
+}
+
 func TestAgentRepoCreateFailsClosedWhenNotifierFails(t *testing.T) {
 	upstream := httptest.NewServer(http.NotFoundHandler())
 	defer upstream.Close()

@@ -120,9 +120,16 @@ func (s *Server) handleAgentOperationSubmit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if created || operation.State == agentv1.StatePending && operation.ApprovalID == "" {
-		operation = s.authorizeRepoCreate(r.Context(), operation, target, arguments)
+		operation = s.authorizeRepoCreate(s.agentLifecycleContext(), operation, target, arguments)
 	}
 	writeAgentOperation(w, operation, created)
+}
+
+func (s *Server) agentLifecycleContext() context.Context {
+	if s.lifecycleContext != nil {
+		return s.lifecycleContext
+	}
+	return context.Background()
 }
 
 func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, arguments repoCreateArguments) agentv1.Operation {
