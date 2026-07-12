@@ -68,6 +68,29 @@ type AttrSpec struct {
 	GrantMayOmit bool
 }
 
+// Validate checks that a provider registry is internally consistent.
+func (r Registry) Validate() error { return r.validate() }
+
+// Operation returns a defensive copy of a registered operation.
+func (r Registry) Operation(name string) (OperationSpec, bool) {
+	spec, ok := r.Operations[name]
+	if !ok {
+		return OperationSpec{}, false
+	}
+	spec.TargetKinds = slices.Clone(spec.TargetKinds)
+	spec.Attrs = slices.Clone(spec.Attrs)
+	spec.GrantModes = slices.Clone(spec.GrantModes)
+	return spec, true
+}
+
+// AllowsGrantMode reports whether a registered operation supports mode.
+func (op OperationSpec) AllowsGrantMode(mode GrantMode) bool {
+	return op.Grantable && op.allowsGrantMode(mode)
+}
+
+// ValidateRequest checks a provider-classified request against the registry.
+func (r Registry) ValidateRequest(request Request) error { return r.validateRequest(request) }
+
 func (r Registry) validate() error {
 	if len(r.Operations) == 0 {
 		return errors.New("registry operations must not be empty")

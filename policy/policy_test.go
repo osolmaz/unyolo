@@ -30,6 +30,28 @@ func TestParseValidatesRegistryVocabulary(t *testing.T) {
 	}
 }
 
+func TestRegistryPublicContract(t *testing.T) {
+	registry := testRegistry()
+	if err := registry.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	spec, ok := registry.Operation("git.fetch")
+	if !ok || spec.Grantable || spec.AllowsGrantMode(GrantModeWindow) {
+		t.Fatalf("git.fetch spec = %+v, %v", spec, ok)
+	}
+	requestable, ok := registry.Operation("session.shell")
+	if !ok || !requestable.AllowsGrantMode(GrantModeWindow) {
+		t.Fatalf("session.shell spec = %+v, %v", requestable, ok)
+	}
+	requestable.TargetKinds[0] = "mutated"
+	if fresh, _ := registry.Operation("session.shell"); fresh.TargetKinds[0] == "mutated" {
+		t.Fatal("Operation returned aliased registry data")
+	}
+	if err := registry.ValidateRequest(Request{Client: "bob", Operation: "missing", Target: Target{Kind: "user"}}); err == nil {
+		t.Fatal("ValidateRequest accepted an unknown operation")
+	}
+}
+
 func TestDecisionOrder(t *testing.T) {
 	policy := mustParse(t, `{"rules":[
 		{
