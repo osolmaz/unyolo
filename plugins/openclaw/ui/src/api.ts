@@ -31,6 +31,7 @@ export const DELEGATED_OPEN_REQUEST = "brokerkit.delegated-web.open";
 
 export class BrokerKitUiApi {
   private delegatedSession?: DelegatedSession;
+  private delegatedRefresh: Promise<string> | undefined;
 
   constructor(private readonly bootstrap: UiBootstrap) {}
 
@@ -87,6 +88,18 @@ export class BrokerKitUiApi {
     ) {
       return this.delegatedSession.token;
     }
+    if (this.delegatedRefresh) return this.delegatedRefresh;
+    this.delegatedRefresh = this.refreshDelegatedAuthorization();
+    try {
+      return await this.delegatedRefresh;
+    } finally {
+      this.delegatedRefresh = undefined;
+    }
+  }
+
+  private async refreshDelegatedAuthorization(): Promise<string> {
+    if (this.bootstrap.mode !== "delegated-web")
+      throw new Error("Delegated approval session is invalid");
     const value = await delegatedSession(
       this.bootstrap.basePath,
       this.delegatedSession?.token,

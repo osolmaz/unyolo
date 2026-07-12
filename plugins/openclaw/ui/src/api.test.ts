@@ -258,6 +258,42 @@ describe("BrokerKitUiApi", () => {
     );
   });
 
+  it("shares one renewal across concurrent delegated requests", async () => {
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const initial = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      decision_token: "f".repeat(48),
+      expires_at: new Date(now + 31_000).toISOString(),
+    };
+    const renewed = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      decision_token: "r".repeat(48),
+      expires_at: new Date(now + 60_000).toISOString(),
+    };
+    const snapshot = { sources: [], requests: [], synchronizedAt: "now" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(initial)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(renewed)))
+      .mockImplementation(async () => new Response(JSON.stringify(snapshot)));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+
+    await api.snapshot();
+    now += 2_000;
+    await Promise.all([api.snapshot(), api.snapshot()]);
+
+    const renewals = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        url === "/trusted-host/api/brokerkit/session" &&
+        (init as RequestInit).credentials === "omit",
+    );
+    expect(renewals).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
   it("recognizes the framed launcher and requests top-level navigation", () => {
     const meta = { remove: vi.fn() };
     vi.stubGlobal("document", {
