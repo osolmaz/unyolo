@@ -4,15 +4,12 @@ package isolation
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
@@ -289,13 +286,13 @@ func runBrokerChecks(report *Report, agent identity, pid int) {
 func runTokenACLChecks(report *Report, _ identity, path string, stat fileStat) {
 	var unknown bool
 	for _, candidate := range tokenACLPaths(path, stat) {
-		switch posixACLState(candidate) {
-		case aclPresent:
+		switch bkdoctor.PathACLState(candidate) {
+		case bkdoctor.ACLPresent:
 			add(report, CheckUnknown, "token_file_acl", "token file or parent directory uses POSIX ACLs; Unix mode checks are incomplete")
 			return
-		case aclUnknown:
+		case bkdoctor.ACLUnknown:
 			unknown = true
-		case aclAbsent:
+		case bkdoctor.ACLAbsent:
 		}
 	}
 	if unknown {
@@ -338,13 +335,13 @@ func tokenACLPaths(path string, stat fileStat) []string {
 func runSocketACLChecks(report *Report, _ identity, path string) {
 	var unknown bool
 	for _, candidate := range socketACLPaths(path) {
-		switch posixACLState(candidate) {
-		case aclPresent:
+		switch bkdoctor.PathACLState(candidate) {
+		case bkdoctor.ACLPresent:
 			add(report, CheckUnknown, "socket_acl", "socket or parent directory uses POSIX ACLs; Unix mode checks are incomplete")
 			return
-		case aclUnknown:
+		case bkdoctor.ACLUnknown:
 			unknown = true
-		case aclAbsent:
+		case bkdoctor.ACLAbsent:
 		}
 	}
 	if unknown {
@@ -393,42 +390,6 @@ func addActiveProbeResult(report *Report, opts Options, result ProbeResult) {
 	if opts.Socket != "" {
 		addActiveProbeOpenResult(report, result.SocketConnectable, "active_probe_socket_connect", "the Unix socket")
 	}
-}
-
-type aclState int
-
-const (
-	aclAbsent aclState = iota
-	aclPresent
-	aclUnknown
-)
-
-func posixACLState(path string) aclState {
-	return maxACLState(
-		xattrState(path, "system.posix_acl_access"),
-		xattrState(path, "system.posix_acl_default"),
-	)
-}
-
-func xattrState(path, name string) aclState {
-	_, err := syscall.Getxattr(path, name, nil)
-	if err == nil || errors.Is(err, syscall.ERANGE) {
-		return aclPresent
-	}
-	if errors.Is(err, syscall.ENODATA) || errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, os.ErrNotExist) {
-		return aclAbsent
-	}
-	return aclUnknown
-}
-
-func maxACLState(a, b aclState) aclState {
-	if a == aclPresent || b == aclPresent {
-		return aclPresent
-	}
-	if a == aclUnknown || b == aclUnknown {
-		return aclUnknown
-	}
-	return aclAbsent
 }
 
 func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {

@@ -31,3 +31,6 @@ type ACLPath struct {
 	Path string
 	Kind ACLPathKind
 }
+
+// PathACLState reports whether a path has an ACL relevant to mode-bit checks.
+func PathACLState(path string) ACLState { return pathACLState(path) }

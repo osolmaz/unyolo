@@ -76,12 +76,12 @@ func TestMergeACLStates(t *testing.T) {
 }
 
 func TestXattrACLErrorState(t *testing.T) {
-	for _, err := range []error{syscall.ENOTSUP, syscall.EOPNOTSUPP, errors.New("unknown")} {
-		if got := xattrACLErrorState(err); got != aclUnknown {
-			t.Fatalf("xattrACLErrorState(%v) = %v, want unknown", err, got)
+	for _, err := range []error{syscall.ENOTSUP, syscall.EOPNOTSUPP, syscall.ENODATA} {
+		if got := xattrACLErrorState(err); got != aclAbsent {
+			t.Fatalf("xattrACLErrorState(%v) = %v, want absent", err, got)
 		}
 	}
-	if got := xattrACLErrorState(syscall.ENODATA); got != aclAbsent {
-		t.Fatalf("xattrACLErrorState(ENODATA) = %v, want absent", got)
+	if got := xattrACLErrorState(errors.New("unknown")); got != aclUnknown {
+		t.Fatalf("xattrACLErrorState(unknown) = %v, want unknown", got)
 	}
 }
