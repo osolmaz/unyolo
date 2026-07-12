@@ -1128,6 +1128,18 @@ func TestRepoCreateRequestPolicy(t *testing.T) {
 	}
 }
 
+func TestRepoCreateIsExcludedFromFamilyGlob(t *testing.T) {
+	expanded, err := expandOperation("repo.*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range expanded {
+		if operation == OpRepoCreate {
+			t.Fatal("repo.* unexpectedly includes explicit-only repo.create")
+		}
+	}
+}
+
 func mustParse(t *testing.T, body string) Policy {
 	t.Helper()
 	pol, err := Parse([]byte(body))

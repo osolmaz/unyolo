@@ -427,8 +427,10 @@ registry entry, default grant mode, and tests.
 
 Operation-family globs are allowed only as full first-segment families:
 `repo.*`, `git.*`, and `inference.*`. A family glob matches all registered
-operations whose name starts with that family prefix. Arbitrary partial
-operation globs such as `repo.*.read` or `git.push.*` are invalid.
+operations whose name starts with that family prefix, except explicit-only
+high-risk operations. `repo.create` is explicit-only and must always be named
+directly. Arbitrary partial operation globs such as `repo.*.read` or
+`git.push.*` are invalid.
 
 | Operation | Default grant mode | Meaning |
 |-----------|--------------------|---------|

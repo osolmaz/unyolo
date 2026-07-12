@@ -209,14 +209,15 @@ type targetMatcherJSON struct {
 }
 
 type operationInfo struct {
-	mode GrantMode
+	mode         GrantMode
+	explicitOnly bool
 }
 
 type ruleFieldParser func(*Rule, string, rawRule) error
 
 var operations = map[Operation]operationInfo{
 	OpRepoList:          {mode: GrantModeNone},
-	OpRepoCreate:        {mode: GrantModeExecution},
+	OpRepoCreate:        {mode: GrantModeExecution, explicitOnly: true},
 	OpRepoMetadataRead:  {mode: GrantModeNone},
 	OpRepoContentsRead:  {mode: GrantModeWindow},
 	OpGitFetch:          {mode: GrantModeWindow},
@@ -615,8 +616,8 @@ func expandOperationFamily(value string) ([]Operation, error) {
 		return nil, fmt.Errorf("invalid operation-family glob %q", value)
 	}
 	var out []Operation
-	for op := range operations {
-		if strings.HasPrefix(string(op), prefix) {
+	for op, info := range operations {
+		if strings.HasPrefix(string(op), prefix) && !info.explicitOnly {
 			out = append(out, op)
 		}
 	}
