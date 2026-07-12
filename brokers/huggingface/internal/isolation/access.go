@@ -1,3 +1,5 @@
+//go:build linux || darwin
+
 package isolation
 
 import bkdoctor "github.com/osolmaz/brokerkit/doctor"
