@@ -44,7 +44,7 @@ type Operation struct {
 	Operation      string          `json:"operation"`
 	Target         json.RawMessage `json:"target"`
 	Arguments      json.RawMessage `json:"arguments"`
-	Reason         string          `json:"reason,omitempty"`
+	Reason         string          `json:"reason"`
 	State          State           `json:"state"`
 	Revision       int64           `json:"revision"`
 	ApprovalID     string          `json:"approval_id,omitempty"`

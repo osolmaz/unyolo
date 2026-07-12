@@ -33,6 +33,8 @@ const (
 
 var repoSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$`)
 
+var errApprovalNotificationClaimed = errors.New("approval notification is already claimed")
+
 type repoCreateTarget struct {
 	Kind  string          `json:"kind"`
 	Type  policy.RepoType `json:"type"`
@@ -117,7 +119,7 @@ func (s *Server) handleAgentOperationSubmit(w http.ResponseWriter, r *http.Reque
 		writeAgentError(w, http.StatusInternalServerError, "operation_store_unavailable", "Could not store operation")
 		return
 	}
-	if created {
+	if created || operation.State == agentv1.StatePending && operation.ApprovalID == "" {
 		operation = s.authorizeRepoCreate(r.Context(), operation, target, arguments)
 	}
 	writeAgentOperation(w, operation, created)
@@ -167,6 +169,9 @@ func (s *Server) bindRepoCreateApproval(ctx context.Context, operation agentv1.O
 	}
 	if s.notifier != nil {
 		if err := s.notifyRepoCreateApproval(ctx, grant); err != nil {
+			if errors.Is(err, errApprovalNotificationClaimed) {
+				return operation
+			}
 			return s.failOperation(operation.ID, agentv1.StateFailed, "approval_notification_failed", "Could not notify the operator")
 		}
 	}
@@ -203,7 +208,7 @@ func (s *Server) existingRepoCreateNotification(grantID string) error {
 	if err == nil && current.Notification != nil {
 		return nil
 	}
-	return errors.New("approval notification is already claimed")
+	return errApprovalNotificationClaimed
 }
 
 func (s *Server) recordRepoCreateNotification(claim grants.NotificationClaim, ref grants.MessageRef) error {
@@ -454,7 +459,7 @@ func (s *Server) startOperationWorker(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
-		s.recoverOperations()
+		s.recoverOperations(ctx)
 		for {
 			select {
 			case <-ctx.Done():
@@ -466,7 +471,7 @@ func (s *Server) startOperationWorker(ctx context.Context) {
 	}()
 }
 
-func (s *Server) recoverOperations() {
+func (s *Server) recoverOperations(ctx context.Context) {
 	operations, err := s.operations.ListUnfinished()
 	if err != nil {
 		return
@@ -474,7 +479,9 @@ func (s *Server) recoverOperations() {
 	for _, operation := range operations {
 		if operation.State == agentv1.StateExecuting {
 			_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "execution_interrupted", "Broker restarted during execution; result is unknown")
+			continue
 		}
+		s.advanceOperation(ctx, operation)
 	}
 }
 
@@ -489,6 +496,14 @@ func (s *Server) advanceOperations(ctx context.Context) {
 }
 
 func (s *Server) advanceOperation(ctx context.Context, operation agentv1.Operation) {
+	if operation.State == agentv1.StatePending && operation.ApprovalID == "" {
+		target, arguments, err := decodeRepoCreate(agentv1.SubmitRequest{Target: operation.Target, Arguments: operation.Arguments})
+		if err != nil {
+			_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
+			return
+		}
+		operation = s.authorizeRepoCreate(ctx, operation, target, arguments)
+	}
 	if operation.State == agentv1.StatePending && operation.ApprovalID != "" {
 		operation = s.syncOperationApproval(operation)
 	}

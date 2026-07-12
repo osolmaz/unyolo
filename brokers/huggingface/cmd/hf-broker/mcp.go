@@ -136,6 +136,9 @@ func callMCPRepoCreate(ctx context.Context, client *agentClient, raw json.RawMes
 	if err := decodeMCPArguments(raw, &input); err != nil {
 		return agentv1.Operation{}, err
 	}
+	if input.WaitSeconds < 0 || input.WaitSeconds > 900 {
+		return agentv1.Operation{}, errors.New("wait_seconds must be between 0 and 900")
+	}
 	request, err := mcpRepoCreateRequest(input)
 	if err != nil {
 		return agentv1.Operation{}, err

@@ -220,6 +220,9 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{}); err == nil {
 		t.Fatal("missing MCP privacy accepted")
 	}
+	if _, err := callMCPRepoCreate(context.Background(), client, json.RawMessage(`{"repo_id":"alice/data","type":"dataset","private":true,"reason":"create","idempotency_key":"bad-wait","wait_seconds":901}`)); err == nil {
+		t.Fatal("oversized repository wait accepted")
+	}
 	private := true
 	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "bad", Private: &private}); err == nil {
 		t.Fatal("bad MCP repo accepted")

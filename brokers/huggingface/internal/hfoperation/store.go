@@ -157,7 +157,8 @@ func (s *Store) ListUnfinished() ([]agentv1.Operation, error) {
 
 func (s *Store) SetApproval(id, approvalID string) (agentv1.Operation, error) {
 	return s.update(id, func(operation *agentv1.Operation) error {
-		if operation.State != agentv1.StatePending || operation.ApprovalID != "" || strings.TrimSpace(approvalID) == "" {
+		if operation.State != agentv1.StatePending || strings.TrimSpace(approvalID) == "" ||
+			(operation.ApprovalID != "" && operation.ApprovalID != approvalID) {
 			return ErrInvalidTransition
 		}
 		operation.ApprovalID = approvalID

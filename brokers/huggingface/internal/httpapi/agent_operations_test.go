@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorv1"
@@ -84,6 +85,33 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	defer mu.Unlock()
 	if createHits != 1 {
 		t.Fatalf("create hits = %d, want 1", createHits)
+	}
+}
+
+func TestAgentRepoCreateRetryReconcilesUnboundOperation(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+	policyJSON := `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"recover","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"recover after restart"}`
+	var request agentv1.SubmitRequest
+	if err := json.Unmarshal([]byte(body), &request); err != nil {
+		t.Fatal(err)
+	}
+	stored, created, err := handler.operations.Submit(hfoperation.Submit{
+		Broker: "hf-broker", ClientID: "agent", IdempotencyKey: request.IdempotencyKey, Operation: request.Operation,
+		Target: request.Target, Arguments: request.Arguments, Reason: request.Reason,
+		Presentation: agentv1.Presentation{Title: "Create Hugging Face repository", Summary: "Create private dataset alice/data"},
+	})
+	if err != nil || !created || stored.ApprovalID != "" {
+		t.Fatalf("stored = %#v, %v, %v", stored, created, err)
+	}
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	var operation agentv1.Operation
+	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.ApprovalID == "" {
+		t.Fatalf("reconciled = %d %#v", response.StatusCode, operation)
 	}
 }
 
