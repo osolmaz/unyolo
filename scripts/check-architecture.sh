@@ -38,6 +38,16 @@ if [ -d brokers/huggingface/internal/gitproxy/pktline ] ||
   grep -R -n --include='*.go' 'brokers/huggingface/internal/gitproxy/pktline' . 2>/dev/null
 then
   echo 'HF-local pkt-line implementation survived the gitx cutover' >&2
+	exit 1
+fi
+
+if grep -R -n --include='*.go' 'github.com/go-git/' brokers 2>/dev/null; then
+  echo 'providers must use go-git only through the shared gitx boundary' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' 'compress/zlib' brokers/huggingface/internal/gitproxy 2>/dev/null; then
+  echo 'HF-local packfile inflation survived the gitx cutover' >&2
   exit 1
 fi
 

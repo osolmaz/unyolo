@@ -191,6 +191,40 @@ func TestAppendPktLineRejectsOversizedPayload(t *testing.T) {
 	}
 }
 
+func TestPktLineEncodingHelpers(t *testing.T) {
+	encoded, err := AppendPktLineString(nil, "payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded = AppendFlushPkt(encoded)
+	scanner := NewScanner(encoded)
+	if payload, flush, err := scanner.Next(); err != nil || flush || string(payload) != "payload" {
+		t.Fatalf("data packet = %q flush=%v err=%v", payload, flush, err)
+	}
+	if _, flush, err := scanner.Next(); err != nil || !flush {
+		t.Fatalf("flush packet flush=%v err=%v", flush, err)
+	}
+}
+
+func FuzzScanner(f *testing.F) {
+	f.Add([]byte("0000"))
+	f.Add([]byte(pkt("payload") + "0000PACK"))
+	f.Add([]byte("zzzz"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 128<<10 {
+			t.Skip()
+		}
+		scanner := NewScanner(data)
+		for range len(data)/4 + 1 {
+			_, _, err := scanner.Next()
+			if err != nil {
+				return
+			}
+		}
+		t.Fatal("scanner did not terminate within its input bound")
+	})
+}
+
 func pkt(payload string) string {
 	return fourHex(len(payload)+4) + payload
 }

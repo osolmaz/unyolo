@@ -411,6 +411,8 @@ Acceptance:
   excessive delta depth, and maximum lengths have shared tests and fuzz seeds.
 - Existing Git proxy integration tests remain unchanged in behavior.
 
+Implementation record: [2026-07-13 go-git cutover](2026-07-13-go-git-cutover.md).
+
 ### 7. Keep Provider SDK Adoption Evidence-Based
 
 The OpenAPI, state, and Git cutovers do not require a simultaneous rewrite of

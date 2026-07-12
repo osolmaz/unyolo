@@ -2,6 +2,7 @@ package gitproxy
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -160,7 +161,7 @@ func TestExtractCommitAndTagObjectsFromGitPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pack-objects: %v", err)
 	}
-	objects, err := ExtractCommitAndTagObjects(pack, nil)
+	objects, err := ExtractCommitAndTagObjects(context.Background(), pack, nil)
 	if err != nil {
 		t.Fatalf("ExtractCommitAndTagObjects() error = %v", err)
 	}
