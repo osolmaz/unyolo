@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -91,6 +93,162 @@ func TestLoadAgentClientRejectsMissingCredential(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "credential") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRunAgentClientOperationCommands(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		operation := testAgentOperation(agentv1.StateSucceeded)
+		operation.Result = json.RawMessage(`{"repo_id":"alice/data"}`)
+		_ = json.NewEncoder(w).Encode(operation)
+	}))
+	defer server.Close()
+	getenv := agentClientTestEnv(server.URL)
+	for _, action := range []string{"get", "wait"} {
+		var output bytes.Buffer
+		if err := runAgentClient(context.Background(), getenv, &output, &bytes.Buffer{}, []string{"operation", action, "--json", "op_test"}); err != nil {
+			t.Fatalf("%s: %v", action, err)
+		}
+		if !strings.Contains(output.String(), `"state": "succeeded"`) {
+			t.Fatalf("%s output = %q", action, output.String())
+		}
+	}
+	if err := runAgentClient(context.Background(), getenv, &bytes.Buffer{}, &bytes.Buffer{}, []string{"unknown"}); err == nil {
+		t.Fatal("unknown client command accepted")
+	}
+}
+
+func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
+	dir := t.TempDir()
+	secretFile := filepath.Join(dir, "secret")
+	if err := os.WriteFile(secretFile, []byte(agentClientTestSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client, err := loadAgentClient(func(name string) string {
+		switch name {
+		case "MLCLAW_HF_BROKER_URL":
+			return "http://127.0.0.1:8080/"
+		case "MLCLAW_HF_BROKER_AGENT_SECRET_FILE":
+			return secretFile
+		default:
+			return ""
+		}
+	})
+	if err != nil || client.secret != agentClientTestSecret {
+		t.Fatalf("file client = %#v, %v", client, err)
+	}
+	for _, value := range []string{"", "ftp://example.test", "http://user@example.test", "http://example.test?q=1"} {
+		if _, err := parseAgentBaseURL(value); err == nil {
+			t.Fatalf("URL %q accepted", value)
+		}
+	}
+	if _, err := loadAgentSecret(func(name string) string {
+		if strings.HasSuffix(name, "_FILE") {
+			return "/missing"
+		}
+		return ""
+	}); err == nil {
+		t.Fatal("missing secret file accepted")
+	}
+	if _, err := decodeAgentResponse(http.StatusForbidden, []byte(`{"error":{"code":"denied","message":"no"}}`)); err == nil || err.Error() != "no" {
+		t.Fatalf("structured error = %v", err)
+	}
+	if _, err := decodeAgentResponse(http.StatusBadGateway, []byte(`bad`)); err == nil {
+		t.Fatal("HTTP error accepted")
+	}
+	if _, err := decodeAgentResponse(http.StatusOK, []byte(`{}`)); err == nil {
+		t.Fatal("invalid operation accepted")
+	}
+}
+
+func TestRepoCreateOptionsAndTerminalOutput(t *testing.T) {
+	invalid := [][]string{
+		{},
+		{"alice/data", "--type", "bad"},
+		{"alice/data", "--type", "dataset", "--sdk", "docker"},
+		{"alice/data", "--reason", ""},
+		{"alice/data", "extra"},
+	}
+	for _, args := range invalid {
+		if _, err := parseRepoCreateClientOptions(args); err == nil {
+			t.Fatalf("options accepted: %v", args)
+		}
+	}
+	options, err := parseRepoCreateClientOptions([]string{"--type", "space", "--public", "alice/app"})
+	if err != nil || options.sdk != "docker" || options.private {
+		t.Fatalf("Space options = %#v, %v", options, err)
+	}
+	request, err := repoCreateSubmitRequest(&repoCreateClientOptions{repoID: "alice/data", repoType: "dataset", private: true, reason: "create"})
+	if err != nil || request.IdempotencyKey == "" {
+		t.Fatalf("generated request = %#v, %v", request, err)
+	}
+	if _, err := repoCreateSubmitRequest(&repoCreateClientOptions{repoID: "bad"}); err == nil {
+		t.Fatal("bad repo ID accepted")
+	}
+	operation := testAgentOperation(agentv1.StateFailed)
+	operation.Error = &agentv1.OperationError{Code: "failed", Message: "failed safely"}
+	if err := printClientOperation(&bytes.Buffer{}, operation, false); err == nil {
+		t.Fatal("terminal failure printed as success")
+	}
+	if err := printClientOperation(&bytes.Buffer{}, operation, true); err != nil {
+		t.Fatalf("JSON terminal output: %v", err)
+	}
+	if _, err := randomClientID(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		operation := testAgentOperation(agentv1.StateSucceeded)
+		_ = json.NewEncoder(w).Encode(operation)
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"hf_operation_get", "hf_operation_wait"} {
+		operation, err := callMCPTool(context.Background(), client, mcpToolCall{Name: name, Arguments: json.RawMessage(`{"operation_id":"op_test"}`)})
+		if err != nil || operation.ID != "op_test" {
+			t.Fatalf("%s = %#v, %v", name, operation, err)
+		}
+	}
+	if _, err := callMCPTool(context.Background(), client, mcpToolCall{Name: "unknown", Arguments: json.RawMessage(`{}`)}); err == nil {
+		t.Fatal("unknown MCP tool accepted")
+	}
+	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{}); err == nil {
+		t.Fatal("missing MCP privacy accepted")
+	}
+	private := true
+	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "bad", Private: &private}); err == nil {
+		t.Fatal("bad MCP repo accepted")
+	}
+	response := handleMCPRequest(context.Background(), client, mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "unknown"})
+	if response.Error == nil || response.Error.Code != -32601 {
+		t.Fatalf("unknown method response = %#v", response)
+	}
+	if rawID(json.RawMessage(`bad`)) != nil {
+		t.Fatal("invalid raw ID accepted")
+	}
+	var output bytes.Buffer
+	if err := runMCP(context.Background(), agentClientTestEnv(server.URL), strings.NewReader("bad\n"), &output, &bytes.Buffer{}, nil); err != nil || !strings.Contains(output.String(), "-32700") {
+		t.Fatalf("parse response = %q, %v", output.String(), err)
+	}
+	if err := runMCP(context.Background(), agentClientTestEnv(server.URL), strings.NewReader(""), &output, &bytes.Buffer{}, []string{"bad"}); err == nil {
+		t.Fatal("MCP args accepted")
+	}
+}
+
+func agentClientTestEnv(serverURL string) func(string) string {
+	return func(name string) string {
+		if name == "HF_BROKER_URL" {
+			return serverURL
+		}
+		if name == "HF_BROKER_SHARED_SECRET" {
+			return agentClientTestSecret
+		}
+		return ""
 	}
 }
 

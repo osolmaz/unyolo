@@ -105,6 +105,10 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 func (s *Store) Get(clientID, id string) (agentv1.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.getLocked(clientID, id)
+}
+
+func (s *Store) getLocked(clientID, id string) (agentv1.Operation, error) {
 	data, err := s.read()
 	if err != nil {
 		return agentv1.Operation{}, err
@@ -187,11 +191,12 @@ func (s *Store) Fail(id string, state agentv1.State, code, message string) (agen
 
 func (s *Store) Wait(ctx context.Context, clientID, id string, after int64) (agentv1.Operation, error) {
 	for {
-		operation, err := s.Get(clientID, id)
+		s.mu.Lock()
+		operation, err := s.getLocked(clientID, id)
 		if err != nil || operation.Revision > after || operation.State.Terminal() {
+			s.mu.Unlock()
 			return operation, err
 		}
-		s.mu.Lock()
 		signal := s.signal
 		s.mu.Unlock()
 		select {
@@ -261,6 +266,11 @@ func (s *Store) read() (fileData, error) {
 	if value.Version != fileVersion {
 		return fileData{}, errors.New("operation store version is unsupported")
 	}
+	for _, operation := range value.Operations {
+		if err := validateStored(operation); err != nil {
+			return fileData{}, fmt.Errorf("operation store contains an invalid record: %w", err)
+		}
+	}
 	return value, nil
 }
 
@@ -277,11 +287,10 @@ func normalizeSubmit(input Submit) (Submit, error) {
 	input.Reason = strings.TrimSpace(input.Reason)
 	input.Presentation.Title = strings.TrimSpace(input.Presentation.Title)
 	input.Presentation.Summary = strings.TrimSpace(input.Presentation.Summary)
-	if input.Broker == "" || len(input.Broker) > 64 || input.ClientID == "" || len(input.ClientID) > 128 ||
-		input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 || input.Operation == "" || len(input.Operation) > 128 {
+	if !validSubmitIdentity(input) {
 		return Submit{}, errors.New("operation identity is invalid")
 	}
-	if len(input.Reason) > 512 || input.Presentation.Title == "" || len(input.Presentation.Title) > 160 || len(input.Presentation.Summary) > 500 {
+	if !validSubmitPresentation(input) {
 		return Submit{}, errors.New("operation presentation is invalid")
 	}
 	var err error
@@ -294,6 +303,15 @@ func normalizeSubmit(input Submit) (Submit, error) {
 		return Submit{}, fmt.Errorf("arguments: %w", err)
 	}
 	return input, nil
+}
+
+func validSubmitIdentity(input Submit) bool {
+	return input.Broker != "" && len(input.Broker) <= 64 && input.ClientID != "" && len(input.ClientID) <= 128 &&
+		input.IdempotencyKey != "" && len(input.IdempotencyKey) <= 128 && input.Operation != "" && len(input.Operation) <= 128
+}
+
+func validSubmitPresentation(input Submit) bool {
+	return len(input.Reason) <= 512 && input.Presentation.Title != "" && len(input.Presentation.Title) <= 160 && len(input.Presentation.Summary) <= 500
 }
 
 func normalizeObject(value json.RawMessage) (json.RawMessage, error) {
@@ -329,13 +347,62 @@ func equalJSON(left, right []byte) bool {
 }
 
 func allowedTransition(from, to agentv1.State) bool {
-	switch from {
-	case agentv1.StatePending:
-		return to == agentv1.StateApproved || to == agentv1.StateDenied || to == agentv1.StateExpired || to == agentv1.StateCanceled || to == agentv1.StateFailed
-	case agentv1.StateApproved:
-		return to == agentv1.StateExecuting || to == agentv1.StateExpired || to == agentv1.StateCanceled || to == agentv1.StateFailed
-	case agentv1.StateExecuting:
-		return to == agentv1.StateSucceeded || to == agentv1.StateFailed
+	return operationTransitions[from][to]
+}
+
+var operationTransitions = map[agentv1.State]map[agentv1.State]bool{
+	agentv1.StatePending:   {agentv1.StateApproved: true, agentv1.StateDenied: true, agentv1.StateExpired: true, agentv1.StateCanceled: true, agentv1.StateFailed: true},
+	agentv1.StateApproved:  {agentv1.StateExecuting: true, agentv1.StateExpired: true, agentv1.StateCanceled: true, agentv1.StateFailed: true},
+	agentv1.StateExecuting: {agentv1.StateSucceeded: true, agentv1.StateFailed: true},
+}
+
+func validateStored(operation agentv1.Operation) error {
+	if !validStoredIdentity(operation) {
+		return errors.New("operation identity or revision is invalid")
+	}
+	_, err := normalizeSubmit(Submit{Broker: operation.Broker, ClientID: operation.ClientID, IdempotencyKey: operation.IdempotencyKey,
+		Operation: operation.Operation, Target: operation.Target, Arguments: operation.Arguments, Reason: operation.Reason, Presentation: operation.Presentation})
+	if err != nil {
+		return err
+	}
+	if err := validateStoredLifecycle(operation); err != nil {
+		return err
+	}
+	if len(operation.Result) > 0 {
+		if _, err := normalizeObject(operation.Result); err != nil {
+			return fmt.Errorf("operation result: %w", err)
+		}
+	}
+	return nil
+}
+
+func validStoredIdentity(operation agentv1.Operation) bool {
+	return operation.APIVersion == agentv1.APIVersion && strings.TrimSpace(operation.ID) != "" && len(operation.ID) <= 128 &&
+		operation.Revision >= 1 && !operation.CreatedAt.IsZero() && !operation.UpdatedAt.IsZero() && !operation.UpdatedAt.Before(operation.CreatedAt)
+}
+
+func validateStoredLifecycle(operation agentv1.Operation) error {
+	if operation.State.Terminal() != (operation.TerminalAt != nil) {
+		return errors.New("operation terminal timestamp is invalid")
+	}
+	if !validState(operation.State) || len(operation.ApprovalID) > 128 {
+		return errors.New("operation state or approval is invalid")
+	}
+	if operation.Error != nil && !validOperationError(operation.Error) {
+		return errors.New("operation error is invalid")
+	}
+	return nil
+}
+
+func validOperationError(value *agentv1.OperationError) bool {
+	return strings.TrimSpace(value.Code) != "" && len(value.Code) <= 64 && strings.TrimSpace(value.Message) != "" && len(value.Message) <= 500
+}
+
+func validState(state agentv1.State) bool {
+	switch state {
+	case agentv1.StatePending, agentv1.StateApproved, agentv1.StateExecuting, agentv1.StateSucceeded,
+		agentv1.StateFailed, agentv1.StateDenied, agentv1.StateExpired, agentv1.StateCanceled:
+		return true
 	default:
 		return false
 	}

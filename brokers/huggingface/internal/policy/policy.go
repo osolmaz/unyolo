@@ -921,35 +921,34 @@ func AttrConstraintsFromValues(attrs map[string]any) (map[string]AttrConstraint,
 func validateAttrConstraint(key string, constraint AttrConstraint) error {
 	switch key {
 	case "max_bytes":
-		if constraint.Number == nil {
-			return fmt.Errorf("must be a non-negative integer")
-		}
+		return validateMaximumConstraint(constraint)
 	case "ref_change":
-		if len(constraint.Values) == 0 {
-			return fmt.Errorf("must be a ref change value")
-		}
-		for _, value := range constraint.Values {
-			if !validRefChangeAttrs[value] {
-				return fmt.Errorf("unsupported ref change %q", value)
-			}
-		}
+		return validateNamedConstraint(constraint, "a ref change value", validRefChangeAttrs, "unsupported ref change")
 	case "private":
-		if len(constraint.Values) == 0 {
-			return fmt.Errorf("must be true or false")
-		}
-		for _, value := range constraint.Values {
-			if value != "true" && value != "false" && value != "*" {
-				return fmt.Errorf("must be true or false")
-			}
-		}
+		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
 	case "sdk":
-		if len(constraint.Values) == 0 {
-			return fmt.Errorf("must be a Space SDK")
-		}
-		for _, value := range constraint.Values {
-			if value != "docker" && value != "gradio" && value != "static" && value != "*" {
-				return fmt.Errorf("unsupported Space SDK %q", value)
+		return validateNamedConstraint(constraint, "a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK")
+	}
+	return nil
+}
+
+func validateMaximumConstraint(constraint AttrConstraint) error {
+	if constraint.Number == nil {
+		return fmt.Errorf("must be a non-negative integer")
+	}
+	return nil
+}
+
+func validateNamedConstraint(constraint AttrConstraint, required string, allowed map[string]bool, invalid string) error {
+	if len(constraint.Values) == 0 {
+		return fmt.Errorf("must be %s", required)
+	}
+	for _, value := range constraint.Values {
+		if !allowed[value] {
+			if strings.HasPrefix(invalid, "must") {
+				return errors.New(invalid)
 			}
+			return fmt.Errorf("%s %q", invalid, value)
 		}
 	}
 	return nil

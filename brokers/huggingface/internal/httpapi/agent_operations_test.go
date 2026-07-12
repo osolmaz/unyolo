@@ -121,6 +121,98 @@ func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
 	}
 }
 
+func TestAgentOperationRoutesAndSubmissionErrors(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+	}))
+	defer upstream.Close()
+	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"deny","effect":"deny","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"*"}]}]}`)
+	defer cancel()
+	defer server.Close()
+
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"unsupported", `{"idempotency_key":"unsupported","operation":"repo.delete","target":{},"arguments":{},"reason":"test"}`, http.StatusBadRequest},
+		{"duplicate field", `{"idempotency_key":"duplicate","operation":"repo.create","operation":"repo.create","target":{},"arguments":{},"reason":"test"}`, http.StatusBadRequest},
+		{"trailing data", `{"idempotency_key":"trailing","operation":"repo.create","target":{},"arguments":{},"reason":"test"}{}`, http.StatusBadRequest},
+		{"missing reason", `{"idempotency_key":"missing","operation":"repo.create","target":{},"arguments":{}}`, http.StatusBadRequest},
+		{"invalid target", `{"idempotency_key":"target","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"bad/name"},"arguments":{"private":true},"reason":"test"}`, http.StatusBadRequest},
+		{"invalid sdk", `{"idempotency_key":"sdk","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true,"sdk":"docker"},"reason":"test"}`, http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response, _ := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(test.body))
+			if response.StatusCode != test.want {
+				t.Fatalf("status = %d, want %d", response.StatusCode, test.want)
+			}
+		})
+	}
+
+	denied := `{"idempotency_key":"same","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"test"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(denied))
+	var operation agentv1.Operation
+	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.State != agentv1.StateDenied {
+		t.Fatalf("denied submit = %d %#v", response.StatusCode, operation)
+	}
+	response, _ = doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(strings.Replace(denied, `"name":"data"`, `"name":"other"`, 1)))
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("idempotency conflict = %d", response.StatusCode)
+	}
+
+	for _, path := range []string{
+		agentOperationsPath + "/missing",
+		agentOperationsPath + "/" + operation.ID + "/events?after_revision=nope",
+		agentOperationsPath + "/" + operation.ID + "/events?wait_seconds=31",
+	} {
+		response, _ = doRequest(t, http.MethodGet, server.URL+path, "Bearer "+testSecret, nil)
+		if response.StatusCode != map[bool]int{true: http.StatusNotFound, false: http.StatusBadRequest}[strings.HasSuffix(path, "/missing")] {
+			t.Fatalf("GET %s = %d", path, response.StatusCode)
+		}
+	}
+	response, text = doRequest(t, http.MethodGet, server.URL+agentOperationsPath+"/"+operation.ID+"/events?after_revision=0&wait_seconds=0", "Bearer "+testSecret, nil)
+	if response.StatusCode != http.StatusOK || !strings.Contains(text, operation.ID) {
+		t.Fatalf("event poll = %d %s", response.StatusCode, text)
+	}
+}
+
+func TestAgentRepoCreateUpstreamFailures(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		status   int
+		wantCode string
+	}{
+		{name: "rejected", status: http.StatusForbidden, wantCode: "upstream_rejected"},
+		{name: "unknown", status: http.StatusInternalServerError, wantCode: "upstream_result_unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/whoami-v2" {
+					writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+					return
+				}
+				w.WriteHeader(test.status)
+			}))
+			defer upstream.Close()
+			server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"model","owner":"alice","name":"model"}],"attrs":{"private":"false"}}]}`)
+			defer cancel()
+			defer server.Close()
+			body := `{"idempotency_key":"failure","operation":"repo.create","target":{"kind":"repo","type":"model","owner":"alice","name":"model"},"arguments":{"private":false},"reason":"test failure"}`
+			response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+			var operation agentv1.Operation
+			if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &operation) != nil {
+				t.Fatalf("submit = %d %s", response.StatusCode, text)
+			}
+			operation = waitForTestOperation(t, server.URL, operation.ID)
+			if operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != test.wantCode {
+				t.Fatalf("operation = %#v", operation)
+			}
+		})
+	}
+}
+
 func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string) (*httptest.Server, *Server, context.CancelFunc) {
 	t.Helper()
 	scope, err := policy.Parse([]byte(scopeJSON))

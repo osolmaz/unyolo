@@ -121,56 +121,77 @@ func operationIDSchema(wait bool) map[string]any {
 func callMCPTool(ctx context.Context, client *agentClient, call mcpToolCall) (agentv1.Operation, error) {
 	switch call.Name {
 	case "hf_repo_create":
-		var input struct {
-			RepoID         string `json:"repo_id"`
-			Type           string `json:"type"`
-			Private        bool   `json:"private"`
-			SDK            string `json:"sdk"`
-			Reason         string `json:"reason"`
-			IdempotencyKey string `json:"idempotency_key"`
-			WaitSeconds    int    `json:"wait_seconds"`
-		}
-		if err := decodeMCPArguments(call.Arguments, &input); err != nil {
-			return agentv1.Operation{}, err
-		}
-		owner, name, ok := strings.Cut(input.RepoID, "/")
-		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-			return agentv1.Operation{}, errors.New("repo_id must be OWNER/NAME")
-		}
-		target, _ := json.Marshal(map[string]any{"kind": "repo", "type": input.Type, "owner": owner, "name": name})
-		arguments := map[string]any{"private": input.Private}
-		if input.SDK != "" {
-			arguments["sdk"] = input.SDK
-		}
-		argumentJSON, _ := json.Marshal(arguments)
-		operation, err := client.submit(ctx, agentv1.SubmitRequest{IdempotencyKey: input.IdempotencyKey, Operation: "repo.create", Target: target, Arguments: argumentJSON, Reason: input.Reason})
-		if err != nil || input.WaitSeconds <= 0 || operation.State.Terminal() {
-			return operation, err
-		}
-		waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
-		defer cancel()
-		return client.wait(waitCtx, operation)
+		return callMCPRepoCreate(ctx, client, call.Arguments)
 	case "hf_operation_get", "hf_operation_wait":
-		var input struct {
-			OperationID string `json:"operation_id"`
-			WaitSeconds int    `json:"wait_seconds"`
-		}
-		if err := decodeMCPArguments(call.Arguments, &input); err != nil || input.OperationID == "" {
-			return agentv1.Operation{}, errors.New("operation_id is required")
-		}
-		operation, err := client.get(ctx, input.OperationID)
-		if err != nil || call.Name == "hf_operation_get" || operation.State.Terminal() {
-			return operation, err
-		}
-		if input.WaitSeconds <= 0 || input.WaitSeconds > 900 {
-			input.WaitSeconds = 30
-		}
-		waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
-		defer cancel()
-		return client.wait(waitCtx, operation)
+		return callMCPOperation(ctx, client, call.Name, call.Arguments)
 	default:
 		return agentv1.Operation{}, fmt.Errorf("unknown tool %q", call.Name)
 	}
+}
+
+type mcpRepoCreateInput struct {
+	RepoID         string `json:"repo_id"`
+	Type           string `json:"type"`
+	Private        *bool  `json:"private"`
+	SDK            string `json:"sdk"`
+	Reason         string `json:"reason"`
+	IdempotencyKey string `json:"idempotency_key"`
+	WaitSeconds    int    `json:"wait_seconds"`
+}
+
+func callMCPRepoCreate(ctx context.Context, client *agentClient, raw json.RawMessage) (agentv1.Operation, error) {
+	var input mcpRepoCreateInput
+	if err := decodeMCPArguments(raw, &input); err != nil {
+		return agentv1.Operation{}, err
+	}
+	request, err := mcpRepoCreateRequest(input)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	operation, err := client.submit(ctx, request)
+	if err != nil || input.WaitSeconds <= 0 || operation.State.Terminal() {
+		return operation, err
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
+	defer cancel()
+	return client.wait(waitCtx, operation)
+}
+
+func mcpRepoCreateRequest(input mcpRepoCreateInput) (agentv1.SubmitRequest, error) {
+	if input.Private == nil {
+		return agentv1.SubmitRequest{}, errors.New("private is required")
+	}
+	owner, name, ok := strings.Cut(input.RepoID, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return agentv1.SubmitRequest{}, errors.New("repo_id must be OWNER/NAME")
+	}
+	target, _ := json.Marshal(map[string]any{"kind": "repo", "type": input.Type, "owner": owner, "name": name})
+	arguments := map[string]any{"private": *input.Private}
+	if input.SDK != "" {
+		arguments["sdk"] = input.SDK
+	}
+	argumentJSON, _ := json.Marshal(arguments)
+	return agentv1.SubmitRequest{IdempotencyKey: input.IdempotencyKey, Operation: "repo.create", Target: target, Arguments: argumentJSON, Reason: input.Reason}, nil
+}
+
+func callMCPOperation(ctx context.Context, client *agentClient, name string, raw json.RawMessage) (agentv1.Operation, error) {
+	var input struct {
+		OperationID string `json:"operation_id"`
+		WaitSeconds int    `json:"wait_seconds"`
+	}
+	if err := decodeMCPArguments(raw, &input); err != nil || input.OperationID == "" {
+		return agentv1.Operation{}, errors.New("operation_id is required")
+	}
+	operation, err := client.get(ctx, input.OperationID)
+	if err != nil || name == "hf_operation_get" || operation.State.Terminal() {
+		return operation, err
+	}
+	if input.WaitSeconds <= 0 || input.WaitSeconds > 900 {
+		input.WaitSeconds = 30
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
+	defer cancel()
+	return client.wait(waitCtx, operation)
 }
 
 func decodeMCPArguments(raw json.RawMessage, out any) error {

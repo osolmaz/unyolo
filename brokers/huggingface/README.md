@@ -74,6 +74,29 @@ forwarded to the Hugging Face Router with the real token only when an explicit
 allow rule matches. Prompts, completions, tool arguments, and credentials are
 excluded from audit output. Other `/v1/*` routes fail closed.
 
+## Agent operations
+
+Protected Hub mutations use the typed Agent Operations API. The bundled client
+and MCP adapter use only a broker client secret; neither can read the upstream
+Hugging Face token.
+
+```sh
+export HF_BROKER_URL=http://127.0.0.1:8080
+export HF_BROKER_SHARED_SECRET_FILE=/run/user/1000/hf-broker-agent-secret
+hf-broker client repo create osolmaz/test-data --type dataset
+```
+
+If policy requires approval, the command prints the durable operation ID and
+waits. Resume it after a disconnect with:
+
+```sh
+hf-broker client operation wait <operation-id>
+```
+
+Run `hf-broker mcp` as a stdio MCP server to expose `hf_repo_create`,
+`hf_operation_get`, and `hf_operation_wait`. The tool descriptions explicitly
+tell agents not to request a Hugging Face token.
+
 Inference defaults to denied. This rule allows one client to list Router models
 and call models under one owner:
 

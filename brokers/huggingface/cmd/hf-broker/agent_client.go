@@ -59,25 +59,11 @@ func runClientRepoCreate(ctx context.Context, client *agentClient, stdout, stder
 	if err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
-	owner, name, ok := strings.Cut(opts.repoID, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return exitError{code: 64, message: "repository must be OWNER/NAME"}
+	request, err := repoCreateSubmitRequest(&opts)
+	if err != nil {
+		return err
 	}
-	if opts.idempotencyKey == "" {
-		opts.idempotencyKey, err = randomClientID()
-		if err != nil {
-			return err
-		}
-	}
-	target, _ := json.Marshal(map[string]any{"kind": "repo", "type": opts.repoType, "owner": owner, "name": name})
-	arguments := map[string]any{"private": opts.private}
-	if opts.sdk != "" {
-		arguments["sdk"] = opts.sdk
-	}
-	argumentJSON, _ := json.Marshal(arguments)
-	operation, err := client.submit(ctx, agentv1.SubmitRequest{
-		IdempotencyKey: opts.idempotencyKey, Operation: "repo.create", Target: target, Arguments: argumentJSON, Reason: opts.reason,
-	})
+	operation, err := client.submit(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -98,12 +84,30 @@ func runClientRepoCreate(ctx context.Context, client *agentClient, stdout, stder
 	return printClientOperation(stdout, operation, opts.jsonOutput)
 }
 
+func repoCreateSubmitRequest(options *repoCreateClientOptions) (agentv1.SubmitRequest, error) {
+	owner, name, ok := strings.Cut(options.repoID, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return agentv1.SubmitRequest{}, exitError{code: 64, message: "repository must be OWNER/NAME"}
+	}
+	if options.idempotencyKey == "" {
+		value, err := randomClientID()
+		if err != nil {
+			return agentv1.SubmitRequest{}, err
+		}
+		options.idempotencyKey = value
+	}
+	target, _ := json.Marshal(map[string]any{"kind": "repo", "type": options.repoType, "owner": owner, "name": name})
+	arguments := map[string]any{"private": options.private}
+	if options.sdk != "" {
+		arguments["sdk"] = options.sdk
+	}
+	argumentJSON, _ := json.Marshal(arguments)
+	return agentv1.SubmitRequest{IdempotencyKey: options.idempotencyKey, Operation: "repo.create", Target: target, Arguments: argumentJSON, Reason: options.reason}, nil
+}
+
 func parseRepoCreateClientOptions(args []string) (repoCreateClientOptions, error) {
 	options := repoCreateClientOptions{repoType: "dataset", private: true, reason: "Create a Hugging Face repository through HF Broker", wait: true, waitTimeout: defaultClientWait}
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		options.repoID = args[0]
-		args = args[1:]
-	}
+	args = takeLeadingRepoID(args, &options)
 	flags := flag.NewFlagSet("repo create", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&options.repoType, "type", options.repoType, "model, dataset, or space")
@@ -118,17 +122,38 @@ func parseRepoCreateClientOptions(args []string) (repoCreateClientOptions, error
 	if err := flags.Parse(args); err != nil {
 		return options, err
 	}
-	if options.repoID == "" && flags.NArg() == 1 {
-		options.repoID = flags.Arg(0)
-	} else if flags.NArg() != 0 {
-		return options, errors.New("repository OWNER/NAME must be provided once")
-	}
-	if options.repoID == "" {
-		return options, errors.New("repository OWNER/NAME is required")
+	if err := takeTrailingRepoID(flags.Args(), &options); err != nil {
+		return options, err
 	}
 	if *public {
 		options.private = false
 	}
+	return validateRepoCreateClientOptions(options)
+}
+
+func takeLeadingRepoID(args []string, options *repoCreateClientOptions) []string {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		options.repoID = args[0]
+		return args[1:]
+	}
+	return args
+}
+
+func takeTrailingRepoID(args []string, options *repoCreateClientOptions) error {
+	if options.repoID == "" && len(args) == 1 {
+		options.repoID = args[0]
+		return nil
+	}
+	if len(args) != 0 {
+		return errors.New("repository OWNER/NAME must be provided once")
+	}
+	if options.repoID == "" {
+		return errors.New("repository OWNER/NAME is required")
+	}
+	return nil
+}
+
+func validateRepoCreateClientOptions(options repoCreateClientOptions) (repoCreateClientOptions, error) {
 	if options.repoType != "model" && options.repoType != "dataset" && options.repoType != "space" {
 		return options, errors.New("repository type must be model, dataset, or space")
 	}
@@ -169,29 +194,44 @@ func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writ
 
 func loadAgentClient(getenv func(string) string) (*agentClient, error) {
 	baseURL := firstEnvironment(getenv, "HF_BROKER_URL", "MLCLAW_HF_BROKER_URL")
-	if baseURL == "" {
-		return nil, errors.New("HF Broker URL is not configured")
+	parsed, err := parseAgentBaseURL(baseURL)
+	if err != nil {
+		return nil, err
 	}
-	parsed, err := url.Parse(baseURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return nil, errors.New("HF Broker URL is invalid")
-	}
-	secret := firstEnvironment(getenv, "HF_BROKER_SHARED_SECRET")
-	if secret == "" {
-		path := firstEnvironment(getenv, "HF_BROKER_SHARED_SECRET_FILE", "MLCLAW_HF_BROKER_AGENT_SECRET_FILE")
-		if path == "" {
-			return nil, errors.New("HF Broker agent credential is not configured")
-		}
-		data, err := os.ReadFile(path) // #nosec G304 -- agent credential path is explicitly configured.
-		if err != nil {
-			return nil, errors.New("HF Broker agent credential could not be read")
-		}
-		secret = strings.TrimSpace(string(data))
+	secret, err := loadAgentSecret(getenv)
+	if err != nil {
+		return nil, err
 	}
 	if len(secret) < 32 {
 		return nil, errors.New("HF Broker agent credential is invalid")
 	}
 	return &agentClient{baseURL: strings.TrimRight(parsed.String(), "/"), secret: secret, http: &http.Client{Timeout: 35 * time.Second}}, nil
+}
+
+func parseAgentBaseURL(value string) (*url.URL, error) {
+	if value == "" {
+		return nil, errors.New("HF Broker URL is not configured")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, errors.New("HF Broker URL is invalid")
+	}
+	return parsed, nil
+}
+
+func loadAgentSecret(getenv func(string) string) (string, error) {
+	if secret := firstEnvironment(getenv, "HF_BROKER_SHARED_SECRET"); secret != "" {
+		return secret, nil
+	}
+	path := firstEnvironment(getenv, "HF_BROKER_SHARED_SECRET_FILE", "MLCLAW_HF_BROKER_AGENT_SECRET_FILE")
+	if path == "" {
+		return "", errors.New("HF Broker agent credential is not configured")
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- agent credential path is explicitly configured.
+	if err != nil {
+		return "", errors.New("HF Broker agent credential could not be read")
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 
 func firstEnvironment(getenv func(string) string, names ...string) string {
@@ -235,7 +275,7 @@ func (client *agentClient) request(ctx context.Context, method, path string, pay
 		}
 		body = bytes.NewReader(data)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, client.baseURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, client.baseURL+path, body) // #nosec G704 -- the base origin is validated configuration and path is a fixed broker route.
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
@@ -243,21 +283,25 @@ func (client *agentClient) request(ctx context.Context, method, path string, pay
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	response, err := client.http.Do(req)
+	response, err := client.http.Do(req) // #nosec G704 -- request origin is validated broker configuration.
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 64*1024))
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
+	return decodeAgentResponse(response.StatusCode, data)
+}
+
+func decodeAgentResponse(status int, data []byte) (agentv1.Operation, error) {
+	if status < 200 || status >= 300 {
 		var envelope agentv1.ErrorEnvelope
 		if json.Unmarshal(data, &envelope) == nil && envelope.Error.Message != "" {
 			return agentv1.Operation{}, errors.New(envelope.Error.Message)
 		}
-		return agentv1.Operation{}, fmt.Errorf("HF Broker request failed with HTTP %d", response.StatusCode)
+		return agentv1.Operation{}, fmt.Errorf("HF Broker request failed with HTTP %d", status)
 	}
 	var operation agentv1.Operation
 	if err := json.Unmarshal(data, &operation); err != nil || operation.APIVersion != agentv1.APIVersion {

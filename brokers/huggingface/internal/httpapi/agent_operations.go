@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	bkauth "github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
@@ -76,7 +77,7 @@ func (s *Server) authenticateAgent(w http.ResponseWriter, r *http.Request) (stri
 		return client, true
 	}
 	status := http.StatusForbidden
-	if errors.Is(err, grants.ErrNotFound) {
+	if errors.Is(err, bkauth.ErrMissing) {
 		status = http.StatusUnauthorized
 	}
 	if r.Header.Get("Authorization") == "" {
@@ -124,35 +125,49 @@ func (s *Server) handleAgentOperationSubmit(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) authorizeRepoCreate(operation agentv1.Operation, target repoCreateTarget, arguments repoCreateArguments) agentv1.Operation {
 	attrs := repoCreateAttrs(arguments)
-	request := policy.Request{Client: operation.ClientID, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
-	decision := s.policy.Decide(request, nil, time.Now().UTC(), false)
-	if decision.Effect == policy.EffectDeny && decision.Reason == "approval_required" {
-		decision = s.policy.Decide(request, nil, time.Now().UTC(), true)
-	}
+	decision := s.repoCreateDecision(operation.ClientID, target, attrs)
 	switch decision.Effect {
 	case policy.EffectAllow:
-		updated, err := s.operations.Transition(operation.ID, agentv1.StateApproved)
-		if err == nil {
-			return updated
-		}
+		return s.approveStoredOperation(operation)
 	case policy.EffectRequest:
-		if !s.operatorConfigured && s.notifier == nil {
-			return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
-		}
-		grant, err := s.createRepoApproval(operation, target, attrs, decision.GrantPolicy)
-		if err != nil {
-			return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
-		}
-		updated, err := s.operations.SetApproval(operation.ID, grant.ID)
-		if err == nil {
-			return updated
-		}
+		return s.bindRepoCreateApproval(operation, target, attrs, decision.GrantPolicy)
 	case policy.EffectDeny:
 		return s.failOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation")
 	default:
 		return s.failOperation(operation.ID, agentv1.StateDenied, "not_allowed", "No policy rule allows this operation")
 	}
+}
+
+func (s *Server) repoCreateDecision(client string, target repoCreateTarget, attrs map[string]any) policy.Decision {
+	request := policy.Request{Client: client, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
+	decision := s.policy.Decide(request, nil, time.Now().UTC(), false)
+	if decision.Effect == policy.EffectDeny && decision.Reason == "approval_required" {
+		return s.policy.Decide(request, nil, time.Now().UTC(), true)
+	}
+	return decision
+}
+
+func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Operation {
+	updated, err := s.operations.Transition(operation.ID, agentv1.StateApproved)
+	if err == nil {
+		return updated
+	}
 	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not update operation")
+}
+
+func (s *Server) bindRepoCreateApproval(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) agentv1.Operation {
+	if !s.operatorConfigured && s.notifier == nil {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
+	}
+	grant, err := s.createRepoApproval(operation, target, attrs, bounds)
+	if err != nil {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
+	}
+	updated, err := s.operations.SetApproval(operation.ID, grant.ID)
+	if err == nil {
+		return updated
+	}
+	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind approval request")
 }
 
 func (s *Server) createRepoApproval(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) (grants.Grant, error) {
@@ -235,49 +250,64 @@ func stringOrDefault(value, fallback string) string {
 func readAgentSubmit(r *http.Request) (agentv1.SubmitRequest, error) {
 	body, tooLarge, err := readLimited(r.Body, maxAgentRequestBody)
 	if err != nil || tooLarge {
-		return agentv1.SubmitRequest{}, errors.New("Agent operation request is too large or unreadable")
+		return agentv1.SubmitRequest{}, errors.New("agent operation request is too large or unreadable")
 	}
 	if err := strictjson.RejectDuplicateKeys(body); err != nil {
-		return agentv1.SubmitRequest{}, errors.New("Agent operation request contains duplicate fields")
+		return agentv1.SubmitRequest{}, errors.New("agent operation request contains duplicate fields")
 	}
 	var request agentv1.SubmitRequest
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
-		return agentv1.SubmitRequest{}, errors.New("Could not parse agent operation request")
+		return agentv1.SubmitRequest{}, errors.New("could not parse agent operation request")
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return agentv1.SubmitRequest{}, errors.New("Agent operation request has trailing data")
+		return agentv1.SubmitRequest{}, errors.New("agent operation request has trailing data")
 	}
 	if strings.TrimSpace(request.IdempotencyKey) == "" || len(request.IdempotencyKey) > 128 || strings.TrimSpace(request.Reason) == "" || len(request.Reason) > 512 {
-		return agentv1.SubmitRequest{}, errors.New("Idempotency key and reason are required")
+		return agentv1.SubmitRequest{}, errors.New("idempotency key and reason are required")
 	}
 	return request, nil
 }
 
 func decodeRepoCreate(request agentv1.SubmitRequest) (repoCreateTarget, repoCreateArguments, error) {
-	var target repoCreateTarget
-	if err := decodeStrictObject(request.Target, &target); err != nil {
-		return repoCreateTarget{}, repoCreateArguments{}, errors.New("Invalid repository target")
+	target, err := decodeRepoCreateTarget(request.Target)
+	if err != nil {
+		return repoCreateTarget{}, repoCreateArguments{}, err
 	}
-	var arguments repoCreateArguments
-	if err := decodeStrictObject(request.Arguments, &arguments); err != nil {
-		return repoCreateTarget{}, repoCreateArguments{}, errors.New("Invalid repository arguments")
-	}
-	if target.Kind != "repo" || !validCreateRepoType(target.Type) || !repoSegmentPattern.MatchString(target.Owner) || !repoSegmentPattern.MatchString(target.Name) {
-		return repoCreateTarget{}, repoCreateArguments{}, errors.New("Repository target must contain an exact type, owner, and name")
-	}
-	if arguments.Private == nil {
-		return repoCreateTarget{}, repoCreateArguments{}, errors.New("Repository privacy is required")
-	}
-	if target.Type == policy.TypeSpace {
-		if arguments.SDK != "docker" && arguments.SDK != "gradio" && arguments.SDK != "static" {
-			return repoCreateTarget{}, repoCreateArguments{}, errors.New("Space SDK must be docker, gradio, or static")
-		}
-	} else if arguments.SDK != "" {
-		return repoCreateTarget{}, repoCreateArguments{}, errors.New("SDK is supported only for Spaces")
+	arguments, err := decodeRepoCreateArguments(request.Arguments, target.Type)
+	if err != nil {
+		return repoCreateTarget{}, repoCreateArguments{}, err
 	}
 	return target, arguments, nil
+}
+
+func decodeRepoCreateTarget(raw []byte) (repoCreateTarget, error) {
+	var target repoCreateTarget
+	if err := decodeStrictObject(raw, &target); err != nil {
+		return repoCreateTarget{}, errors.New("invalid repository target")
+	}
+	if target.Kind != "repo" || !validCreateRepoType(target.Type) || !repoSegmentPattern.MatchString(target.Owner) || !repoSegmentPattern.MatchString(target.Name) {
+		return repoCreateTarget{}, errors.New("repository target must contain an exact type, owner, and name")
+	}
+	return target, nil
+}
+
+func decodeRepoCreateArguments(raw []byte, repoType policy.RepoType) (repoCreateArguments, error) {
+	var arguments repoCreateArguments
+	if err := decodeStrictObject(raw, &arguments); err != nil {
+		return repoCreateArguments{}, errors.New("invalid repository arguments")
+	}
+	if arguments.Private == nil {
+		return repoCreateArguments{}, errors.New("repository privacy is required")
+	}
+	if repoType == policy.TypeSpace && arguments.SDK != "docker" && arguments.SDK != "gradio" && arguments.SDK != "static" {
+		return repoCreateArguments{}, errors.New("space SDK must be docker, gradio, or static")
+	}
+	if repoType != policy.TypeSpace && arguments.SDK != "" {
+		return repoCreateArguments{}, errors.New("SDK is supported only for Spaces")
+	}
+	return arguments, nil
 }
 
 func decodeStrictObject(data []byte, out any) error {
@@ -400,25 +430,7 @@ func (s *Server) advanceOperations(ctx context.Context) {
 
 func (s *Server) advanceOperation(ctx context.Context, operation agentv1.Operation) {
 	if operation.State == agentv1.StatePending && operation.ApprovalID != "" {
-		grant, err := s.grants.Get(operation.ApprovalID)
-		if err != nil {
-			return
-		}
-		switch grant.Status {
-		case grants.StatusActive:
-			operation, _ = s.operations.Transition(operation.ID, agentv1.StateApproved)
-		case grants.StatusDenied:
-			_, _ = s.operations.Fail(operation.ID, agentv1.StateDenied, "approval_denied", "Approval was denied")
-			return
-		case grants.StatusExpired:
-			_, _ = s.operations.Fail(operation.ID, agentv1.StateExpired, "approval_expired", "Approval request expired")
-			return
-		case grants.StatusCanceled, grants.StatusRevoked:
-			_, _ = s.operations.Fail(operation.ID, agentv1.StateCanceled, "approval_canceled", "Approval was canceled")
-			return
-		default:
-			return
-		}
+		operation = s.syncOperationApproval(operation)
 	}
 	if operation.State != agentv1.StateApproved {
 		return
@@ -430,42 +442,42 @@ func (s *Server) advanceOperation(ctx context.Context, operation agentv1.Operati
 	s.executeRepoCreate(ctx, claimed)
 }
 
+func (s *Server) syncOperationApproval(operation agentv1.Operation) agentv1.Operation {
+	grant, err := s.grants.Get(operation.ApprovalID)
+	if err != nil {
+		return operation
+	}
+	switch grant.Status {
+	case grants.StatusActive:
+		updated, _ := s.operations.Transition(operation.ID, agentv1.StateApproved)
+		return updated
+	case grants.StatusDenied:
+		updated, _ := s.operations.Fail(operation.ID, agentv1.StateDenied, "approval_denied", "Approval was denied")
+		return updated
+	case grants.StatusExpired:
+		updated, _ := s.operations.Fail(operation.ID, agentv1.StateExpired, "approval_expired", "Approval request expired")
+		return updated
+	case grants.StatusCanceled, grants.StatusRevoked:
+		updated, _ := s.operations.Fail(operation.ID, agentv1.StateCanceled, "approval_canceled", "Approval was canceled")
+		return updated
+	default:
+		return operation
+	}
+}
+
 func (s *Server) executeRepoCreate(ctx context.Context, operation agentv1.Operation) {
 	target, arguments, err := decodeRepoCreate(agentv1.SubmitRequest{Target: operation.Target, Arguments: operation.Arguments})
 	if err != nil {
 		_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
 		return
 	}
-	var reserved bool
-	if operation.ApprovalID != "" {
-		grant, err := s.grants.Get(operation.ApprovalID)
-		if err != nil || s.planValidator.ValidateExecution(grant) != nil {
-			_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
-			return
-		}
-		if _, err := s.grants.ReserveUse(grant.ID); err != nil {
-			_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "approval_unavailable", "Approval could not be reserved")
-			return
-		}
-		reserved = true
+	reserved, ok := s.reserveOperationApproval(operation)
+	if !ok {
+		return
 	}
 	result, definitive, err := s.createUpstreamRepo(ctx, target, arguments)
 	if err != nil {
-		if reserved {
-			if definitive {
-				_, _ = s.grants.CommitUse(operation.ApprovalID)
-			} else {
-				_, _ = s.grants.RetainUse(operation.ApprovalID)
-			}
-		}
-		code := "upstream_rejected"
-		message := "Hugging Face rejected the repository creation"
-		if !definitive {
-			code = "upstream_result_unknown"
-			message = "Hugging Face repository creation result is unknown; it was not retried"
-		}
-		_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, code, message)
-		s.record(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, code, 0)
+		s.failRepoExecution(operation, target, reserved, definitive)
 		return
 	}
 	if reserved {
@@ -477,6 +489,40 @@ func (s *Server) executeRepoCreate(ctx context.Context, operation agentv1.Operat
 	encoded, _ := json.Marshal(result)
 	_, _ = s.operations.Succeed(operation.ID, encoded)
 	s.record(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionAllowed, "", http.StatusOK)
+}
+
+func (s *Server) reserveOperationApproval(operation agentv1.Operation) (bool, bool) {
+	if operation.ApprovalID == "" {
+		return false, true
+	}
+	grant, err := s.grants.Get(operation.ApprovalID)
+	if err != nil || s.planValidator.ValidateExecution(grant) != nil {
+		_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
+		return false, false
+	}
+	if _, err := s.grants.ReserveUse(grant.ID); err != nil {
+		_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "approval_unavailable", "Approval could not be reserved")
+		return false, false
+	}
+	return true, true
+}
+
+func (s *Server) failRepoExecution(operation agentv1.Operation, target repoCreateTarget, reserved, definitive bool) {
+	if reserved {
+		if definitive {
+			_, _ = s.grants.CommitUse(operation.ApprovalID)
+		} else {
+			_, _ = s.grants.RetainUse(operation.ApprovalID)
+		}
+	}
+	code := "upstream_rejected"
+	message := "Hugging Face rejected the repository creation"
+	if !definitive {
+		code = "upstream_result_unknown"
+		message = "Hugging Face repository creation result is unknown; it was not retried"
+	}
+	_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, code, message)
+	s.record(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, code, 0)
 }
 
 func (s *Server) createUpstreamRepo(ctx context.Context, target repoCreateTarget, arguments repoCreateArguments) (repoCreateResult, bool, error) {
@@ -505,7 +551,7 @@ func (s *Server) createUpstreamRepo(ctx context.Context, target repoCreateTarget
 	if err != nil {
 		return repoCreateResult{}, false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxUpstreamBody))
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return repoCreateResult{}, response.StatusCode >= 400 && response.StatusCode < 500, fmt.Errorf("upstream status %d", response.StatusCode)
@@ -525,7 +571,7 @@ func (s *Server) upstreamIdentity(ctx context.Context) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxUpstreamBody))
 		return "", response.StatusCode >= 400 && response.StatusCode < 500, errors.New("could not identify upstream account")
