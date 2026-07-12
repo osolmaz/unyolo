@@ -12,8 +12,10 @@ implementation for common protocol, Git framing, audit, and host-inspection
 mechanics while each broker retains its own classification, credentials,
 execution, plans, and user-facing wording.
 
-This is a behavior-preserving refactor. It does not add routes, operations,
-compatibility readers, or migration adapters.
+Most slices are behavior-preserving refactors. The Agent V1 slice is an
+intentional public protocol cutover for discrete agent operations across all
+three brokers. It preserves security semantics and provider capabilities, but
+does not preserve replaced routes or state formats.
 
 ## Extraction Rule
 
@@ -21,8 +23,8 @@ Code moves to a root package only when all of these are true:
 
 1. The behavior is provider-neutral.
 2. Its security invariants are identical for every consumer.
-3. At least two brokers need the same API, unless the implementation already
-   duplicates an existing root package.
+3. At least two brokers need or are committed to the same API, unless the
+   implementation already duplicates an existing root package.
 4. The shared package can be tested without importing a provider.
 5. The provider copy is deleted in the same change that adopts the shared API.
 
@@ -37,6 +39,8 @@ and executors remain separate.
 - BrokerKit already owns authentication, policy, grants, Operator V1,
   notifications, Telegram transport, audit primitives, installation, setup,
   doctor primitives, plan storage, and generic Git receive-pack parsing.
+- HF, GH, and sudo are committed to Agent Operations V1 for discrete approved
+  agent operations.
 - The remaining duplication is architectural rather than literal copied code.
 
 ## Implementation Order
@@ -157,39 +161,85 @@ Acceptance:
   retain fail-closed tests.
 - HF isolation code contains only HF configuration and presentation adapters.
 
-### 5. Extract Agent Operations Only with a Second Adopter
+### 5. Standardize All Brokers on Agent Operations V1
 
 Problem: `agentv1` is provider-neutral, but its durable implementation currently
-lives in `brokers/huggingface/internal/hfoperation`. Moving it immediately would
-be speculative if no other broker uses the lifecycle.
+lives in `brokers/huggingface/internal/hfoperation`. HF, GH, and sudo are all
+intended to expose the same agent operation lifecycle, so leaving that runtime
+inside HF would make every later adoption duplicate or depend on provider code.
 
-Trigger:
+Shared ownership:
 
-- Start this slice only when GH or sudo adopts Agent Operations V1 with the same
-  states, idempotency, retention, wait, and restart behavior.
+- `agentv1` owns the wire types and states.
+- A root `agentops` package owns durable persistence, transitions, idempotency,
+  retention, wait signaling, restart recovery, and terminal-result handling.
+- A root `agentapi` package owns discovery, submit, get, wait/event, bounded
+  decoding, authentication hooks, and stable error mapping.
+- A root `agentclient` package owns the provider-neutral client and wait loop.
+- A root `agentconformance` package runs the black-box lifecycle contract
+  against each real broker handler.
 
-Implementation after the trigger:
+Provider ownership:
 
-- Move operation persistence, transitions, idempotency, retention, wait
-  signaling, and restart recovery into a root `agentops` package.
-- Keep provider operation registration, target and argument validation,
-  approval presentation, immutable plans, activation checks, execution, and
-  result formatting in the provider.
-- Define a narrow provider adapter around describe, authorize, execute, and
-  recover behavior. Do not create a generic arbitrary-operation executor.
-- Adopt the shared lifecycle in HF and the second broker in one coordinated
-  change, then delete the HF-local store.
+- operation registration and names;
+- target and argument validation;
+- policy request classification;
+- approval presentation;
+- immutable provider plans and activation checks;
+- upstream credentials and execution;
+- ambiguous-result classification; and
+- safe provider result formatting.
 
-Deletion target after the trigger:
+Implementation sequence:
 
-- `brokers/huggingface/internal/hfoperation`.
+1. Move `hfoperation` persistence and lifecycle behavior into `agentops`, update
+   HF to use it, and delete the HF-local package in the same slice.
+2. Move the generic HF Agent V1 HTTP and client mechanics into `agentapi` and
+   `agentclient`, update HF to use them, and leave `repo.create` classification
+   and execution in HF.
+3. Add `agentconformance` fixtures and run them against HF for discovery,
+   submission, idempotent retry,
+   status, waiting/events, approval transitions, restart recovery, terminal
+   results, and error envelopes.
+4. Migrate GH discrete approved operations to Agent V1 and delete replaced
+   lifecycle routes, clients, stores, and response types in the same slice.
+   Keep Git smart HTTP, read-only repository APIs, webhooks, and provider
+   execution local.
+5. Migrate sudo command requests and execution to one Agent V1 operation
+   lifecycle backed by the existing exact immutable plan and privileged helper.
+   Delete replaced lifecycle routes, clients, stores, and response types in the
+   same slice.
+6. Update setup, CLI, MCP, docs, examples, and conformance coverage to use only
+   the Agent V1 operation surface.
+
+Cutover rules:
+
+- Do not retain aliases for replaced operation routes.
+- Do not read or convert superseded operation state.
+- Do not dual-write old and Agent V1 stores.
+- Streaming Git traffic and ordinary read APIs do not become Agent V1
+  operations.
+- Agent V1 never becomes a generic arbitrary provider API or shell executor.
+- Each broker remains independently deployed with its own operation store,
+  credentials, plans, listener, and audit stream.
+
+Deletion targets:
+
+- `brokers/huggingface/internal/hfoperation`;
+- generic Agent V1 HTTP/client lifecycle code currently embedded in HF; and
+- GH and sudo operation lifecycle code replaced by their Agent V1 adapters.
 
 Acceptance:
 
-- Two brokers pass the same lifecycle conformance suite.
+- HF, GH, and sudo pass the same Agent V1 lifecycle conformance suite.
 - Identical submissions are idempotent across restarts.
 - Invalid transitions and ambiguous executions fail closed.
-- Provider credentials, plans, and execution code never enter `agentops`.
+- Each operation is bound to one immutable provider plan before approval can
+  authorize execution.
+- Sudo still crosses privilege only through its peer-authenticated helper and
+  exact cataloged plan.
+- Provider credentials, plans, classifiers, and execution code never enter the
+  shared Agent V1 packages.
 
 ### 6. Decompose the HF HTTP Package
 
@@ -276,8 +326,8 @@ The refactor is complete when:
 - HF and GH use one Git framing implementation;
 - HF uses the shared audit recorder;
 - HF isolation is a thin provider adapter over shared doctor primitives;
-- Agent V1 lifecycle is either shared by two brokers or explicitly remains HF
-  local because no second adopter exists;
+- HF, GH, and sudo use the shared Agent V1 lifecycle for discrete approved
+  operations;
 - the HF HTTP package is decomposed without behavior changes;
 - all architecture, security, test, coverage, Slophammer, plugin, and CI gates
   pass; and
