@@ -1,5 +1,9 @@
 # Broker Cutover Status
 
+Date: 2026-07-12
+
+Status: complete; retained as the final cutover record
+
 This is the implementation handoff for the Brokerkit cutover across
 `brokerkit`, `hf-broker`, `gh-broker`, and `sudo-broker`. The migration is a
 direct cutover. Backward compatibility with broker-local control-plane code is

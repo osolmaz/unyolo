@@ -1,7 +1,7 @@
 # BrokerKit Documentation
 
 BrokerKit's documentation index separates maintained contracts from
-implementation records and retired repository snapshots.
+dated implementation records.
 
 ## Start Here
 
@@ -12,7 +12,6 @@ implementation records and retired repository snapshots.
 - [Policy core](POLICY_CORE.md)
 - [Operator inbox](OPERATOR_INBOX.md)
 - [Operations runtime](OPERATIONS_RUNTIME.md)
-- [Cutover status](CUTOVER_STATUS.md)
 
 ## Components
 
@@ -26,17 +25,21 @@ implementation records and retired repository snapshots.
 
 - [Systemd install runtime](SYSTEMD_INSTALL_RUNTIME.md)
 - [Fresh-state cutover](cutover/FRESH_STATE.md)
-- [Import ledger](cutover/import-ledger.md)
 
 ## Implementation Records
 
 Date-prefixed plans, component adoption plans, the extraction plan, and the
 implementation handoff record why the current design exists. Their status
 headers record completion, but maintained contracts above take precedence if a
-historical plan differs from current code.
+historical plan differs from current code. The retired standalone repositories
+remain private read-only archives; provider-specific documentation worth
+maintaining lives with its component in this monorepo.
 
-## Archive
-
-The [standalone repository archive](archive/standalone-repositories/README.md)
-preserves the final Markdown snapshots from the retired private repositories.
-Archived files are historical and non-normative.
+- [Final cutover status](2026-07-12-cutover-status.md)
+- [Implementation handoff](2026-07-11-implementation-handoff.md)
+- [Monorepo consolidation plan](2026-07-11-monorepo-consolidation-plan.md)
+- [Universal platform plan](2026-07-11-universal-broker-platform-plan.md)
+- [OpenClaw plugin plan](2026-07-11-openclaw-plugin-implementation-plan.md)
+- [Extraction plan](2026-07-08-extraction-plan.md)
+- [Source import ledger](cutover/2026-07-11-import-ledger.md)
+- [Component plans](components/)

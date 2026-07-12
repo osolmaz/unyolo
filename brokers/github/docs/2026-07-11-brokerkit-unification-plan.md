@@ -1,5 +1,9 @@
 # Brokerkit Unification
 
+Date: 2026-07-11
+
+Status: implemented; retained as a historical migration plan
+
 gh-broker should use the same install, setup, client config, policy, approval,
 audit, doctor, and release contract as hf-broker and sudo-broker.
 

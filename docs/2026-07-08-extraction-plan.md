@@ -1,5 +1,7 @@
 # Extraction Plan
 
+Date: 2026-07-08
+
 Status: implemented; retained as a historical extraction record
 
 This plan keeps brokerkit small while `hf-broker`, `gh-broker`, and

@@ -1,11 +1,10 @@
 # Policy Core
 
-This document defines the shared policy model brokerkit should provide.
+This document defines BrokerKit's shared policy model.
 Provider-specific brokers register their own operations, target kinds, attrs,
-and validation rules. The intended migration is cutover: brokers should use this
-core directly instead of keeping local compatibility policy engines alive.
-See [OWNERSHIP.md](OWNERSHIP.md) for the broader brokerkit versus broker
-boundary.
+and validation rules. Brokers use this core directly and do not keep local
+compatibility policy engines. See [OWNERSHIP.md](OWNERSHIP.md) for the broader
+BrokerKit versus broker boundary.
 
 ## Minimal Policy File
 

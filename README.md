@@ -111,8 +111,6 @@ in [docs/OPERATOR_INBOX.md](docs/OPERATOR_INBOX.md).
 The deployment cutover uses only fresh state as documented in
 [docs/cutover/FRESH_STATE.md](docs/cutover/FRESH_STATE.md).
 The maintained documentation map is in [docs/README.md](docs/README.md).
-The final Markdown snapshots from the retired standalone repositories are in
-[docs/archive/standalone-repositories](docs/archive/standalone-repositories/README.md).
 
 ## License
 

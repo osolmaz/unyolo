@@ -1,10 +1,14 @@
 # Implementation Plan
 
+Date: 2026-07-11
+
+Status: implemented; retained as a historical implementation plan
+
 This document tracks the implemented broker shape. The longer-term GitHub App
 and service-account target is specified in
 [PRODUCTION_ARCHITECTURE.md](PRODUCTION_ARCHITECTURE.md). The shared
 broker-family install and setup cutover is specified in
-[BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md).
+[2026-07-11-brokerkit-unification-plan.md](2026-07-11-brokerkit-unification-plan.md).
 
 Cutover direction: gh-broker now lives under `brokers/github` in the
 `github.com/osolmaz/brokerkit` monorepo and uses its shared auth, policy, grants,

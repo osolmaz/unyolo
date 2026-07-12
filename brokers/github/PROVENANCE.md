@@ -6,8 +6,8 @@
 - No-squash subtree merge: `6f75d6c83d8d06f93a5928b70b2b4738d9dde7c4`
 - Destination: `brokers/github`
 
-The final standalone Markdown snapshot is preserved in
-[`docs/archive/standalone-repositories/gh-broker`](../../docs/archive/standalone-repositories/gh-broker/README.md).
+The coordinated source import is recorded in the
+[dated import ledger](../../docs/cutover/2026-07-11-import-ledger.md).
 
 Verified during import:
 

@@ -1,11 +1,11 @@
 # Unified Broker Contract
 
 This is the shared contract for `hf-broker`, `gh-broker`, and `sudo-broker`.
-The goal is one install, setup, config, policy, approval, audit, and release
-shape, with only the dangerous platform adapter kept in each broker.
+It defines one install, setup, config, policy, approval, audit, and release
+shape. Each broker keeps only its dangerous platform adapter.
 
-The model is cutover. When a broker adopts one part of this contract, the old
-broker-local duplicate should be removed in the same change.
+The completed migration used a direct cutover. Broker directories do not keep
+compatibility copies of behavior owned by BrokerKit.
 
 ## Boundary
 

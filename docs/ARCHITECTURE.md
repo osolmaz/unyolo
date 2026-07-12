@@ -1,17 +1,16 @@
-# brokerkit Architecture
+# BrokerKit Architecture
 
-brokerkit is the shared layer for broker-style access-control services. It
-should make the repeated broker machinery reusable without hiding the dangerous
+BrokerKit is the shared layer for broker-style access-control services. It
+makes repeated broker machinery reusable without hiding the dangerous
 provider-specific boundary.
 
-`hf-broker`, `gh-broker`, and `sudo-broker` should all depend on brokerkit for
-the shared control plane. The migration model is cutover, not backward
-compatibility: once a broker adopts a brokerkit package, the old local copy of
-that behavior should be removed.
+`hf-broker`, `gh-broker`, and `sudo-broker` use BrokerKit for the shared control
+plane. The completed migration used a direct cutover rather than compatibility
+layers; provider directories do not retain local copies of shared behavior.
 
 ## Broker Shape
 
-Every broker using brokerkit should follow this request path:
+Every broker using BrokerKit follows this request path:
 
 ```text
 authenticate client

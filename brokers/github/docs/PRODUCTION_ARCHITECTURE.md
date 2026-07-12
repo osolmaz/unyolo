@@ -700,7 +700,7 @@ it cannot prove GitHub App installation permissions.
    - `gh-broker --version`
    - GitHub release assets for Linux/macOS amd64/arm64
    - brokerkit-aligned `setup systemd` and `setup client` behavior described
-     in [BROKERKIT_UNIFICATION.md](BROKERKIT_UNIFICATION.md)
+     in [2026-07-11-brokerkit-unification-plan.md](2026-07-11-brokerkit-unification-plan.md)
 
 10. Add grants only after static policy and request classification are
    well-tested.

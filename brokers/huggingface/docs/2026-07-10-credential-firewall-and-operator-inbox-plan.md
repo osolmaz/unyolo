@@ -2,7 +2,7 @@
 
 Date: 2026-07-10
 
-Status: operator inbox and Router inference implemented; typed Hub routes pending
+Status: implemented; retained as a historical provider cutover plan
 
 ## Motivation
 
