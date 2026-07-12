@@ -9,6 +9,28 @@ import (
 	"io"
 )
 
+// Decode validates and decodes one JSON value. Closed object schemas reject
+// unknown fields in addition to duplicate keys and trailing content.
+func Decode(data []byte, out any, closed bool) error {
+	if err := RejectDuplicateKeys(data); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if closed {
+		decoder.DisallowUnknownFields()
+	}
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("trailing JSON content")
+		}
+		return err
+	}
+	return nil
+}
+
 // RejectDuplicateKeys validates one JSON value and rejects duplicate object keys.
 func RejectDuplicateKeys(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
