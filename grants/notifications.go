@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 // MessageRef is the durable form of an editable operator notification.
@@ -57,17 +58,29 @@ func (s *Store) ApprovalNotificationsDue() ([]Grant, error) {
 	}
 	before := grantSnapshots(data.Grants)
 	eventSequence := data.NextEvent
-	changed := s.prepareLifecycle(&data)
-	changed = s.reconcileLifecycle(&data, before) || changed
-	if changed {
-		if err := s.save(data); err != nil {
-			return nil, err
-		}
-		s.signalNewEvents(eventSequence, data.NextEvent)
+	if err := s.refreshApprovalLifecycle(&data, before, eventSequence); err != nil {
+		return nil, err
 	}
 	if s.database == nil {
 		return pendingApprovalGrants(data.Grants, s.opts.Now().UTC()), nil
 	}
+	return s.sqliteApprovalNotificationsDue()
+}
+
+func (s *Store) refreshApprovalLifecycle(data *fileData, before map[string]Grant, eventSequence uint64) error {
+	changed := s.prepareLifecycle(data)
+	changed = s.reconcileLifecycle(data, before) || changed
+	if !changed {
+		return nil
+	}
+	if err := s.save(*data); err != nil {
+		return err
+	}
+	s.signalNewEvents(eventSequence, data.NextEvent)
+	return nil
+}
+
+func (s *Store) sqliteApprovalNotificationsDue() ([]Grant, error) {
 	snapshot, err := s.database.GrantSnapshot(context.Background())
 	if err != nil {
 		return nil, err
@@ -76,21 +89,24 @@ func (s *Store) ApprovalNotificationsDue() ([]Grant, error) {
 	if err != nil {
 		return nil, err
 	}
-	byID := make(map[string]Grant, len(loaded.Grants))
-	for _, grant := range loaded.Grants {
-		byID[grant.ID] = grant
-	}
-	now := s.opts.Now().UTC()
+	return dueApprovalGrants(snapshot.Outbox, grantSnapshots(loaded.Grants), s.opts.Now().UTC()), nil
+}
+
+func dueApprovalGrants(records []state.NotificationOutboxRecord, byID map[string]Grant, now time.Time) []Grant {
 	out := make([]Grant, 0)
-	for _, record := range snapshot.Outbox {
-		if record.Kind != "approval" || (record.Status != "pending" && record.Status != "ambiguous") || now.Before(record.AvailableAt) {
+	for _, record := range records {
+		if !approvalOutboxDue(record, now) {
 			continue
 		}
 		if grant, ok := byID[record.GrantID]; ok && grant.Status == StatusPending && grant.Notification == nil {
 			out = append(out, grant)
 		}
 	}
-	return out, nil
+	return out
+}
+
+func approvalOutboxDue(record state.NotificationOutboxRecord, now time.Time) bool {
+	return record.Kind == "approval" && (record.Status == "pending" || record.Status == "ambiguous") && !now.Before(record.AvailableAt)
 }
 
 func pendingApprovalGrants(grants []Grant, now time.Time) []Grant {

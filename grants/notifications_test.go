@@ -44,6 +44,22 @@ func TestNotificationClaimAndDeliveryLifecycle(t *testing.T) {
 	assertSingleDueUpdate(t, store, StatusUpdateLifecycle, StatusRevoked, string(StatusRevoked))
 }
 
+func TestPendingApprovalGrantsRequiresAnAvailableUnnotifiedGrant(t *testing.T) {
+	now := time.Date(2026, 7, 13, 6, 0, 0, 0, time.UTC)
+	notification := MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2}
+	grants := []Grant{
+		{ID: "due", Status: StatusPending},
+		{ID: "active", Status: StatusActive},
+		{ID: "notified", Status: StatusPending, Notification: &notification},
+		{ID: "claimed", Status: StatusPending, NotificationClaimedAt: now.Add(-time.Second), NotificationClaimUntil: now.Add(time.Minute)},
+		{ID: "expired-claim", Status: StatusPending, NotificationClaimedAt: now.Add(-time.Minute), NotificationClaimUntil: now},
+	}
+	due := pendingApprovalGrants(grants, now)
+	if len(due) != 2 || due[0].ID != "due" || due[1].ID != "expired-claim" {
+		t.Fatalf("pendingApprovalGrants() = %+v", due)
+	}
+}
+
 func TestNotificationClaimRecoveryAndConditionalCancel(t *testing.T) {
 	now := time.Date(2026, 7, 10, 2, 0, 0, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})

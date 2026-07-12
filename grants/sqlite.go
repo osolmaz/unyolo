@@ -16,31 +16,15 @@ import (
 
 func fileDataFromSQLite(snapshot state.GrantSnapshot) (fileData, error) {
 	data := fileData{Version: grantFileVersion, NextEvent: 1}
-	for _, record := range snapshot.Grants {
-		grant, err := grantFromSQLite(record)
-		if err != nil {
-			return fileData{}, err
-		}
-		data.Grants = append(data.Grants, grant)
+	var err error
+	if data.Grants, err = convertRecords(snapshot.Grants, grantFromSQLite); err != nil {
+		return fileData{}, err
 	}
-	for _, record := range snapshot.Events {
-		var event lifecycleEventRecord
-		if err := strictjson.Decode(record.PayloadJSON, &event, true); err != nil {
-			return fileData{}, fmt.Errorf("decode grant lifecycle event: %w", err)
-		}
-		if event.Sequence != record.Sequence || event.GrantID != record.GrantID || string(event.Kind) != record.Kind ||
-			event.Revision != record.Revision || !event.Time.Equal(record.OccurredAt) || encodeEventCursor(event.Sequence) != record.Cursor {
-			return fileData{}, ErrUnsupportedState
-		}
-		data.Events = append(data.Events, event)
-		data.NextEvent = event.Sequence + 1
+	if data.Events, data.NextEvent, err = eventsFromSQLite(snapshot.Events); err != nil {
+		return fileData{}, err
 	}
-	for _, record := range snapshot.Decisions {
-		decision, err := decisionFromSQLite(record)
-		if err != nil {
-			return fileData{}, err
-		}
-		data.DecisionRecords = append(data.DecisionRecords, decision)
+	if data.DecisionRecords, err = convertRecords(snapshot.Decisions, decisionFromSQLite); err != nil {
+		return fileData{}, err
 	}
 	if err := validateApprovalOutbox(snapshot.Grants, snapshot.Outbox); err != nil {
 		return fileData{}, err
@@ -48,36 +32,71 @@ func fileDataFromSQLite(snapshot state.GrantSnapshot) (fileData, error) {
 	return data, nil
 }
 
+func eventsFromSQLite(records []state.GrantLifecycleRecord) ([]lifecycleEventRecord, uint64, error) {
+	result := make([]lifecycleEventRecord, 0, len(records))
+	next := uint64(1)
+	for _, record := range records {
+		var event lifecycleEventRecord
+		if err := strictjson.Decode(record.PayloadJSON, &event, true); err != nil {
+			return nil, 0, fmt.Errorf("decode grant lifecycle event: %w", err)
+		}
+		if !eventMatchesRecord(event, record) {
+			return nil, 0, ErrUnsupportedState
+		}
+		result = append(result, event)
+		next = event.Sequence + 1
+	}
+	return result, next, nil
+}
+
+func eventMatchesRecord(event lifecycleEventRecord, record state.GrantLifecycleRecord) bool {
+	return event.Sequence == record.Sequence && event.GrantID == record.GrantID && string(event.Kind) == record.Kind &&
+		event.Revision == record.Revision && event.Time.Equal(record.OccurredAt) && encodeEventCursor(event.Sequence) == record.Cursor
+}
+
 func fileDataToSQLite(data fileData, previousOutbox []state.NotificationOutboxRecord, now time.Time) (state.GrantSnapshot, error) {
-	snapshot := state.GrantSnapshot{}
-	for _, grant := range data.Grants {
-		record, err := grantToSQLite(grant)
-		if err != nil {
-			return state.GrantSnapshot{}, err
-		}
-		snapshot.Grants = append(snapshot.Grants, record)
+	grants, err := convertRecords(data.Grants, grantToSQLite)
+	if err != nil {
+		return state.GrantSnapshot{}, err
 	}
-	for _, event := range data.Events {
-		payload, err := json.Marshal(event)
-		if err != nil {
-			return state.GrantSnapshot{}, err
-		}
-		snapshot.Events = append(snapshot.Events, state.GrantLifecycleRecord{Sequence: event.Sequence, Cursor: encodeEventCursor(event.Sequence),
-			GrantID: event.GrantID, Kind: string(event.Kind), Revision: event.Revision, OccurredAt: event.Time, PayloadJSON: payload})
+	events, err := eventsToSQLite(data.Events)
+	if err != nil {
+		return state.GrantSnapshot{}, err
 	}
-	for _, decision := range data.DecisionRecords {
-		record, err := decisionToSQLite(decision)
-		if err != nil {
-			return state.GrantSnapshot{}, err
-		}
-		snapshot.Decisions = append(snapshot.Decisions, record)
+	decisions, err := convertRecords(data.DecisionRecords, decisionToSQLite)
+	if err != nil {
+		return state.GrantSnapshot{}, err
 	}
 	outbox, err := reconcileApprovalOutbox(data.Grants, previousOutbox, now)
 	if err != nil {
 		return state.GrantSnapshot{}, err
 	}
-	snapshot.Outbox = outbox
-	return snapshot, nil
+	return state.GrantSnapshot{Grants: grants, Events: events, Decisions: decisions, Outbox: outbox}, nil
+}
+
+func eventsToSQLite(events []lifecycleEventRecord) ([]state.GrantLifecycleRecord, error) {
+	result := make([]state.GrantLifecycleRecord, 0, len(events))
+	for _, event := range events {
+		payload, err := json.Marshal(event)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, state.GrantLifecycleRecord{Sequence: event.Sequence, Cursor: encodeEventCursor(event.Sequence),
+			GrantID: event.GrantID, Kind: string(event.Kind), Revision: event.Revision, OccurredAt: event.Time, PayloadJSON: payload})
+	}
+	return result, nil
+}
+
+func convertRecords[From, To any](records []From, convert func(From) (To, error)) ([]To, error) {
+	result := make([]To, 0, len(records))
+	for _, source := range records {
+		record, err := convert(source)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, record)
+	}
+	return result, nil
 }
 
 type approvalOutboxPayload struct {
@@ -155,9 +174,7 @@ func validateApprovalOutbox(grants []state.GrantRecord, records []state.Notifica
 	}
 	seen := make(map[string]bool, len(records))
 	for _, record := range records {
-		var payload approvalOutboxPayload
-		if record.Kind != "approval" || !grantIDs[record.GrantID] || seen[record.GrantID] ||
-			strictjson.Decode(record.PayloadJSON, &payload, true) != nil || payload.GrantID != record.GrantID {
+		if !validApprovalOutboxRecord(record, grantIDs, seen) {
 			return ErrUnsupportedState
 		}
 		seen[record.GrantID] = true
@@ -168,6 +185,14 @@ func validateApprovalOutbox(grants []state.GrantRecord, records []state.Notifica
 		}
 	}
 	return nil
+}
+
+func validApprovalOutboxRecord(record state.NotificationOutboxRecord, grantIDs, seen map[string]bool) bool {
+	if record.Kind != "approval" || !grantIDs[record.GrantID] || seen[record.GrantID] {
+		return false
+	}
+	var payload approvalOutboxPayload
+	return strictjson.Decode(record.PayloadJSON, &payload, true) == nil && payload.GrantID == record.GrantID
 }
 
 func grantToSQLite(grant Grant) (state.GrantRecord, error) {
@@ -208,25 +233,9 @@ func grantToSQLite(grant Grant) (state.GrantRecord, error) {
 }
 
 func grantFromSQLite(record state.GrantRecord) (Grant, error) {
-	var target policy.Target
-	if err := strictjson.Decode(record.TargetJSON, &target, true); err != nil {
-		return Grant{}, fmt.Errorf("decode grant target: %w", err)
-	}
-	attrs := map[string][]string{}
-	if err := strictjson.Decode(record.AttrsJSON, &attrs, true); err != nil {
-		return Grant{}, fmt.Errorf("decode grant attributes: %w", err)
-	}
-	metadata := map[string]string{}
-	if err := strictjson.Decode(record.MetadataJSON, &metadata, true); err != nil {
-		return Grant{}, fmt.Errorf("decode grant metadata: %w", err)
-	}
-	var notification *MessageRef
-	if len(record.NotificationJSON) > 0 {
-		var value MessageRef
-		if err := strictjson.Decode(record.NotificationJSON, &value, true); err != nil {
-			return Grant{}, fmt.Errorf("decode grant notification: %w", err)
-		}
-		notification = &value
+	target, attrs, metadata, notification, err := decodeGrantJSON(record)
+	if err != nil {
+		return Grant{}, err
 	}
 	digest, err := metadataPlanDigest(metadata)
 	if err != nil || digest != record.PlanDigest {
@@ -243,6 +252,34 @@ func grantFromSQLite(record state.GrantRecord) (Grant, error) {
 		MaxUses: record.MaxUses, RequestedMaxUses: record.RequestedMaxUses, ExpiredFrom: Status(record.ExpiredFrom),
 		Notification: notification, NotificationStatus: record.NotificationStatus, NotificationClaimedAt: record.NotificationClaimedAt,
 		NotificationClaimUntil: record.NotificationClaimUntil, NotificationDeliveryUnresolved: record.NotificationDeliveryUnresolved}, nil
+}
+
+func decodeGrantJSON(record state.GrantRecord) (policy.Target, map[string][]string, map[string]string, *MessageRef, error) {
+	var target policy.Target
+	if err := strictjson.Decode(record.TargetJSON, &target, true); err != nil {
+		return target, nil, nil, nil, fmt.Errorf("decode grant target: %w", err)
+	}
+	attrs := map[string][]string{}
+	if err := strictjson.Decode(record.AttrsJSON, &attrs, true); err != nil {
+		return target, nil, nil, nil, fmt.Errorf("decode grant attributes: %w", err)
+	}
+	metadata := map[string]string{}
+	if err := strictjson.Decode(record.MetadataJSON, &metadata, true); err != nil {
+		return target, nil, nil, nil, fmt.Errorf("decode grant metadata: %w", err)
+	}
+	notification, err := decodeNotification(record.NotificationJSON)
+	return target, attrs, metadata, notification, err
+}
+
+func decodeNotification(raw []byte) (*MessageRef, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var value MessageRef
+	if err := strictjson.Decode(raw, &value, true); err != nil {
+		return nil, fmt.Errorf("decode grant notification: %w", err)
+	}
+	return &value, nil
 }
 
 func metadataPlanDigest(metadata map[string]string) (string, error) {
@@ -263,8 +300,8 @@ func metadataPlanDigest(metadata map[string]string) (string, error) {
 }
 
 func decisionToSQLite(record decisionRecord) (state.GrantDecisionRecord, error) {
-	parts := strings.Split(record.Scope, "\x00")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+	requestID, action, key, ok := parseDecisionScope(record.Scope)
+	if !ok {
 		return state.GrantDecisionRecord{}, ErrUnsupportedState
 	}
 	result, err := json.Marshal(record.Result)
@@ -275,22 +312,38 @@ func decisionToSQLite(record decisionRecord) (state.GrantDecisionRecord, error) 
 	if err != nil {
 		return state.GrantDecisionRecord{}, err
 	}
-	return state.GrantDecisionRecord{Scope: record.Scope, RequestID: parts[0], Action: parts[1], IdempotencyKey: parts[2],
+	return state.GrantDecisionRecord{Scope: record.Scope, RequestID: requestID, Action: action, IdempotencyKey: key,
 		CommandHash: record.CommandHash, ResultJSON: result, PreviousJSON: previous, EventCursor: record.EventCursor, CommittedAt: record.CommittedAt}, nil
 }
 
 func decisionFromSQLite(record state.GrantDecisionRecord) (decisionRecord, error) {
-	var result, previous Grant
-	if err := strictjson.Decode(record.ResultJSON, &result, true); err != nil {
-		return decisionRecord{}, fmt.Errorf("decode decision result: %w", err)
+	result, previous, err := decodeDecisionGrants(record)
+	if err != nil {
+		return decisionRecord{}, err
 	}
-	if err := strictjson.Decode(record.PreviousJSON, &previous, true); err != nil {
-		return decisionRecord{}, fmt.Errorf("decode previous decision state: %w", err)
-	}
-	parts := strings.Split(record.Scope, "\x00")
-	if len(parts) != 3 || parts[0] != record.RequestID || parts[1] != record.Action || parts[2] != record.IdempotencyKey {
+	requestID, action, key, ok := parseDecisionScope(record.Scope)
+	if !ok || requestID != record.RequestID || action != record.Action || key != record.IdempotencyKey {
 		return decisionRecord{}, ErrUnsupportedState
 	}
 	return decisionRecord{Scope: record.Scope, CommandHash: record.CommandHash, Result: result, Previous: previous,
 		EventCursor: record.EventCursor, CommittedAt: record.CommittedAt}, nil
+}
+
+func decodeDecisionGrants(record state.GrantDecisionRecord) (Grant, Grant, error) {
+	var result, previous Grant
+	if err := strictjson.Decode(record.ResultJSON, &result, true); err != nil {
+		return Grant{}, Grant{}, fmt.Errorf("decode decision result: %w", err)
+	}
+	if err := strictjson.Decode(record.PreviousJSON, &previous, true); err != nil {
+		return Grant{}, Grant{}, fmt.Errorf("decode previous decision state: %w", err)
+	}
+	return result, previous, nil
+}
+
+func parseDecisionScope(scope string) (string, string, string, bool) {
+	parts := strings.Split(scope, "\x00")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }

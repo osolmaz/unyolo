@@ -207,12 +207,19 @@ func (s *Store) RequestWithPlan(req Request, plan ImmutablePlan) (RequestResult,
 	if s == nil || s.database == nil {
 		return RequestResult{}, false, errors.New("SQLite grant store is required")
 	}
-	digest, err := metadataPlanDigest(req.Metadata)
-	if err != nil || digest == "" || digest != plan.Digest || plan.CreatedAt.IsZero() {
-		return RequestResult{}, false, errors.New("grant immutable plan is invalid")
+	if err := validateImmutableRequestPlan(req.Metadata, plan); err != nil {
+		return RequestResult{}, false, err
 	}
 	record := &state.PlanRecord{Digest: plan.Digest, SchemaName: plan.SchemaName, Canonical: bytes.Clone(plan.Canonical), CreatedAt: plan.CreatedAt}
 	return s.request(req, record)
+}
+
+func validateImmutableRequestPlan(metadata map[string]string, plan ImmutablePlan) error {
+	digest, err := metadataPlanDigest(metadata)
+	if err != nil || digest == "" || digest != plan.Digest || plan.CreatedAt.IsZero() {
+		return errors.New("grant immutable plan is invalid")
+	}
+	return nil
 }
 
 func (s *Store) request(req Request, plan *state.PlanRecord) (RequestResult, bool, error) {
@@ -617,25 +624,7 @@ func (s *Store) updateWithPlan(plan *state.PlanRecord, mutator func(*fileData) e
 }
 
 func (s *Store) load() (fileData, error) {
-	if s.database != nil {
-		snapshot, err := s.database.GrantSnapshot(context.Background())
-		if err != nil {
-			return fileData{}, err
-		}
-		s.loadedSnapshot = &snapshot
-		data, err := fileDataFromSQLite(snapshot)
-		if err != nil {
-			return fileData{}, err
-		}
-		if err := validateLoadedGrants(data.Grants); err != nil {
-			return fileData{}, err
-		}
-		if err := normalizeLoadedEvents(&data); err != nil {
-			return fileData{}, err
-		}
-		return data, nil
-	}
-	data, err := s.readState()
+	data, err := s.loadRaw()
 	if err != nil {
 		return fileData{}, err
 	}
@@ -646,6 +635,18 @@ func (s *Store) load() (fileData, error) {
 		return fileData{}, err
 	}
 	return data, nil
+}
+
+func (s *Store) loadRaw() (fileData, error) {
+	if s.database != nil {
+		snapshot, err := s.database.GrantSnapshot(context.Background())
+		if err != nil {
+			return fileData{}, err
+		}
+		s.loadedSnapshot = &snapshot
+		return fileDataFromSQLite(snapshot)
+	}
+	return s.readState()
 }
 
 func (s *Store) save(data fileData) error {

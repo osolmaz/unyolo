@@ -66,23 +66,40 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.submitLocked(normalized)
+}
+
+func (s *Store) submitLocked(input Submit) (agentv1.Operation, bool, error) {
 	ctx := context.Background()
 	now := s.now().UTC()
 	if _, err := s.db.DeleteTerminalOperationsBefore(ctx, now.Add(-terminalRetention)); err != nil {
 		return agentv1.Operation{}, false, err
 	}
-	if record, err := s.db.OperationByIdempotency(ctx, normalized.ClientID, normalized.IdempotencyKey); err == nil {
+	if existing, found, err := s.findSubmission(ctx, input); err != nil || found {
+		return existing, false, err
+	}
+	return s.createOperation(ctx, input, now)
+}
+
+func (s *Store) findSubmission(ctx context.Context, input Submit) (agentv1.Operation, bool, error) {
+	record, err := s.db.OperationByIdempotency(ctx, input.ClientID, input.IdempotencyKey)
+	if err == nil {
 		existing, err := operationFromRecord(record)
 		if err != nil {
 			return agentv1.Operation{}, false, err
 		}
-		if !sameSubmission(existing, normalized) {
+		if !sameSubmission(existing, input) {
 			return agentv1.Operation{}, false, ErrIdempotencyConflict
 		}
-		return clone(existing), false, nil
-	} else if !errors.Is(err, state.ErrNotFound) {
-		return agentv1.Operation{}, false, err
+		return clone(existing), true, nil
 	}
+	if errors.Is(err, state.ErrNotFound) {
+		return agentv1.Operation{}, false, nil
+	}
+	return agentv1.Operation{}, false, err
+}
+
+func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time) (agentv1.Operation, bool, error) {
 	count, err := s.db.CountOperations(ctx)
 	if err != nil {
 		return agentv1.Operation{}, false, err
@@ -95,10 +112,10 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 		return agentv1.Operation{}, false, err
 	}
 	op := agentv1.Operation{
-		APIVersion: agentv1.APIVersion, ID: id, Broker: normalized.Broker, ClientID: normalized.ClientID,
-		IdempotencyKey: normalized.IdempotencyKey, Operation: normalized.Operation, Target: normalized.Target,
-		Arguments: normalized.Arguments, Reason: normalized.Reason, State: agentv1.StatePending, Revision: 1,
-		CreatedAt: now, UpdatedAt: now, Presentation: normalized.Presentation,
+		APIVersion: agentv1.APIVersion, ID: id, Broker: input.Broker, ClientID: input.ClientID,
+		IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: input.Target,
+		Arguments: input.Arguments, Reason: input.Reason, State: agentv1.StatePending, Revision: 1,
+		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation,
 	}
 	if err := s.db.InsertOperation(ctx, operationRecord(op)); err != nil {
 		return agentv1.Operation{}, false, err
@@ -181,10 +198,10 @@ func (s *Store) Succeed(id string, result json.RawMessage) (agentv1.Operation, e
 }
 
 func (s *Store) Fail(id string, state agentv1.State, code, message string) (agentv1.Operation, error) {
-	if state != agentv1.StateFailed && state != agentv1.StateDenied && state != agentv1.StateExpired && state != agentv1.StateCanceled {
+	if !validFailureState(state) {
 		return agentv1.Operation{}, ErrInvalidTransition
 	}
-	if strings.TrimSpace(code) == "" || len(code) > 64 || strings.TrimSpace(message) == "" || len(message) > 500 {
+	if !validOperationError(&agentv1.OperationError{Code: code, Message: message}) {
 		return agentv1.Operation{}, errors.New("operation error is invalid")
 	}
 	return s.update(id, func(operation *agentv1.Operation) error {
@@ -195,6 +212,15 @@ func (s *Store) Fail(id string, state agentv1.State, code, message string) (agen
 		operation.Error = &agentv1.OperationError{Code: code, Message: message}
 		return nil
 	})
+}
+
+func validFailureState(state agentv1.State) bool {
+	switch state {
+	case agentv1.StateFailed, agentv1.StateDenied, agentv1.StateExpired, agentv1.StateCanceled:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Store) Wait(ctx context.Context, clientID, id string, after int64) (agentv1.Operation, error) {
@@ -410,16 +436,24 @@ func validStoredIdentity(operation agentv1.Operation) bool {
 }
 
 func validateStoredLifecycle(operation agentv1.Operation) error {
-	if operation.State.Terminal() != (operation.TerminalAt != nil) {
+	if !validStoredTerminal(operation) {
 		return errors.New("operation terminal timestamp is invalid")
 	}
-	if !validState(operation.State) || len(operation.ApprovalID) > 128 {
+	if !validStoredState(operation) {
 		return errors.New("operation state or approval is invalid")
 	}
 	if operation.Error != nil && !validOperationError(operation.Error) {
 		return errors.New("operation error is invalid")
 	}
 	return nil
+}
+
+func validStoredTerminal(operation agentv1.Operation) bool {
+	return operation.State.Terminal() == (operation.TerminalAt != nil)
+}
+
+func validStoredState(operation agentv1.Operation) bool {
+	return validState(operation.State) && len(operation.ApprovalID) <= 128
 }
 
 func validOperationError(value *agentv1.OperationError) bool {

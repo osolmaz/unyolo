@@ -37,6 +37,18 @@ func TestPlanRepositoryIsContentAddressed(t *testing.T) {
 	if _, err := database.PutPlan(t.Context(), "", canonical, createdAt); err == nil {
 		t.Fatal("PutPlan() accepted an empty schema")
 	}
+	for name, test := range map[string]struct {
+		schema    string
+		canonical []byte
+	}{
+		"long schema":      {schema: string(bytes.Repeat([]byte("x"), 129)), canonical: canonical},
+		"empty canonical":  {schema: "provider/v1"},
+		"padded canonical": {schema: "provider/v1", canonical: []byte(" {} ")},
+	} {
+		if _, err := database.PutPlan(t.Context(), test.schema, test.canonical, createdAt); err == nil {
+			t.Fatalf("PutPlan() accepted %s", name)
+		}
+	}
 }
 
 func TestPlanRepositoryRejectsCorruptRows(t *testing.T) {

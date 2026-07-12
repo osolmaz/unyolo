@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/osolmaz/brokerkit/plandigest"
@@ -117,9 +116,8 @@ func (d *Database) saveGrantSnapshot(ctx context.Context, before, after GrantSna
 }
 
 func putPlanWithQueries(ctx context.Context, queries *dbsql.Queries, plan PlanRecord) error {
-	if !plandigest.Valid(plan.Digest) || plan.Digest != plandigest.Digest(plan.Canonical) || strings.TrimSpace(plan.SchemaName) == "" ||
-		len(plan.SchemaName) > 128 || len(plan.Canonical) == 0 || len(plan.Canonical) > 1<<20 || !bytes.Equal(bytes.TrimSpace(plan.Canonical), plan.Canonical) || plan.CreatedAt.IsZero() {
-		return errors.New("immutable plan is invalid")
+	if err := validatePlanRecord(plan); err != nil {
+		return err
 	}
 	if err := queries.PutPlan(ctx, dbsql.PutPlanParams{Digest: plan.Digest, SchemaName: plan.SchemaName,
 		Canonical: plan.Canonical, CreatedAt: formatTime(plan.CreatedAt)}); err != nil {
@@ -129,13 +127,50 @@ func putPlanWithQueries(ctx context.Context, queries *dbsql.Queries, plan PlanRe
 	if err != nil {
 		return err
 	}
-	if stored.SchemaName != plan.SchemaName || !bytes.Equal(stored.Canonical, plan.Canonical) || stored.CreatedAt != formatTime(plan.CreatedAt) {
+	return verifyStoredPlan(stored, plan)
+}
+
+func validatePlanRecord(plan PlanRecord) error {
+	if err := validatePlanContent(plan.SchemaName, plan.Canonical); err != nil {
+		return err
+	}
+	if !plandigest.Valid(plan.Digest) || plan.Digest != plandigest.Digest(plan.Canonical) {
+		return errors.New("immutable plan digest is invalid")
+	}
+	if plan.CreatedAt.IsZero() {
+		return errors.New("immutable plan creation time is required")
+	}
+	return nil
+}
+
+func verifyStoredPlan(stored dbsql.Plan, plan PlanRecord) error {
+	if stored.SchemaName != plan.SchemaName || !bytes.Equal(stored.Canonical, plan.Canonical) {
 		return errors.New("plan digest collision")
+	}
+	if stored.CreatedAt != formatTime(plan.CreatedAt) {
+		return errors.New("plan creation time collision")
 	}
 	return nil
 }
 
 func loadGrantSnapshot(ctx context.Context, queries *dbsql.Queries) (GrantSnapshot, error) {
+	snapshot, err := loadGrants(ctx, queries)
+	if err != nil {
+		return GrantSnapshot{}, err
+	}
+	if snapshot.Events, err = loadGrantEvents(ctx, queries); err != nil {
+		return GrantSnapshot{}, err
+	}
+	if snapshot.Decisions, err = loadGrantDecisions(ctx, queries); err != nil {
+		return GrantSnapshot{}, err
+	}
+	if snapshot.Outbox, err = loadNotificationOutbox(ctx, queries); err != nil {
+		return GrantSnapshot{}, err
+	}
+	return snapshot, nil
+}
+
+func loadGrants(ctx context.Context, queries *dbsql.Queries) (GrantSnapshot, error) {
 	rows, err := queries.ListGrants(ctx)
 	if err != nil {
 		return GrantSnapshot{}, err
@@ -148,72 +183,66 @@ func loadGrantSnapshot(ctx context.Context, queries *dbsql.Queries) (GrantSnapsh
 		}
 		snapshot.Grants = append(snapshot.Grants, record)
 	}
+	return snapshot, nil
+}
+
+func loadGrantEvents(ctx context.Context, queries *dbsql.Queries) ([]GrantLifecycleRecord, error) {
 	events, err := queries.ListGrantLifecycleEvents(ctx)
 	if err != nil {
-		return GrantSnapshot{}, err
+		return nil, err
 	}
+	result := make([]GrantLifecycleRecord, 0, len(events))
 	for _, row := range events {
 		occurredAt, err := parseTime(row.OccurredAt)
 		if err != nil || row.Sequence < 1 {
-			return GrantSnapshot{}, errors.New("invalid grant lifecycle event")
+			return nil, errors.New("invalid grant lifecycle event")
 		}
-		snapshot.Events = append(snapshot.Events, GrantLifecycleRecord{Sequence: uint64(row.Sequence), Cursor: row.Cursor,
+		result = append(result, GrantLifecycleRecord{Sequence: uint64(row.Sequence), Cursor: row.Cursor,
 			GrantID: row.SubjectID, Kind: row.Kind, Revision: row.Revision, OccurredAt: occurredAt, PayloadJSON: []byte(row.PayloadJson)})
 	}
+	return result, nil
+}
+
+func loadGrantDecisions(ctx context.Context, queries *dbsql.Queries) ([]GrantDecisionRecord, error) {
 	decisions, err := queries.ListDecisionRecords(ctx)
 	if err != nil {
-		return GrantSnapshot{}, err
+		return nil, err
 	}
+	result := make([]GrantDecisionRecord, 0, len(decisions))
 	for _, row := range decisions {
 		committedAt, err := parseTime(row.CommittedAt)
 		if err != nil {
-			return GrantSnapshot{}, errors.New("invalid grant decision record")
+			return nil, errors.New("invalid grant decision record")
 		}
-		snapshot.Decisions = append(snapshot.Decisions, GrantDecisionRecord{Scope: row.Scope, RequestID: row.RequestID,
+		result = append(result, GrantDecisionRecord{Scope: row.Scope, RequestID: row.RequestID,
 			Action: row.Action, IdempotencyKey: row.IdempotencyKey, CommandHash: row.CommandHash,
 			ResultJSON: []byte(row.ResultJson), PreviousJSON: []byte(row.PreviousJson), EventCursor: row.EventCursor, CommittedAt: committedAt})
 	}
+	return result, nil
+}
+
+func loadNotificationOutbox(ctx context.Context, queries *dbsql.Queries) ([]NotificationOutboxRecord, error) {
 	outbox, err := queries.ListNotificationOutbox(ctx)
 	if err != nil {
-		return GrantSnapshot{}, err
+		return nil, err
 	}
+	result := make([]NotificationOutboxRecord, 0, len(outbox))
 	for _, row := range outbox {
 		record, err := decodeNotificationOutbox(row)
 		if err != nil {
-			return GrantSnapshot{}, err
+			return nil, err
 		}
-		snapshot.Outbox = append(snapshot.Outbox, record)
+		result = append(result, record)
 	}
-	return snapshot, nil
+	return result, nil
 }
 
 func persistGrantChanges(ctx context.Context, queries *dbsql.Queries, before, after GrantSnapshot) error {
 	if err := validateGrantSnapshotTransition(before, after); err != nil {
 		return err
 	}
-	oldGrants := make(map[string]GrantRecord, len(before.Grants))
-	for _, record := range before.Grants {
-		oldGrants[record.ID] = record
-	}
-	for _, record := range after.Grants {
-		previous, exists := oldGrants[record.ID]
-		if !exists {
-			if err := queries.InsertGrant(ctx, insertGrantParams(record)); err != nil {
-				return err
-			}
-			continue
-		}
-		if reflect.DeepEqual(previous, record) {
-			continue
-		}
-		params := updateGrantParams(record, previous.Revision)
-		updated, err := queries.UpdateGrant(ctx, params)
-		if err != nil {
-			return err
-		}
-		if updated != 1 {
-			return ErrGrantStateConflict
-		}
+	if err := persistGrants(ctx, queries, before.Grants, after.Grants); err != nil {
+		return err
 	}
 	if err := persistGrantEvents(ctx, queries, before.Events, after.Events); err != nil {
 		return err
@@ -221,51 +250,104 @@ func persistGrantChanges(ctx context.Context, queries *dbsql.Queries, before, af
 	if err := persistGrantDecisions(ctx, queries, before.Decisions, after.Decisions); err != nil {
 		return err
 	}
-	return persistNotificationOutbox(ctx, queries, before.Outbox, after.Outbox)
+	return persistIndexedRecords(before.Outbox, after.Outbox, func(record NotificationOutboxRecord) int64 { return record.ID },
+		func(old map[int64]NotificationOutboxRecord, record NotificationOutboxRecord) error {
+			return persistOutboxRecord(ctx, queries, old, record)
+		})
+}
+
+func persistGrants(ctx context.Context, queries *dbsql.Queries, before, after []GrantRecord) error {
+	return persistIndexedRecords(before, after, func(record GrantRecord) string { return record.ID },
+		func(old map[string]GrantRecord, record GrantRecord) error {
+			return persistGrant(ctx, queries, old, record)
+		})
+}
+
+func persistGrant(ctx context.Context, queries *dbsql.Queries, old map[string]GrantRecord, record GrantRecord) error {
+	previous, exists := old[record.ID]
+	if !exists {
+		return queries.InsertGrant(ctx, insertGrantParams(record))
+	}
+	if reflect.DeepEqual(previous, record) {
+		return nil
+	}
+	updated, err := queries.UpdateGrant(ctx, updateGrantParams(record, previous.Revision))
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrGrantStateConflict
+	}
+	return nil
 }
 
 func validateGrantSnapshotTransition(before, after GrantSnapshot) error {
-	afterGrants := make(map[string]bool, len(after.Grants))
-	for _, record := range after.Grants {
+	if err := validateGrantRetention(before.Grants, after.Grants); err != nil {
+		return err
+	}
+	if err := validateEventImmutability(before.Events, after.Events); err != nil {
+		return err
+	}
+	if err := validateDecisionRetention(before.Decisions, after.Decisions); err != nil {
+		return err
+	}
+	return validateOutboxRetention(before.Outbox, after.Outbox)
+}
+
+func validateGrantRetention(before, after []GrantRecord) error {
+	afterGrants := make(map[string]bool, len(after))
+	for _, record := range after {
 		afterGrants[record.ID] = true
 	}
-	for _, record := range before.Grants {
+	for _, record := range before {
 		if !afterGrants[record.ID] {
 			return errors.New("grant deletion is unsupported")
 		}
 	}
-	oldEvents := make(map[uint64]GrantLifecycleRecord, len(before.Events))
-	for _, record := range before.Events {
+	return nil
+}
+
+func validateEventImmutability(before, after []GrantLifecycleRecord) error {
+	oldEvents := make(map[uint64]GrantLifecycleRecord, len(before))
+	for _, record := range before {
 		oldEvents[record.Sequence] = record
 	}
-	for _, record := range after.Events {
+	for _, record := range after {
 		if previous, exists := oldEvents[record.Sequence]; exists && !reflect.DeepEqual(previous, record) {
 			return errors.New("grant lifecycle event is immutable")
 		}
 	}
-	oldDecisions := make(map[string]GrantDecisionRecord, len(before.Decisions))
-	for _, record := range before.Decisions {
+	return nil
+}
+
+func validateDecisionRetention(before, after []GrantDecisionRecord) error {
+	oldDecisions := make(map[string]GrantDecisionRecord, len(before))
+	for _, record := range before {
 		oldDecisions[record.Scope] = record
 	}
-	afterDecisions := make(map[string]bool, len(after.Decisions))
-	for _, record := range after.Decisions {
+	afterDecisions := make(map[string]bool, len(after))
+	for _, record := range after {
 		afterDecisions[record.Scope] = true
 		if previous, exists := oldDecisions[record.Scope]; exists && !reflect.DeepEqual(previous, record) {
 			return errors.New("grant decision record is immutable")
 		}
 	}
-	for _, record := range before.Decisions {
+	for _, record := range before {
 		if !afterDecisions[record.Scope] {
 			return errors.New("grant decision record deletion is unsupported")
 		}
 	}
-	afterOutbox := make(map[int64]bool, len(after.Outbox))
-	for _, record := range after.Outbox {
+	return nil
+}
+
+func validateOutboxRetention(before, after []NotificationOutboxRecord) error {
+	afterOutbox := make(map[int64]bool, len(after))
+	for _, record := range after {
 		if record.ID > 0 {
 			afterOutbox[record.ID] = true
 		}
 	}
-	for _, record := range before.Outbox {
+	for _, record := range before {
 		if !afterOutbox[record.ID] {
 			return errors.New("notification outbox deletion is unsupported")
 		}
@@ -274,10 +356,8 @@ func validateGrantSnapshotTransition(before, after GrantSnapshot) error {
 }
 
 func persistGrantEvents(ctx context.Context, queries *dbsql.Queries, before, after []GrantLifecycleRecord) error {
-	if len(after) > 0 && (len(before) == 0 || after[0].Sequence > before[0].Sequence) {
-		if err := queries.DeleteGrantLifecycleEventsBefore(ctx, int64(after[0].Sequence)); err != nil {
-			return err
-		}
+	if err := pruneGrantEvents(ctx, queries, before, after); err != nil {
+		return err
 	}
 	old := make(map[uint64]bool, len(before))
 	for _, record := range before {
@@ -287,15 +367,26 @@ func persistGrantEvents(ctx context.Context, queries *dbsql.Queries, before, aft
 		if old[record.Sequence] {
 			continue
 		}
-		if record.Sequence > uint64(^uint64(0)>>1) {
-			return errors.New("grant lifecycle sequence overflow")
-		}
-		if err := queries.InsertGrantLifecycleEvent(ctx, dbsql.InsertGrantLifecycleEventParams{Sequence: int64(record.Sequence), Cursor: record.Cursor,
-			SubjectID: record.GrantID, Kind: record.Kind, Revision: record.Revision, OccurredAt: formatTime(record.OccurredAt), PayloadJson: string(record.PayloadJSON)}); err != nil {
+		if err := insertGrantEvent(ctx, queries, record); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func pruneGrantEvents(ctx context.Context, queries *dbsql.Queries, before, after []GrantLifecycleRecord) error {
+	if len(after) == 0 || (len(before) > 0 && after[0].Sequence <= before[0].Sequence) {
+		return nil
+	}
+	return queries.DeleteGrantLifecycleEventsBefore(ctx, int64(after[0].Sequence))
+}
+
+func insertGrantEvent(ctx context.Context, queries *dbsql.Queries, record GrantLifecycleRecord) error {
+	if record.Sequence > uint64(^uint64(0)>>1) {
+		return errors.New("grant lifecycle sequence overflow")
+	}
+	return queries.InsertGrantLifecycleEvent(ctx, dbsql.InsertGrantLifecycleEventParams{Sequence: int64(record.Sequence), Cursor: record.Cursor,
+		SubjectID: record.GrantID, Kind: record.Kind, Revision: record.Revision, OccurredAt: formatTime(record.OccurredAt), PayloadJson: string(record.PayloadJSON)})
 }
 
 func persistGrantDecisions(ctx context.Context, queries *dbsql.Queries, before, after []GrantDecisionRecord) error {
@@ -317,33 +408,47 @@ func persistGrantDecisions(ctx context.Context, queries *dbsql.Queries, before, 
 	return nil
 }
 
-func persistNotificationOutbox(ctx context.Context, queries *dbsql.Queries, before, after []NotificationOutboxRecord) error {
-	old := make(map[int64]NotificationOutboxRecord, len(before))
-	for _, record := range before {
-		old[record.ID] = record
+func persistIndexedRecords[Key comparable, Record any](before, after []Record, key func(Record) Key,
+	persist func(map[Key]Record, Record) error,
+) error {
+	old := indexRecords(before, key)
+	return persistRecords(after, func(record Record) error { return persist(old, record) })
+}
+
+func indexRecords[Key comparable, Record any](records []Record, key func(Record) Key) map[Key]Record {
+	result := make(map[Key]Record, len(records))
+	for _, record := range records {
+		result[key(record)] = record
 	}
-	for _, record := range after {
-		previous, exists := old[record.ID]
-		if !exists {
-			if record.ID != 0 {
-				return errors.New("notification outbox id is invalid")
-			}
-			if err := queries.InsertNotificationOutbox(ctx, insertNotificationOutboxParams(record)); err != nil {
-				return err
-			}
-			continue
-		}
-		if reflect.DeepEqual(previous, record) {
-			continue
-		}
-		params := updateNotificationOutboxParams(record, previous)
-		updated, err := queries.UpdateNotificationOutbox(ctx, params)
-		if err != nil {
+	return result
+}
+
+func persistRecords[Record any](records []Record, persist func(Record) error) error {
+	for _, record := range records {
+		if err := persist(record); err != nil {
 			return err
 		}
-		if updated != 1 {
-			return ErrGrantStateConflict
+	}
+	return nil
+}
+
+func persistOutboxRecord(ctx context.Context, queries *dbsql.Queries, old map[int64]NotificationOutboxRecord, record NotificationOutboxRecord) error {
+	previous, exists := old[record.ID]
+	if !exists {
+		if record.ID != 0 {
+			return errors.New("notification outbox id is invalid")
 		}
+		return queries.InsertNotificationOutbox(ctx, insertNotificationOutboxParams(record))
+	}
+	if reflect.DeepEqual(previous, record) {
+		return nil
+	}
+	updated, err := queries.UpdateNotificationOutbox(ctx, updateNotificationOutboxParams(record, previous))
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrGrantStateConflict
 	}
 	return nil
 }

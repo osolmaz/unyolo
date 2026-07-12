@@ -53,6 +53,10 @@ func Open(ctx context.Context, directory string, options Options) (*Database, er
 	if err != nil {
 		return nil, err
 	}
+	return openLeasedDatabase(ctx, directory, options, lock)
+}
+
+func openLeasedDatabase(ctx context.Context, directory string, options Options, lock *lease) (*Database, error) {
 	db, err := openSQL(filepath.Join(directory, databaseFile), options)
 	if err != nil {
 		_ = lock.close()

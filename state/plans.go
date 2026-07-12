@@ -20,9 +20,8 @@ type PlanRecord struct {
 }
 
 func (d *Database) PutPlan(ctx context.Context, schemaName string, canonical []byte, createdAt time.Time) (string, error) {
-	if strings.TrimSpace(schemaName) == "" || len(schemaName) > 128 || len(canonical) == 0 || len(canonical) > 1<<20 ||
-		!bytes.Equal(bytes.TrimSpace(canonical), canonical) {
-		return "", errors.New("canonical plan and schema are required")
+	if err := validatePlanContent(schemaName, canonical); err != nil {
+		return "", err
 	}
 	digest := plandigest.Digest(canonical)
 	if err := d.queries.PutPlan(ctx, dbsql.PutPlanParams{Digest: digest, SchemaName: schemaName, Canonical: canonical, CreatedAt: formatTime(createdAt)}); err != nil {
@@ -36,6 +35,19 @@ func (d *Database) PutPlan(ctx context.Context, schemaName string, canonical []b
 		return "", errors.New("plan digest collision")
 	}
 	return digest, nil
+}
+
+func validatePlanContent(schemaName string, canonical []byte) error {
+	if strings.TrimSpace(schemaName) == "" || len(schemaName) > 128 {
+		return errors.New("plan schema is invalid")
+	}
+	if len(canonical) == 0 || len(canonical) > 1<<20 {
+		return errors.New("canonical plan is invalid")
+	}
+	if !bytes.Equal(bytes.TrimSpace(canonical), canonical) {
+		return errors.New("canonical plan has surrounding whitespace")
+	}
+	return nil
 }
 
 func (d *Database) Plan(ctx context.Context, digest string) (PlanRecord, error) {

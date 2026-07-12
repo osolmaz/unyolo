@@ -161,6 +161,29 @@ func TestStoreBoundsAndPrunesOperations(t *testing.T) {
 	}
 }
 
+func TestStoredLifecycleRejectsCorruptState(t *testing.T) {
+	now := time.Date(2026, 7, 13, 6, 0, 0, 0, time.UTC)
+	valid := validOperationForStore("op", agentv1.StatePending, now)
+	tests := []struct {
+		name   string
+		mutate func(*agentv1.Operation)
+	}{
+		{name: "terminal timestamp", mutate: func(operation *agentv1.Operation) { operation.TerminalAt = &now }},
+		{name: "state", mutate: func(operation *agentv1.Operation) { operation.State = agentv1.State("invalid") }},
+		{name: "approval", mutate: func(operation *agentv1.Operation) { operation.ApprovalID = strings.Repeat("a", 129) }},
+		{name: "error", mutate: func(operation *agentv1.Operation) { operation.Error = &agentv1.OperationError{} }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operation := valid
+			test.mutate(&operation)
+			if err := validateStoredLifecycle(operation); err == nil {
+				t.Fatal("validateStoredLifecycle() accepted corrupt state")
+			}
+		})
+	}
+}
+
 func newTestStore(t *testing.T, now func() time.Time, newID func() (string, error)) *Store {
 	t.Helper()
 	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
