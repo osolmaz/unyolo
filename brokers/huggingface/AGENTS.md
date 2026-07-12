@@ -14,8 +14,10 @@ monorepo. Root `AGENTS.md` and root quality gates also apply.
   Hugging Face token, broker client secrets, or token metadata.
 - Scope configuration (`scope.json`) is a manually edited file. Do not add
   endpoints that read, reload, or change it.
-- Do not add generic Hub API proxying, arbitrary command execution, or
-  repository administration operations.
+- Do not add generic Hub API proxying or arbitrary command execution.
+  Repository administration is allowed only through fixed typed operations
+  whose exact target and arguments are policy checked, approval bound, and
+  executed by hf-broker.
 - Every endpoint except `GET /healthz` requires authentication.
 - Fail closed: a request the policy engine cannot classify is refused.
 - Audit log lines never contain secrets, request bodies, or pack contents.

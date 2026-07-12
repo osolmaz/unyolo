@@ -51,6 +51,7 @@ func riskForOperation(operation string) operatorinbox.Risk {
 
 var operationRisks = map[hfpolicy.Operation]operatorinbox.Risk{
 	hfpolicy.OpRepoList:          operatorinbox.RiskLow,
+	hfpolicy.OpRepoCreate:        operatorinbox.RiskHigh,
 	hfpolicy.OpRepoMetadataRead:  operatorinbox.RiskLow,
 	hfpolicy.OpRepoContentsRead:  operatorinbox.RiskLow,
 	hfpolicy.OpGitFetch:          operatorinbox.RiskLow,

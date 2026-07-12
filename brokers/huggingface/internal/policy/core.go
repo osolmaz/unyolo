@@ -253,7 +253,7 @@ func hfRegistry() corepolicy.Registry {
 	for operation, info := range operations {
 		spec := corepolicy.OperationSpec{
 			TargetKinds: []string{string(operationTargetKind(operation))},
-			Attrs:       []string{"max_bytes", "ref_change"},
+			Attrs:       []string{"max_bytes", "private", "ref_change", "sdk"},
 			Grantable:   info.mode != GrantModeNone,
 		}
 		if spec.Grantable {
@@ -291,6 +291,8 @@ func hfRegistry() corepolicy.Registry {
 				Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true,
 			},
 			"ref_change": {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"private":    {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"sdk":        {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
 		},
 	}
 }
@@ -402,7 +404,7 @@ func canonicalCoreAttr(key string, value any) string {
 			return "invalid"
 		}
 		return strconv.FormatInt(number, 10)
-	case "ref_change":
+	case "private", "ref_change", "sdk":
 		text, _ := value.(string)
 		return text
 	default:

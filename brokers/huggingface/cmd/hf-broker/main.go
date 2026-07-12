@@ -67,10 +67,14 @@ func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr 
 		return runDoctor(ctx, stdout, stderr, args[1:])
 	case "setup":
 		return runSetup(ctx, stdout, stderr, args[1:])
+	case "client":
+		return runAgentClient(ctx, getenv, stdout, stderr, args[1:])
+	case "mcp":
+		return runMCP(ctx, getenv, os.Stdin, stdout, stderr, args[1:])
 	case "__doctor-isolation-probe":
 		return runDoctorIsolationProbe(stdout, stderr, args[1:])
 	default:
-		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup]"}
+		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|client|mcp]"}
 	}
 }
 

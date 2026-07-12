@@ -36,6 +36,7 @@ type Operation string
 
 const (
 	OpRepoList          Operation = "repo.list"
+	OpRepoCreate        Operation = "repo.create"
 	OpRepoMetadataRead  Operation = "repo.metadata.read"
 	OpRepoContentsRead  Operation = "repo.contents.read"
 	OpGitFetch          Operation = "git.fetch"
@@ -215,6 +216,7 @@ type ruleFieldParser func(*Rule, string, rawRule) error
 
 var operations = map[Operation]operationInfo{
 	OpRepoList:          {mode: GrantModeNone},
+	OpRepoCreate:        {mode: GrantModeExecution},
 	OpRepoMetadataRead:  {mode: GrantModeNone},
 	OpRepoContentsRead:  {mode: GrantModeWindow},
 	OpGitFetch:          {mode: GrantModeWindow},
@@ -252,7 +254,9 @@ var validRepoVisibilities = map[string]bool{
 
 var knownAttrs = map[string]bool{
 	"max_bytes":  true,
+	"private":    true,
 	"ref_change": true,
+	"sdk":        true,
 }
 
 var validRefChangeAttrs = map[string]bool{
@@ -927,6 +931,24 @@ func validateAttrConstraint(key string, constraint AttrConstraint) error {
 		for _, value := range constraint.Values {
 			if !validRefChangeAttrs[value] {
 				return fmt.Errorf("unsupported ref change %q", value)
+			}
+		}
+	case "private":
+		if len(constraint.Values) == 0 {
+			return fmt.Errorf("must be true or false")
+		}
+		for _, value := range constraint.Values {
+			if value != "true" && value != "false" && value != "*" {
+				return fmt.Errorf("must be true or false")
+			}
+		}
+	case "sdk":
+		if len(constraint.Values) == 0 {
+			return fmt.Errorf("must be a Space SDK")
+		}
+		for _, value := range constraint.Values {
+			if value != "docker" && value != "gradio" && value != "static" && value != "*" {
+				return fmt.Errorf("unsupported Space SDK %q", value)
 			}
 		}
 	}

@@ -28,6 +28,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/jsend"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
@@ -92,6 +93,7 @@ type Server struct {
 	maxBody             int64
 	grants              *grants.Store
 	plans               *hfplan.Store
+	operations          *hfoperation.Store
 	planValidator       hfplan.Validator
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
@@ -178,6 +180,7 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 	if opts.Config.TelegramBotToken != "" {
 		server.startGrantNotificationSweeper(ctx)
 	}
+	server.startOperationWorker(ctx)
 	return server, nil
 }
 
@@ -273,6 +276,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		maxBody:            opts.Config.MaxPackBytes,
 		grants:             store,
 		plans:              plans,
+		operations:         hfoperation.New(filepath.Join(opts.Config.StateDir, "operations", "operations.json")),
 		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
@@ -357,6 +361,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveHTTP routes one broker request after Echo dispatch.
 func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if writeHealth(w, r) {
+		return
+	}
+	if isAgentAPIPath(r.URL.Path) {
+		s.serveAgentAPI(w, r)
 		return
 	}
 	s.planGCOnce.Do(func() {

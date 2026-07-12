@@ -1116,6 +1116,18 @@ func TestRejectsMatcherBoundaryWhitespace(t *testing.T) {
 	}
 }
 
+func TestRepoCreateRequestPolicy(t *testing.T) {
+	pol := mustParse(t, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`)
+	request := Request{Client: "agent", Operation: OpRepoCreate, Target: Target{Kind: KindRepo, Type: TypeDataset, Owner: "alice", Name: "data"}, Attrs: map[string]any{"private": "true"}}
+	if blocked := pol.Decide(request, nil, time.Now(), false); blocked.Effect != EffectDeny || blocked.Reason != "approval_required" {
+		t.Fatalf("runtime decision = %#v", blocked)
+	}
+	decision := pol.Decide(request, nil, time.Now(), true)
+	if decision.Effect != EffectRequest {
+		t.Fatalf("decision = %#v", decision)
+	}
+}
+
 func mustParse(t *testing.T, body string) Policy {
 	t.Helper()
 	pol, err := Parse([]byte(body))

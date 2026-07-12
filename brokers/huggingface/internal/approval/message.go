@@ -9,6 +9,7 @@ import (
 )
 
 var operationTexts = map[string]string{
+	"repo.create":          "create a Hugging Face repository",
 	"repo.contents.read":   "read repo contents",
 	"git.fetch":            "fetch from a Git repo",
 	"git.push.append":      "append-push to a Git repo",

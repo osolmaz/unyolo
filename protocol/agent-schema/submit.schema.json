@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/agent/v1/submit.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["idempotency_key", "operation", "target", "arguments"],
+  "properties": {
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128},
+    "operation": {"type": "string", "minLength": 1, "maxLength": 128},
+    "target": {"type": "object", "maxProperties": 32},
+    "arguments": {"type": "object", "maxProperties": 32},
+    "reason": {"type": "string", "maxLength": 512}
+  }
+}
