@@ -32,6 +32,31 @@ func TestHandleDecision(t *testing.T) {
 	}
 }
 
+func TestHandleDecisionFailures(t *testing.T) {
+	if got := HandleDecision(t.Context(), nil, notify.Decision{}); !got.Retry {
+		t.Fatalf("HandleDecision(nil) = %+v, want retry", got)
+	}
+	if got := HandleDecision(t.Context(), fakeDecider{}, notify.Decision{Action: "unknown"}); got.Answer != "Grant decision ignored" || got.Retry {
+		t.Fatalf("HandleDecision(unknown) = %+v", got)
+	}
+	for _, test := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "not found", err: grants.ErrNotFound, want: "Grant not found"},
+		{name: "invalid token", err: grants.ErrInvalidDecisionToken, want: "Grant decision token did not match"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			decision := notify.Decision{Action: notify.ActionApprove}
+			got := HandleDecision(t.Context(), fakeDecider{approveErr: test.err}, decision)
+			if got.Answer != test.want || got.Retry {
+				t.Fatalf("HandleDecision() = %+v, want answer %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestActor(t *testing.T) {
 	for _, test := range []struct {
 		decision notify.Decision
