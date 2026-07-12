@@ -845,49 +845,6 @@ func lstatOrStat(path string, followSymlink bool) (os.FileInfo, error) {
 	return os.Lstat(path)
 }
 
-func canRead(agent identity, stat fileStat) bool {
-	return canAccess(agent, stat, 0o400, 0o040, 0o004)
-}
-
-func canWrite(agent identity, stat fileStat) bool {
-	return canAccess(agent, stat, 0o200, 0o020, 0o002)
-}
-
-func canReplaceDirectoryEntry(agent identity, stat fileStat) bool {
-	if !canWrite(agent, stat) {
-		return false
-	}
-	if stat.mode&os.ModeDir == 0 || stat.mode&os.ModeSticky == 0 {
-		return true
-	}
-	return agent.uid == 0 || agent.uid == stat.uid
-}
-
-func canReplacePathEntry(agent identity, entry, parent fileStat) bool {
-	if !canWrite(agent, parent) {
-		return false
-	}
-	if parent.mode&os.ModeDir == 0 || parent.mode&os.ModeSticky == 0 {
-		return true
-	}
-	return agent.uid == 0 || agent.uid == parent.uid || agent.uid == entry.uid
-}
-
-func canAccess(agent identity, stat fileStat, owner, group, other os.FileMode) bool {
-	if agent.uid == 0 {
-		return true
-	}
-	perm := stat.mode.Perm()
-	switch {
-	case agent.uid == stat.uid:
-		return true
-	case agent.gids[stat.gid]:
-		return perm&group != 0
-	default:
-		return perm&other != 0
-	}
-}
-
 type aclState int
 
 const (
