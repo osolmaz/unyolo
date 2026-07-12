@@ -997,12 +997,16 @@ func (s *Server) handleAPIGrantCreate(w http.ResponseWriter, r *http.Request, cl
 }
 
 func (s *Server) requireApprovalChannel(w http.ResponseWriter, client string) bool {
-	if s.notifier != nil || s.operatorConfigured {
+	if s.hasApprovalChannel() {
 		return true
 	}
 	writeJSendError(w, http.StatusServiceUnavailable, "approval channel is not configured", "approval_channel_not_configured")
 	s.record(client, "grant_request", "", audit.DecisionRefused, "approval channel is not configured", 0)
 	return false
+}
+
+func (s *Server) hasApprovalChannel() bool {
+	return s.notifier != nil || s.operatorConfigured
 }
 
 func readAPIGrantRequest(w http.ResponseWriter, r *http.Request) (apiGrantRequestBody, bool) {

@@ -21,11 +21,13 @@ import (
 	"github.com/osolmaz/brokerkit/agentv1wire"
 	"github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
+	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
@@ -159,19 +161,60 @@ func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Oper
 	}
 	operation = current
 	attrs := repoCreateAttrs(arguments)
-	decision := s.repoCreateDecision(operation.ClientID, target, attrs)
-	switch decision.Effect {
-	case policy.EffectAllow:
-		return s.approveStoredOperation(operation)
-	case policy.EffectRequest:
-		return s.bindRepoCreateApproval(ctx, operation, target, attrs, decision.GrantPolicy)
-	case policy.EffectDeny:
-		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "policy_denied", 0, decision)
-		return s.failOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation")
-	default:
-		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "not_allowed", 0, decision)
-		return s.failOperation(operation.ID, agentv1.StateDenied, "not_allowed", "No policy rule allows this operation")
+	providerRequest := policy.Request{Client: operation.ClientID, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
+	authorizationRequest := policy.AuthorizationRequest(providerRequest)
+	result, err := s.authorization.Authorize(authorizationRequest, func(bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
+		return s.prepareRepoCreateIntent(operation, target, attrs, authorizationRequest, bounds)
+	})
+	return s.applyRepoCreateAuthorization(ctx, operation, target, result, err)
+}
+
+func (s *Server) applyRepoCreateAuthorization(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, result bkauthorization.Result, err error) agentv1.Operation {
+	if err == nil {
+		return s.applySuccessfulRepoCreateAuthorization(ctx, operation, result)
 	}
+	return s.applyFailedRepoCreateAuthorization(operation, target, result, err)
+}
+
+func (s *Server) applySuccessfulRepoCreateAuthorization(ctx context.Context, operation agentv1.Operation, result bkauthorization.Result) agentv1.Operation {
+	if result.Request.Grant.ID == "" {
+		return s.approveStoredOperation(operation)
+	}
+	return s.bindRepoCreateApproval(ctx, operation, result.Request.Grant)
+}
+
+func (s *Server) applyFailedRepoCreateAuthorization(operation agentv1.Operation, target repoCreateTarget, result bkauthorization.Result, err error) agentv1.Operation {
+	if refused, ok := s.repoCreateRefusal(operation, target, result, err); ok {
+		return refused
+	}
+	return s.repoCreateApprovalFailure(operation, result)
+}
+
+func (s *Server) repoCreateApprovalFailure(operation agentv1.Operation, result bkauthorization.Result) agentv1.Operation {
+	if result.Decision.Effect != corepolicy.EffectRequest {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
+	}
+	return s.repoCreateRequestFailure(operation)
+}
+
+func (s *Server) repoCreateRequestFailure(operation agentv1.Operation) agentv1.Operation {
+	if !s.hasApprovalChannel() {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
+	}
+	return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
+}
+
+func (s *Server) repoCreateRefusal(operation agentv1.Operation, target repoCreateTarget, result bkauthorization.Result, err error) (agentv1.Operation, bool) {
+	decision := s.policy.AuthorizationDecision(result.Decision)
+	if errors.Is(err, bkauthorization.ErrDenied) {
+		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "policy_denied", 0, decision)
+		return s.failOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation"), true
+	}
+	if errors.Is(err, bkauthorization.ErrNoMatch) {
+		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "not_allowed", 0, decision)
+		return s.failOperation(operation.ID, agentv1.StateDenied, "not_allowed", "No policy rule allows this operation"), true
+	}
+	return agentv1.Operation{}, false
 }
 
 func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
@@ -181,16 +224,6 @@ func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
 		hash *= 1099511628211
 	}
 	return &s.operationAuthLocks[hash%uint64(len(s.operationAuthLocks))]
-}
-
-func (s *Server) repoCreateDecision(client string, target repoCreateTarget, attrs map[string]any) policy.Decision {
-	request := policy.Request{Client: client, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
-	now := s.utcNow()
-	decision := s.policy.Decide(request, nil, now, false)
-	if decision.Effect == policy.EffectDeny && decision.Reason == "approval_required" {
-		return s.policy.Decide(request, nil, now, true)
-	}
-	return decision
 }
 
 func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Operation {
@@ -205,14 +238,7 @@ func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Ope
 	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not update operation")
 }
 
-func (s *Server) bindRepoCreateApproval(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) agentv1.Operation {
-	if !s.operatorConfigured && s.notifier == nil {
-		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
-	}
-	grant, err := s.createRepoApproval(operation, target, attrs, bounds)
-	if err != nil {
-		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
-	}
+func (s *Server) bindRepoCreateApproval(ctx context.Context, operation agentv1.Operation, grant grants.Grant) agentv1.Operation {
 	if s.notifier != nil {
 		if err := s.notifyRepoCreateApproval(ctx, grant); err != nil {
 			if errors.Is(err, errApprovalNotificationClaimed) {
@@ -280,18 +306,21 @@ func (s *Server) settleRepoCreateNotificationFailure(claim grants.NotificationCl
 	return cause
 }
 
-func (s *Server) createRepoApproval(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) (grants.Grant, error) {
-	if bounds == nil || bounds.Mode != policy.GrantModeExecution {
-		return grants.Grant{}, errors.New("repo.create requires execution approval")
+func (s *Server) prepareRepoCreateIntent(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, authorizationRequest corepolicy.Request, bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
+	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeExecution {
+		return bkauthorization.GrantIntent{}, errors.New("repo.create requires execution approval")
 	}
-	minutes := bounds.DefaultMinutes
-	maxUses := bounds.DefaultMaxUses
-	result, _, err := hfgrant.Request(s.grants, s.plans, hfgrant.Input{
+	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
 		Client: operation.ClientID, ClientRequestID: operation.ID, Operation: operation.Operation, Mode: hfgrant.ModeExecution,
-		Target: target.targetName(), Attrs: attrs, Reason: operation.Reason, RequestedDuration: time.Duration(minutes) * time.Minute,
-		PendingTimeout: time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: maxUses,
+		Target: target.targetName(), Attrs: attrs, Reason: operation.Reason, RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
+		PendingTimeout: time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: bounds.DefaultMaxUses,
 	})
-	return result.Grant, err
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	return bkauthorization.GrantIntent{
+		Mode: corepolicy.GrantModeExecution, Authorization: authorizationRequest, Request: request, Plan: plan,
+	}, nil
 }
 
 func (s *Server) handleAgentOperationGet(w http.ResponseWriter, r *http.Request, client string) {

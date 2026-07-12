@@ -13,13 +13,11 @@ cmd/hf-broker/agent_client.go	validateRepoCreateClientOptions	crap	10.0
 cmd/hf-broker/agent_client.go	runClientRepoCreate	crap	9.6
 internal/httpapi/agent_operations.go	decodeRepoCreateArguments	crap	9.6
 internal/httpapi/agent_operations.go	Server.createUpstreamRepo	crap	9.6
-internal/httpapi/agent_operations.go	Server.bindRepoCreateApproval	crap	9.5
 cmd/hf-broker/mcp.go	handleMCPRequest	crap	9.2
 cmd/hf-broker/agent_client.go	runAgentClient	crap	9.2
 internal/httpapi/agent_operations.go	Server.handleAgentOperationSubmit	crap	9.1
 cmd/hf-broker/agent_client.go	parseAgentBaseURL	crap	9.0
 cmd/hf-broker/mcp.go	mcpRepoCreateRequest	crap	9.0
-internal/httpapi/agent_operations.go	Server.authorizeRepoCreate	crap	8.7
 cmd/hf-broker/mcp.go	runMCP	crap	8.5
 internal/httpapi/inference.go	Server.serveChatCompletion	crap	8.3
 cmd/hf-broker/agent_client.go	repoCreateSubmitRequest	crap	8.2

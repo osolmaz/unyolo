@@ -53,6 +53,11 @@ func (p Policy) DecideAuthorization(request corepolicy.Request, options corepoli
 	return p.coreForView(coreViewNormal).Decide(request, options)
 }
 
+// AuthorizationDecision maps a shared decision back to HF's audit model.
+func (p Policy) AuthorizationDecision(decision corepolicy.Decision) Decision {
+	return p.decisionFromCore(decision)
+}
+
 // AuthorizationGrants projects active HF grant rules into shared policy grants.
 func AuthorizationGrants(rules []Rule) []corepolicy.Grant { return coreGrants(rules, coreViewNormal) }
 
