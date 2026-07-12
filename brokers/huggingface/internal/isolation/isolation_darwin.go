@@ -97,7 +97,7 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	runTokenFileChecks(&report, agent, opts.TokenFile)
 	runSocketChecks(&report, agent, opts.Socket)
 	runActiveProbeChecks(ctx, &report, agent, opts)
-	report.Status = overallStatus(report.Checks)
+	report.Status = bkdoctor.OverallStatus(report.Checks)
 	return report, nil
 }
 
@@ -995,27 +995,6 @@ func lstatOrStat(path string, followSymlink bool) (os.FileInfo, error) {
 	return os.Lstat(path)
 }
 
-func add(report *Report, status CheckStatus, name, message string) {
-	report.Checks = append(report.Checks, Check{Status: status, Name: name, Message: message})
-}
-
-func overallStatus(checks []Check) Status {
-	var unknown bool
-	for _, check := range checks {
-		switch check.Status {
-		case CheckFail:
-			return StatusUnsafe
-		case CheckUnknown:
-			unknown = true
-		}
-	}
-	if unknown {
-		return StatusInconclusive
-	}
-	return StatusOK
-}
-
-// RunProbe performs active checks from the current process identity.
 func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {
 	var result ProbeResult
 	if tokenFile != "" {

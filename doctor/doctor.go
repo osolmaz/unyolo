@@ -313,20 +313,24 @@ func canAccess(mode os.FileMode, ownerUID int, ownerGID int, identity Identity, 
 
 // NewReport computes the overall status from checks.
 func NewReport(agent Identity, checks ...Check) Report {
-	report := Report{Status: StatusOK, Agent: agent, Checks: checks}
+	return Report{Status: OverallStatus(checks), Agent: agent, Checks: checks}
+}
+
+// OverallStatus computes the fail-closed verdict for a set of checks.
+func OverallStatus(checks []Check) Status {
+	status := StatusOK
 	for _, check := range checks {
 		switch check.Status {
 		case CheckFail:
-			report.Status = StatusUnsafe
-			return report
+			return StatusUnsafe
 		case CheckUnknown:
-			report.Status = StatusInconclusive
+			status = StatusInconclusive
 		case CheckWarn, CheckPass:
 		default:
-			report.Status = StatusInconclusive
+			status = StatusInconclusive
 		}
 	}
-	return report
+	return status
 }
 
 // WriteText writes a stable human-readable report.

@@ -41,3 +41,7 @@ func WriteJSON(w io.Writer, report Report) error {
 func ExitCode(status Status) int {
 	return bkdoctor.ExitCode(status)
 }
+
+func add(report *Report, status CheckStatus, name, message string) {
+	report.Checks = append(report.Checks, Check{Status: status, Name: name, Message: message})
+}
