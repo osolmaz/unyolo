@@ -1,11 +1,10 @@
 # Policy Core
 
-This document defines the shared policy model brokerkit should provide.
+This document defines BrokerKit's shared policy model.
 Provider-specific brokers register their own operations, target kinds, attrs,
-and validation rules. The intended migration is cutover: brokers should use this
-core directly instead of keeping local compatibility policy engines alive.
-See [OWNERSHIP.md](OWNERSHIP.md) for the broader brokerkit versus broker
-boundary.
+and validation rules. Brokers use this core directly and do not keep local
+compatibility policy engines. See [OWNERSHIP.md](OWNERSHIP.md) for the broader
+BrokerKit versus broker boundary.
 
 ## Minimal Policy File
 
@@ -163,7 +162,7 @@ Examples:
 
 The policy core uses canonical string lists at its boundary. Singleton fields
 still contain a one-element list. Multi-value provider fields such as Git refs,
-repository paths, and bucket keys stay as lists instead of being joined into an
+repository paths and provider keys stay as lists instead of being joined into an
 ambiguous delimiter-based string. For `allow` and `request` rules, every
 concrete value must satisfy the rule's constraint. For `deny` rules, any
 matching concrete value denies the batch so a forbidden ref or path cannot be
@@ -252,8 +251,7 @@ Minimal example:
 }
 ```
 
-The first shared grant mode should be `window`: a short time window with a use
-budget. Execution-plan grants can come later.
+The shared `window` grant mode is a short time window with a use budget.
 
 ## Validation
 

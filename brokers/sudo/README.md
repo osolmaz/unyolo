@@ -73,8 +73,7 @@ For typed catalog slots, repeat `--arg-json NAME=JSON` on both `request` and
 `--execution-id` when reconciling one execution. Never retry an ambiguous
 execution under a new id.
 
-See [the implementation plan](../../docs/components/2026-07-11-sudo-broker-implementation-plan.md)
-and [the threat model](../../docs/security/THREAT_MODEL.md) for the security
+See [the threat model](../../docs/security/THREAT_MODEL.md) for the security
 boundary and platform-specific guarantees.
 
 [MIT](LICENSE)

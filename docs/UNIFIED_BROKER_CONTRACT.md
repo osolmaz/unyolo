@@ -1,11 +1,8 @@
 # Unified Broker Contract
 
 This is the shared contract for `hf-broker`, `gh-broker`, and `sudo-broker`.
-The goal is one install, setup, config, policy, approval, audit, and release
-shape, with only the dangerous platform adapter kept in each broker.
-
-The model is cutover. When a broker adopts one part of this contract, the old
-broker-local duplicate should be removed in the same change.
+It defines one install, setup, config, policy, approval, audit, and release
+shape. Each broker keeps only its dangerous platform adapter.
 
 ## Boundary
 
@@ -56,10 +53,13 @@ stored request.
 
 ## Binary Install
 
-Every broker binary should have the same install shape:
+Every broker binary uses a component-local wrapper around BrokerKit's shared
+installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/<broker>/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/sudo/install.sh | sh
 ```
 
 Common environment variables:
@@ -381,7 +381,7 @@ Brokers add provider-specific checks:
 
 ## Test Contract
 
-Every broker cutover should test:
+Every broker should test:
 
 - install script platform selection and checksum handling
 - `setup systemd --dry-run`

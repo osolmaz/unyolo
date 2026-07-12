@@ -4,8 +4,8 @@ gh-broker is a small GitHub credential broker for coding agents. It gives an age
 
 The central invariant is strict: gh-broker must not provide an API, log path, error path, or helper that returns original GitHub credential material.
 
-The shared broker-family install and setup cutover is tracked in
-[docs/BROKERKIT_UNIFICATION.md](docs/BROKERKIT_UNIFICATION.md).
+The shared install, setup, policy, approval, and release contract is in
+[BrokerKit's unified broker contract](../../docs/UNIFIED_BROKER_CONTRACT.md).
 
 ## Current Shape
 
@@ -237,7 +237,7 @@ Authenticate with the separate operator credential from
 `/etc/gh-broker/operator-secrets`. Agent credentials cannot use this listener.
 Telegram is an optional notification view over the same durable request, so a
 decision through either path closes the same state exactly once. A trusted web
-host such as mlclaw keeps this credential server-side and exposes only its own
+host keeps this credential server-side and exposes only its own
 authenticated browser session and bounded Brokerkit response fields.
 
 ## Security Model

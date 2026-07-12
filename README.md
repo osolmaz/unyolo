@@ -85,7 +85,7 @@ The main reusable packages are:
 - `doctor`: portable identity, root-equivalent group, service separation, and
   fail-closed secret-path, ACL, and mode checks with secret-safe reports
 - `installer`: the canonical parameterized POSIX binary installer used by
-  thin broker repository wrappers
+  thin component-local broker wrappers
 - `notify`: approval notification interfaces, callback answers, and a stateless
   Telegram adapter with send, explicit status edit, and long-poll callbacks
 - `operatorinbox`, `operatorauth`, and `operatorapi`: bounded safe operator
@@ -108,8 +108,7 @@ runtime is described in
 
 The operator backend and trusted web-host integration contract is documented
 in [docs/OPERATOR_INBOX.md](docs/OPERATOR_INBOX.md).
-The deployment cutover uses only fresh state as documented in
-[docs/cutover/FRESH_STATE.md](docs/cutover/FRESH_STATE.md).
+The maintained documentation map is in [docs/README.md](docs/README.md).
 
 ## License
 

@@ -15,8 +15,7 @@ monorepo. Root `AGENTS.md` and root quality gates also apply.
 - Scope configuration (`scope.json`) is a manually edited file. Do not add
   endpoints that read, reload, or change it.
 - Do not add generic Hub API proxying, arbitrary command execution, or
-  repo/bucket administration operations (create, delete, settings,
-  members) in any mode.
+  repository administration operations.
 - Every endpoint except `GET /healthz` requires authentication.
 - Fail closed: a request the policy engine cannot classify is refused.
 - Audit log lines never contain secrets, request bodies, or pack contents.

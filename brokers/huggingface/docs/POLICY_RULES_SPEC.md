@@ -1,16 +1,13 @@
 # Policy Rules Specification
 
-Status: cutover implementation specification, 2026-07-08.
+Status: current.
 
-This specification defines the cutover policy-rule format for hf-broker.
-It replaces the exact-entry v1 `scope.json` model with a small typed rule
-system that supports wildcards, repo listing, requestable approvals, and
-generated temporary grants.
+This specification defines the policy-rule format for hf-broker. It is a small
+typed rule system that supports wildcards, repo listing, requestable approvals,
+and generated temporary grants.
 
-The old `repos[]` and `buckets[]` schema is not accepted after cutover.
-`scope.json` is now a rules file: runtime policy loading accepts the new
-`rules` format only. The broker does not ship a compatibility loader or
-converter for old files.
+`scope.json` contains one top-level `rules` field. Unknown fields and unsupported
+record shapes fail validation.
 
 The generic policy engine lives in `github.com/osolmaz/brokerkit/policy`.
 hf-broker keeps only the Hugging Face-specific rules-file parser, operation
@@ -163,7 +160,7 @@ Unknown top-level fields are rejected.
 | `clients` | yes | array | Client names or `*`. |
 | `operations` | yes | array | Operation names or operation-family globs. |
 | `targets` | yes | array | Target matchers. |
-| `attrs` | no | object | Extra attribute constraints, such as ref-change class, maximum byte size, or bucket keys. |
+| `attrs` | no | object | Extra attribute constraints, such as ref-change class or maximum byte size. |
 | `grant_policy` | required for `request` | object | Bounds for generated approval requests. |
 | `description` | no | string | Operator-facing explanation. No policy effect. |
 
@@ -415,7 +412,7 @@ The broker does not intersect or merge different grant policies. Requiring
 identical request policies keeps operator prompts predictable and avoids
 silent privilege changes from overlapping wildcard rules.
 
-For cutover, overlap validation is intentionally conservative. When two
+Overlap validation is intentionally conservative. When two
 `request` rules have the same possible client and operation, and their
 target matchers are identical or one side contains a wildcard that can
 cover the other side, their normalized grant policies must be identical.
@@ -429,25 +426,20 @@ Operation names are stable strings. New operations require an explicit
 registry entry, default grant mode, and tests.
 
 Operation-family globs are allowed only as full first-segment families:
-`repo.*`, `git.*`, `bucket.*`. A family glob matches all registered
+`repo.*`, `git.*`, and `inference.*`. A family glob matches all registered
 operations whose name starts with that family prefix. Arbitrary partial
-operation globs such as `repo.*.read` or `git.push.*` are invalid in the
-cutover format.
+operation globs such as `repo.*.read` or `git.push.*` are invalid.
 
 | Operation | Default grant mode | Meaning |
 |-----------|--------------------|---------|
 | `repo.list` | none | List repositories explicitly disclosed by exact policy targets. |
-| `repo.metadata.read` | none | Read broker-exposed repository metadata. In the cutover API this is type, owner, and name only. |
+| `repo.metadata.read` | none | Read broker-exposed repository metadata: type, owner, and name only. |
 | `repo.contents.read` | window | Read repo files, file listings, README/card text, branches, tags, commits, or raw blobs. |
 | `git.fetch` | window | Git clone/fetch. This is content read. |
 | `git.push.append` | window | Fast-forward push or new ref creation allowed by append-only policy. LFS upload support traffic uses the repo target because LFS requests do not carry the Git ref; `git-receive-pack` still enforces the actual ref before mutation. |
 | `git.push.force` | window | Non-fast-forward ref update. |
 | `git.ref.delete` | window | Branch or non-tag ref deletion. |
 | `git.tag.update` | window | Tag move or tag deletion. |
-| `bucket.object.list` | none | List bucket/object keys or prefixes. |
-| `bucket.object.read` | window | Read object contents. |
-| `bucket.object.write` | window | Create object or overwrite with snapshot policy. |
-| `bucket.object.delete` | execution | Delete object or prefix. |
 
 Operations with default grant mode `none` are not grantable. They must be
 allowed by static policy or refused.
@@ -480,7 +472,7 @@ Query parameters:
 | `type` | no | `model`, `dataset`, or `space`. |
 | `owner` | no | Exact owner filter. |
 | `limit` | no | Page size. Default `100`, maximum `100`. |
-| `cursor` | no | Reserved. Any non-empty cursor is invalid in the cutover implementation. |
+| `cursor` | no | Reserved. Any non-empty cursor is invalid. |
 
 Invalid cursors return `400`.
 
@@ -502,7 +494,7 @@ Success response:
 }
 ```
 
-The cutover endpoint returns local policy metadata only: type, owner, and
+The endpoint returns local policy metadata only: type, owner, and
 name for exact repo targets that have both `repo.list` and
 `repo.metadata.read` allowed for the authenticated client. It does not
 call the Hub list API, expand wildcard targets, include visibility, tags,
@@ -515,32 +507,13 @@ messages, raw blobs, LFS metadata, and sibling/file-tree listings.
 Contents require `repo.contents.read` or `git.fetch`.
 
 Wildcard targets authorize matching future requests, but they do not
-create list rows by themselves in the cutover endpoint. A repo is listed
+create list rows by themselves. A repo is listed
 only when an exact policy target for that repo is visible to the client.
 
 Public repositories are not special when accessed through the broker.
 Broker-routed public reads still require policy. Agents may read public
 Hub data directly without the broker if they do not need the broker's
 credential or audit trail.
-
-## Bucket Listing And Object Reads
-
-Bucket operations follow the same split as repo operations:
-
-- `bucket.object.list` returns object keys, prefixes, size, etag/hash
-  metadata, and update timestamps when the upstream API provides them.
-- `bucket.object.read` returns object bytes or signed/read URLs.
-- `bucket.object.write` creates or overwrites objects under append-only
-  snapshot policy.
-- `bucket.object.delete` deletes objects or prefixes and is an execution
-  grant by default.
-
-Bucket listing must not return object contents. Object contents require
-`bucket.object.read`.
-
-Object keys are normalized with the same path rules as repo paths:
-decode once, reject invalid percent encoding, reject NUL, reject absolute
-paths, trim one leading `/`, reject `..`, and compare case-sensitively.
 
 ## Target Matchers
 
@@ -573,32 +546,6 @@ Omit an optional array to mean "any". If `refs`, `paths`, or
 are rejected at startup so a partially edited policy cannot silently
 widen access.
 
-### Bucket Target
-
-```json
-{
-  "kind": "bucket",
-  "owner": "dutifulbob",
-  "name": "pipeline-output",
-  "keys": ["runs/2026-*/**"]
-}
-```
-
-Fields:
-
-| Field | Required | Type | Meaning |
-|-------|----------|------|---------|
-| `kind` | yes | string | Must be `bucket`. |
-| `owner` | yes | string | Exact owner or segment glob. |
-| `name` | yes | string | Exact bucket/repo name or segment glob. |
-| `keys` | no | array | Object key globs. |
-| `snapshot_prefix` | no | string | Prefix reserved for broker snapshots; write/delete requests under it are refused. |
-
-Unknown target fields are rejected.
-
-Omit `keys` to mean "any key". If `keys` is present, it must contain at
-least one value.
-
 ## Glob Rules
 
 The policy format uses small segment globs, not arbitrary regular
@@ -606,7 +553,7 @@ expressions.
 
 - `*` matches zero or more characters within one segment.
 - `?` matches one character within one segment.
-- `**` is allowed only in path/key fields and matches across `/`.
+- `**` is allowed only in path fields and matches across `/`.
 - Globs in `owner`, `name`, and `type` never match `/`.
 - `..`, empty segments, and absolute paths are invalid.
 - Matching is case-sensitive.
@@ -614,9 +561,8 @@ expressions.
 - URL path inputs are decoded exactly once before matching.
 - Invalid percent encoding, NUL bytes, absolute paths, and any `..`
   segment are refused before policy matching.
-- Leading `/` is trimmed only for repo file paths and bucket keys.
-- Unicode is compared as received. The broker does not normalize Unicode
-  in the cutover format.
+- Leading `/` is trimmed only for repository file paths.
+- Unicode is compared as received. The broker does not normalize Unicode.
 
 Examples:
 
@@ -823,15 +769,12 @@ POST /api/grants/{id}/deny
 POST /api/grants/{id}/revoke
 ```
 
-These endpoints must not be reachable with the agent's broker secret.
-They are allowed only on an operator channel, such as a host-local admin
-listener, operator CLI, or Telegram decision path. They still use JSend
-when exposed as JSON APIs.
+These endpoints must not be reachable with the agent's broker secret. They are
+mounted on the separately authenticated operator listener. Telegram decisions
+apply to the same canonical grant state.
 
 Approving a window grant sets `status=active`, `expires_at`, and
-`uses_remaining`. Approving an execution grant creates a single-use plan
-and may execute it immediately or mark it ready for one execution,
-depending on the operation registry entry.
+`uses_remaining`.
 
 Decision response:
 
@@ -1091,65 +1034,7 @@ rule ids per category plus a count:
 }
 ```
 
-## Legacy Scope Migration
-
-This is a cutover migration. After the policy engine is implemented, the
-broker runtime accepts only the rule-based `scope.json`. There is no one-shot
-converter in the product plan and no dual runtime policy loader. Operators must
-write the new rule file explicitly.
-
-A v1 repo entry:
-
-```json
-{
-  "id": "dutifulbob/hf-broker-smoke",
-  "type": "dataset",
-  "mode": "append-only"
-}
-```
-
-compiles to standing rule-based policy equivalent to:
-
-```json
-[
-  {
-    "id": "repo-read-dataset-dutifulbob-hf-broker-smoke",
-    "effect": "allow",
-    "clients": ["*"],
-    "operations": ["repo.metadata.read", "repo.contents.read", "git.fetch"],
-    "targets": [
-      {
-        "kind": "repo",
-        "type": "dataset",
-        "owner": "dutifulbob",
-        "name": "hf-broker-smoke"
-      }
-    ]
-  },
-  {
-    "id": "repo-append-dataset-dutifulbob-hf-broker-smoke",
-    "effect": "allow",
-    "clients": ["*"],
-    "operations": ["git.push.append"],
-    "targets": [
-      {
-        "kind": "repo",
-        "type": "dataset",
-        "owner": "dutifulbob",
-        "name": "hf-broker-smoke"
-      }
-    ]
-  }
-]
-```
-
-Existing `grant_policy` entries compile to `request` rules with matching
-targets and grant bounds.
-
-The old `internal/scope` package is replaced by `internal/policy`.
-Handlers classify requests into `policy.Request`; only `internal/policy`
-decides allow/request/deny. Do not compile rule policy into the old scope
-model.
+## Runtime Ownership
 
 `internal/policy` now wraps the brokerkit policy core with the hf-broker parser,
 provider registry, and typed request classifiers. It must not contain a second

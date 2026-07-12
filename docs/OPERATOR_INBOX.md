@@ -2,9 +2,8 @@
 
 Brokerkit provides the durable backend contract for operator approval inboxes.
 It is provider-neutral and does not render a web application. A broker mounts
-the shared handler behind an operator-only transport; a trusted host such as
-mlclaw calls that backend and presents the resulting safe records in its own
-UI.
+the shared handler behind an operator-only transport; a trusted host calls that
+backend and presents the resulting safe records in its own UI.
 
 ## Packages
 
@@ -87,26 +86,26 @@ must refresh the list before reconnecting.
 
 Checked-in wire examples are under `operatorapi/testdata`.
 
-## mlclaw Integration
+## Trusted Host Integration
 
-mlclaw is a trusted presentation host, not another grant authority:
+A trusted presentation host is not another grant authority:
 
 ```text
 browser session
-    -> mlclaw web backend
+    -> trusted web backend
     -> operatorclient using a server-held operator credential
     -> broker operator API
     -> canonical Brokerkit grant store
 ```
 
-The browser authenticates only to mlclaw. Broker operator credentials never
-enter browser storage, HTML, JavaScript, logs, or API responses. mlclaw may
+The browser authenticates only to the trusted host. Broker operator credentials
+never enter browser storage, HTML, JavaScript, logs, or API responses. The host may
 aggregate several brokers, but each broker remains the source of truth for its
 own request. Browser decisions contain only the request ID, expected revision,
 optional reason, and bounded approval narrowing. The broker applies that
 decision to its canonical stored request and provider plan.
 
-mlclaw should persist only UI preferences and durable event cursors. On SSE
+The host should persist only UI preferences and durable event cursors. On SSE
 disconnect or process restart it reconnects from the last cursor. On
 `cursor_expired` it refreshes the bounded list, replaces that broker's local
 view, and starts from the newest returned lifecycle state.

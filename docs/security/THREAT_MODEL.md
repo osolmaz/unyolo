@@ -64,7 +64,7 @@ classifying, validating, and executing its own operations.
 | Plan changed after request | Content digest and grant binding fail activation or execution. |
 | Approval widens authority | Duration and use constraints can only stay equal or narrow. |
 | Cursor swapping or filter changes | Filter-bound opaque cursors are rejected. |
-| Store corruption or unsupported old state | Readiness fails and the listener must not receive traffic. No compatibility reader rewrites it. |
+| Store corruption or unsupported state | Readiness fails and the listener must not receive traffic. |
 | Notification send has an ambiguous result | Durable unresolved state remains lease-bound and retry-safe. |
 | Broker or host restarts after a lost response | Durable idempotency, events, cursors, and delivery records recover the committed result. |
 | One broker is down or rate-limited | Its source becomes unhealthy without changing another broker's authority. |

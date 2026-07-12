@@ -63,7 +63,7 @@ package-management command as the first probe.
 - Incomplete helper records are retained indefinitely. Completed records may be
   removed after 30 days, so execution ids should remain globally unique.
 - Corrupt or unsupported grant, plan, helper protocol, or execution state fails
-  closed. This cutover has no old-format reader or converter.
+  closed.
 
 Before replacing policy or catalog, validate with `setup systemd --dry-run`.
 Activation validation and the helper both reject catalog, identity, and host

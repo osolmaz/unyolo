@@ -1,6 +1,6 @@
 # Import Provenance
 
-- Source: `https://github.com/osolmaz/brokerkit/tree/main/brokers/github`
+- Source: `https://github.com/osolmaz/gh-broker` (private and archived)
 - Frozen source commit: `7b7f5f11c9c3caf6471b5bc2d772fbea2c1c7532`
 - Historical source tag: `v0.1.0`
 - No-squash subtree merge: `6f75d6c83d8d06f93a5928b70b2b4738d9dde7c4`

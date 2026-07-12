@@ -12,7 +12,7 @@ sudo broker, and independently packaged OpenClaw plugin.
 
 Shared Go packages remain at the module root. Provider code lives only under
 `brokers/huggingface`, `brokers/github`, or `brokers/sudo`. The OpenClaw plugin
-lives under `plugins/openclaw`. MLClaw and OpenClaw remain separate repositories.
+lives under `plugins/openclaw`.
 
 Every broker remains a separate process with separate credentials, listeners,
 state, policy, execution, audit, and release artifacts. Repository colocation
@@ -40,15 +40,13 @@ provider backstops, and provider audit extensions. A trusted host may present
 and deliver safe projections but never becomes an authority store.
 
 `protocol/` owns the Operator V1 HTTP, SSE, OpenAPI, JSON Schema, examples, and
-fixtures. Breaking wire changes require a coordinated major cutover. Only one
+fixtures. Breaking wire changes require a coordinated major release. Only one
 operator wire major is served.
 
-## Cutover And Releases
+## Releases
 
-HF and GH histories are imported without squashing. The root uses one Go
-module. Only fresh V1 configuration and state are supported. Standalone source
-repositories remain available and are marked deprecated after the successful
-cutover; they are not deleted.
+The root uses one Go module and supports the current configuration and state
+schemas.
 
 The root module uses `vX.Y.Z`. Component artifacts use qualified tags:
 `hf-broker/vX.Y.Z`, `gh-broker/vX.Y.Z`, `sudo-broker/vX.Y.Z`, and

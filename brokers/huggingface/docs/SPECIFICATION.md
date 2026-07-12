@@ -1,58 +1,37 @@
 # hf-broker — Specification
 
-Status: implementation-ready, 2026-07-06. Companion to
-[hf-auth-helper](https://github.com/osolmaz/hf-auth-helper); successor to
-the GitCBA prototype, which it retires.
-
-This document is written to be handed off: an implementer should be able
-to build M1 end to end from it without further design decisions. Where a
-behavior depends on unverified Hub behavior, the spec names both the
-assumption and the concrete fallback, so no item is a blocker.
+Status: current.
 
 ## Purpose
 
-A small self-hosted broker that lets an agent work *directly* on Hugging
-Face repos and buckets — no human click per change — while guaranteeing
-that nothing the agent does is irreversible. The agent never holds a real
-Hub credential: it talks to the broker, the broker enforces append-only
-semantics per request, and only then forwards the operation upstream with
-a server-side write token the agent can never read.
+A small self-hosted broker that lets an agent work directly on Hugging Face
+repositories while keeping the upstream credential server-side. The broker
+classifies every request, applies policy and grants, enforces Git safety, and
+only then forwards an allowed operation.
 
-## Position in the Trust Ladder
+## Safety Model
 
-| Level | Mode | Enforced by | Tool |
-|-------|------|-------------|------|
-| 1 | Propose-only: agent opens PRs, human merges | Hub token scopes | hf-auth-helper |
-| 2 | Reversible autonomy: agent pushes commits directly, history is append-only | this broker | hf-broker |
-| 3 | Bucket writes: append-only objects, snapshot before overwrite | this broker | hf-broker |
-| 4 | Elevated operations: time-boxed, human-approved grants | this broker | hf-broker |
-
-Level 1 needs no infrastructure and stays the recommendation for
-low-trust setups. The broker exists for workflows where per-change review
-is not sustainable (e.g. a scraper updating a dataset every few hours)
-and the platform lacks the protections that would make direct writes safe
-(the Hub has no force-push protection and no bucket versioning).
+Standing policy covers routine reads and append-only writes. Dangerous Git
+operations require time-bounded, use-bounded operator approval. The agent holds
+only a broker client secret and cannot retrieve the upstream token or an
+operator credential.
 
 ## Rationale
 
-Prompt-injected agents cannot be prevented from *attempting* destructive
-operations; the only defenses that hold are (a) credentials that cannot
-express destruction and (b) a boundary the agent cannot cross that
-refuses destruction per request. hf-auth-helper is (a). The broker is
-(b): it synthesizes, at the request level, the two protections the Hub
-does not offer — non-fast-forward rejection for git refs and
-versioning/soft-delete for buckets — so that a full write token upstream
-degrades to an append-only capability downstream.
+Prompt-injected agents cannot be prevented from attempting destructive
+operations. The broker is a boundary the agent cannot cross: it withholds the
+upstream credential and rejects non-fast-forward Git updates unless a matching
+grant is active.
 
-## brokerkit Cutover
+## BrokerKit Boundary
 
 `github.com/osolmaz/brokerkit` is the shared base for the broker family:
 `hf-broker`, `gh-broker`, and `sudo-broker`.
 
-hf-broker keeps Hugging Face-specific behavior local: Git/LFS parsing,
-commits-only mirrors, append-only enforcement, Hub token forwarding, bucket
-snapshot behavior, and HF-specific approval wording. Shared control-plane code
-should move to brokerkit:
+hf-broker keeps Hugging Face-specific behavior local: Git/LFS/Xet routing,
+commits-only mirrors, append-only enforcement, inference request
+classification, Hub token forwarding, and HF-specific approval wording.
+BrokerKit owns:
 
 - auth
 - policy core
@@ -64,33 +43,21 @@ should move to brokerkit:
 - strict config/storage helpers
 - privileged service account, managed-file, ownership, systemd unit, and
   activation helpers
-- provider-neutral Git parsing helpers where shared cleanly with `gh-broker`
+- provider-neutral Git parsing helpers shared with `gh-broker`
 
-This is a cutover, not a compatibility migration. When hf-broker adopts a
-brokerkit package, the local duplicate is deleted in the same change.
-
-Cutover tests must show that brokerkit handles auth, policy decisions, grants,
-approval state, Telegram transport, and audit-safe metadata. hf-broker tests
-must keep covering Hugging Face request classification, append-only enforcement,
-mirror behavior, LFS/Xet forwarding, HF-specific approval wording, and the
-representative force-push approval flow.
-
-Reversibility, not review, is the safety property: every accepted git
-operation is undoable with `git revert`; every accepted bucket overwrite
-leaves a snapshot; deletions are refused outright (or explicitly granted,
-level 4).
+Reversibility is the standing Git safety property: accepted append-only updates
+remain reachable and can be reverted. Destructive operations are refused unless
+an explicit request rule and active grant authorize the exact operation.
 
 ## Threat Model
 
-**Protected against:** history rewrites (force-push), branch/tag
-deletion, bucket object deletion and unsnapshotted overwrite, credential
-theft from the agent machine (the agent only ever holds a broker secret,
-revocable and useless outside the broker), scope escape (operations
-outside the configured repos/buckets are refused).
+**Protected against:** unauthorized history rewrites and ref deletion,
+credential theft from the agent machine, and scope escape. The agent holds only
+a revocable broker secret that is useless outside the broker.
 
 **Required for the guarantees to hold:** the broker process and its
 upstream token must be unreachable from the agent's execution context —
-a separate machine (Tailnet deployment, as with GitCBA) or at minimum a
+a separate machine or at minimum a
 separate Unix user. A broker running as the same user as the agent is
 decoration. Network reachability is never treated as authorization;
 every request must present a broker secret.
@@ -107,22 +74,21 @@ reports unsafe, the deployment must be changed; no broker policy can
 protect a local token from host root.
 
 **Not protected against:** exfiltration of anything readable through the
-broker (same residual risk as level 1); junk accumulation within scope
+broker; junk accumulation within scope
 (spam commits, new branches, new objects — reversible and quota-bounded,
 but real); denial of service against the broker itself. Stated
 deliberately: the guarantee is "nothing irreversible," not "nothing
 annoying."
 
-## Security Invariants (inherited from GitCBA, non-negotiable)
+## Security Invariants
 
 - No API — internal or external — returns credential material: not the
   upstream token, not broker secrets, not reversible blobs, not token
   metadata.
 - Scope configuration is a manually edited file; there is no endpoint to
   read or change it.
-- The broker exposes no generic Hub API proxy, no arbitrary command
-  execution, and no repo/bucket administration operations (create,
-  delete, settings, members) in any mode.
+- The broker exposes no generic Hub API proxy, arbitrary command execution, or
+  repository administration operations.
 - Every broker endpoint requires authentication; binding is localhost by
   default, exposure is Tailnet-or-equivalent only.
 - Audit log lines never contain secrets, request bodies, or pack
@@ -131,13 +97,14 @@ annoying."
 
 ## Architecture
 
-One Go binary, three surfaces:
+One Go binary exposes bounded agent and operator surfaces:
 
 ```text
 agent ── shared secret ──> hf-broker ── HF write token ──> huggingface.co
-                            ├─ git smart-HTTP proxy   (level 2)
-                            ├─ S3-compatible proxy    (level 3)
-                            └─ health + (later) grant endpoints (level 4)
+                            ├─ Git smart-HTTP and LFS/Xet
+                            ├─ repository reads and inference
+                            ├─ agent grant requests
+                            └─ separate operator API and Telegram approvals
 ```
 
 Configuration: environment for broker secrets (`HF_BROKER_SHARED_SECRET`
@@ -177,12 +144,10 @@ a hand-edited `scope.json` for what is reachable:
 }
 ```
 
-Modes: `read-only`, `append-only` (default), and — level 4 only —
-temporary elevations layered on top by grants. There is no standing
-"full write" mode; if a mode name like that ever seems needed, the answer
-is a grant.
+Routine operations use standing `allow` rules. Dangerous operations use
+`request` rules and temporary grants. There is no standing full-write mode.
 
-## Git Proxy (level 2)
+## Git Proxy
 
 Routes mirror git smart HTTP for configured repos only:
 
@@ -252,41 +217,10 @@ The mirror doubles as an append-only record of every history the broker
 has accepted — a recovery aid, though it holds commit graph only, not
 file contents.
 
-**Documented fallback (only if a future Hub change breaks partial
-clone): stage-then-promote** — forward the push to a temporary
-upstream ref (always safe: new ref), check ancestry by walking the
-upstream commit-listing API from `new` back toward `old`, and on success
-advance the real ref with an empty-pack push (objects already upstream),
-then delete the temp ref via a grant-free internal path. No local state.
-Not implemented in v1 because V1 confirmed the mirror path works; kept
-here so the fallback needs no new design if it is ever needed.
+## Grants
 
-## Bucket Proxy (level 3)
-
-An S3-compatible subset for configured buckets, so existing tooling
-(`hf` CLI, boto3, s5cmd) points at the broker via its endpoint-URL
-setting. Per-verb policy in `append-only` mode:
-
-| Operation | Policy |
-|-----------|--------|
-| GET / HEAD / LIST | allowed within scope |
-| PUT / multipart to a **new** key | allowed |
-| PUT / multipart to an **existing** key | snapshot, then allowed |
-| DELETE (any form) | refused (grantable, level 4) |
-| Bucket create/delete/settings | refused, not grantable |
-
-**Snapshot** = server-side copy of the current object to
-`{snapshot_prefix}{timestamp}/{key}` before the overwrite is forwarded.
-Server-side copies move content hashes, not bytes: no data flows through
-the broker, and Xet chunk dedup makes the storage cost near zero.
-Snapshots are written through the same upstream token but are not
-reachable for writes through any broker route (the snapshot prefix is
-read-only downstream), so the agent cannot destroy its own undo log.
-
-## Grants (level 4)
-
-For the rare genuinely destructive need (delete a bucket prefix, prune a
-branch), the agent may *request* an elevation; nothing is self-service:
+For a dangerous Git operation, the agent may request an elevation; nothing is
+self-service:
 
 1. Agent calls the request endpoint: operation class, target, duration,
    free-text reason.
@@ -335,14 +269,11 @@ Grant modes:
 | Mode | Used for | Behavior |
 |------|----------|----------|
 | `window` | Git push overrides | Operator approves a short-lived permission for one client, target, ref, and use budget. |
-| `execution` | Reserved broker-built plans | Operator approves one exact plan. No execution-plan actions are exposed in this cutover. |
 
 Window grants are appropriate when the broker cannot know the final
 request body until the agent performs the operation, as with
-`git-receive-pack`. Execution grants are the reserved model for future
-operations whose exact mutation can be precomputed before approval; the
-current runtime does not expose repo administration, settings, members,
-create, delete, bucket administration, or generic Hub API operations.
+`git-receive-pack`. The runtime does not expose repository administration,
+settings, members, create, delete, or generic Hub API operations.
 
 Grant lifecycle:
 
@@ -369,9 +300,8 @@ Initial grantable actions:
 | `git.ref.delete` | `window` | repo + exact ref | May override deletion of a non-tag, non-replace ref, including a branch, when policy and use budget allow it. |
 | `git.tag.update` | `window` | repo + exact tag ref | May override moving or deleting a tag when policy and use budget allow it. |
 
-Repo administration, bucket administration, settings, members, create,
-delete, and generic Hub API operations are not grantable in this
-cutover.
+Repository administration, settings, members, create, delete, and generic Hub
+API operations are not grantable.
 
 Never grantable through hf-broker:
 
@@ -382,34 +312,7 @@ Never grantable through hf-broker:
 - repo transfer, namespace move, or ownership changes
 - billing, paid hardware, storage tier, or quota changes
 - Space secrets or variables that may expose credentials
-- repo or bucket deletion as a whole
-
-### Execution plans
-
-Execution grants are approved over a canonical plan, not over loose text.
-The broker builds the plan after reading upstream state. The operator
-sees the action, target, before/after diff, risk label, expiry, and plan
-hash. This is a reserved contract for future work; no execution-plan
-action is implemented or exposed in this cutover.
-
-Reserved visibility-plan shape:
-
-```json
-{
-  "mode": "execution",
-  "action": "repo_visibility_update",
-  "target": "dataset/dutifulbob/hf-broker-smoke",
-  "before": {"private": true},
-  "after": {"private": false},
-  "plan_hash": "sha256:..."
-}
-```
-
-Before any future execution action runs, the broker must re-read upstream
-state under the relevant target lock. If the current state no longer
-matches the plan's `before` snapshot, execution is refused and a fresh
-request is required. Execution plans are single-use; there is no
-multi-use settings/admin grant.
+- repository deletion
 
 ### Idempotency and concurrency
 
@@ -429,10 +332,9 @@ every requested ref is accepted and the reservation is converted into a
 consumed use. If the broker restarts with a reservation that has remained
 in-flight longer than the configured upstream timeout plus recovery
 grace, the periodic grant sweep marks it retained and updates the
-operator message for review. Execution grants are consumed after the
-planned upstream mutation succeeds; if an upstream call may have
-partially applied side effects, the broker records the ambiguous result
-and refuses retries until an operator resolves it. A retained reservation
+operator message for review. If an upstream call may have partially applied
+side effects, the broker records the ambiguous result and refuses retries
+until an operator resolves it. A retained reservation
 quarantines the entire grant: no remaining use budget can authorize another
 operation until the ambiguous result is resolved.
 
@@ -440,8 +342,8 @@ operation until the ambiguous result is resolved.
 
 Notifier message metadata (`chat_id`, `message_id`, notifier kind) is stored
 with the grant so restarts can still update operator messages. The generic
-approval, notifier metadata, and Telegram transport belong in brokerkit after
-cutover; hf-broker keeps the HF-specific message summary. Telegram messages are
+approval, notifier metadata, and Telegram transport belong in BrokerKit;
+hf-broker keeps the HF-specific message summary. Telegram messages are
 updated when a request is approved, denied, used, expired, revoked, or fails
 during execution. A verified callback can atomically recover missing notifier
 metadata after an ambiguous send in the same durable transaction as the grant
@@ -454,11 +356,9 @@ Operator prompts must show:
 
 - action and mode
 - client
-- target and ref/object/prefix
+- target and ref
 - requested duration and use budget
 - reason
-- before/after diff for execution plans
-- risk label for high-risk actions such as `private_to_public`
 - pending expiry
 
 ### Audit requirements
@@ -495,50 +395,30 @@ cannot reach or forge. In particular, approval is never an endpoint on
 the broker surface the agent talks to — anything reachable with (or
 adjacent to) the agent's secret is disqualified by construction.
 
-Two channels are specified:
+Two operator surfaces are supported:
 
-1. **Operator CLI on the broker host** (M3). `hf-broker grants` lists
-   pending and active grants; `hf-broker approve <id> --minutes 5` and
-   `hf-broker deny <id>` decide them; `hf-broker revoke <id>` kills an
-   active grant early. The CLI talks to the broker process locally
-   (unix socket or localhost port not exposed beyond the host);
-   authentication is possession of a shell on the broker host, which the
-   agent does not have. Zero additional secrets, zero additional
-   surface.
+1. **Operator API.** The shared BrokerKit operator API runs on a separate
+   listener and accepts only credentials from the operator secret file. Trusted
+   hosts use this API for bounded lists, durable event streams, and
+   revision-checked approve, deny, cancel, and revoke decisions. Agent client
+   credentials cannot use this listener.
 
-2. **Push-notification approval** (M4): **Telegram bot**. The grant
+2. **Telegram.** The grant
    request is sent as a Telegram message to the operator's chat,
    carrying the request's operation class, target, duration, and
    reason, with inline Approve / Deny buttons. The decision
    authenticates through the bot conversation itself: the bot token and
    the operator's chat id are configured on the broker host, the broker
    accepts a decision only from that chat id, and nothing about the
-   flow travels over a URL the agent could forge. Telegram is the v1
-   notifier because it gives two-way interaction (buttons, replies) with
+   flow travels over a URL the agent could forge. Telegram gives two-way
+   interaction with
    a single bot token and no server-side callback to host — the broker
    long-polls the Bot API, so it works from behind the Tailnet with no
    inbound exposure. Deny requires no action: unapproved requests expire
-   on their own (default 10 minutes pending, then auto-denied).
+   on their own.
 
-   The notifier is an interface, and the reusable Telegram adapter belongs in
-   brokerkit after cutover. hf-broker owns only the HF-specific prompt text and
-   request summary.
-   Noted for later behind the same interface, not in scope for v1:
-
-   - **ntfy** — one-way unless self-hosted with auth; would pair a
-     notification with CLI or reply-code approval to keep the decision
-     off any agent-reachable surface.
-   - **Slack** — interactivity is callback-URL based, so it would need an
-     operator-side relay to preserve the no-inbound-surface invariant;
-     heavier than Telegram, fits team operation.
-   - **Signal / Matrix** — viable for operators who prefer them; each
-     needs a bot with an outbound-poll or operator-relayed decision path.
-
-There is no approval web UI in v1 (see Non-Goals). If one is ever added,
-it is a read-mostly operator dashboard (pending requests, active grants,
-audit tail, revoke) bound to an operator-only interface — reached from
-the broker host, never from the agent's network scope — and the approval
-mechanism itself remains one of the channels above.
+The reusable operator API and Telegram transport belong in BrokerKit. hf-broker
+owns only the HF-specific prompt text and safe presentation fields.
 
 ## Audit
 
@@ -552,13 +432,7 @@ operator's answer to "what did the agent actually do?"
 ```sh
 # git: the broker is just a remote
 git remote set-url origin https://broker.tailnet:8080/datasets/osolmaz/scraped-news
-
-# hf CLI / S3 tooling: endpoint override + broker secret as the key
 ```
-
-The intended pairing: `hf-auth-helper agent login` for level-1 access to
-everything, broker remotes for the specific repos/buckets that need
-direct writes.
 
 ## Repository Layout
 
@@ -569,18 +443,18 @@ root BrokerKit module and toolchain `go1.26.5`. One binary
 
 ```text
 cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
-internal/config/                 HF env loading and validation; named secrets use brokerkit/secretfile
-internal/isolation/              local runtime isolation doctor checks
+internal/config/                 HF env loading and validation
+internal/isolation/              local runtime isolation checks
 internal/policy/                 HF parser, registry, and classifiers over brokerkit/policy
-internal/gitproxy/               HF enforcement and upstream forward; generic parsing moves to brokerkit/gitx
-internal/gitproxy/pktline/       temporary; cut over to brokerkit generic Git helpers
+internal/gitproxy/               HF enforcement and upstream forwarding
+internal/gitproxy/pktline/       provider adapter over Git pkt-line helpers
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
-internal/bucketproxy/            S3-verb policy + server-side snapshot (M2)
 internal/hfgrant/                HF target, attr, and mode mapping to brokerkit/grants
+internal/hfplan/                 immutable grant-plan storage and validation
 internal/approval/               HF-specific operator approval wording
 internal/jsend/                  JSON API response envelopes
 internal/httpapi/                Echo router, handlers, refusal responses, audit
-internal/audit/                  temporary generic helpers; HF audit extensions stay local
+internal/audit/                  HF audit extensions
 ```
 
 Boundaries (enforced by Slophammer `dependency_boundaries`): `httpapi`
@@ -607,16 +481,15 @@ stays free of HTTP framework types so it is unit-testable without a server.
 | `HF_BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
 | `HF_BROKER_UPSTREAM_HUB_URL` | no | Hub origin, default `https://huggingface.co`; intended for tests or private mirrors |
 | `HF_BROKER_UPSTREAM_ROUTER_URL` | no | Router origin, default `https://router.huggingface.co`; intended for tests or private gateways |
-| `HF_BROKER_TELEGRAM_BOT_TOKEN` | no (M4) | bot token for approval channel |
-| `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` | no (M4) | path to a broker-only Telegram bot token file; preferred for same-host services and mutually exclusive with the inline token |
-| `HF_BROKER_TELEGRAM_CHAT_ID` | no (M4) | the single operator chat id decisions are accepted from |
+| `HF_BROKER_TELEGRAM_BOT_TOKEN` | no | bot token for approval channel |
+| `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` | no | path to a broker-only Telegram bot token file; preferred for same-host services and mutually exclusive with the inline token |
+| `HF_BROKER_TELEGRAM_CHAT_ID` | no | the single operator chat id decisions are accepted from |
 
 Startup validation fails closed: missing required secret, setting both
 `HF_BROKER_HF_TOKEN` and `HF_BROKER_HF_TOKEN_FILE`, either inline token and
 its corresponding token-file variable, unreadable, oversized, or empty token
-file, unreadable or invalid `scope.json`, secret under 32 bytes,
-or a `snapshot_prefix` that overlaps a writable path all abort boot with
-a specific error. The token value is never logged, even at startup.
+file, unreadable or invalid `scope.json`, or a secret under 32 bytes all abort
+boot with a specific error. The token value is never logged, even at startup.
 
 ### Local isolation doctor
 
@@ -687,8 +560,7 @@ supplied, the report is inconclusive.
 ### scope.json
 
 The runtime format is the wildcard/rule-based policy format specified in
-`docs/POLICY_RULES_SPEC.md`. The old exact-entry `repos[]` and
-`buckets[]` format is rejected at startup. The top level contains only
+`docs/POLICY_RULES_SPEC.md`. The top level contains only
 `rules`; each rule has an `effect` (`allow`, `request`, or `deny`),
 `clients`, `operations`, `targets`, and optional `attrs` and
 `grant_policy`.
@@ -699,22 +571,18 @@ scope is edit-file-then-restart.
 
 The current grantable git operations are `git.push.force`,
 `git.ref.delete`, and `git.tag.update`. The broker does not currently
-grant repo administration, bucket administration, settings, members,
-create, delete, or generic Hub API operations.
-
-The concrete implementation sequence is `docs/2026-07-08-next-implementation-spec.md`.
-Go tooling and CI pins are specified in `docs/2026-07-08-go-tooling-spec.md`.
+grant repository administration, settings, members, create, delete, or generic
+Hub API operations.
 
 ## Request Handling
 
 ### Authentication
 
-Every route except `GET /healthz` requires the shared secret, accepted
-two ways (identical to GitCBA, so stock `git` and S3 tools work):
+Every route except `GET /healthz` requires the shared secret, accepted two ways
+so stock Git clients work:
 
 - `Authorization: Bearer <secret>`, or
-- HTTP Basic auth where the **password** is the secret (username
-  ignored) — this is how `git` and boto3 present credentials.
+- HTTP Basic auth where the **password** is the secret (username ignored).
 
 The presented secret is compared constant-time against each configured
 client secret; a match resolves the client name (for audit). No match →
@@ -748,7 +616,6 @@ Broker path → upstream URL, by repo type:
 | `/{owner}/{repo}.git/...` (model) | `https://huggingface.co/{owner}/{repo}.git/...` |
 | `/datasets/{owner}/{repo}.git/...` | `https://huggingface.co/datasets/{owner}/{repo}.git/...` |
 | `/spaces/{owner}/{repo}.git/...` | `https://huggingface.co/spaces/{owner}/{repo}.git/...` |
-| bucket S3 verbs | Hub S3-compatible endpoint for `{owner}/{repo}` |
 
 The classified Hub operation and `(owner, repo, type)` target must match a
 `scope.json` policy rule or an active generated grant before upstream
@@ -757,9 +624,8 @@ the policy-approved `owner`/`repo`/path-tail is interpolated, so the agent
 cannot redirect the proxy elsewhere.
 
 Outbound requests: strip the client's `Authorization`/`Cookie`, inject
-the upstream token (`Basic x-access-token:<token>` for git,
-SigV4/`Bearer` as the S3 endpoint requires for buckets), copy through the
-remaining non-hop-by-hop headers. Response body is streamed back.
+the upstream token, and copy through the remaining non-hop-by-hop headers.
+Response bodies are streamed back.
 
 ### Refusal responses (must be legible to the client)
 
@@ -776,9 +642,6 @@ A refusal must reach the human at the terminal, not just return a bare
   body — acceptable but less clean.)
 - **Scope / auth refusals** on any route: `403` / `401` with a one-line
   plain reason.
-- **Bucket refusals**: S3-style XML error body with an `AccessDenied`
-  code and an `hf-broker:`-prefixed message, HTTP `403`.
-
 ### Health
 
 `GET /healthz` → `200 {"ok": true}`, no auth, no secrets, for liveness
@@ -791,7 +654,8 @@ Everything the broker persists lives under `HF_BROKER_STATE_DIR`:
 ```text
 state/
   mirrors/{type}/{owner}/{repo}.git/    commits-only bare mirror per repo
-  grants/grants.json                    active + pending grants (M3)
+  grants/grants.json                    active + pending grants
+  plans/                                immutable request plans
 ```
 
 - Mirrors are created lazily on first push to a repo and refreshed per
@@ -818,55 +682,19 @@ state/
 
 ## Quality Gates and CI
 
-Slophammer Go standards (matching the tools-repo convention). `slophammer.yml`:
-
-```yaml
-go:
-  coverage:
-    threshold: 85
-  targets:
-    - .
-  exclude:
-    - "fixtures/**"
-  dry:
-    max_findings: 0
-    paths:
-      - cmd
-      - internal
-    exclude:
-      - "**/*_test.go"
-      - "fixtures/**"
-    structural:
-      enabled: true
-      threshold: 0.82
-      min_lines: 4
-      min_nodes: 20
-    copied_blocks:
-      enabled: true
-      min_tokens: 100
-  crap:
-    max_score: 8
-  dependency_boundaries: [ ... as in Repository Layout ... ]
-```
-
-CI (`.github/workflows/ci.yml`) runs pinned Go tools from
-`docs/2026-07-08-go-tooling-spec.md`: module tidy/verify checks,
-`gofmt`, `go vet ./...`, `go test -race -coverprofile`, `go build`,
-`golangci-lint`, `govulncheck`, coverage gate, and `slophammer-go`
-dry/crap/check plus `scripts/check-go-coverage.sh`. Hard targets: coverage ≥
-85, CRAP ≤ 8, production DRY = 0. Mutation tooling remains checked in behind
-the opt-in `RUN_MUTATION=true` CI hook, but is disabled and non-blocking by
-default. `AGENTS.md` in the repo restates the required checks and the
-token-secrecy rule for future agents.
+The root CI workflow runs formatting, vet, race tests, coverage, builds,
+linting, vulnerability checks, architecture checks, and the configured
+Slophammer gates. The checked-in workflow and `slophammer.yml` are the source of
+truth for exact commands and thresholds. Mutation testing is disabled and
+non-blocking.
 
 ## Testing Strategy
 
 The proxy is testable without a live Hub:
 
 - **Unit (the bulk)**: pkt-line parsing, ref-command extraction,
-  enforcement decisions, scope decisions, config validation, snapshot
-  key derivation, grant policy validation, grant expiry, grant use
-  budgets, idempotency, execution-plan hashing — all pure,
+  enforcement decisions, scope decisions, config validation, grant policy
+  validation, grant expiry, grant use budgets, idempotency, and plan hashing — all pure,
   table-driven.
 - **Ancestry**: build throwaway real git repos in `tmp` with `git`
   plumbing, exercise `mirror` against them (fast-forward, non-ff,
@@ -877,132 +705,12 @@ The proxy is testable without a live Hub:
   the client Authorization stripped and the upstream token injected.
 - **Secrecy invariant test**: capture all log output and both response
   streams across a representative run; assert no configured secret or
-  token value ever appears (mirrors hf-auth-helper's approach).
-- Live-Hub checks (V2–V4) are done once during their milestone as
-  scripted probes, not in the unit suite; their outcomes are recorded
-  back into this spec.
+  token value ever appears.
 
-## Milestones
+## Non-Goals
 
-Each milestone is its own PR, green on all gates, with the acceptance
-criteria below satisfied. M1 is shippable and useful on its own.
-
-### M1 — git append-only proxy (delivers level 2)
-
-Scope: config + scope loading, auth, the four git smart-HTTP routes,
-Xet/LFS pass-through, receive-pack parsing and enforcement, commits-only
-mirror with ancestry check, per-repo locking, audit, `/healthz`.
-
-Acceptance criteria:
-- `git clone` and `git pull` through the broker work for an in-scope repo.
-- `git push` of a fast-forward commit succeeds and appears upstream.
-- Force-push, branch deletion, tag move, and tag deletion are each
-  refused with a legible message and never reach upstream (asserted
-  against the stub upstream).
-- New branch and new tag pushes succeed.
-- A push to an out-of-scope repo, or with a wrong/missing secret, is
-  refused before upstream contact.
-- Concurrent pushes to one repo cannot both pass an ancestry check
-  against the same base (race test).
-- Secrecy-invariant test passes. All quality gates green.
-- Grant policy settings reject unknown fields, invalid directions,
-  invalid bucket delete shapes, over-cap durations, and invalid use
-  budgets.
-
-### M2 — bucket proxy (delivers level 3)
-
-Scope: S3-compatible subset for in-scope buckets, per-verb policy,
-server-side snapshot before overwrite.
-
-Acceptance criteria:
-- GET/HEAD/LIST and PUT-to-new-key work through the broker.
-- PUT to an existing key produces a snapshot copy under
-  `snapshot_prefix` before the overwrite is forwarded (verified via a
-  stub S3 upstream, and once live during the milestone per V4).
-- DELETE and any bucket admin verb are refused.
-- Writes targeting the snapshot prefix are refused.
-- All quality gates green.
-
-### M3 — grants + operator CLI (delivers level 4, host channel)
-
-Scope: grant request endpoint, grant store with absolute expiry, policy
-integration (a live grant widens the decision for its target/duration
-only), `hf-broker grants|approve|deny|revoke` over a host-local socket.
-
-Acceptance criteria:
-- An agent grant request is held pending; nothing reachable with the
-  agent secret can approve it.
-- `hf-broker approve` enables the granted op for the target only, for the
-  duration only; expiry is enforced; `revoke` kills it early.
-- `max_uses` defaults to one, decrements after each accepted matching
-  push, and closes the grant when exhausted.
-- `client_request_id` is required; retries are idempotent and do not create duplicate
-  operator prompts.
-- Durable notifier metadata lets approve/deny/use/expire/revoke updates
-  survive broker restarts.
-- Every grant use is audit-logged. All quality gates green.
-
-### M4 — Telegram approvals
-
-Scope before brokerkit cutover: `Notifier` interface plus Telegram
-implementation; grant requests sent as messages with inline Approve/Deny
-buttons; decisions read via outbound Bot API long-polling; pending-request
-expiry.
-
-Long-term scope after brokerkit cutover: brokerkit owns the notifier interface,
-Telegram adapter, callback validation, status updates, and token safety.
-hf-broker owns only the HF-specific message contents.
-
-Acceptance criteria:
-- A request produces a Telegram message with working buttons.
-- A decision is accepted only from the configured chat id; a press from
-  any other chat is ignored.
-- A replayed/stale button press is rejected (one-time id consumed).
-- No inbound HTTP surface is added to the broker.
-- Unapproved requests auto-deny after the pending timeout.
-- All quality gates green.
-
-Other notifiers (ntfy, Slack, Signal/Matrix) plug in behind the same
-interface later; out of scope for v1.
-
-## Non-Goals (v1)
-
-- GitHub support (native rulesets already provide level 2 there).
-- Arbitrary Hub API proxying, repo/bucket administration, org management.
+- GitHub operations, which belong in gh-broker.
+- Arbitrary Hub API proxying, repository administration, and organization
+  management.
 - Multi-tenant operation or per-agent identities beyond distinct shared
   secrets (one secret per agent client is supported; RBAC is not).
-- Installing itself as a system service; deployment is documented, not
-  automated.
-- An approval web UI. Approvals are CLI (M3) and notifications (M4);
-  a read-mostly operator dashboard may come later, but is never the
-  approval mechanism.
-
-## Verification Status
-
-None of these blocks starting M1; each has a defined path.
-
-- **V1 — partial clone (`--filter=tree:0`): CONFIRMED (2026-07-06).**
-  A filtered bare clone of a live Hub dataset returned commit objects
-  only (0 trees, 0 blobs; 56 KiB / 100 commits). The commits-only mirror
-  is therefore the chosen ancestry mechanism; stage-then-promote is the
-  documented fallback only.
-- **V2 — arbitrary ref namespaces: not needed for the chosen path.**
-  Only relevant to the stage-then-promote fallback. Verify only if that
-  fallback is ever adopted.
-- **V3 — Xet/LFS endpoint set touched by a proxied push: confirm during
-  M1.** Enumerate by running one real `git push` of a large file through
-  the broker with verbose transfer logging and recording every host/path
-  hit; the pass-through allowlist is built from that trace. Assumption:
-  large-file transfer uses Xet/LFS endpoints that are additive-only
-  (uploads to content-addressed storage), so pass-through is safe; the
-  M1 acceptance run validates this.
-- **V4 — S3 server-side copy on Hub buckets: confirm during M2.** Verify
-  `x-amz-copy-source` (or the Hub's documented equivalent) performs a
-  metadata-only copy; if the Hub exposes copy under a non-S3 API instead,
-  the snapshot step uses that API — the policy (snapshot before
-  overwrite) is unchanged, only the call differs.
-
-Probes use a disposable private repo/bucket under an owner the runner can
-write to (e.g. `dutifuldev/broker-probe`), and are deleted after. They
-require a real write token and so are run by a human-authorized session,
-not baked into CI.
