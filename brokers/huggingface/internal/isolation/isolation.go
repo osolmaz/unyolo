@@ -999,131 +999,19 @@ func procPath(pid int, name string) string {
 
 // ParseProcStatus parses the Linux /proc/<pid>/status fields used by the doctor.
 func ParseProcStatus(data []byte) (procStatus, error) {
-	var parser procStatusParser
-	for _, line := range strings.Split(string(data), "\n") {
-		if err := parser.consume(line); err != nil {
-			return procStatus{}, err
-		}
-	}
-	return parser.finish()
-}
-
-type procStatusParser struct {
-	status procStatus
-	uidSet bool
-	gidSet bool
-}
-
-func (p *procStatusParser) consume(line string) error {
-	parsed, ok, err := parseProcStatusLine(line)
-	if err != nil || !ok {
-		return err
-	}
-	p.apply(parsed)
-	return nil
-}
-
-func (p *procStatusParser) apply(parsed parsedProcStatusLine) {
-	switch parsed.key {
-	case "Uid":
-		p.status.uid = filesystemID(parsed.values)
-		p.status.uidValues = parsed.values
-		p.uidSet = true
-	case "Gid":
-		p.status.gid = filesystemID(parsed.values)
-		p.status.gidValues = parsed.values
-		p.gidSet = true
-	case "Groups":
-		p.status.gids = parsed.values
-	case "CapEff":
-		p.status.capEff = parsed.capEff
-	case "CapPrm":
-		p.status.capPrm = parsed.capEff
-	}
-}
-
-func (p procStatusParser) finish() (procStatus, error) {
-	if !p.uidSet {
-		return procStatus{}, errors.New("uid field is missing")
-	}
-	if !p.gidSet {
-		return procStatus{}, errors.New("gid field is missing")
-	}
-	return p.status, nil
-}
-
-type parsedProcStatusLine struct {
-	key    string
-	values []int
-	capEff uint64
-}
-
-func parseProcStatusLine(line string) (parsedProcStatusLine, bool, error) {
-	key, value, ok := strings.Cut(line, ":")
-	if !ok {
-		return parsedProcStatusLine{}, false, nil
-	}
-	value = strings.TrimSpace(value)
-	switch key {
-	case "Uid", "Gid":
-		return parseProcStatusIDLine(key, value)
-	case "Groups":
-		return parseProcStatusGroupsLine(value)
-	case "CapEff", "CapPrm":
-		return parseProcStatusCapLine(key, value)
-	default:
-		return parsedProcStatusLine{}, false, nil
-	}
-}
-
-func parseProcStatusIDLine(key, value string) (parsedProcStatusLine, bool, error) {
-	values, err := parseProcStatusInts(strings.ToLower(key), value)
+	status, err := bkdoctor.ParseProcessStatus(data)
 	if err != nil {
-		return parsedProcStatusLine{}, false, err
+		return procStatus{}, err
 	}
-	return parsedProcStatusLine{key: key, values: values}, true, nil
-}
-
-func parseProcStatusGroupsLine(value string) (parsedProcStatusLine, bool, error) {
-	if value == "" {
-		return parsedProcStatusLine{key: "Groups"}, true, nil
-	}
-	values, err := parseProcStatusInts("groups", value)
-	if err != nil {
-		return parsedProcStatusLine{}, false, err
-	}
-	return parsedProcStatusLine{key: "Groups", values: values}, true, nil
-}
-
-func parseProcStatusCapLine(key, value string) (parsedProcStatusLine, bool, error) {
-	capEff, err := strconv.ParseUint(value, 16, 64)
-	if err != nil {
-		return parsedProcStatusLine{}, false, fmt.Errorf("parse %s: %w", key, err)
-	}
-	return parsedProcStatusLine{key: key, capEff: capEff}, true, nil
-}
-
-func parseProcStatusInts(name, value string) ([]int, error) {
-	fields := strings.Fields(value)
-	if len(fields) == 0 {
-		return nil, fmt.Errorf("%s field is empty", name)
-	}
-	values := make([]int, 0, len(fields))
-	for _, field := range fields {
-		parsed, err := strconv.Atoi(field)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", name, err)
-		}
-		values = append(values, parsed)
-	}
-	return values, nil
-}
-
-func filesystemID(values []int) int {
-	if len(values) >= 4 {
-		return values[3]
-	}
-	return values[0]
+	return procStatus{
+		uid:       status.FilesystemUID,
+		gid:       status.FilesystemGID,
+		uidValues: status.UIDs,
+		gidValues: status.GIDs,
+		gids:      status.Groups,
+		capEff:    status.EffectiveCaps,
+		capPrm:    status.PermittedCaps,
+	}, nil
 }
 
 func envHasSecretName(env []string) bool {
