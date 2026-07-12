@@ -1,4 +1,4 @@
-// Package agentv1 defines BrokerKit's provider-neutral Agent Operations V1 wire contract.
+// Package agentv1 defines the provider-neutral Agent Operations V1 lifecycle.
 package agentv1
 
 import (

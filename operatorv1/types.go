@@ -1,4 +1,4 @@
-// Package operatorv1 defines the stable BrokerKit Operator V1 wire contract.
+// Package operatorv1 defines the provider-neutral Operator V1 domain contract.
 package operatorv1
 
 import (

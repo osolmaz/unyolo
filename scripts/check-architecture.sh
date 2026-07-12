@@ -77,6 +77,27 @@ if [ -e plugins/openclaw/scripts/generate-operator-v1.mjs ]; then
   exit 1
 fi
 
+if ! grep -q 'operatorwire.RegisterHandlers' operatorapi/api.go ||
+  grep -R -n --include='*.go' -E 'serveAuthorized|requestPath\(' operatorapi 2>/dev/null
+then
+  echo 'Operator V1 must use only generated Echo route registration' >&2
+  exit 1
+fi
+
+if ! grep -q 'agentwire.RegisterHandlers' brokers/huggingface/internal/httpapi/server.go ||
+  grep -R -n --include='*.go' 'serveAgentAPI' brokers/huggingface/internal/httpapi 2>/dev/null
+then
+  echo 'HF Agent V1 must use only generated Echo route registration' >&2
+  exit 1
+fi
+
+if ! grep -q 'operatorwire.NewClient' operatorclient/client.go ||
+  ! grep -q 'agentwire.NewClient' brokers/huggingface/cmd/hf-broker/agent_client.go
+then
+  echo 'Operator and Agent clients must use generated request builders' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.ts' --include='*.tsx' -E 'mlclaw\.|(telegram|discord|slack)' \
   plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
   --exclude='*.test.ts' 2>/dev/null; then
