@@ -286,22 +286,23 @@ func operationPathID(path string) string {
 }
 
 func agentWaitQuery(r *http.Request) (int64, time.Duration, bool) {
-	after, err := strconv.ParseInt(stringOrDefault(r.URL.Query().Get("after_revision"), "0"), 10, 64)
+	afterValue := r.URL.Query().Get("after_revision")
+	if afterValue == "" {
+		afterValue = "0"
+	}
+	after, err := strconv.ParseInt(afterValue, 10, 64)
 	if err != nil || after < 0 {
 		return 0, 0, false
 	}
-	waitSeconds, err := strconv.Atoi(stringOrDefault(r.URL.Query().Get("wait_seconds"), "30"))
+	waitValue := r.URL.Query().Get("wait_seconds")
+	if waitValue == "" {
+		waitValue = "30"
+	}
+	waitSeconds, err := strconv.Atoi(waitValue)
 	if err != nil || waitSeconds < 0 || waitSeconds > 30 {
 		return 0, 0, false
 	}
 	return after, time.Duration(waitSeconds) * time.Second, true
-}
-
-func stringOrDefault(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
 }
 
 func readAgentSubmit(r *http.Request) (agentv1.SubmitRequest, error) {

@@ -332,9 +332,9 @@ func printClientOperation(stdout io.Writer, operation agentv1.Operation, jsonOut
 }
 
 func randomClientID() (string, error) {
-	data := make([]byte, 18)
-	if _, err := rand.Read(data); err != nil {
+	var data [18]byte
+	if _, err := rand.Read(data[:]); err != nil {
 		return "", err
 	}
-	return "cli_" + base64.RawURLEncoding.EncodeToString(data), nil
+	return "cli_" + base64.RawURLEncoding.EncodeToString(data[:]), nil
 }
