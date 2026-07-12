@@ -13,8 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	bkaudit "github.com/osolmaz/brokerkit/audit"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
@@ -87,14 +86,15 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
+	auditRecorder := audit.New(stdout)
 	handler, err := httpapi.New(httpapi.Options{
 		Config:                cfg,
 		Scope:                 pol,
-		Audit:                 audit.New(stdout),
+		Audit:                 auditRecorder,
 		Context:               ctx,
 		UpstreamBaseURL:       cfg.UpstreamHubURL,
 		UpstreamRouterBaseURL: cfg.UpstreamRouterURL,
-		OperatorAudit:         bkaudit.New(stdout),
+		OperatorAudit:         auditRecorder,
 	})
 	if err != nil {
 		return err

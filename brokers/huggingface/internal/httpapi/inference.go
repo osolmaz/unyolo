@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"

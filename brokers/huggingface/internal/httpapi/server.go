@@ -22,9 +22,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/agentops"
+	"github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
@@ -69,7 +69,7 @@ var (
 type Options struct {
 	Config                config.Config
 	Scope                 policy.Policy
-	Audit                 *audit.Logger
+	Audit                 audit.Recorder
 	UpstreamBaseURL       string
 	UpstreamRouterBaseURL string
 	Context               context.Context
@@ -86,7 +86,7 @@ type Server struct {
 
 	control             *controlplane.Runtime
 	policy              policy.Policy
-	audit               *audit.Logger
+	audit               audit.Recorder
 	mirrors             *mirror.Manager
 	upstream            *url.URL
 	routerUpstream      *url.URL
@@ -281,7 +281,7 @@ func validUpstreamOrigin(upstream *url.URL) bool {
 	return upstream.Path == "" || upstream.Path == "/"
 }
 
-func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger *audit.Logger) (*Server, error) {
+func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger audit.Recorder) (*Server, error) {
 	inferenceTimeout := opts.Config.HFTimeout
 	if inferenceTimeout <= 0 {
 		inferenceTimeout = config.DefaultHFTimeout
@@ -817,7 +817,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (string, b
 		w.Header().Set("WWW-Authenticate", `Basic realm="hf-broker"`)
 	}
 	writePlain(w, status, "hf-broker: authentication failed\n")
-	s.audit.Record(audit.Entry{Operation: "unknown", Decision: audit.DecisionRefused, Reason: "authentication failed"})
+	s.recordAudit(audit.Event{Operation: "unknown", Decision: audit.DecisionRefused, Reason: "authentication failed"})
 	return "", false
 }
 
@@ -836,7 +836,7 @@ func (s *Server) authenticateAPI(w http.ResponseWriter, r *http.Request) (string
 		w.Header().Set("WWW-Authenticate", `Basic realm="hf-broker"`)
 	}
 	writeJSendFail(w, status, reason, message)
-	s.audit.Record(audit.Entry{Operation: "api", Decision: audit.DecisionRefused, Reason: "authentication failed"})
+	s.recordAudit(audit.Event{Operation: "api", Decision: audit.DecisionRefused, Reason: "authentication failed"})
 	return "", false
 }
 
@@ -3004,7 +3004,7 @@ func targetName(rt route) string {
 }
 
 func (s *Server) record(client, operation, target, decision, reason string, upstreamStatus int) {
-	s.recordAudit(audit.Entry{
+	s.recordAudit(audit.Event{
 		Client:         client,
 		Operation:      operation,
 		Target:         target,
@@ -3021,7 +3021,7 @@ func (s *Server) recordGrantUsed(client, operation, target string, upstreamStatu
 			planDigest = grant.Metadata[hfplan.MetadataDigest]
 		}
 	}
-	s.recordAudit(audit.Entry{
+	s.recordAudit(audit.Event{
 		Client:              client,
 		Operation:           operation,
 		Target:              target,
@@ -3035,7 +3035,7 @@ func (s *Server) recordGrantUsed(client, operation, target string, upstreamStatu
 }
 
 func (s *Server) recordPolicyDecision(client, operation, target, decision, reason string, upstreamStatus int, policyDecision policy.Decision) {
-	s.recordAudit(audit.Entry{
+	s.recordAudit(audit.Event{
 		Client:                client,
 		Operation:             operation,
 		Target:                target,
@@ -3050,8 +3050,9 @@ func (s *Server) recordPolicyDecision(client, operation, target, decision, reaso
 	})
 }
 
-func (s *Server) recordAudit(entry audit.Entry) {
-	s.audit.Record(entry)
+func (s *Server) recordAudit(entry audit.Event) {
+	entry.Broker = "hf-broker"
+	_ = s.audit.Record(entry)
 }
 
 func firstString(values []string) string {

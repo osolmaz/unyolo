@@ -41,6 +41,13 @@ then
 	exit 1
 fi
 
+if [ -d brokers/huggingface/internal/audit ] ||
+  grep -R -n --include='*.go' 'brokers/huggingface/internal/audit' . 2>/dev/null
+then
+  echo 'HF-local audit implementation survived the shared recorder cutover' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.go' 'github.com/go-git/' brokers 2>/dev/null; then
   echo 'providers must use go-git only through the shared gitx boundary' >&2
   exit 1

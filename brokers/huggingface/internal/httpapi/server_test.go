@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
