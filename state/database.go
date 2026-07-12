@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/osolmaz/brokerkit/state/internal/dbsql"
@@ -31,9 +32,11 @@ type Options struct {
 }
 
 type Database struct {
-	sql     *sql.DB
-	queries *dbsql.Queries
-	lease   *lease
+	sql      *sql.DB
+	queries  *dbsql.Queries
+	lease    *lease
+	close    sync.Once
+	closeErr error
 }
 
 func Open(ctx context.Context, directory string, options Options) (*Database, error) {
@@ -112,14 +115,17 @@ func (d *Database) Close() error {
 	if d == nil {
 		return nil
 	}
-	var errs []error
-	if d.sql != nil {
-		errs = append(errs, d.sql.Close())
-	}
-	if d.lease != nil {
-		errs = append(errs, d.lease.close())
-	}
-	return errors.Join(errs...)
+	d.close.Do(func() {
+		var errs []error
+		if d.sql != nil {
+			errs = append(errs, d.sql.Close())
+		}
+		if d.lease != nil {
+			errs = append(errs, d.lease.close())
+		}
+		d.closeErr = errors.Join(errs...)
+	})
+	return d.closeErr
 }
 
 func (d *Database) SQL() *sql.DB { return d.sql }

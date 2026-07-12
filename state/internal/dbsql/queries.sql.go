@@ -7,7 +7,22 @@ package dbsql
 
 import (
 	"context"
+	"database/sql"
 )
+
+const countOperations = `-- name: CountOperations :one
+SELECT count(*) FROM operations
+`
+
+// CountOperations
+//
+//	SELECT count(*) FROM operations
+func (q *Queries) CountOperations(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countOperations)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const countPlans = `-- name: CountPlans :one
 SELECT count(*) FROM plans
@@ -21,6 +36,135 @@ func (q *Queries) CountPlans(ctx context.Context) (int64, error) {
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const deleteTerminalOperationsBefore = `-- name: DeleteTerminalOperationsBefore :execrows
+DELETE FROM operations
+WHERE terminal_at IS NOT NULL AND terminal_at < ?
+`
+
+// DeleteTerminalOperationsBefore
+//
+//	DELETE FROM operations
+//	WHERE terminal_at IS NOT NULL AND terminal_at < ?
+func (q *Queries) DeleteTerminalOperationsBefore(ctx context.Context, terminalAt sql.NullString) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteTerminalOperationsBefore, terminalAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const findOperationByIdempotency = `-- name: FindOperationByIdempotency :one
+SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations WHERE client_id = ? AND idempotency_key = ?
+`
+
+type FindOperationByIdempotencyParams struct {
+	ClientID       string
+	IdempotencyKey string
+}
+
+// FindOperationByIdempotency
+//
+//	SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations WHERE client_id = ? AND idempotency_key = ?
+func (q *Queries) FindOperationByIdempotency(ctx context.Context, arg FindOperationByIdempotencyParams) (Operation, error) {
+	row := q.db.QueryRowContext(ctx, findOperationByIdempotency, arg.ClientID, arg.IdempotencyKey)
+	var i Operation
+	err := row.Scan(
+		&i.ID,
+		&i.ApiVersion,
+		&i.Broker,
+		&i.ClientID,
+		&i.IdempotencyKey,
+		&i.Operation,
+		&i.TargetJson,
+		&i.ArgumentsJson,
+		&i.Reason,
+		&i.State,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TerminalAt,
+		&i.ApprovalID,
+		&i.PresentationJson,
+		&i.ResultJson,
+		&i.ErrorJson,
+		&i.PlanDigest,
+	)
+	return i, err
+}
+
+const getOperationByID = `-- name: GetOperationByID :one
+SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations WHERE id = ?
+`
+
+// GetOperationByID
+//
+//	SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations WHERE id = ?
+func (q *Queries) GetOperationByID(ctx context.Context, id string) (Operation, error) {
+	row := q.db.QueryRowContext(ctx, getOperationByID, id)
+	var i Operation
+	err := row.Scan(
+		&i.ID,
+		&i.ApiVersion,
+		&i.Broker,
+		&i.ClientID,
+		&i.IdempotencyKey,
+		&i.Operation,
+		&i.TargetJson,
+		&i.ArgumentsJson,
+		&i.Reason,
+		&i.State,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TerminalAt,
+		&i.ApprovalID,
+		&i.PresentationJson,
+		&i.ResultJson,
+		&i.ErrorJson,
+		&i.PlanDigest,
+	)
+	return i, err
+}
+
+const getOperationForClient = `-- name: GetOperationForClient :one
+SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations WHERE id = ? AND client_id = ?
+`
+
+type GetOperationForClientParams struct {
+	ID       string
+	ClientID string
+}
+
+// GetOperationForClient
+//
+//	SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations WHERE id = ? AND client_id = ?
+func (q *Queries) GetOperationForClient(ctx context.Context, arg GetOperationForClientParams) (Operation, error) {
+	row := q.db.QueryRowContext(ctx, getOperationForClient, arg.ID, arg.ClientID)
+	var i Operation
+	err := row.Scan(
+		&i.ID,
+		&i.ApiVersion,
+		&i.Broker,
+		&i.ClientID,
+		&i.IdempotencyKey,
+		&i.Operation,
+		&i.TargetJson,
+		&i.ArgumentsJson,
+		&i.Reason,
+		&i.State,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TerminalAt,
+		&i.ApprovalID,
+		&i.PresentationJson,
+		&i.ResultJson,
+		&i.ErrorJson,
+		&i.PlanDigest,
+	)
+	return i, err
 }
 
 const getPlan = `-- name: GetPlan :one
@@ -60,6 +204,122 @@ func (q *Queries) Health(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const insertOperation = `-- name: InsertOperation :exec
+INSERT INTO operations (
+    id, api_version, broker, client_id, idempotency_key, operation,
+    target_json, arguments_json, reason, state, revision, created_at, updated_at,
+    terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertOperationParams struct {
+	ID               string
+	ApiVersion       string
+	Broker           string
+	ClientID         string
+	IdempotencyKey   string
+	Operation        string
+	TargetJson       string
+	ArgumentsJson    string
+	Reason           string
+	State            string
+	Revision         int64
+	CreatedAt        string
+	UpdatedAt        string
+	TerminalAt       sql.NullString
+	ApprovalID       string
+	PresentationJson string
+	ResultJson       sql.NullString
+	ErrorJson        sql.NullString
+	PlanDigest       sql.NullString
+}
+
+// InsertOperation
+//
+//	INSERT INTO operations (
+//	    id, api_version, broker, client_id, idempotency_key, operation,
+//	    target_json, arguments_json, reason, state, revision, created_at, updated_at,
+//	    terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest
+//	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+func (q *Queries) InsertOperation(ctx context.Context, arg InsertOperationParams) error {
+	_, err := q.db.ExecContext(ctx, insertOperation,
+		arg.ID,
+		arg.ApiVersion,
+		arg.Broker,
+		arg.ClientID,
+		arg.IdempotencyKey,
+		arg.Operation,
+		arg.TargetJson,
+		arg.ArgumentsJson,
+		arg.Reason,
+		arg.State,
+		arg.Revision,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.TerminalAt,
+		arg.ApprovalID,
+		arg.PresentationJson,
+		arg.ResultJson,
+		arg.ErrorJson,
+		arg.PlanDigest,
+	)
+	return err
+}
+
+const listUnfinishedOperations = `-- name: ListUnfinishedOperations :many
+SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations
+WHERE state NOT IN ('succeeded','failed','denied','expired','canceled')
+ORDER BY created_at, id
+`
+
+// ListUnfinishedOperations
+//
+//	SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations
+//	WHERE state NOT IN ('succeeded','failed','denied','expired','canceled')
+//	ORDER BY created_at, id
+func (q *Queries) ListUnfinishedOperations(ctx context.Context) ([]Operation, error) {
+	rows, err := q.db.QueryContext(ctx, listUnfinishedOperations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Operation{}
+	for rows.Next() {
+		var i Operation
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApiVersion,
+			&i.Broker,
+			&i.ClientID,
+			&i.IdempotencyKey,
+			&i.Operation,
+			&i.TargetJson,
+			&i.ArgumentsJson,
+			&i.Reason,
+			&i.State,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TerminalAt,
+			&i.ApprovalID,
+			&i.PresentationJson,
+			&i.ResultJson,
+			&i.ErrorJson,
+			&i.PlanDigest,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const putPlan = `-- name: PutPlan :exec
 INSERT INTO plans (digest, schema_name, canonical, created_at)
 VALUES (?, ?, ?, ?)
@@ -86,4 +346,49 @@ func (q *Queries) PutPlan(ctx context.Context, arg PutPlanParams) error {
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const updateOperation = `-- name: UpdateOperation :execrows
+UPDATE operations SET
+    state = ?, revision = ?, updated_at = ?, terminal_at = ?, approval_id = ?,
+    result_json = ?, error_json = ?, plan_digest = ?
+WHERE id = ? AND revision = ?
+`
+
+type UpdateOperationParams struct {
+	State      string
+	Revision   int64
+	UpdatedAt  string
+	TerminalAt sql.NullString
+	ApprovalID string
+	ResultJson sql.NullString
+	ErrorJson  sql.NullString
+	PlanDigest sql.NullString
+	ID         string
+	Revision_2 int64
+}
+
+// UpdateOperation
+//
+//	UPDATE operations SET
+//	    state = ?, revision = ?, updated_at = ?, terminal_at = ?, approval_id = ?,
+//	    result_json = ?, error_json = ?, plan_digest = ?
+//	WHERE id = ? AND revision = ?
+func (q *Queries) UpdateOperation(ctx context.Context, arg UpdateOperationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateOperation,
+		arg.State,
+		arg.Revision,
+		arg.UpdatedAt,
+		arg.TerminalAt,
+		arg.ApprovalID,
+		arg.ResultJson,
+		arg.ErrorJson,
+		arg.PlanDigest,
+		arg.ID,
+		arg.Revision_2,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

@@ -1500,6 +1500,9 @@ func TestGrantRequestErrors(t *testing.T) {
 		t.Fatalf("grant without approval channel = %d, want 503", resp.StatusCode)
 	}
 	baseCfg.Operators = []config.Client{{Name: "operator", Secret: "operator-secret-abcdefghijklmnopqrstuvwxyz"}}
+	if err := handler.Close(); err != nil {
+		t.Fatal(err)
+	}
 	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
@@ -1511,6 +1514,9 @@ func TestGrantRequestErrors(t *testing.T) {
 	}
 
 	notifier := &captureGrantNotifier{}
+	if err := handler.Close(); err != nil {
+		t.Fatal(err)
+	}
 	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier})
 	if err != nil {
 		t.Fatal(err)
@@ -1569,6 +1575,9 @@ func TestGrantRequestErrors(t *testing.T) {
 	}
 
 	baseCfg.Operators = nil
+	if err := handler.Close(); err != nil {
+		t.Fatal(err)
+	}
 	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: failingGrantNotifier{}})
 	if err != nil {
 		t.Fatal(err)
@@ -1921,9 +1930,13 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 	}
 	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "restart-unresolved", 0, 0)
 
-	firstBroker := httptest.NewServer(newHandler())
+	firstHandler := newHandler()
+	firstBroker := httptest.NewServer(firstHandler)
 	resp, responseBody := doRequest(t, http.MethodPost, firstBroker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
 	firstBroker.Close()
+	if err := firstHandler.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("first request status=%d body=%q, want 502", resp.StatusCode, responseBody)
 	}
@@ -3416,6 +3429,9 @@ func TestHTTPErrorPaths(t *testing.T) {
 		t.Fatalf("oversized push status = %d, want 413", resp.StatusCode)
 	}
 	cfg.MaxPackBytes = 1024
+	if err := handler.Close(); err != nil {
+		t.Fatal(err)
+	}
 	handler, err = New(Options{Config: cfg, Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)

@@ -5,18 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 func TestStoreLifecycleAndIdempotency(t *testing.T) {
 	now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
-	store := newStore(filepath.Join(t.TempDir(), "operations.json"), func() time.Time { return now }, func() (string, error) { return "op_test", nil })
+	store := newTestStore(t, func() time.Time { return now }, func() (string, error) { return "op_test", nil })
 	input := Submit{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "create-one", Operation: "repo.create",
 		Target: json.RawMessage(`{"kind":"repo","type":"dataset","owner":"alice","name":"data"}`), Arguments: json.RawMessage(`{"private":true}`),
 		Reason: "create data", Presentation: agentv1.Presentation{Title: "Create dataset", Summary: "Create alice/data"}}
@@ -46,7 +45,7 @@ func TestStoreLifecycleAndIdempotency(t *testing.T) {
 	if err != nil || result.State != agentv1.StateSucceeded || result.TerminalAt == nil {
 		t.Fatalf("succeed = %#v, %v", result, err)
 	}
-	reloaded := New(filepath.Join(filepath.Dir(store.path), "operations.json"))
+	reloaded := New(store.db)
 	got, err := reloaded.Get("agent", created.ID)
 	if err != nil || got.State != agentv1.StateSucceeded {
 		t.Fatalf("reload = %#v, %v", got, err)
@@ -58,7 +57,7 @@ func TestStoreLifecycleAndIdempotency(t *testing.T) {
 }
 
 func TestStoreWaitAndStrictFile(t *testing.T) {
-	store := newStore(filepath.Join(t.TempDir(), "operations.json"), time.Now, func() (string, error) { return "op_wait", nil })
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_wait", nil })
 	op, _, err := store.Submit(Submit{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "wait", Operation: "repo.create",
 		Target: json.RawMessage(`{"kind":"repo"}`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Wait"}})
 	if err != nil {
@@ -73,7 +72,7 @@ func TestStoreWaitAndStrictFile(t *testing.T) {
 }
 
 func TestStoreFailureListAndWaitSignal(t *testing.T) {
-	store := newStore(filepath.Join(t.TempDir(), "operations.json"), time.Now, func() (string, error) { return "op_signal", nil })
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_signal", nil })
 	op, _, err := store.Submit(validSubmit("signal"))
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +111,7 @@ func TestStoreFailureListAndWaitSignal(t *testing.T) {
 }
 
 func TestStoreRejectsInvalidInputsAndState(t *testing.T) {
-	store := New(filepath.Join(t.TempDir(), "operations.json"))
+	store := newTestStore(t, time.Now, randomID)
 	invalid := []Submit{
 		{},
 		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create", Target: json.RawMessage(`[]`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Create"}},
@@ -135,51 +134,41 @@ func TestStoreRejectsInvalidInputsAndState(t *testing.T) {
 	}
 }
 
-func TestStoreRejectsCorruptFiles(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "operations.json")
-	store := New(path)
-	cases := []string{
-		`{"version":2,"operations":[]}`,
-		`{"version":1,"version":1,"operations":[]}`,
-		`{"version":1,"operations":[]} trailing`,
-		`{"version":1,"unknown":true,"operations":[]}`,
-		`{"version":1,"operations":[{"api_version":"wrong"}]}`,
-	}
-	for _, data := range cases {
-		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.ListUnfinished(); err == nil {
-			t.Fatalf("corrupt file accepted: %s", data)
-		}
-	}
-}
-
 func TestStoreBoundsAndPrunesOperations(t *testing.T) {
 	now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
-	path := filepath.Join(t.TempDir(), "operations.json")
-	store := newStore(path, func() time.Time { return now }, func() (string, error) { return "op_new", nil })
+	store := newTestStore(t, func() time.Time { return now }, func() (string, error) { return "op_new", nil })
 	operations := make([]agentv1.Operation, maxOperations)
 	for index := range operations {
 		operations[index] = validOperationForStore(fmt.Sprintf("op_%d", index), agentv1.StatePending, now)
-	}
-	if err := store.write(fileData{Version: fileVersion, Operations: operations}); err != nil {
-		t.Fatal(err)
+		if err := store.db.InsertOperation(t.Context(), operationRecord(operations[index])); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, _, err := store.Submit(validSubmit("full")); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("full store error = %v", err)
 	}
-	operations[0] = validOperationForStore("op_old", agentv1.StateSucceeded, now.Add(-terminalRetention-time.Hour))
+	operations[0] = validOperationForStore("op_0", agentv1.StateSucceeded, now.Add(-terminalRetention-time.Hour))
 	terminalAt := operations[0].UpdatedAt
 	operations[0].TerminalAt = &terminalAt
 	operations[0].Result = json.RawMessage(`{"repo_id":"alice/old"}`)
-	if err := store.write(fileData{Version: fileVersion, Operations: operations}); err != nil {
-		t.Fatal(err)
+	operations[0].Revision = 2
+	if updated, err := store.db.UpdateOperation(t.Context(), operationRecord(operations[0]), 1); err != nil || !updated {
+		t.Fatalf("mark terminal = %v, %v", updated, err)
 	}
 	created, fresh, err := store.Submit(validSubmit("after-prune"))
 	if err != nil || !fresh || created.ID != "op_new" {
 		t.Fatalf("submit after prune = %#v, %v, %v", created, fresh, err)
 	}
+}
+
+func newTestStore(t *testing.T, now func() time.Time, newID func() (string, error)) *Store {
+	t.Helper()
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	return newStore(database, now, newID)
 }
 
 func validOperationForStore(id string, state agentv1.State, updated time.Time) agentv1.Operation {

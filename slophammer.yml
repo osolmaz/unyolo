@@ -6,6 +6,8 @@ go:
       reason: TypeScript packages use their native lint, typecheck, test, and build gates
     - pattern: "cmd/brokerkit-*/**"
       reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
+    - pattern: "state/internal/dbsql/**"
+      reason: deterministic sqlc-generated database bindings are checked by the pinned generation gate
     - pattern: "conformance/**"
       reason: reusable black-box test harness code is exercised by consumer repositories rather than shipped at runtime
   dry:
@@ -18,6 +20,8 @@ go:
         reason: each broker has an independently enforced Slophammer configuration
       - pattern: "cmd/brokerkit-*/**"
         reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
+      - pattern: "state/internal/dbsql/**"
+        reason: deterministic sqlc-generated database bindings are checked by the pinned generation gate
       - pattern: "conformance/**"
         reason: reusable black-box test harness code is exercised by consumer repositories rather than shipped at runtime
     structural:

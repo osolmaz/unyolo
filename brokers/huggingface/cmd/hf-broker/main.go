@@ -99,6 +99,7 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
+	defer func() { _ = handler.Close() }()
 	servers := []*http.Server{{
 		Addr:              net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.Port)),
 		Handler:           handler,

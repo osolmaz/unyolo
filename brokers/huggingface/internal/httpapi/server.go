@@ -39,6 +39,7 @@ import (
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 const (
@@ -95,6 +96,7 @@ type Server struct {
 	grants              *grants.Store
 	plans               *hfplan.Store
 	operations          *agentops.Store
+	database            *state.Database
 	planValidator       hfplan.Validator
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
@@ -180,17 +182,25 @@ func prepareServer(opts Options) (*Server, context.Context, error) {
 func startServer(ctx context.Context, server *Server, opts Options) (*Server, error) {
 	server.lifecycleContext = ctx
 	if err := server.startTelegram(ctx, opts); err != nil {
+		_ = server.database.Close()
 		return nil, err
 	}
 	if opts.Config.TelegramBotToken != "" {
 		server.startGrantNotificationSweeper(ctx)
 	}
 	server.startOperationWorker(ctx)
+	go func() {
+		<-ctx.Done()
+		_ = server.database.Close()
+	}()
 	return server, nil
 }
 
 // OperatorHandler builds the shared inbox over the same canonical grant store.
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
+
+// Close releases the broker state lease and database resources.
+func (s *Server) Close() error { return s.database.Close() }
 
 func namedSecrets(identities []config.Client) map[string]string {
 	secrets := make(map[string]string, len(identities))
@@ -245,12 +255,17 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	}).DialContext
 	inferenceTransport.ResponseHeaderTimeout = min(inferenceTimeout, 30*time.Second)
 	inferenceTransport.TLSHandshakeTimeout = min(inferenceTimeout, 10*time.Second)
+	database, err := state.Open(context.Background(), opts.Config.StateDir, state.Options{})
+	if err != nil {
+		return nil, err
+	}
 	store := grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
 	})
 	plans, err := hfplan.NewStore(filepath.Join(opts.Config.StateDir, "plans"))
 	if err != nil {
+		_ = database.Close()
 		return nil, err
 	}
 	planValidator := hfplan.Validator{Store: plans}
@@ -260,6 +275,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		ActivationValidator: planValidator,
 	})
 	if err != nil {
+		_ = database.Close()
 		return nil, err
 	}
 	server := &Server{
@@ -281,7 +297,8 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		maxBody:            opts.Config.MaxPackBytes,
 		grants:             store,
 		plans:              plans,
-		operations:         agentops.New(filepath.Join(opts.Config.StateDir, "operations", "operations.json")),
+		operations:         agentops.New(database),
+		database:           database,
 		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,

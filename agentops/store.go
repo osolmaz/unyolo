@@ -10,18 +10,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/store"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 const (
-	fileVersion       = 1
 	maxJSONBytes      = 4096
 	maxOperations     = 2048
 	terminalRetention = 30 * 24 * time.Hour
@@ -45,25 +43,20 @@ type Submit struct {
 	Presentation   agentv1.Presentation
 }
 
-type fileData struct {
-	Version    int                 `json:"version"`
-	Operations []agentv1.Operation `json:"operations"`
-}
-
 type Store struct {
-	path   string
+	db     *state.Database
 	now    func() time.Time
 	newID  func() (string, error)
 	mu     sync.Mutex
 	signal chan struct{}
 }
 
-func New(path string) *Store {
-	return newStore(path, time.Now, randomID)
+func New(database *state.Database) *Store {
+	return newStore(database, time.Now, randomID)
 }
 
-func newStore(path string, now func() time.Time, newID func() (string, error)) *Store {
-	return &Store{path: path, now: now, newID: newID, signal: make(chan struct{})}
+func newStore(database *state.Database, now func() time.Time, newID func() (string, error)) *Store {
+	return &Store{db: database, now: now, newID: newID, signal: make(chan struct{})}
 }
 
 func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
@@ -73,22 +66,28 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := s.read()
-	if err != nil {
+	ctx := context.Background()
+	now := s.now().UTC()
+	if _, err := s.db.DeleteTerminalOperationsBefore(ctx, now.Add(-terminalRetention)); err != nil {
 		return agentv1.Operation{}, false, err
 	}
-	now := s.now().UTC()
-	data.Operations = retainedOperations(data.Operations, now.Add(-terminalRetention))
-	for _, existing := range data.Operations {
-		if existing.ClientID != normalized.ClientID || existing.IdempotencyKey != normalized.IdempotencyKey {
-			continue
+	if record, err := s.db.OperationByIdempotency(ctx, normalized.ClientID, normalized.IdempotencyKey); err == nil {
+		existing, err := operationFromRecord(record)
+		if err != nil {
+			return agentv1.Operation{}, false, err
 		}
 		if !sameSubmission(existing, normalized) {
 			return agentv1.Operation{}, false, ErrIdempotencyConflict
 		}
 		return clone(existing), false, nil
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return agentv1.Operation{}, false, err
 	}
-	if len(data.Operations) >= maxOperations {
+	count, err := s.db.CountOperations(ctx)
+	if err != nil {
+		return agentv1.Operation{}, false, err
+	}
+	if count >= maxOperations {
 		return agentv1.Operation{}, false, ErrCapacity
 	}
 	id, err := s.newID()
@@ -101,23 +100,11 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 		Arguments: normalized.Arguments, Reason: normalized.Reason, State: agentv1.StatePending, Revision: 1,
 		CreatedAt: now, UpdatedAt: now, Presentation: normalized.Presentation,
 	}
-	data.Operations = append(data.Operations, op)
-	if err := s.write(data); err != nil {
+	if err := s.db.InsertOperation(ctx, operationRecord(op)); err != nil {
 		return agentv1.Operation{}, false, err
 	}
 	s.notify()
 	return clone(op), true, nil
-}
-
-func retainedOperations(operations []agentv1.Operation, cutoff time.Time) []agentv1.Operation {
-	retained := operations[:0]
-	for _, operation := range operations {
-		if operation.State.Terminal() && operation.UpdatedAt.Before(cutoff) {
-			continue
-		}
-		retained = append(retained, operation)
-	}
-	return retained
 }
 
 func (s *Store) Get(clientID, id string) (agentv1.Operation, error) {
@@ -130,43 +117,29 @@ func (s *Store) Get(clientID, id string) (agentv1.Operation, error) {
 func (s *Store) GetByID(id string) (agentv1.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := s.read()
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	for _, operation := range data.Operations {
-		if operation.ID == id {
-			return clone(operation), nil
-		}
-	}
-	return agentv1.Operation{}, ErrNotFound
+	record, err := s.db.OperationByID(context.Background(), id)
+	return storedOperation(record, err)
 }
 
 func (s *Store) getLocked(clientID, id string) (agentv1.Operation, error) {
-	data, err := s.read()
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	for _, operation := range data.Operations {
-		if operation.ID == id && operation.ClientID == clientID {
-			return clone(operation), nil
-		}
-	}
-	return agentv1.Operation{}, ErrNotFound
+	record, err := s.db.OperationForClient(context.Background(), id, clientID)
+	return storedOperation(record, err)
 }
 
 func (s *Store) ListUnfinished() ([]agentv1.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := s.read()
+	records, err := s.db.UnfinishedOperations(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	operations := make([]agentv1.Operation, 0, len(data.Operations))
-	for _, operation := range data.Operations {
-		if !operation.State.Terminal() {
-			operations = append(operations, clone(operation))
+	operations := make([]agentv1.Operation, 0, len(records))
+	for _, record := range records {
+		operation, err := operationFromRecord(record)
+		if err != nil {
+			return nil, err
 		}
+		operations = append(operations, operation)
 	}
 	return operations, nil
 }
@@ -245,32 +218,33 @@ func (s *Store) Wait(ctx context.Context, clientID, id string, after int64) (age
 func (s *Store) update(id string, change func(*agentv1.Operation) error) (agentv1.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := s.read()
+	record, err := s.db.OperationByID(context.Background(), id)
+	if err != nil {
+		return agentv1.Operation{}, mapStateError(err)
+	}
+	operation, err := operationFromRecord(record)
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	for index := range data.Operations {
-		if data.Operations[index].ID != id {
-			continue
-		}
-		operation := clone(data.Operations[index])
-		if err := change(&operation); err != nil {
-			return agentv1.Operation{}, err
-		}
-		operation.Revision++
-		operation.UpdatedAt = s.now().UTC()
-		if operation.State.Terminal() {
-			terminal := operation.UpdatedAt
-			operation.TerminalAt = &terminal
-		}
-		data.Operations[index] = operation
-		if err := s.write(data); err != nil {
-			return agentv1.Operation{}, err
-		}
-		s.notify()
-		return clone(operation), nil
+	if err := change(&operation); err != nil {
+		return agentv1.Operation{}, err
 	}
-	return agentv1.Operation{}, ErrNotFound
+	expectedRevision := operation.Revision
+	operation.Revision++
+	operation.UpdatedAt = s.now().UTC()
+	if operation.State.Terminal() {
+		terminal := operation.UpdatedAt
+		operation.TerminalAt = &terminal
+	}
+	updated, err := s.db.UpdateOperation(context.Background(), operationRecord(operation), expectedRevision)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	if !updated {
+		return agentv1.Operation{}, ErrInvalidTransition
+	}
+	s.notify()
+	return clone(operation), nil
 }
 
 func (s *Store) notify() {
@@ -278,39 +252,59 @@ func (s *Store) notify() {
 	s.signal = make(chan struct{})
 }
 
-func (s *Store) read() (fileData, error) {
-	data, err := os.ReadFile(s.path) // #nosec G304 -- broker state path is operator configured.
-	if errors.Is(err, os.ErrNotExist) {
-		return fileData{Version: fileVersion}, nil
-	}
+func storedOperation(record state.OperationRecord, err error) (agentv1.Operation, error) {
 	if err != nil {
-		return fileData{}, err
+		return agentv1.Operation{}, mapStateError(err)
 	}
-	if err := strictjson.RejectDuplicateKeys(data); err != nil {
-		return fileData{}, err
-	}
-	var value fileData
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&value); err != nil {
-		return fileData{}, err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return fileData{}, errors.New("operation store has trailing data")
-	}
-	if value.Version != fileVersion {
-		return fileData{}, errors.New("operation store version is unsupported")
-	}
-	for _, operation := range value.Operations {
-		if err := validateStored(operation); err != nil {
-			return fileData{}, fmt.Errorf("operation store contains an invalid record: %w", err)
-		}
-	}
-	return value, nil
+	return operationFromRecord(record)
 }
 
-func (s *Store) write(data fileData) error {
-	return store.WriteJSONAtomic(s.path, data, 0o600)
+func mapStateError(err error) error {
+	if errors.Is(err, state.ErrNotFound) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func operationRecord(operation agentv1.Operation) state.OperationRecord {
+	presentation, _ := json.Marshal(operation.Presentation)
+	var operationError []byte
+	if operation.Error != nil {
+		operationError, _ = json.Marshal(operation.Error)
+	}
+	return state.OperationRecord{
+		ID: operation.ID, APIVersion: operation.APIVersion, Broker: operation.Broker,
+		ClientID: operation.ClientID, IdempotencyKey: operation.IdempotencyKey,
+		Operation: operation.Operation, TargetJSON: operation.Target, ArgumentsJSON: operation.Arguments,
+		Reason: operation.Reason, State: string(operation.State), Revision: operation.Revision,
+		CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt, TerminalAt: operation.TerminalAt,
+		ApprovalID: operation.ApprovalID, PresentationJSON: presentation, ResultJSON: operation.Result,
+		ErrorJSON: operationError,
+	}
+}
+
+func operationFromRecord(record state.OperationRecord) (agentv1.Operation, error) {
+	operation := agentv1.Operation{
+		APIVersion: record.APIVersion, ID: record.ID, Broker: record.Broker, ClientID: record.ClientID,
+		IdempotencyKey: record.IdempotencyKey, Operation: record.Operation, Target: record.TargetJSON,
+		Arguments: record.ArgumentsJSON, Reason: record.Reason, State: agentv1.State(record.State),
+		Revision: record.Revision, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		TerminalAt: record.TerminalAt, ApprovalID: record.ApprovalID, Result: record.ResultJSON,
+	}
+	if err := strictjson.Decode(record.PresentationJSON, &operation.Presentation, true); err != nil {
+		return agentv1.Operation{}, fmt.Errorf("decode operation presentation: %w", err)
+	}
+	if len(record.ErrorJSON) > 0 {
+		var operationError agentv1.OperationError
+		if err := strictjson.Decode(record.ErrorJSON, &operationError, true); err != nil {
+			return agentv1.Operation{}, fmt.Errorf("decode operation error: %w", err)
+		}
+		operation.Error = &operationError
+	}
+	if err := validateStored(operation); err != nil {
+		return agentv1.Operation{}, fmt.Errorf("operation database contains an invalid record: %w", err)
+	}
+	return operation, nil
 }
 
 func normalizeSubmit(input Submit) (Submit, error) {
