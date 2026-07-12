@@ -355,6 +355,74 @@ describe("BrokerKitUiApi", () => {
       }),
     );
   });
+
+  it("renews framed delegated authority through the parent bridge", async () => {
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    let receive: ((event: MessageEvent) => void) | undefined;
+    let sessions = 0;
+    const parent = {
+      postMessage: vi.fn((message: Record<string, unknown>) => {
+        sessions += 1;
+        receive?.({
+          source: parent,
+          data: {
+            type: DELEGATED_SESSION_RESPONSE,
+            nonce: message.nonce,
+            session: {
+              api_version: "brokerkit.io/delegated-web/v1",
+              decision_token: (sessions === 1 ? "f" : "r").repeat(48),
+              expires_at: new Date(
+                now + (sessions === 1 ? 31_000 : 60_000),
+              ).toISOString(),
+            },
+          },
+        } as unknown as MessageEvent);
+      }),
+    };
+    const fakeWindow = {
+      parent,
+      setTimeout,
+      clearTimeout,
+      addEventListener: vi.fn((_name: string, callback: typeof receive) => {
+        receive = callback;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal("window", fakeWindow);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            sources: [],
+            requests: [],
+            synchronizedAt: "later",
+          }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+
+    await api.snapshot();
+    now += 2_000;
+    await api.snapshot();
+
+    expect(parent.postMessage).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: `Bearer ${"r".repeat(48)}`,
+        }),
+      }),
+    );
+  });
 });
 
 function encoded(value: unknown): string {

@@ -119,7 +119,8 @@ async function delegatedSession(
 ): Promise<Record<string, unknown>> {
   const embedded = embeddedDelegatedSession();
   if (embedded) return embedded;
-  if (renewalToken) {
+  const topLevel = typeof window === "undefined" || window.parent === window;
+  if (renewalToken && topLevel) {
     const response = await fetch(`${basePath}/session`, {
       method: "POST",
       credentials: "omit",
@@ -129,7 +130,7 @@ async function delegatedSession(
     if (!response.ok) throw new Error(await safeError(response));
     return (await response.json()) as Record<string, unknown>;
   }
-  if (typeof window === "undefined" || window.parent === window) {
+  if (topLevel) {
     const response = await fetch(`${basePath}/session`, {
       method: "POST",
       credentials: "include",
