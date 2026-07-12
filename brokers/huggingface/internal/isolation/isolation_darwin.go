@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
@@ -909,37 +908,6 @@ func inspectPathMessage(checkName, path string) string {
 		return "could not inspect token file"
 	}
 	return "could not inspect " + path
-}
-
-func lstat(path string) (fileStat, bool) {
-	return statFile(path, false)
-}
-
-func statTarget(path string) (fileStat, bool) {
-	target, err := filepath.EvalSymlinks(bkdoctor.CleanPath(path))
-	if err != nil {
-		return fileStat{}, false
-	}
-	return statFile(target, true)
-}
-
-func statFile(path string, followSymlink bool) (fileStat, bool) {
-	info, err := lstatOrStat(path, followSymlink)
-	if err != nil {
-		return fileStat{}, false
-	}
-	raw, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return fileStat{}, false
-	}
-	return fileStat{path: path, mode: info.Mode(), uid: int(raw.Uid), gid: int(raw.Gid)}, true
-}
-
-func lstatOrStat(path string, followSymlink bool) (os.FileInfo, error) {
-	if followSymlink {
-		return os.Stat(path)
-	}
-	return os.Lstat(path)
 }
 
 func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {

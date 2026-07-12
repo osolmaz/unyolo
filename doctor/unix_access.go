@@ -2,14 +2,45 @@ package doctor
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 )
 
 // UnixFile describes the ownership and mode facts used by isolation checks.
 type UnixFile struct {
+	Path string
 	Mode os.FileMode
 	UID  int
 	GID  int
+}
+
+// InspectUnixFile inspects a path without reading its contents.
+func InspectUnixFile(path string, followSymlink bool) (UnixFile, bool) {
+	info, err := lstatOrStat(path, followSymlink)
+	if err != nil {
+		return UnixFile{}, false
+	}
+	uid, gid, ok := unixOwnership(info)
+	if !ok {
+		return UnixFile{}, false
+	}
+	return UnixFile{Path: path, Mode: info.Mode(), UID: uid, GID: gid}, true
+}
+
+// InspectSymlinkTarget resolves path and inspects the resulting file.
+func InspectSymlinkTarget(path string) (UnixFile, bool) {
+	target, err := filepath.EvalSymlinks(CleanPath(path))
+	if err != nil {
+		return UnixFile{}, false
+	}
+	return InspectUnixFile(target, true)
+}
+
+func lstatOrStat(path string, followSymlink bool) (os.FileInfo, error) {
+	if followSymlink {
+		return os.Stat(path)
+	}
+	return os.Lstat(path)
 }
 
 // CanGainRead reports whether identity can read a file now or can grant itself

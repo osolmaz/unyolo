@@ -29,5 +29,22 @@ func doctorIdentity(agent identity) bkdoctor.Identity {
 }
 
 func doctorFile(stat fileStat) bkdoctor.UnixFile {
-	return bkdoctor.UnixFile{Mode: stat.mode, UID: stat.uid, GID: stat.gid}
+	return bkdoctor.UnixFile{Path: stat.path, Mode: stat.mode, UID: stat.uid, GID: stat.gid}
+}
+
+func lstat(path string) (fileStat, bool) { return statFile(path, false) }
+
+func statTarget(path string) (fileStat, bool) {
+	return localFileStat(bkdoctor.InspectSymlinkTarget(path))
+}
+
+func statFile(path string, followSymlink bool) (fileStat, bool) {
+	return localFileStat(bkdoctor.InspectUnixFile(path, followSymlink))
+}
+
+func localFileStat(stat bkdoctor.UnixFile, ok bool) (fileStat, bool) {
+	if !ok {
+		return fileStat{}, false
+	}
+	return fileStat{path: stat.Path, mode: stat.Mode, uid: stat.UID, gid: stat.GID}, true
 }

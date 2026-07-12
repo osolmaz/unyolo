@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -36,5 +37,26 @@ func TestUnixDirectoryReplacement(t *testing.T) {
 	locked := UnixFile{Mode: os.ModeDir | 0o700, UID: 10, GID: 10}
 	if CanReplaceDirectoryEntry(Identity{UID: 20}, locked) || CanReplacePathEntry(Identity{UID: 20}, UnixFile{}, locked) {
 		t.Fatal("unwritable directory was replaceable")
+	}
+}
+
+func TestInspectUnixFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if file, ok := InspectUnixFile(link, false); !ok || file.Mode&os.ModeSymlink == 0 || file.Path != link {
+		t.Fatalf("lstat = %+v, %v", file, ok)
+	}
+	if file, ok := InspectSymlinkTarget(link); !ok || file.Path != target || !file.Mode.IsRegular() {
+		t.Fatalf("target stat = %+v, %v", file, ok)
+	}
+	if _, ok := InspectUnixFile(filepath.Join(dir, "missing"), true); ok {
+		t.Fatal("missing file was inspectable")
 	}
 }
