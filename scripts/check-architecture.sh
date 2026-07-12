@@ -31,6 +31,13 @@ if [ -d brokers/huggingface/internal/hfoperation ] ||
   grep -R -n --include='*.go' 'brokers/huggingface/internal/hfoperation' . 2>/dev/null
 then
   echo 'HF-local operation lifecycle survived the agentops cutover' >&2
+	exit 1
+fi
+
+if [ -d brokers/huggingface/internal/gitproxy/pktline ] ||
+  grep -R -n --include='*.go' 'brokers/huggingface/internal/gitproxy/pktline' . 2>/dev/null
+then
+  echo 'HF-local pkt-line implementation survived the gitx cutover' >&2
   exit 1
 fi
 

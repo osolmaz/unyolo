@@ -25,7 +25,6 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
@@ -3503,7 +3502,7 @@ func TestHTTPErrorPaths(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad push status = %d, want 400", resp.StatusCode)
 	}
-	resp, _ = doRequest(t, http.MethodPost, pushURL, "Bearer "+testSecret, bytes.NewReader(pktline.AppendFlush(nil)))
+	resp, _ = doRequest(t, http.MethodPost, pushURL, "Bearer "+testSecret, bytes.NewReader(appendTestFlush(nil)))
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("empty push status = %d, want 400", resp.StatusCode)
 	}
@@ -3610,14 +3609,14 @@ func TestReceivePackAcceptedClassifiesReservationRelease(t *testing.T) {
 	if accepted, reason, definitive := receivePackAccepted(req, http.StatusOK, []byte("not pktline")); accepted || definitive || reason != "could not parse upstream receive-pack report" {
 		t.Fatalf("parse failure accepted=%v reason=%q definitive=%v, want ambiguous parse rejection", accepted, reason, definitive)
 	}
-	rejected := pktline.AppendString(nil, "unpack ok\n")
-	rejected = pktline.AppendString(rejected, "ng refs/heads/main upstream rejected\n")
-	rejected = pktline.AppendFlush(rejected)
+	rejected := appendTestPktString(nil, "unpack ok\n")
+	rejected = appendTestPktString(rejected, "ng refs/heads/main upstream rejected\n")
+	rejected = appendTestFlush(rejected)
 	if accepted, reason, definitive := receivePackAccepted(req, http.StatusOK, rejected); accepted || definitive || !strings.Contains(reason, "upstream rejected") {
 		t.Fatalf("ng rejection accepted=%v reason=%q definitive=%v, want ambiguous receive-pack rejection", accepted, reason, definitive)
 	}
-	missing := pktline.AppendString(nil, "unpack ok\n")
-	missing = pktline.AppendFlush(missing)
+	missing := appendTestPktString(nil, "unpack ok\n")
+	missing = appendTestFlush(missing)
 	if accepted, reason, definitive := receivePackAccepted(req, http.StatusOK, missing); accepted || definitive || !strings.Contains(reason, "missing ref status") {
 		t.Fatalf("missing status accepted=%v reason=%q definitive=%v, want ambiguous missing status", accepted, reason, definitive)
 	}
@@ -3698,9 +3697,9 @@ func newTestHandler(t *testing.T, dir, upstreamURL string, auditWriter io.Writer
 }
 
 func acceptedReceivePackReport(ref string) []byte {
-	body := pktline.AppendString(nil, "unpack ok\n")
-	body = pktline.AppendString(body, "ok "+ref+"\n")
-	return pktline.AppendFlush(body)
+	body := appendTestPktString(nil, "unpack ok\n")
+	body = appendTestPktString(body, "ok "+ref+"\n")
+	return appendTestFlush(body)
 }
 
 type writeErrorResponseWriter struct {
@@ -3996,22 +3995,22 @@ func (u *gitUpstream) serveReceiveRejection(w http.ResponseWriter, r *http.Reque
 
 func buildUpstreamRejectionReport(req gitproxy.ReceivePackRequest) []byte {
 	sideBand := req.Capabilities["side-band-64k"] || req.Capabilities["side-band"]
-	status := pktline.AppendString(nil, "unpack ok\n")
+	status := appendTestPktString(nil, "unpack ok\n")
 	for _, command := range req.Commands {
-		status = pktline.AppendString(status, "ng "+command.Ref+" upstream rejected\n")
+		status = appendTestPktString(status, "ng "+command.Ref+" upstream rejected\n")
 	}
-	status = pktline.AppendFlush(status)
+	status = appendTestFlush(status)
 	var out []byte
 	if sideBand {
 		out = appendTestBandBytes(out, 1, status)
-		return pktline.AppendFlush(out)
+		return appendTestFlush(out)
 	}
 	return status
 }
 
 func appendTestBandBytes(dst []byte, band byte, payload []byte) []byte {
 	data := append([]byte{band}, payload...)
-	return pktline.Append(dst, data)
+	return appendTestPkt(dst, data)
 }
 
 func (u *gitUpstream) serveLFSBatch(w http.ResponseWriter, r *http.Request) {
@@ -4080,8 +4079,8 @@ func (u *gitUpstream) serveAdvert(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/x-"+service+"-advertisement")
 	var body []byte
-	body = pktline.AppendString(body, "# service="+service+"\n")
-	body = pktline.AppendFlush(body)
+	body = appendTestPktString(body, "# service="+service+"\n")
+	body = appendTestFlush(body)
 	body = append(body, u.runService(service, nil, "--stateless-rpc", "--advertise-refs")...)
 	_, _ = w.Write(body)
 }

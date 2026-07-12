@@ -7,15 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
 )
 
 func TestParseReceivePack(t *testing.T) {
 	var body []byte
-	body = pktline.AppendString(body, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/heads/main\x00report-status side-band-64k\n")
-	body = pktline.AppendString(body, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0000000000000000000000000000000000000000 refs/heads/old\n")
-	body = pktline.AppendFlush(body)
+	body = appendTestPktString(body, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/heads/main\x00report-status side-band-64k\n")
+	body = appendTestPktString(body, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 0000000000000000000000000000000000000000 refs/heads/old\n")
+	body = appendTestFlush(body)
 	body = append(body, []byte("PACK...")...)
 
 	req, err := ParseReceivePack(body)
@@ -37,9 +35,9 @@ func TestParseReceivePackSkipsShallowLines(t *testing.T) {
 	oldSHA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	newSHA := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	var body []byte
-	body = pktline.AppendString(body, "shallow "+oldSHA+"\n")
-	body = pktline.AppendString(body, oldSHA+" "+newSHA+" refs/heads/main\x00report-status\n")
-	body = pktline.AppendFlush(body)
+	body = appendTestPktString(body, "shallow "+oldSHA+"\n")
+	body = appendTestPktString(body, oldSHA+" "+newSHA+" refs/heads/main\x00report-status\n")
+	body = appendTestFlush(body)
 	body = append(body, []byte("PACK...")...)
 
 	req, err := ParseReceivePack(body)
@@ -61,10 +59,10 @@ func TestParseReceivePackSkipsPushOptions(t *testing.T) {
 	oldSHA := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	newSHA := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	var body []byte
-	body = pktline.AppendString(body, oldSHA+" "+newSHA+" refs/heads/main\x00report-status push-options\n")
-	body = pktline.AppendFlush(body)
-	body = pktline.AppendString(body, "ci.skip")
-	body = pktline.AppendFlush(body)
+	body = appendTestPktString(body, oldSHA+" "+newSHA+" refs/heads/main\x00report-status push-options\n")
+	body = appendTestFlush(body)
+	body = appendTestPktString(body, "ci.skip")
+	body = appendTestFlush(body)
 	body = append(body, []byte("PACK...")...)
 
 	req, err := ParseReceivePack(body)
@@ -79,8 +77,8 @@ func TestParseReceivePackSkipsPushOptions(t *testing.T) {
 	}
 
 	body = nil
-	body = pktline.AppendString(body, oldSHA+" "+newSHA+" refs/heads/main\x00report-status push-options\n")
-	body = pktline.AppendFlush(body)
+	body = appendTestPktString(body, oldSHA+" "+newSHA+" refs/heads/main\x00report-status push-options\n")
+	body = appendTestFlush(body)
 	body = append(body, []byte("PACK...")...)
 	req, err = ParseReceivePack(body)
 	if err != nil {
@@ -111,7 +109,10 @@ func TestBuildRefusalReportSideBand(t *testing.T) {
 		Commands:     []Command{{Ref: "refs/heads/main"}, {Ref: "refs/heads/side"}},
 		Capabilities: map[string]bool{"side-band-64k": true},
 	}
-	report := BuildRefusalReport(req, []RefFailure{{Ref: "refs/heads/main", Reason: "history rewrite refused"}})
+	report, err := BuildRefusalReport(req, []RefFailure{{Ref: "refs/heads/main", Reason: "history rewrite refused"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Contains(report, []byte("hf-broker: history rewrite refused")) {
 		t.Fatalf("report missing reason: %q", report)
 	}
@@ -125,7 +126,10 @@ func TestBuildRefusalReportPlainCleansReason(t *testing.T) {
 		Commands:     []Command{{Ref: "refs/heads/main"}},
 		Capabilities: map[string]bool{},
 	}
-	report := BuildRefusalReport(req, []RefFailure{{Ref: "refs/heads/main", Reason: "bad\nreason"}})
+	report, err := BuildRefusalReport(req, []RefFailure{{Ref: "refs/heads/main", Reason: "bad\nreason"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bytes.Contains(report, []byte("\nbad\n")) || !bytes.Contains(report, []byte("bad reason")) {
 		t.Fatalf("plain report did not clean reason: %q", report)
 	}

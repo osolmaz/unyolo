@@ -4,16 +4,16 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
+	"github.com/osolmaz/brokerkit/gitx"
 )
 
 const defaultCascadeReason = "push refused by hf-broker because another ref failed"
 
-const maxSideBandDataPayload = pktline.MaxPayload - 1
+const maxSideBandDataPayload = gitx.MaxPktLinePayload - 1
 
 // BuildRefusalReport returns a git-receive-pack result that stock git
 // prints as a remote rejection instead of a generic HTTP error.
-func BuildRefusalReport(req ReceivePackRequest, failures []RefFailure) []byte {
+func BuildRefusalReport(req ReceivePackRequest, failures []RefFailure) ([]byte, error) {
 	reasons := map[string]string{}
 	firstReason := "push refused"
 	for i, failure := range failures {
@@ -24,27 +24,40 @@ func BuildRefusalReport(req ReceivePackRequest, failures []RefFailure) []byte {
 		reasons[failure.Ref] = reason
 	}
 	sideBand := req.Capabilities["side-band-64k"] || req.Capabilities["side-band"]
-	status := appendRefusalStatus(nil, req.Commands, reasons)
-	status = pktline.AppendFlush(status)
+	status, err := appendRefusalStatus(nil, req.Commands, reasons)
+	if err != nil {
+		return nil, err
+	}
+	status = gitx.AppendFlushPkt(status)
 	var out []byte
 	if sideBand {
-		out = appendBandString(out, 2, "hf-broker: "+firstReason+"\n")
-		out = appendBandBytes(out, 1, status)
-		return pktline.AppendFlush(out)
+		out, err = appendBandString(out, 2, "hf-broker: "+firstReason+"\n")
+		if err != nil {
+			return nil, err
+		}
+		out, err = appendBandBytes(out, 1, status)
+		return gitx.AppendFlushPkt(out), err
 	}
-	return status
+	return status, nil
 }
 
-func appendRefusalStatus(dst []byte, commands []Command, reasons map[string]string) []byte {
-	dst = pktline.AppendString(dst, "unpack ok\n")
+func appendRefusalStatus(dst []byte, commands []Command, reasons map[string]string) ([]byte, error) {
+	dst, err := gitx.AppendPktLineString(dst, "unpack ok\n")
+	if err != nil {
+		return nil, err
+	}
 	return appendPlainFailures(dst, commands, reasons)
 }
 
-func appendPlainFailures(dst []byte, commands []Command, reasons map[string]string) []byte {
+func appendPlainFailures(dst []byte, commands []Command, reasons map[string]string) ([]byte, error) {
 	for _, command := range commands {
-		dst = pktline.AppendString(dst, "ng "+command.Ref+" hf-broker: "+reasonForRef(command.Ref, reasons)+"\n")
+		var err error
+		dst, err = gitx.AppendPktLineString(dst, "ng "+command.Ref+" hf-broker: "+reasonForRef(command.Ref, reasons)+"\n")
+		if err != nil {
+			return nil, err
+		}
 	}
-	return dst
+	return dst, nil
 }
 
 func reasonForRef(ref string, reasons map[string]string) string {
@@ -55,21 +68,25 @@ func reasonForRef(ref string, reasons map[string]string) string {
 	return reason
 }
 
-func appendBandString(dst []byte, band byte, payload string) []byte {
+func appendBandString(dst []byte, band byte, payload string) ([]byte, error) {
 	return appendBandBytes(dst, band, []byte(payload))
 }
 
-func appendBandBytes(dst []byte, band byte, payload []byte) []byte {
+func appendBandBytes(dst []byte, band byte, payload []byte) ([]byte, error) {
 	for len(payload) > 0 {
 		n := len(payload)
 		if n > maxSideBandDataPayload {
 			n = maxSideBandDataPayload
 		}
 		data := append([]byte{band}, payload[:n]...)
-		dst = pktline.Append(dst, data)
+		var err error
+		dst, err = gitx.AppendPktLine(dst, data)
+		if err != nil {
+			return nil, err
+		}
 		payload = payload[n:]
 	}
-	return dst
+	return dst, nil
 }
 
 func cleanReason(reason string) string {
@@ -104,16 +121,16 @@ func receivePackStatusBody(req ReceivePackRequest, body []byte) ([]byte, string,
 
 func collectReceivePackSideBand(body []byte) ([]byte, string, error) {
 	var status []byte
-	scanner := pktline.NewScanner(body)
+	scanner := gitx.NewScanner(body)
 	for {
-		payload, kind, err := scanner.Next()
-		if errors.Is(err, pktline.ErrDone) {
+		payload, flush, err := scanner.Next()
+		if errors.Is(err, gitx.ErrDone) {
 			break
 		}
 		if err != nil {
 			return nil, "", err
 		}
-		if kind == pktline.KindFlush || len(payload) == 0 {
+		if flush || len(payload) == 0 {
 			continue
 		}
 		next, fatal := receivePackSideBandPayload(payload)
@@ -140,16 +157,16 @@ func receivePackSideBandPayload(payload []byte) ([]byte, string) {
 
 func parseReceivePackStatus(req ReceivePackRequest, body []byte) (bool, string, error) {
 	status := receivePackStatus{refs: map[string]bool{}}
-	scanner := pktline.NewScanner(body)
+	scanner := gitx.NewScanner(body)
 	for {
-		payload, kind, err := scanner.Next()
-		if errors.Is(err, pktline.ErrDone) {
+		payload, flush, err := scanner.Next()
+		if errors.Is(err, gitx.ErrDone) {
 			break
 		}
 		if err != nil {
 			return false, "", err
 		}
-		if kind == pktline.KindFlush {
+		if flush {
 			continue
 		}
 		lines := strings.Split(string(payload), "\n")

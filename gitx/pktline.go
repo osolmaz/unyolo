@@ -2,34 +2,79 @@
 package gitx
 
 import (
-	"encoding/hex"
+	"bytes"
 	"errors"
-	"fmt"
 	"io"
+
+	gitpktline "github.com/go-git/go-git/v5/plumbing/format/pktline"
 )
 
-var ErrFlush = errors.New("pkt-line flush")
+var (
+	ErrFlush = errors.New("pkt-line flush")
+	ErrDone  = errors.New("pkt-line input exhausted")
+)
+
+const MaxPktLinePayload = gitpktline.MaxPayloadSize
 
 // ReadPktLine reads one Git pkt-line payload.
 func ReadPktLine(r io.Reader) ([]byte, error) {
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(r, header); err != nil {
-		return nil, err
+	scanner := gitpktline.NewScanner(r)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, err
+		}
+		return nil, io.EOF
 	}
-	if string(header) == "0000" {
+	if len(scanner.Bytes()) == 0 {
 		return nil, ErrFlush
 	}
-	lengthBytes, err := hex.DecodeString(string(header))
-	if err != nil || len(lengthBytes) != 2 {
-		return nil, fmt.Errorf("invalid pkt-line length %q", string(header))
+	return append([]byte(nil), scanner.Bytes()...), nil
+}
+
+// Scanner reads pkt-lines while retaining the trailing byte offset.
+type Scanner struct {
+	reader  *bytes.Reader
+	scanner *gitpktline.Scanner
+}
+
+// NewScanner returns a scanner over an in-memory Git request.
+func NewScanner(data []byte) *Scanner {
+	reader := bytes.NewReader(data)
+	return &Scanner{reader: reader, scanner: gitpktline.NewScanner(reader)}
+}
+
+// Offset returns the number of input bytes consumed.
+func (s *Scanner) Offset() int64 { return s.reader.Size() - int64(s.reader.Len()) }
+
+// Next returns one payload and reports whether it is a flush packet.
+func (s *Scanner) Next() ([]byte, bool, error) {
+	if !s.scanner.Scan() {
+		if err := s.scanner.Err(); err != nil {
+			return nil, false, err
+		}
+		return nil, false, ErrDone
 	}
-	length := int(lengthBytes[0])<<8 | int(lengthBytes[1])
-	if length < 4 {
-		return nil, fmt.Errorf("invalid pkt-line length %d", length)
+	if len(s.scanner.Bytes()) == 0 {
+		return nil, true, nil
 	}
-	payload := make([]byte, length-4)
-	if _, err := io.ReadFull(r, payload); err != nil {
+	return s.scanner.Bytes(), false, nil
+}
+
+// AppendPktLine appends one encoded pkt-line using go-git's canonical encoder.
+func AppendPktLine(dst, payload []byte) ([]byte, error) {
+	buffer := bytes.NewBuffer(dst)
+	if err := gitpktline.NewEncoder(buffer).Encode(payload); err != nil {
 		return nil, err
 	}
-	return payload, nil
+	return buffer.Bytes(), nil
+}
+
+// AppendPktLineString appends one string payload as a pkt-line.
+func AppendPktLineString(dst []byte, payload string) ([]byte, error) {
+	return AppendPktLine(dst, []byte(payload))
+}
+
+// AppendFlushPkt appends one flush packet.
+func AppendFlushPkt(dst []byte) []byte {
+	return append(dst, gitpktline.FlushPkt...)
 }

@@ -2114,9 +2114,13 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 		failures, err = s.refusePolicyDeniedPush(classes, client, target, int64(len(req.Pack)), used)
 	}
 	if len(failures) > 0 {
+		report, reportErr := gitproxy.BuildRefusalReport(req, failures)
+		if reportErr != nil {
+			return false, nil, nil, reportErr
+		}
 		w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(gitproxy.BuildRefusalReport(req, failures))
+		_, _ = w.Write(report)
 		s.record(client, pushAuditOperation(classes), target, audit.DecisionRefused, failures[0].Reason, 0)
 		return true, nil, nil, nil
 	}
