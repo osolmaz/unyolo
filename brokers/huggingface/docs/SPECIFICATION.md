@@ -679,6 +679,9 @@ available.
   SQLite transaction. Expired grants are pruned on read and on a periodic sweep. Stale
   in-flight use reservations are retained during the sweep so the
   operator can review crash-orphaned budget.
+- A new request commits its immutable provider plan, pending grant, and
+  `request.created` lifecycle event together; any failed write rolls back all
+  three records.
 - SQLite state is migrated at startup, uses WAL mode, and is protected by a
   single-process ownership lease. Plans are addressed by their canonical
   content digest and operation updates use optimistic revisions.

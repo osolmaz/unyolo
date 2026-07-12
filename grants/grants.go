@@ -88,6 +88,14 @@ type RequestResult struct {
 	DecisionToken string `json:"-"`
 }
 
+// ImmutablePlan is the provider-neutral envelope committed with a grant.
+type ImmutablePlan struct {
+	Digest     string
+	SchemaName string
+	Canonical  []byte
+	CreatedAt  time.Time
+}
+
 // Grant is one durable approval record.
 type Grant struct {
 	ID                     string              `json:"id"`
@@ -160,6 +168,10 @@ func NewDatabase(database *state.Database, opts Options) *Store {
 	return newStore("", database, opts)
 }
 
+// SupportsPlanTransactions reports whether immutable plans can commit with
+// grant creation in one database transaction.
+func (s *Store) SupportsPlanTransactions() bool { return s != nil && s.database != nil }
+
 func newStore(path string, database *state.Database, opts Options) *Store {
 	if opts.PendingTimeout <= 0 {
 		opts.PendingTimeout = defaultPendingTimeout
@@ -187,13 +199,31 @@ func newStore(path string, database *state.Database, opts Options) *Store {
 
 // Request creates or returns an idempotent pending grant.
 func (s *Store) Request(req Request) (RequestResult, bool, error) {
+	return s.request(req, nil)
+}
+
+// RequestWithPlan atomically creates or replays a SQLite-backed grant and its
+// immutable provider plan.
+func (s *Store) RequestWithPlan(req Request, plan ImmutablePlan) (RequestResult, bool, error) {
+	if s == nil || s.database == nil {
+		return RequestResult{}, false, errors.New("SQLite grant store is required")
+	}
+	digest, err := metadataPlanDigest(req.Metadata)
+	if err != nil || digest == "" || digest != plan.Digest || plan.CreatedAt.IsZero() {
+		return RequestResult{}, false, errors.New("grant immutable plan is invalid")
+	}
+	record := &state.PlanRecord{Digest: plan.Digest, SchemaName: plan.SchemaName, Canonical: bytes.Clone(plan.Canonical), CreatedAt: plan.CreatedAt}
+	return s.request(req, record)
+}
+
+func (s *Store) request(req Request, plan *state.PlanRecord) (RequestResult, bool, error) {
 	req, err := s.normalizeRequest(req)
 	if err != nil {
 		return RequestResult{}, false, err
 	}
 	var out RequestResult
 	created := false
-	err = s.update(func(data *fileData) error {
+	err = s.updateWithPlan(plan, func(data *fileData) error {
 		s.expireDue(data)
 		if index, existing, ok := findIdempotent(data.Grants, req); ok {
 			var existingErr error
@@ -555,6 +585,10 @@ func (s *Store) durationFromGrant(grant Grant) time.Duration {
 }
 
 func (s *Store) update(mutator func(*fileData) error) error {
+	return s.updateWithPlan(nil, mutator)
+}
+
+func (s *Store) updateWithPlan(plan *state.PlanRecord, mutator func(*fileData) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	data, err := s.load()
@@ -576,7 +610,7 @@ func (s *Store) update(mutator func(*fileData) error) error {
 		return err
 	}
 	s.reconcileLifecycle(&data, before)
-	if err := s.save(data); err != nil {
+	if err := s.saveWithPlan(data, plan); err != nil {
 		return err
 	}
 	s.signalNewEvents(eventSequence, data.NextEvent)
@@ -616,6 +650,10 @@ func (s *Store) load() (fileData, error) {
 }
 
 func (s *Store) save(data fileData) error {
+	return s.saveWithPlan(data, nil)
+}
+
+func (s *Store) saveWithPlan(data fileData, plan *state.PlanRecord) error {
 	if s.database != nil {
 		if s.loadedSnapshot == nil {
 			return errors.New("grant SQLite snapshot is unavailable")
@@ -626,7 +664,13 @@ func (s *Store) save(data fileData) error {
 			return err
 		}
 		s.loadedSnapshot = nil
+		if plan != nil {
+			return s.database.SaveGrantSnapshotWithPlan(context.Background(), before, after, *plan)
+		}
 		return s.database.SaveGrantSnapshot(context.Background(), before, after)
+	}
+	if plan != nil {
+		return errors.New("immutable plan transactions require SQLite")
 	}
 	data.Version = grantFileVersion
 	return store.WriteJSONAtomic(s.path, data, 0o600)

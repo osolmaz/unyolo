@@ -13,6 +13,7 @@ import (
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -116,19 +117,38 @@ func (s *Store) Bind(request *grants.Request) error {
 }
 
 func (s *Store) BindAt(request *grants.Request, createdAt time.Time) error {
-	if s == nil || request == nil {
-		return errors.New("HF grant request is required")
-	}
-	digest, err := s.Put(FromRequest(*request, createdAt))
+	envelope, err := s.PrepareBindAt(request, createdAt)
 	if err != nil {
 		return err
 	}
+	_, err = s.database.PutPlan(context.Background(), envelope.SchemaName, envelope.Canonical, envelope.CreatedAt)
+	return err
+}
+
+// PrepareBind constructs and binds an immutable plan without persisting it.
+// The grant store uses the returned envelope for one plan-plus-grant SQL transaction.
+func (s *Store) PrepareBind(request *grants.Request) (grants.ImmutablePlan, error) {
+	if s == nil {
+		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
+	}
+	return s.PrepareBindAt(request, s.now().UTC())
+}
+
+func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (grants.ImmutablePlan, error) {
+	if s == nil || request == nil {
+		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
+	}
+	encoded, err := encode(FromRequest(*request, createdAt))
+	if err != nil {
+		return grants.ImmutablePlan{}, err
+	}
+	digest := plandigest.Digest(encoded)
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
 	request.Metadata[MetadataSchema] = SchemaV1
 	request.Metadata[MetadataDigest] = digest
-	return nil
+	return grants.ImmutablePlan{Digest: digest, SchemaName: SchemaV1, Canonical: encoded, CreatedAt: createdAt.UTC()}, nil
 }
 
 type Validator struct{ Store *Store }

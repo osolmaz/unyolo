@@ -64,7 +64,21 @@ func requestHFGrant(t *testing.T, store *grants.Store, plans *hfplan.Store, inpu
 	if input.ClientRequestID == "" {
 		input.ClientRequestID = strings.NewReplacer("/", "-", " ", "-").Replace(t.Name())
 	}
-	result, created, err := hfgrant.Request(store, plans, input)
+	var result grants.RequestResult
+	var created bool
+	var err error
+	if store.SupportsPlanTransactions() {
+		result, created, err = hfgrant.Request(store, plans, input)
+	} else {
+		var request grants.Request
+		request, err = hfgrant.CanonicalRequest(input)
+		if err == nil {
+			err = plans.Bind(&request)
+		}
+		if err == nil {
+			result, created, err = store.Request(request)
+		}
+	}
 	return requestedGrant{Grant: result.Grant, DecisionToken: result.DecisionToken}, created, err
 }
 
@@ -1920,7 +1934,6 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 		t.Fatal(err)
 	}
 	stateDir := filepath.Join(dir, "state")
-	grantPath := filepath.Join(stateDir, "grants", "grants.json")
 	newHandler := func() *Server {
 		handler, err := New(Options{
 			Config: config.Config{
@@ -1937,7 +1950,7 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 		if err != nil {
 			t.Fatal(err)
 		}
-		handler.grants = grants.New(grantPath, grants.Options{Now: nowFunc})
+		handler.grants = grants.NewDatabase(handler.database, grants.Options{Now: nowFunc})
 		return handler
 	}
 	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "restart-unresolved", 0, 0)
@@ -2786,7 +2799,7 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.grants = grants.New(filepath.Join(dir, "state", "grants", "grants.json"), grants.Options{Now: nowFunc})
+	handler.grants = grants.NewDatabase(handler.database, grants.Options{Now: nowFunc})
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "stale-notify-failure", 0, 0)

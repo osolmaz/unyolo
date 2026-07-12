@@ -61,18 +61,18 @@ func Request(store *grants.Store, plans *hfplan.Store, input Input) (grants.Requ
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
-	err = bindRequestPlan(plans, &request, createdAt, exists)
+	plan, err := prepareRequestPlan(plans, &request, createdAt, exists)
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
-	return store.Request(request)
+	return store.RequestWithPlan(request, plan)
 }
 
-func bindRequestPlan(plans *hfplan.Store, request *grants.Request, createdAt time.Time, exists bool) error {
+func prepareRequestPlan(plans *hfplan.Store, request *grants.Request, createdAt time.Time, exists bool) (grants.ImmutablePlan, error) {
 	if exists {
-		return plans.BindAt(request, createdAt)
+		return plans.PrepareBindAt(request, createdAt)
 	}
-	return plans.Bind(request)
+	return plans.PrepareBind(request)
 }
 
 func existingPlanCreatedAt(store *grants.Store, plans *hfplan.Store, client, clientRequestID string) (time.Time, bool, error) {

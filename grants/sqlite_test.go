@@ -2,9 +2,13 @@ package grants
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
 )
@@ -80,6 +84,46 @@ func TestSQLiteGrantRejectsInvalidPlanDigestMetadata(t *testing.T) {
 	_, err := grantToSQLite(Grant{Metadata: map[string]string{"hf_plan_digest": "invalid"}})
 	if err == nil {
 		t.Fatal("grantToSQLite() accepted invalid plan digest metadata")
+	}
+}
+
+func TestRequestWithPlanCommitsAndRollsBackAtomically(t *testing.T) {
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := NewDatabase(database, Options{NewID: sequenceIDs("grant-1", "token-1", "grant-2", "token-2")})
+	createdAt := time.Date(2026, 7, 13, 3, 0, 0, 0, time.UTC)
+	canonical := []byte(`{"schema":"provider/v1"}`)
+	digest := plandigest.Digest(canonical)
+	plan := ImmutablePlan{Digest: digest, SchemaName: "provider/v1", Canonical: canonical, CreatedAt: createdAt}
+	request := Request{Client: "bob", ClientRequestID: "request-1", Operation: "repo.create",
+		Target:   policy.Target{Kind: "test", Fields: map[string][]string{"name": {"repo"}}},
+		Metadata: map[string]string{"test_plan_digest": digest}, Reason: "create", Duration: time.Minute, MaxUses: 1}
+	result, created, err := store.RequestWithPlan(request, plan)
+	if err != nil || !created || result.Grant.ID != "grant-1" {
+		t.Fatalf("RequestWithPlan() = %+v, %v, %v", result, created, err)
+	}
+	if _, err := database.Plan(t.Context(), digest); err != nil {
+		t.Fatalf("committed plan missing: %v", err)
+	}
+
+	failedCanonical := []byte(`{"schema":"provider/v2"}`)
+	failedDigest := plandigest.Digest(failedCanonical)
+	request.ClientRequestID = "request-2"
+	request.Metadata["test_plan_digest"] = failedDigest
+	request.Reason = strings.Repeat("x", 2_001)
+	_, _, err = store.RequestWithPlan(request, ImmutablePlan{Digest: failedDigest, SchemaName: "provider/v2", Canonical: failedCanonical, CreatedAt: createdAt})
+	if err == nil {
+		t.Fatal("RequestWithPlan() accepted an oversized grant")
+	}
+	if _, err := database.Plan(t.Context(), failedDigest); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("rolled-back plan lookup error = %v", err)
+	}
+	var grantsCount int
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM grants").Scan(&grantsCount); err != nil || grantsCount != 1 {
+		t.Fatalf("grant rows after rollback = %d, %v", grantsCount, err)
 	}
 }
 

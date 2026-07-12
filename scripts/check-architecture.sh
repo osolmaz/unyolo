@@ -53,6 +53,13 @@ then
   exit 1
 fi
 
+if grep -R -n --include='*.go' -E 'plans\.Bind(At)?\(|store\.Request\(' \
+  brokers/huggingface/internal/hfgrant --exclude='*_test.go' 2>/dev/null
+then
+  echo 'HF request creation must use the atomic plan-plus-grant transaction' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.go' -E 'gorm\.io/|github\.com/jmoiron/sqlx|github\.com/mattn/go-sqlite3' \
   . --exclude-dir=.git 2>/dev/null
 then

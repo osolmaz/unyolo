@@ -1,13 +1,16 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/state/internal/dbsql"
 )
 
@@ -66,6 +69,16 @@ func (d *Database) GrantSnapshot(ctx context.Context) (GrantSnapshot, error) {
 // checked inside the SQL transaction so a stale in-memory snapshot cannot
 // overwrite a newer grant revision.
 func (d *Database) SaveGrantSnapshot(ctx context.Context, before, after GrantSnapshot) error {
+	return d.saveGrantSnapshot(ctx, before, after, nil)
+}
+
+// SaveGrantSnapshotWithPlan commits an immutable plan and its grant lifecycle
+// mutation together. A failure in either half rolls the complete request back.
+func (d *Database) SaveGrantSnapshotWithPlan(ctx context.Context, before, after GrantSnapshot, plan PlanRecord) error {
+	return d.saveGrantSnapshot(ctx, before, after, &plan)
+}
+
+func (d *Database) saveGrantSnapshot(ctx context.Context, before, after GrantSnapshot, plan *PlanRecord) error {
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -79,10 +92,34 @@ func (d *Database) SaveGrantSnapshot(ctx context.Context, before, after GrantSna
 	if !reflect.DeepEqual(current, before) {
 		return ErrGrantStateConflict
 	}
+	if plan != nil {
+		if err := putPlanWithQueries(ctx, queries, *plan); err != nil {
+			return err
+		}
+	}
 	if err := persistGrantChanges(ctx, queries, before, after); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func putPlanWithQueries(ctx context.Context, queries *dbsql.Queries, plan PlanRecord) error {
+	if !plandigest.Valid(plan.Digest) || plan.Digest != plandigest.Digest(plan.Canonical) || strings.TrimSpace(plan.SchemaName) == "" ||
+		len(plan.SchemaName) > 128 || len(plan.Canonical) == 0 || len(plan.Canonical) > 1<<20 || !bytes.Equal(bytes.TrimSpace(plan.Canonical), plan.Canonical) || plan.CreatedAt.IsZero() {
+		return errors.New("immutable plan is invalid")
+	}
+	if err := queries.PutPlan(ctx, dbsql.PutPlanParams{Digest: plan.Digest, SchemaName: plan.SchemaName,
+		Canonical: plan.Canonical, CreatedAt: formatTime(plan.CreatedAt)}); err != nil {
+		return err
+	}
+	stored, err := queries.GetPlan(ctx, plan.Digest)
+	if err != nil {
+		return err
+	}
+	if stored.SchemaName != plan.SchemaName || !bytes.Equal(stored.Canonical, plan.Canonical) || stored.CreatedAt != formatTime(plan.CreatedAt) {
+		return errors.New("plan digest collision")
+	}
+	return nil
 }
 
 func loadGrantSnapshot(ctx context.Context, queries *dbsql.Queries) (GrantSnapshot, error) {
