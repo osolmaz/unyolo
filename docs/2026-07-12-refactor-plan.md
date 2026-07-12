@@ -48,7 +48,131 @@ and executors remain separate.
 Each numbered section is an independently reviewable slice. A slice must be
 green and committed before the next one starts.
 
-### 1. Make Protocol Artifacts Single-Source
+### 1. Make the Quality Gate Honest
+
+Problem: the HF Slophammer CRAP command currently accepts every exit status of
+`1`. That can hide coverage or tool failures in addition to the known accepted
+complexity finding.
+
+Implementation:
+
+- Remove the blanket shell-level exit-code exception.
+- Represent any temporary complexity exception in checked-in Slophammer
+  configuration, scoped to an exact file, function, metric, and documented
+  reason.
+- Keep coverage failures, command failures, malformed output, and newly
+  discovered findings fatal.
+- Delete each temporary exception in the slice that removes its target.
+
+Acceptance:
+
+- A known scoped finding is reported without failing CI.
+- A synthetic new finding, coverage failure, or Slophammer command failure makes
+  CI fail.
+- CI and the documented local command run the same gate.
+
+### 2. Standardize Strict Boundary Decoding and Bounded I/O
+
+Problem: security-sensitive JSON decoding is inconsistent. Some paths reject
+duplicate keys and trailing content while others decode permissively. GH pull
+request creation and HF LFS classification inspect a body and then forward the
+original bytes, allowing the broker and upstream to interpret malformed input
+differently. Some HF receive-pack and LFS responses are also buffered without a
+size limit.
+
+Implementation:
+
+- Extend `internal/strictjson` and `httpx` with one bounded decode operation that
+  rejects duplicate keys, trailing JSON values, oversized bodies, and unknown
+  fields when the endpoint has a closed request schema.
+- Use the shared operation for every security-relevant client JSON boundary.
+- For inspect-and-forward routes, either forward a canonical validated encoding
+  or prove with tests that the exact forwarded bytes have one unambiguous parse.
+- Add explicit limits to every buffered upstream response, including HF
+  receive-pack reports and rewritten LFS batch responses.
+- Keep streaming routes streaming. Enforce a byte budget while copying rather
+  than buffering them solely to apply a limit.
+- Return stable client and upstream error classes without including body
+  contents.
+
+Deletion targets:
+
+- Endpoint-local combinations of `ReadLimited`, duplicate-key checking,
+  `json.Decoder`, trailing-value checks, and size checks that the shared helper
+  replaces.
+
+Acceptance:
+
+- Duplicate keys, unknown fields on closed schemas, trailing values, empty
+  bodies, and oversized bodies have shared table-driven tests.
+- Policy classification and upstream execution cannot observe different values
+  from one request body.
+- Oversized upstream receive-pack, LFS, API, and inference responses fail within
+  configured memory bounds.
+- Streaming proxy tests prove cancellation, backpressure, and bounded copying.
+
+### 3. Make Time and Entropy Explicit Runtime Inputs
+
+Problem: lifecycle and HTTP code calls `time.Now` and random generators directly,
+and one correlation-ID path degrades to a timestamp if secure randomness fails.
+This makes restart and expiry behavior harder to test and permits inconsistent
+failure semantics.
+
+Implementation:
+
+- Define small clock and secure-ID function dependencies at shared service
+  boundaries; do not introduce a general dependency-injection framework.
+- Pass one UTC clock through grants, decisions, Agent operations, plan retention,
+  and request correlation where those components must agree on time.
+- Require cryptographically secure generation for tokens and security-relevant
+  identifiers and return an error when entropy is unavailable.
+- Permit a clearly labeled non-security fallback only for observability-only
+  correlation values, or remove the fallback entirely when the caller can
+  propagate an error.
+- Use deterministic clocks and ID sources in lifecycle, restart, expiry, and
+  idempotency tests.
+
+Acceptance:
+
+- Lifecycle tests contain no sleeps to cross expiry boundaries.
+- Entropy failure cannot produce a token, grant ID, decision token, operation ID,
+  or other authorization input.
+- One request or transition uses one captured timestamp where consistency
+  matters.
+
+### 4. Enforce Durable Store Ownership and Recovery
+
+Problem: grant, operation, and helper stores use process-local mutexes and atomic
+rename but have no cross-process ownership. Two broker processes can read the
+same old state and overwrite each other. Atomic replacement prevents torn files;
+it does not prevent lost updates.
+
+Implementation:
+
+- Add a root store-directory lease that acquires a non-blocking, process-lifetime
+  exclusive lock using OS-specific adapters.
+- Have each broker acquire its state lease before opening stores, listeners, or
+  approval transports. A second owner must fail startup with a stable diagnostic.
+- Keep state writes temp-file based, fsynced, atomically renamed, and followed by
+  directory sync.
+- Make durable readers reject duplicate keys, trailing content, unknown state
+  versions, invalid required fields, and oversized state files.
+- Define restart recovery for reservations, pending notifications, retained
+  executions, Agent operations, and orphan plans, and test interruption at each
+  durable transition.
+- Keep one independently locked state directory per broker; do not create a
+  shared multi-broker database.
+
+Acceptance:
+
+- A second process cannot open the same broker state directory.
+- Crash-point tests prove committed state is recoverable and uncommitted state is
+  either absent or safely reconcilable.
+- Corrupt, truncated, oversized, duplicate-key, and unknown-version state fails
+  closed without being overwritten.
+- Linux and macOS ownership behavior has focused tests.
+
+### 5. Make Protocol Artifacts Single-Source
 
 Problem: Operator V1 and Agent V1 are represented by canonical JSON Schemas,
 handwritten Go structs, generated TypeScript types, and handwritten runtime
@@ -77,7 +201,7 @@ Acceptance:
 - CI detects stale Go, TypeScript, and runtime-validation artifacts.
 - Operator V1 and Agent V1 fixtures round-trip through Go and TypeScript.
 
-### 2. Finish Git pkt-line Consolidation
+### 6. Finish Git pkt-line Consolidation
 
 Problem: `gitx` parses pkt-lines and receive-pack commands, while
 `brokers/huggingface/internal/gitproxy/pktline` separately implements buffered
@@ -103,7 +227,7 @@ Acceptance:
   shared tests.
 - Existing Git proxy integration tests remain unchanged in behavior.
 
-### 3. Move HF Request Auditing onto the Shared Recorder
+### 7. Move HF Request Auditing onto the Shared Recorder
 
 Problem: HF has `internal/audit`, while the other shared control-plane paths use
 the root `audit` package.
@@ -128,7 +252,7 @@ Acceptance:
 - Tests prove tokens, authorization headers, request bodies, Git pack data,
   prompts, completions, and plan contents never enter audit output.
 
-### 4. Finish Doctor and Isolation Consolidation
+### 8. Finish Doctor and Isolation Consolidation
 
 Problem: HF has large Linux and macOS isolation implementations that repeat
 identity lookup, root-equivalent group checks, path traversal, mode and ACL
@@ -161,7 +285,50 @@ Acceptance:
   retain fail-closed tests.
 - HF isolation code contains only HF configuration and presentation adapters.
 
-### 5. Standardize All Brokers on Agent Operations V1
+### 9. Extract Immutable Plan and Grant Coordination
+
+Problem: HF, GH, and sudo independently implement the same provider-neutral
+sequence: locate an idempotent request, recover its original plan timestamp,
+bind an immutable content-addressed plan, create the durable grant, and collect
+orphan plans. The separate implementations can drift in replay, cancellation,
+and cleanup behavior.
+
+Shared ownership:
+
+- `planstore` continues to own content-addressed bytes, integrity verification,
+  and bounded orphan collection.
+- A small root coordinator owns the ordering and idempotency contract between a
+  provider plan adapter and `grants.Store`.
+- The coordinator accepts a narrow typed plan interface. It must not accept
+  unstructured callbacks or know provider schemas.
+
+Provider ownership:
+
+- canonical plan construction and validation;
+- plan schema names, metadata keys, and typed decoding;
+- activation checks and execution; and
+- provider-specific errors and presentation.
+
+Implementation:
+
+- Define the shared bind/request/replay contract from the three existing broker
+  implementations and conformance tests before moving code.
+- Move existing-plan timestamp recovery, request ordering, and orphan reference
+  collection into the coordinator.
+- Adopt it in HF first, then GH and sudo, deleting each local implementation in
+  the same change.
+- Integrate the coordinator with the state lease and Agent operation transaction
+  boundaries instead of introducing a second locking mechanism.
+
+Acceptance:
+
+- HF, GH, and sudo pass the same create, replay, cancellation, missing-plan,
+  digest-mismatch, crash-recovery, and orphan-retention fixtures.
+- An idempotent replay resolves to the original immutable plan and timestamp.
+- Approval can never activate a missing, changed, or mismatched plan.
+- No provider plan type or policy vocabulary enters a root package.
+
+### 10. Standardize All Brokers on Agent Operations V1
 
 Problem: `agentv1` is provider-neutral, but its durable implementation currently
 lives in `brokers/huggingface/internal/hfoperation`. HF, GH, and sudo are all
@@ -241,7 +408,7 @@ Acceptance:
 - Provider credentials, plans, classifiers, and execution code never enter the
   shared Agent V1 packages.
 
-### 6. Decompose the HF HTTP Package
+### 11. Decompose the HF HTTP Package and Tests
 
 Problem: the HF HTTP package remains difficult to review because unrelated Git,
 LFS/Xet, repository-read, grant, and routing behavior is concentrated in a
@@ -251,7 +418,11 @@ Implementation:
 
 - Split files by domain inside the existing `httpapi` package.
 - Keep server construction and shared dependencies in one small assembly file.
+- Keep exactly one authoritative route table and one HTTP framework boundary;
+  remove redundant hand-routing layers as behavior-preserving tests permit.
 - Keep route classification separate from provider execution.
+- Split the package's monolithic test file by the same domains while retaining
+  shared black-box fixtures and helpers in dedicated test support files.
 - Do not add interfaces solely to reduce file length.
 - Perform this after the Git, audit, and doctor extractions so code is moved
   only once.
@@ -261,8 +432,10 @@ Acceptance:
 - No route or response changes.
 - Existing package tests remain the behavioral contract.
 - Each production file has one clear responsibility.
+- Each test file covers one domain, and route ownership can be determined from
+  one table without tracing multiple dispatch layers.
 
-### 7. Extract Setup Helpers Only When Exact
+### 12. Extract Setup Helpers Only When Exact
 
 HF and GH systemd commands share small mechanics such as loopback readiness
 clients, URL rendering, root checks, and summaries. Sudo has a materially
@@ -299,11 +472,14 @@ golangci-lint run
 scripts/check-architecture.sh
 slophammer-go dry .
 slophammer-go check .
+slophammer-go crap .
 ```
 
 Also run each affected broker's Slophammer configuration and focused
 integration tests. Protocol changes must run generation checks, fixture tests,
-the OpenClaw plugin checks, packed-install test, and cross-browser tests.
+the OpenClaw plugin checks, packed-install test, and cross-browser tests. No
+quality command may be wrapped in a blanket accepted exit code; temporary
+exceptions must identify the exact finding in checked-in configuration.
 
 Review each slice against these invariants:
 
@@ -312,6 +488,11 @@ Review each slice against these invariants:
 - no compatibility route, old-state reader, converter, dual read, or dual
   write;
 - no weakening of fail-closed behavior;
+- no unbounded buffering at a client, upstream, state, or subprocess boundary;
+- no permissive JSON decoding at an authorization or durable-state boundary;
+- no second process able to mutate the same broker state directory;
+- no direct wall-clock or entropy dependency hidden inside a shared lifecycle
+  transition;
 - no new shared abstraction without two concrete consumers or an existing
   duplicate root implementation; and
 - provider-local code is deleted in the same slice that adopts the shared API.
@@ -322,13 +503,21 @@ Mutation testing remains disabled and non-blocking.
 
 The refactor is complete when:
 
+- all security-relevant JSON and buffered I/O boundaries use shared strict,
+  bounded mechanics;
+- each broker exclusively owns and can recover its durable state directory;
+- lifecycle time and secure identifiers come from explicit, testable runtime
+  dependencies;
 - schemas drive protocol enums, limits, and bindings;
 - HF and GH use one Git framing implementation;
 - HF uses the shared audit recorder;
 - HF isolation is a thin provider adapter over shared doctor primitives;
+- HF, GH, and sudo use one provider-neutral immutable plan/grant coordination
+  contract while retaining provider plan schemas;
 - HF, GH, and sudo use the shared Agent V1 lifecycle for discrete approved
   operations;
-- the HF HTTP package is decomposed without behavior changes;
+- the HF HTTP package and tests are decomposed around one routing layer without
+  behavior changes;
 - all architecture, security, test, coverage, Slophammer, plugin, and CI gates
   pass; and
 - no provider-specific credential, policy vocabulary, plan schema, or executor
