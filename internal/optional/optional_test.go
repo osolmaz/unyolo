@@ -10,4 +10,7 @@ func TestNonZero(t *testing.T) {
 	if value == nil || *value != "value" {
 		t.Fatalf("NonZero(value) = %v", value)
 	}
+	if Value[string](nil) != "" || Value(value) != "value" {
+		t.Fatal("Value() did not preserve optional semantics")
+	}
 }

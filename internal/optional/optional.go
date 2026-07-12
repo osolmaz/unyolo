@@ -9,3 +9,12 @@ func NonZero[T comparable](value T) *T {
 	}
 	return &value
 }
+
+// Value returns the pointed-to value, or its zero value for nil.
+func Value[T any](value *T) T {
+	if value == nil {
+		var zero T
+		return zero
+	}
+	return *value
+}

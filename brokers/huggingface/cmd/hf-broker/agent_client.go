@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agentv1wire"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
@@ -256,11 +256,11 @@ func firstEnvironment(getenv func(string) string, names ...string) string {
 }
 
 func (client *agentClient) submit(ctx context.Context, request agentv1.SubmitRequest) (agentv1.Operation, error) {
-	data, err := json.Marshal(request)
+	wire, err := agentv1wire.SubmitToWire(request)
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	response, err := client.api.SubmitAgentOperationWithBody(ctx, "application/json", bytes.NewReader(data))
+	response, err := client.api.SubmitAgentOperation(ctx, wire)
 	return decodeAgentHTTPResponse(response, err)
 }
 
@@ -302,14 +302,18 @@ func decodeAgentHTTPResponse(response *http.Response, err error) (agentv1.Operat
 
 func decodeAgentResponse(status int, data []byte) (agentv1.Operation, error) {
 	if status < 200 || status >= 300 {
-		var envelope agentv1.ErrorEnvelope
+		var envelope agentwire.ErrorEnvelope
 		if strictjson.Decode(data, &envelope, false) == nil && envelope.Error.Message != "" {
 			return agentv1.Operation{}, errors.New(envelope.Error.Message)
 		}
 		return agentv1.Operation{}, fmt.Errorf("HF Broker request failed with HTTP %d", status)
 	}
-	var operation agentv1.Operation
-	if err := strictjson.Decode(data, &operation, false); err != nil || operation.APIVersion != agentv1.APIVersion {
+	var wire agentwire.Operation
+	if err := strictjson.Decode(data, &wire, false); err != nil {
+		return agentv1.Operation{}, errors.New("HF Broker returned an invalid operation")
+	}
+	operation, err := agentv1wire.OperationFromWire(wire)
+	if err != nil || operation.APIVersion != agentv1.APIVersion {
 		return agentv1.Operation{}, errors.New("HF Broker returned an invalid operation")
 	}
 	return operation, nil

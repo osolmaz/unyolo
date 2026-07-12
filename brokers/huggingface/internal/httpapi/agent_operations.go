@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agentv1wire"
 	bkauth "github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
@@ -370,8 +371,12 @@ func agentWaitDuration(value string) (time.Duration, bool) {
 }
 
 func readAgentSubmit(r *http.Request) (agentv1.SubmitRequest, error) {
-	var request agentv1.SubmitRequest
-	if err := httpx.DecodeJSON(r.Body, maxAgentRequestBody, &request, true); err != nil {
+	var wire agentwire.SubmitRequest
+	if err := httpx.DecodeJSON(r.Body, maxAgentRequestBody, &wire, true); err != nil {
+		return agentv1.SubmitRequest{}, fmt.Errorf("agent operation request is invalid: %w", err)
+	}
+	request, err := agentv1wire.SubmitFromWire(wire)
+	if err != nil {
 		return agentv1.SubmitRequest{}, fmt.Errorf("agent operation request is invalid: %w", err)
 	}
 	if strings.TrimSpace(request.IdempotencyKey) == "" || len(request.IdempotencyKey) > 128 || strings.TrimSpace(request.Reason) == "" || len(request.Reason) > 512 {
@@ -456,6 +461,11 @@ func repoCreateSummary(target repoCreateTarget, arguments repoCreateArguments) s
 }
 
 func writeAgentOperation(w http.ResponseWriter, operation agentv1.Operation, created bool) {
+	wire, err := agentv1wire.OperationToWire(operation)
+	if err != nil {
+		writeAgentError(w, http.StatusInternalServerError, "operation_store_unavailable", "Stored operation is invalid")
+		return
+	}
 	status := http.StatusOK
 	if created && !operation.State.Terminal() {
 		status = http.StatusAccepted
@@ -464,11 +474,11 @@ func writeAgentOperation(w http.ResponseWriter, operation agentv1.Operation, cre
 		w.Header().Set("Location", agentOperationsPath+"/"+url.PathEscape(operation.ID))
 		w.Header().Set("Retry-After", "2")
 	}
-	writeJSON(w, status, operation)
+	writeJSON(w, status, wire)
 }
 
 func writeAgentError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, agentv1.ErrorEnvelope{Error: agentv1.Error{Code: code, Message: message}})
+	writeJSON(w, status, agentwire.ErrorEnvelope{Error: agentwire.OperationError{Code: code, Message: message}})
 }
 
 func (s *Server) failOperation(id string, state agentv1.State, code, message string) agentv1.Operation {

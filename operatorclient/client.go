@@ -357,10 +357,10 @@ func requestFromWire(input operatorwire.BrokerRequest) operatorv1.Request {
 		GrantedMaxUses: input.GrantedMaxUses, UsedCount: input.UsedCount, DecidedAt: input.DecidedAt,
 		Presentation:   operatorv1.Presentation{Risk: string(input.Presentation.Risk), Title: input.Presentation.Title, Facts: facts},
 		AllowedActions: make([]operatorv1.Action, 0, len(input.AllowedActions))}
-	result.RequestReason = stringValue(input.RequestReason)
-	result.DecidedBy = stringValue(input.DecidedBy)
-	result.DecidedOnBehalfOf = stringValue(input.DecidedOnBehalfOf)
-	result.Presentation.Summary = stringValue(input.Presentation.Summary)
+	result.RequestReason = optional.Value(input.RequestReason)
+	result.DecidedBy = optional.Value(input.DecidedBy)
+	result.DecidedOnBehalfOf = optional.Value(input.DecidedOnBehalfOf)
+	result.Presentation.Summary = optional.Value(input.Presentation.Summary)
 	result.PresentationUnavailable = boolValue(input.PresentationUnavailable)
 	for _, action := range input.AllowedActions {
 		result.AllowedActions = append(result.AllowedActions, operatorv1.Action(action))
@@ -374,13 +374,6 @@ func requestFromWire(input operatorwire.BrokerRequest) operatorv1.Request {
 func eventFromWire(input operatorwire.BrokerEvent) operatorv1.Event {
 	return operatorv1.Event{Cursor: input.Cursor, Kind: string(input.Kind), RequestID: input.RequestId, Revision: int64(input.Revision),
 		Status: grants.Status(input.Status), OccurredAt: input.OccurredAt, UsedCount: input.UsedCount}
-}
-
-func stringValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }
 
 func boolValue(value *bool) bool {
