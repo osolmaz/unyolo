@@ -483,7 +483,7 @@ func runTokenFileChecks(report *Report, agent identity, path string) {
 	}
 	runTokenACLChecks(report, path, stat)
 	runPathEntryReplaceCheck(report, agent, path, "token_file_entry_not_replaceable")
-	runParentWriteChecks(report, agent, filepath.Dir(cleanPath(path)), "token_file_parent_not_writable")
+	runParentWriteChecks(report, agent, filepath.Dir(bkdoctor.CleanPath(path)), "token_file_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "token_file_resolved")
 }
 
@@ -527,7 +527,7 @@ func tokenACLPaths(path string, stat fileStat) []string {
 	seen := make(map[string]bool)
 	var paths []string
 	addPath := func(candidate string) {
-		cleaned := cleanPath(candidate)
+		cleaned := bkdoctor.CleanPath(candidate)
 		if seen[cleaned] {
 			return
 		}
@@ -535,18 +535,18 @@ func tokenACLPaths(path string, stat fileStat) []string {
 		paths = append(paths, cleaned)
 	}
 	addPath(path)
-	for _, dir := range parentDirs(filepath.Dir(cleanPath(path))) {
+	for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(path))) {
 		addPath(dir)
 	}
-	if cleanPath(stat.path) != cleanPath(path) {
+	if bkdoctor.CleanPath(stat.path) != bkdoctor.CleanPath(path) {
 		addPath(stat.path)
-		for _, dir := range parentDirs(filepath.Dir(cleanPath(stat.path))) {
+		for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(stat.path))) {
 			addPath(dir)
 		}
 	}
-	if resolved, ok := resolvedCleanPath(path); ok && resolved != cleanPath(path) {
+	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
 		addPath(resolved)
-		for _, dir := range parentDirs(filepath.Dir(resolved)) {
+		for _, dir := range bkdoctor.ParentDirs(filepath.Dir(resolved)) {
 			addPath(dir)
 		}
 	}
@@ -578,7 +578,7 @@ func runSocketChecks(report *Report, agent identity, path string) {
 		add(report, CheckPass, "socket_not_agent_writable", fmt.Sprintf("agent cannot write Unix socket %s by Unix mode bits", path))
 	}
 	runSocketACLChecks(report, path)
-	runParentWriteChecks(report, agent, filepath.Dir(cleanPath(path)), "socket_parent_not_writable")
+	runParentWriteChecks(report, agent, filepath.Dir(bkdoctor.CleanPath(path)), "socket_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "socket_resolved")
 }
 
@@ -605,7 +605,7 @@ func socketACLPaths(path string) []string {
 	seen := make(map[string]bool)
 	var paths []string
 	addPath := func(candidate string) {
-		cleaned := cleanPath(candidate)
+		cleaned := bkdoctor.CleanPath(candidate)
 		if seen[cleaned] {
 			return
 		}
@@ -613,12 +613,12 @@ func socketACLPaths(path string) []string {
 		paths = append(paths, cleaned)
 	}
 	addPath(path)
-	for _, dir := range parentDirs(filepath.Dir(cleanPath(path))) {
+	for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(path))) {
 		addPath(dir)
 	}
-	if resolved, ok := resolvedCleanPath(path); ok && resolved != cleanPath(path) {
+	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
 		addPath(resolved)
-		for _, dir := range parentDirs(filepath.Dir(resolved)) {
+		for _, dir := range bkdoctor.ParentDirs(filepath.Dir(resolved)) {
 			addPath(dir)
 		}
 	}
@@ -626,7 +626,7 @@ func socketACLPaths(path string) []string {
 }
 
 func runParentWriteChecks(report *Report, agent identity, dir, name string) {
-	dirs := parentDirs(dir)
+	dirs := bkdoctor.ParentDirs(dir)
 	for _, candidate := range dirs {
 		stat, ok := lstat(candidate)
 		if !ok {
@@ -661,12 +661,12 @@ func runParentSymlinkReplaceCheck(report *Report, agent identity, entry fileStat
 }
 
 func runPathEntryReplaceCheck(report *Report, agent identity, path, name string) {
-	entry, entryOK := lstat(cleanPath(path))
+	entry, entryOK := lstat(bkdoctor.CleanPath(path))
 	if !entryOK {
 		add(report, CheckUnknown, name, pathEntryInspectMessage(name))
 		return
 	}
-	parent, parentOK := lstat(resolvedDir(path))
+	parent, parentOK := lstat(bkdoctor.ResolvedDir(path))
 	if !parentOK {
 		add(report, CheckUnknown, name, pathEntryParentInspectMessage(name))
 		return
@@ -679,12 +679,12 @@ func runPathEntryReplaceCheck(report *Report, agent identity, path, name string)
 }
 
 func runResolvedPathChecks(report *Report, agent identity, path, prefix string) {
-	resolved, ok := resolvedCleanPath(path)
+	resolved, ok := bkdoctor.ResolvedCleanPath(path)
 	if !ok {
 		add(report, CheckUnknown, prefix+"_path", pathMessagesFor(prefix).resolveUnknown)
 		return
 	}
-	if resolved == cleanPath(path) {
+	if resolved == bkdoctor.CleanPath(path) {
 		return
 	}
 	runPathEntryReplaceCheck(report, agent, resolved, prefix+"_entry_not_replaceable")
@@ -792,7 +792,7 @@ func statPath(report *Report, checkName, path string) (fileStat, bool) {
 	if !filepath.IsAbs(path) {
 		add(report, CheckWarn, checkName+"_absolute", relativePathMessage(checkName, path))
 	}
-	stat, ok := lstat(cleanPath(path))
+	stat, ok := lstat(bkdoctor.CleanPath(path))
 	if !ok {
 		add(report, CheckUnknown, checkName, inspectPathMessage(checkName, path))
 		return fileStat{}, false
@@ -819,7 +819,7 @@ func lstat(path string) (fileStat, bool) {
 }
 
 func statTarget(path string) (fileStat, bool) {
-	target, err := filepath.EvalSymlinks(cleanPath(path))
+	target, err := filepath.EvalSymlinks(bkdoctor.CleanPath(path))
 	if err != nil {
 		return fileStat{}, false
 	}
@@ -922,161 +922,6 @@ func maxACLState(a, b aclState) aclState {
 		return aclUnknown
 	}
 	return aclAbsent
-}
-
-func parentDirs(path string) []string {
-	cleaned := cleanPath(path)
-	var dirs []string
-	for {
-		dirs = append(dirs, cleaned)
-		parent := filepath.Dir(cleaned)
-		if parent == cleaned {
-			break
-		}
-		cleaned = parent
-	}
-	return dirs
-}
-
-func cleanPath(path string) string {
-	if abs, err := filepath.Abs(path); err == nil {
-		return abs
-	}
-	return filepath.Clean(path)
-}
-
-func resolvedDir(path string) string {
-	dir := filepath.Dir(cleanPath(path))
-	resolved, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return dir
-	}
-	return resolved
-}
-
-func resolvedCleanPath(path string) (string, bool) {
-	resolved, err := filepath.EvalSymlinks(cleanPath(path))
-	if err != nil {
-		return "", false
-	}
-	return resolved, true
-}
-
-func readProcStatus(pid int) (procStatus, error) {
-	data, err := os.ReadFile(procPath(pid, "status"))
-	if err != nil {
-		return procStatus{}, err
-	}
-	status, err := ParseProcStatus(data)
-	if err != nil {
-		return procStatus{}, err
-	}
-	return status, nil
-}
-
-func readProcEnviron(pid int) ([]string, error) {
-	data, err := os.ReadFile(procPath(pid, "environ"))
-	if err != nil {
-		return nil, err
-	}
-	parts := strings.Split(string(data), "\x00")
-	env := parts[:0]
-	for _, item := range parts {
-		if item != "" {
-			env = append(env, item)
-		}
-	}
-	return env, nil
-}
-
-func readProcCWD(pid int) (string, error) {
-	return os.Readlink(procPath(pid, "cwd"))
-}
-
-func procPath(pid int, name string) string {
-	return filepath.Join("/proc", strconv.Itoa(pid), name)
-}
-
-// ParseProcStatus parses the Linux /proc/<pid>/status fields used by the doctor.
-func ParseProcStatus(data []byte) (procStatus, error) {
-	status, err := bkdoctor.ParseProcessStatus(data)
-	if err != nil {
-		return procStatus{}, err
-	}
-	return procStatus{
-		uid:       status.FilesystemUID,
-		gid:       status.FilesystemGID,
-		uidValues: status.UIDs,
-		gidValues: status.GIDs,
-		gids:      status.Groups,
-		capEff:    status.EffectiveCaps,
-		capPrm:    status.PermittedCaps,
-	}, nil
-}
-
-func envHasSecretName(env []string) bool {
-	for _, item := range env {
-		name, _, _ := strings.Cut(item, "=")
-		switch name {
-		case "HF_TOKEN", "HF_TOKEN_PATH", "HUGGING_FACE_HUB_TOKEN", "HF_BROKER_HF_TOKEN", "HF_BROKER_HF_TOKEN_FILE":
-			return true
-		}
-	}
-	return false
-}
-
-func envHasName(env []string, target string) bool {
-	for _, item := range env {
-		name, _, _ := strings.Cut(item, "=")
-		if name == target {
-			return true
-		}
-	}
-	return false
-}
-
-func envValue(env []string, target string) (string, bool) {
-	for _, item := range env {
-		name, value, _ := strings.Cut(item, "=")
-		if name == target {
-			return value, true
-		}
-	}
-	return "", false
-}
-
-func sameCredentialPath(checkedPath, brokerPath, brokerCWD string) (bool, bool) {
-	checked, ok := absolutePath(checkedPath, "")
-	if !ok {
-		return false, false
-	}
-	broker, ok := absolutePath(brokerPath, brokerCWD)
-	if !ok {
-		return false, false
-	}
-	if checked == broker {
-		return true, true
-	}
-	resolvedChecked, errChecked := filepath.EvalSymlinks(checked)
-	resolvedBroker, errBroker := filepath.EvalSymlinks(broker)
-	if errChecked != nil || errBroker != nil {
-		return false, true
-	}
-	return resolvedChecked == resolvedBroker, true
-}
-
-func absolutePath(path, baseDir string) (string, bool) {
-	if filepath.IsAbs(path) {
-		return filepath.Clean(path), true
-	}
-	if baseDir != "" {
-		return filepath.Clean(filepath.Join(baseDir, path)), true
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", false
-	}
-	return abs, true
 }
 
 func add(report *Report, status CheckStatus, name, message string) {

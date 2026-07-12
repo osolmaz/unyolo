@@ -383,7 +383,7 @@ func runTokenFileChecks(report *Report, agent identity, path string) {
 	}
 	runTokenACLChecks(report, agent, path, stat)
 	runPathEntryReplaceCheck(report, agent, path, "token_file_entry_not_replaceable")
-	runParentWriteChecks(report, agent, filepath.Dir(cleanPath(path)), "token_file_parent_not_writable")
+	runParentWriteChecks(report, agent, filepath.Dir(bkdoctor.CleanPath(path)), "token_file_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "token_file_resolved")
 }
 
@@ -419,10 +419,10 @@ func runTokenACLChecks(report *Report, agent identity, path string, stat fileSta
 func tokenACLPaths(path string, stat fileStat) []darwinACLPath {
 	builder := newDarwinACLPathBuilder()
 	builder.addEntryAndParents(path, aclTokenEntry)
-	if cleanPath(stat.path) != cleanPath(path) {
+	if bkdoctor.CleanPath(stat.path) != bkdoctor.CleanPath(path) {
 		builder.addEntryAndParents(stat.path, aclTokenEntry)
 	}
-	if resolved, ok := resolvedCleanPath(path); ok && resolved != cleanPath(path) {
+	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
 		builder.addEntryAndParents(resolved, aclTokenEntry)
 	}
 	return builder.paths
@@ -453,7 +453,7 @@ func runSocketChecks(report *Report, agent identity, path string) {
 		add(report, CheckPass, "socket_not_agent_writable", fmt.Sprintf("agent cannot write Unix socket %s by Unix mode bits", path))
 	}
 	runSocketACLChecks(report, agent, path)
-	runParentWriteChecks(report, agent, filepath.Dir(cleanPath(path)), "socket_parent_not_writable")
+	runParentWriteChecks(report, agent, filepath.Dir(bkdoctor.CleanPath(path)), "socket_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "socket_resolved")
 }
 
@@ -472,7 +472,7 @@ func runSocketACLChecks(report *Report, agent identity, path string) {
 func socketACLPaths(path string) []darwinACLPath {
 	builder := newDarwinACLPathBuilder()
 	builder.addEntryAndParents(path, aclSocketEntry)
-	if resolved, ok := resolvedCleanPath(path); ok && resolved != cleanPath(path) {
+	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
 		builder.addEntryAndParents(resolved, aclSocketEntry)
 	}
 	return builder.paths
@@ -489,13 +489,13 @@ func newDarwinACLPathBuilder() darwinACLPathBuilder {
 
 func (b *darwinACLPathBuilder) addEntryAndParents(path string, entryKind aclPathKind) {
 	b.add(path, entryKind)
-	for _, dir := range parentDirs(filepath.Dir(cleanPath(path))) {
+	for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(path))) {
 		b.add(dir, aclPathParent)
 	}
 }
 
 func (b *darwinACLPathBuilder) add(path string, kind aclPathKind) {
-	cleaned := cleanPath(path)
+	cleaned := bkdoctor.CleanPath(path)
 	key := fmt.Sprintf("%d:%s", kind, cleaned)
 	if b.seen[key] {
 		return
@@ -784,7 +784,7 @@ func darwinACLEntryHasDangerousGrant(entry darwinACLEntry, kind aclPathKind) boo
 }
 
 func runParentWriteChecks(report *Report, agent identity, dir, name string) {
-	for _, candidate := range parentDirs(dir) {
+	for _, candidate := range bkdoctor.ParentDirs(dir) {
 		stat, ok := lstat(candidate)
 		if !ok {
 			add(report, CheckUnknown, name, parentInspectMessage(name, candidate))
@@ -818,12 +818,12 @@ func runParentSymlinkReplaceCheck(report *Report, agent identity, entry fileStat
 }
 
 func runPathEntryReplaceCheck(report *Report, agent identity, path, name string) {
-	entry, entryOK := lstat(cleanPath(path))
+	entry, entryOK := lstat(bkdoctor.CleanPath(path))
 	if !entryOK {
 		add(report, CheckUnknown, name, pathEntryInspectMessage(name))
 		return
 	}
-	parent, parentOK := lstat(resolvedDir(path))
+	parent, parentOK := lstat(bkdoctor.ResolvedDir(path))
 	if !parentOK {
 		add(report, CheckUnknown, name, pathEntryParentInspectMessage(name))
 		return
@@ -836,12 +836,12 @@ func runPathEntryReplaceCheck(report *Report, agent identity, path, name string)
 }
 
 func runResolvedPathChecks(report *Report, agent identity, path, prefix string) {
-	resolved, ok := resolvedCleanPath(path)
+	resolved, ok := bkdoctor.ResolvedCleanPath(path)
 	if !ok {
 		add(report, CheckUnknown, prefix+"_path", pathMessagesFor(prefix).resolveUnknown)
 		return
 	}
-	if resolved == cleanPath(path) {
+	if resolved == bkdoctor.CleanPath(path) {
 		return
 	}
 	runPathEntryReplaceCheck(report, agent, resolved, prefix+"_entry_not_replaceable")
@@ -942,7 +942,7 @@ func statPath(report *Report, checkName, path string) (fileStat, bool) {
 	if !filepath.IsAbs(path) {
 		add(report, CheckWarn, checkName+"_absolute", relativePathMessage(checkName, path))
 	}
-	stat, ok := lstat(cleanPath(path))
+	stat, ok := lstat(bkdoctor.CleanPath(path))
 	if !ok {
 		add(report, CheckUnknown, checkName, inspectPathMessage(checkName, path))
 		return fileStat{}, false
@@ -969,7 +969,7 @@ func lstat(path string) (fileStat, bool) {
 }
 
 func statTarget(path string) (fileStat, bool) {
-	target, err := filepath.EvalSymlinks(cleanPath(path))
+	target, err := filepath.EvalSymlinks(bkdoctor.CleanPath(path))
 	if err != nil {
 		return fileStat{}, false
 	}
@@ -1036,44 +1036,6 @@ func canAccess(agent identity, stat fileStat, owner, group, other os.FileMode) b
 	default:
 		return perm&other != 0
 	}
-}
-
-func parentDirs(path string) []string {
-	cleaned := cleanPath(path)
-	var dirs []string
-	for {
-		dirs = append(dirs, cleaned)
-		parent := filepath.Dir(cleaned)
-		if parent == cleaned {
-			break
-		}
-		cleaned = parent
-	}
-	return dirs
-}
-
-func cleanPath(path string) string {
-	if abs, err := filepath.Abs(path); err == nil {
-		return abs
-	}
-	return filepath.Clean(path)
-}
-
-func resolvedDir(path string) string {
-	dir := filepath.Dir(cleanPath(path))
-	resolved, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return dir
-	}
-	return resolved
-}
-
-func resolvedCleanPath(path string) (string, bool) {
-	resolved, err := filepath.EvalSymlinks(cleanPath(path))
-	if err != nil {
-		return "", false
-	}
-	return resolved, true
 }
 
 func add(report *Report, status CheckStatus, name, message string) {
