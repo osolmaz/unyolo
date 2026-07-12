@@ -38,3 +38,16 @@ func TestParseProcessStatusAllowsEmptyGroupsAndShortIDs(t *testing.T) {
 		t.Fatalf("status=%+v err=%v", status, err)
 	}
 }
+
+func TestProcessStatusUIDPredicates(t *testing.T) {
+	status := ProcessStatus{UIDs: []int{42, 42, 42, 42}}
+	if !status.AllUIDsMatch(42) || !status.HasUID(42) || status.HasUID(7) {
+		t.Fatalf("unexpected UID predicates for %+v", status.UIDs)
+	}
+	if (ProcessStatus{}).AllUIDsMatch(42) {
+		t.Fatal("empty UID set matched")
+	}
+	if (ProcessStatus{UIDs: []int{42, 7}}).AllUIDsMatch(42) {
+		t.Fatal("mixed UID set matched")
+	}
+}

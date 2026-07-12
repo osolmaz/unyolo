@@ -14,15 +14,7 @@ import (
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
-type procStatus struct {
-	uid       int
-	gid       int
-	uidValues []int
-	gidValues []int
-	gids      []int
-	capEff    uint64
-	capPrm    uint64
-}
+type procStatus = bkdoctor.ProcessStatus
 
 var dangerousCapabilities = map[int]string{
 	0:  "CAP_CHOWN",
@@ -148,7 +140,7 @@ func resolveImplicitIdentity(agentPID int) (identity, error) {
 		if err != nil {
 			return identity{}, fmt.Errorf("read agent process status: %w", err)
 		}
-		return lookupUIDIdentity(status.uid, agentPID)
+		return lookupUIDIdentity(status.FilesystemUID, agentPID)
 	}
 	current, err := user.Current()
 	if err != nil {
@@ -169,11 +161,11 @@ func lookupUIDIdentity(uid, pid int) (identity, error) {
 }
 
 func identityWithProcessStatus(agent identity, status procStatus) identity {
-	agent.uid = status.uid
-	agent.gid = status.gid
+	agent.uid = status.FilesystemUID
+	agent.gid = status.FilesystemGID
 	agent.gidSet = true
-	agent.gids = gidsMap(status.gids)
-	for _, gid := range status.gidValues {
+	agent.gids = gidsMap(status.Groups)
+	for _, gid := range status.GIDs {
 		agent.gids[gid] = true
 	}
 	agent.groups = groupNames(agent.gids)
@@ -181,43 +173,10 @@ func identityWithProcessStatus(agent identity, status procStatus) identity {
 }
 
 func accessIdentity(agent identity, status *procStatus, statusErr error) identity {
-	if statusErr != nil || status == nil || !status.allUIDsMatch(agent.uid) {
+	if statusErr != nil || status == nil || !status.AllUIDsMatch(agent.uid) {
 		return agent
 	}
 	return identityWithProcessStatus(agent, *status)
-}
-
-func (s procStatus) allUIDsMatch(uid int) bool {
-	return allIntsMatch(s.uidValues, uid)
-}
-
-func (s procStatus) hasUID(uid int) bool {
-	for _, value := range s.uidValues {
-		if value == uid {
-			return true
-		}
-	}
-	return false
-}
-
-func allIntsMatch(values []int, want int) bool {
-	if len(values) == 0 {
-		return false
-	}
-	for _, value := range values {
-		if value != want {
-			return false
-		}
-	}
-	return true
-}
-
-func intsString(values []int) string {
-	parts := make([]string, 0, len(values))
-	for _, value := range values {
-		parts = append(parts, strconv.Itoa(value))
-	}
-	return "[" + strings.Join(parts, " ") + "]"
 }
 
 func runAgentProcChecks(report *Report, agent identity, pid int, status *procStatus, statusErr error) {
@@ -229,12 +188,12 @@ func runAgentProcChecks(report *Report, agent identity, pid int, status *procSta
 		add(report, CheckUnknown, "agent_process", "could not read agent process status: "+statusErr.Error())
 		return
 	}
-	if !status.allUIDsMatch(agent.uid) {
-		add(report, CheckFail, "agent_process_uid", fmt.Sprintf("agent process UIDs %s do not all match configured agent UID %d", intsString(status.uidValues), agent.uid))
+	if !status.AllUIDsMatch(agent.uid) {
+		add(report, CheckFail, "agent_process_uid", fmt.Sprintf("agent process UIDs %v do not all match configured agent UID %d", status.UIDs, agent.uid))
 	} else {
 		add(report, CheckPass, "agent_process_uid", "agent process UID matches configured agent identity")
 	}
-	runCapabilityCheck(report, status.capEff|status.capPrm)
+	runCapabilityCheck(report, status.EffectiveCaps|status.PermittedCaps)
 	runAgentEnvCheck(report, pid)
 }
 
@@ -276,10 +235,10 @@ func runBrokerChecks(report *Report, agent identity, pid int) {
 		add(report, CheckUnknown, "broker_process", "could not read broker process status: "+err.Error())
 		return
 	}
-	if status.hasUID(agent.uid) {
+	if status.HasUID(agent.uid) {
 		add(report, CheckFail, "broker_separate_uid", fmt.Sprintf("broker process includes agent UID %d", agent.uid))
 	} else {
-		add(report, CheckPass, "broker_separate_uid", fmt.Sprintf("broker UIDs %s differ from agent UID %d", intsString(status.uidValues), agent.uid))
+		add(report, CheckPass, "broker_separate_uid", fmt.Sprintf("broker UIDs %v differ from agent UID %d", status.UIDs, agent.uid))
 	}
 }
 

@@ -11,25 +11,17 @@ import (
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
-func readProcStatus(pid int) (procStatus, error) {
+func readProcStatus(pid int) (bkdoctor.ProcessStatus, error) {
 	data, err := os.ReadFile(procPath(pid, "status"))
 	if err != nil {
-		return procStatus{}, err
+		return bkdoctor.ProcessStatus{}, err
 	}
 	return ParseProcStatus(data)
 }
 
-// ParseProcStatus adapts the shared process status to HF's check model.
-func ParseProcStatus(data []byte) (procStatus, error) {
-	status, err := bkdoctor.ParseProcessStatus(data)
-	if err != nil {
-		return procStatus{}, err
-	}
-	return procStatus{
-		uid: status.FilesystemUID, gid: status.FilesystemGID,
-		uidValues: status.UIDs, gidValues: status.GIDs, gids: status.Groups,
-		capEff: status.EffectiveCaps, capPrm: status.PermittedCaps,
-	}, nil
+// ParseProcStatus parses Linux process credentials and capabilities.
+func ParseProcStatus(data []byte) (bkdoctor.ProcessStatus, error) {
+	return bkdoctor.ParseProcessStatus(data)
 }
 
 func readProcEnviron(pid int) ([]string, error) {

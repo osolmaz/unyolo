@@ -19,6 +19,34 @@ type ProcessStatus struct {
 	PermittedCaps uint64
 }
 
+// AllUIDsMatch reports whether every real, effective, saved, and filesystem
+// process UID equals uid.
+func (s ProcessStatus) AllUIDsMatch(uid int) bool {
+	return allProcessIDsMatch(s.UIDs, uid)
+}
+
+// HasUID reports whether any process UID equals uid.
+func (s ProcessStatus) HasUID(uid int) bool {
+	for _, value := range s.UIDs {
+		if value == uid {
+			return true
+		}
+	}
+	return false
+}
+
+func allProcessIDsMatch(values []int, want int) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, value := range values {
+		if value != want {
+			return false
+		}
+	}
+	return true
+}
+
 // ParseProcessStatus parses the relevant fields from Linux /proc/PID/status.
 func ParseProcessStatus(data []byte) (ProcessStatus, error) {
 	var parser processStatusParser
