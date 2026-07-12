@@ -9,7 +9,6 @@ internal/httpapi/agent_operations.go	Server.existingRepoCreateNotification	crap	
 cmd/hf-broker/agent_client.go	runClientOperation	crap	11.1
 cmd/hf-broker/mcp.go	callMCPOperation	crap	11.0
 cmd/hf-broker/mcp.go	callMCPRepoCreate	crap	10.5
-internal/httpapi/agent_operations.go	Server.serveAgentAPI	crap	10.3
 cmd/hf-broker/agent_client.go	validateRepoCreateClientOptions	crap	10.0
 cmd/hf-broker/agent_client.go	runClientRepoCreate	crap	9.6
 internal/httpapi/agent_operations.go	decodeRepoCreateArguments	crap	9.6

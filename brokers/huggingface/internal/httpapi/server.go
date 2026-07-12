@@ -38,6 +38,7 @@ import (
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
+	"github.com/osolmaz/brokerkit/protocol/agentwire"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -352,6 +353,7 @@ func newRouter(server *Server) *echo.Echo {
 	router := echo.New()
 	router.HideBanner = true
 	router.HidePort = true
+	agentwire.RegisterHandlers(router, server)
 	router.GET("/healthz", func(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "application/json")
 		_, err := c.Response().Write([]byte(`{"ok": true}`))
@@ -408,10 +410,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveHTTP routes one broker request after Echo dispatch.
 func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if writeHealth(w, r) {
-		return
-	}
-	if isAgentAPIPath(r.URL.Path) {
-		s.serveAgentAPI(w, r)
 		return
 	}
 	if isAPIPath(r.URL.Path) {

@@ -13,21 +13,20 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
 const defaultClientWait = 15 * time.Minute
 
 type agentClient struct {
-	baseURL string
-	secret  string
-	http    *http.Client
+	api    agentwire.ClientInterface
+	secret string
 }
 
 type repoCreateClientOptions struct {
@@ -207,7 +206,18 @@ func loadAgentClient(getenv func(string) string) (*agentClient, error) {
 	if len(secret) < 32 {
 		return nil, errors.New("HF Broker agent credential is invalid")
 	}
-	return &agentClient{baseURL: strings.TrimRight(parsed.String(), "/"), secret: secret, http: &http.Client{Timeout: 35 * time.Second}}, nil
+	httpClient := &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	api, err := agentwire.NewClient(strings.TrimRight(parsed.String(), "/"), agentwire.WithHTTPClient(httpClient),
+		agentwire.WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
+			request.Header.Set("Authorization", "Bearer "+secret)
+			return nil
+		}))
+	if err != nil {
+		return nil, errors.New("HF Broker URL is invalid")
+	}
+	return &agentClient{api: api, secret: secret}, nil
 }
 
 func parseAgentBaseURL(value string) (*url.URL, error) {
@@ -246,17 +256,24 @@ func firstEnvironment(getenv func(string) string, names ...string) string {
 }
 
 func (client *agentClient) submit(ctx context.Context, request agentv1.SubmitRequest) (agentv1.Operation, error) {
-	return client.request(ctx, http.MethodPost, "/api/agent/v1/operations", request)
+	data, err := json.Marshal(request)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	response, err := client.api.SubmitAgentOperationWithBody(ctx, "application/json", bytes.NewReader(data))
+	return decodeAgentHTTPResponse(response, err)
 }
 
 func (client *agentClient) get(ctx context.Context, id string) (agentv1.Operation, error) {
-	return client.request(ctx, http.MethodGet, "/api/agent/v1/operations/"+url.PathEscape(id), nil)
+	response, err := client.api.GetAgentOperation(ctx, id)
+	return decodeAgentHTTPResponse(response, err)
 }
 
 func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
 	for !operation.State.Terminal() {
-		path := "/api/agent/v1/operations/" + url.PathEscape(operation.ID) + "/events?after_revision=" + strconv.FormatInt(operation.Revision, 10) + "&wait_seconds=30"
-		next, err := client.request(ctx, http.MethodGet, path, nil)
+		after, wait := int(operation.Revision), 30
+		response, requestErr := client.api.WaitForAgentOperation(ctx, operation.ID, &agentwire.WaitForAgentOperationParams{AfterRevision: &after, WaitSeconds: &wait})
+		next, err := decodeAgentHTTPResponse(response, requestErr)
 		if err != nil {
 			if ctx.Err() != nil {
 				return operation, fmt.Errorf("operation %s is still pending; resume it with hf-broker client operation wait %s", operation.ID, operation.ID)
@@ -268,26 +285,12 @@ func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation
 	return operation, nil
 }
 
-func (client *agentClient) request(ctx context.Context, method, path string, payload any) (agentv1.Operation, error) {
-	var body io.Reader
-	if payload != nil {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return agentv1.Operation{}, err
-		}
-		body = bytes.NewReader(data)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, client.baseURL+path, body) // #nosec G704 -- the base origin is validated configuration and path is a fixed broker route.
+func decodeAgentHTTPResponse(response *http.Response, err error) (agentv1.Operation, error) {
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+client.secret)
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	response, err := client.http.Do(req) // #nosec G704 -- request origin is validated broker configuration.
-	if err != nil {
-		return agentv1.Operation{}, err
+	if response == nil {
+		return agentv1.Operation{}, errors.New("HF Broker returned no response")
 	}
 	defer func() { _ = response.Body.Close() }()
 	data, err := httpx.ReadLimited(response.Body, 64*1024)

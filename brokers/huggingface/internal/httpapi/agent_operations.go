@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
 	bkauth "github.com/osolmaz/brokerkit/auth"
@@ -24,6 +25,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
 const (
@@ -54,25 +56,38 @@ type repoCreateResult struct {
 	URL    string `json:"url"`
 }
 
-func isAgentAPIPath(path string) bool {
-	return path == agentDiscoveryPath || path == agentOperationsPath || strings.HasPrefix(path, agentOperationsPath+"/")
+var _ agentwire.ServerInterface = (*Server)(nil)
+
+func (s *Server) DiscoverAgent(c echo.Context) error {
+	_, ok := s.authenticateAgent(c.Response(), c.Request())
+	if !ok {
+		return nil
+	}
+	return c.JSON(http.StatusOK, agentwire.Descriptor{ApiVersion: agentwire.DescriptorApiVersionBrokerkitIoagentv1})
 }
 
-func (s *Server) serveAgentAPI(w http.ResponseWriter, r *http.Request) {
-	client, ok := s.authenticateAgent(w, r)
-	if !ok {
-		return
+func (s *Server) SubmitAgentOperation(c echo.Context) error {
+	client, ok := s.authenticateAgent(c.Response(), c.Request())
+	if ok {
+		s.handleAgentOperationSubmit(c.Response(), c.Request(), client)
 	}
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == agentDiscoveryPath:
-		writeJSON(w, http.StatusOK, agentv1.Descriptor{APIVersion: agentv1.APIVersion})
-	case r.Method == http.MethodPost && r.URL.Path == agentOperationsPath:
-		s.handleAgentOperationSubmit(w, r, client)
-	case r.Method == http.MethodGet && operationPathID(r.URL.Path) != "":
-		s.handleAgentOperationGet(w, r, client)
-	default:
-		writeAgentError(w, http.StatusNotFound, "not_found", "Agent operation route not found")
+	return nil
+}
+
+func (s *Server) GetAgentOperation(c echo.Context, _ agentwire.OperationID) error {
+	client, ok := s.authenticateAgent(c.Response(), c.Request())
+	if ok {
+		s.handleAgentOperationGet(c.Response(), c.Request(), client)
 	}
+	return nil
+}
+
+func (s *Server) WaitForAgentOperation(c echo.Context, _ agentwire.OperationID, _ agentwire.WaitForAgentOperationParams) error {
+	client, ok := s.authenticateAgent(c.Response(), c.Request())
+	if ok {
+		s.handleAgentOperationGet(c.Response(), c.Request(), client)
+	}
+	return nil
 }
 
 func (s *Server) authenticateAgent(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -327,23 +342,31 @@ func operationPathID(path string) string {
 }
 
 func agentWaitQuery(r *http.Request) (int64, time.Duration, bool) {
-	afterValue := r.URL.Query().Get("after_revision")
-	if afterValue == "" {
-		afterValue = "0"
-	}
-	after, err := strconv.ParseInt(afterValue, 10, 64)
-	if err != nil || after < 0 {
+	after, ok := agentAfterRevision(r.URL.Query().Get("after_revision"))
+	if !ok {
 		return 0, 0, false
 	}
-	waitValue := r.URL.Query().Get("wait_seconds")
-	if waitValue == "" {
-		waitValue = "30"
-	}
-	waitSeconds, err := strconv.Atoi(waitValue)
-	if err != nil || waitSeconds < 0 || waitSeconds > 30 {
+	wait, ok := agentWaitDuration(r.URL.Query().Get("wait_seconds"))
+	if !ok {
 		return 0, 0, false
 	}
-	return after, time.Duration(waitSeconds) * time.Second, true
+	return after, wait, true
+}
+
+func agentAfterRevision(value string) (int64, bool) {
+	if value == "" {
+		return 0, true
+	}
+	after, err := strconv.ParseInt(value, 10, 64)
+	return after, err == nil && after >= 0
+}
+
+func agentWaitDuration(value string) (time.Duration, bool) {
+	if value == "" {
+		return 30 * time.Second, true
+	}
+	seconds, err := strconv.Atoi(value)
+	return time.Duration(seconds) * time.Second, err == nil && seconds >= 0 && seconds <= 30
 }
 
 func readAgentSubmit(r *http.Request) (agentv1.SubmitRequest, error) {
