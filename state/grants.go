@@ -25,7 +25,7 @@ type GrantRecord struct {
 	ExpiresAt                                                     time.Time
 	Duration, RequestedDuration, PendingTimeout                   time.Duration
 	DecidedAt                                                     time.Time
-	DecidedBy, DecidedOnBehalfOf, DecisionReason                  string
+	DecidedBy, DecidedOnBehalfOf                                  string
 	UsedAt                                                        time.Time
 	UsedCount, UseRevision, ReservedCount                         int
 	ReservedAt                                                    time.Time
@@ -353,7 +353,7 @@ func decodeGrantRecord(row dbsql.Grant) (GrantRecord, error) {
 		ClientRequestID: row.ClientRequestID, Operation: row.Operation, TargetJSON: []byte(row.TargetJson), AttrsJSON: []byte(row.AttrsJson),
 		MetadataJSON: []byte(row.MetadataJson), PlanDigest: row.PlanDigest.String, Reason: row.Reason, Status: row.Status, Revision: row.Revision,
 		Duration: time.Duration(row.DurationNs), RequestedDuration: time.Duration(row.RequestedDurationNs), PendingTimeout: time.Duration(row.PendingTimeoutNs),
-		DecidedBy: row.DecidedBy, DecidedOnBehalfOf: row.DecidedOnBehalfOf, DecisionReason: row.DecisionReason,
+		DecidedBy: row.DecidedBy, DecidedOnBehalfOf: row.DecidedOnBehalfOf,
 		UsedCount: int(row.UsedCount), UseRevision: int(row.UseRevision), ReservedCount: int(row.ReservedCount),
 		ReservationRetained: row.ReservationRetained == 1, ReservationRevision: int(row.ReservationRevision), MaxUses: int(row.MaxUses),
 		RequestedMaxUses: int(row.RequestedMaxUses), ExpiredFrom: row.ExpiredFrom.String, NotificationJSON: bytesValue(row.NotificationJson),
@@ -383,7 +383,7 @@ func insertGrantParams(record GrantRecord) dbsql.InsertGrantParams {
 		CreatedAt: formatTime(record.CreatedAt), PendingExpiresAt: formatTime(record.PendingExpiresAt), ExpiresAt: nullTime(record.ExpiresAt),
 		DurationNs: int64(record.Duration), RequestedDurationNs: int64(record.RequestedDuration), PendingTimeoutNs: int64(record.PendingTimeout),
 		DecidedAt: nullTime(record.DecidedAt), DecidedBy: record.DecidedBy, DecidedOnBehalfOf: record.DecidedOnBehalfOf,
-		DecisionReason: record.DecisionReason, UsedAt: nullTime(record.UsedAt), UsedCount: int64(record.UsedCount), UseRevision: int64(record.UseRevision),
+		UsedAt: nullTime(record.UsedAt), UsedCount: int64(record.UsedCount), UseRevision: int64(record.UseRevision),
 		ReservedCount: int64(record.ReservedCount), ReservedAt: nullTime(record.ReservedAt), ReservationRetained: boolInt(record.ReservationRetained),
 		ReservationRevision: int64(record.ReservationRevision), MaxUses: int64(record.MaxUses), RequestedMaxUses: int64(record.RequestedMaxUses),
 		ExpiredFrom: nullableString(record.ExpiredFrom), NotificationJson: nullableBytes(record.NotificationJSON), NotificationStatus: record.NotificationStatus,
@@ -398,7 +398,7 @@ func updateGrantParams(record GrantRecord, previousRevision int64) dbsql.UpdateG
 		PlanDigest: insert.PlanDigest, Reason: insert.Reason, Status: insert.Status, Revision: insert.Revision, CreatedAt: insert.CreatedAt,
 		PendingExpiresAt: insert.PendingExpiresAt, ExpiresAt: insert.ExpiresAt, DurationNs: insert.DurationNs,
 		RequestedDurationNs: insert.RequestedDurationNs, PendingTimeoutNs: insert.PendingTimeoutNs, DecidedAt: insert.DecidedAt,
-		DecidedBy: insert.DecidedBy, DecidedOnBehalfOf: insert.DecidedOnBehalfOf, DecisionReason: insert.DecisionReason,
+		DecidedBy: insert.DecidedBy, DecidedOnBehalfOf: insert.DecidedOnBehalfOf,
 		UsedAt: insert.UsedAt, UsedCount: insert.UsedCount, UseRevision: insert.UseRevision, ReservedCount: insert.ReservedCount,
 		ReservedAt: insert.ReservedAt, ReservationRetained: insert.ReservationRetained, ReservationRevision: insert.ReservationRevision,
 		MaxUses: insert.MaxUses, RequestedMaxUses: insert.RequestedMaxUses, ExpiredFrom: insert.ExpiredFrom,

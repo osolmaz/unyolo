@@ -43,6 +43,9 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 	if strings.Contains(text, "/api/grants") {
 		t.Fatal("OpenAPI contains legacy route")
 	}
+	if strings.Contains(text, "decision_reason") {
+		t.Fatal("OpenAPI contains removed operator decision reason")
+	}
 }
 
 func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {

@@ -59,7 +59,6 @@ type Request struct {
 	DecidedAt                *time.Time      `json:"decided_at,omitempty"`
 	DecidedBy                string          `json:"decided_by,omitempty"`
 	DecidedOnBehalfOf        string          `json:"decided_on_behalf_of,omitempty"`
-	DecisionReason           string          `json:"decision_reason,omitempty"`
 	Presentation             Presentation    `json:"presentation"`
 	PresentationUnavailable  bool            `json:"presentation_unavailable,omitempty"`
 	AllowedActions           []Action        `json:"allowed_actions"`
@@ -89,7 +88,6 @@ type Constraints struct {
 type Decision struct {
 	ExpectedRevision int64        `json:"expected_revision"`
 	IdempotencyKey   string       `json:"idempotency_key"`
-	DecisionReason   string       `json:"decision_reason,omitempty"`
 	OnBehalfOf       string       `json:"on_behalf_of,omitempty"`
 	Constraints      *Constraints `json:"constraints,omitempty"`
 }

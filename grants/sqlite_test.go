@@ -40,7 +40,7 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := OperatorDecision{ID: pending.ID, Action: ActionApprove, Approver: "onur", ExpectedRevision: pending.Revision,
-		IdempotencyKey: "approve-1", Reason: "approved"}
+		IdempotencyKey: "approve-1"}
 	decision, err := store.ApplyOperatorDecision(context.Background(), command, nil)
 	if err != nil || decision.Grant.Status != StatusActive {
 		t.Fatalf("ApplyOperatorDecision() = %+v, %v", decision, err)

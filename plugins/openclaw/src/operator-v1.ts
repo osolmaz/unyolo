@@ -36,7 +36,6 @@ export const brokerRequestSchema = z.object({
   decided_at: timestamp.optional(),
   decided_by: z.string().max(operatorV1.limits.actor).optional(),
   decided_on_behalf_of: z.string().max(operatorV1.limits.actor).optional(),
-  decision_reason: z.string().max(operatorV1.limits.reason).optional(),
   presentation,
   presentation_unavailable: z.boolean().optional(),
   allowed_actions: z

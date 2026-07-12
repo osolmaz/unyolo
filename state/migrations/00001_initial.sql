@@ -28,7 +28,6 @@ CREATE TABLE grants (
     decided_at TEXT,
     decided_by TEXT NOT NULL DEFAULT '' CHECK(length(decided_by) <= 256),
     decided_on_behalf_of TEXT NOT NULL DEFAULT '' CHECK(length(decided_on_behalf_of) <= 256),
-    decision_reason TEXT NOT NULL DEFAULT '' CHECK(length(decision_reason) <= 2000),
     used_at TEXT,
     used_count INTEGER NOT NULL DEFAULT 0 CHECK(used_count >= 0),
     use_revision INTEGER NOT NULL DEFAULT 0 CHECK(use_revision >= 0),

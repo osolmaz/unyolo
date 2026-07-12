@@ -57,7 +57,6 @@ type handler struct {
 type decisionInput struct {
 	ExpectedRevision int64                     `json:"expected_revision"`
 	IdempotencyKey   string                    `json:"idempotency_key"`
-	DecisionReason   string                    `json:"decision_reason,omitempty"`
 	OnBehalfOf       string                    `json:"on_behalf_of,omitempty"`
 	Constraints      *decisionConstraintsInput `json:"constraints,omitempty"`
 }
@@ -261,7 +260,7 @@ func validDecisionConstraints(value *decisionConstraintsInput) bool {
 func (input decisionInput) decision() operatorv1.Decision {
 	result := operatorv1.Decision{
 		ExpectedRevision: input.ExpectedRevision, IdempotencyKey: input.IdempotencyKey,
-		DecisionReason: input.DecisionReason, OnBehalfOf: input.OnBehalfOf,
+		OnBehalfOf: input.OnBehalfOf,
 	}
 	if input.Constraints == nil {
 		return result
@@ -286,9 +285,9 @@ func project(item operatorinbox.Item) operatorv1.Request {
 		RequestedAt: item.RequestedAt, RequestedDurationSeconds: item.RequestedDurationSeconds,
 		RequestedMaxUses: item.RequestedMaxUses, UsedCount: item.UsedCount, RequestReason: item.Reason,
 		DecidedAt: item.DecidedAt, DecidedBy: item.DecidedBy, DecidedOnBehalfOf: item.DecidedOnBehalfOf,
-		DecisionReason: item.DecisionReason, PresentationUnavailable: item.PresentationUnavailable,
-		Presentation:   operatorv1.Presentation{Risk: string(item.Presentation.Risk), Title: item.Presentation.Title, Summary: item.Presentation.Summary, Facts: facts},
-		AllowedActions: allowedActions(item),
+		PresentationUnavailable: item.PresentationUnavailable,
+		Presentation:            operatorv1.Presentation{Risk: string(item.Presentation.Risk), Title: item.Presentation.Title, Summary: item.Presentation.Summary, Facts: facts},
+		AllowedActions:          allowedActions(item),
 	}
 	if item.Status == grants.StatusPending {
 		expires := item.PendingExpiresAt

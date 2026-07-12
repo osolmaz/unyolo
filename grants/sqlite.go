@@ -84,6 +84,8 @@ type approvalOutboxPayload struct {
 	GrantID string `json:"grant_id"`
 }
 
+const approvalOutboxInitialDelay = 5 * time.Second
+
 func reconcileApprovalOutbox(grants []Grant, previous []state.NotificationOutboxRecord, now time.Time) ([]state.NotificationOutboxRecord, error) {
 	old := make(map[string]state.NotificationOutboxRecord, len(previous))
 	for _, record := range previous {
@@ -101,7 +103,7 @@ func reconcileApprovalOutbox(grants []Grant, previous []state.NotificationOutbox
 		before := record
 		if !exists {
 			record = state.NotificationOutboxRecord{GrantID: grant.ID, Kind: "approval", PayloadJSON: payload,
-				IdempotencyKey: grant.ID + ":approval", Status: "pending", AvailableAt: grant.CreatedAt,
+				IdempotencyKey: grant.ID + ":approval", Status: "pending", AvailableAt: grant.CreatedAt.Add(approvalOutboxInitialDelay),
 				CreatedAt: grant.CreatedAt, UpdatedAt: now}
 		}
 		record.PayloadJSON = payload
@@ -197,7 +199,7 @@ func grantToSQLite(grant Grant) (state.GrantRecord, error) {
 		MetadataJSON: metadata, PlanDigest: planDigest, Reason: grant.Reason, Status: string(grant.Status), Revision: grant.Revision,
 		CreatedAt: grant.CreatedAt, PendingExpiresAt: grant.PendingExpiresAt, ExpiresAt: grant.ExpiresAt, Duration: grant.Duration,
 		RequestedDuration: grant.RequestedDuration, PendingTimeout: grant.PendingTimeout, DecidedAt: grant.DecidedAt,
-		DecidedBy: grant.DecidedBy, DecidedOnBehalfOf: grant.DecidedOnBehalfOf, DecisionReason: grant.DecisionReason,
+		DecidedBy: grant.DecidedBy, DecidedOnBehalfOf: grant.DecidedOnBehalfOf,
 		UsedAt: grant.UsedAt, UsedCount: grant.UsedCount, UseRevision: grant.UseRevision, ReservedCount: grant.ReservedCount,
 		ReservedAt: grant.ReservedAt, ReservationRetained: grant.ReservationRetained, ReservationRevision: grant.ReservationRevision,
 		MaxUses: grant.MaxUses, RequestedMaxUses: grant.RequestedMaxUses, ExpiredFrom: string(grant.ExpiredFrom),
@@ -235,7 +237,7 @@ func grantFromSQLite(record state.GrantRecord) (Grant, error) {
 		Reason: record.Reason, Status: Status(record.Status), Revision: record.Revision, CreatedAt: record.CreatedAt,
 		PendingExpiresAt: record.PendingExpiresAt, ExpiresAt: record.ExpiresAt, Duration: record.Duration,
 		RequestedDuration: record.RequestedDuration, PendingTimeout: record.PendingTimeout, DecidedAt: record.DecidedAt,
-		DecidedBy: record.DecidedBy, DecidedOnBehalfOf: record.DecidedOnBehalfOf, DecisionReason: record.DecisionReason,
+		DecidedBy: record.DecidedBy, DecidedOnBehalfOf: record.DecidedOnBehalfOf,
 		UsedAt: record.UsedAt, UsedCount: record.UsedCount, UseRevision: record.UseRevision, ReservedCount: record.ReservedCount,
 		ReservedAt: record.ReservedAt, ReservationRetained: record.ReservationRetained, ReservationRevision: record.ReservationRevision,
 		MaxUses: record.MaxUses, RequestedMaxUses: record.RequestedMaxUses, ExpiredFrom: Status(record.ExpiredFrom),

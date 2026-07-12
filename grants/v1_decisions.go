@@ -41,7 +41,6 @@ type OperatorDecision struct {
 	OnBehalfOf       string
 	ExpectedRevision int64
 	IdempotencyKey   string
-	Reason           string
 	Constraints      ApprovalConstraints
 }
 
@@ -124,7 +123,6 @@ func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command 
 	grant.DecidedAt = now
 	grant.DecidedBy = command.Approver
 	grant.DecidedOnBehalfOf = command.OnBehalfOf
-	grant.DecisionReason = command.Reason
 	grant.NotificationDeliveryUnresolved = false
 	return grant, nil
 }
@@ -211,7 +209,6 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	command.Approver = strings.TrimSpace(command.Approver)
 	command.OnBehalfOf = strings.TrimSpace(command.OnBehalfOf)
 	command.IdempotencyKey = strings.TrimSpace(command.IdempotencyKey)
-	command.Reason = strings.TrimSpace(command.Reason)
 	if !operatorDecisionRequired(command) {
 		return OperatorDecision{}, fmt.Errorf("%w: id, approver, revision, and idempotency key are required", ErrInvalidCommand)
 	}
@@ -230,8 +227,7 @@ func operatorDecisionRequired(command OperatorDecision) bool {
 
 func validOperatorDecisionText(command OperatorDecision) bool {
 	return len(command.IdempotencyKey) <= 200 && safeOperatorIdentity(command.IdempotencyKey) &&
-		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf)) &&
-		safeOperatorText(command.Reason, maxDecisionReasonBytes)
+		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf))
 }
 
 func validOperatorAction(action DecisionAction) bool {

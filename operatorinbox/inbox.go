@@ -90,7 +90,6 @@ type Item struct {
 	DecidedAt                *time.Time    `json:"decided_at,omitempty"`
 	DecidedBy                string        `json:"decided_by,omitempty"`
 	DecidedOnBehalfOf        string        `json:"decided_on_behalf_of,omitempty"`
-	DecisionReason           string        `json:"decision_reason,omitempty"`
 	Presentation             Presentation  `json:"presentation"`
 	PresentationUnavailable  bool          `json:"presentation_unavailable,omitempty"`
 }
@@ -162,7 +161,6 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 		UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,
 		Reason: safeOrEmpty(grant.Reason, maxReasonBytes, true), DecidedBy: safeOrEmpty(grant.DecidedBy, maxLabelBytes, false),
 		DecidedOnBehalfOf: safeOrEmpty(grant.DecidedOnBehalfOf, maxLabelBytes, false),
-		DecisionReason:    safeOrEmpty(grant.DecisionReason, maxReasonBytes, true),
 		Presentation:      presentation, PresentationUnavailable: unavailable,
 	}
 	if !grant.ExpiresAt.IsZero() {

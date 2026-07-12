@@ -291,8 +291,7 @@ dd {
   font-size: 12px;
   font-weight: 650;
 }
-.dialog-content input,
-.dialog-content textarea {
+.dialog-content input {
   width: 100%;
   border: 1px solid #bcc6be;
   border-radius: 5px;
@@ -301,9 +300,6 @@ dd {
   color: #18211c;
   font: inherit;
   font-weight: 400;
-}
-.reason {
-  margin-top: 14px;
 }
 .dialog-actions {
   display: flex;

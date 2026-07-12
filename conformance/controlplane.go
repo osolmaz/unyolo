@@ -102,7 +102,7 @@ func assertOperatorLifecycle(t *testing.T, fixture Fixture, server *httptest.Ser
 		t.Fatalf("operator replay = %+v, %v", replay, err)
 	}
 	if _, err := client.Decide(t.Context(), created.Grant.ID, operatorv1.ActionApprove, operatorv1.Decision{
-		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "conformance-approve", DecisionReason: "changed",
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "conformance-approve", OnBehalfOf: "changed",
 	}); !apiErrorCode(err, "idempotency_conflict") {
 		t.Fatalf("operator replay mismatch error = %v", err)
 	}

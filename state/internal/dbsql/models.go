@@ -42,7 +42,6 @@ type Grant struct {
 	DecidedAt                      sql.NullString
 	DecidedBy                      string
 	DecidedOnBehalfOf              string
-	DecisionReason                 string
 	UsedAt                         sql.NullString
 	UsedCount                      int64
 	UseRevision                    int64

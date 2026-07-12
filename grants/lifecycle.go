@@ -66,7 +66,6 @@ type lifecycleEventRecord struct {
 	Revision         int64     `json:"revision"`
 	Time             time.Time `json:"time"`
 	Approver         string    `json:"approver,omitempty"`
-	Reason           string    `json:"reason,omitempty"`
 	PreviousStatus   Status    `json:"previous_status,omitempty"`
 	PreviousRevision int64     `json:"previous_revision,omitempty"`
 	ExpectedRevision int64     `json:"expected_revision,omitempty"`
@@ -153,7 +152,7 @@ func (s *Store) appendLifecycleEvent(data *fileData, kind EventKind, grant Grant
 		Sequence: data.NextEvent, Kind: kind, GrantID: grant.ID, Status: grant.Status,
 		UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,
 		Revision: grant.Revision, Time: s.opts.Now().UTC(),
-		Approver: grant.DecidedBy, Reason: grant.DecisionReason,
+		Approver:       grant.DecidedBy,
 		PreviousStatus: previous.Status, PreviousRevision: previous.Revision,
 	}
 	if grant.DecidedBy != "" {

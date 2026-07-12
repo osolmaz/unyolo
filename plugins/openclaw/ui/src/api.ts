@@ -12,7 +12,6 @@ type DelegatedBootstrap = {
 };
 export type UiBootstrap = DirectBootstrap | DelegatedBootstrap;
 export type UiDecisionOptions = {
-  reason?: string;
   constraints?: { durationSeconds: number; maxUses: number };
 };
 

@@ -21,7 +21,6 @@
     "decided_at": {"type": "string", "format": "date-time"},
     "decided_by": {"type": "string", "maxLength": 200},
     "decided_on_behalf_of": {"type": "string", "maxLength": 200},
-    "decision_reason": {"type": "string", "maxLength": 2000},
     "presentation": {"$ref": "presentation.schema.json"},
     "presentation_unavailable": {"type": "boolean"},
     "allowed_actions": {"type": "array", "uniqueItems": true, "items": {"enum": ["approve", "deny", "cancel", "revoke"]}},

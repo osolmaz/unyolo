@@ -76,7 +76,6 @@ test.beforeEach(async ({ page }) => {
       );
       expect(route.request().postDataJSON()).toEqual({
         expectedRevision: 1,
-        reason: "Reviewed in the operator inbox",
         constraints: { durationSeconds: 300, maxUses: 1 },
       });
       await route.fulfill({
@@ -108,9 +107,6 @@ test("renders a bounded capability-protected approval surface", async ({
   const dialog = page.getByRole("dialog", { name: "Approve request" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("at revision 1")).toBeVisible();
-  await dialog
-    .getByLabel("Reason (optional)")
-    .fill("Reviewed in the operator inbox");
   expect(
     await dialog.evaluate((element) => {
       const box = element.getBoundingClientRect();

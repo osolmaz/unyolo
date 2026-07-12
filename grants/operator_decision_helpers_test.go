@@ -11,7 +11,6 @@ type DecisionCommand struct {
 	ID               string
 	Approver         string
 	ExpectedRevision int64
-	Reason           string
 }
 
 type ApproveCommand struct {
@@ -41,8 +40,8 @@ func (s *Store) OperatorRevoke(command DecisionCommand) (Grant, error) {
 func (s *Store) applyTestOperatorDecision(command DecisionCommand, action DecisionAction, constraints ApprovalConstraints) (Grant, error) {
 	result, err := s.ApplyOperatorDecision(context.Background(), OperatorDecision{
 		ID: command.ID, Action: action, Approver: command.Approver,
-		ExpectedRevision: command.ExpectedRevision, Reason: command.Reason,
-		IdempotencyKey: fmt.Sprintf("test-%d", testDecisionSequence.Add(1)), Constraints: constraints,
+		ExpectedRevision: command.ExpectedRevision,
+		IdempotencyKey:   fmt.Sprintf("test-%d", testDecisionSequence.Add(1)), Constraints: constraints,
 	}, nil)
 	return result.Grant, err
 }

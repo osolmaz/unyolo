@@ -23,7 +23,6 @@ export type RuntimeHooks = {
   log(level: "info" | "warn", message: string): void;
 };
 export type DecisionOptions = {
-  reason?: string;
   constraints?: NonNullable<Decision["constraints"]>;
 };
 
@@ -121,7 +120,6 @@ export class BrokerRuntime {
         actor,
       ),
       on_behalf_of: actor,
-      ...(options.reason ? { decision_reason: options.reason } : {}),
       ...(options.constraints ? { constraints: options.constraints } : {}),
     };
     const updated = await this.decideWithRecovery(

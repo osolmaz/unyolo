@@ -261,11 +261,9 @@ function DecisionDialog({
 }) {
   const request = decision?.request;
   const bounds = request?.approval_bounds;
-  const [reason, setReason] = useState("");
   const [durationSeconds, setDurationSeconds] = useState(1);
   const [maxUses, setMaxUses] = useState(1);
   useEffect(() => {
-    setReason("");
     if (!request) return;
     setDurationSeconds(
       Math.max(
@@ -323,15 +321,6 @@ function DecisionDialog({
               </label>
             </div>
           )}
-          <label className="reason">
-            Reason (optional)
-            <textarea
-              maxLength={2000}
-              rows={3}
-              value={reason}
-              onChange={(event) => setReason(event.currentTarget.value)}
-            />
-          </label>
           <div className="dialog-actions">
             <Dialog.Close asChild>
               <button className="secondary" disabled={busy}>
@@ -345,7 +334,6 @@ function DecisionDialog({
               }
               onClick={() =>
                 void onConfirm(request, decision.action, {
-                  ...(reason.trim() ? { reason: reason.trim() } : {}),
                   ...(approve && bounds
                     ? {
                         constraints: {

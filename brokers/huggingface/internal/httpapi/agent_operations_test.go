@@ -68,7 +68,7 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = handler.control.Decisions.Decide(context.Background(), grant.ID, operatorv1.ActionApprove, "alice", operatorv1.Decision{
-		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-create-data", DecisionReason: "approved in test",
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-create-data",
 	})
 	if err != nil {
 		t.Fatal(err)

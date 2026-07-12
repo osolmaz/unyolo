@@ -118,7 +118,6 @@ type Grant struct {
 	DecidedAt              time.Time           `json:"decided_at,omitzero"`
 	DecidedBy              string              `json:"decided_by,omitempty"`
 	DecidedOnBehalfOf      string              `json:"decided_on_behalf_of,omitempty"`
-	DecisionReason         string              `json:"decision_reason,omitempty"`
 	UsedAt                 time.Time           `json:"used_at,omitzero"`
 	UsedCount              int                 `json:"used_count"`
 	UseRevision            int                 `json:"use_revision,omitempty"`

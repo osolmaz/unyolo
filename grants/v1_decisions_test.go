@@ -26,8 +26,8 @@ func TestApplyOperatorDecisionIsAtomicAndReplaySafe(t *testing.T) {
 	command := OperatorDecision{
 		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
 		OnBehalfOf: "Onur", ExpectedRevision: created.Grant.Revision,
-		IdempotencyKey: "decision-1", Reason: "reviewed",
-		Constraints: ApprovalConstraints{Duration: 5 * time.Minute, MaxUses: 1},
+		IdempotencyKey: "decision-1",
+		Constraints:    ApprovalConstraints{Duration: 5 * time.Minute, MaxUses: 1},
 	}
 	result, err := store.ApplyOperatorDecision(t.Context(), command, func(_ context.Context, grant Grant, constraints ApprovalConstraints) error {
 		validatorCalls++
@@ -58,7 +58,7 @@ func TestApplyOperatorDecisionIsAtomicAndReplaySafe(t *testing.T) {
 	}
 
 	changed := command
-	changed.Reason = "different"
+	changed.OnBehalfOf = "different"
 	if _, err := restarted.ApplyOperatorDecision(t.Context(), changed, nil); !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("changed replay error = %v", err)
 	}

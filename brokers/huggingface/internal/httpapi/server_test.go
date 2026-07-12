@@ -1357,7 +1357,6 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 		},
 		Scope:           scp,
 		UpstreamBaseURL: upstream.URL,
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1378,6 +1377,7 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 	if _, err := handler.grants.Approve(grant.ID, grant.DecisionToken, "test"); err != nil {
 		t.Fatal(err)
 	}
+	handler.notifier = notifier
 
 	req := httptest.NewRequest(http.MethodPost, "/datasets/acme/repo.git/git-upload-pack", strings.NewReader("want refs"))
 	req.Header.Set("Authorization", "Bearer "+testSecret)

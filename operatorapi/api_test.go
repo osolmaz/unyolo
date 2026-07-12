@@ -64,7 +64,7 @@ func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 	if err != nil || replay.Revision != approved.Revision {
 		t.Fatalf("replay = %+v, %v", replay, err)
 	}
-	command.DecisionReason = "changed"
+	command.OnBehalfOf = "changed"
 	if _, err := client.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, command); !hasCode(err, "idempotency_conflict") {
 		t.Fatalf("changed replay = %v", err)
 	}
@@ -80,8 +80,9 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 		t.Fatalf("unknown input = %+v", unknown)
 	}
 	for name, body := range map[string]string{
-		"zero duration": `{"expected_revision":1,"idempotency_key":"zero-duration","constraints":{"duration_seconds":0}}`,
-		"zero uses":     `{"expected_revision":1,"idempotency_key":"zero-uses","constraints":{"max_uses":0}}`,
+		"removed decision reason": `{"expected_revision":1,"idempotency_key":"reason","decision_reason":"removed"}`,
+		"zero duration":           `{"expected_revision":1,"idempotency_key":"zero-duration","constraints":{"duration_seconds":0}}`,
+		"zero uses":               `{"expected_revision":1,"idempotency_key":"zero-uses","constraints":{"max_uses":0}}`,
 	} {
 		response := rawRequest(t, client.HTTPClient, http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/approve", testOperatorSecret, body)
 		if response.status != http.StatusBadRequest || !strings.Contains(response.body, "invalid_request") {
