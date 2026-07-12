@@ -2663,10 +2663,8 @@ func shouldRewriteLFSBatchResponse(r *http.Request, rt route, statusCode int) bo
 }
 
 func (s *Server) rewriteLFSBatchResponse(r *http.Request, rt route, body io.Reader) ([]byte, error) {
-	decoder := json.NewDecoder(body)
-	decoder.UseNumber()
 	var payload map[string]any
-	if err := decoder.Decode(&payload); err != nil {
+	if err := httpx.DecodeJSON(body, maxLFSBatchBytes, &payload, false); err != nil {
 		return nil, fmt.Errorf("could not sanitize LFS batch response: %w", err)
 	}
 	s.rewriteLFSBatchActions(r, rt, payload)

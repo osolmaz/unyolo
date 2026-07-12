@@ -397,18 +397,10 @@ func decodeRepoCreateArguments(raw []byte, repoType policy.RepoType) (repoCreate
 }
 
 func decodeStrictObject(data []byte, out any) error {
-	if len(data) == 0 || len(data) > 4096 || strictjson.RejectDuplicateKeys(data) != nil {
+	if len(data) == 0 || len(data) > 4096 {
 		return errors.New("invalid JSON object")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("trailing data")
-	}
-	return nil
+	return strictjson.Decode(data, out, true)
 }
 
 func validCreateRepoType(repoType policy.RepoType) bool {
