@@ -2,13 +2,92 @@
   "openapi": "3.1.0",
   "info": {"title": "BrokerKit Operator API", "version": "1.0.0"},
   "paths": {
-    "/.well-known/brokerkit-operator": {"get": {"security": [{"operatorBearer": []}], "responses": {"200": {"description": "Operator V1 discovery", "content": {"application/json": {"schema": {"$ref": "../schema/discovery.schema.json"}}}}}}},
-    "/healthz": {"get": {"security": [], "responses": {"200": {"description": "Status only"}}}},
-    "/readyz": {"get": {"security": [], "responses": {"200": {"description": "Status only"}}}},
-    "/api/operator/v1/requests": {"get": {"security": [{"operatorBearer": []}], "responses": {"200": {"description": "Bounded request page", "content": {"application/json": {"schema": {"$ref": "../schema/page.schema.json"}}}}}}},
-    "/api/operator/v1/requests/{id}": {"get": {"security": [{"operatorBearer": []}], "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}], "responses": {"200": {"description": "Safe request", "content": {"application/json": {"schema": {"$ref": "../schema/request.schema.json"}}}}}}},
-    "/api/operator/v1/requests/{id}/{action}": {"post": {"security": [{"operatorBearer": []}], "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}, {"name": "action", "in": "path", "required": true, "schema": {"enum": ["approve", "deny", "cancel", "revoke"]}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "../schema/decision.schema.json"}}}}, "responses": {"200": {"description": "Committed decision", "content": {"application/json": {"schema": {"$ref": "../schema/request.schema.json"}}}}, "409": {"description": "Conflict", "content": {"application/json": {"schema": {"$ref": "../schema/error.schema.json"}}}}}}},
-    "/api/operator/v1/events": {"get": {"security": [{"operatorBearer": []}], "responses": {"200": {"description": "SSE stream of event.schema.json objects", "content": {"text/event-stream": {"schema": {"type": "string"}}}}}}}
+    "/.well-known/brokerkit-operator": {
+      "get": {
+        "operationId": "discoverOperator",
+        "security": [{"operatorBearer": []}],
+        "responses": {"200": {"description": "Operator V1 discovery", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Descriptor"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      }
+    },
+    "/healthz": {"get": {"operationId": "operatorHealth", "security": [], "responses": {"200": {"description": "Liveness status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}}}},
+    "/readyz": {"get": {"operationId": "operatorReady", "security": [], "responses": {"200": {"description": "Readiness status", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}, "503": {"$ref": "#/components/responses/ErrorResponse"}}}},
+    "/api/operator/v1/requests": {
+      "get": {
+        "operationId": "listOperatorRequests",
+        "description": "Target fields use additional bounded query names with the target. prefix.",
+        "x-brokerkit-dynamic-query-prefix": "target.",
+        "security": [{"operatorBearer": []}],
+        "parameters": [
+          {"name": "status", "in": "query", "schema": {"$ref": "#/components/schemas/StatusGroup"}},
+          {"name": "requester", "in": "query", "schema": {"type": "string", "maxLength": 128}},
+          {"name": "operation", "in": "query", "schema": {"type": "string", "maxLength": 128}},
+          {"name": "target_kind", "in": "query", "schema": {"type": "string", "maxLength": 128}},
+          {"name": "cursor", "in": "query", "schema": {"type": "string", "maxLength": 1024}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}}
+        ],
+        "responses": {"200": {"description": "Bounded request page", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RequestPage"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      }
+    },
+    "/api/operator/v1/requests/{id}": {
+      "get": {
+        "operationId": "getOperatorRequest",
+        "security": [{"operatorBearer": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequestID"}],
+        "responses": {"200": {"description": "Safe operator request", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BrokerRequest"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      }
+    },
+    "/api/operator/v1/requests/{id}/{action}": {
+      "post": {
+        "operationId": "decideOperatorRequest",
+        "security": [{"operatorBearer": []}],
+        "parameters": [{"$ref": "#/components/parameters/RequestID"}, {"name": "action", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/Action"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Decision"}}}},
+        "responses": {"200": {"description": "Committed decision", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BrokerRequest"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      }
+    },
+    "/api/operator/v1/events": {
+      "get": {
+        "operationId": "streamOperatorEvents",
+        "security": [{"operatorBearer": []}],
+        "parameters": [
+          {"name": "cursor", "in": "query", "schema": {"type": "string", "maxLength": 1024}},
+          {"name": "Last-Event-ID", "in": "header", "schema": {"type": "string", "maxLength": 1024}}
+        ],
+        "responses": {"200": {"description": "SSE stream of BrokerEvent values", "content": {"text/event-stream": {"schema": {"type": "string"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      }
+    }
   },
-  "components": {"securitySchemes": {"operatorBearer": {"type": "http", "scheme": "bearer"}}}
+  "components": {
+    "securitySchemes": {"operatorBearer": {"type": "http", "scheme": "bearer"}},
+    "parameters": {"RequestID": {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}},
+    "responses": {"ErrorResponse": {"description": "Stable error envelope", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}}},
+    "schemas": {
+      "Descriptor": {"type": "object", "additionalProperties": false, "required": ["api_version"], "properties": {"api_version": {"type": "string", "const": "brokerkit.io/operator/v1"}}},
+      "Health": {"type": "object", "additionalProperties": false, "required": ["status"], "properties": {"status": {"type": "string", "minLength": 1, "maxLength": 128}}},
+      "Action": {"type": "string", "enum": ["approve", "deny", "cancel", "revoke"]},
+      "Status": {"type": "string", "enum": ["pending", "active", "denied", "canceled", "expired", "consumed", "revoked"]},
+      "StatusGroup": {"type": "string", "enum": ["pending", "active", "history", "all"]},
+      "Fact": {"type": "object", "additionalProperties": false, "required": ["label", "value"], "properties": {"label": {"type": "string", "minLength": 1, "maxLength": 80}, "value": {"type": "string", "minLength": 1, "maxLength": 500}}},
+      "Presentation": {"type": "object", "additionalProperties": false, "required": ["risk", "title"], "properties": {"risk": {"type": "string", "enum": ["unknown", "low", "medium", "high", "critical"]}, "title": {"type": "string", "minLength": 1, "maxLength": 200}, "summary": {"type": "string", "maxLength": 2000}, "facts": {"type": "array", "maxItems": 20, "items": {"$ref": "#/components/schemas/Fact"}}}},
+      "ApprovalBounds": {"type": "object", "additionalProperties": false, "required": ["max_duration_seconds", "max_uses"], "properties": {"max_duration_seconds": {"type": "integer", "minimum": 1}, "max_uses": {"type": "integer", "minimum": 1}}},
+      "Constraints": {"type": "object", "additionalProperties": false, "properties": {"duration_seconds": {"type": "integer", "minimum": 1}, "max_uses": {"type": "integer", "minimum": 1}}},
+      "Decision": {"type": "object", "additionalProperties": false, "required": ["expected_revision", "idempotency_key"], "properties": {"expected_revision": {"type": "integer", "minimum": 1}, "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 200}, "on_behalf_of": {"type": "string", "maxLength": 200}, "constraints": {"$ref": "#/components/schemas/Constraints"}}},
+      "BrokerRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "revision", "requester", "operation", "status", "requested_at", "requested_duration_seconds", "requested_max_uses", "granted_max_uses", "used_count", "presentation", "allowed_actions"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "maxLength": 128}, "revision": {"type": "integer", "minimum": 1},
+          "requester": {"type": "string", "minLength": 1, "maxLength": 80}, "operation": {"type": "string", "minLength": 1, "maxLength": 500}, "status": {"$ref": "#/components/schemas/Status"},
+          "requested_at": {"type": "string", "format": "date-time"}, "pending_expires_at": {"type": "string", "format": "date-time"}, "active_expires_at": {"type": "string", "format": "date-time"},
+          "requested_duration_seconds": {"type": "integer", "minimum": 1}, "requested_max_uses": {"type": "integer", "minimum": 1}, "granted_max_uses": {"type": ["integer", "null"], "minimum": 1}, "used_count": {"type": "integer", "minimum": 0},
+          "request_reason": {"type": "string", "maxLength": 2000}, "decided_at": {"type": "string", "format": "date-time"}, "decided_by": {"type": "string", "maxLength": 200}, "decided_on_behalf_of": {"type": "string", "maxLength": 200},
+          "presentation": {"$ref": "#/components/schemas/Presentation"}, "presentation_unavailable": {"type": "boolean"}, "allowed_actions": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/components/schemas/Action"}}, "approval_bounds": {"$ref": "#/components/schemas/ApprovalBounds"}
+        }
+      },
+      "RequestPage": {"type": "object", "additionalProperties": false, "required": ["requests"], "properties": {"requests": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/BrokerRequest"}}, "next_cursor": {"type": "string", "maxLength": 1024}, "event_cursor": {"type": "string", "maxLength": 1024}}},
+      "BrokerEvent": {"type": "object", "additionalProperties": false, "required": ["cursor", "kind", "request_id", "revision", "status", "occurred_at", "used_count"], "properties": {"cursor": {"type": "string", "minLength": 1, "maxLength": 1024}, "kind": {"type": "string", "enum": ["request.created", "request.approved", "request.denied", "request.canceled", "request.expired", "grant.revoked", "grant.reserved", "grant.consumed", "grant.released", "execution.succeeded", "execution.failed", "execution.ambiguous"]}, "request_id": {"type": "string", "minLength": 1, "maxLength": 128}, "revision": {"type": "integer", "minimum": 1}, "status": {"$ref": "#/components/schemas/Status"}, "occurred_at": {"type": "string", "format": "date-time"}, "used_count": {"type": "integer", "minimum": 0}}},
+      "Error": {"type": "object", "additionalProperties": false, "required": ["code", "message", "correlation_id"], "properties": {"code": {"type": "string", "enum": ["invalid_request", "unauthorized", "forbidden", "not_found", "method_not_allowed", "revision_conflict", "idempotency_conflict", "constraint_exceeded", "invalid_transition", "cursor_expired", "temporarily_unavailable", "internal_error"]}, "message": {"type": "string", "minLength": 1, "maxLength": 500}, "correlation_id": {"type": "string", "minLength": 1, "maxLength": 128}, "current": {"$ref": "#/components/schemas/BrokerRequest"}}},
+      "ErrorEnvelope": {"type": "object", "additionalProperties": false, "required": ["error"], "properties": {"error": {"$ref": "#/components/schemas/Error"}}}
+    }
+  }
 }

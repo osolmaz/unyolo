@@ -18,8 +18,8 @@
     "test": "vitest run --config vitest.config.ts",
     "test:browser": "playwright test",
     "test:package": "node scripts/test-packed-install.mjs",
-    "generate": "node scripts/generate-operator-v1.mjs",
-    "generate:check": "node scripts/generate-operator-v1.mjs --check",
+    "generate": "../../scripts/generate-protocol.sh",
+    "generate:check": "../../scripts/check-protocol.sh",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format:check": "prettier --check ."
@@ -49,6 +49,8 @@
   },
   "dependencies": {
     "@radix-ui/react-dialog": "1.1.14",
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "0.525.0",

@@ -67,6 +67,16 @@ then
   exit 1
 fi
 
+if grep -R -n -E '"\$ref"[[:space:]]*:[[:space:]]*"\.\.' protocol/openapi 2>/dev/null; then
+  echo 'canonical OpenAPI documents must own all payload schemas' >&2
+  exit 1
+fi
+
+if [ -e plugins/openclaw/scripts/generate-operator-v1.mjs ]; then
+  echo 'legacy standalone-schema TypeScript generator survived the OpenAPI cutover' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.ts' --include='*.tsx' -E 'mlclaw\.|(telegram|discord|slack)' \
   plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
   --exclude='*.test.ts' 2>/dev/null; then

@@ -6,12 +6,14 @@ toolchain go1.26.5
 
 require (
 	github.com/labstack/echo/v4 v4.15.4
+	github.com/oapi-codegen/runtime v1.4.2
 	github.com/pressly/goose/v3 v3.27.2
 	golang.org/x/sys v0.46.0
 	modernc.org/sqlite v1.53.0
 )
 
 require (
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/labstack/gommon v0.5.0 // indirect

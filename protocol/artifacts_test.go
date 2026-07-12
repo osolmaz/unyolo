@@ -25,6 +25,9 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 		if schema["type"] != "object" || schema["additionalProperties"] != false {
 			t.Fatalf("%s is not a closed object", path)
 		}
+		if !strings.Contains(string(data), "Generated from protocol/openapi/operator-v1.yaml") {
+			t.Fatalf("%s is not marked as generated", path)
+		}
 	}
 	openAPI, err := os.ReadFile("openapi/operator-v1.yaml")
 	if err != nil {
@@ -35,6 +38,7 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 		t.Fatalf("OpenAPI must remain machine-readable JSON/YAML: %v", err)
 	}
 	text := string(openAPI)
+	assertCanonicalOpenAPI(t, document)
 	for _, route := range []string{"/.well-known/brokerkit-operator", "/api/operator/v1/requests", "/api/operator/v1/events"} {
 		if !strings.Contains(text, route) {
 			t.Fatalf("OpenAPI missing %s", route)
@@ -65,6 +69,9 @@ func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
 		if schema["type"] != "object" || schema["additionalProperties"] != false {
 			t.Fatalf("%s is not a closed object", path)
 		}
+		if !strings.Contains(string(data), "Generated from protocol/openapi/agent-v1.yaml") {
+			t.Fatalf("%s is not marked as generated", path)
+		}
 	}
 	openAPI, err := os.ReadFile("openapi/agent-v1.yaml")
 	if err != nil {
@@ -75,9 +82,38 @@ func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
 		t.Fatalf("Agent OpenAPI must remain machine-readable JSON/YAML: %v", err)
 	}
 	text := string(openAPI)
+	assertCanonicalOpenAPI(t, document)
 	for _, route := range []string{"/.well-known/brokerkit-agent", "/api/agent/v1/operations", "/events"} {
 		if !strings.Contains(text, route) {
 			t.Fatalf("Agent OpenAPI missing %s", route)
+		}
+	}
+}
+
+func assertCanonicalOpenAPI(t *testing.T, document map[string]any) {
+	t.Helper()
+	components, ok := document["components"].(map[string]any)
+	if !ok {
+		t.Fatal("OpenAPI components are missing")
+	}
+	schemas, ok := components["schemas"].(map[string]any)
+	if !ok || len(schemas) == 0 {
+		t.Fatal("OpenAPI component schemas are missing")
+	}
+	seen := map[string]bool{}
+	paths, _ := document["paths"].(map[string]any)
+	for _, rawPath := range paths {
+		path, _ := rawPath.(map[string]any)
+		for _, method := range []string{"get", "post", "put", "patch", "delete"} {
+			operation, _ := path[method].(map[string]any)
+			if operation == nil {
+				continue
+			}
+			id, _ := operation["operationId"].(string)
+			if id == "" || seen[id] {
+				t.Fatalf("OpenAPI operationId is missing or duplicated: %q", id)
+			}
+			seen[id] = true
 		}
 	}
 }
