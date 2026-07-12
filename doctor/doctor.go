@@ -67,6 +67,17 @@ func LookupIdentity(name string) (Identity, error) {
 	if err != nil {
 		return Identity{}, fmt.Errorf("lookup agent user: %w", err)
 	}
+	return identityFromUser(account, true)
+}
+
+// IdentityFromUser resolves numeric memberships and all available group names.
+// Unresolvable supplementary group names are omitted for callers that perform
+// their own platform-specific completeness checks.
+func IdentityFromUser(account *user.User) (Identity, error) {
+	return identityFromUser(account, false)
+}
+
+func identityFromUser(account *user.User, requireGroupNames bool) (Identity, error) {
 	uid, err := numericID("agent uid", account.Uid)
 	if err != nil {
 		return Identity{}, err
@@ -75,7 +86,7 @@ func LookupIdentity(name string) (Identity, error) {
 	if err != nil {
 		return Identity{}, err
 	}
-	groupIDs, groupNames, err := identityGroups(account)
+	groupIDs, groupNames, err := resolveIdentityGroups(account, gid, requireGroupNames)
 	if err != nil {
 		return Identity{}, err
 	}
@@ -91,27 +102,91 @@ func numericID(label string, value string) (int, error) {
 }
 
 func identityGroups(account *user.User) ([]int, []string, error) {
+	primaryGID, err := numericID("agent gid", account.Gid)
+	if err != nil {
+		return nil, nil, err
+	}
+	return resolveIdentityGroups(account, primaryGID, true)
+}
+
+func resolveIdentityGroups(account *user.User, primaryGID int, requireNames bool) ([]int, []string, error) {
 	groupIDs, err := account.GroupIds()
 	if err != nil {
 		return nil, nil, fmt.Errorf("list agent groups: %w", err)
 	}
-	ids := make([]int, 0, len(groupIDs))
+	idSet := map[int]bool{primaryGID: true}
+	ids := make([]int, 0, len(groupIDs)+1)
 	names := make([]string, 0, len(groupIDs))
 	for _, value := range groupIDs {
-		groupID, parseErr := numericID("agent group id", value)
-		if parseErr != nil {
-			return nil, nil, parseErr
+		group, ok, resolveErr := resolveGroup(value, requireNames)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
 		}
-		ids = append(ids, groupID)
-		group, lookupErr := lookupGroupByID(value)
-		if lookupErr != nil {
-			return nil, nil, fmt.Errorf("lookup agent group %s: %w", value, lookupErr)
-		}
-		names = append(names, group.Name)
+		idSet, names = addResolvedGroup(idSet, names, group, ok)
+	}
+	primaryName, found, err := optionalGroupName(account.Gid, requireNames)
+	if err != nil {
+		return nil, nil, err
+	}
+	names = appendOptionalName(names, primaryName, found)
+	for id := range idSet {
+		ids = append(ids, id)
 	}
 	sort.Ints(ids)
 	sort.Strings(names)
-	return ids, names, nil
+	return ids, slices.Compact(names), nil
+}
+
+type resolvedGroup struct {
+	id        int
+	name      string
+	nameFound bool
+}
+
+func resolveGroup(value string, required bool) (resolvedGroup, bool, error) {
+	id, ok, err := optionalGroupID(value, required)
+	if err != nil || !ok {
+		return resolvedGroup{}, false, err
+	}
+	name, found, err := optionalGroupName(value, required)
+	if err != nil {
+		return resolvedGroup{}, false, err
+	}
+	return resolvedGroup{id: id, name: name, nameFound: found}, true, nil
+}
+
+func addResolvedGroup(ids map[int]bool, names []string, group resolvedGroup, ok bool) (map[int]bool, []string) {
+	if !ok {
+		return ids, names
+	}
+	ids[group.id] = true
+	return ids, appendOptionalName(names, group.name, group.nameFound)
+}
+
+func appendOptionalName(names []string, name string, ok bool) []string {
+	if ok {
+		return append(names, name)
+	}
+	return names
+}
+
+func optionalGroupID(value string, required bool) (int, bool, error) {
+	id, err := numericID("agent group id", value)
+	if err != nil && required {
+		return 0, false, err
+	}
+	return id, err == nil, nil
+}
+
+func optionalGroupName(value string, required bool) (string, bool, error) {
+	group, err := lookupGroupByID(value)
+	if err != nil && required {
+		return "", false, fmt.Errorf("lookup agent group %s: %w", value, err)
+	}
+	if err != nil {
+		return "", false, nil
+	}
+	return group.Name, true, nil
 }
 
 // RootEquivalentCheck rejects root and groups that commonly grant a path to
