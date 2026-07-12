@@ -135,8 +135,7 @@ export class BrokerKitUiApi {
         value.renewal_transport !== "parent") ||
       !Number.isFinite(expiresAtMs) ||
       expiresAtMs <= Date.now() ||
-      expiresAtMs > Date.now() + 5 * 60_000 ||
-      (framed() && value.access !== "read")
+      expiresAtMs > Date.now() + 5 * 60_000
     ) {
       throw new Error("Delegated approval session is invalid");
     }
