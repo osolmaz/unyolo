@@ -1677,27 +1677,6 @@ func TestOperatorInboxSurvivesTelegramNotificationFailure(t *testing.T) {
 	}
 }
 
-func TestDeniedGrantDecisionResult(t *testing.T) {
-	tests := []struct {
-		name       string
-		decision   policy.Decision
-		wantStatus int
-		wantReason string
-	}{
-		{name: "invalid operation", decision: policy.Decision{Reason: "invalid_operation"}, wantStatus: http.StatusBadRequest, wantReason: "invalid_operation"},
-		{name: "invalid target", decision: policy.Decision{Reason: "invalid_target"}, wantStatus: http.StatusBadRequest, wantReason: "invalid_target"},
-		{name: "policy denied", decision: policy.Decision{Reason: "policy_denied"}, wantStatus: http.StatusForbidden, wantReason: "policy_denied"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, status, reason, message := deniedGrantDecisionResult(tc.decision)
-			if status != tc.wantStatus || reason != tc.wantReason || message == "" {
-				t.Fatalf("deniedGrantDecisionResult() = status %d reason %q message %q", status, reason, message)
-			}
-		})
-	}
-}
-
 func TestValidateGrantTargetForOperation(t *testing.T) {
 	repo := policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo"}
 	tests := []struct {

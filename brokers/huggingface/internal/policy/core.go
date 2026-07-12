@@ -39,6 +39,23 @@ type coreRule struct {
 	GrantPolicy *corepolicy.GrantPolicy `json:"grant_policy,omitempty"`
 }
 
+// AuthorizationRegistry returns HF's provider-owned policy vocabulary.
+func AuthorizationRegistry() corepolicy.Registry { return hfRegistry() }
+
+// AuthorizationRequest projects an HF request into the shared policy model.
+func AuthorizationRequest(request Request) corepolicy.Request {
+	return coreRequestFromHF(request, coreViewNormal)
+}
+
+// DecideAuthorization evaluates a shared authorization request against HF's
+// normal policy view.
+func (p Policy) DecideAuthorization(request corepolicy.Request, options corepolicy.DecisionOptions) corepolicy.Decision {
+	return p.coreForView(coreViewNormal).Decide(request, options)
+}
+
+// AuthorizationGrants projects active HF grant rules into shared policy grants.
+func AuthorizationGrants(rules []Rule) []corepolicy.Grant { return coreGrants(rules, coreViewNormal) }
+
 func (p *Policy) initializeCore() error {
 	ids := make(map[string]string)
 	normal, err := p.buildCorePolicy(coreViewNormal, ids)

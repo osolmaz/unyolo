@@ -24,6 +24,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
+	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
@@ -38,6 +39,7 @@ import (
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
+	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 	"github.com/osolmaz/brokerkit/state"
 )
@@ -85,6 +87,7 @@ type Server struct {
 	router *echo.Echo
 
 	control             *controlplane.Runtime
+	authorization       *bkauthorization.Coordinator
 	policy              policy.Policy
 	audit               audit.Recorder
 	mirrors             *mirror.Manager
@@ -345,8 +348,24 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		now:                opts.Now,
 		newLFSActionID:     opts.NewLFSActionID,
 	}
+	server.authorization, err = bkauthorization.New(bkauthorization.Options{
+		Registry: policy.AuthorizationRegistry(), Decide: server.policy.DecideAuthorization,
+		Grants: store, ActiveGrants: server.activeAuthorizationGrants, Now: opts.Now,
+	})
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	server.router = newRouter(server)
 	return server, nil
+}
+
+func (s *Server) activeAuthorizationGrants(request corepolicy.Request) ([]corepolicy.Grant, error) {
+	rules, err := s.activeGrantRules(request.Client)
+	if err != nil {
+		return nil, err
+	}
+	return policy.AuthorizationGrants(rules), nil
 }
 
 func newRouter(server *Server) *echo.Echo {
@@ -954,13 +973,12 @@ func (s *Server) handleAPIGrantCreate(w http.ResponseWriter, r *http.Request, cl
 		s.record(client, "grant_request", "", audit.DecisionRefused, "could not parse grant request", 0)
 		return
 	}
-	grantPolicy, status, reason, message := s.validateAPIGrantRequest(client, req)
-	if reason != "" {
+	if status, reason, message := validateAPIGrantRequestShape(req); reason != "" {
 		writeJSendFail(w, status, reason, message)
 		s.record(client, "grant_request", targetNameFromPolicy(req.Target), audit.DecisionRefused, reason, 0)
 		return
 	}
-	grant, _, err := s.requestAPIGrant(client, req, grantPolicy)
+	grant, _, err := s.requestAPIGrant(client, req)
 	if err != nil {
 		status, reason, message := grantRequestError(err)
 		writeJSendFail(w, status, reason, message)
@@ -999,47 +1017,6 @@ func readAPIGrantRequest(w http.ResponseWriter, r *http.Request) (apiGrantReques
 		return apiGrantRequestBody{}, false
 	}
 	return req, true
-}
-
-func (s *Server) validateAPIGrantRequest(client string, req apiGrantRequestBody) (*policy.GrantPolicy, int, string, string) {
-	if status, reason, message := validateAPIGrantRequestShape(req); reason != "" {
-		return nil, status, reason, message
-	}
-	decision := s.policy.Decide(policy.Request{
-		Client:    client,
-		Operation: req.Operation,
-		Target:    req.Target,
-		Attrs:     req.Attrs,
-	}, nil, s.utcNow(), true)
-	return apiGrantDecisionResult(req, decision)
-}
-
-func apiGrantDecisionResult(req apiGrantRequestBody, decision policy.Decision) (*policy.GrantPolicy, int, string, string) {
-	switch decision.Effect {
-	case policy.EffectRequest:
-		return requestableGrantDecisionResult(req, decision.GrantPolicy)
-	case policy.EffectDeny:
-		return deniedGrantDecisionResult(decision)
-	default:
-		return nil, http.StatusForbidden, "not_requestable", "No policy rule allows requesting this operation"
-	}
-}
-
-func requestableGrantDecisionResult(req apiGrantRequestBody, grantPolicy *policy.GrantPolicy) (*policy.GrantPolicy, int, string, string) {
-	if status, reason := validateAPIGrantPolicyBounds(req, grantPolicy); reason != "" {
-		return nil, status, "validation_failed", reason
-	}
-	return grantPolicy, 0, "", ""
-}
-
-func deniedGrantDecisionResult(decision policy.Decision) (*policy.GrantPolicy, int, string, string) {
-	if decision.Reason == "invalid_operation" {
-		return nil, http.StatusBadRequest, "invalid_operation", "Invalid operation"
-	}
-	if decision.Reason == "invalid_target" {
-		return nil, http.StatusBadRequest, "invalid_target", "Invalid target"
-	}
-	return nil, http.StatusForbidden, decision.Reason, policyReasonMessage(decision.Reason)
 }
 
 func validateGrantTargetForOperation(operation policy.Operation, target policy.Target) error {
@@ -1105,48 +1082,61 @@ func grantRefFromTarget(target policy.Target) (string, error) {
 	return target.Refs[0], nil
 }
 
-func validateAPIGrantPolicyBounds(req apiGrantRequestBody, grantPolicy *policy.GrantPolicy) (int, string) {
-	if grantPolicy == nil {
-		return http.StatusForbidden, "No policy rule allows requesting this operation"
-	}
-	if req.Minutes > grantPolicy.MaxMinutes {
-		return http.StatusBadRequest, fmt.Sprintf("Grant duration exceeds %d minutes", grantPolicy.MaxMinutes)
-	}
-	if req.MaxUses > grantPolicy.MaxUses {
-		return http.StatusBadRequest, fmt.Sprintf("Grant max uses exceeds %d", grantPolicy.MaxUses)
-	}
-	return 0, ""
+func (s *Server) requestAPIGrant(client string, req apiGrantRequestBody) (grants.Grant, bool, error) {
+	providerRequest := policy.Request{Client: client, Operation: req.Operation, Target: req.Target, Attrs: req.Attrs}
+	authorizationRequest := policy.AuthorizationRequest(providerRequest)
+	result, err := s.authorization.RequestApproval(authorizationRequest, func(bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
+		return s.prepareAPIGrantIntent(client, req, authorizationRequest, bounds)
+	})
+	return result.Request.Grant, result.Created, err
 }
 
-func (s *Server) requestAPIGrant(client string, req apiGrantRequestBody, grantPolicy *policy.GrantPolicy) (grants.Grant, bool, error) {
+func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, authorizationRequest corepolicy.Request, bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
+	if bounds == nil {
+		return bkauthorization.GrantIntent{}, errors.New("no policy rule allows requesting this operation")
+	}
+	if req.Minutes > bounds.MaxMinutes {
+		return bkauthorization.GrantIntent{}, fmt.Errorf("grant duration exceeds %d minutes", bounds.MaxMinutes)
+	}
+	if req.MaxUses > bounds.MaxUses {
+		return bkauthorization.GrantIntent{}, fmt.Errorf("grant max uses exceeds %d", bounds.MaxUses)
+	}
 	minutes := req.Minutes
 	if minutes == 0 {
-		minutes = grantPolicy.DefaultMinutes
+		minutes = bounds.DefaultMinutes
 	}
 	maxUses := req.MaxUses
 	if maxUses == 0 {
-		maxUses = grantPolicy.DefaultMaxUses
+		maxUses = bounds.DefaultMaxUses
 	}
 	ref, _ := grantRefFromTarget(req.Target)
-	result, created, err := hfgrant.Request(s.grants, s.plans, hfgrant.Input{
+	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
 		Client:            client,
 		ClientRequestID:   req.ClientRequestID,
 		Operation:         string(req.Operation),
-		Mode:              string(grantPolicy.Mode),
+		Mode:              bounds.Mode,
 		Target:            targetNameFromPolicy(req.Target),
 		Ref:               ref,
 		Attrs:             req.Attrs,
 		Reason:            req.Reason,
 		RequestedDuration: time.Duration(minutes) * time.Minute,
-		PendingTimeout:    time.Duration(grantPolicy.RequestTTLMinutes) * time.Minute,
+		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute,
 		MaxUses:           maxUses,
 	})
-	return result.Grant, created, err
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	return bkauthorization.GrantIntent{
+		Mode: corepolicy.GrantMode(bounds.Mode), Authorization: authorizationRequest, Request: request, Plan: plan,
+	}, nil
 }
 
 func grantRequestError(err error) (int, string, string) {
 	if errors.Is(err, grants.ErrIdempotencyConflict) {
 		return http.StatusConflict, "idempotency_conflict", "Idempotency key was reused with a different request"
+	}
+	if errors.Is(err, bkauthorization.ErrDenied) || errors.Is(err, bkauthorization.ErrNoMatch) {
+		return http.StatusForbidden, "not_requestable", "No policy rule allows requesting this operation"
 	}
 	return http.StatusBadRequest, "validation_failed", err.Error()
 }

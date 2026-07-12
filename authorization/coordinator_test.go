@@ -41,11 +41,11 @@ func TestCoordinatorAuthorizeOrRequest(t *testing.T) {
 
 	write := policy.Request{Client: "bob", Operation: "repo.write", Target: read.Target}
 	intent := testIntent(now, write)
-	requested, err := coordinator.Authorize(write, &intent)
+	requested, err := coordinator.Authorize(write, fixedIntent(intent))
 	if err != nil || !requested.Created || requested.Request.Grant.Status != grants.StatusPending {
 		t.Fatalf("request = %+v, %v", requested, err)
 	}
-	replayed, err := coordinator.Authorize(write, &intent)
+	replayed, err := coordinator.Authorize(write, fixedIntent(intent))
 	if err != nil || replayed.Created || replayed.Request.Grant.ID != requested.Request.Grant.ID {
 		t.Fatalf("replay = %+v, %v", replayed, err)
 	}
@@ -67,12 +67,30 @@ func TestCoordinatorRejectsInvalidRequests(t *testing.T) {
 	}
 	intent := testIntent(time.Now().UTC(), write)
 	intent.Request.MaxUses = 3
-	if _, err := coordinator.Authorize(write, &intent); !errors.Is(err, ErrInvalidGrantIntent) {
+	if _, err := coordinator.Authorize(write, fixedIntent(intent)); !errors.Is(err, ErrInvalidGrantIntent) {
 		t.Fatalf("wide intent error = %v", err)
 	}
 	closeStore()
-	if _, err := coordinator.Authorize(write, &intent); err == nil {
+	if _, err := coordinator.Authorize(write, fixedIntent(intent)); err == nil {
 		t.Fatal("closed grant store was accepted")
+	}
+}
+
+func TestCoordinatorExplicitRequestIgnoresActiveGrant(t *testing.T) {
+	coordinator, closeStore := testCoordinator(t)
+	defer closeStore()
+	request := policy.Request{Client: "bob", Operation: "repo.write", Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}}}
+	intent := testIntent(time.Now().UTC(), request)
+	first, err := coordinator.RequestApproval(request, fixedIntent(intent))
+	if err != nil || !first.Created {
+		t.Fatalf("first request = %+v, %v", first, err)
+	}
+	if _, err := coordinator.grants.Approve(first.Request.Grant.ID, first.Request.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := coordinator.RequestApproval(request, fixedIntent(intent))
+	if err != nil || second.Created || second.Request.Grant.ID != first.Request.Grant.ID {
+		t.Fatalf("second request = %+v, %v", second, err)
 	}
 }
 
@@ -143,6 +161,10 @@ func testIntent(now time.Time, request policy.Request) GrantIntent {
 		Target: request.Target, Attrs: request.Attrs, Metadata: map[string]string{"test_plan_digest": digest},
 		Reason: "test", Duration: 5 * time.Minute, PendingTimeout: 5 * time.Minute, MaxUses: 1,
 	}, Plan: grants.ImmutablePlan{Digest: digest, SchemaName: "test/v1", Canonical: canonical, CreatedAt: now}}
+}
+
+func fixedIntent(intent GrantIntent) IntentBuilder {
+	return func(*policy.GrantPolicy) (GrantIntent, error) { return intent, nil }
 }
 
 func testIDSource() func(int) (string, error) {

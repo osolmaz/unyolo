@@ -53,19 +53,32 @@ func Request(store *grants.Store, plans *hfplan.Store, input Input) (grants.Requ
 	if store == nil || plans == nil {
 		return grants.RequestResult{}, false, errors.New("grant and plan stores are required")
 	}
-	request, err := CanonicalRequest(input)
-	if err != nil {
-		return grants.RequestResult{}, false, err
-	}
-	createdAt, exists, err := existingPlanCreatedAt(store, plans, request.Client, request.ClientRequestID)
-	if err != nil {
-		return grants.RequestResult{}, false, err
-	}
-	plan, err := prepareRequestPlan(plans, &request, createdAt, exists)
+	request, plan, err := Prepare(store, plans, input)
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
 	return store.RequestWithPlan(request, plan)
+}
+
+// Prepare validates a provider request and builds its immutable plan without
+// committing either record.
+func Prepare(store *grants.Store, plans *hfplan.Store, input Input) (grants.Request, grants.ImmutablePlan, error) {
+	if store == nil || plans == nil {
+		return grants.Request{}, grants.ImmutablePlan{}, errors.New("grant and plan stores are required")
+	}
+	request, err := CanonicalRequest(input)
+	if err != nil {
+		return grants.Request{}, grants.ImmutablePlan{}, err
+	}
+	createdAt, exists, err := existingPlanCreatedAt(store, plans, request.Client, request.ClientRequestID)
+	if err != nil {
+		return grants.Request{}, grants.ImmutablePlan{}, err
+	}
+	plan, err := prepareRequestPlan(plans, &request, createdAt, exists)
+	if err != nil {
+		return grants.Request{}, grants.ImmutablePlan{}, err
+	}
+	return request, plan, nil
 }
 
 func prepareRequestPlan(plans *hfplan.Store, request *grants.Request, createdAt time.Time, exists bool) (grants.ImmutablePlan, error) {

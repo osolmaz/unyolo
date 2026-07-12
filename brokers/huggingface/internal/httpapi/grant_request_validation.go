@@ -17,6 +17,9 @@ func validateAPIGrantRequestShape(req apiGrantRequestBody) (int, string, string)
 	if req.MaxUses < 0 {
 		return http.StatusBadRequest, "validation_failed", "Grant max uses must be positive"
 	}
+	if !policy.IsOperation(string(req.Operation)) {
+		return http.StatusBadRequest, "invalid_operation", "Invalid operation"
+	}
 	if _, err := policy.AttrConstraintsFromValues(req.Attrs); err != nil {
 		return http.StatusBadRequest, "invalid_attrs", "Invalid attrs"
 	}

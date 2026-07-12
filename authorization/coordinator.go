@@ -21,12 +21,15 @@ var (
 // DecideFunc evaluates one provider-classified request.
 type DecideFunc func(policy.Request, policy.DecisionOptions) policy.Decision
 
+// ActiveGrantsFunc projects durable grants relevant to request into policy grants.
+type ActiveGrantsFunc func(policy.Request) ([]policy.Grant, error)
+
 // Coordinator owns the provider-neutral authorize-or-request transition.
 type Coordinator struct {
 	registry     policy.Registry
 	decide       DecideFunc
 	grants       *grants.Store
-	activeGrants func() ([]policy.Grant, error)
+	activeGrants ActiveGrantsFunc
 	now          func() time.Time
 }
 
@@ -38,7 +41,7 @@ type Options struct {
 	// ActiveGrants projects durable provider grants into policy grants. It
 	// defaults to Grants.ActivePolicyGrants when provider-native storage already
 	// uses the policy target schema.
-	ActiveGrants func() ([]policy.Grant, error)
+	ActiveGrants ActiveGrantsFunc
 	Now          func() time.Time
 }
 
@@ -49,6 +52,10 @@ type GrantIntent struct {
 	Request       grants.Request
 	Plan          grants.ImmutablePlan
 }
+
+// IntentBuilder resolves provider defaults and builds an immutable request
+// after the coordinator has selected the request rule and its bounds.
+type IntentBuilder func(*policy.GrantPolicy) (GrantIntent, error)
 
 // Result is one authorization decision and optional durable approval request.
 type Result struct {
@@ -69,7 +76,9 @@ func New(options Options) (*Coordinator, error) {
 		options.Now = time.Now
 	}
 	if options.ActiveGrants == nil {
-		options.ActiveGrants = options.Grants.ActivePolicyGrants
+		options.ActiveGrants = func(policy.Request) ([]policy.Grant, error) {
+			return options.Grants.ActivePolicyGrants()
+		}
 	}
 	return &Coordinator{
 		registry: options.Registry, decide: options.Decide, grants: options.Grants,
@@ -78,11 +87,11 @@ func New(options Options) (*Coordinator, error) {
 }
 
 // Authorize allows, refuses, or durably creates an approval request.
-func (c *Coordinator) Authorize(request policy.Request, intent *GrantIntent) (Result, error) {
+func (c *Coordinator) Authorize(request policy.Request, build IntentBuilder) (Result, error) {
 	if err := c.registry.ValidateRequest(request); err != nil {
 		return Result{Decision: policy.Decision{Effect: policy.EffectNoMatch, Reason: err.Error()}}, fmt.Errorf("%w: %v", ErrNoMatch, err)
 	}
-	active, err := c.activeGrants()
+	active, err := c.activeGrants(request)
 	if err != nil {
 		return Result{}, fmt.Errorf("load active grants: %w", err)
 	}
@@ -95,14 +104,46 @@ func (c *Coordinator) Authorize(request policy.Request, intent *GrantIntent) (Re
 	if requestDecision.Effect != policy.EffectRequest {
 		return refusedResult(decision)
 	}
-	if err := c.validateIntent(request, requestDecision, intent); err != nil {
-		return Result{Decision: requestDecision}, err
+	return c.createApprovalRequest(request, requestDecision, build)
+}
+
+// RequestApproval explicitly requests a bounded approval even when an existing
+// grant could currently authorize the same capability.
+func (c *Coordinator) RequestApproval(request policy.Request, build IntentBuilder) (Result, error) {
+	if err := c.registry.ValidateRequest(request); err != nil {
+		return Result{Decision: policy.Decision{Effect: policy.EffectNoMatch, Reason: err.Error()}}, fmt.Errorf("%w: %v", ErrNoMatch, err)
+	}
+	decision := c.decide(request, policy.DecisionOptions{Now: c.now().UTC(), ForGrantRequest: true})
+	if decision.Effect != policy.EffectRequest {
+		return refusedResult(decision)
+	}
+	return c.createApprovalRequest(request, decision, build)
+}
+
+func (c *Coordinator) createApprovalRequest(request policy.Request, decision policy.Decision, build IntentBuilder) (Result, error) {
+	intent, err := buildIntent(build, decision.GrantPolicy)
+	if err != nil {
+		return Result{Decision: decision}, err
+	}
+	if err := c.validateIntent(request, decision, &intent); err != nil {
+		return Result{Decision: decision}, err
 	}
 	created, wasCreated, err := c.grants.RequestWithPlan(intent.Request, intent.Plan)
 	if err != nil {
-		return Result{Decision: requestDecision}, fmt.Errorf("create approval request: %w", err)
+		return Result{Decision: decision}, fmt.Errorf("create approval request: %w", err)
 	}
-	return Result{Decision: requestDecision, Request: created, Created: wasCreated}, nil
+	return Result{Decision: decision, Request: created, Created: wasCreated}, nil
+}
+
+func buildIntent(build IntentBuilder, bounds *policy.GrantPolicy) (GrantIntent, error) {
+	if build == nil {
+		return GrantIntent{}, ErrInvalidGrantIntent
+	}
+	intent, err := build(bounds)
+	if err != nil {
+		return GrantIntent{}, fmt.Errorf("%w: %v", ErrInvalidGrantIntent, err)
+	}
+	return intent, nil
 }
 
 func refusedResult(decision policy.Decision) (Result, error) {
