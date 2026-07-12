@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	maxInferenceRequestBytes  = 4 * 1024 * 1024
+	maxInferenceRequestBytes  = 100 * 1024 * 1024
 	maxInferenceResponseBytes = 64 * 1024 * 1024
 )
 
@@ -134,7 +134,11 @@ func jsonContentType(value string) bool {
 }
 
 func readInferenceRequest(w http.ResponseWriter, r *http.Request) ([]byte, int, string) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxInferenceRequestBytes))
+	return readInferenceRequestWithLimit(w, r, maxInferenceRequestBytes)
+}
+
+func readInferenceRequestWithLimit(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, int, string) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err == nil {
 		return body, 0, ""
 	}
