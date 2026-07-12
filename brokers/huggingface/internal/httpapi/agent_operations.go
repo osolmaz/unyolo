@@ -68,25 +68,21 @@ func (s *Server) DiscoverAgent(c echo.Context) error {
 }
 
 func (s *Server) SubmitAgentOperation(c echo.Context) error {
-	client, ok := s.authenticateAgent(c.Response(), c.Request())
-	if ok {
-		s.handleAgentOperationSubmit(c.Response(), c.Request(), client)
-	}
-	return nil
+	return s.withAuthenticatedAgent(c, s.handleAgentOperationSubmit)
 }
 
 func (s *Server) GetAgentOperation(c echo.Context, _ agentwire.OperationID) error {
-	client, ok := s.authenticateAgent(c.Response(), c.Request())
-	if ok {
-		s.handleAgentOperationGet(c.Response(), c.Request(), client)
-	}
-	return nil
+	return s.withAuthenticatedAgent(c, s.handleAgentOperationGet)
 }
 
 func (s *Server) WaitForAgentOperation(c echo.Context, _ agentwire.OperationID, _ agentwire.WaitForAgentOperationParams) error {
+	return s.withAuthenticatedAgent(c, s.handleAgentOperationGet)
+}
+
+func (s *Server) withAuthenticatedAgent(c echo.Context, handler func(http.ResponseWriter, *http.Request, string)) error {
 	client, ok := s.authenticateAgent(c.Response(), c.Request())
 	if ok {
-		s.handleAgentOperationGet(c.Response(), c.Request(), client)
+		handler(c.Response(), c.Request(), client)
 	}
 	return nil
 }
