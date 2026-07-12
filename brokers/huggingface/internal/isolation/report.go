@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
 // WriteText writes the human-readable report.
@@ -37,12 +39,5 @@ func WriteJSON(w io.Writer, report Report) error {
 
 // ExitCode returns the command exit code for the report.
 func ExitCode(status Status) int {
-	switch status {
-	case StatusOK:
-		return 0
-	case StatusUnsafe:
-		return 1
-	default:
-		return 2
-	}
+	return bkdoctor.ExitCode(status)
 }

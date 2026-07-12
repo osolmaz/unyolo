@@ -2,23 +2,25 @@
 // hf-broker's upstream credential on the broker host.
 package isolation
 
+import bkdoctor "github.com/osolmaz/brokerkit/doctor"
+
 // Status is the overall isolation verdict.
-type Status string
+type Status = bkdoctor.Status
 
 const (
-	StatusOK           Status = "ok"
-	StatusUnsafe       Status = "unsafe"
-	StatusInconclusive Status = "inconclusive"
+	StatusOK           = bkdoctor.StatusOK
+	StatusUnsafe       = bkdoctor.StatusUnsafe
+	StatusInconclusive = bkdoctor.StatusInconclusive
 )
 
 // CheckStatus is the result for one isolation check.
-type CheckStatus string
+type CheckStatus = bkdoctor.CheckStatus
 
 const (
-	CheckPass    CheckStatus = "pass"
-	CheckFail    CheckStatus = "fail"
-	CheckWarn    CheckStatus = "warn"
-	CheckUnknown CheckStatus = "unknown"
+	CheckPass    = bkdoctor.CheckPass
+	CheckFail    = bkdoctor.CheckFail
+	CheckWarn    = bkdoctor.CheckWarn
+	CheckUnknown = bkdoctor.CheckUnknown
 )
 
 // Options controls an isolation check run.
@@ -52,11 +54,7 @@ type AgentInfo struct {
 }
 
 // Check is one stable doctor finding.
-type Check struct {
-	Status  CheckStatus `json:"status"`
-	Name    string      `json:"name"`
-	Message string      `json:"message"`
-}
+type Check = bkdoctor.Check
 
 // ProbeResult is emitted by the active probe helper.
 type ProbeResult struct {
