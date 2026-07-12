@@ -32,6 +32,37 @@ Similar naming or control flow is not enough. Provider policy registries,
 approval presentations, immutable plan schemas, configuration, credentials,
 and executors remain separate.
 
+## Dependency and Vendoring Policy
+
+Prefer maintained upstream libraries for mature protocol, storage, and provider
+behavior. Wrap them at BrokerKit ownership boundaries so external types do not
+spread through policy, lifecycle, or provider execution code.
+
+Libraries with fewer than 500 GitHub stars may be source-vendored when the
+required surface is small and BrokerKit needs tighter security review,
+refactoring, release control, or long-term maintenance. The star threshold makes
+a library eligible for review; it is not sufficient by itself.
+
+For a source-vendored library:
+
+- require a permissive, compatible license and preserve its license, copyright,
+  notices, and required attribution;
+- place maintained source under a clearly named internal third-party boundary,
+  not Go's generated `vendor/` directory;
+- add an `UPSTREAM.md` recording repository URL, exact commit or release, import
+  date, retained files, local changes, and the upstream comparison/update
+  procedure;
+- copy only the required behavior and upstream tests, then refactor it to
+  BrokerKit's bounded I/O, clock, error-redaction, and ownership contracts;
+- keep local changes reviewable as a patch against the recorded upstream
+  revision and periodically audit upstream security and correctness fixes; and
+- delete the module dependency and any unused upstream surface in the same
+  change.
+
+Do not source-vendor large established libraries merely to avoid dependencies.
+Do not vendor code with unclear provenance, incompatible licensing, generated
+source that cannot be reproduced, or security behavior BrokerKit cannot test.
+
 ## Current Baseline
 
 - Root and all broker-local Slophammer DRY checks report zero copied blocks.
@@ -201,62 +232,158 @@ Acceptance:
   tests.
 - Linux and macOS ownership behavior has focused tests.
 
-### 5. Make Protocol Artifacts Single-Source
+### 5. Make OpenAPI 3.1 the Sole Protocol Source
 
-Problem: Operator V1 and Agent V1 are represented by canonical JSON Schemas,
-handwritten Go structs, generated TypeScript types, and handwritten runtime
-validators. Limits and enums can drift between these representations.
+Problem: Operator V1 and Agent V1 are represented by OpenAPI documents,
+standalone JSON Schemas, handwritten Go structs, generated TypeScript types, and
+handwritten runtime validators. Multiple claimed sources of truth allow routes,
+wire types, enums, and limits to drift.
 
 Implementation:
 
-- Keep `protocol/schema` and `protocol/agent-schema` canonical.
-- Extend deterministic repository-owned generation to produce Go and
-  TypeScript enums, limits, and wire types from those schemas.
-- Keep generated artifacts committed and marked as generated.
+- Make the Operator V1 and Agent V1 OpenAPI documents valid OpenAPI 3.1 and the
+  sole canonical protocol sources. Define every payload under
+  `components/schemas` and reference it from routes and responses.
+- Use pinned [`oapi-codegen`](https://github.com/oapi-codegen/oapi-codegen)
+  tooling to generate Go wire types, clients, and standard-library `net/http`
+  server interfaces.
+- Use [`kin-openapi`](https://github.com/getkin/kin-openapi) to parse and validate
+  every OpenAPI document and reference in generation and CI.
+- Generate TypeScript types, runtime validators and constants, and standalone
+  JSON Schema artifacts from the canonical OpenAPI components. Standalone
+  schemas are outputs for consumers, never independently edited inputs.
+- Keep generated artifacts committed, marked as generated, deterministic, and
+  verified by a clean-tree generation check.
 - Make runtime validators consume generated enums and limits rather than
   repeating numeric bounds.
-- Add a generation check that fails on an uncommitted artifact change.
-- Validate checked-in fixtures against schemas and both language bindings.
-- Preserve the existing public Go and TypeScript wire shape; this slice changes
-  ownership, not the protocol.
+- Keep `strictjson` before generated/schema validation for bounded reads,
+  duplicate-key rejection, trailing-content rejection, and closed-object
+  decoding. Schema validation does not resolve parser differentials.
+- Adapt authentication, audit, provider presentation, decisions, and execution
+  behind generated interfaces; do not put policy into generated code.
+- Replace Echo and handwritten routing only in coherent broker-level cutovers
+  after route, middleware, streaming, error, and cancellation conformance tests
+  pass. Do not operate parallel Echo and generated routers indefinitely.
+- Preserve the existing public Go, HTTP, and TypeScript wire shape; this slice
+  changes ownership, not protocol behavior.
 
-Deletion target:
+Deletion targets:
 
-- Hand-maintained enum and limit lists that repeat canonical schema values.
+- Hand-maintained protocol wire structs, enums, and limit lists;
+- standalone schema sources replaced by generated artifacts;
+- handwritten Operator V1 and Agent V1 clients and route bindings replaced by
+  generated equivalents; and
+- Echo dependencies after the last route in each broker has moved to the
+  generated `net/http` boundary.
 
 Acceptance:
 
-- Editing one schema and running one generator updates every binding.
-- CI detects stale Go, TypeScript, and runtime-validation artifacts.
-- Operator V1 and Agent V1 fixtures round-trip through Go and TypeScript.
+- Editing one OpenAPI component and running one command updates Go, TypeScript,
+  and standalone JSON Schema artifacts.
+- CI fails on an invalid reference, stale artifact, duplicate operation ID,
+  undocumented route, or uncommitted generation diff.
+- Operator V1 and Agent V1 fixtures validate and round-trip through OpenAPI, Go,
+  TypeScript, and standalone schemas.
+- Generated clients and handlers pass the existing black-box protocol and
+  cross-browser suites.
+- Every broker has one authoritative route-registration path after cutover.
 
-### 6. Finish Git pkt-line Consolidation
+### 6. Evaluate go-git and Consolidate Git Parsing
 
 Problem: `gitx` parses pkt-lines and receive-pack commands, while
 `brokers/huggingface/internal/gitproxy/pktline` separately implements buffered
-scanning and encoding for the same wire format.
+scanning and encoding for the same wire format. HF also owns custom packfile and
+delta parsing. Expanding either parser before evaluating a mature Git library
+would deepen security-sensitive custom protocol code unnecessarily.
 
 Implementation:
 
-- Add bounded buffered scanning, consumed offsets, frame kinds, and append
-  helpers to `gitx`.
-- Preserve trailing packfile bytes without copying them unnecessarily.
-- Preserve SHA-1 and SHA-256 object-ID validation and provider error behavior.
-- Convert HF Git and LFS/Xet handlers to the shared API.
-- Keep HF ancestry, mirror, LFS/Xet, and refusal-response behavior local.
+- Freeze new parser features until the evaluation is complete.
+- Build a checked-in corpus from current HF and GH tests covering valid and
+  malformed pkt-lines, receive-pack commands, side-band reports, packfiles,
+  thin packs, ofs/ref deltas, trailing pack data, SHA-1, SHA-256, size limits,
+  object-count limits, cancellation, and current refusal behavior.
+- Run the corpus and focused fuzzing against
+  [`go-git`](https://github.com/go-git/go-git) pkt-line and packfile packages
+  behind BrokerKit byte, object, recursion, and allocation limits.
+- Record a short compatibility decision with unsupported behavior, dependency
+  and binary cost, fuzz results, and the exact adopted go-git packages/version.
+- If go-git satisfies the contract, wrap it behind `gitx`, convert HF and GH,
+  and delete the custom pkt-line, packfile, and delta parsers it replaces.
+- If go-git cannot satisfy the contract, keep the bounded custom implementation,
+  document the concrete gaps, consolidate duplicate framing into `gitx`, and do
+  not add go-git only for the existing small pkt-line helper.
+- In either outcome, keep HF ancestry, mirror, LFS/Xet, policy classification,
+  refusal responses, and provider-specific error wording local.
 
-Deletion target:
+Conditional deletion targets:
 
-- `brokers/huggingface/internal/gitproxy/pktline`.
+- `brokers/huggingface/internal/gitproxy/pktline`; and
+- custom packfile, delta, and receive-pack report parsing only where go-git
+  passes the full BrokerKit corpus and resource-limit contract.
 
 Acceptance:
 
-- HF and GH use `gitx` for Git framing and receive-pack parsing.
-- Malformed framing, flush packets, trailing pack data, and maximum lengths have
-  shared tests.
+- The decision explicitly covers thin packs and deltas, SHA-1 and SHA-256,
+  strict byte and object limits, trailing pack preservation, cancellation, and
+  current refusal/report behavior.
+- HF and GH use one `gitx` boundary regardless of the parser selected behind it.
+- Malformed framing, flush packets, trailing pack data, compression bombs,
+  excessive delta depth, and maximum lengths have shared tests and fuzz seeds.
 - Existing Git proxy integration tests remain unchanged in behavior.
 
-### 7. Move HF Request Auditing onto the Shared Recorder
+### 7. Replace Custom GitHub API and App Authentication Code
+
+Problem: GH Broker hand-signs GitHub App JWTs, resolves installations, mints
+tokens, paginates API responses, decodes typed resources, and parses parts of
+webhook behavior. These are provider protocol mechanics already maintained by
+the Go GitHub ecosystem.
+
+Implementation:
+
+- Use pinned [`google/go-github`](https://github.com/google/go-github) clients
+  for typed REST operations, pagination, webhook validation/parsing, API error
+  classification, and rate-limit metadata.
+- Keep a BrokerKit-owned HTTP transport around go-github that enforces base-URL
+  policy, deadlines, redirect policy, bounded responses, credential stripping,
+  and redacted errors.
+- Source-vendor
+  [`bradleyfalzon/ghinstallation`](https://github.com/bradleyfalzon/ghinstallation)
+  under
+  `brokers/github/internal/thirdparty/ghinstallation` because it is a small
+  dependency below the 500-star threshold.
+- Reduce the vendored authentication code to the required App JWT and
+  installation-token transport behavior; preserve Apache-2.0 attribution and
+  record the exact upstream revision and local patch.
+- Refactor the vendored code to use BrokerKit clocks, injected HTTP transports,
+  bounded responses, explicit GitHub Enterprise base URLs, redacted errors, and
+  testable token caching/refresh boundaries.
+- Keep repository target validation, policy classification, immutable plans,
+  proxy authorization, credential selection, and audit semantics in GH Broker.
+- Migrate one API capability at a time behind existing broker interfaces, then
+  delete the old implementation before moving to the next capability.
+
+Deletion targets:
+
+- custom JWT signing, installation resolution, token minting, pagination, and
+  response decoding in `brokers/github/internal/githubapp`;
+- provider reads replaced from `brokers/github/internal/githubapi`; and
+- handwritten webhook validation or payload models replaced by go-github.
+
+Acceptance:
+
+- GitHub.com and configured GitHub Enterprise base URLs pass installation,
+  token-refresh, repository-read, pagination, webhook, and rate-limit tests.
+- Concurrent token requests use bounded caching and refresh without duplicate
+  minting or serving expired credentials.
+- Oversized or malformed responses, redirects, transport failures, and ambiguous
+  GitHub errors fail closed without exposing tokens or response bodies.
+- Existing GH policy, proxy, plan, audit, and black-box API behavior is
+  unchanged.
+- The vendored authentication boundary has license/provenance files, upstream
+  comparison instructions, retained upstream tests, and no unused API surface.
+
+### 8. Move HF Request Auditing onto the Shared Recorder
 
 Problem: HF has `internal/audit`, while the other shared control-plane paths use
 the root `audit` package.
@@ -281,7 +408,7 @@ Acceptance:
 - Tests prove tokens, authorization headers, request bodies, Git pack data,
   prompts, completions, and plan contents never enter audit output.
 
-### 8. Finish Doctor and Isolation Consolidation
+### 9. Finish Doctor and Isolation Consolidation
 
 Problem: HF has large Linux and macOS isolation implementations that repeat
 identity lookup, root-equivalent group checks, path traversal, mode and ACL
@@ -314,7 +441,7 @@ Acceptance:
   retain fail-closed tests.
 - HF isolation code contains only HF configuration and presentation adapters.
 
-### 9. Unify Immutable Plan and Grant Transactions
+### 10. Unify Immutable Plan and Grant Transactions
 
 Problem: HF, GH, and sudo independently implement the same provider-neutral
 sequence: locate an idempotent request, bind an immutable plan, create the
@@ -357,7 +484,7 @@ Acceptance:
 - Approval can never activate a missing, changed, or mismatched plan.
 - No provider plan type or policy vocabulary enters a root package.
 
-### 10. Standardize All Brokers on Agent Operations V1
+### 11. Standardize All Brokers on Agent Operations V1
 
 Problem: `agentv1` is provider-neutral, but its durable implementation currently
 lives in `brokers/huggingface/internal/hfoperation`. HF, GH, and sudo are all
@@ -437,7 +564,7 @@ Acceptance:
 - Provider credentials, plans, classifiers, and execution code never enter the
   shared Agent V1 packages.
 
-### 11. Decompose the HF HTTP Package and Tests
+### 12. Decompose the HF HTTP Package and Tests
 
 Problem: the HF HTTP package remains difficult to review because unrelated Git,
 LFS/Xet, repository-read, grant, and routing behavior is concentrated in a
@@ -464,7 +591,7 @@ Acceptance:
 - Each test file covers one domain, and route ownership can be determined from
   one table without tracing multiple dispatch layers.
 
-### 12. Extract Setup Helpers Only When Exact
+### 13. Extract Setup Helpers Only When Exact
 
 HF and GH systemd commands share small mechanics such as loopback readiness
 clients, URL rendering, root checks, and summaries. Sudo has a materially
@@ -497,6 +624,8 @@ go fmt ./...
 go vet ./...
 go test -race ./...
 go test ./...
+go generate ./...
+govulncheck ./...
 golangci-lint run
 scripts/check-architecture.sh
 slophammer-go dry .
@@ -510,6 +639,17 @@ the OpenClaw plugin checks, packed-install test, and cross-browser tests. No
 quality command may be wrapped in a blanket accepted exit code; temporary
 exceptions must identify the exact finding in checked-in configuration.
 
+Dependency and vendoring changes must also verify:
+
+- `go mod tidy` leaves no diff and generated code uses pinned tool versions;
+- direct and transitive licenses are compatible with the repository;
+- every source-vendored package has complete license and `UPSTREAM.md`
+  provenance;
+- the recorded upstream comparison produces only the documented local patch;
+  and
+- retained upstream tests plus BrokerKit boundary, redaction, limit, race, and
+  supported-platform tests pass.
+
 Review each slice against these invariants:
 
 - no provider import from a root package;
@@ -522,6 +662,10 @@ Review each slice against these invariants:
 - no second process able to mutate the same broker state directory;
 - no direct wall-clock or entropy dependency hidden inside a shared lifecycle
   transition;
+- no external provider or generated type leaking into policy, grant, plan, or
+  executor ownership boundaries;
+- no modified third-party source without recorded license, provenance, upstream
+  revision, and comparison procedure;
 - no new shared abstraction without two concrete consumers or an existing
   duplicate root implementation; and
 - provider-local code is deleted in the same slice that adopts the shared API.
@@ -537,8 +681,18 @@ The refactor is complete when:
 - each broker exclusively owns and can recover its transactional SQLite state;
 - lifecycle time and secure identifiers come from explicit, testable runtime
   dependencies;
-- schemas drive protocol enums, limits, and bindings;
-- HF and GH use one Git framing implementation;
+- OpenAPI 3.1 components are the sole protocol source and generate Go,
+  TypeScript, runtime validators, standalone schemas, clients, and server
+  interfaces;
+- generated Operator V1 and Agent V1 `net/http` boundaries have replaced their
+  handwritten route/client bindings without parallel Echo routers;
+- go-git has a recorded corpus-backed adoption or rejection decision, and HF and
+  GH use one `gitx` boundary with no duplicate parser retained;
+- GH uses go-github for supported REST, pagination, webhook, error, and rate-limit
+  behavior and the provenance-tracked internal ghinstallation fork for App
+  authentication;
+- custom GitHub JWT, token, pagination, typed read, and webhook mechanics
+  replaced by those libraries have been deleted;
 - HF uses the shared audit recorder;
 - HF isolation is a thin provider adapter over shared doctor primitives;
 - HF, GH, and sudo use one provider-neutral immutable plan/grant SQL transaction
@@ -549,5 +703,7 @@ The refactor is complete when:
   behavior changes;
 - all architecture, security, test, coverage, Slophammer, plugin, and CI gates
   pass; and
+- every source-vendored dependency is minimal, licensed, attributable,
+  comparison-tested, and assigned an upstream update procedure;
 - no provider-specific credential, policy vocabulary, plan schema, or executor
   has moved into BrokerKit.
