@@ -11,7 +11,8 @@ Status: active
 Remove the remaining provider-neutral duplication without moving Hugging Face,
 GitHub, or Unix behavior into BrokerKit. The result should have one shared
 implementation for common protocol, Git framing, audit, and host-inspection
-mechanics while each broker retains its own classification, credentials,
+mechanics, plus one authorization-to-approval workflow across every broker
+adapter, while each broker retains its own classification, credentials,
 execution, plans, and user-facing wording.
 
 Implement the plan on one branch as a single coordinated, fresh-state cutover.
@@ -483,7 +484,411 @@ Acceptance:
   retain fail-closed tests.
 - HF isolation code contains only HF configuration and presentation adapters.
 
-### 10. Standardize All Brokers on Agent Operations V1
+### 10. Route Every Requestable Operation Through One Authorization Workflow
+
+Problem: policy enforcement and approval creation are separate on some broker
+surfaces. HF Agent operations create durable approval requests, but Git smart
+HTTP can classify a force push as `request` and only reject receive-pack. The
+operator sees no request, repeated pushes cannot acquire authority, and agents
+must discover an undocumented grant API. The same gap would recur in bucket,
+CLI, MCP, or future provider adapters if each transport interprets
+`allow`/`request`/`deny` independently.
+
+Shared ownership:
+
+- A root authorization coordinator owns the provider-neutral
+  `authorize-or-request` state machine over registered operations, policy
+  decisions, durable grants or Agent operations, immutable plan binding,
+  idempotency, notification outbox insertion, expiry, use budgets, and audit
+  correlation.
+- Existing policy, grant, decision, Agent operation, Operator V1, and outbox
+  packages remain the authoritative implementations behind that coordinator;
+  do not introduce a parallel approval store or lifecycle.
+- Root grant client helpers own request, get, wait/events, cancel, and revoke
+  mechanics for temporary capability grants.
+- Operator V1 remains the single inbox and decision surface, regardless of
+  whether a request originated from Git, HTTP, CLI, MCP, or an Agent operation.
+
+Provider ownership:
+
+- Each broker registers which named operations exist and whether each supports
+  a window grant, exact execution approval, or no approval.
+- Provider adapters classify the exact operation, target, attributes, and safe
+  presentation. Provider code builds immutable execution plans and performs
+  upstream work with its own credentials.
+- BrokerKit never accepts arbitrary operation strings, shell commands, provider
+  payloads, or credentials merely because a caller asks for approval.
+
+Decision contract:
+
+1. Every adapter constructs the provider's normalized authorization request and
+   calls the same coordinator before performing protected work.
+2. `allow` proceeds immediately and records the decision. `deny` and
+   `no_match` fail closed without manufacturing an approval path.
+3. `request` durably creates or reuses an idempotent approval, binds its
+   immutable provider plan or exact capability target, appends the lifecycle
+   event and notification outbox record in one transaction, and returns a
+   stable approval handle.
+4. Window grants authorize only the approved operation, target, refs, paths,
+   attributes, expiry, and use budget. Execution approvals authorize one exact
+   immutable plan and never become reusable ambient authority.
+5. Approval, denial, cancellation, expiry, revocation, reservation, and use
+   consumption converge through the existing shared lifecycle regardless of
+   the originating transport.
+
+Git smart HTTP behavior:
+
+- Keep Git smart HTTP as a streaming transport rather than converting a push
+  into an Agent V1 operation. After bounded receive-pack parsing, classify each
+  ref command as append, history rewrite, ref deletion, or tag update and call
+  the shared coordinator for every distinct requestable capability.
+- A requestable push creates the approval before returning a valid
+  receive-pack refusal. The refusal includes safe approval handles, the exact
+  denied operation and refs, and a clear instruction to approve and retry. It
+  never includes credentials, pack contents, commit messages, or secret plan
+  data.
+- Do not hold the original Git HTTP request open while a human decides. The
+  pack may be large and gateways, clients, and reverse proxies have shorter
+  timeouts than an approval. The reliable contract is `push -> request ->
+  approve -> retry -> consume grant`.
+- Deduplicate retries by client, operation, repository, normalized ref set,
+  requested bounds, and policy identity. Concurrent identical pushes create
+  one pending request. A materially different target, operation, ref set, or
+  bound creates a different request.
+- A multi-ref push may produce one request per distinct operation and compatible
+  policy bound. The retry proceeds only when every protected ref command is
+  authorized; partial approval must never partially forward the push.
+- Under ML Claw's current HF policy, append-only and fast-forward pushes remain
+  allowed without prompting. Force/history-rewriting pushes, branch or other
+  ref deletions, and tag moves/replacements/deletions create requests. If a
+  deployment changes append or fetch to `request`, those operations use the
+  same workflow without transport-specific code.
+
+Explicit grant requests:
+
+- Add provider-facing CLI and MCP operations backed by the shared grant client,
+  including request, get, wait, cancel, and revoke. HF should expose an explicit
+  tool capable of asking, for example, to force-push one repository/ref up to a
+  finite policy-bounded number of times or without a use-count limit for one
+  hour.
+- The request accepts operation, exact provider target constraints, reason,
+  requested duration, requested maximum uses, and a caller-supplied idempotency
+  key. Policy defaults apply when optional bounds are omitted; values above the
+  matched rule's bounds are rejected rather than silently widened.
+- Git refusal output points agents to the explicit request command when they
+  need non-default duration or use limits. A default blocked push may create a
+  default-bounded request automatically, but it cannot infer an hour-long or
+  multi-use grant from stock Git syntax.
+- CLI and MCP waits poll the durable request by handle and survive client
+  retries or restarts. They do not hold the provider mutation open and do not
+  execute the later Git push on the caller's behalf.
+
+Time-bounded unlimited-use window grants:
+
+- Support requests such as “allow unlimited pushes to this exact repository and
+  ref for the next N minutes.” Unlimited means no use-count ceiling only until a
+  mandatory policy-bounded expiry. BrokerKit must never create a grant that is
+  both time-unbounded and use-unlimited.
+- Use the existing `max_uses` vocabulary with nullable semantics rather than a
+  magic large integer, a second boolean, or a tagged object:
+
+  ```json
+  {
+    "minutes": 30,
+    "max_uses": null
+  }
+  ```
+
+  In a grant request, omitted `max_uses` means “use the matched policy's finite
+  default,” a positive integer requests that finite budget, and explicit `null`
+  requests unlimited uses until expiry. Strict decoding and generated Go and
+  TypeScript types must preserve all three states; absent and null must never
+  collapse into the same value.
+- A window-grant policy explicitly declares a positive finite
+  `default_max_uses` and a required `max_uses` ceiling. A positive policy
+  `max_uses` is the largest finite request. A policy `max_uses: null` opts that
+  exact rule into unlimited-use requests while retaining the finite default for
+  callers that omit the field. No wildcard, implicit default, or neighboring
+  rule may widen a finite ceiling to unlimited.
+- Resolved approval constraints always include `max_uses`. A positive integer
+  is a finite budget and `null` is unlimited until the required `expires_at`.
+  The same required-nullable representation flows through canonical OpenAPI and
+  JSON Schema, generated bindings and validators, SQLite, Operator V1 safe
+  presentation, delegated web, CLI, MCP, and audit output.
+- Store resolved `max_uses` as nullable in SQLite: `NULL` means unlimited until
+  `expires_at`. Continue recording `used_count` for audit and observability, but
+  do not reserve, decrement, or reject on count for an unlimited grant. Expiry,
+  cancellation, denial, revocation, target/ref matching, policy replacement,
+  and upstream failure handling remain identical to finite window grants.
+- Execution-mode approvals, including repository creation and bucket deletion,
+  never accept `max_uses: null`; they remain exact, finite executions. Only
+  operations registered for window grants may be use-unlimited.
+- The operator UI renders `Unlimited uses until <expiry>` and offers the
+  unlimited choice only when the matched approval bounds permit it. There is no
+  free-form reason field. The confirmation must always display the exact
+  operation, provider target, repo refs or object paths, and expiry beside the
+  unlimited-use choice.
+- An automatically generated request from a blocked stock Git push uses the
+  rule's finite default because Git syntax does not express requested grant
+  bounds. An agent uses the explicit CLI or MCP grant request to ask for
+  `max_uses: null`; approval and retry then allow any number of matching pushes
+  until expiry.
+- Idempotency includes the tri-state requested use bound, so omitted, finite,
+  and explicit-unlimited requests cannot replay one another. Approving a finite
+  request as unlimited or extending duration beyond the matched rule is a
+  validation failure, not a constraint adjustment.
+
+HF operation coverage:
+
+- Apply the workflow to all formally registered requestable HF operations, not
+  only `git.push.force`: repository creation; requestable repository content
+  reads; Git fetch, append push, force push, ref deletion, and tag update;
+  requestable bucket object reads and writes; and exact bucket object deletion.
+- Repository listing, metadata reads, bucket listing, inference model listing,
+  and inference chat remain non-grantable unless their provider registry and
+  policy semantics are deliberately changed with tests.
+- Future repository deletion, visibility/settings mutation, upload, endpoint,
+  or other HF operations join this workflow only after HF registers a typed
+  operation, target and attribute schema, approval mode, safe presentation,
+  immutable plan where required, and upstream executor.
+- GH and sudo use the same coordinator for their registered requestable
+  capabilities while retaining provider-specific plans, presentations,
+  credentials, and execution.
+
+Implementation sequence:
+
+1. Define the provider-neutral coordinator result types and transaction
+   boundaries on top of the SQLite repositories from section 4. Make operation
+   registration explicit and reject unregistered or mode-incompatible requests.
+2. Route HF's existing Agent operation and `/api/grants` paths through the
+   coordinator, then delete their duplicated decision/request orchestration.
+3. Add the shared grant client and HF CLI/MCP grant surfaces, including
+   tri-state finite/default/unlimited use requests. Keep HF operation names and
+   target parsing inside the HF broker.
+4. Connect receive-pack classification to the coordinator, return structured
+   safe refusal details, and delete the reject-only `request` path.
+5. Route bucket and other HF requestable adapters through the same contract.
+6. Adopt the coordinator from GH and sudo during their Agent V1 cutovers and add
+   cross-broker authorization conformance fixtures.
+7. Update broker instructions and agent-facing tool descriptions so a blocked
+   operation is explained as an approval request with a handle and retry step,
+   never as a missing provider credential.
+
+Acceptance:
+
+- A first protected HF force push creates one pending Operator V1 request; an
+  identical retry reuses it; approval followed by retry succeeds; use exhaustion,
+  expiry, denial, cancellation, and revocation make later retries fail closed.
+- Append-only pushes under the current ML Claw policy do not prompt. A test
+  policy that marks append as `request` proves the identical request/approve/
+  retry path without Git-specific approval code.
+- Ref deletion and tag update have focused end-to-end tests. Mixed multi-ref
+  pushes are forwarded atomically only when all required capabilities are
+  active.
+- CLI and MCP can request both finite multi-use and `max_uses: null` unlimited-
+  use grants within policy bounds. Each request renders accurately in the
+  OpenClaw popover; finite use counters and unlimited grant expiry are enforced
+  by the Git transport.
+- Schema and persistence tests distinguish omitted, positive, zero, negative,
+  explicit-null, and malformed `max_uses`; reject unlimited requests under a
+  finite policy ceiling; reject unlimited execution approvals; and preserve an
+  unlimited window grant, its audit count, expiry, and revocation across restart.
+- An end-to-end test approves unlimited matching pushes for N minutes, performs
+  more pushes than the former finite maximum, rejects a mismatched repo or ref,
+  then proves the next matching push fails immediately after expiry or
+  revocation.
+- Repository creation and bucket deletion retain exact execution-plan approval;
+  bucket read/write window grants cannot authorize deletion.
+- Concurrent and restarted request creation is idempotent, notification outbox
+  delivery is recoverable, and no transport produces a second approval store or
+  channel-specific lifecycle.
+- Conformance tests exercise allow, request, deny, no-match, approve, deny,
+  cancel, expire, revoke, retry, idempotency conflict, bounded grants, and audit
+  correlation through HTTP, CLI, MCP, Git, Agent V1, and Operator V1 surfaces.
+
+### 11. Make the Operator UI Revision-Reactive Without Reloading Its Frame
+
+Problem: the OpenClaw popover loads the BrokerKit iframe once, while the parent
+badge and embedded React application refresh independently. The React app polls
+on a timer that browsers may throttle while its parent is hidden. Reopening the
+popover does not request fresh data, so the badge can advertise a pending
+request while the iframe renders an older snapshot until the whole page is
+reloaded. Reloading the iframe is not an acceptable synchronization mechanism:
+it flickers, resets scroll, closes decision dialogs, discards selected approval
+constraints, and restarts delegated authorization.
+
+Synchronization contract:
+
+- The aggregate BrokerKit runtime assigns an opaque cursor to every materially
+  different operator snapshot. The snapshot is authoritative; change events
+  are invalidations, not a second copy of request state.
+- Extend the version-1 UI API in place with generated schemas for:
+
+  ```text
+  GET /snapshot
+  -> { api_version, cursor, synchronized_at, sources, requests, ... }
+
+  GET /events?cursor=<opaque>&wait_seconds=25
+  -> { api_version, cursor, changed }
+  ```
+
+- `cursor` is an opaque bounded string containing or referencing a runtime
+  epoch and monotonic revision. Clients must not parse it. A restart changes the
+  epoch; an unknown, expired, or compacted cursor returns the existing
+  `cursor_expired` error and makes the client fetch a complete snapshot.
+- Event responses contain only the next cursor and whether state changed. They
+  never contain approval details, presentation fields, identities, reasons,
+  credentials, or other snapshot data.
+- Cursor comparison, waiter registration, snapshot publication, and waiter
+  wakeup must prevent the race where state changes after the initial snapshot
+  but before the wait begins. A wait whose cursor is already stale returns
+  immediately.
+- Coalesce rapid changes into one invalidation. The client always reconciles by
+  fetching the latest complete snapshot, so it does not replay or merge partial
+  UI mutations.
+
+Transport choice:
+
+- Use bounded authenticated long polling as the default browser change feed,
+  not native `EventSource`. The sandboxed delegated iframe uses a rotating
+  bearer token, and native `EventSource` cannot attach its `Authorization`
+  header. Long polling works through Hugging Face and ordinary reverse proxies,
+  naturally re-enters delegated-session renewal, and shares BrokerKit's cursor
+  semantics.
+- Use `fetch` with the bearer token in the header. Never put a capability,
+  session token, or cursor containing authority in a URL, fragment after
+  bootstrap, cookie readable by the plugin, log, or error.
+- Cap each wait at 25 seconds and below the remaining delegated-session lifetime
+  with a safety margin. A normal timeout returns `changed: false`; it is not an
+  error and immediately starts the next wait.
+- Abort the active wait on unmount, authorization replacement, explicit
+  reconciliation, and browser shutdown. Retry transient failures with bounded
+  exponential backoff and jitter while retaining the last valid snapshot.
+- Keep a slow periodic snapshot reconciliation as a safety net for lost wakeups
+  or hostile intermediaries, not as the primary update mechanism.
+
+React ownership:
+
+- Implement one `useBrokerSnapshot()` hook that owns initial snapshot loading,
+  the long-poll loop, delegated-session renewal, cursor-expiry recovery,
+  in-flight request collapse, aborts, ordered state publication, focus and
+  visibility reconciliation, retry backoff, and cleanup.
+- Render the last valid snapshot while revalidating. Do not clear request cards,
+  replace the application root, reset scroll, or close a decision dialog during
+  a background refresh.
+- Prevent a slower earlier request from overwriting a newer snapshot by tracking
+  the active request generation and accepted cursor.
+- After approve, deny, cancel, or revoke, reconcile immediately through the same
+  hook. Do not maintain a separate optimistic request list that can diverge from
+  the server lifecycle.
+- A first load may show a stable skeleton. Later refreshes may expose a subtle
+  non-blocking status but must not flicker the entire inbox.
+
+Decision UI and API simplification:
+
+- Remove the optional human-entered decision reason from approve, deny, cancel,
+  and revoke. Delete the textarea from every decision dialog and delete the
+  corresponding field from Operator V1, delegated-web request bodies, generated
+  clients and validators, command handlers, persistence, audit presentation,
+  fixtures, and tests in the same fresh-state cutover.
+- Do not retain a deprecated field, compatibility decoder, ignored input,
+  migration, or dual schema. This is an unreleased version-1 contract, so
+  regenerate and replace the v1 artifacts in place.
+- Approval retains only policy-bounded duration and use constraints when that
+  operation supports them. Deny, cancel, and revoke are direct confirmation
+  actions with no free-form payload beyond expected revision and idempotency.
+- Preserve the requester's original operation justification where a provider
+  requires one, plus machine-generated policy, validation, transition, and
+  upstream failure reason codes. Those are request and audit facts, not an
+  invitation for the operator to enter prose during a decision.
+- Audit records still identify request, actor, action, timestamp, expected and
+  committed revisions, idempotency key, approved constraints, and outcome. The
+  removal must not weaken attribution or structured failure diagnostics.
+
+Popover host integration:
+
+- The trusted host sends a strict versioned `postMessage` invalidation whenever
+  the popover opens. The iframe validates `event.source === window.parent`, the
+  exact message keys, version, and type, then asks `useBrokerSnapshot()` to
+  reconcile. This message carries no request data or authority.
+- Opening or closing the popover never assigns, clears, or reloads the iframe's
+  `src`. The iframe remains mounted so scroll position, open dialogs, typed
+  approval constraints, and delegated-session state survive.
+- The host badge and iframe consume the same aggregate snapshot revision. The
+  host uses an authenticated summary long poll derived from that cursor, updates
+  the pending count, and sends the iframe an invalidation when the cursor
+  advances. Do not retain an unrelated fixed-interval badge poll as a second
+  notion of freshness.
+- The iframe also maintains its own long poll so direct/top-level use and an
+  already-open popover update without depending on parent messages. Duplicate
+  invalidations are harmless because snapshot reconciliation is coalesced.
+- ML Claw implements the delegated `/snapshot` and `/events` pass-through and
+  the authenticated summary feed without exposing broker operator credentials
+  to OpenClaw or the browser. Other hosts implement the same generated delegated
+  UI contract rather than host-specific React branches.
+
+Runtime publication:
+
+- Provider Operator V1 event streams and their existing polling fallback update
+  the aggregate runtime first. Only after the new aggregate snapshot is
+  committed in memory does BrokerKit advance the UI cursor and wake browser
+  waiters.
+- Source reconnects, health changes, delivery-failure changes, request
+  transitions, expiry, and revocation all advance the cursor when they change
+  rendered or badge-visible state. A poll that yields an identical snapshot
+  does not advance it.
+- Runtime restart recovery publishes a new epoch only after durable state and
+  source snapshots are ready, so reconnecting clients cannot mistake an empty
+  startup snapshot for authoritative deletion.
+
+Implementation sequence:
+
+1. Add the revision publisher and race-free bounded waiter registry beside the
+   aggregate BrokerKit runtime, driven by material snapshot changes.
+2. Define the snapshot cursor and event response in the canonical version-1
+   OpenAPI source, remove the operator decision-reason field, regenerate Go and
+   TypeScript bindings and validators, and add direct plugin HTTP routes.
+3. Add delegated-host event forwarding and session-aware waits without passing
+   operator credentials through the plugin or browser.
+4. Replace the UI timer loop with `useBrokerSnapshot()` and stale-while-
+   revalidate rendering.
+5. Add the strict parent refresh message and change the popover shell to
+   reconcile on every open while keeping the frame mounted.
+6. Move the badge to the same cursor-backed summary feed and retain only the
+   documented slow reconciliation fallback.
+7. Update ML Claw's packaged plugin/runtime pin, deploy to the test Space, and
+   verify a real broker request from creation through rendered decision.
+
+Acceptance:
+
+- A request created while the popover is closed updates the badge and appears
+  on the first open without page or iframe navigation.
+- A request created while the popover is open appears without manual refresh;
+  a completed, denied, canceled, expired, or revoked request disappears through
+  the same change feed.
+- Opening the popover immediately reconciles even after the browser throttled a
+  hidden iframe for longer than the request interval.
+- An open decision dialog, its selected constraints, scroll position, and iframe
+  document identity survive unrelated snapshot refreshes.
+- No UI, wire schema, generated binding, delegated route, durable record, or
+  audit presentation accepts or renders a human-entered decision reason. Agent
+  request justification and structured audit reason codes remain intact.
+- Browser tests fail if the iframe `src` changes after initial mount, if the
+  parent Gateway URL changes, or if an update replaces the application root.
+- Tests cover a change between snapshot and waiter registration, rapid
+  coalesced changes, duplicate invalidations, out-of-order fetch completion,
+  cursor expiry, runtime restart, token renewal, transient network failure,
+  proxy timeout, focus/visibility changes, and clean unmount aborts.
+- Security tests prove event and summary responses are bounded and redacted,
+  authorization remains in headers, strict parent-message validation rejects
+  sibling or malformed senders, and untrusted OpenClaw cannot acquire an
+  operator credential.
+- Cross-browser end-to-end coverage runs the closed-popover, open-popover,
+  decision, and recovery cases in Chromium, Firefox, and WebKit at desktop and
+  mobile viewports. A live ML Claw test creates a real request and confirms the
+  rendered card appears and can be decided without any reload or redirect.
+
+### 12. Standardize All Brokers on Agent Operations V1
 
 Problem: `agentv1` is provider-neutral, but its durable implementation currently
 lives in `brokers/huggingface/internal/hfoperation`. HF, GH, and sudo are all
@@ -567,7 +972,7 @@ Acceptance:
 - Provider credentials, plans, classifiers, and execution code never enter the
   shared Agent V1 packages.
 
-### 11. Decompose the HF HTTP Package and Tests
+### 13. Decompose the HF HTTP Package and Tests
 
 Problem: the HF HTTP package remains difficult to review because unrelated Git,
 LFS/Xet, repository-read, grant, and routing behavior is concentrated in a
@@ -594,7 +999,7 @@ Acceptance:
 - Each test file covers one domain, and route ownership can be determined from
   one table without tracing multiple dispatch layers.
 
-### 12. Extract Setup Helpers Only When Exact
+### 14. Extract Setup Helpers Only When Exact
 
 HF and GH systemd commands share small mechanics such as loopback readiness
 clients, URL rendering, root checks, and summaries. Sudo has a materially
@@ -720,6 +1125,25 @@ The refactor is complete when:
   unsupported framing retained;
 - HF uses the shared audit recorder;
 - HF isolation is a thin provider adapter over shared doctor primitives;
+- every adapter routes requestable operations through one durable
+  authorize-or-request coordinator and the single Operator V1 inbox;
+- protected Git pushes create idempotent approval requests and return safe
+  approve-and-retry instructions instead of only reporting `approval required`;
+- provider CLI and MCP clients can explicitly request, wait for, cancel, and
+  revoke policy-bounded temporary grants without holding a mutation request
+  open;
+- window-grant schemas distinguish omitted use bounds, finite positive budgets,
+  and explicit `max_uses: null`; approved unlimited-use grants remain strictly
+  target-scoped and time-bounded, while execution approvals remain finite;
+- the OpenClaw approval UI and host badge consume one cursor-backed aggregate
+  change feed, reconcile on popover open, and update React state without
+  reloading or navigating the iframe;
+- delegated UI token renewal, cursor expiry, runtime restart, hidden-frame
+  throttling, proxy timeouts, and transient disconnects recover without losing
+  the last valid snapshot or user-entered decision state;
+- operator decisions have no free-form reason field anywhere in UI, wire,
+  generated, storage, or audit-presentation code, while requester justification
+  and structured audit reason codes remain available;
 - HF, GH, and sudo use one provider-neutral immutable plan/grant SQL transaction
   contract while retaining provider plan schemas;
 - HF, GH, and sudo use the shared Agent V1 lifecycle for discrete approved
