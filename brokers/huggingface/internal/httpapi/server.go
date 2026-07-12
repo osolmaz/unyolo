@@ -54,6 +54,7 @@ const (
 )
 
 const maxLFSBatchBytes = 1 << 20
+const maxReceivePackReportBytes = 4 << 20
 
 var (
 	errInvalidLFSAction             = errors.New("LFS action is no longer valid")
@@ -75,6 +76,7 @@ type Options struct {
 	TelegramBaseURL       string
 	OperatorAudit         operatorapi.AuditRecorder
 	Now                   func() time.Time
+	NewLFSActionID        func() (string, error)
 }
 
 // Server is an Echo-backed http.Handler for the broker.
@@ -104,6 +106,8 @@ type Server struct {
 	closeOnce           sync.Once
 	closeErr            error
 	operationAuthLocks  [64]sync.Mutex
+	now                 func() time.Time
+	newLFSActionID      func() (string, error)
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
@@ -144,6 +148,12 @@ type lockedPushResult struct {
 
 // New builds a broker HTTP handler.
 func New(opts Options) (*Server, error) {
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	if opts.NewLFSActionID == nil {
+		opts.NewLFSActionID = randomLFSActionID
+	}
 	server, ctx, err := prepareServer(opts)
 	if err != nil {
 		return nil, err
@@ -199,6 +209,20 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 
 // OperatorHandler builds the shared inbox over the same canonical grant store.
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
+
+func (s *Server) utcNow() time.Time {
+	if s.now == nil {
+		return time.Now().UTC()
+	}
+	return s.now().UTC()
+}
+
+func (s *Server) nextLFSActionID() (string, error) {
+	if s.newLFSActionID == nil {
+		return randomLFSActionID()
+	}
+	return s.newLFSActionID()
+}
 
 // Close releases the broker state lease and database resources.
 func (s *Server) Close() error {
@@ -317,6 +341,8 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
 		lfsActions:         map[string]lfsAction{},
+		now:                opts.Now,
+		newLFSActionID:     opts.NewLFSActionID,
 	}
 	server.router = newRouter(server)
 	return server, nil
@@ -502,7 +528,7 @@ func receivePackDiscoveryPermitted(decision policy.Decision) bool {
 
 func (s *Server) decideReceivePackDiscovery(client string, rt route) (policy.Decision, error) {
 	target := routeTarget(rt, nil)
-	now := time.Now().UTC()
+	now := s.utcNow()
 	activeGrants, err := s.activeGrantRules(client)
 	if err != nil {
 		return policy.Decision{}, err
@@ -569,7 +595,7 @@ func (s *Server) decideRepoWithOptions(client string, operation policy.Operation
 		Target:         routeTarget(rt, refs),
 		Attrs:          attrs,
 		IgnoreRepoRefs: ignoreRefs,
-	}, activeGrants, time.Now().UTC(), grantRequest), nil
+	}, activeGrants, s.utcNow(), grantRequest), nil
 }
 
 func (s *Server) activeGrantRules(client string) ([]policy.Rule, error) {
@@ -986,7 +1012,7 @@ func (s *Server) validateAPIGrantRequest(client string, req apiGrantRequestBody)
 		Operation: req.Operation,
 		Target:    req.Target,
 		Attrs:     req.Attrs,
-	}, nil, time.Now().UTC(), true)
+	}, nil, s.utcNow(), true)
 	return apiGrantDecisionResult(req, decision)
 }
 
@@ -1302,7 +1328,7 @@ func (s *Server) appendReposFromRule(client string, rule policy.Rule, query repo
 }
 
 func (s *Server) appendListedRepo(client string, target policy.TargetMatcher, query repoListQuery, repos []apiRepoBody, seen map[string]bool) []apiRepoBody {
-	repo, ok := listedRepoForTarget(client, s.policy, target, query)
+	repo, ok := listedRepoForTarget(client, s.policy, target, query, s.utcNow())
 	if !ok || seen[repoKey(repo)] {
 		return repos
 	}
@@ -1352,12 +1378,12 @@ func repoListLimitInBounds(limit int) bool {
 	return limit >= 1 && limit <= 100
 }
 
-func listedRepoForTarget(client string, pol policy.Policy, target policy.TargetMatcher, query repoListQuery) (apiRepoBody, bool) {
+func listedRepoForTarget(client string, pol policy.Policy, target policy.TargetMatcher, query repoListQuery, now time.Time) (apiRepoBody, bool) {
 	if !targetIsListCandidate(target, query) {
 		return apiRepoBody{}, false
 	}
 	reqTarget := repoTargetFromMatcher(target)
-	if !policyAllowsListedRepo(client, pol, reqTarget) {
+	if !policyAllowsListedRepo(client, pol, reqTarget, now) {
 		return apiRepoBody{}, false
 	}
 	return apiRepoBody{Type: string(target.Type), Owner: target.Owner, Name: target.Name}, true
@@ -1380,14 +1406,14 @@ func repoTargetFromMatcher(target policy.TargetMatcher) policy.Target {
 	return policy.Target{Kind: policy.KindRepo, Type: target.Type, Owner: target.Owner, Name: target.Name}
 }
 
-func policyAllowsListedRepo(client string, pol policy.Policy, target policy.Target) bool {
-	return policyAllowsRepoOperation(client, pol, target, policy.OpRepoList) &&
-		policyAllowsRepoOperation(client, pol, target, policy.OpRepoMetadataRead)
+func policyAllowsListedRepo(client string, pol policy.Policy, target policy.Target, now time.Time) bool {
+	return policyAllowsRepoOperation(client, pol, target, policy.OpRepoList, now) &&
+		policyAllowsRepoOperation(client, pol, target, policy.OpRepoMetadataRead, now)
 }
 
-func policyAllowsRepoOperation(client string, pol policy.Policy, target policy.Target, operation policy.Operation) bool {
+func policyAllowsRepoOperation(client string, pol policy.Policy, target policy.Target, operation policy.Operation, now time.Time) bool {
 	req := policy.Request{Client: client, Operation: operation, Target: target}
-	return pol.Decide(req, nil, time.Now().UTC(), false).Effect == policy.EffectAllow
+	return pol.Decide(req, nil, now, false).Effect == policy.EffectAllow
 }
 
 func repoKey(repo apiRepoBody) string {
@@ -2613,13 +2639,17 @@ func (s *Server) forwardReceivePack(w http.ResponseWriter, r *http.Request, rt r
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := readReceivePackReport(resp.Body)
 	if err != nil {
 		return 0, false, "", false, err
 	}
 	accepted, reason, definitiveReject := receivePackAccepted(push, resp.StatusCode, responseBody)
 	_ = writeBufferedResponse(w, resp, responseBody)
 	return resp.StatusCode, accepted, reason, definitiveReject, nil
+}
+
+func readReceivePackReport(body io.Reader) ([]byte, error) {
+	return httpx.ReadLimited(body, maxReceivePackReportBytes)
 }
 
 func receivePackAccepted(push gitproxy.ReceivePackRequest, statusCode int, body []byte) (bool, string, bool) {
@@ -2764,14 +2794,15 @@ func (s *Server) registerLFSAction(rt route, oid, size, name string, action map[
 	if !ok {
 		return "", false
 	}
-	id, err := randomLFSActionID()
+	id, err := s.nextLFSActionID()
 	if err != nil {
 		return "", false
 	}
 	s.lfsMu.Lock()
 	defer s.lfsMu.Unlock()
-	s.pruneExpiredLFSActions(time.Now())
-	s.lfsActions[id] = lfsAction{url: href, headers: parseLFSActionHeaders(action["header"]), route: actionRoute, created: time.Now()}
+	now := s.utcNow()
+	s.pruneExpiredLFSActions(now)
+	s.lfsActions[id] = lfsAction{url: href, headers: parseLFSActionHeaders(action["header"]), route: actionRoute, created: now}
 	return id, true
 }
 
@@ -2779,7 +2810,7 @@ func (s *Server) lookupLFSAction(id string) (lfsAction, bool) {
 	s.lfsMu.Lock()
 	defer s.lfsMu.Unlock()
 	action, ok := s.lfsActions[id]
-	if !ok || time.Since(action.created) > lfsActionTTL {
+	if !ok || s.utcNow().Sub(action.created) > lfsActionTTL {
 		delete(s.lfsActions, id)
 		return lfsAction{}, false
 	}

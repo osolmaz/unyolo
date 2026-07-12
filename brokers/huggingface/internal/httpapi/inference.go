@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
@@ -118,7 +117,7 @@ func (s *Server) inferenceAllowed(w http.ResponseWriter, client string, operatio
 	if bodyBytes > 0 {
 		attrs["max_bytes"] = int64(bodyBytes)
 	}
-	decision := s.policy.Decide(policy.Request{Client: client, Operation: operation, Target: target, Attrs: attrs}, nil, time.Now(), false)
+	decision := s.policy.Decide(policy.Request{Client: client, Operation: operation, Target: target, Attrs: attrs}, nil, s.utcNow(), false)
 	targetName := target.Owner + "/" + target.Name
 	if decision.Effect != policy.EffectAllow {
 		writeInferenceError(w, http.StatusForbidden, "policy_denied")

@@ -41,6 +41,38 @@ const (
 	testToken       = "hf_upstream_token_value_1234567890"
 )
 
+func TestReceivePackReportIsBounded(t *testing.T) {
+	body, err := readReceivePackReport(strings.NewReader("report"))
+	if err != nil || string(body) != "report" {
+		t.Fatalf("readReceivePackReport() = %q, %v", body, err)
+	}
+	if _, err := readReceivePackReport(io.LimitReader(zeroReader{}, maxReceivePackReportBytes+1)); err == nil {
+		t.Fatal("readReceivePackReport() accepted an oversized response")
+	}
+}
+
+func TestServerRuntimeInputsControlLFSState(t *testing.T) {
+	now := time.Date(2026, 7, 13, 7, 0, 0, 0, time.FixedZone("test", 8*60*60))
+	server := &Server{now: func() time.Time { return now }, newLFSActionID: func() (string, error) {
+		return "", errors.New("entropy unavailable")
+	}, lfsActions: map[string]lfsAction{}}
+	if got := server.utcNow(); !got.Equal(now) || got.Location() != time.UTC {
+		t.Fatalf("utcNow() = %v", got)
+	}
+	if _, ok := server.registerLFSAction(route{repoType: policy.TypeModel, owner: "alice", name: "model"}, strings.Repeat("a", 64), "1", "download", map[string]any{"href": "https://huggingface.co/file"}); ok {
+		t.Fatal("registerLFSAction() succeeded after entropy failure")
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(buffer []byte) (int, error) {
+	for index := range buffer {
+		buffer[index] = 0
+	}
+	return len(buffer), nil
+}
+
 type testDatasetPolicy struct {
 	name        string
 	allowOps    []policy.Operation

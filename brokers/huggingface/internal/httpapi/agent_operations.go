@@ -173,9 +173,10 @@ func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
 
 func (s *Server) repoCreateDecision(client string, target repoCreateTarget, attrs map[string]any) policy.Decision {
 	request := policy.Request{Client: client, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
-	decision := s.policy.Decide(request, nil, time.Now().UTC(), false)
+	now := s.utcNow()
+	decision := s.policy.Decide(request, nil, now, false)
 	if decision.Effect == policy.EffectDeny && decision.Reason == "approval_required" {
-		return s.policy.Decide(request, nil, time.Now().UTC(), true)
+		return s.policy.Decide(request, nil, now, true)
 	}
 	return decision
 }
