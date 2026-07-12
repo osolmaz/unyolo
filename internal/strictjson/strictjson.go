@@ -16,6 +16,7 @@ func Decode(data []byte, out any, closed bool) error {
 		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
 	if closed {
 		decoder.DisallowUnknownFields()
 	}

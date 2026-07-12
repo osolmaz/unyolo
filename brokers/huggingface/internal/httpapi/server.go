@@ -35,6 +35,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/httpx"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
@@ -952,25 +953,13 @@ func (s *Server) requireApprovalChannel(w http.ResponseWriter, client string) bo
 }
 
 func readAPIGrantRequest(w http.ResponseWriter, r *http.Request) (apiGrantRequestBody, bool) {
-	body, tooLarge, err := readLimited(r.Body, 4096)
-	if err != nil {
-		writeJSendFail(w, http.StatusBadRequest, "malformed_json", "Could not read grant request")
-		return apiGrantRequestBody{}, false
-	}
-	if tooLarge {
+	var req apiGrantRequestBody
+	err := httpx.DecodeJSON(r.Body, 4096, &req, true)
+	if errors.Is(err, httpx.ErrBodyTooLarge) {
 		writeJSendFail(w, http.StatusRequestEntityTooLarge, "request_too_large", "Grant request is too large")
 		return apiGrantRequestBody{}, false
 	}
-	var req apiGrantRequestBody
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
-	if err := decoder.Decode(&req); err != nil {
-		writeJSendFail(w, http.StatusBadRequest, "malformed_json", "Could not parse grant request")
-		return apiGrantRequestBody{}, false
-	}
-	var trailing struct{}
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+	if err != nil {
 		writeJSendFail(w, http.StatusBadRequest, "malformed_json", "Could not parse grant request")
 		return apiGrantRequestBody{}, false
 	}

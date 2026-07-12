@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/policy"
@@ -232,7 +233,7 @@ func (h *handler) decodeDecision(writer http.ResponseWriter, request *http.Reque
 		return false
 	}
 	var input decisionInput
-	if err := decodeStrictJSON(writer, request, &input); err != nil || !validDecisionConstraints(input.Constraints) {
+	if err := decodeStrictJSON(request, &input); err != nil || !validDecisionConstraints(input.Constraints) {
 		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
 		return false
 	}
@@ -488,17 +489,8 @@ func validAction(action operatorv1.Action) bool {
 	return action == operatorv1.ActionApprove || action == operatorv1.ActionDeny || action == operatorv1.ActionCancel || action == operatorv1.ActionRevoke
 }
 
-func decodeStrictJSON(writer http.ResponseWriter, request *http.Request, target any) error {
-	request.Body = http.MaxBytesReader(writer, request.Body, maxDecisionBodyBytes)
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("trailing request data")
-	}
-	return nil
+func decodeStrictJSON(request *http.Request, target any) error {
+	return httpx.DecodeJSON(request.Body, maxDecisionBodyBytes, target, true)
 }
 
 func (h *handler) writeMappedError(writer http.ResponseWriter, request *http.Request, err error) {

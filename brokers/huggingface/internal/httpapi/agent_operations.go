@@ -22,6 +22,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -345,21 +346,9 @@ func agentWaitQuery(r *http.Request) (int64, time.Duration, bool) {
 }
 
 func readAgentSubmit(r *http.Request) (agentv1.SubmitRequest, error) {
-	body, tooLarge, err := readLimited(r.Body, maxAgentRequestBody)
-	if err != nil || tooLarge {
-		return agentv1.SubmitRequest{}, errors.New("agent operation request is too large or unreadable")
-	}
-	if err := strictjson.RejectDuplicateKeys(body); err != nil {
-		return agentv1.SubmitRequest{}, errors.New("agent operation request contains duplicate fields")
-	}
 	var request agentv1.SubmitRequest
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
-		return agentv1.SubmitRequest{}, errors.New("could not parse agent operation request")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return agentv1.SubmitRequest{}, errors.New("agent operation request has trailing data")
+	if err := httpx.DecodeJSON(r.Body, maxAgentRequestBody, &request, true); err != nil {
+		return agentv1.SubmitRequest{}, fmt.Errorf("agent operation request is invalid: %w", err)
 	}
 	if strings.TrimSpace(request.IdempotencyKey) == "" || len(request.IdempotencyKey) > 128 || strings.TrimSpace(request.Reason) == "" || len(request.Reason) > 512 {
 		return agentv1.SubmitRequest{}, errors.New("idempotency key and reason are required")
