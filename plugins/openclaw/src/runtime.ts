@@ -129,7 +129,7 @@ export class BrokerRuntime {
         (options.constraints.duration_seconds !== undefined &&
           options.constraints.duration_seconds > bounds.max_duration_seconds) ||
         (options.constraints.max_uses !== undefined &&
-          options.constraints.max_uses > bounds.max_uses)
+          !validUseConstraint(options.constraints.max_uses, bounds.max_uses))
       )
         throw new Error("action_not_allowed");
     }
@@ -390,6 +390,18 @@ export class BrokerRuntime {
       this.delivering = false;
     }
   }
+}
+
+function validUseConstraint(
+  value: number | null,
+  maximum: number | null,
+): boolean {
+  if (value === null) return maximum === null;
+  return (
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    (maximum === null || value <= maximum)
+  );
 }
 
 function deterministicDecisionKey(

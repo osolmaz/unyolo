@@ -29,7 +29,9 @@ type GrantRecord struct {
 	UsedCount, UseRevision, ReservedCount                         int
 	ReservedAt                                                    time.Time
 	ReservationRetained                                           bool
-	ReservationRevision, MaxUses, RequestedMaxUses                int
+	ReservationRevision                                           int
+	MaxUses, RequestedMaxUses                                     *int
+	RequestedMaxUsesDefaulted                                     bool
 	ExpiredFrom                                                   string
 	NotificationJSON                                              []byte
 	NotificationStatus                                            string
@@ -460,8 +462,9 @@ func decodeGrantRecord(row dbsql.Grant) (GrantRecord, error) {
 		Duration: time.Duration(row.DurationNs), RequestedDuration: time.Duration(row.RequestedDurationNs), PendingTimeout: time.Duration(row.PendingTimeoutNs),
 		DecidedBy: row.DecidedBy, DecidedOnBehalfOf: row.DecidedOnBehalfOf,
 		UsedCount: int(row.UsedCount), UseRevision: int(row.UseRevision), ReservedCount: int(row.ReservedCount),
-		ReservationRetained: row.ReservationRetained == 1, ReservationRevision: int(row.ReservationRevision), MaxUses: int(row.MaxUses),
-		RequestedMaxUses: int(row.RequestedMaxUses), ExpiredFrom: row.ExpiredFrom.String, NotificationJSON: bytesValue(row.NotificationJson),
+		ReservationRetained: row.ReservationRetained == 1, ReservationRevision: int(row.ReservationRevision), MaxUses: intPointer(row.MaxUses),
+		RequestedMaxUses: intPointer(row.RequestedMaxUses), RequestedMaxUsesDefaulted: row.RequestedMaxUsesDefaulted == 1,
+		ExpiredFrom: row.ExpiredFrom.String, NotificationJSON: bytesValue(row.NotificationJson),
 		NotificationStatus: row.NotificationStatus, NotificationDeliveryUnresolved: row.NotificationDeliveryUnresolved == 1}
 	var err error
 	for target, value := range map[*time.Time]string{&record.CreatedAt: row.CreatedAt, &record.PendingExpiresAt: row.PendingExpiresAt} {
@@ -490,8 +493,9 @@ func insertGrantParams(record GrantRecord) dbsql.InsertGrantParams {
 		DecidedAt: nullTime(record.DecidedAt), DecidedBy: record.DecidedBy, DecidedOnBehalfOf: record.DecidedOnBehalfOf,
 		UsedAt: nullTime(record.UsedAt), UsedCount: int64(record.UsedCount), UseRevision: int64(record.UseRevision),
 		ReservedCount: int64(record.ReservedCount), ReservedAt: nullTime(record.ReservedAt), ReservationRetained: boolInt(record.ReservationRetained),
-		ReservationRevision: int64(record.ReservationRevision), MaxUses: int64(record.MaxUses), RequestedMaxUses: int64(record.RequestedMaxUses),
-		ExpiredFrom: nullableString(record.ExpiredFrom), NotificationJson: nullableBytes(record.NotificationJSON), NotificationStatus: record.NotificationStatus,
+		ReservationRevision: int64(record.ReservationRevision), MaxUses: nullableInt(record.MaxUses), RequestedMaxUses: nullableInt(record.RequestedMaxUses),
+		RequestedMaxUsesDefaulted: boolInt(record.RequestedMaxUsesDefaulted),
+		ExpiredFrom:               nullableString(record.ExpiredFrom), NotificationJson: nullableBytes(record.NotificationJSON), NotificationStatus: record.NotificationStatus,
 		NotificationClaimedAt: nullTime(record.NotificationClaimedAt), NotificationClaimUntil: nullTime(record.NotificationClaimUntil),
 		NotificationDeliveryUnresolved: boolInt(record.NotificationDeliveryUnresolved)}
 }
@@ -506,7 +510,8 @@ func updateGrantParams(record GrantRecord, previousRevision int64) dbsql.UpdateG
 		DecidedBy: insert.DecidedBy, DecidedOnBehalfOf: insert.DecidedOnBehalfOf,
 		UsedAt: insert.UsedAt, UsedCount: insert.UsedCount, UseRevision: insert.UseRevision, ReservedCount: insert.ReservedCount,
 		ReservedAt: insert.ReservedAt, ReservationRetained: insert.ReservationRetained, ReservationRevision: insert.ReservationRevision,
-		MaxUses: insert.MaxUses, RequestedMaxUses: insert.RequestedMaxUses, ExpiredFrom: insert.ExpiredFrom,
+		MaxUses: insert.MaxUses, RequestedMaxUses: insert.RequestedMaxUses,
+		RequestedMaxUsesDefaulted: insert.RequestedMaxUsesDefaulted, ExpiredFrom: insert.ExpiredFrom,
 		NotificationJson: insert.NotificationJson, NotificationStatus: insert.NotificationStatus,
 		NotificationClaimedAt: insert.NotificationClaimedAt, NotificationClaimUntil: insert.NotificationClaimUntil,
 		NotificationDeliveryUnresolved: insert.NotificationDeliveryUnresolved, ID: record.ID, Revision_2: previousRevision}
@@ -517,6 +522,21 @@ func nullTime(value time.Time) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: formatTime(value), Valid: true}
+}
+
+func intPointer(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	converted := int(value.Int64)
+	return &converted
+}
+
+func nullableInt(value *int) sql.NullInt64 {
+	if value == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*value), Valid: true}
 }
 func parseNullTime(value sql.NullString) (time.Time, error) {
 	if !value.Valid {

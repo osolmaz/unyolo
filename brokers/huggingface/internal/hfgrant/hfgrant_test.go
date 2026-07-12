@@ -49,6 +49,7 @@ func TestCanonicalRequestValidation(t *testing.T) {
 		{Client: valid.Client, Operation: valid.Operation, Target: valid.Target, Reason: valid.Reason, RequestedDuration: time.Second},
 		{Client: valid.Client, Operation: valid.Operation, Target: valid.Target, Reason: valid.Reason, MaxUses: -1},
 		{Client: valid.Client, Operation: valid.Operation, Target: valid.Target, Reason: valid.Reason, MaxUses: MaxUses + 1},
+		{Client: valid.Client, Operation: valid.Operation, Target: valid.Target, Reason: valid.Reason, Mode: ModeExecution, MaxUsesSpecified: true},
 		{Client: valid.Client, Operation: valid.Operation, Target: valid.Target, Reason: valid.Reason, Attrs: map[string]any{"bad": func() {}}},
 	}
 	for index, input := range invalid {
@@ -58,9 +59,9 @@ func TestCanonicalRequestValidation(t *testing.T) {
 	}
 	request, err := CanonicalRequest(Input{
 		Client: valid.Client, ClientRequestID: valid.ClientRequestID, Operation: valid.Operation, Target: valid.Target, Reason: "  test  ",
-		Mode: ModeExecution, RequestedDuration: 2 * time.Minute, MaxUses: 2,
+		Mode: ModeExecution, RequestedDuration: 2 * time.Minute, MaxUses: 1,
 	})
-	if err != nil || request.Reason != "test" || request.Metadata[metadataMode] != ModeExecution || request.Duration != 2*time.Minute || request.MaxUses != 2 {
+	if err != nil || request.Reason != "test" || request.Metadata[metadataMode] != ModeExecution || request.Duration != 2*time.Minute || request.MaxUses != 1 {
 		t.Fatalf("CanonicalRequest(valid) = %+v, %v", request, err)
 	}
 }

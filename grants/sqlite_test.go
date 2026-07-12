@@ -11,6 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
@@ -81,6 +82,71 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	}
 	if grantsCount != 1 || eventsCount != 4 || decisionsCount != 1 || outboxCount != 1 || outboxStatus != "delivered" || outboxAttempts != 1 {
 		t.Fatalf("SQLite rows = grants %d events %d decisions %d outbox %d/%s/%d", grantsCount, eventsCount, decisionsCount, outboxCount, outboxStatus, outboxAttempts)
+	}
+}
+
+func TestSQLiteStorePersistsUnlimitedUseBudget(t *testing.T) {
+	t.Parallel()
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := NewDatabase(database, Options{NewID: sequenceIDs("grant", "token", "defaulted-grant", "defaulted-token")})
+	result, created, err := store.Request(Request{
+		Client: "bob", ClientRequestID: "unlimited", Operation: "write",
+		Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}},
+		Reason: "continuous maintenance", Duration: time.Minute,
+		MaxUses: usebudget.Unlimited, MaxUsesSpecified: true,
+	})
+	if err != nil || !created || !result.Grant.MaxUses.IsUnlimited() {
+		t.Fatalf("Request() = %+v, %v, %v", result, created, err)
+	}
+	var maxUses, requestedMaxUses sql.NullInt64
+	if err := database.SQL().QueryRowContext(t.Context(),
+		"SELECT max_uses, requested_max_uses FROM grants WHERE id = ?", result.Grant.ID,
+	).Scan(&maxUses, &requestedMaxUses); err != nil {
+		t.Fatal(err)
+	}
+	if maxUses.Valid || requestedMaxUses.Valid {
+		t.Fatalf("stored limits = %+v, %+v", maxUses, requestedMaxUses)
+	}
+	defaulted, created, err := store.Request(Request{
+		Client: "bob", ClientRequestID: "defaulted", Operation: "write",
+		Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}},
+		Reason: "default budget", Duration: time.Minute,
+	})
+	if err != nil || !created || !defaulted.Grant.RequestedMaxUsesDefaulted || defaulted.Grant.MaxUses != 1 {
+		t.Fatalf("defaulted Request() = %+v, %v, %v", defaulted, created, err)
+	}
+	_, _, err = store.Request(Request{
+		Client: "bob", ClientRequestID: "defaulted", Operation: "write",
+		Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}},
+		Reason: "default budget", Duration: time.Minute, MaxUses: 1,
+	})
+	if !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("explicit default replay error = %v", err)
+	}
+	restarted := NewDatabase(database, Options{})
+	stored, err := restarted.Get(result.Grant.ID)
+	if err != nil || !stored.MaxUses.IsUnlimited() || !stored.RequestedMaxUses.IsUnlimited() {
+		t.Fatalf("Get() = %+v, %v", stored, err)
+	}
+	approved, err := restarted.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: stored.ID, Action: ActionApprove, Approver: "onur",
+		ExpectedRevision: stored.Revision, IdempotencyKey: "approve",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if _, err := restarted.ReserveUse(approved.Grant.ID); err != nil {
+			t.Fatal(err)
+		}
+		used, err := restarted.CommitUse(approved.Grant.ID)
+		if err != nil || used.Status != StatusActive {
+			t.Fatalf("CommitUse() = %+v, %v", used, err)
+		}
 	}
 }
 

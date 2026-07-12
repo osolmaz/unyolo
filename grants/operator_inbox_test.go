@@ -313,7 +313,7 @@ func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 	for _, command := range []ApproveCommand{
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, Duration: -time.Second},
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: -1},
-		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: bounds.Grant.MaxUses + 1},
+		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: int(bounds.Grant.MaxUses + 1)},
 	} {
 		if _, err := store.OperatorApprove(command); !errors.Is(err, ErrConstraintExceeded) {
 			t.Fatalf("OperatorApprove(%+v) error = %v", command, err)

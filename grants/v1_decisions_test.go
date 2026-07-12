@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestApplyOperatorDecisionIsAtomicAndReplaySafe(t *testing.T) {
@@ -95,5 +96,46 @@ func TestApplyOperatorDecisionFailsClosed(t *testing.T) {
 	stale.ExpectedRevision++
 	if _, err := store.ApplyOperatorDecision(t.Context(), stale, nil); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("stale error = %v", err)
+	}
+}
+
+func TestApprovalMayNarrowUnlimitedUseBudget(t *testing.T) {
+	t.Parallel()
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	created, _, err := store.Request(Request{
+		Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "maintenance", Duration: time.Minute,
+		MaxUses: usebudget.Unlimited, MaxUsesSpecified: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "finite",
+		Constraints: ApprovalConstraints{MaxUses: 3, MaxUsesSpecified: true},
+	}, nil)
+	if err != nil || result.Grant.MaxUses != 3 || !result.Grant.RequestedMaxUses.IsUnlimited() {
+		t.Fatalf("ApplyOperatorDecision() = %+v, %v", result, err)
+	}
+}
+
+func TestApprovalCannotWidenFiniteUseBudgetToUnlimited(t *testing.T) {
+	t.Parallel()
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	created, _, err := store.Request(Request{
+		Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "maintenance", Duration: time.Minute, MaxUses: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "unlimited",
+		Constraints: ApprovalConstraints{MaxUses: usebudget.Unlimited, MaxUsesSpecified: true},
+	}, nil)
+	if !errors.Is(err, ErrConstraintExceeded) {
+		t.Fatalf("ApplyOperatorDecision() error = %v", err)
 	}
 }

@@ -313,7 +313,8 @@ func (s *Server) prepareRepoCreateIntent(operation agentv1.Operation, target rep
 	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
 		Client: operation.ClientID, ClientRequestID: operation.ID, Operation: operation.Operation, Mode: hfgrant.ModeExecution,
 		Target: target.targetName(), Attrs: attrs, Reason: operation.Reason, RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
-		PendingTimeout: time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: bounds.DefaultMaxUses,
+		PendingTimeout: time.Duration(bounds.RequestTTLMinutes) * time.Minute,
+		MaxUses:        int(bounds.DefaultMaxUses), MaxUsesSpecified: true,
 	})
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err

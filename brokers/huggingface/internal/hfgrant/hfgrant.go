@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	bkpolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -46,6 +47,7 @@ type Input struct {
 	RequestedDuration time.Duration
 	PendingTimeout    time.Duration
 	MaxUses           int
+	MaxUsesSpecified  bool
 }
 
 // Request validates provider fields and creates a canonical grant request.
@@ -128,7 +130,8 @@ func CanonicalRequest(input Input) (grants.Request, error) {
 		Client: input.Client, ClientRequestID: clientRequestID, Operation: input.Operation,
 		Target: bkpolicy.Target{Kind: "hf", Fields: fields}, Attrs: attrs,
 		Metadata: map[string]string{metadataMode: mode}, Reason: reason,
-		Duration: duration, PendingTimeout: input.PendingTimeout, MaxUses: maxUses,
+		Duration: duration, PendingTimeout: input.PendingTimeout, MaxUses: maxUses, MaxUsesSpecified: true,
+		MaxUsesDefaulted: !input.MaxUsesSpecified,
 	}, nil
 }
 
@@ -154,7 +157,7 @@ func validInputIdentity(input Input) bool {
 	return input.Client != "" && hfpolicy.IsOperation(input.Operation) && input.Target != ""
 }
 
-func normalizeGrant(input Input) (string, time.Duration, int, error) {
+func normalizeGrant(input Input) (string, time.Duration, usebudget.Limit, error) {
 	mode, err := normalizeMode(input.Mode)
 	if err != nil {
 		return "", 0, 0, err
@@ -163,9 +166,12 @@ func normalizeGrant(input Input) (string, time.Duration, int, error) {
 	if err != nil {
 		return "", 0, 0, err
 	}
-	maxUses, err := normalizeMaxUses(input.MaxUses)
+	maxUses, err := normalizeMaxUses(input.MaxUses, input.MaxUsesSpecified)
 	if err != nil {
 		return "", 0, 0, err
+	}
+	if mode == ModeExecution && maxUses != 1 {
+		return "", 0, 0, errors.New("execution approvals must have exactly one use")
 	}
 	return mode, duration, maxUses, nil
 }
@@ -193,17 +199,17 @@ func normalizeDuration(duration time.Duration) (time.Duration, error) {
 	return duration, nil
 }
 
-func normalizeMaxUses(maxUses int) (int, error) {
+func normalizeMaxUses(maxUses int, specified bool) (usebudget.Limit, error) {
 	if maxUses < 0 {
 		return 0, errors.New("grant max uses must be positive")
 	}
-	if maxUses == 0 {
+	if maxUses == 0 && !specified {
 		return DefaultMaxUses, nil
 	}
 	if maxUses > MaxUses {
 		return 0, fmt.Errorf("grant max uses exceeds %d", MaxUses)
 	}
-	return maxUses, nil
+	return usebudget.Limit(maxUses), nil
 }
 
 func encodeAttrs(attrs map[string]any) (map[string][]string, error) {
@@ -311,5 +317,5 @@ func MatchActiveFunc(store *grants.Store, client, operation, target, ref string,
 
 func usableGrant(grant grants.Grant, operation, target, ref string) bool {
 	return grant.Status == grants.StatusActive && !grant.ReservationRetained && grant.Operation == operation &&
-		Target(grant) == target && Ref(grant) == ref && grant.UsedCount+grant.ReservedCount < grant.MaxUses
+		Target(grant) == target && Ref(grant) == ref && grant.MaxUses.Allows(grant.UsedCount, grant.ReservedCount)
 }

@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -73,25 +74,25 @@ func (f PresenterFunc) Present(ctx context.Context, grant grants.Grant) (Present
 
 // Item is the only grant representation exposed by the operator HTTP API.
 type Item struct {
-	ID                       string        `json:"id"`
-	Revision                 int64         `json:"revision"`
-	Client                   string        `json:"client"`
-	Operation                string        `json:"operation"`
-	Status                   grants.Status `json:"status"`
-	RequestedAt              time.Time     `json:"requested_at"`
-	PendingExpiresAt         time.Time     `json:"pending_expires_at"`
-	ActiveExpiresAt          *time.Time    `json:"active_expires_at,omitempty"`
-	RequestedDurationSeconds int64         `json:"requested_duration_seconds"`
-	RequestedMaxUses         int           `json:"requested_max_uses"`
-	MaxUses                  int           `json:"max_uses"`
-	UsedCount                int           `json:"used_count"`
-	ReservedCount            int           `json:"reserved_count"`
-	Reason                   string        `json:"reason,omitempty"`
-	DecidedAt                *time.Time    `json:"decided_at,omitempty"`
-	DecidedBy                string        `json:"decided_by,omitempty"`
-	DecidedOnBehalfOf        string        `json:"decided_on_behalf_of,omitempty"`
-	Presentation             Presentation  `json:"presentation"`
-	PresentationUnavailable  bool          `json:"presentation_unavailable,omitempty"`
+	ID                       string          `json:"id"`
+	Revision                 int64           `json:"revision"`
+	Client                   string          `json:"client"`
+	Operation                string          `json:"operation"`
+	Status                   grants.Status   `json:"status"`
+	RequestedAt              time.Time       `json:"requested_at"`
+	PendingExpiresAt         time.Time       `json:"pending_expires_at"`
+	ActiveExpiresAt          *time.Time      `json:"active_expires_at,omitempty"`
+	RequestedDurationSeconds int64           `json:"requested_duration_seconds"`
+	RequestedMaxUses         usebudget.Limit `json:"requested_max_uses"`
+	MaxUses                  usebudget.Limit `json:"max_uses"`
+	UsedCount                int             `json:"used_count"`
+	ReservedCount            int             `json:"reserved_count"`
+	Reason                   string          `json:"reason,omitempty"`
+	DecidedAt                *time.Time      `json:"decided_at,omitempty"`
+	DecidedBy                string          `json:"decided_by,omitempty"`
+	DecidedOnBehalfOf        string          `json:"decided_on_behalf_of,omitempty"`
+	Presentation             Presentation    `json:"presentation"`
+	PresentationUnavailable  bool            `json:"presentation_unavailable,omitempty"`
 }
 
 // Page is one bounded inbox result.
@@ -150,7 +151,7 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 		requestedDuration = grant.Duration
 	}
 	requestedMaxUses := grant.RequestedMaxUses
-	if requestedMaxUses <= 0 {
+	if requestedMaxUses < 0 {
 		requestedMaxUses = grant.MaxUses
 	}
 	item := Item{

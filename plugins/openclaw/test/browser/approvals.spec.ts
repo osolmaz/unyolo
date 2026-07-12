@@ -158,6 +158,51 @@ test("renders a bounded capability-protected approval surface", async ({
   });
 });
 
+test("preserves an unlimited-use approval until expiry", async ({ page }) => {
+  const unlimited = {
+    ...snapshot,
+    requests: [
+      {
+        ...pendingRequest,
+        request: {
+          ...pendingRequest.request,
+          requested_max_uses: null,
+          approval_bounds: { max_duration_seconds: 300, max_uses: null },
+        },
+      },
+    ],
+  };
+  await page.route("**/plugins/brokerkit/api/v1/snapshot", (route) =>
+    route.fulfill({ json: unlimited }),
+  );
+  await page.route(
+    "**/plugins/brokerkit/api/v1/requests/*/approve",
+    async (route) => {
+      expect(route.request().postDataJSON()).toEqual({
+        expectedRevision: 1,
+        constraints: { durationSeconds: 300, maxUses: null },
+      });
+      await route.fulfill({
+        json: {
+          ...unlimited.requests[0],
+          request: { ...unlimited.requests[0]!.request, status: "active" },
+        },
+      });
+    },
+  );
+  await page.goto(
+    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+  );
+  await expect(page.getByText("Unlimited uses")).toBeVisible();
+  await page.getByRole("button", { name: "Approve" }).click();
+  const dialog = page.getByRole("dialog", { name: "Approve request" });
+  await expect(
+    dialog.getByRole("checkbox", { name: "Unlimited until expiry" }),
+  ).toBeChecked();
+  await dialog.getByRole("button", { name: "Approve" }).click();
+  await expect(dialog).not.toBeVisible();
+});
+
 test("uses delegated web session authority without exposing it in the URL", async ({
   page,
 }) => {

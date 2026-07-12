@@ -48,7 +48,7 @@ export const BrokerRequestSchema = {
     pending_expires_at: { type: "string", format: "date-time" },
     active_expires_at: { type: "string", format: "date-time" },
     requested_duration_seconds: { type: "integer", minimum: 1 },
-    requested_max_uses: { type: "integer", minimum: 1 },
+    requested_max_uses: { type: ["integer", "null"], minimum: 1 },
     granted_max_uses: { type: ["integer", "null"], minimum: 1 },
     used_count: { type: "integer", minimum: 0 },
     request_reason: { type: "string", maxLength: 2000 },
@@ -72,7 +72,7 @@ export const BrokerRequestSchema = {
       required: ["max_duration_seconds", "max_uses"],
       properties: {
         max_duration_seconds: { type: "integer", minimum: 1 },
-        max_uses: { type: "integer", minimum: 1 },
+        max_uses: { type: ["integer", "null"], minimum: 1 },
       },
     },
     Presentation: {
@@ -155,7 +155,7 @@ export const RequestPageSchema = {
         pending_expires_at: { type: "string", format: "date-time" },
         active_expires_at: { type: "string", format: "date-time" },
         requested_duration_seconds: { type: "integer", minimum: 1 },
-        requested_max_uses: { type: "integer", minimum: 1 },
+        requested_max_uses: { type: ["integer", "null"], minimum: 1 },
         granted_max_uses: { type: ["integer", "null"], minimum: 1 },
         used_count: { type: "integer", minimum: 0 },
         request_reason: { type: "string", maxLength: 2000 },
@@ -179,7 +179,7 @@ export const RequestPageSchema = {
       required: ["max_duration_seconds", "max_uses"],
       properties: {
         max_duration_seconds: { type: "integer", minimum: 1 },
-        max_uses: { type: "integer", minimum: 1 },
+        max_uses: { type: ["integer", "null"], minimum: 1 },
       },
     },
     Presentation: {
@@ -335,7 +335,7 @@ export const ErrorEnvelopeSchema = {
         pending_expires_at: { type: "string", format: "date-time" },
         active_expires_at: { type: "string", format: "date-time" },
         requested_duration_seconds: { type: "integer", minimum: 1 },
-        requested_max_uses: { type: "integer", minimum: 1 },
+        requested_max_uses: { type: ["integer", "null"], minimum: 1 },
         granted_max_uses: { type: ["integer", "null"], minimum: 1 },
         used_count: { type: "integer", minimum: 0 },
         request_reason: { type: "string", maxLength: 2000 },
@@ -359,7 +359,7 @@ export const ErrorEnvelopeSchema = {
       required: ["max_duration_seconds", "max_uses"],
       properties: {
         max_duration_seconds: { type: "integer", minimum: 1 },
-        max_uses: { type: "integer", minimum: 1 },
+        max_uses: { type: ["integer", "null"], minimum: 1 },
       },
     },
     Presentation: {
@@ -477,7 +477,7 @@ export const UISnapshotSchema = {
         pending_expires_at: { type: "string", format: "date-time" },
         active_expires_at: { type: "string", format: "date-time" },
         requested_duration_seconds: { type: "integer", minimum: 1 },
-        requested_max_uses: { type: "integer", minimum: 1 },
+        requested_max_uses: { type: ["integer", "null"], minimum: 1 },
         granted_max_uses: { type: ["integer", "null"], minimum: 1 },
         used_count: { type: "integer", minimum: 0 },
         request_reason: { type: "string", maxLength: 2000 },
@@ -501,7 +501,7 @@ export const UISnapshotSchema = {
       required: ["max_duration_seconds", "max_uses"],
       properties: {
         max_duration_seconds: { type: "integer", minimum: 1 },
-        max_uses: { type: "integer", minimum: 1 },
+        max_uses: { type: ["integer", "null"], minimum: 1 },
       },
     },
     Presentation: {
@@ -613,7 +613,7 @@ export const UIRequestSchema = {
         pending_expires_at: { type: "string", format: "date-time" },
         active_expires_at: { type: "string", format: "date-time" },
         requested_duration_seconds: { type: "integer", minimum: 1 },
-        requested_max_uses: { type: "integer", minimum: 1 },
+        requested_max_uses: { type: ["integer", "null"], minimum: 1 },
         granted_max_uses: { type: ["integer", "null"], minimum: 1 },
         used_count: { type: "integer", minimum: 0 },
         request_reason: { type: "string", maxLength: 2000 },
@@ -637,7 +637,7 @@ export const UIRequestSchema = {
       required: ["max_duration_seconds", "max_uses"],
       properties: {
         max_duration_seconds: { type: "integer", minimum: 1 },
-        max_uses: { type: "integer", minimum: 1 },
+        max_uses: { type: ["integer", "null"], minimum: 1 },
       },
     },
     Presentation: {

@@ -12,6 +12,7 @@ import (
 	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func fileDataFromSQLite(snapshot state.GrantSnapshot) (fileData, error) {
@@ -227,7 +228,8 @@ func grantToSQLite(grant Grant) (state.GrantRecord, error) {
 		DecidedBy: grant.DecidedBy, DecidedOnBehalfOf: grant.DecidedOnBehalfOf,
 		UsedAt: grant.UsedAt, UsedCount: grant.UsedCount, UseRevision: grant.UseRevision, ReservedCount: grant.ReservedCount,
 		ReservedAt: grant.ReservedAt, ReservationRetained: grant.ReservationRetained, ReservationRevision: grant.ReservationRevision,
-		MaxUses: grant.MaxUses, RequestedMaxUses: grant.RequestedMaxUses, ExpiredFrom: string(grant.ExpiredFrom),
+		MaxUses: useLimitPointer(grant.MaxUses), RequestedMaxUses: useLimitPointer(grant.RequestedMaxUses),
+		RequestedMaxUsesDefaulted: grant.RequestedMaxUsesDefaulted, ExpiredFrom: string(grant.ExpiredFrom),
 		NotificationJSON: notification, NotificationStatus: grant.NotificationStatus, NotificationClaimedAt: grant.NotificationClaimedAt,
 		NotificationClaimUntil: grant.NotificationClaimUntil, NotificationDeliveryUnresolved: grant.NotificationDeliveryUnresolved}, nil
 }
@@ -249,9 +251,25 @@ func grantFromSQLite(record state.GrantRecord) (Grant, error) {
 		DecidedBy: record.DecidedBy, DecidedOnBehalfOf: record.DecidedOnBehalfOf,
 		UsedAt: record.UsedAt, UsedCount: record.UsedCount, UseRevision: record.UseRevision, ReservedCount: record.ReservedCount,
 		ReservedAt: record.ReservedAt, ReservationRetained: record.ReservationRetained, ReservationRevision: record.ReservationRevision,
-		MaxUses: record.MaxUses, RequestedMaxUses: record.RequestedMaxUses, ExpiredFrom: Status(record.ExpiredFrom),
+		MaxUses: useLimitValue(record.MaxUses), RequestedMaxUses: useLimitValue(record.RequestedMaxUses),
+		RequestedMaxUsesDefaulted: record.RequestedMaxUsesDefaulted, ExpiredFrom: Status(record.ExpiredFrom),
 		Notification: notification, NotificationStatus: record.NotificationStatus, NotificationClaimedAt: record.NotificationClaimedAt,
 		NotificationClaimUntil: record.NotificationClaimUntil, NotificationDeliveryUnresolved: record.NotificationDeliveryUnresolved}, nil
+}
+
+func useLimitPointer(limit usebudget.Limit) *int {
+	if limit.IsUnlimited() {
+		return nil
+	}
+	value := int(limit)
+	return &value
+}
+
+func useLimitValue(value *int) usebudget.Limit {
+	if value == nil {
+		return usebudget.Unlimited
+	}
+	return usebudget.Limit(*value)
 }
 
 func decodeGrantJSON(record state.GrantRecord) (policy.Target, map[string][]string, map[string]string, *MessageRef, error) {

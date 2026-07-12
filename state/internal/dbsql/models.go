@@ -49,8 +49,9 @@ type Grant struct {
 	ReservedAt                     sql.NullString
 	ReservationRetained            int64
 	ReservationRevision            int64
-	MaxUses                        int64
-	RequestedMaxUses               int64
+	MaxUses                        sql.NullInt64
+	RequestedMaxUses               sql.NullInt64
+	RequestedMaxUsesDefaulted      int64
 	ExpiredFrom                    sql.NullString
 	NotificationJson               sql.NullString
 	NotificationStatus             string

@@ -23,8 +23,10 @@ import (
 	"github.com/osolmaz/brokerkit/internal/optional"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/operatorv1"
+	"github.com/osolmaz/brokerkit/operatorv1wire"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/protocol/operatorwire"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -270,7 +272,7 @@ func (h *handler) decodeDecision(writer http.ResponseWriter, request *http.Reque
 func validDecisionConstraints(value *operatorwire.Constraints) bool {
 	return value == nil ||
 		((value.DurationSeconds == nil || *value.DurationSeconds > 0) &&
-			(value.MaxUses == nil || *value.MaxUses > 0))
+			(!value.MaxUses.IsSpecified() || value.MaxUses.IsNull() || value.MaxUses.MustGet() > 0))
 }
 
 func wireDecision(input operatorwire.Decision) operatorv1.Decision {
@@ -287,8 +289,8 @@ func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 	if input.Constraints.DurationSeconds != nil {
 		result.Constraints.DurationSeconds = int64(*input.Constraints.DurationSeconds)
 	}
-	if input.Constraints.MaxUses != nil {
-		result.Constraints.MaxUses = *input.Constraints.MaxUses
+	if input.Constraints.MaxUses.IsSpecified() {
+		result.Constraints.MaxUses = usebudget.Optional{Limit: operatorv1wire.UseLimitFromWire(input.Constraints.MaxUses), Specified: true}
 	}
 	return result
 }
@@ -301,7 +303,8 @@ func project(item operatorinbox.Item) operatorwire.BrokerRequest {
 	request := operatorwire.BrokerRequest{
 		Id: item.ID, Revision: int(item.Revision), Requester: item.Client, Operation: item.Operation, Status: operatorwire.Status(item.Status),
 		RequestedAt: item.RequestedAt, RequestedDurationSeconds: int(item.RequestedDurationSeconds),
-		RequestedMaxUses: item.RequestedMaxUses, UsedCount: item.UsedCount, RequestReason: optional.NonZero(item.Reason),
+		RequestedMaxUses: operatorv1wire.UseLimitToWire(item.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitToWire(item.MaxUses),
+		UsedCount: item.UsedCount, RequestReason: optional.NonZero(item.Reason),
 		DecidedAt: item.DecidedAt, DecidedBy: optional.NonZero(item.DecidedBy), DecidedOnBehalfOf: optional.NonZero(item.DecidedOnBehalfOf),
 		PresentationUnavailable: optional.NonZero(item.PresentationUnavailable),
 		Presentation: operatorwire.Presentation{Risk: operatorwire.PresentationRisk(item.Presentation.Risk), Title: item.Presentation.Title,
@@ -311,12 +314,10 @@ func project(item operatorinbox.Item) operatorwire.BrokerRequest {
 	if item.Status == grants.StatusPending {
 		expires := item.PendingExpiresAt
 		request.PendingExpiresAt = &expires
-		request.ApprovalBounds = &operatorwire.ApprovalBounds{MaxDurationSeconds: int(item.RequestedDurationSeconds), MaxUses: item.RequestedMaxUses}
+		request.ApprovalBounds = &operatorwire.ApprovalBounds{MaxDurationSeconds: int(item.RequestedDurationSeconds), MaxUses: operatorv1wire.UseLimitToWire(item.RequestedMaxUses)}
 	}
 	if item.ActiveExpiresAt != nil {
 		request.ActiveExpiresAt = item.ActiveExpiresAt
-		granted := item.MaxUses
-		request.GrantedMaxUses = &granted
 	}
 	return request
 }

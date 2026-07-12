@@ -19,6 +19,7 @@ import (
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const testOperatorSecret = "operator-secret-with-enough-entropy"
@@ -43,6 +44,32 @@ func TestOperatorV1DiscoveryAuthAndLegacyCutover(t *testing.T) {
 	}
 }
 
+func TestOperatorV1PreservesUnlimitedUseConstraints(t *testing.T) {
+	t.Parallel()
+	store, _, client := newOperatorServer(t, nil)
+	result, _, err := store.Request(grants.Request{
+		Client: "bob", ClientRequestID: "unlimited", Operation: "provider.write",
+		Target: policy.Target{Kind: "repository", Fields: map[string][]string{"name": {"demo"}}},
+		Reason: "continuous maintenance", Duration: 5 * time.Minute,
+		MaxUses: usebudget.Unlimited, MaxUsesSpecified: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := client.Get(t.Context(), result.Grant.ID)
+	if err != nil || !pending.RequestedMaxUses.IsUnlimited() ||
+		pending.ApprovalBounds == nil || !pending.ApprovalBounds.MaxUses.IsUnlimited() {
+		t.Fatalf("Get() = %+v, %v", pending, err)
+	}
+	approved, err := client.Decide(t.Context(), pending.ID, operatorv1.ActionApprove, operatorv1.Decision{
+		ExpectedRevision: pending.Revision, IdempotencyKey: "unlimited",
+		Constraints: &operatorv1.Constraints{MaxUses: usebudget.NoLimit()},
+	})
+	if err != nil || !approved.GrantedMaxUses.IsUnlimited() {
+		t.Fatalf("Decide() = %+v, %v", approved, err)
+	}
+}
+
 func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 	store, _, client := newOperatorServer(t, nil)
 	grant := requestGrant(t, store, "decision")
@@ -55,9 +82,9 @@ func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 		t.Fatalf("request = %+v", request)
 	}
 	command := operatorv1.Decision{ExpectedRevision: grant.Revision, IdempotencyKey: "decision-1", OnBehalfOf: "Onur",
-		Constraints: &operatorv1.Constraints{DurationSeconds: 60, MaxUses: 1}}
+		Constraints: &operatorv1.Constraints{DurationSeconds: 60, MaxUses: usebudget.Finite(1)}}
 	approved, err := client.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, command)
-	if err != nil || approved.Status != grants.StatusActive || approved.GrantedMaxUses == nil || *approved.GrantedMaxUses != 1 || approved.RequestedMaxUses != 2 {
+	if err != nil || approved.Status != grants.StatusActive || approved.GrantedMaxUses != 1 || approved.RequestedMaxUses != 2 {
 		t.Fatalf("Approve() = %+v, %v", approved, err)
 	}
 	replay, err := client.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, command)

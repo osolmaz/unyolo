@@ -83,10 +83,13 @@ func normalizeConstraints(value *operatorv1.Constraints) (grants.ApprovalConstra
 	if value == nil {
 		return grants.ApprovalConstraints{}, nil
 	}
-	if value.DurationSeconds < 0 || value.DurationSeconds > math.MaxInt64/int64(time.Second) || value.MaxUses < 0 {
+	if value.DurationSeconds < 0 || value.DurationSeconds > math.MaxInt64/int64(time.Second) || value.MaxUses.Limit < 0 {
 		return grants.ApprovalConstraints{}, grants.ErrInvalidCommand
 	}
-	return grants.ApprovalConstraints{Duration: time.Duration(value.DurationSeconds) * time.Second, MaxUses: value.MaxUses}, nil
+	return grants.ApprovalConstraints{
+		Duration: time.Duration(value.DurationSeconds) * time.Second,
+		MaxUses:  value.MaxUses.Limit, MaxUsesSpecified: value.MaxUses.Specified,
+	}, nil
 }
 
 func (s *Service) validate(ctx context.Context, grant grants.Grant, constraints grants.ApprovalConstraints) error {
@@ -144,7 +147,7 @@ func (s *Service) record(previous, current grants.Grant, action, actor, onBehalf
 		"idempotency_replay": strconv.FormatBool(replay),
 		"expected_revision":  strconv.FormatInt(expectedRevision, 10),
 		"duration_seconds":   strconv.FormatInt(int64(constraints.Duration/time.Second), 10),
-		"max_uses":           strconv.Itoa(constraints.MaxUses),
+		"max_uses":           formatUseLimit(constraints),
 	}
 	if onBehalfOf != "" {
 		extensions["on_behalf_of"] = onBehalfOf
@@ -157,6 +160,16 @@ func (s *Service) record(previous, current grants.Grant, action, actor, onBehalf
 		event.ErrorCode = decisionErrorCode(decisionErr)
 	}
 	return s.audit.Record(event)
+}
+
+func formatUseLimit(constraints grants.ApprovalConstraints) string {
+	if !constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite() {
+		return ""
+	}
+	if constraints.MaxUses.IsUnlimited() {
+		return "unlimited"
+	}
+	return strconv.Itoa(int(constraints.MaxUses))
 }
 
 func decisionErrorCode(err error) string {

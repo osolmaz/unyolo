@@ -264,12 +264,12 @@ INSERT INTO grants (
     requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
     decided_on_behalf_of, used_at, used_count, use_revision,
     reserved_count, reserved_at, reservation_retained, reservation_revision,
-    max_uses, requested_max_uses, expired_from, notification_json,
+	max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json,
     notification_status, notification_claimed_at, notification_claim_until,
     notification_delivery_unresolved
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+	?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 `
 
@@ -302,8 +302,9 @@ type InsertGrantParams struct {
 	ReservedAt                     sql.NullString
 	ReservationRetained            int64
 	ReservationRevision            int64
-	MaxUses                        int64
-	RequestedMaxUses               int64
+	MaxUses                        sql.NullInt64
+	RequestedMaxUses               sql.NullInt64
+	RequestedMaxUsesDefaulted      int64
 	ExpiredFrom                    sql.NullString
 	NotificationJson               sql.NullString
 	NotificationStatus             string
@@ -321,12 +322,12 @@ type InsertGrantParams struct {
 //	    requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
 //	    decided_on_behalf_of, used_at, used_count, use_revision,
 //	    reserved_count, reserved_at, reservation_retained, reservation_revision,
-//	    max_uses, requested_max_uses, expired_from, notification_json,
+//		max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json,
 //	    notification_status, notification_claimed_at, notification_claim_until,
 //	    notification_delivery_unresolved
 //	) VALUES (
 //	    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-//	    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+//		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 //	)
 func (q *Queries) InsertGrant(ctx context.Context, arg InsertGrantParams) error {
 	_, err := q.db.ExecContext(ctx, insertGrant,
@@ -360,6 +361,7 @@ func (q *Queries) InsertGrant(ctx context.Context, arg InsertGrantParams) error 
 		arg.ReservationRevision,
 		arg.MaxUses,
 		arg.RequestedMaxUses,
+		arg.RequestedMaxUsesDefaulted,
 		arg.ExpiredFrom,
 		arg.NotificationJson,
 		arg.NotificationStatus,
@@ -596,12 +598,12 @@ func (q *Queries) ListGrantLifecycleEvents(ctx context.Context) ([]LifecycleEven
 }
 
 const listGrants = `-- name: ListGrants :many
-SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
+SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
 `
 
 // ListGrants
 //
-//	SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
+//	SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
 func (q *Queries) ListGrants(ctx context.Context) ([]Grant, error) {
 	rows, err := q.db.QueryContext(ctx, listGrants)
 	if err != nil {
@@ -642,6 +644,7 @@ func (q *Queries) ListGrants(ctx context.Context) ([]Grant, error) {
 			&i.ReservationRevision,
 			&i.MaxUses,
 			&i.RequestedMaxUses,
+			&i.RequestedMaxUsesDefaulted,
 			&i.ExpiredFrom,
 			&i.NotificationJson,
 			&i.NotificationStatus,
@@ -797,7 +800,7 @@ UPDATE grants SET
     decided_by = ?, decided_on_behalf_of = ?, used_at = ?,
     used_count = ?, use_revision = ?, reserved_count = ?, reserved_at = ?,
     reservation_retained = ?, reservation_revision = ?, max_uses = ?,
-    requested_max_uses = ?, expired_from = ?, notification_json = ?,
+	requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?, notification_json = ?,
     notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
     notification_delivery_unresolved = ?
 WHERE id = ? AND revision = ?
@@ -831,8 +834,9 @@ type UpdateGrantParams struct {
 	ReservedAt                     sql.NullString
 	ReservationRetained            int64
 	ReservationRevision            int64
-	MaxUses                        int64
-	RequestedMaxUses               int64
+	MaxUses                        sql.NullInt64
+	RequestedMaxUses               sql.NullInt64
+	RequestedMaxUsesDefaulted      int64
 	ExpiredFrom                    sql.NullString
 	NotificationJson               sql.NullString
 	NotificationStatus             string
@@ -853,7 +857,7 @@ type UpdateGrantParams struct {
 //	    decided_by = ?, decided_on_behalf_of = ?, used_at = ?,
 //	    used_count = ?, use_revision = ?, reserved_count = ?, reserved_at = ?,
 //	    reservation_retained = ?, reservation_revision = ?, max_uses = ?,
-//	    requested_max_uses = ?, expired_from = ?, notification_json = ?,
+//		requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?, notification_json = ?,
 //	    notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
 //	    notification_delivery_unresolved = ?
 //	WHERE id = ? AND revision = ?
@@ -888,6 +892,7 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (int64
 		arg.ReservationRevision,
 		arg.MaxUses,
 		arg.RequestedMaxUses,
+		arg.RequestedMaxUsesDefaulted,
 		arg.ExpiredFrom,
 		arg.NotificationJson,
 		arg.NotificationStatus,

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+
+	"github.com/osolmaz/brokerkit/usebudget"
 	"time"
 )
 
@@ -22,7 +24,7 @@ type ApproveCommand struct {
 var testDecisionSequence atomic.Uint64
 
 func (s *Store) OperatorApprove(command ApproveCommand) (Grant, error) {
-	return s.applyTestOperatorDecision(command.DecisionCommand, ActionApprove, ApprovalConstraints{Duration: command.Duration, MaxUses: command.MaxUses})
+	return s.applyTestOperatorDecision(command.DecisionCommand, ActionApprove, ApprovalConstraints{Duration: command.Duration, MaxUses: usebudget.Limit(command.MaxUses)})
 }
 
 func (s *Store) OperatorDeny(command DecisionCommand) (Grant, error) {

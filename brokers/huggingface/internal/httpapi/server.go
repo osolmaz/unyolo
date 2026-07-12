@@ -43,6 +43,7 @@ import (
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -648,7 +649,8 @@ func (s *Server) prepareForwardIntent(client string, operation policy.Operation,
 		Client: client, ClientRequestID: id, Operation: string(operation), Mode: hfgrant.ModeWindow,
 		Target: target, Attrs: attrs, Reason: string(operation) + " requires approval",
 		RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
-		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: bounds.DefaultMaxUses,
+		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute,
+		MaxUses:           int(bounds.DefaultMaxUses), MaxUsesSpecified: true,
 	})
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
@@ -717,12 +719,13 @@ func activeGrantRule(grant grants.Grant) (policy.Rule, bool) {
 	rule := policy.GeneratedGrantRule(
 		grant.ID, grant.Client, policy.Operation(grant.Operation), target, grant.ExpiresAt, grantUsesRemaining(grant),
 	)
+	rule.Unlimited = grant.MaxUses.IsUnlimited()
 	rule.Attrs = constraints
 	return rule, true
 }
 
 func grantEligibleForRule(grant grants.Grant) bool {
-	return grant.Status == grants.StatusActive && !grant.ReservationRetained && runtimeWindowGrant(grant) && grantUsesRemaining(grant) > 0
+	return grant.Status == grants.StatusActive && !grant.ReservationRetained && runtimeWindowGrant(grant) && hasGrantUses(grant)
 }
 
 func grantAttrConstraints(grant grants.Grant) (map[string]policy.AttrConstraint, error) {
@@ -795,7 +798,7 @@ func activeGrantMatchesIgnoringRef(grant grants.Grant, client string, operation 
 		grant.Client == client &&
 		grant.Operation == string(operation) &&
 		hfgrant.Target(grant) == target &&
-		grantUsesRemaining(grant) > 0 &&
+		hasGrantUses(grant) &&
 		grantAttrsMatchIgnoringRef(grant, attrs)
 }
 
@@ -927,13 +930,13 @@ func (s *Server) authenticateAPI(w http.ResponseWriter, r *http.Request) (string
 }
 
 type apiGrantRequestBody struct {
-	Operation       policy.Operation `json:"operation"`
-	Target          policy.Target    `json:"target"`
-	Attrs           map[string]any   `json:"attrs"`
-	Minutes         int              `json:"minutes"`
-	MaxUses         int              `json:"max_uses"`
-	Reason          string           `json:"reason"`
-	ClientRequestID string           `json:"client_request_id"`
+	Operation       policy.Operation   `json:"operation"`
+	Target          policy.Target      `json:"target"`
+	Attrs           map[string]any     `json:"attrs"`
+	Minutes         int                `json:"minutes"`
+	MaxUses         usebudget.Optional `json:"max_uses,omitempty"`
+	Reason          string             `json:"reason"`
+	ClientRequestID string             `json:"client_request_id"`
 }
 
 type apiGrantBody struct {
@@ -944,7 +947,7 @@ type apiGrantBody struct {
 	Attrs           map[string]any   `json:"attrs"`
 	Mode            policy.GrantMode `json:"mode"`
 	Minutes         int              `json:"minutes"`
-	MaxUses         int              `json:"max_uses"`
+	MaxUses         usebudget.Limit  `json:"max_uses"`
 	UsesRemaining   int              `json:"uses_remaining"`
 	UsedCount       int              `json:"used_count"`
 	PendingUntil    *string          `json:"pending_until"`
@@ -1166,19 +1169,9 @@ func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, a
 	if bounds == nil {
 		return bkauthorization.GrantIntent{}, errors.New("no policy rule allows requesting this operation")
 	}
-	if req.Minutes > bounds.MaxMinutes {
-		return bkauthorization.GrantIntent{}, fmt.Errorf("grant duration exceeds %d minutes", bounds.MaxMinutes)
-	}
-	if req.MaxUses > bounds.MaxUses {
-		return bkauthorization.GrantIntent{}, fmt.Errorf("grant max uses exceeds %d", bounds.MaxUses)
-	}
-	minutes := req.Minutes
-	if minutes == 0 {
-		minutes = bounds.DefaultMinutes
-	}
-	maxUses := req.MaxUses
-	if maxUses == 0 {
-		maxUses = bounds.DefaultMaxUses
+	minutes, maxUses, err := resolveAPIGrantBounds(req, bounds)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
 	}
 	ref, _ := grantRefFromTarget(req.Target)
 	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
@@ -1192,7 +1185,8 @@ func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, a
 		Reason:            req.Reason,
 		RequestedDuration: time.Duration(minutes) * time.Minute,
 		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute,
-		MaxUses:           maxUses,
+		MaxUses:           int(maxUses),
+		MaxUsesSpecified:  req.MaxUses.Specified,
 	})
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
@@ -1200,6 +1194,43 @@ func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, a
 	return bkauthorization.GrantIntent{
 		Mode: corepolicy.GrantMode(bounds.Mode), Authorization: authorizationRequest, Request: request, Plan: plan,
 	}, nil
+}
+
+func resolveAPIGrantBounds(req apiGrantRequestBody, bounds *corepolicy.GrantPolicy) (int, usebudget.Limit, error) {
+	minutes, err := resolveAPIGrantDuration(req.Minutes, bounds)
+	if err != nil {
+		return 0, 0, err
+	}
+	maxUses, err := resolveAPIGrantUses(req.MaxUses, bounds)
+	return minutes, maxUses, err
+}
+
+func resolveAPIGrantDuration(requested int, bounds *corepolicy.GrantPolicy) (int, error) {
+	if requested > bounds.MaxMinutes {
+		return 0, fmt.Errorf("grant duration exceeds %d minutes", bounds.MaxMinutes)
+	}
+	if requested == 0 {
+		return bounds.DefaultMinutes, nil
+	}
+	return requested, nil
+}
+
+func resolveAPIGrantUses(requested usebudget.Optional, bounds *corepolicy.GrantPolicy) (usebudget.Limit, error) {
+	maxUses := requested.Limit
+	if !requested.Specified {
+		maxUses = bounds.DefaultMaxUses
+	}
+	return maxUses, validateAPIGrantUses(maxUses, bounds)
+}
+
+func validateAPIGrantUses(maxUses usebudget.Limit, bounds *corepolicy.GrantPolicy) error {
+	if maxUses < 0 || (bounds.MaxUses.IsFinite() && (maxUses.IsUnlimited() || maxUses > bounds.MaxUses)) {
+		return errors.New("grant max uses exceeds policy bounds")
+	}
+	if corepolicy.GrantMode(bounds.Mode) == corepolicy.GrantModeExecution && maxUses != 1 {
+		return errors.New("execution approvals must have exactly one use")
+	}
+	return nil
 }
 
 func grantRequestError(err error) (int, string, string) {
@@ -1562,25 +1593,19 @@ func grantUsesRemaining(grant grants.Grant) int {
 	if !grantIsActive(grant) || grantIsRetained(grant) {
 		return 0
 	}
-	return nonNegativeUses(defaultedGrantMaxUses(grant) - grant.UsedCount - grant.ReservedCount)
+	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, grant.ReservedCount)
+	if !finite {
+		return 0
+	}
+	return remaining
+}
+
+func hasGrantUses(grant grants.Grant) bool {
+	return grant.MaxUses.Allows(grant.UsedCount, grant.ReservedCount)
 }
 
 func grantIsActive(grant grants.Grant) bool {
 	return grant.Status == grants.StatusActive
-}
-
-func defaultedGrantMaxUses(grant grants.Grant) int {
-	if grant.MaxUses > 0 {
-		return grant.MaxUses
-	}
-	return 1
-}
-
-func nonNegativeUses(value int) int {
-	if value < 0 {
-		return 0
-	}
-	return value
 }
 
 func timeStringPtr(value time.Time) *string {
@@ -2281,7 +2306,8 @@ func (s *Server) preparePushIntent(client string, operation policy.Operation, ta
 		Client: client, ClientRequestID: id, Operation: string(operation), Mode: hfgrant.ModeWindow,
 		Target: target, Ref: ref, Attrs: attrs, Reason: "Git push requires approval",
 		RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
-		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: bounds.DefaultMaxUses,
+		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute,
+		MaxUses:           int(bounds.DefaultMaxUses), MaxUsesSpecified: true,
 	})
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
@@ -2672,9 +2698,6 @@ func pendingExpiredStatusForGrant(grant grants.Grant) string {
 
 func grantUseStatus(grant grants.Grant) string {
 	maxUses := grant.MaxUses
-	if maxUses <= 0 {
-		maxUses = 1
-	}
 	if grant.Status == grants.StatusConsumed {
 		return "✅ Used. Access is now closed."
 	}
@@ -2682,23 +2705,23 @@ func grantUseStatus(grant grants.Grant) string {
 		return "✅ Used. Access is now closed."
 	}
 	heldUses := grant.ReservedCount
-	remaining := maxUses - grant.UsedCount - heldUses
-	if remaining < 0 {
-		remaining = 0
+	remaining, finite := maxUses.Remaining(grant.UsedCount, heldUses)
+	if !finite {
+		return fmt.Sprintf("✅ Used %d times. Access remains active until expiry.", grant.UsedCount)
 	}
 	if heldUses > 0 {
 		if heldUses == 1 {
-			return fmt.Sprintf("✅ Used %d of %d. 1 use is held; %d uses remain.", grant.UsedCount, maxUses, remaining)
+			return fmt.Sprintf("✅ Used %d of %d. 1 use is held; %d uses remain.", grant.UsedCount, int(maxUses), remaining)
 		}
-		return fmt.Sprintf("✅ Used %d of %d. %d uses are held; %d uses remain.", grant.UsedCount, maxUses, heldUses, remaining)
+		return fmt.Sprintf("✅ Used %d of %d. %d uses are held; %d uses remain.", grant.UsedCount, int(maxUses), heldUses, remaining)
 	}
-	return fmt.Sprintf("✅ Used %d of %d. %d uses remain.", grant.UsedCount, maxUses, remaining)
+	return fmt.Sprintf("✅ Used %d of %d. %d uses remain.", grant.UsedCount, int(maxUses), remaining)
 }
 
 func retainedGrantReservationStatus(grant grants.Grant) string {
 	maxUses := grant.MaxUses
-	if maxUses <= 0 {
-		maxUses = 1
+	if maxUses.IsUnlimited() {
+		return "⚠️ Push result is ambiguous. Unlimited access remains blocked pending operator review."
 	}
 	if grant.Status == grants.StatusExpired {
 		return "⚠️ Push result is ambiguous. Access is closed; operator review is still needed."

@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const maxGrantRequestBodyBytes int64 = 32 * 1024
@@ -42,7 +43,7 @@ type grantCreatePlan struct {
 	decision       policy.Decision
 	duration       time.Duration
 	pendingTimeout time.Duration
-	maxUses        int
+	maxUses        usebudget.Limit
 }
 
 type apiGrant struct {
@@ -314,7 +315,7 @@ func decodeGrantCreate(c echo.Context) (grantCreateRequest, error) {
 	return payload, nil
 }
 
-func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requestedUses int) (time.Duration, time.Duration, int, error) {
+func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requestedUses int) (time.Duration, time.Duration, usebudget.Limit, error) {
 	minutes := requestedMinutes
 	if minutes <= 0 {
 		minutes = grantPolicy.DefaultMinutes
@@ -322,11 +323,11 @@ func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requ
 	if minutes > grantPolicy.MaxMinutes {
 		return 0, 0, 0, fmt.Errorf("requested minutes %d exceeds policy max %d", minutes, grantPolicy.MaxMinutes)
 	}
-	maxUses := requestedUses
+	maxUses := usebudget.Limit(requestedUses)
 	if maxUses <= 0 {
 		maxUses = grantPolicy.DefaultMaxUses
 	}
-	if maxUses > grantPolicy.MaxUses {
+	if grantPolicy.MaxUses.IsFinite() && maxUses > grantPolicy.MaxUses {
 		return 0, 0, 0, fmt.Errorf("requested max uses %d exceeds policy max %d", maxUses, grantPolicy.MaxUses)
 	}
 	return time.Duration(minutes) * time.Minute, time.Duration(grantPolicy.RequestTTLMinutes) * time.Minute, maxUses, nil
@@ -348,7 +349,7 @@ func apiGrantFromStore(grant grants.Grant) apiGrant {
 		Attrs:           flattenCoreValues(grant.Attrs),
 		Reason:          grant.Reason,
 		Minutes:         int(grant.Duration / time.Minute),
-		MaxUses:         grant.MaxUses,
+		MaxUses:         int(grant.MaxUses),
 		UsesRemaining:   grantUsesRemaining(grant),
 		UsedCount:       grant.UsedCount,
 		PendingUntil:    timePointer(grant.PendingExpiresAt),
@@ -425,6 +426,8 @@ func approvalFields(grant grants.Grant) []notify.Field {
 	}
 	if grant.MaxUses > 0 {
 		fields = append(fields, notify.Field{Name: "max_uses", Value: fmt.Sprintf("%d", grant.MaxUses)})
+	} else {
+		fields = append(fields, notify.Field{Name: "max_uses", Value: "unlimited until expiry"})
 	}
 	return fields
 }

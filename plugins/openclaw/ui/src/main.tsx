@@ -151,8 +151,9 @@ export function App() {
             <div className="meta">
               <span>{request.request.requester}</span>
               <span>
-                {request.request.requested_max_uses} use
-                {request.request.requested_max_uses === 1 ? "" : "s"}
+                {request.request.requested_max_uses === null
+                  ? "Unlimited uses"
+                  : `${request.request.requested_max_uses} use${request.request.requested_max_uses === 1 ? "" : "s"}`}
               </span>
               <span>
                 {Math.round(request.request.requested_duration_seconds / 60)}{" "}
@@ -255,7 +256,7 @@ function DecisionDialog({
   const request = decision?.request;
   const bounds = request?.request.approval_bounds;
   const [durationSeconds, setDurationSeconds] = useState(1);
-  const [maxUses, setMaxUses] = useState(1);
+  const [maxUses, setMaxUses] = useState<number | null>(1);
   useEffect(() => {
     if (!request) return;
     setDurationSeconds(
@@ -268,11 +269,14 @@ function DecisionDialog({
         ),
       ),
     );
+    const requestedUses = request.request.requested_max_uses;
+    const maximumUses = bounds?.max_uses;
     setMaxUses(
-      Math.min(
-        request.request.requested_max_uses,
-        bounds?.max_uses ?? request.request.requested_max_uses,
-      ),
+      requestedUses === null
+        ? null
+        : maximumUses === null || maximumUses === undefined
+          ? requestedUses
+          : Math.min(requestedUses, maximumUses),
     );
   }, [request, bounds]);
   if (!decision || !request) return null;
@@ -307,13 +311,26 @@ function DecisionDialog({
                 <input
                   type="number"
                   min={1}
-                  max={bounds.max_uses}
-                  value={maxUses}
+                  max={bounds.max_uses ?? undefined}
+                  value={maxUses ?? 1}
+                  disabled={maxUses === null}
                   onChange={(event) =>
                     setMaxUses(event.currentTarget.valueAsNumber)
                   }
                 />
               </label>
+              {bounds.max_uses === null && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={maxUses === null}
+                    onChange={(event) =>
+                      setMaxUses(event.currentTarget.checked ? null : 1)
+                    }
+                  />
+                  Unlimited until expiry
+                </label>
+              )}
             </div>
           )}
           <div className="dialog-actions">
@@ -352,17 +369,18 @@ function DecisionDialog({
 function validBounds(
   approve: boolean,
   durationSeconds: number,
-  maxUses: number,
+  maxUses: number | null,
   bounds: SafeRequest["request"]["approval_bounds"],
 ): boolean {
   if (!approve || !bounds) return true;
+  if (maxUses === null) return bounds.max_uses === null;
   return (
     Number.isSafeInteger(durationSeconds) &&
     durationSeconds > 0 &&
     durationSeconds <= bounds.max_duration_seconds &&
     Number.isSafeInteger(maxUses) &&
     maxUses > 0 &&
-    maxUses <= bounds.max_uses
+    (bounds.max_uses === null || maxUses <= bounds.max_uses)
   );
 }
 

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/usebudget"
+
 	"github.com/osolmaz/brokerkit/notify"
 )
 
@@ -874,7 +876,7 @@ func testGrantRequest(requestID string, maxUses int) Request {
 		Target:          repoTarget("demo"),
 		Attrs:           map[string][]string{"ref": {"refs/heads/main"}},
 		Reason:          "test durable lifecycle",
-		MaxUses:         maxUses,
+		MaxUses:         usebudget.Limit(maxUses),
 	}
 }
 

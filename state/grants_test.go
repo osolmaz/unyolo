@@ -10,6 +10,8 @@ import (
 	"github.com/osolmaz/brokerkit/state/internal/dbsql"
 )
 
+func testIntPointer(value int) *int { return &value }
+
 func TestGrantSnapshotRejectsStaleWriter(t *testing.T) {
 	database, err := Open(t.Context(), t.TempDir(), Options{})
 	if err != nil {
@@ -26,7 +28,7 @@ func TestGrantSnapshotRejectsStaleWriter(t *testing.T) {
 		ClientRequestID: "request-1", Operation: "repo.create", TargetJSON: []byte(`{"kind":"hf","fields":{"name":["model/acme/demo"]}}`),
 		AttrsJSON: []byte(`{}`), MetadataJSON: []byte(`{}`), Reason: "test", Status: "pending", Revision: 1,
 		CreatedAt: now, PendingExpiresAt: now.Add(time.Minute), Duration: time.Minute, RequestedDuration: time.Minute,
-		PendingTimeout: time.Minute, MaxUses: 1, RequestedMaxUses: 1})
+		PendingTimeout: time.Minute, MaxUses: testIntPointer(1), RequestedMaxUses: testIntPointer(1)})
 	if err := database.SaveGrantSnapshot(t.Context(), empty, created); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +60,7 @@ func TestGrantSnapshotPersistsCompleteLifecycle(t *testing.T) {
 			Operation: "repo.create", TargetJSON: []byte(`{"kind":"hf"}`), AttrsJSON: []byte(`{}`), MetadataJSON: []byte(`{}`),
 			PlanDigest: plan.Digest, Reason: "test", Status: "pending", Revision: 1, CreatedAt: now,
 			PendingExpiresAt: now.Add(time.Minute), Duration: 5 * time.Minute, RequestedDuration: 10 * time.Minute,
-			PendingTimeout: time.Minute, MaxUses: 2, RequestedMaxUses: 3, NotificationJSON: []byte(`{"chat_id":1}`),
+			PendingTimeout: time.Minute, MaxUses: testIntPointer(2), RequestedMaxUses: testIntPointer(3), NotificationJSON: []byte(`{"chat_id":1}`),
 			NotificationStatus: "pending",
 		}},
 		Events: []GrantLifecycleRecord{

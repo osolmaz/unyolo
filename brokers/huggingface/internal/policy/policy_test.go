@@ -1009,6 +1009,7 @@ func TestGrantPolicyValidation(t *testing.T) {
 		`{"default_minutes": 5, "max_minutes": 4}`,
 		`{"request_ttl_minutes": 0}`,
 		`{"default_max_uses": 0}`,
+		`{"default_max_uses": null, "max_uses": null}`,
 		`{"default_max_uses": 2, "max_uses": 1}`,
 	}
 	for _, grantPolicy := range invalidPolicies {
@@ -1072,6 +1073,20 @@ func TestGrantPolicyDefaultsAndGrantability(t *testing.T) {
 		if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), "not grantable") {
 			t.Fatalf("Parse() error = %v, want not grantable", err)
 		}
+	}
+}
+
+func TestGrantPolicyAllowsExplicitUnlimitedUseBudget(t *testing.T) {
+	t.Parallel()
+	pol := mustParse(t, `{"rules":[{
+		"id":"unlimited","effect":"request","clients":["bob"],
+		"operations":["git.push.force"],
+		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"demo"}],
+		"grant_policy":{"default_max_uses":3,"max_uses":null}
+	}]}`)
+	decision := pol.Decide(repoReq("bob", OpGitPushForce, "dataset", "acme", "demo", "refs/heads/main"), nil, time.Now(), true)
+	if decision.GrantPolicy == nil || decision.GrantPolicy.DefaultMaxUses != 3 || !decision.GrantPolicy.MaxUses.IsUnlimited() {
+		t.Fatalf("decision = %+v", decision)
 	}
 }
 

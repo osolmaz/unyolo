@@ -23,6 +23,7 @@ import (
 	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/planstore"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -32,26 +33,27 @@ const (
 )
 
 type Plan struct {
-	Schema                   string            `json:"schema"`
-	RequestID                string            `json:"request_id"`
-	ClientID                 string            `json:"client_id"`
-	Operation                string            `json:"operation"`
-	CommandID                string            `json:"command_id"`
-	TargetUser               string            `json:"target_user"`
-	TargetUID                uint32            `json:"target_uid"`
-	TargetGID                uint32            `json:"target_gid"`
-	SupplementaryGIDs        []uint32          `json:"supplementary_gids"`
-	Executable               string            `json:"executable"`
-	Arguments                []string          `json:"arguments"`
-	WorkingDirectory         string            `json:"working_directory"`
-	Environment              []string          `json:"environment"`
-	TimeoutSeconds           uint32            `json:"timeout_seconds"`
-	MaxOutputBytes           uint32            `json:"max_output_bytes"`
-	SlotValues               map[string]string `json:"slot_values,omitempty"`
-	CatalogDigest            string            `json:"catalog_digest"`
-	RequestedDurationSeconds int64             `json:"requested_duration_seconds"`
-	RequestedMaxUses         int               `json:"requested_max_uses"`
-	CreatedAt                time.Time         `json:"created_at"`
+	Schema                    string            `json:"schema"`
+	RequestID                 string            `json:"request_id"`
+	ClientID                  string            `json:"client_id"`
+	Operation                 string            `json:"operation"`
+	CommandID                 string            `json:"command_id"`
+	TargetUser                string            `json:"target_user"`
+	TargetUID                 uint32            `json:"target_uid"`
+	TargetGID                 uint32            `json:"target_gid"`
+	SupplementaryGIDs         []uint32          `json:"supplementary_gids"`
+	Executable                string            `json:"executable"`
+	Arguments                 []string          `json:"arguments"`
+	WorkingDirectory          string            `json:"working_directory"`
+	Environment               []string          `json:"environment"`
+	TimeoutSeconds            uint32            `json:"timeout_seconds"`
+	MaxOutputBytes            uint32            `json:"max_output_bytes"`
+	SlotValues                map[string]string `json:"slot_values,omitempty"`
+	CatalogDigest             string            `json:"catalog_digest"`
+	RequestedDurationSeconds  int64             `json:"requested_duration_seconds"`
+	RequestedMaxUses          usebudget.Limit   `json:"requested_max_uses"`
+	RequestedMaxUsesDefaulted bool              `json:"requested_max_uses_defaulted,omitempty"`
+	CreatedAt                 time.Time         `json:"created_at"`
 }
 
 type Identity struct {
@@ -142,7 +144,8 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 		Arguments: append([]string(nil), arguments[1:]...), WorkingDirectory: resolved.WorkingDirectory, Environment: environment,
 		TimeoutSeconds: uint32(resolved.TimeoutSeconds), MaxOutputBytes: uint32(resolved.MaxOutputBytes), // #nosec G115 -- catalog validation bounds both nonnegative values before resolution.
 		SlotValues: cloneMap(resolved.SlotValues), CatalogDigest: resolved.CatalogDigest,
-		RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses, CreatedAt: now.UTC(),
+		RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses,
+		RequestedMaxUsesDefaulted: request.MaxUsesDefaulted, CreatedAt: now.UTC(),
 	}, nil
 }
 
@@ -331,24 +334,26 @@ func validateCurrentIdentity(resolver IdentityResolver, value Plan) error {
 }
 
 func constraintsWithinGrant(constraints grants.ApprovalConstraints, duration time.Duration) bool {
-	return constraints.Duration <= duration && constraints.MaxUses <= 1
+	usesValid := (!constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite()) || constraints.MaxUses == 1
+	return constraints.Duration <= duration && usesValid
 }
 
-func requestedGrantBounds(grant grants.Grant) (time.Duration, int) {
+func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 	duration := grant.RequestedDuration
 	if duration <= 0 {
 		duration = grant.Duration
 	}
 	maxUses := grant.RequestedMaxUses
-	if maxUses <= 0 {
+	if maxUses < 0 {
 		maxUses = grant.MaxUses
 	}
 	return duration, maxUses
 }
 
-func planMatchesGrant(value Plan, grant grants.Grant, duration time.Duration, maxUses int) bool {
+func planMatchesGrant(value Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
 	return planMatchesGrantIdentity(value, grant) && planMatchesGrantShape(value, grant) &&
-		value.RequestedDurationSeconds == int64(duration.Seconds()) && value.RequestedMaxUses == maxUses && maxUses == 1
+		value.RequestedDurationSeconds == int64(duration.Seconds()) && value.RequestedMaxUses == maxUses &&
+		value.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted && maxUses == 1
 }
 
 func planMatchesGrantIdentity(value Plan, grant grants.Grant) bool {

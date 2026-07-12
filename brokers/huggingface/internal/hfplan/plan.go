@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -37,10 +38,11 @@ type Plan struct {
 }
 
 type Constraints struct {
-	Attributes               map[string][]string `json:"attributes,omitempty"`
-	Mode                     string              `json:"mode"`
-	RequestedDurationSeconds int64               `json:"requested_duration_seconds"`
-	RequestedMaxUses         int                 `json:"requested_max_uses"`
+	Attributes                map[string][]string `json:"attributes,omitempty"`
+	Mode                      string              `json:"mode"`
+	RequestedDurationSeconds  int64               `json:"requested_duration_seconds"`
+	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
+	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted,omitempty"`
 }
 
 type Store struct {
@@ -74,7 +76,8 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 	return Plan{SchemaVersion: SchemaV1, Kind: kind, ClientID: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, TargetKind: request.Target.Kind,
 		Target: cloneValues(request.Target.Fields), CredentialSelector: "primary", CreatedAt: createdAt.UTC(),
 		Constraints: Constraints{Attributes: cloneValues(request.Attrs), Mode: request.Metadata["hf_grant_mode"],
-			RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses}}
+			RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses,
+			RequestedMaxUsesDefaulted: request.MaxUsesDefaulted}}
 }
 
 func (s *Store) Put(plan Plan) (string, error) {
@@ -180,28 +183,37 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("HF grant does not match its immutable plan")
 	}
-	if constraints.Duration > requestedDuration || constraints.MaxUses > requestedMaxUses {
+	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
 		return grants.ErrConstraintExceeded
 	}
 	return nil
 }
 
-func requestedGrantBounds(grant grants.Grant) (time.Duration, int) {
+func useConstraintExceeds(constraints grants.ApprovalConstraints, requested usebudget.Limit) bool {
+	if !constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite() {
+		return false
+	}
+	return requested.IsFinite() && (constraints.MaxUses.IsUnlimited() || constraints.MaxUses > requested)
+}
+
+func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 	duration := grant.RequestedDuration
 	if duration <= 0 {
 		duration = grant.Duration
 	}
 	maxUses := grant.RequestedMaxUses
-	if maxUses <= 0 {
+	if maxUses < 0 {
 		maxUses = grant.MaxUses
 	}
 	return duration, maxUses
 }
 
-func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses int) bool {
+func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
 	return planMatchesGrantIdentity(plan, grant) && planMatchesGrantValues(plan, grant) &&
 		plan.Constraints.Mode == grant.Metadata["hf_grant_mode"] &&
-		plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) && plan.Constraints.RequestedMaxUses == maxUses
+		plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) &&
+		plan.Constraints.RequestedMaxUses == maxUses &&
+		plan.Constraints.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
 
 func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
@@ -251,7 +263,7 @@ func validPlanKind(kind string) bool {
 
 func validPlanConstraints(plan Plan) bool {
 	return strings.TrimSpace(plan.Constraints.Mode) != "" && plan.Constraints.RequestedDurationSeconds > 0 &&
-		plan.Constraints.RequestedMaxUses > 0 && plan.CredentialSelector == "primary" && !plan.CreatedAt.IsZero()
+		plan.Constraints.RequestedMaxUses >= 0 && plan.CredentialSelector == "primary" && !plan.CreatedAt.IsZero()
 }
 
 func validatePlanValues(values map[string][]string) error {

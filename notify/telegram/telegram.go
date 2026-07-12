@@ -203,8 +203,10 @@ func RenderApproval(msg notify.ApprovalMessage) string {
 	if msg.RequestedMinutes > 0 {
 		builder.WriteString("Minutes: " + strconv.Itoa(msg.RequestedMinutes) + "\n")
 	}
-	if msg.MaxUses > 0 {
-		builder.WriteString("Max uses: " + strconv.Itoa(msg.MaxUses) + "\n")
+	if msg.MaxUses.IsUnlimited() {
+		builder.WriteString("Max uses: unlimited until expiry\n")
+	} else {
+		builder.WriteString("Max uses: " + strconv.Itoa(int(msg.MaxUses)) + "\n")
 	}
 	return strings.TrimSpace(builder.String())
 }

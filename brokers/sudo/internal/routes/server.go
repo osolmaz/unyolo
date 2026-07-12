@@ -487,8 +487,8 @@ func view(grant grants.Grant) requestView {
 		value := grant.ExpiresAt.UTC()
 		activeUntil = &value
 	}
-	remaining := grant.MaxUses - grant.UsedCount - grant.ReservedCount
-	if remaining < 0 || grant.ReservationRetained {
+	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, grant.ReservedCount)
+	if !finite || grant.ReservationRetained {
 		remaining = 0
 	}
 	return requestView{ID: grant.ID, Status: grant.Status, Revision: grant.Revision,

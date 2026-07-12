@@ -5,3 +5,4 @@ generate:
   echo-server: true
 output-options:
   skip-prune: true
+  nullable-type: true

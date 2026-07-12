@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 type coreView uint8
@@ -254,7 +255,7 @@ func coreGrantPolicyForView(value *GrantPolicy, operation Operation, view coreVi
 		MaxMinutes:        MaxGrantMinutes,
 		RequestTTLMinutes: DefaultRequestTTL,
 		DefaultMaxUses:    1,
-		MaxUses:           maxUses,
+		MaxUses:           usebudget.Limit(maxUses),
 	}
 }
 
@@ -449,6 +450,7 @@ func coreGrants(rules []Rule, view coreView) []corepolicy.Grant {
 			Attrs:     coreAttrsFromConstraints(rule.Attrs, view),
 			ExpiresAt: rule.ExpiresAt,
 			UsesLeft:  rule.UsesLeft,
+			Unlimited: rule.Unlimited,
 		})
 	}
 	return out

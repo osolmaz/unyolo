@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 )
 
@@ -291,8 +292,8 @@ type Action string
 
 // ApprovalBounds defines model for ApprovalBounds.
 type ApprovalBounds struct {
-	MaxDurationSeconds int `json:"max_duration_seconds"`
-	MaxUses            int `json:"max_uses"`
+	MaxDurationSeconds int                    `json:"max_duration_seconds"`
+	MaxUses            nullable.Nullable[int] `json:"max_uses"`
 }
 
 // BrokerEvent defines model for BrokerEvent.
@@ -311,32 +312,32 @@ type BrokerEventKind string
 
 // BrokerRequest defines model for BrokerRequest.
 type BrokerRequest struct {
-	ActiveExpiresAt          *time.Time      `json:"active_expires_at,omitempty"`
-	AllowedActions           []Action        `json:"allowed_actions"`
-	ApprovalBounds           *ApprovalBounds `json:"approval_bounds,omitempty"`
-	DecidedAt                *time.Time      `json:"decided_at,omitempty"`
-	DecidedBy                *string         `json:"decided_by,omitempty"`
-	DecidedOnBehalfOf        *string         `json:"decided_on_behalf_of,omitempty"`
-	GrantedMaxUses           *int            `json:"granted_max_uses"`
-	Id                       string          `json:"id"`
-	Operation                string          `json:"operation"`
-	PendingExpiresAt         *time.Time      `json:"pending_expires_at,omitempty"`
-	Presentation             Presentation    `json:"presentation"`
-	PresentationUnavailable  *bool           `json:"presentation_unavailable,omitempty"`
-	RequestReason            *string         `json:"request_reason,omitempty"`
-	RequestedAt              time.Time       `json:"requested_at"`
-	RequestedDurationSeconds int             `json:"requested_duration_seconds"`
-	RequestedMaxUses         int             `json:"requested_max_uses"`
-	Requester                string          `json:"requester"`
-	Revision                 int             `json:"revision"`
-	Status                   Status          `json:"status"`
-	UsedCount                int             `json:"used_count"`
+	ActiveExpiresAt          *time.Time             `json:"active_expires_at,omitempty"`
+	AllowedActions           []Action               `json:"allowed_actions"`
+	ApprovalBounds           *ApprovalBounds        `json:"approval_bounds,omitempty"`
+	DecidedAt                *time.Time             `json:"decided_at,omitempty"`
+	DecidedBy                *string                `json:"decided_by,omitempty"`
+	DecidedOnBehalfOf        *string                `json:"decided_on_behalf_of,omitempty"`
+	GrantedMaxUses           nullable.Nullable[int] `json:"granted_max_uses"`
+	Id                       string                 `json:"id"`
+	Operation                string                 `json:"operation"`
+	PendingExpiresAt         *time.Time             `json:"pending_expires_at,omitempty"`
+	Presentation             Presentation           `json:"presentation"`
+	PresentationUnavailable  *bool                  `json:"presentation_unavailable,omitempty"`
+	RequestReason            *string                `json:"request_reason,omitempty"`
+	RequestedAt              time.Time              `json:"requested_at"`
+	RequestedDurationSeconds int                    `json:"requested_duration_seconds"`
+	RequestedMaxUses         nullable.Nullable[int] `json:"requested_max_uses"`
+	Requester                string                 `json:"requester"`
+	Revision                 int                    `json:"revision"`
+	Status                   Status                 `json:"status"`
+	UsedCount                int                    `json:"used_count"`
 }
 
 // Constraints defines model for Constraints.
 type Constraints struct {
-	DurationSeconds *int `json:"duration_seconds,omitempty"`
-	MaxUses         *int `json:"max_uses,omitempty"`
+	DurationSeconds *int                   `json:"duration_seconds,omitempty"`
+	MaxUses         nullable.Nullable[int] `json:"max_uses,omitempty"`
 }
 
 // Decision defines model for Decision.

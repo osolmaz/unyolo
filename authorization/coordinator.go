@@ -9,6 +9,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 var (
@@ -190,11 +191,11 @@ func validateTimedBound(name string, value time.Duration, maxMinutes int) error 
 	return nil
 }
 
-func validateUseCount(mode policy.GrantMode, uses, maximum int) error {
-	if uses <= 0 || uses > maximum {
+func validateUseCount(mode policy.GrantMode, uses, maximum usebudget.Limit) error {
+	if uses < 0 || (maximum.IsFinite() && (uses.IsUnlimited() || uses > maximum)) {
 		return errors.New("requested use count exceeds policy bounds")
 	}
-	if mode == policy.GrantModeExecution && uses != 1 {
+	if mode == policy.GrantModeExecution && uses != usebudget.Limit(1) {
 		return errors.New("execution approvals must have exactly one use")
 	}
 	return nil

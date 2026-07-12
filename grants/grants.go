@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/store"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -68,16 +69,18 @@ type Options struct {
 
 // Request creates one pending approval grant.
 type Request struct {
-	Client          string
-	ClientRequestID string
-	Operation       string
-	Target          policy.Target
-	Attrs           map[string][]string
-	Metadata        map[string]string
-	Reason          string
-	Duration        time.Duration
-	PendingTimeout  time.Duration
-	MaxUses         int
+	Client           string
+	ClientRequestID  string
+	Operation        string
+	Target           policy.Target
+	Attrs            map[string][]string
+	Metadata         map[string]string
+	Reason           string
+	Duration         time.Duration
+	PendingTimeout   time.Duration
+	MaxUses          usebudget.Limit
+	MaxUsesSpecified bool
+	MaxUsesDefaulted bool
 }
 
 // RequestResult returns the durable grant plus the raw one-time decision token
@@ -98,40 +101,41 @@ type ImmutablePlan struct {
 
 // Grant is one durable approval record.
 type Grant struct {
-	ID                     string              `json:"id"`
-	DecisionTokenVerifier  string              `json:"decision_token_verifier"`
-	Client                 string              `json:"client"`
-	ClientRequestID        string              `json:"client_request_id,omitempty"`
-	Operation              string              `json:"operation"`
-	Target                 policy.Target       `json:"target"`
-	Attrs                  map[string][]string `json:"attrs,omitempty"`
-	Metadata               map[string]string   `json:"metadata,omitempty"`
-	Reason                 string              `json:"reason"`
-	Status                 Status              `json:"status"`
-	Revision               int64               `json:"revision"`
-	CreatedAt              time.Time           `json:"created_at"`
-	PendingExpiresAt       time.Time           `json:"pending_expires_at"`
-	ExpiresAt              time.Time           `json:"expires_at,omitzero"`
-	Duration               time.Duration       `json:"duration"`
-	RequestedDuration      time.Duration       `json:"requested_duration"`
-	PendingTimeout         time.Duration       `json:"pending_timeout"`
-	DecidedAt              time.Time           `json:"decided_at,omitzero"`
-	DecidedBy              string              `json:"decided_by,omitempty"`
-	DecidedOnBehalfOf      string              `json:"decided_on_behalf_of,omitempty"`
-	UsedAt                 time.Time           `json:"used_at,omitzero"`
-	UsedCount              int                 `json:"used_count"`
-	UseRevision            int                 `json:"use_revision,omitempty"`
-	ReservedCount          int                 `json:"reserved_count,omitempty"`
-	ReservedAt             time.Time           `json:"reserved_at,omitzero"`
-	ReservationRetained    bool                `json:"reservation_retained,omitempty"`
-	ReservationRevision    int                 `json:"reservation_revision,omitempty"`
-	MaxUses                int                 `json:"max_uses"`
-	RequestedMaxUses       int                 `json:"requested_max_uses"`
-	ExpiredFrom            Status              `json:"expired_from,omitempty"`
-	Notification           *MessageRef         `json:"notification,omitempty"`
-	NotificationStatus     string              `json:"notification_status,omitempty"`
-	NotificationClaimedAt  time.Time           `json:"notification_claimed_at,omitzero"`
-	NotificationClaimUntil time.Time           `json:"notification_claim_until,omitzero"`
+	ID                        string              `json:"id"`
+	DecisionTokenVerifier     string              `json:"decision_token_verifier"`
+	Client                    string              `json:"client"`
+	ClientRequestID           string              `json:"client_request_id,omitempty"`
+	Operation                 string              `json:"operation"`
+	Target                    policy.Target       `json:"target"`
+	Attrs                     map[string][]string `json:"attrs,omitempty"`
+	Metadata                  map[string]string   `json:"metadata,omitempty"`
+	Reason                    string              `json:"reason"`
+	Status                    Status              `json:"status"`
+	Revision                  int64               `json:"revision"`
+	CreatedAt                 time.Time           `json:"created_at"`
+	PendingExpiresAt          time.Time           `json:"pending_expires_at"`
+	ExpiresAt                 time.Time           `json:"expires_at,omitzero"`
+	Duration                  time.Duration       `json:"duration"`
+	RequestedDuration         time.Duration       `json:"requested_duration"`
+	PendingTimeout            time.Duration       `json:"pending_timeout"`
+	DecidedAt                 time.Time           `json:"decided_at,omitzero"`
+	DecidedBy                 string              `json:"decided_by,omitempty"`
+	DecidedOnBehalfOf         string              `json:"decided_on_behalf_of,omitempty"`
+	UsedAt                    time.Time           `json:"used_at,omitzero"`
+	UsedCount                 int                 `json:"used_count"`
+	UseRevision               int                 `json:"use_revision,omitempty"`
+	ReservedCount             int                 `json:"reserved_count,omitempty"`
+	ReservedAt                time.Time           `json:"reserved_at,omitzero"`
+	ReservationRetained       bool                `json:"reservation_retained,omitempty"`
+	ReservationRevision       int                 `json:"reservation_revision,omitempty"`
+	MaxUses                   usebudget.Limit     `json:"max_uses"`
+	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
+	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted"`
+	ExpiredFrom               Status              `json:"expired_from,omitempty"`
+	Notification              *MessageRef         `json:"notification,omitempty"`
+	NotificationStatus        string              `json:"notification_status,omitempty"`
+	NotificationClaimedAt     time.Time           `json:"notification_claimed_at,omitzero"`
+	NotificationClaimUntil    time.Time           `json:"notification_claim_until,omitzero"`
 	// NotificationDeliveryUnresolved records an ambiguous send attempt until
 	// the current claim is completed or reclaimed.
 	NotificationDeliveryUnresolved bool `json:"notification_delivery_unresolved,omitempty"`
@@ -335,7 +339,7 @@ func (s *Store) CommitUse(id string) (Grant, error) {
 		} else {
 			grant.ReservedAt = s.opts.Now().UTC()
 		}
-		if grant.UsedCount >= grant.MaxUses {
+		if grant.MaxUses.Exhausted(grant.UsedCount) {
 			if grant.Status != StatusRevoked {
 				grant.Status = StatusConsumed
 				grant.ExpiredFrom = ""
@@ -530,8 +534,17 @@ func (s *Store) normalizeRequestBounds(req Request) (Request, error) {
 	if req.PendingTimeout <= 0 {
 		req.PendingTimeout = s.opts.PendingTimeout
 	}
-	if req.MaxUses <= 0 {
+	return normalizeRequestUseLimit(req)
+}
+
+func normalizeRequestUseLimit(req Request) (Request, error) {
+	if !req.MaxUsesSpecified && req.MaxUses.IsUnlimited() {
 		req.MaxUses = defaultMaxUses
+		req.MaxUsesDefaulted = true
+	}
+	req.MaxUsesSpecified = true
+	if req.MaxUses < 0 {
+		return Request{}, errors.New("grant max uses must be positive or unlimited")
 	}
 	if req.MaxUses > maxMaxUses {
 		return Request{}, errors.New("grant max uses exceeds maximum")
@@ -550,23 +563,24 @@ func (s *Store) newGrant(req Request) (Grant, string, error) {
 	}
 	now := s.opts.Now().UTC()
 	return Grant{
-		ID:                    id,
-		DecisionTokenVerifier: decisionTokenVerifier(token),
-		Client:                req.Client,
-		ClientRequestID:       req.ClientRequestID,
-		Operation:             req.Operation,
-		Target:                req.Target,
-		Attrs:                 req.Attrs,
-		Metadata:              req.Metadata,
-		Reason:                req.Reason,
-		Status:                StatusPending,
-		CreatedAt:             now,
-		PendingExpiresAt:      now.Add(req.PendingTimeout),
-		Duration:              req.Duration,
-		RequestedDuration:     req.Duration,
-		PendingTimeout:        req.PendingTimeout,
-		MaxUses:               req.MaxUses,
-		RequestedMaxUses:      req.MaxUses,
+		ID:                        id,
+		DecisionTokenVerifier:     decisionTokenVerifier(token),
+		Client:                    req.Client,
+		ClientRequestID:           req.ClientRequestID,
+		Operation:                 req.Operation,
+		Target:                    req.Target,
+		Attrs:                     req.Attrs,
+		Metadata:                  req.Metadata,
+		Reason:                    req.Reason,
+		Status:                    StatusPending,
+		CreatedAt:                 now,
+		PendingExpiresAt:          now.Add(req.PendingTimeout),
+		Duration:                  req.Duration,
+		RequestedDuration:         req.Duration,
+		PendingTimeout:            req.PendingTimeout,
+		MaxUses:                   req.MaxUses,
+		RequestedMaxUses:          req.MaxUses,
+		RequestedMaxUsesDefaulted: req.MaxUsesDefaulted,
 	}, token, nil
 }
 
@@ -744,7 +758,7 @@ func validGrantLifecycle(grant Grant) bool {
 }
 
 func validGrantUsage(grant Grant) bool {
-	return grant.MaxUses > 0 && grant.RequestedMaxUses > 0 && grant.UsedCount >= 0 &&
+	return grant.MaxUses >= 0 && grant.RequestedMaxUses >= 0 && grant.UsedCount >= 0 &&
 		grant.ReservedCount >= 0 && grant.UseRevision >= grant.UsedCount
 }
 
@@ -818,7 +832,7 @@ func grantCanUse(grant Grant, now time.Time) bool {
 	return grant.Status == StatusActive &&
 		!grant.ReservationRetained &&
 		now.Before(grant.ExpiresAt) &&
-		grant.UsedCount+grant.ReservedCount < grant.MaxUses
+		grant.MaxUses.Allows(grant.UsedCount, grant.ReservedCount)
 }
 
 func grantCanCommitUse(grant Grant) bool {
@@ -830,6 +844,7 @@ func reservationCanSettle(status Status) bool {
 }
 
 func (g Grant) toPolicyGrant() policy.Grant {
+	usesLeft, finite := g.MaxUses.Remaining(g.UsedCount, g.ReservedCount)
 	return policy.Grant{
 		ID:        g.ID,
 		Client:    g.Client,
@@ -840,7 +855,8 @@ func (g Grant) toPolicyGrant() policy.Grant {
 		},
 		Attrs:     copyx.StringSliceMap(g.Attrs),
 		ExpiresAt: g.ExpiresAt,
-		UsesLeft:  g.MaxUses - g.UsedCount - g.ReservedCount,
+		UsesLeft:  usesLeft,
+		Unlimited: !finite,
 	}
 }
 
@@ -870,8 +886,12 @@ func sameRequest(grant Grant, req Request) bool {
 		targetEqual(grant.Target, req.Target) &&
 		mapsEqual(grant.Attrs, req.Attrs) &&
 		stringMapsEqual(grant.Metadata, req.Metadata) &&
-		grant.Reason == req.Reason &&
-		grant.MaxUses == req.MaxUses &&
+		grant.Reason == req.Reason && sameRequestBounds(grant, req)
+}
+
+func sameRequestBounds(grant Grant, req Request) bool {
+	return grant.MaxUses == req.MaxUses &&
+		grant.RequestedMaxUsesDefaulted == req.MaxUsesDefaulted &&
 		grant.Duration == req.Duration &&
 		grant.PendingTimeout == req.PendingTimeout
 }

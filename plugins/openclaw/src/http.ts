@@ -340,7 +340,9 @@ function parseDecisionInput(
         (key) => key !== "durationSeconds" && key !== "maxUses",
       ) ||
       !positiveSafeInteger(constraints.durationSeconds) ||
-      !positiveSafeInteger(constraints.maxUses)
+      !(
+        constraints.maxUses === null || positiveSafeInteger(constraints.maxUses)
+      )
     )
       throw new Error("invalid_input");
     options.constraints = {

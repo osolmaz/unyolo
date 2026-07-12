@@ -154,11 +154,11 @@ export interface components {
     };
     ApprovalBounds: {
       max_duration_seconds: number;
-      max_uses: number;
+      max_uses: number | null;
     };
     Constraints: {
       duration_seconds?: number;
-      max_uses?: number;
+      max_uses?: number | null;
     };
     Decision: {
       expected_revision: number;
@@ -179,7 +179,7 @@ export interface components {
       /** Format: date-time */
       active_expires_at?: string;
       requested_duration_seconds: number;
-      requested_max_uses: number;
+      requested_max_uses: number | null;
       granted_max_uses: number | null;
       used_count: number;
       request_reason?: string;

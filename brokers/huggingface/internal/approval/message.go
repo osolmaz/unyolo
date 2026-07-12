@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 var operationTexts = map[string]string{
@@ -31,7 +33,7 @@ type Message struct {
 	Attrs            map[string]any
 	Reason           string
 	RequestedMinutes int
-	MaxUses          int
+	MaxUses          usebudget.Limit
 	PendingExpiresAt time.Time
 }
 
@@ -74,10 +76,13 @@ func attrsText(attrs map[string]any) string {
 	return string(data)
 }
 
-func usesText(operation string, maxUses int) string {
+func usesText(operation string, maxUses usebudget.Limit) string {
 	noun := "use"
 	if strings.HasPrefix(operation, "git.push.") {
 		noun = "push"
+	}
+	if maxUses.IsUnlimited() {
+		return "unlimited " + noun + "s until expiry"
 	}
 	if maxUses <= 1 {
 		return "1 " + noun
@@ -87,7 +92,7 @@ func usesText(operation string, maxUses int) string {
 	} else {
 		noun += "s"
 	}
-	return fmt.Sprintf("up to %d %s", maxUses, noun)
+	return fmt.Sprintf("up to %d %s", int(maxUses), noun)
 }
 
 func operationText(operation string) string {

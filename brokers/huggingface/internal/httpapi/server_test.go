@@ -32,6 +32,7 @@ import (
 	"github.com/osolmaz/brokerkit/notify"
 	rootpolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -1543,6 +1544,106 @@ func TestGrantRequestAcceptsAppendPushWhenRequestable(t *testing.T) {
 	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("append grant for replace ref = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestGrantRequestAcceptsExplicitUnlimitedUseBudget(t *testing.T) {
+	t.Parallel()
+	scp, err := policy.Parse([]byte(`{"rules":[{
+		"id":"unlimited","effect":"request","clients":["agent"],
+		"operations":["git.push.force"],
+		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo","refs":["refs/heads/main"]}],
+		"grant_policy":{"default_max_uses":3,"max_uses":null}
+	}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notifier := &captureGrantNotifier{}
+	handler, err := New(Options{
+		Config: config.Config{
+			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second,
+		},
+		Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(apiGrantRequestJSON(
+		policy.OpGitPushForce, "refs/heads/main", "continuous maintenance", "unlimited", 5, 0,
+	)), &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["max_uses"] = nil
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, responseBody := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, bytes.NewReader(body))
+	if resp.StatusCode != http.StatusAccepted || !strings.Contains(responseBody, `"max_uses":null`) {
+		t.Fatalf("grant request = %d %s", resp.StatusCode, responseBody)
+	}
+	created := decodeAPIGrantResponse(t, responseBody)
+	grant, err := handler.grants.Get(created.ID)
+	if err != nil || !grant.MaxUses.IsUnlimited() {
+		t.Fatalf("stored grant = %+v, %v", grant, err)
+	}
+	for _, next := range []any{nil, 3} {
+		if next == nil {
+			delete(payload, "max_uses")
+		} else {
+			payload["max_uses"] = next
+		}
+		conflictBody, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, _ := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, bytes.NewReader(conflictBody))
+		if resp.StatusCode != http.StatusConflict {
+			t.Fatalf("tri-state idempotency conflict = %d, want 409", resp.StatusCode)
+		}
+	}
+	decision := handler.handleTelegramDecision(t.Context(), telegramGrantDecision(notify.ActionApprove, notifier.messages[0]))
+	if decision.Answer != "Grant approved" || decision.Retry {
+		t.Fatalf("approval = %+v", decision)
+	}
+	for range 3 {
+		if _, err := handler.grants.ReserveUse(created.ID); err != nil {
+			t.Fatal(err)
+		}
+		used, err := handler.grants.CommitUse(created.ID)
+		if err != nil || used.Status != grants.StatusActive {
+			t.Fatalf("CommitUse() = %+v, %v", used, err)
+		}
+	}
+}
+
+func TestResolveAPIGrantUses(t *testing.T) {
+	t.Parallel()
+	window := &rootpolicy.GrantPolicy{Mode: string(rootpolicy.GrantModeWindow), DefaultMaxUses: 3}
+	for _, test := range []struct {
+		name      string
+		requested usebudget.Optional
+		bounds    *rootpolicy.GrantPolicy
+		want      usebudget.Limit
+		wantError bool
+	}{
+		{name: "default", bounds: window, want: 3},
+		{name: "unlimited", requested: usebudget.NoLimit(), bounds: window, want: usebudget.Unlimited},
+		{name: "finite", requested: usebudget.Finite(4), bounds: window, want: 4},
+		{name: "negative", requested: usebudget.Optional{Limit: -1, Specified: true}, bounds: window, wantError: true},
+		{name: "finite ceiling", requested: usebudget.NoLimit(), bounds: &rootpolicy.GrantPolicy{Mode: string(rootpolicy.GrantModeWindow), MaxUses: 2}, wantError: true},
+		{name: "execution", requested: usebudget.NoLimit(), bounds: &rootpolicy.GrantPolicy{Mode: string(rootpolicy.GrantModeExecution), MaxUses: 1}, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := resolveAPIGrantUses(test.requested, test.bounds)
+			if (err != nil) != test.wantError || (!test.wantError && got != test.want) {
+				t.Fatalf("resolveAPIGrantUses() = %v, %v", got, err)
+			}
+		})
 	}
 }
 

@@ -7,6 +7,7 @@ toolchain go1.26.5
 require (
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/labstack/echo/v4 v4.15.4
+	github.com/oapi-codegen/nullable v1.1.0
 	github.com/oapi-codegen/runtime v1.4.2
 	github.com/pressly/goose/v3 v3.27.2
 	golang.org/x/sys v0.46.0

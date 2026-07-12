@@ -36,7 +36,10 @@
           "minimum": 1
         },
         "max_uses": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1
         }
       }

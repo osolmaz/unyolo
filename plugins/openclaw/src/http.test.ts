@@ -89,6 +89,27 @@ describe("OpenClaw HTTP boundary", () => {
     expect(decide).not.toHaveBeenCalled();
   });
 
+  it("preserves an explicit unlimited-use approval constraint", async () => {
+    const decide = vi.fn(async () => snapshot());
+    const base = await serve({ snapshot, decide });
+    const response = await apiFetch(base, `/requests/${handle}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 2,
+        constraints: { durationSeconds: 300, maxUses: null },
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(decide).toHaveBeenCalledWith(
+      handle,
+      "approve",
+      2,
+      "openclaw:control-ui",
+      { constraints: { duration_seconds: 300, max_uses: null } },
+    );
+  });
+
   it("normalizes Operator V1 errors to stable plugin codes", async () => {
     const decide = vi.fn(async () => {
       throw new BrokerError("revision_conflict", "upstream detail", 409);

@@ -82,7 +82,10 @@
           "minimum": 1
         },
         "requested_max_uses": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1
         },
         "granted_max_uses": {
@@ -152,7 +155,10 @@
           "minimum": 1
         },
         "max_uses": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1
         }
       }

@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 // DecisionAction is one Operator V1 lifecycle transition.
@@ -29,8 +31,9 @@ var (
 
 // ApprovalConstraints contains provider-neutral approval narrowing.
 type ApprovalConstraints struct {
-	Duration time.Duration
-	MaxUses  int
+	Duration         time.Duration
+	MaxUses          usebudget.Limit
+	MaxUsesSpecified bool
 }
 
 // OperatorDecision is a normalized revision-bound Operator V1 command.
@@ -178,27 +181,36 @@ func applyApprovalMutation(ctx context.Context, grant Grant, constraints Approva
 	return grant, nil
 }
 
-func requestedApprovalBounds(grant Grant) (time.Duration, int) {
+func requestedApprovalBounds(grant Grant) (time.Duration, usebudget.Limit) {
 	duration := grant.RequestedDuration
 	if duration <= 0 {
 		duration = grant.Duration
 	}
 	maxUses := grant.RequestedMaxUses
-	if maxUses <= 0 {
+	if maxUses < 0 {
 		maxUses = grant.MaxUses
 	}
 	return duration, maxUses
 }
 
-func validApprovalConstraints(constraints ApprovalConstraints, duration time.Duration, maxUses int) bool {
-	return constraints.Duration >= 0 && constraints.Duration <= duration && constraints.MaxUses >= 0 && constraints.MaxUses <= maxUses
+func validApprovalConstraints(constraints ApprovalConstraints, duration time.Duration, maxUses usebudget.Limit) bool {
+	if constraints.Duration < 0 || constraints.Duration > duration || constraints.MaxUses < 0 {
+		return false
+	}
+	if !constraintUseLimitSpecified(constraints) {
+		return true
+	}
+	if constraints.MaxUses.IsUnlimited() {
+		return maxUses.IsUnlimited()
+	}
+	return maxUses.IsUnlimited() || constraints.MaxUses <= maxUses
 }
 
 func applyApprovalConstraints(grant Grant, constraints ApprovalConstraints) Grant {
 	if constraints.Duration > 0 {
 		grant.Duration = constraints.Duration
 	}
-	if constraints.MaxUses > 0 {
+	if constraintUseLimitSpecified(constraints) {
 		grant.MaxUses = constraints.MaxUses
 	}
 	return grant
@@ -215,10 +227,14 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	if !validOperatorDecisionText(command) || !validOperatorAction(command.Action) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
-	if command.Action != ActionApprove && (command.Constraints.Duration != 0 || command.Constraints.MaxUses != 0) {
+	if command.Action != ActionApprove && (command.Constraints.Duration != 0 || constraintUseLimitSpecified(command.Constraints)) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
 	return command, nil
+}
+
+func constraintUseLimitSpecified(constraints ApprovalConstraints) bool {
+	return constraints.MaxUsesSpecified || constraints.MaxUses.IsFinite()
 }
 
 func operatorDecisionRequired(command OperatorDecision) bool {

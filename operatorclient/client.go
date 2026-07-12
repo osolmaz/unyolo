@@ -21,6 +21,7 @@ import (
 	"github.com/osolmaz/brokerkit/internal/optional"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operatorv1"
+	"github.com/osolmaz/brokerkit/operatorv1wire"
 	"github.com/osolmaz/brokerkit/protocol/operatorwire"
 )
 
@@ -323,8 +324,8 @@ func decisionToWire(input operatorv1.Decision) operatorwire.Decision {
 			value := int(input.Constraints.DurationSeconds)
 			result.Constraints.DurationSeconds = &value
 		}
-		if input.Constraints.MaxUses != 0 {
-			result.Constraints.MaxUses = &input.Constraints.MaxUses
+		if input.Constraints.MaxUses.Specified {
+			result.Constraints.MaxUses = operatorv1wire.UseLimitToWire(input.Constraints.MaxUses.Limit)
 		}
 	}
 	return result
@@ -353,8 +354,9 @@ func requestFromWire(input operatorwire.BrokerRequest) operatorv1.Request {
 	}
 	result := operatorv1.Request{ID: input.Id, Revision: int64(input.Revision), Requester: input.Requester, Operation: input.Operation,
 		Status: grants.Status(input.Status), RequestedAt: input.RequestedAt, PendingExpiresAt: input.PendingExpiresAt,
-		ActiveExpiresAt: input.ActiveExpiresAt, RequestedDurationSeconds: int64(input.RequestedDurationSeconds), RequestedMaxUses: input.RequestedMaxUses,
-		GrantedMaxUses: input.GrantedMaxUses, UsedCount: input.UsedCount, DecidedAt: input.DecidedAt,
+		ActiveExpiresAt: input.ActiveExpiresAt, RequestedDurationSeconds: int64(input.RequestedDurationSeconds),
+		RequestedMaxUses: operatorv1wire.UseLimitFromWire(input.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitFromWire(input.GrantedMaxUses),
+		UsedCount: input.UsedCount, DecidedAt: input.DecidedAt,
 		Presentation:   operatorv1.Presentation{Risk: string(input.Presentation.Risk), Title: input.Presentation.Title, Facts: facts},
 		AllowedActions: make([]operatorv1.Action, 0, len(input.AllowedActions))}
 	result.RequestReason = optional.Value(input.RequestReason)
@@ -366,7 +368,7 @@ func requestFromWire(input operatorwire.BrokerRequest) operatorv1.Request {
 		result.AllowedActions = append(result.AllowedActions, operatorv1.Action(action))
 	}
 	if input.ApprovalBounds != nil {
-		result.ApprovalBounds = &operatorv1.ApprovalBounds{MaxDurationSeconds: int64(input.ApprovalBounds.MaxDurationSeconds), MaxUses: input.ApprovalBounds.MaxUses}
+		result.ApprovalBounds = &operatorv1.ApprovalBounds{MaxDurationSeconds: int64(input.ApprovalBounds.MaxDurationSeconds), MaxUses: operatorv1wire.UseLimitFromWire(input.ApprovalBounds.MaxUses)}
 	}
 	return result
 }

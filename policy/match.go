@@ -311,7 +311,7 @@ func grantMatches(registry Registry, grant Grant, request Request) bool {
 	if !grantAttrsMatch(registry, grant.Attrs, request.Attrs) {
 		return false
 	}
-	return grant.UsesLeft > 0
+	return grant.Unlimited || grant.UsesLeft > 0
 }
 
 func grantAttrsMatch(registry Registry, constraints map[string][]string, attrs map[string][]string) bool {

@@ -22,7 +22,7 @@ type DelegatedBootstrap = {
 };
 export type UiBootstrap = DirectBootstrap | DelegatedBootstrap;
 export type UiDecisionOptions = {
-  constraints?: { durationSeconds: number; maxUses: number };
+  constraints?: { durationSeconds: number; maxUses: number | null };
 };
 
 type DelegatedSession = {
