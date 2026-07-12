@@ -604,7 +604,9 @@ Chat requests must be JSON, fit within 4 MiB, and contain a canonical
 non-streaming responses preserve their content type and status. The broker
 forwards only fixed headers, replaces authorization with the real HF token,
 refuses redirects, bounds responses, and applies explicit connection, response
-header, TLS, and total timeouts. Every other `/v1/*` path is refused before any
+header, TLS, and total timeouts. Conversation length is bounded by the 4 MiB
+request limit rather than a separate message-count ceiling, so tool-heavy
+sessions remain valid. Every other `/v1/*` path is refused before any
 upstream contact. Inference audit entries contain the operation, model, status,
 and decision, never prompts, completions, tools, images, or credentials.
 
