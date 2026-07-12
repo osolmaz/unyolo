@@ -166,6 +166,50 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   await expect(page).not.toHaveURL(/#/);
 });
 
+test("keeps framed delegated UI authority-free until top-level navigation", async ({
+  page,
+}) => {
+  const encodedBootstrap = bootstrap({
+    version: 1,
+    mode: "delegated-web",
+    basePath: "/trusted-host/api/brokerkit",
+  });
+  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      "<head>",
+      '<head><meta name="brokerkit-delegated-top-level" />',
+    );
+    await route.fulfill({ response, body });
+  });
+  await page.setContent(
+    `<iframe title="Approvals" src="http://127.0.0.1:4179/plugins/brokerkit/ui/#${encodedBootstrap}"></iframe>`,
+  );
+  const launcher = page.frameLocator('iframe[title="Approvals"]');
+  await expect(
+    launcher.getByRole("button", { name: "Open approvals" }),
+  ).toBeVisible();
+  await expect(
+    launcher.getByText("Hugging Face repository write"),
+  ).not.toBeVisible();
+  const openMessage = page.evaluate(
+    () =>
+      new Promise<Record<string, unknown>>((resolve) => {
+        window.addEventListener(
+          "message",
+          (event) => resolve(event.data as Record<string, unknown>),
+          { once: true },
+        );
+      }),
+  );
+  await launcher.getByRole("button", { name: "Open approvals" }).click();
+  await expect(openMessage).resolves.toMatchObject({
+    type: "brokerkit.delegated-web.open",
+    version: 1,
+    nonce: expect.stringMatching(/^[a-f0-9]{32}$/u),
+  });
+});
+
 function bootstrap(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }

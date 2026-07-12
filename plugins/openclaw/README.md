@@ -99,19 +99,52 @@ the approval tab can run while retaining its opaque sandbox origin. Do not use
 `trusted`; delegated authentication is designed for the stricter scripts-only
 sandbox.
 
-When the sandboxed tab cannot call the delegated session endpoint directly,
-it requests a session from its parent with this host-neutral bridge:
+When OpenClaw is outside the credential trust boundary, the trusted backend
+must serve the packaged `dist/ui` files at the registered UI path itself. The
+framed response contains no authority. It injects this marker so the UI renders
+only a launcher:
+
+```html
+<meta name="brokerkit-delegated-top-level" />
+```
+
+The launcher posts this navigation-only message after the operator clicks:
+
+```text
+{ type: "brokerkit.delegated-web.open", version: 1, nonce }
+```
+
+The host verifies the exact opaque-origin frame source, then navigates the
+whole browser tab to that frame's URL. The trusted backend accepts only an
+authenticated top-level document navigation, rejects fetches, sets
+`frame-ancestors 'none'`, and enforces an opaque origin with CSP `sandbox
+allow-scripts`. It injects the short-lived session only into that unframeable
+document:
+
+```html
+<meta name="brokerkit-delegated-session" content="BASE64URL_SESSION_JSON" />
+```
+
+The content is the base64url-encoded `brokerkit.io/delegated-web/v1` session
+object. The UI removes the element as soon as it reads it and rejects embedded
+sessions unless it is running as the top-level document. Before expiry, it
+renews by posting to `<basePath>/session` with the current decision token as a
+bearer credential, with cookies omitted. The host validates the current token
+and opaque `Origin: null` before returning a replacement session.
+
+When the parent application is trusted, a sandboxed tab that cannot call the
+delegated session endpoint directly may instead use this host-neutral bridge:
 
 ```text
 request:  { type: "brokerkit.delegated-web.session.request", version: 1, nonce }
 response: { type: "brokerkit.delegated-web.session.response", nonce, session }
 ```
 
-The parent must answer only requests from the embedded BrokerKit frame and must
-bind each response to the supplied 128-bit nonce. `session` is the same
-`brokerkit.io/delegated-web/v1` object returned by `POST <basePath>/session`.
-The bridge is a BrokerKit interface; it contains no host-product namespace or
-host-specific payload.
+The trusted parent must answer only requests from the embedded BrokerKit frame
+and must bind each response to the supplied 128-bit nonce. `session` is the
+same `brokerkit.io/delegated-web/v1` object returned by `POST
+<basePath>/session`. The bridge is a BrokerKit interface; it contains no
+host-product namespace or host-specific payload.
 
 ## Commands
 
