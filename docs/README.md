@@ -24,3 +24,7 @@ component documentation.
 ## Deployment
 
 - [Systemd install runtime](SYSTEMD_INSTALL_RUNTIME.md)
+
+## Active Work
+
+- [Refactor plan](2026-07-12-refactor-plan.md)
