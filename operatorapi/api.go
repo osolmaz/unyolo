@@ -37,11 +37,12 @@ type AuditRecorder interface {
 }
 
 type Options struct {
-	Inbox     *operatorinbox.Service
-	Decisions *decision.Service
-	Authorize Authorizer
-	Broker    string
-	Audit     AuditRecorder
+	Inbox            *operatorinbox.Service
+	Decisions        *decision.Service
+	Authorize        Authorizer
+	Broker           string
+	Audit            AuditRecorder
+	NewCorrelationID func() (string, error)
 }
 
 type handler struct {
@@ -50,6 +51,7 @@ type handler struct {
 	authorize Authorizer
 	broker    string
 	audit     AuditRecorder
+	newID     func() (string, error)
 }
 
 type decisionInput struct {
@@ -69,7 +71,10 @@ func New(options Options) (http.Handler, error) {
 	if err := validateOptions(options); err != nil {
 		return nil, err
 	}
-	return &handler{options.Inbox, options.Decisions, options.Authorize, options.Broker, options.Audit}, nil
+	if options.NewCorrelationID == nil {
+		options.NewCorrelationID = secureCorrelationID
+	}
+	return &handler{options.Inbox, options.Decisions, options.Authorize, options.Broker, options.Audit, options.NewCorrelationID}, nil
 }
 
 func validateOptions(options Options) error {
@@ -89,7 +94,13 @@ func validOperatorDependencies(options Options) bool {
 func (h *handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
-	writer.Header().Set("X-Correlation-ID", correlationID())
+	correlationID, err := h.newID()
+	if err != nil {
+		writer.Header().Set("X-Correlation-ID", "unavailable")
+		h.writeError(writer, http.StatusServiceUnavailable, "temporarily_unavailable", "secure request identifier unavailable", nil)
+		return
+	}
+	writer.Header().Set("X-Correlation-ID", correlationID)
 	path := strings.TrimSuffix(request.URL.Path, "/")
 	if path == "/healthz" || path == "/readyz" {
 		h.status(writer, request)
@@ -556,10 +567,10 @@ func (h *handler) writeJSON(writer http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(writer).Encode(value)
 }
 
-func correlationID() string {
+func secureCorrelationID() (string, error) {
 	data := make([]byte, 16)
 	if _, err := rand.Read(data); err != nil {
-		return strconv.FormatInt(time.Now().UnixNano(), 36)
+		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(data)
+	return base64.RawURLEncoding.EncodeToString(data), nil
 }
