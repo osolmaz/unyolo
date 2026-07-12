@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
@@ -160,15 +159,14 @@ func SecretFileChecks(path string, agent Identity) []Check {
 	if err != nil {
 		return []Check{pathCheck, {Status: CheckUnknown, Name: "secret_file", Message: "could not inspect secret file"}}
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
+	ownerUID, ownerGID, ok := unixOwnership(info)
 	if !ok {
 		return []Check{pathCheck, {Status: CheckUnknown, Name: "secret_file", Message: "secret file ownership is unavailable"}}
 	}
 	checks := []Check{pathCheck, regularFileCheck(info), privateModeCheck(info)}
-	ownerControlled := agent.UID == int(stat.Uid)
 	checks = append(checks,
-		accessCheck("secret_file_not_readable", "read", ownerControlled || canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o400, 0o040, 0o004)),
-		accessCheck("secret_file_not_writable", "write", ownerControlled || canAccess(info.Mode().Perm(), int(stat.Uid), int(stat.Gid), agent, 0o200, 0o020, 0o002)),
+		accessCheck("secret_file_not_readable", "read", CanGainRead(agent, UnixFile{Mode: info.Mode(), UID: ownerUID, GID: ownerGID})),
+		accessCheck("secret_file_not_writable", "write", CanGainWrite(agent, UnixFile{Mode: info.Mode(), UID: ownerUID, GID: ownerGID})),
 	)
 	return checks
 }
@@ -263,14 +261,6 @@ func agentCanModifyDirectory(directory os.FileInfo, ownerUID int, ownerGID int, 
 	canWrite := canAccess(mode, ownerUID, ownerGID, agent, 0o200, 0o020, 0o002)
 	canSearch := canAccess(mode, ownerUID, ownerGID, agent, 0o100, 0o010, 0o001)
 	return canWrite && canSearch
-}
-
-func unixOwnership(info os.FileInfo) (int, int, bool) {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, 0, false
-	}
-	return int(stat.Uid), int(stat.Gid), true
 }
 
 func ownsStickyEntry(agentUID int, parentUID int, childUID int) bool {
