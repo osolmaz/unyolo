@@ -126,6 +126,22 @@ func (s *Store) Get(clientID, id string) (agentv1.Operation, error) {
 	return s.getLocked(clientID, id)
 }
 
+// GetByID returns one operation for trusted in-process lifecycle recovery.
+func (s *Store) GetByID(id string) (agentv1.Operation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.read()
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	for _, operation := range data.Operations {
+		if operation.ID == id {
+			return clone(operation), nil
+		}
+	}
+	return agentv1.Operation{}, ErrNotFound
+}
+
 func (s *Store) getLocked(clientID, id string) (agentv1.Operation, error) {
 	data, err := s.read()
 	if err != nil {

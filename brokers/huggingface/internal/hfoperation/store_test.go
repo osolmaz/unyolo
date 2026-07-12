@@ -51,6 +51,10 @@ func TestStoreLifecycleAndIdempotency(t *testing.T) {
 	if err != nil || got.State != agentv1.StateSucceeded {
 		t.Fatalf("reload = %#v, %v", got, err)
 	}
+	byID, err := reloaded.GetByID(created.ID)
+	if err != nil || byID.ID != created.ID {
+		t.Fatalf("get by ID = %#v, %v", byID, err)
+	}
 }
 
 func TestStoreWaitAndStrictFile(t *testing.T) {

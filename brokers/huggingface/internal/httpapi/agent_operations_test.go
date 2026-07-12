@@ -187,6 +187,67 @@ func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
 	}
 }
 
+func TestAgentRepoCreateConcurrentIdempotentAllow(t *testing.T) {
+	var mu sync.Mutex
+	createHits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/whoami-v2" {
+			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+			return
+		}
+		mu.Lock()
+		createHits++
+		mu.Unlock()
+		writeJSON(w, http.StatusCreated, map[string]any{})
+	}))
+	defer upstream.Close()
+	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"race"}],"attrs":{"private":"true"}}]}`)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"concurrent","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"race"},"arguments":{"private":true},"reason":"concurrent retry"}`
+	var wg sync.WaitGroup
+	errorsSeen := make(chan string, 12)
+	for range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+			if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted {
+				errorsSeen <- text
+				return
+			}
+			var operation agentv1.Operation
+			if json.Unmarshal([]byte(text), &operation) != nil || operation.State == agentv1.StateFailed {
+				errorsSeen <- text
+			}
+		}()
+	}
+	wg.Wait()
+	close(errorsSeen)
+	for message := range errorsSeen {
+		t.Fatalf("concurrent submission failed: %s", message)
+	}
+	operation := waitForTestOperation(t, server.URL, operationIDFromSubmission(t, server.URL, body))
+	if operation.State != agentv1.StateSucceeded {
+		t.Fatalf("operation = %#v", operation)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if createHits != 1 {
+		t.Fatalf("create hits = %d", createHits)
+	}
+}
+
+func operationIDFromSubmission(t *testing.T, serverURL, body string) string {
+	t.Helper()
+	response, text := doRequest(t, http.MethodPost, serverURL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	var operation agentv1.Operation
+	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil {
+		t.Fatalf("replay = %d %s", response.StatusCode, text)
+	}
+	return operation.ID
+}
+
 func TestAgentOperationRoutesAndSubmissionErrors(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})

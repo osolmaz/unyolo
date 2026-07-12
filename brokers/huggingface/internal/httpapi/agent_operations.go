@@ -156,6 +156,10 @@ func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Ope
 	if err == nil {
 		return updated
 	}
+	current, getErr := s.operations.GetByID(operation.ID)
+	if getErr == nil && current.State != agentv1.StatePending {
+		return current
+	}
 	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not update operation")
 }
 
@@ -437,22 +441,9 @@ func writeAgentError(w http.ResponseWriter, status int, code, message string) {
 func (s *Server) failOperation(id string, state agentv1.State, code, message string) agentv1.Operation {
 	operation, err := s.operations.Fail(id, state, code, message)
 	if err != nil {
-		operation, _ = s.operationByID(id)
+		operation, _ = s.operations.GetByID(id)
 	}
 	return operation
-}
-
-func (s *Server) operationByID(id string) (agentv1.Operation, error) {
-	operations, err := s.operations.ListUnfinished()
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	for _, operation := range operations {
-		if operation.ID == id {
-			return operation, nil
-		}
-	}
-	return agentv1.Operation{}, hfoperation.ErrNotFound
 }
 
 func (s *Server) startOperationWorker(ctx context.Context) {

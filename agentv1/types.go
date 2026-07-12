@@ -61,7 +61,7 @@ type SubmitRequest struct {
 	Operation      string          `json:"operation"`
 	Target         json.RawMessage `json:"target"`
 	Arguments      json.RawMessage `json:"arguments"`
-	Reason         string          `json:"reason,omitempty"`
+	Reason         string          `json:"reason"`
 }
 
 type Error struct {

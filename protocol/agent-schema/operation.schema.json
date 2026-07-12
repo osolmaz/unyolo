@@ -3,7 +3,7 @@
   "$id": "https://brokerkit.io/schema/agent/v1/operation.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["api_version", "id", "broker", "client_id", "idempotency_key", "operation", "target", "arguments", "state", "revision", "created_at", "updated_at", "presentation"],
+  "required": ["api_version", "id", "broker", "client_id", "idempotency_key", "operation", "target", "arguments", "reason", "state", "revision", "created_at", "updated_at", "presentation"],
   "properties": {
     "api_version": {"const": "brokerkit.io/agent/v1"},
     "id": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -13,7 +13,7 @@
     "operation": {"type": "string", "minLength": 1, "maxLength": 128},
     "target": {"type": "object", "maxProperties": 32},
     "arguments": {"type": "object", "maxProperties": 32},
-    "reason": {"type": "string", "maxLength": 512},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 512},
     "state": {"enum": ["pending", "approved", "executing", "succeeded", "failed", "denied", "expired", "canceled"]},
     "revision": {"type": "integer", "minimum": 1},
     "approval_id": {"type": "string", "minLength": 1, "maxLength": 128},
