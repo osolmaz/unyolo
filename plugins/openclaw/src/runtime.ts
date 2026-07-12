@@ -9,7 +9,9 @@ import type {
   SafeRequest,
   Snapshot,
   SourceHealth,
+  SnapshotEvent,
 } from "./types.js";
+import { RevisionPublisher } from "./revisions.js";
 
 type Source = {
   config: BrokerConfig;
@@ -33,6 +35,8 @@ export class BrokerRuntime {
   private store: StateStore | undefined;
   private timer?: NodeJS.Timeout;
   private delivering = false;
+  private ready = false;
+  private readonly revisions = new RevisionPublisher();
   constructor(
     private readonly config: DirectPluginConfig,
     private readonly hooks: RuntimeHooks,
@@ -55,6 +59,8 @@ export class BrokerRuntime {
     await Promise.all(
       [...this.sources.values()].map((source) => this.startSource(source)),
     );
+    this.ready = true;
+    this.publishSnapshot();
     this.timer = setInterval(() => {
       void this.reconcileAll();
       void this.deliverPending();
@@ -62,22 +68,39 @@ export class BrokerRuntime {
     this.timer.unref();
   }
   async stop(): Promise<void> {
+    this.ready = false;
     if (this.timer) clearInterval(this.timer);
     for (const source of this.sources.values()) source.abort?.abort();
+    this.revisions.close();
     this.store?.close();
     this.store = undefined;
   }
   snapshot(): Snapshot {
+    return this.revisions.snapshot();
+  }
+  waitForSnapshot(
+    cursor: string,
+    waitSeconds: number,
+    signal?: AbortSignal,
+  ): Promise<SnapshotEvent> {
+    return this.revisions.wait(cursor, waitSeconds, signal);
+  }
+  private snapshotMaterial(): Omit<
+    Snapshot,
+    "api_version" | "cursor" | "synchronized_at"
+  > {
     return {
       sources: [...this.health.values()].sort((a, b) =>
         a.id.localeCompare(b.id),
       ),
       requests: [...this.requests.values()].sort((a, b) =>
-        b.requested_at.localeCompare(a.requested_at),
+        b.request.requested_at.localeCompare(a.request.requested_at),
       ),
-      synchronizedAt: new Date().toISOString(),
-      deliveryFailures: this.store?.failedDeliveryCount() ?? 0,
+      delivery_failures: this.store?.failedDeliveryCount() ?? 0,
     };
+  }
+  private publishSnapshot(): void {
+    if (this.ready) this.revisions.publish(this.snapshotMaterial());
   }
   async decide(
     handle: string,
@@ -202,15 +225,19 @@ export class BrokerRuntime {
       } while (cursor);
     }
     for (const request of [...this.requests.values()])
-      if (request.sourceId === source.config.id && !seen.has(request.id)) {
+      if (
+        request.source_id === source.config.id &&
+        !seen.has(request.request.id)
+      ) {
         this.requests.delete(request.handle);
-        this.requireStore().remove(source.config.id, request.id);
+        this.requireStore().remove(source.config.id, request.request.id);
       }
     this.requireStore().retainRequests(source.config.id, seen);
     this.requireStore().pruneExpired();
     if (eventCursor)
       this.requireStore().setCursor(source.config.id, eventCursor);
     this.markHealthy(source);
+    this.publishSnapshot();
   }
   private watch(source: Source): void {
     source.abort?.abort();
@@ -259,19 +286,26 @@ export class BrokerRuntime {
     source.discovered = true;
   }
   private markHealthy(source: Source): void {
+    const current = this.health.get(source.config.id);
+    if (current?.healthy) return;
     this.health.set(source.config.id, {
       id: source.config.id,
       label: source.config.label,
       healthy: true,
-      lastSyncAt: new Date().toISOString(),
+      last_sync_at: new Date().toISOString(),
     });
+    this.publishSnapshot();
   }
   private accept(source: Source, request: BrokerRequest): void {
     if (request.status !== "pending" && request.status !== "active") {
       this.requireStore().remove(source.config.id, request.id);
       for (const [handle, current] of this.requests)
-        if (current.sourceId === source.config.id && current.id === request.id)
+        if (
+          current.source_id === source.config.id &&
+          current.request.id === request.id
+        )
           this.requests.delete(handle);
+      this.publishSnapshot();
       return;
     }
     const expires = Date.parse(
@@ -287,13 +321,14 @@ export class BrokerRuntime {
     );
     for (const [old, current] of this.requests)
       if (
-        current.sourceId === source.config.id &&
-        current.id === request.id &&
+        current.source_id === source.config.id &&
+        current.request.id === request.id &&
         old !== handle
       )
         this.requests.delete(old);
     this.requests.set(handle, this.project(source, request, handle));
     this.requireStore().enqueue(handle);
+    this.publishSnapshot();
     void this.deliverPending();
   }
   private project(
@@ -302,10 +337,10 @@ export class BrokerRuntime {
     handle: string,
   ): SafeRequest {
     return {
-      ...request,
-      sourceId: source.config.id,
-      sourceLabel: source.config.label,
+      source_id: source.config.id,
+      source_label: source.config.label,
       handle,
+      request,
     };
   }
   private markUnhealthy(source: Source, error: unknown): void {
@@ -317,6 +352,7 @@ export class BrokerRuntime {
       healthy: false,
       error: safeError(message),
     });
+    this.publishSnapshot();
     this.hooks.log(
       "warn",
       `BrokerKit source ${source.config.id} unavailable: ${safeError(message)}`,
@@ -339,12 +375,14 @@ export class BrokerRuntime {
             try {
               await this.hooks.deliver(delivery, notificationText(request));
               this.store?.markDelivered(delivery.id, delivery.handle);
+              this.publishSnapshot();
             } catch {
               this.store?.markDeliveryError(
                 delivery.id,
                 delivery.handle,
                 delivery.attempts,
               );
+              this.publishSnapshot();
             }
           }),
       );
@@ -381,11 +419,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function notificationText(request: SafeRequest): string {
+  const value = request.request;
   return [
-    `${request.sourceLabel}: ${request.presentation.title}`,
-    request.presentation.summary ?? "",
+    `${request.source_label}: ${value.presentation.title}`,
+    value.presentation.summary ?? "",
     `Handle: ${request.handle}`,
-    ...request.allowed_actions.map(
+    ...value.allowed_actions.map(
       (action) => `/brokerkit ${action} ${request.handle}`,
     ),
   ]

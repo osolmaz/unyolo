@@ -39,6 +39,13 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 	}
 	text := string(openAPI)
 	assertCanonicalOpenAPI(t, document)
+	components := document["components"].(map[string]any)
+	schemas := components["schemas"].(map[string]any)
+	for _, name := range []string{"UISnapshot", "UISnapshotEvent", "UISummary", "UIRequest"} {
+		if schemas[name] == nil {
+			t.Fatalf("OpenAPI missing %s", name)
+		}
+	}
 	for _, route := range []string{"/.well-known/brokerkit-operator", "/api/operator/v1/requests", "/api/operator/v1/events"} {
 		if !strings.Contains(text, route) {
 			t.Fatalf("OpenAPI missing %s", route)

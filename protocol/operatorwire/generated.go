@@ -241,6 +241,51 @@ func (e StatusGroup) Valid() bool {
 	}
 }
 
+// Defines values for UISnapshotApiVersion.
+const (
+	UISnapshotApiVersionBrokerkitIooperatorUiv1 UISnapshotApiVersion = "brokerkit.io/operator-ui/v1"
+)
+
+// Valid indicates whether the value is a known member of the UISnapshotApiVersion enum.
+func (e UISnapshotApiVersion) Valid() bool {
+	switch e {
+	case UISnapshotApiVersionBrokerkitIooperatorUiv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UISnapshotEventApiVersion.
+const (
+	UISnapshotEventApiVersionBrokerkitIooperatorUiv1 UISnapshotEventApiVersion = "brokerkit.io/operator-ui/v1"
+)
+
+// Valid indicates whether the value is a known member of the UISnapshotEventApiVersion enum.
+func (e UISnapshotEventApiVersion) Valid() bool {
+	switch e {
+	case UISnapshotEventApiVersionBrokerkitIooperatorUiv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UISummaryApiVersion.
+const (
+	UISummaryApiVersionBrokerkitIooperatorUiv1 UISummaryApiVersion = "brokerkit.io/operator-ui/v1"
+)
+
+// Valid indicates whether the value is a known member of the UISummaryApiVersion enum.
+func (e UISummaryApiVersion) Valid() bool {
+	switch e {
+	case UISummaryApiVersionBrokerkitIooperatorUiv1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Action defines model for Action.
 type Action string
 
@@ -360,6 +405,57 @@ type Status string
 
 // StatusGroup defines model for StatusGroup.
 type StatusGroup string
+
+// UIRequest defines model for UIRequest.
+type UIRequest struct {
+	Handle      string        `json:"handle"`
+	Request     BrokerRequest `json:"request"`
+	SourceId    string        `json:"source_id"`
+	SourceLabel string        `json:"source_label"`
+}
+
+// UISnapshot defines model for UISnapshot.
+type UISnapshot struct {
+	ApiVersion       UISnapshotApiVersion `json:"api_version"`
+	Cursor           string               `json:"cursor"`
+	DeliveryFailures *int                 `json:"delivery_failures,omitempty"`
+	Requests         []UIRequest          `json:"requests"`
+	Sources          []UISourceHealth     `json:"sources"`
+	SynchronizedAt   time.Time            `json:"synchronized_at"`
+}
+
+// UISnapshotApiVersion defines model for UISnapshot.ApiVersion.
+type UISnapshotApiVersion string
+
+// UISnapshotEvent defines model for UISnapshotEvent.
+type UISnapshotEvent struct {
+	ApiVersion UISnapshotEventApiVersion `json:"api_version"`
+	Changed    bool                      `json:"changed"`
+	Cursor     string                    `json:"cursor"`
+}
+
+// UISnapshotEventApiVersion defines model for UISnapshotEvent.ApiVersion.
+type UISnapshotEventApiVersion string
+
+// UISourceHealth defines model for UISourceHealth.
+type UISourceHealth struct {
+	Error      *string    `json:"error,omitempty"`
+	Healthy    bool       `json:"healthy"`
+	Id         string     `json:"id"`
+	Label      string     `json:"label"`
+	LastSyncAt *time.Time `json:"last_sync_at,omitempty"`
+}
+
+// UISummary defines model for UISummary.
+type UISummary struct {
+	ApiVersion UISummaryApiVersion `json:"api_version"`
+	Cursor     string              `json:"cursor"`
+	Healthy    bool                `json:"healthy"`
+	Pending    int                 `json:"pending"`
+}
+
+// UISummaryApiVersion defines model for UISummary.ApiVersion.
+type UISummaryApiVersion string
 
 // RequestID defines model for RequestID.
 type RequestID = string

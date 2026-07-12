@@ -25,177 +25,6 @@
     }
   },
   "$defs": {
-    "Descriptor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "api_version"
-      ],
-      "properties": {
-        "api_version": {
-          "type": "string",
-          "const": "brokerkit.io/operator/v1"
-        }
-      }
-    },
-    "Health": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "status"
-      ],
-      "properties": {
-        "status": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        }
-      }
-    },
-    "Action": {
-      "type": "string",
-      "enum": [
-        "approve",
-        "deny",
-        "cancel",
-        "revoke"
-      ]
-    },
-    "Status": {
-      "type": "string",
-      "enum": [
-        "pending",
-        "active",
-        "denied",
-        "canceled",
-        "expired",
-        "consumed",
-        "revoked"
-      ]
-    },
-    "StatusGroup": {
-      "type": "string",
-      "enum": [
-        "pending",
-        "active",
-        "history",
-        "all"
-      ]
-    },
-    "Fact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "label",
-        "value"
-      ],
-      "properties": {
-        "label": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 80
-        },
-        "value": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 500
-        }
-      }
-    },
-    "Presentation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "risk",
-        "title"
-      ],
-      "properties": {
-        "risk": {
-          "type": "string",
-          "enum": [
-            "unknown",
-            "low",
-            "medium",
-            "high",
-            "critical"
-          ]
-        },
-        "title": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "summary": {
-          "type": "string",
-          "maxLength": 2000
-        },
-        "facts": {
-          "type": "array",
-          "maxItems": 20,
-          "items": {
-            "$ref": "#/$defs/Fact"
-          }
-        }
-      }
-    },
-    "ApprovalBounds": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "max_duration_seconds",
-        "max_uses"
-      ],
-      "properties": {
-        "max_duration_seconds": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "max_uses": {
-          "type": "integer",
-          "minimum": 1
-        }
-      }
-    },
-    "Constraints": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "duration_seconds": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "max_uses": {
-          "type": "integer",
-          "minimum": 1
-        }
-      }
-    },
-    "Decision": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "expected_revision",
-        "idempotency_key"
-      ],
-      "properties": {
-        "expected_revision": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "idempotency_key": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "on_behalf_of": {
-          "type": "string",
-          "maxLength": 200
-        },
-        "constraints": {
-          "$ref": "#/$defs/Constraints"
-        }
-      }
-    },
     "BrokerRequest": {
       "type": "object",
       "additionalProperties": false,
@@ -301,137 +130,98 @@
         }
       }
     },
-    "RequestPage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "requests"
-      ],
-      "properties": {
-        "requests": {
-          "type": "array",
-          "maxItems": 100,
-          "items": {
-            "$ref": "#/$defs/BrokerRequest"
-          }
-        },
-        "next_cursor": {
-          "type": "string",
-          "maxLength": 1024
-        },
-        "event_cursor": {
-          "type": "string",
-          "maxLength": 1024
-        }
-      }
+    "Action": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "deny",
+        "cancel",
+        "revoke"
+      ]
     },
-    "BrokerEvent": {
+    "ApprovalBounds": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "cursor",
-        "kind",
-        "request_id",
-        "revision",
-        "status",
-        "occurred_at",
-        "used_count"
+        "max_duration_seconds",
+        "max_uses"
       ],
       "properties": {
-        "cursor": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 1024
-        },
-        "kind": {
-          "type": "string",
-          "enum": [
-            "request.created",
-            "request.approved",
-            "request.denied",
-            "request.canceled",
-            "request.expired",
-            "grant.revoked",
-            "grant.reserved",
-            "grant.consumed",
-            "grant.released",
-            "execution.succeeded",
-            "execution.failed",
-            "execution.ambiguous"
-          ]
-        },
-        "request_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "revision": {
+        "max_duration_seconds": {
           "type": "integer",
           "minimum": 1
         },
-        "status": {
-          "$ref": "#/$defs/Status"
-        },
-        "occurred_at": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "used_count": {
+        "max_uses": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 1
         }
       }
     },
-    "Error": {
+    "Presentation": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "code",
-        "message",
-        "correlation_id"
+        "risk",
+        "title"
       ],
       "properties": {
-        "code": {
+        "risk": {
           "type": "string",
           "enum": [
-            "invalid_request",
-            "unauthorized",
-            "forbidden",
-            "not_found",
-            "method_not_allowed",
-            "revision_conflict",
-            "idempotency_conflict",
-            "constraint_exceeded",
-            "invalid_transition",
-            "cursor_expired",
-            "temporarily_unavailable",
-            "internal_error"
+            "unknown",
+            "low",
+            "medium",
+            "high",
+            "critical"
           ]
         },
-        "message": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "facts": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/Fact"
+          }
+        }
+      }
+    },
+    "Status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "denied",
+        "canceled",
+        "expired",
+        "consumed",
+        "revoked"
+      ]
+    },
+    "Fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "value"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "value": {
           "type": "string",
           "minLength": 1,
           "maxLength": 500
-        },
-        "correlation_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "current": {
-          "$ref": "#/$defs/BrokerRequest"
-        }
-      }
-    },
-    "ErrorEnvelope": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "error"
-      ],
-      "properties": {
-        "error": {
-          "$ref": "#/$defs/Error"
         }
       }
     }

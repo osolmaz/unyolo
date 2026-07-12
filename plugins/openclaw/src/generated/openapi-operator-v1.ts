@@ -197,6 +197,43 @@ export interface components {
       next_cursor?: string;
       event_cursor?: string;
     };
+    UISourceHealth: {
+      id: string;
+      label: string;
+      healthy: boolean;
+      /** Format: date-time */
+      last_sync_at?: string;
+      error?: string;
+    };
+    UIRequest: {
+      source_id: string;
+      source_label: string;
+      handle: string;
+      request: components["schemas"]["BrokerRequest"];
+    };
+    UISnapshot: {
+      /** @constant */
+      api_version: "brokerkit.io/operator-ui/v1";
+      cursor: string;
+      /** Format: date-time */
+      synchronized_at: string;
+      sources: components["schemas"]["UISourceHealth"][];
+      requests: components["schemas"]["UIRequest"][];
+      delivery_failures?: number;
+    };
+    UISnapshotEvent: {
+      /** @constant */
+      api_version: "brokerkit.io/operator-ui/v1";
+      cursor: string;
+      changed: boolean;
+    };
+    UISummary: {
+      /** @constant */
+      api_version: "brokerkit.io/operator-ui/v1";
+      cursor: string;
+      pending: number;
+      healthy: boolean;
+    };
     BrokerEvent: {
       cursor: string;
       /** @enum {string} */

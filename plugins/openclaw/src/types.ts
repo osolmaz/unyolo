@@ -4,6 +4,8 @@ import type {
   Decision as GeneratedDecision,
   Presentation,
   RequestPage as GeneratedRequestPage,
+  UISnapshot as GeneratedSnapshot,
+  UISnapshotEvent as GeneratedSnapshotEvent,
 } from "./generated/operator-v1.js";
 
 export type Risk = Presentation["risk"];
@@ -14,21 +16,7 @@ export type RequestPage = GeneratedRequestPage;
 export type BrokerEvent = GeneratedBrokerEvent;
 export type Decision = GeneratedDecision;
 
-export type SourceHealth = {
-  id: string;
-  label: string;
-  healthy: boolean;
-  lastSyncAt?: string;
-  error?: string;
-};
-export type SafeRequest = BrokerRequest & {
-  sourceId: string;
-  sourceLabel: string;
-  handle: string;
-};
-export type Snapshot = {
-  sources: SourceHealth[];
-  requests: SafeRequest[];
-  synchronizedAt: string;
-  deliveryFailures?: number;
-};
+export type Snapshot = GeneratedSnapshot;
+export type SnapshotEvent = GeneratedSnapshotEvent;
+export type SourceHealth = Snapshot["sources"][number];
+export type SafeRequest = Snapshot["requests"][number];

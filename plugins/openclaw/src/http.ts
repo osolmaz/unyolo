@@ -37,15 +37,51 @@ async function handleApi(
     return json(res, 401, { error: { code: "not_authorized" } });
   if (req.headers.origin !== "null")
     return json(res, 403, { error: { code: "not_authorized" } });
-  if (url.search) return json(res, 400, { error: { code: "invalid_input" } });
   if (!rateLimit(req.socket.remoteAddress ?? "local"))
     return json(res, 429, { error: { code: "rate_limited" } });
   try {
     if (
       req.method === "GET" &&
+      url.pathname === "/plugins/brokerkit/api/v1/events"
+    ) {
+      const input = parseEventQuery(url);
+      const controller = new AbortController();
+      const close = () => controller.abort();
+      res.once("close", close);
+      try {
+        return json(
+          res,
+          200,
+          await runtime().waitForSnapshot(
+            input.cursor,
+            input.waitSeconds,
+            controller.signal,
+          ),
+        );
+      } finally {
+        res.off("close", close);
+      }
+    }
+    if (url.search) return json(res, 400, { error: { code: "invalid_input" } });
+    if (
+      req.method === "GET" &&
       url.pathname === "/plugins/brokerkit/api/v1/snapshot"
     )
       return json(res, 200, runtime().snapshot());
+    if (
+      req.method === "GET" &&
+      url.pathname === "/plugins/brokerkit/api/v1/summary"
+    ) {
+      const snapshot = runtime().snapshot();
+      return json(res, 200, {
+        api_version: snapshot.api_version,
+        cursor: snapshot.cursor,
+        pending: snapshot.requests.filter(
+          (request) => request.request.status === "pending",
+        ).length,
+        healthy: snapshot.sources.every((source) => source.healthy),
+      });
+    }
     const detail = url.pathname.match(
       /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)$/,
     );
@@ -256,8 +292,31 @@ function mapHttpError(error: unknown): { code: string; status: number } {
   if (code === "revision_stale" || code === "request_terminal")
     return { code, status: 409 };
   if (code === "action_not_allowed") return { code, status: 422 };
+  if (code === "cursor_expired") return { code, status: 410 };
   if (code === "source_unavailable") return { code, status: 503 };
   return { code: "internal_error", status: 500 };
+}
+
+function parseEventQuery(url: URL): {
+  cursor: string;
+  waitSeconds: number;
+} {
+  if (
+    [...url.searchParams.keys()].some(
+      (key) => !["cursor", "wait_seconds"].includes(key),
+    )
+  )
+    throw new Error("invalid_input");
+  const cursor = url.searchParams.get("cursor") ?? "";
+  const wait = url.searchParams.get("wait_seconds") ?? "25";
+  if (
+    cursor.length < 1 ||
+    cursor.length > 128 ||
+    !/^[A-Za-z0-9_.-]+$/u.test(cursor) ||
+    !/^(?:[1-9]|1[0-9]|2[0-5])$/u.test(wait)
+  )
+    throw new Error("invalid_input");
+  return { cursor, waitSeconds: Number(wait) };
 }
 
 function parseDecisionInput(

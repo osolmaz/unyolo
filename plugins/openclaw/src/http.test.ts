@@ -20,7 +20,7 @@ describe("OpenClaw HTTP boundary", () => {
       throw new Error("revision_stale");
     });
     const base = await serve({
-      snapshot: () => ({ sources: [], requests: [], synchronizedAt: "now" }),
+      snapshot,
       decide,
     });
     expect(
@@ -62,7 +62,7 @@ describe("OpenClaw HTTP boundary", () => {
   it("rejects malformed decision requests without leaking diagnostics", async () => {
     const decide = vi.fn();
     const base = await serve({
-      snapshot: () => ({ sources: [], requests: [], synchronizedAt: "now" }),
+      snapshot,
       decide,
     });
     for (const [body, contentType = "application/json"] of [
@@ -94,7 +94,7 @@ describe("OpenClaw HTTP boundary", () => {
       throw new BrokerError("revision_conflict", "upstream detail", 409);
     });
     const base = await serve({
-      snapshot: () => ({ sources: [], requests: [], synchronizedAt: "now" }),
+      snapshot,
       decide,
     });
     const response = await apiFetch(base, `/requests/${handle}/deny`, {
@@ -106,6 +106,46 @@ describe("OpenClaw HTTP boundary", () => {
     expect(await response.json()).toEqual({
       error: { code: "revision_stale" },
     });
+  });
+
+  it("serves bounded cursor waits and rejects expired cursors", async () => {
+    const waitForSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce({
+        api_version: "brokerkit.io/operator-ui/v1",
+        cursor: "epoch.2",
+        changed: true,
+      })
+      .mockRejectedValueOnce(new Error("cursor_expired"));
+    const base = await serve({
+      snapshot: () => snapshot(),
+      waitForSnapshot,
+      decide: vi.fn(),
+    });
+    const changed = await apiFetch(
+      base,
+      "/events?cursor=epoch.1&wait_seconds=25",
+    );
+    expect(changed.status).toBe(200);
+    expect(await changed.json()).toEqual({
+      api_version: "brokerkit.io/operator-ui/v1",
+      cursor: "epoch.2",
+      changed: true,
+    });
+    expect(waitForSnapshot).toHaveBeenCalledWith(
+      "epoch.1",
+      25,
+      expect.any(AbortSignal),
+    );
+    expect(
+      (await apiFetch(base, "/events?cursor=epoch.1&wait_seconds=26")).status,
+    ).toBe(400);
+    expect(
+      (await apiFetch(base, "/events?cursor=epoch.1&extra=true")).status,
+    ).toBe(400);
+    expect(
+      (await apiFetch(base, "/events?cursor=epoch.1&wait_seconds=1")).status,
+    ).toBe(410);
   });
 
   it("serves only the packaged UI prefix with restrictive headers", async () => {
@@ -158,4 +198,15 @@ function apiFetch(base: string, route: string, init: RequestInit = {}) {
       ...init.headers,
     },
   });
+}
+
+function snapshot() {
+  return {
+    api_version: "brokerkit.io/operator-ui/v1",
+    cursor: "epoch.1",
+    synchronized_at: "2026-07-11T00:00:00Z",
+    sources: [],
+    requests: [],
+    delivery_failures: 0,
+  };
 }

@@ -53,7 +53,7 @@ for (const spec of specs) {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       $id: spec.idBase + filename,
       ...rewriteRefs(structuredClone(components[schemaName])),
-      $defs: rewriteRefs(structuredClone(components)),
+      $defs: definitionsFor(components[schemaName], components),
     };
     emit(
       path.join(root, spec.outputDir, filename),
@@ -128,6 +128,9 @@ export type BrokerEvent = components["schemas"]["BrokerEvent"];
 export type RequestPage = components["schemas"]["RequestPage"];
 export type Presentation = components["schemas"]["Presentation"];
 export type BrokerRequest = components["schemas"]["BrokerRequest"];
+export type UISnapshot = components["schemas"]["UISnapshot"];
+export type UISnapshotEvent = components["schemas"]["UISnapshotEvent"];
+export type UISummary = components["schemas"]["UISummary"];
 `;
   emit(
     path.join(root, "plugins/openclaw/src/generated/operator-v1.ts"),
@@ -143,13 +146,17 @@ async function emitOperatorSchemas(components) {
     "RequestPage",
     "BrokerEvent",
     "ErrorEnvelope",
+    "UISnapshot",
+    "UISnapshotEvent",
+    "UISummary",
+    "UIRequest",
   ];
   const declarations = names.map((name) => {
     const schema = {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       $id: `https://brokerkit.dev/schema/operator/v1/runtime/${name}`,
       ...rewriteRefs(structuredClone(components[name])),
-      $defs: rewriteRefs(structuredClone(components)),
+      $defs: definitionsFor(components[name], components),
     };
     return `export const ${name}Schema = ${JSON.stringify(schema)} as const;`;
   });
@@ -160,6 +167,41 @@ async function emitOperatorSchemas(components) {
       { parser: "typescript" },
     ),
   );
+}
+
+function definitionsFor(schema, components) {
+  const names = new Set();
+  collectComponentRefs(schema, names);
+  const definitions = {};
+  while (names.size > Object.keys(definitions).length) {
+    for (const name of [...names].sort()) {
+      if (definitions[name]) continue;
+      const definition = components[name];
+      if (!definition) throw new Error(`unknown component schema ${name}`);
+      collectComponentRefs(definition, names);
+      definitions[name] = rewriteRefs(structuredClone(definition));
+    }
+  }
+  return definitions;
+}
+
+function collectComponentRefs(value, names) {
+  if (Array.isArray(value)) {
+    for (const child of value) collectComponentRefs(child, names);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    if (
+      key === "$ref" &&
+      typeof child === "string" &&
+      child.startsWith("#/components/schemas/")
+    ) {
+      names.add(child.slice("#/components/schemas/".length));
+    } else {
+      collectComponentRefs(child, names);
+    }
+  }
 }
 
 function emit(filename, contents) {

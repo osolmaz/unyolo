@@ -67,12 +67,9 @@ describe("BrokerKitUiApi", () => {
   it("uses the direct capability without browser credentials", async () => {
     const fetchMock = vi.fn(
       async () =>
-        new Response(
-          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
-          {
-            status: 200,
-          },
-        ),
+        new Response(JSON.stringify(emptySnapshot()), {
+          status: 200,
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
     const api = new BrokerKitUiApi(parseUiBootstrap(direct));
@@ -82,6 +79,34 @@ describe("BrokerKitUiApi", () => {
       "/plugins/brokerkit/api/v1/snapshot",
       expect.objectContaining({
         credentials: "omit",
+        headers: expect.objectContaining({
+          authorization: `Bearer ${"a".repeat(43)}`,
+        }),
+      }),
+    );
+  });
+
+  it("waits with an authenticated bounded cursor request", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        api_version: "brokerkit.io/operator-ui/v1",
+        cursor: "epoch.2",
+        changed: true,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new BrokerKitUiApi(parseUiBootstrap(direct));
+    const controller = new AbortController();
+    await expect(
+      api.events("epoch.1", controller.signal),
+    ).resolves.toMatchObject({
+      cursor: "epoch.2",
+      changed: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/plugins/brokerkit/api/v1/events?cursor=epoch.1&wait_seconds=25",
+      expect.objectContaining({
+        signal: controller.signal,
         headers: expect.objectContaining({
           authorization: `Bearer ${"a".repeat(43)}`,
         }),
@@ -106,12 +131,9 @@ describe("BrokerKitUiApi", () => {
         ),
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
-          {
-            status: 200,
-          },
-        ),
+        new Response(JSON.stringify(emptySnapshot()), {
+          status: 200,
+        }),
       );
     vi.stubGlobal("fetch", fetchMock);
     const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
@@ -155,10 +177,7 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("window", topLevelWindow);
     const fetchMock = vi.fn(
       async () =>
-        new Response(
-          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(emptySnapshot()), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -195,10 +214,7 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("window", { parent });
     const fetchMock = vi.fn(
       async () =>
-        new Response(
-          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(emptySnapshot()), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -234,9 +250,7 @@ describe("BrokerKitUiApi", () => {
     };
     vi.stubGlobal("document", { querySelector: vi.fn(() => meta) });
     vi.stubGlobal("window", { parent: {} });
-    const fetchMock = vi.fn(async () =>
-      Response.json({ sources: [], requests: [], synchronizedAt: "now" }),
-    );
+    const fetchMock = vi.fn(async () => Response.json(emptySnapshot()));
     vi.stubGlobal("fetch", fetchMock);
 
     const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
@@ -279,19 +293,11 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("window", topLevelWindow);
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
-        ),
-      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(emptySnapshot())))
       .mockResolvedValueOnce(new Response(JSON.stringify(renewed)))
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({
-            sources: [],
-            requests: [],
-            synchronizedAt: "later",
-          }),
+          JSON.stringify(emptySnapshot("2026-07-11T00:00:01Z", "epoch.2")),
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -335,7 +341,7 @@ describe("BrokerKitUiApi", () => {
       access: "decide",
       renewal_transport: "direct",
     };
-    const snapshot = { sources: [], requests: [], synchronizedAt: "now" };
+    const snapshot = emptySnapshot();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(initial)))
@@ -439,10 +445,7 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("window", fakeWindow);
     const fetchMock = vi.fn(
       async () =>
-        new Response(
-          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(emptySnapshot()), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -497,18 +500,10 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("window", fakeWindow);
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(emptySnapshot())))
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            sources: [],
-            requests: [],
-            synchronizedAt: "later",
-          }),
+          JSON.stringify(emptySnapshot("2026-07-11T00:00:01Z", "epoch.2")),
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -532,4 +527,18 @@ describe("BrokerKitUiApi", () => {
 
 function encoded(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function emptySnapshot(
+  synchronizedAt = "2026-07-11T00:00:00Z",
+  cursor = "epoch.1",
+) {
+  return {
+    api_version: "brokerkit.io/operator-ui/v1",
+    cursor,
+    sources: [],
+    requests: [],
+    synchronized_at: synchronizedAt,
+    delivery_failures: 0,
+  };
 }

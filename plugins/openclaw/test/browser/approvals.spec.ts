@@ -6,68 +6,86 @@ const snapshot = {
       id: "hf",
       label: "Hugging Face",
       healthy: true,
-      lastSyncAt: "2026-07-11T00:00:00Z",
+      last_sync_at: "2026-07-11T00:00:00Z",
     },
   ],
   requests: [
     {
-      sourceId: "hf",
-      sourceLabel: "Hugging Face",
-      handle: "opaque-request-handle",
-      id: "request-1",
-      revision: 1,
-      requester: "bob",
-      operation: "git.push.force",
-      status: "pending",
-      requested_at: "2026-07-11T00:00:00Z",
-      pending_expires_at: "2026-07-11T00:10:00Z",
-      requested_duration_seconds: 300,
-      requested_max_uses: 1,
-      granted_max_uses: null,
-      used_count: 0,
-      presentation: {
-        risk: "critical",
-        title: "Hugging Face repository write",
-        summary: "Approve one bounded update to the protected branch.",
-        facts: [
-          { label: "Repository", value: "osolmaz/model" },
-          { label: "Ref", value: "refs/heads/main" },
-        ],
+      source_id: "hf",
+      source_label: "Hugging Face",
+      handle: "opaque-request-handle-1",
+      request: {
+        id: "request-1",
+        revision: 1,
+        requester: "bob",
+        operation: "git.push.force",
+        status: "pending",
+        requested_at: "2026-07-11T00:00:00Z",
+        pending_expires_at: "2026-07-11T00:10:00Z",
+        requested_duration_seconds: 300,
+        requested_max_uses: 1,
+        granted_max_uses: null,
+        used_count: 0,
+        presentation: {
+          risk: "critical",
+          title: "Hugging Face repository write",
+          summary: "Approve one bounded update to the protected branch.",
+          facts: [
+            { label: "Repository", value: "osolmaz/model" },
+            { label: "Ref", value: "refs/heads/main" },
+          ],
+        },
+        allowed_actions: ["approve", "deny", "cancel"],
+        approval_bounds: { max_duration_seconds: 300, max_uses: 1 },
       },
-      allowed_actions: ["approve", "deny", "cancel"],
-      approval_bounds: { max_duration_seconds: 300, max_uses: 1 },
     },
     {
-      sourceId: "hf",
-      sourceLabel: "Hugging Face",
-      handle: "active-request-handle",
-      id: "request-2",
-      revision: 2,
-      requester: "bob",
-      operation: "repo.update",
-      status: "active",
-      requested_at: "2026-07-11T00:00:00Z",
-      active_expires_at: "2026-07-11T01:00:00Z",
-      requested_duration_seconds: 3600,
-      requested_max_uses: 3,
-      granted_max_uses: 3,
-      used_count: 1,
-      presentation: {
-        risk: "high",
-        title: "Active repository grant",
-        facts: [{ label: "Repository", value: "osolmaz/model" }],
+      source_id: "hf",
+      source_label: "Hugging Face",
+      handle: "active-request-handle-1",
+      request: {
+        id: "request-2",
+        revision: 2,
+        requester: "bob",
+        operation: "repo.update",
+        status: "active",
+        requested_at: "2026-07-11T00:00:00Z",
+        active_expires_at: "2026-07-11T01:00:00Z",
+        requested_duration_seconds: 3600,
+        requested_max_uses: 3,
+        granted_max_uses: 3,
+        used_count: 1,
+        presentation: {
+          risk: "high",
+          title: "Active repository grant",
+          facts: [{ label: "Repository", value: "osolmaz/model" }],
+        },
+        allowed_actions: ["revoke"],
+        approval_bounds: { max_duration_seconds: 3600, max_uses: 3 },
       },
-      allowed_actions: ["revoke"],
-      approval_bounds: { max_duration_seconds: 3600, max_uses: 3 },
     },
   ],
-  synchronizedAt: "2026-07-11T00:00:00Z",
+  api_version: "brokerkit.io/operator-ui/v1",
+  cursor: "browser-epoch.1",
+  synchronized_at: "2026-07-11T00:00:00Z",
+  delivery_failures: 0,
 };
+const pendingRequest = snapshot.requests[0]!;
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/plugins/brokerkit/api/v1/snapshot", (route) =>
     route.fulfill({ json: snapshot }),
   );
+  await page.route("**/events?*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      json: {
+        api_version: "brokerkit.io/operator-ui/v1",
+        cursor: snapshot.cursor,
+        changed: false,
+      },
+    });
+  });
   await page.route(
     "**/plugins/brokerkit/api/v1/requests/*/approve",
     async (route) => {
@@ -79,7 +97,10 @@ test.beforeEach(async ({ page }) => {
         constraints: { durationSeconds: 300, maxUses: 1 },
       });
       await route.fulfill({
-        json: { ...snapshot.requests[0], status: "active" },
+        json: {
+          ...pendingRequest,
+          request: { ...pendingRequest.request, status: "active" },
+        },
       });
     },
   );
@@ -163,6 +184,81 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   await expect(page).not.toHaveURL(/#/);
 });
 
+test("reconciles cursor changes without resetting an open decision", async ({
+  page,
+}) => {
+  await page.unroute("**/plugins/brokerkit/api/v1/snapshot");
+  await page.unroute("**/events?*");
+  const current = structuredClone(snapshot);
+  let release: (() => void) | undefined;
+  let eventCalls = 0;
+  await page.route("**/plugins/brokerkit/api/v1/snapshot", (route) =>
+    route.fulfill({ json: current }),
+  );
+  await page.route("**/events?*", async (route) => {
+    eventCalls += 1;
+    if (eventCalls === 1)
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    else await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      json: {
+        api_version: "brokerkit.io/operator-ui/v1",
+        cursor: current.cursor,
+        changed: eventCalls === 1,
+      },
+    });
+  });
+  await page.goto(
+    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+  );
+  await page.getByRole("button", { name: "Approve" }).click();
+  const dialog = page.getByRole("dialog", { name: "Approve request" });
+  const duration = dialog.getByLabel("Duration (seconds)");
+  await duration.fill("120");
+  await expect.poll(() => eventCalls).toBe(1);
+  const added = structuredClone(pendingRequest);
+  added.handle = "second-pending-request-1";
+  added.request.id = "request-3";
+  added.request.presentation.title = "New protected request";
+  current.cursor = "browser-epoch.2";
+  current.synchronized_at = "2026-07-11T00:00:01Z";
+  current.requests.push(added);
+  release?.();
+  await expect(page.getByText("New protected request")).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(duration).toHaveValue("120");
+});
+
+test("accepts only strict parent refresh invalidations", async ({ page }) => {
+  let snapshots = 0;
+  await page.unroute("**/plugins/brokerkit/api/v1/snapshot");
+  await page.route("**/plugins/brokerkit/api/v1/snapshot", async (route) => {
+    snapshots += 1;
+    await route.fulfill({ json: snapshot });
+  });
+  await page.goto(
+    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+  );
+  await expect(page.getByText("Hugging Face repository write")).toBeVisible();
+  await page.evaluate(() =>
+    window.postMessage(
+      { type: "brokerkit.operator-ui.invalidate", version: 1, extra: true },
+      "*",
+    ),
+  );
+  await page.waitForTimeout(100);
+  expect(snapshots).toBe(1);
+  await page.evaluate(() =>
+    window.postMessage(
+      { type: "brokerkit.operator-ui.invalidate", version: 1 },
+      "*",
+    ),
+  );
+  await expect.poll(() => snapshots).toBe(2);
+});
+
 test("decides with a trusted embedded session inside the sandboxed approval frame", async ({
   page,
 }) => {
@@ -221,7 +317,10 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
       expect(route.request().postDataJSON()).toEqual({ expectedRevision: 1 });
       decisionReceived = true;
       await route.fulfill({
-        json: { ...snapshot.requests[0], status: "denied" },
+        json: {
+          ...pendingRequest,
+          request: { ...pendingRequest.request, status: "denied" },
+        },
         headers: { "access-control-allow-origin": "null" },
       });
     },

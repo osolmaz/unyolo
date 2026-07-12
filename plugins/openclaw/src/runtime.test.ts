@@ -137,8 +137,10 @@ describe("BrokerRuntime", () => {
     await runtime.start(stateDir);
     expect(runtime.snapshot().requests).toEqual([
       expect.objectContaining({
-        status: "active",
-        allowed_actions: ["revoke"],
+        request: expect.objectContaining({
+          status: "active",
+          allowed_actions: ["revoke"],
+        }),
       }),
     ]);
     await runtime.stop();
