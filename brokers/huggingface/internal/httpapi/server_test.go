@@ -31,6 +31,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
+	rootpolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -750,16 +751,21 @@ func TestMalformedGrantStoreReturnsInternalServerError(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
-	broker := newTestBroker(t, dir, upstream.URL, io.Discard, appendOnlyDatasetPolicyJSON("repo"))
+	handler := newTestHandler(t, dir, upstream.URL, io.Discard, appendOnlyDatasetPolicyJSON("repo"))
+	t.Cleanup(func() { _ = handler.Close() })
+	requested, _, err := handler.grants.Request(grants.Request{Client: "agent", ClientRequestID: "corrupt-1", Operation: "git.push.force",
+		Target: rootpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/repo"}}}, Reason: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.database.SQL().ExecContext(t.Context(), "PRAGMA ignore_check_constraints = ON"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.database.SQL().ExecContext(t.Context(), "UPDATE grants SET target_json = '{' WHERE id = ?", requested.Grant.ID); err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
 	defer broker.Close()
-
-	grantDir := filepath.Join(dir, "state", "grants")
-	if err := os.MkdirAll(grantDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(grantDir, "grants.json"), []byte("{"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	for _, service := range []string{"git-upload-pack", "git-receive-pack"} {
 		resp, body := doRequest(t, http.MethodGet, broker.URL+"/datasets/acme/repo.git/info/refs?service="+service, "Bearer "+testSecret, nil)
 		if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(body, "could not inspect grants") {
@@ -3614,6 +3620,11 @@ func TestForwardReceivePackKeepsAcceptedOutcomeOnClientWriteError(t *testing.T) 
 
 func newTestBroker(t *testing.T, dir, upstreamURL string, auditWriter io.Writer, scopeJSON string) *httptest.Server {
 	t.Helper()
+	return httptest.NewServer(newTestHandler(t, dir, upstreamURL, auditWriter, scopeJSON))
+}
+
+func newTestHandler(t *testing.T, dir, upstreamURL string, auditWriter io.Writer, scopeJSON string) *Server {
+	t.Helper()
 	scp, err := policy.Parse([]byte(scopeJSON))
 	if err != nil {
 		t.Fatalf("policy.Parse() error = %v", err)
@@ -3633,7 +3644,7 @@ func newTestBroker(t *testing.T, dir, upstreamURL string, auditWriter io.Writer,
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	return httptest.NewServer(handler)
+	return handler
 }
 
 func acceptedReceivePackReport(ref string) []byte {

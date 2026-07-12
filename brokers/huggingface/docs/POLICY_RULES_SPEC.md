@@ -872,11 +872,11 @@ Generated grants are stored under the broker state directory, not inside
 `scope.json`:
 
 ```text
-state/grants/grants.json
+state/state.db
 ```
 
-The store is append-auditable JSON written atomically with temp-file +
-rename and mode `0600`.
+The normalized SQLite store commits each grant transition with its lifecycle
+event and decision-idempotency record in one durable transaction.
 
 One grant record:
 

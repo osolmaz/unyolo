@@ -38,13 +38,18 @@ CREATE TABLE grants (
     reservation_revision INTEGER NOT NULL DEFAULT 0 CHECK(reservation_revision >= 0),
     max_uses INTEGER NOT NULL CHECK(max_uses BETWEEN 1 AND 25),
     requested_max_uses INTEGER NOT NULL CHECK(requested_max_uses BETWEEN 1 AND 25),
-    expired_from TEXT
+    expired_from TEXT,
+    notification_json TEXT CHECK(notification_json IS NULL OR (length(notification_json) BETWEEN 2 AND 16384 AND json_valid(notification_json))),
+    notification_status TEXT NOT NULL DEFAULT '' CHECK(length(notification_status) <= 256),
+    notification_claimed_at TEXT,
+    notification_claim_until TEXT,
+    notification_delivery_unresolved INTEGER NOT NULL DEFAULT 0 CHECK(notification_delivery_unresolved IN (0,1))
 ) STRICT;
 
 CREATE INDEX grants_status_created_idx ON grants(status, created_at DESC, id DESC);
 CREATE INDEX grants_operation_idx ON grants(operation, status);
 CREATE UNIQUE INDEX grants_idempotency_idx ON grants(client, client_request_id)
-WHERE client_request_id <> '';
+WHERE client_request_id <> '' AND status <> 'canceled';
 
 CREATE TABLE operations (
     id TEXT PRIMARY KEY CHECK(length(id) BETWEEN 1 AND 128),
@@ -85,13 +90,16 @@ CREATE TABLE lifecycle_events (
 CREATE INDEX lifecycle_events_subject_idx ON lifecycle_events(subject_kind, subject_id, sequence);
 
 CREATE TABLE decision_records (
+    scope TEXT PRIMARY KEY CHECK(length(scope) BETWEEN 1 AND 1024),
     request_id TEXT NOT NULL REFERENCES grants(id) ON DELETE CASCADE,
     action TEXT NOT NULL CHECK(length(action) BETWEEN 1 AND 32),
-    idempotency_key TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 1 AND 128),
-    request_hash TEXT NOT NULL CHECK(length(request_hash) = 64),
-    result_revision INTEGER NOT NULL CHECK(result_revision >= 1),
-    created_at TEXT NOT NULL,
-    PRIMARY KEY(request_id, action, idempotency_key)
+    idempotency_key TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 1 AND 200),
+    command_hash TEXT NOT NULL CHECK(length(command_hash) BETWEEN 43 AND 64),
+    result_json TEXT NOT NULL CHECK(length(result_json) BETWEEN 2 AND 32768 AND json_valid(result_json)),
+    previous_json TEXT NOT NULL CHECK(length(previous_json) BETWEEN 2 AND 32768 AND json_valid(previous_json)),
+    event_cursor TEXT NOT NULL DEFAULT '' CHECK(length(event_cursor) <= 1024),
+    committed_at TEXT NOT NULL,
+    UNIQUE(request_id, action, idempotency_key)
 ) STRICT;
 
 CREATE TABLE notification_outbox (

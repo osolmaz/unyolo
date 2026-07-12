@@ -14,7 +14,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -256,7 +255,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	if err != nil {
 		return nil, err
 	}
-	store := grants.New(filepath.Join(opts.Config.StateDir, "grants", "grants.json"), grants.Options{
+	store := grants.NewDatabase(database, grants.Options{
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
 	})

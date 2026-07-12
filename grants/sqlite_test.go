@@ -1,0 +1,93 @@
+package grants
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
+)
+
+func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Date(2026, 7, 13, 2, 0, 0, 0, time.UTC)
+	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant-id", "decision-token", "notification-token")})
+	requested, created, err := store.Request(Request{Client: "bob", ClientRequestID: "request-1", Operation: "repo.create",
+		Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"model/acme/demo"}}}, Reason: "test",
+		Duration: 5 * time.Minute, MaxUses: 2})
+	if err != nil || !created {
+		t.Fatalf("Request() = %+v, %v, %v", requested, created, err)
+	}
+	claim, claimed, err := store.ClaimNotification(requested.Grant.ID, time.Minute)
+	if err != nil || !claimed || claim.DecisionToken != "notification-token" {
+		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
+	}
+	ref := MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "approve"}
+	if _, recorded, err := store.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref); err != nil || !recorded {
+		t.Fatalf("SetNotificationIfClaimed() = %v, %v", recorded, err)
+	}
+	pending, err := store.Get(requested.Grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := OperatorDecision{ID: pending.ID, Action: ActionApprove, Approver: "onur", ExpectedRevision: pending.Revision,
+		IdempotencyKey: "approve-1", Reason: "approved"}
+	decision, err := store.ApplyOperatorDecision(context.Background(), command, nil)
+	if err != nil || decision.Grant.Status != StatusActive {
+		t.Fatalf("ApplyOperatorDecision() = %+v, %v", decision, err)
+	}
+	if _, err := store.ReserveUse(pending.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitUse(pending.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewDatabase(database, Options{Now: func() time.Time { return now }})
+	stored, err := restarted.Get(pending.ID)
+	if err != nil || stored.Status != StatusActive || stored.UsedCount != 1 || stored.Notification == nil || *stored.Notification != ref {
+		t.Fatalf("restarted Get() = %+v, %v", stored, err)
+	}
+	replay, err := restarted.ApplyOperatorDecision(context.Background(), command, nil)
+	if err != nil || !replay.Replay || replay.Grant.Revision != decision.Grant.Revision {
+		t.Fatalf("decision replay = %+v, %v", replay, err)
+	}
+	events, err := restarted.EventsAfter("", 100)
+	if err != nil || len(events.Events) != 4 {
+		t.Fatalf("EventsAfter() = %+v, %v", events, err)
+	}
+	var grantsCount, eventsCount, decisionsCount int
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM grants").Scan(&grantsCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM lifecycle_events WHERE subject_kind = 'grant'").Scan(&eventsCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM decision_records").Scan(&decisionsCount); err != nil {
+		t.Fatal(err)
+	}
+	if grantsCount != 1 || eventsCount != 4 || decisionsCount != 1 {
+		t.Fatalf("SQLite rows = grants %d events %d decisions %d", grantsCount, eventsCount, decisionsCount)
+	}
+}
+
+func TestSQLiteGrantRejectsInvalidPlanDigestMetadata(t *testing.T) {
+	_, err := grantToSQLite(Grant{Metadata: map[string]string{"hf_plan_digest": "invalid"}})
+	if err == nil {
+		t.Fatal("grantToSQLite() accepted invalid plan digest metadata")
+	}
+}
+
+func sequenceIDs(values ...string) func(int) (string, error) {
+	index := 0
+	return func(int) (string, error) {
+		value := values[index]
+		index++
+		return value, nil
+	}
+}

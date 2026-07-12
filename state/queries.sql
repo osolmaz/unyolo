@@ -14,6 +14,61 @@ WHERE digest = ?;
 -- name: CountPlans :one
 SELECT count(*) FROM plans;
 
+-- name: ListGrants :many
+SELECT * FROM grants ORDER BY created_at, id;
+
+-- name: InsertGrant :exec
+INSERT INTO grants (
+    id, decision_token_verifier, client, client_request_id, operation,
+    target_json, attrs_json, metadata_json, plan_digest, reason, status,
+    revision, created_at, pending_expires_at, expires_at, duration_ns,
+    requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
+    decided_on_behalf_of, decision_reason, used_at, used_count, use_revision,
+    reserved_count, reserved_at, reservation_retained, reservation_revision,
+    max_uses, requested_max_uses, expired_from, notification_json,
+    notification_status, notification_claimed_at, notification_claim_until,
+    notification_delivery_unresolved
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+);
+
+-- name: UpdateGrant :execrows
+UPDATE grants SET
+    decision_token_verifier = ?, client = ?, client_request_id = ?, operation = ?,
+    target_json = ?, attrs_json = ?, metadata_json = ?, plan_digest = ?, reason = ?,
+    status = ?, revision = ?, created_at = ?, pending_expires_at = ?, expires_at = ?,
+    duration_ns = ?, requested_duration_ns = ?, pending_timeout_ns = ?, decided_at = ?,
+    decided_by = ?, decided_on_behalf_of = ?, decision_reason = ?, used_at = ?,
+    used_count = ?, use_revision = ?, reserved_count = ?, reserved_at = ?,
+    reservation_retained = ?, reservation_revision = ?, max_uses = ?,
+    requested_max_uses = ?, expired_from = ?, notification_json = ?,
+    notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
+    notification_delivery_unresolved = ?
+WHERE id = ? AND revision = ?;
+
+-- name: ListGrantLifecycleEvents :many
+SELECT * FROM lifecycle_events
+WHERE subject_kind = 'grant'
+ORDER BY sequence;
+
+-- name: InsertGrantLifecycleEvent :exec
+INSERT INTO lifecycle_events (
+    sequence, cursor, subject_kind, subject_id, kind, revision, occurred_at, payload_json
+) VALUES (?, ?, 'grant', ?, ?, ?, ?, ?);
+
+-- name: DeleteGrantLifecycleEventsBefore :exec
+DELETE FROM lifecycle_events WHERE subject_kind = 'grant' AND sequence < ?;
+
+-- name: ListDecisionRecords :many
+SELECT * FROM decision_records ORDER BY committed_at, scope;
+
+-- name: InsertDecisionRecord :exec
+INSERT INTO decision_records (
+    scope, request_id, action, idempotency_key, command_hash,
+    result_json, previous_json, event_cursor, committed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
 -- name: InsertOperation :exec
 INSERT INTO operations (
     id, api_version, broker, client_id, idempotency_key, operation,

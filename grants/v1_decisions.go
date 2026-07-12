@@ -245,7 +245,7 @@ func hashOperatorDecision(command OperatorDecision) string {
 }
 
 func decisionScope(command OperatorDecision) string {
-	return command.Approver + "\x00" + command.ID + "\x00" + string(command.Action) + "\x00" + command.IdempotencyKey
+	return command.ID + "\x00" + string(command.Action) + "\x00" + command.IdempotencyKey
 }
 
 func findDecisionRecord(records []decisionRecord, scope string) (decisionRecord, bool) {

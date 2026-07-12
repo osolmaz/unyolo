@@ -9,47 +9,55 @@ import (
 )
 
 type DecisionRecord struct {
+	Scope          string
 	RequestID      string
 	Action         string
 	IdempotencyKey string
-	RequestHash    string
-	ResultRevision int64
-	CreatedAt      string
+	CommandHash    string
+	ResultJson     string
+	PreviousJson   string
+	EventCursor    string
+	CommittedAt    string
 }
 
 type Grant struct {
-	ID                    string
-	DecisionTokenVerifier string
-	Client                string
-	ClientRequestID       string
-	Operation             string
-	TargetJson            string
-	AttrsJson             string
-	MetadataJson          string
-	PlanDigest            sql.NullString
-	Reason                string
-	Status                string
-	Revision              int64
-	CreatedAt             string
-	PendingExpiresAt      string
-	ExpiresAt             sql.NullString
-	DurationNs            int64
-	RequestedDurationNs   int64
-	PendingTimeoutNs      int64
-	DecidedAt             sql.NullString
-	DecidedBy             string
-	DecidedOnBehalfOf     string
-	DecisionReason        string
-	UsedAt                sql.NullString
-	UsedCount             int64
-	UseRevision           int64
-	ReservedCount         int64
-	ReservedAt            sql.NullString
-	ReservationRetained   int64
-	ReservationRevision   int64
-	MaxUses               int64
-	RequestedMaxUses      int64
-	ExpiredFrom           sql.NullString
+	ID                             string
+	DecisionTokenVerifier          string
+	Client                         string
+	ClientRequestID                string
+	Operation                      string
+	TargetJson                     string
+	AttrsJson                      string
+	MetadataJson                   string
+	PlanDigest                     sql.NullString
+	Reason                         string
+	Status                         string
+	Revision                       int64
+	CreatedAt                      string
+	PendingExpiresAt               string
+	ExpiresAt                      sql.NullString
+	DurationNs                     int64
+	RequestedDurationNs            int64
+	PendingTimeoutNs               int64
+	DecidedAt                      sql.NullString
+	DecidedBy                      string
+	DecidedOnBehalfOf              string
+	DecisionReason                 string
+	UsedAt                         sql.NullString
+	UsedCount                      int64
+	UseRevision                    int64
+	ReservedCount                  int64
+	ReservedAt                     sql.NullString
+	ReservationRetained            int64
+	ReservationRevision            int64
+	MaxUses                        int64
+	RequestedMaxUses               int64
+	ExpiredFrom                    sql.NullString
+	NotificationJson               sql.NullString
+	NotificationStatus             string
+	NotificationClaimedAt          sql.NullString
+	NotificationClaimUntil         sql.NullString
+	NotificationDeliveryUnresolved int64
 }
 
 type LifecycleEvent struct {

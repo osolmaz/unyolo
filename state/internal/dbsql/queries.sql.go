@@ -38,6 +38,18 @@ func (q *Queries) CountPlans(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const deleteGrantLifecycleEventsBefore = `-- name: DeleteGrantLifecycleEventsBefore :exec
+DELETE FROM lifecycle_events WHERE subject_kind = 'grant' AND sequence < ?
+`
+
+// DeleteGrantLifecycleEventsBefore
+//
+//	DELETE FROM lifecycle_events WHERE subject_kind = 'grant' AND sequence < ?
+func (q *Queries) DeleteGrantLifecycleEventsBefore(ctx context.Context, sequence int64) error {
+	_, err := q.db.ExecContext(ctx, deleteGrantLifecycleEventsBefore, sequence)
+	return err
+}
+
 const deleteTerminalOperationsBefore = `-- name: DeleteTerminalOperationsBefore :execrows
 DELETE FROM operations
 WHERE terminal_at IS NOT NULL AND terminal_at < ?
@@ -204,6 +216,196 @@ func (q *Queries) Health(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const insertDecisionRecord = `-- name: InsertDecisionRecord :exec
+INSERT INTO decision_records (
+    scope, request_id, action, idempotency_key, command_hash,
+    result_json, previous_json, event_cursor, committed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertDecisionRecordParams struct {
+	Scope          string
+	RequestID      string
+	Action         string
+	IdempotencyKey string
+	CommandHash    string
+	ResultJson     string
+	PreviousJson   string
+	EventCursor    string
+	CommittedAt    string
+}
+
+// InsertDecisionRecord
+//
+//	INSERT INTO decision_records (
+//	    scope, request_id, action, idempotency_key, command_hash,
+//	    result_json, previous_json, event_cursor, committed_at
+//	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+func (q *Queries) InsertDecisionRecord(ctx context.Context, arg InsertDecisionRecordParams) error {
+	_, err := q.db.ExecContext(ctx, insertDecisionRecord,
+		arg.Scope,
+		arg.RequestID,
+		arg.Action,
+		arg.IdempotencyKey,
+		arg.CommandHash,
+		arg.ResultJson,
+		arg.PreviousJson,
+		arg.EventCursor,
+		arg.CommittedAt,
+	)
+	return err
+}
+
+const insertGrant = `-- name: InsertGrant :exec
+INSERT INTO grants (
+    id, decision_token_verifier, client, client_request_id, operation,
+    target_json, attrs_json, metadata_json, plan_digest, reason, status,
+    revision, created_at, pending_expires_at, expires_at, duration_ns,
+    requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
+    decided_on_behalf_of, decision_reason, used_at, used_count, use_revision,
+    reserved_count, reserved_at, reservation_retained, reservation_revision,
+    max_uses, requested_max_uses, expired_from, notification_json,
+    notification_status, notification_claimed_at, notification_claim_until,
+    notification_delivery_unresolved
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+)
+`
+
+type InsertGrantParams struct {
+	ID                             string
+	DecisionTokenVerifier          string
+	Client                         string
+	ClientRequestID                string
+	Operation                      string
+	TargetJson                     string
+	AttrsJson                      string
+	MetadataJson                   string
+	PlanDigest                     sql.NullString
+	Reason                         string
+	Status                         string
+	Revision                       int64
+	CreatedAt                      string
+	PendingExpiresAt               string
+	ExpiresAt                      sql.NullString
+	DurationNs                     int64
+	RequestedDurationNs            int64
+	PendingTimeoutNs               int64
+	DecidedAt                      sql.NullString
+	DecidedBy                      string
+	DecidedOnBehalfOf              string
+	DecisionReason                 string
+	UsedAt                         sql.NullString
+	UsedCount                      int64
+	UseRevision                    int64
+	ReservedCount                  int64
+	ReservedAt                     sql.NullString
+	ReservationRetained            int64
+	ReservationRevision            int64
+	MaxUses                        int64
+	RequestedMaxUses               int64
+	ExpiredFrom                    sql.NullString
+	NotificationJson               sql.NullString
+	NotificationStatus             string
+	NotificationClaimedAt          sql.NullString
+	NotificationClaimUntil         sql.NullString
+	NotificationDeliveryUnresolved int64
+}
+
+// InsertGrant
+//
+//	INSERT INTO grants (
+//	    id, decision_token_verifier, client, client_request_id, operation,
+//	    target_json, attrs_json, metadata_json, plan_digest, reason, status,
+//	    revision, created_at, pending_expires_at, expires_at, duration_ns,
+//	    requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
+//	    decided_on_behalf_of, decision_reason, used_at, used_count, use_revision,
+//	    reserved_count, reserved_at, reservation_retained, reservation_revision,
+//	    max_uses, requested_max_uses, expired_from, notification_json,
+//	    notification_status, notification_claimed_at, notification_claim_until,
+//	    notification_delivery_unresolved
+//	) VALUES (
+//	    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+//	    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+//	)
+func (q *Queries) InsertGrant(ctx context.Context, arg InsertGrantParams) error {
+	_, err := q.db.ExecContext(ctx, insertGrant,
+		arg.ID,
+		arg.DecisionTokenVerifier,
+		arg.Client,
+		arg.ClientRequestID,
+		arg.Operation,
+		arg.TargetJson,
+		arg.AttrsJson,
+		arg.MetadataJson,
+		arg.PlanDigest,
+		arg.Reason,
+		arg.Status,
+		arg.Revision,
+		arg.CreatedAt,
+		arg.PendingExpiresAt,
+		arg.ExpiresAt,
+		arg.DurationNs,
+		arg.RequestedDurationNs,
+		arg.PendingTimeoutNs,
+		arg.DecidedAt,
+		arg.DecidedBy,
+		arg.DecidedOnBehalfOf,
+		arg.DecisionReason,
+		arg.UsedAt,
+		arg.UsedCount,
+		arg.UseRevision,
+		arg.ReservedCount,
+		arg.ReservedAt,
+		arg.ReservationRetained,
+		arg.ReservationRevision,
+		arg.MaxUses,
+		arg.RequestedMaxUses,
+		arg.ExpiredFrom,
+		arg.NotificationJson,
+		arg.NotificationStatus,
+		arg.NotificationClaimedAt,
+		arg.NotificationClaimUntil,
+		arg.NotificationDeliveryUnresolved,
+	)
+	return err
+}
+
+const insertGrantLifecycleEvent = `-- name: InsertGrantLifecycleEvent :exec
+INSERT INTO lifecycle_events (
+    sequence, cursor, subject_kind, subject_id, kind, revision, occurred_at, payload_json
+) VALUES (?, ?, 'grant', ?, ?, ?, ?, ?)
+`
+
+type InsertGrantLifecycleEventParams struct {
+	Sequence    int64
+	Cursor      string
+	SubjectID   string
+	Kind        string
+	Revision    int64
+	OccurredAt  string
+	PayloadJson string
+}
+
+// InsertGrantLifecycleEvent
+//
+//	INSERT INTO lifecycle_events (
+//	    sequence, cursor, subject_kind, subject_id, kind, revision, occurred_at, payload_json
+//	) VALUES (?, ?, 'grant', ?, ?, ?, ?, ?)
+func (q *Queries) InsertGrantLifecycleEvent(ctx context.Context, arg InsertGrantLifecycleEventParams) error {
+	_, err := q.db.ExecContext(ctx, insertGrantLifecycleEvent,
+		arg.Sequence,
+		arg.Cursor,
+		arg.SubjectID,
+		arg.Kind,
+		arg.Revision,
+		arg.OccurredAt,
+		arg.PayloadJson,
+	)
+	return err
+}
+
 const insertOperation = `-- name: InsertOperation :exec
 INSERT INTO operations (
     id, api_version, broker, client_id, idempotency_key, operation,
@@ -264,6 +466,157 @@ func (q *Queries) InsertOperation(ctx context.Context, arg InsertOperationParams
 		arg.PlanDigest,
 	)
 	return err
+}
+
+const listDecisionRecords = `-- name: ListDecisionRecords :many
+SELECT scope, request_id, "action", idempotency_key, command_hash, result_json, previous_json, event_cursor, committed_at FROM decision_records ORDER BY committed_at, scope
+`
+
+// ListDecisionRecords
+//
+//	SELECT scope, request_id, "action", idempotency_key, command_hash, result_json, previous_json, event_cursor, committed_at FROM decision_records ORDER BY committed_at, scope
+func (q *Queries) ListDecisionRecords(ctx context.Context) ([]DecisionRecord, error) {
+	rows, err := q.db.QueryContext(ctx, listDecisionRecords)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DecisionRecord{}
+	for rows.Next() {
+		var i DecisionRecord
+		if err := rows.Scan(
+			&i.Scope,
+			&i.RequestID,
+			&i.Action,
+			&i.IdempotencyKey,
+			&i.CommandHash,
+			&i.ResultJson,
+			&i.PreviousJson,
+			&i.EventCursor,
+			&i.CommittedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGrantLifecycleEvents = `-- name: ListGrantLifecycleEvents :many
+SELECT sequence, cursor, subject_kind, subject_id, kind, revision, occurred_at, payload_json FROM lifecycle_events
+WHERE subject_kind = 'grant'
+ORDER BY sequence
+`
+
+// ListGrantLifecycleEvents
+//
+//	SELECT sequence, cursor, subject_kind, subject_id, kind, revision, occurred_at, payload_json FROM lifecycle_events
+//	WHERE subject_kind = 'grant'
+//	ORDER BY sequence
+func (q *Queries) ListGrantLifecycleEvents(ctx context.Context) ([]LifecycleEvent, error) {
+	rows, err := q.db.QueryContext(ctx, listGrantLifecycleEvents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LifecycleEvent{}
+	for rows.Next() {
+		var i LifecycleEvent
+		if err := rows.Scan(
+			&i.Sequence,
+			&i.Cursor,
+			&i.SubjectKind,
+			&i.SubjectID,
+			&i.Kind,
+			&i.Revision,
+			&i.OccurredAt,
+			&i.PayloadJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGrants = `-- name: ListGrants :many
+SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, decision_reason, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
+`
+
+// ListGrants
+//
+//	SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, decision_reason, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
+func (q *Queries) ListGrants(ctx context.Context) ([]Grant, error) {
+	rows, err := q.db.QueryContext(ctx, listGrants)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Grant{}
+	for rows.Next() {
+		var i Grant
+		if err := rows.Scan(
+			&i.ID,
+			&i.DecisionTokenVerifier,
+			&i.Client,
+			&i.ClientRequestID,
+			&i.Operation,
+			&i.TargetJson,
+			&i.AttrsJson,
+			&i.MetadataJson,
+			&i.PlanDigest,
+			&i.Reason,
+			&i.Status,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.PendingExpiresAt,
+			&i.ExpiresAt,
+			&i.DurationNs,
+			&i.RequestedDurationNs,
+			&i.PendingTimeoutNs,
+			&i.DecidedAt,
+			&i.DecidedBy,
+			&i.DecidedOnBehalfOf,
+			&i.DecisionReason,
+			&i.UsedAt,
+			&i.UsedCount,
+			&i.UseRevision,
+			&i.ReservedCount,
+			&i.ReservedAt,
+			&i.ReservationRetained,
+			&i.ReservationRevision,
+			&i.MaxUses,
+			&i.RequestedMaxUses,
+			&i.ExpiredFrom,
+			&i.NotificationJson,
+			&i.NotificationStatus,
+			&i.NotificationClaimedAt,
+			&i.NotificationClaimUntil,
+			&i.NotificationDeliveryUnresolved,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUnfinishedOperations = `-- name: ListUnfinishedOperations :many
@@ -346,6 +699,123 @@ func (q *Queries) PutPlan(ctx context.Context, arg PutPlanParams) error {
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const updateGrant = `-- name: UpdateGrant :execrows
+UPDATE grants SET
+    decision_token_verifier = ?, client = ?, client_request_id = ?, operation = ?,
+    target_json = ?, attrs_json = ?, metadata_json = ?, plan_digest = ?, reason = ?,
+    status = ?, revision = ?, created_at = ?, pending_expires_at = ?, expires_at = ?,
+    duration_ns = ?, requested_duration_ns = ?, pending_timeout_ns = ?, decided_at = ?,
+    decided_by = ?, decided_on_behalf_of = ?, decision_reason = ?, used_at = ?,
+    used_count = ?, use_revision = ?, reserved_count = ?, reserved_at = ?,
+    reservation_retained = ?, reservation_revision = ?, max_uses = ?,
+    requested_max_uses = ?, expired_from = ?, notification_json = ?,
+    notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
+    notification_delivery_unresolved = ?
+WHERE id = ? AND revision = ?
+`
+
+type UpdateGrantParams struct {
+	DecisionTokenVerifier          string
+	Client                         string
+	ClientRequestID                string
+	Operation                      string
+	TargetJson                     string
+	AttrsJson                      string
+	MetadataJson                   string
+	PlanDigest                     sql.NullString
+	Reason                         string
+	Status                         string
+	Revision                       int64
+	CreatedAt                      string
+	PendingExpiresAt               string
+	ExpiresAt                      sql.NullString
+	DurationNs                     int64
+	RequestedDurationNs            int64
+	PendingTimeoutNs               int64
+	DecidedAt                      sql.NullString
+	DecidedBy                      string
+	DecidedOnBehalfOf              string
+	DecisionReason                 string
+	UsedAt                         sql.NullString
+	UsedCount                      int64
+	UseRevision                    int64
+	ReservedCount                  int64
+	ReservedAt                     sql.NullString
+	ReservationRetained            int64
+	ReservationRevision            int64
+	MaxUses                        int64
+	RequestedMaxUses               int64
+	ExpiredFrom                    sql.NullString
+	NotificationJson               sql.NullString
+	NotificationStatus             string
+	NotificationClaimedAt          sql.NullString
+	NotificationClaimUntil         sql.NullString
+	NotificationDeliveryUnresolved int64
+	ID                             string
+	Revision_2                     int64
+}
+
+// UpdateGrant
+//
+//	UPDATE grants SET
+//	    decision_token_verifier = ?, client = ?, client_request_id = ?, operation = ?,
+//	    target_json = ?, attrs_json = ?, metadata_json = ?, plan_digest = ?, reason = ?,
+//	    status = ?, revision = ?, created_at = ?, pending_expires_at = ?, expires_at = ?,
+//	    duration_ns = ?, requested_duration_ns = ?, pending_timeout_ns = ?, decided_at = ?,
+//	    decided_by = ?, decided_on_behalf_of = ?, decision_reason = ?, used_at = ?,
+//	    used_count = ?, use_revision = ?, reserved_count = ?, reserved_at = ?,
+//	    reservation_retained = ?, reservation_revision = ?, max_uses = ?,
+//	    requested_max_uses = ?, expired_from = ?, notification_json = ?,
+//	    notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
+//	    notification_delivery_unresolved = ?
+//	WHERE id = ? AND revision = ?
+func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateGrant,
+		arg.DecisionTokenVerifier,
+		arg.Client,
+		arg.ClientRequestID,
+		arg.Operation,
+		arg.TargetJson,
+		arg.AttrsJson,
+		arg.MetadataJson,
+		arg.PlanDigest,
+		arg.Reason,
+		arg.Status,
+		arg.Revision,
+		arg.CreatedAt,
+		arg.PendingExpiresAt,
+		arg.ExpiresAt,
+		arg.DurationNs,
+		arg.RequestedDurationNs,
+		arg.PendingTimeoutNs,
+		arg.DecidedAt,
+		arg.DecidedBy,
+		arg.DecidedOnBehalfOf,
+		arg.DecisionReason,
+		arg.UsedAt,
+		arg.UsedCount,
+		arg.UseRevision,
+		arg.ReservedCount,
+		arg.ReservedAt,
+		arg.ReservationRetained,
+		arg.ReservationRevision,
+		arg.MaxUses,
+		arg.RequestedMaxUses,
+		arg.ExpiredFrom,
+		arg.NotificationJson,
+		arg.NotificationStatus,
+		arg.NotificationClaimedAt,
+		arg.NotificationClaimUntil,
+		arg.NotificationDeliveryUnresolved,
+		arg.ID,
+		arg.Revision_2,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateOperation = `-- name: UpdateOperation :execrows

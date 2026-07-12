@@ -3,6 +3,7 @@ package grants
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/internal/copyx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/store"
 )
 
@@ -138,15 +140,27 @@ type fileData struct {
 
 // Store owns one durable grant file.
 type Store struct {
-	path        string
-	opts        Options
-	mu          sync.Mutex
-	eventMu     sync.Mutex
-	eventSignal chan struct{}
+	path           string
+	database       *state.Database
+	loadedSnapshot *state.GrantSnapshot
+	opts           Options
+	mu             sync.Mutex
+	eventMu        sync.Mutex
+	eventSignal    chan struct{}
 }
 
 // New returns a Store.
 func New(path string, opts Options) *Store {
+	return newStore(path, nil, opts)
+}
+
+// NewDatabase returns a Store backed by BrokerKit's transactional SQLite
+// state. The database owner remains responsible for closing it.
+func NewDatabase(database *state.Database, opts Options) *Store {
+	return newStore("", database, opts)
+}
+
+func newStore(path string, database *state.Database, opts Options) *Store {
 	if opts.PendingTimeout <= 0 {
 		opts.PendingTimeout = defaultPendingTimeout
 	}
@@ -168,7 +182,7 @@ func New(path string, opts Options) *Store {
 	if opts.NewID == nil {
 		opts.NewID = randomID
 	}
-	return &Store{path: path, opts: opts, eventSignal: make(chan struct{})}
+	return &Store{path: path, database: database, opts: opts, eventSignal: make(chan struct{})}
 }
 
 // Request creates or returns an idempotent pending grant.
@@ -570,6 +584,24 @@ func (s *Store) update(mutator func(*fileData) error) error {
 }
 
 func (s *Store) load() (fileData, error) {
+	if s.database != nil {
+		snapshot, err := s.database.GrantSnapshot(context.Background())
+		if err != nil {
+			return fileData{}, err
+		}
+		s.loadedSnapshot = &snapshot
+		data, err := fileDataFromSQLite(snapshot)
+		if err != nil {
+			return fileData{}, err
+		}
+		if err := validateLoadedGrants(data.Grants); err != nil {
+			return fileData{}, err
+		}
+		if err := normalizeLoadedEvents(&data); err != nil {
+			return fileData{}, err
+		}
+		return data, nil
+	}
 	data, err := s.readState()
 	if err != nil {
 		return fileData{}, err
@@ -584,6 +616,18 @@ func (s *Store) load() (fileData, error) {
 }
 
 func (s *Store) save(data fileData) error {
+	if s.database != nil {
+		if s.loadedSnapshot == nil {
+			return errors.New("grant SQLite snapshot is unavailable")
+		}
+		before := *s.loadedSnapshot
+		after, err := fileDataToSQLite(data)
+		if err != nil {
+			return err
+		}
+		s.loadedSnapshot = nil
+		return s.database.SaveGrantSnapshot(context.Background(), before, after)
+	}
 	data.Version = grantFileVersion
 	return store.WriteJSONAtomic(s.path, data, 0o600)
 }

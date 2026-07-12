@@ -664,8 +664,7 @@ Everything the broker persists lives under `HF_BROKER_STATE_DIR`:
 ```text
 state/
   mirrors/{type}/{owner}/{repo}.git/    commits-only bare mirror per repo
-  grants/grants.json                    active + pending grants
-  state.db                              immutable plans + durable operation records
+  state.db                              grants + plans + lifecycle + operations
 ```
 
 The operation ledger is bounded to 2,048 records. Terminal records older than
@@ -676,8 +675,8 @@ available.
 - Mirrors are created lazily on first push to a repo and refreshed per
   push. They contain no file contents, only commit graph. Safe to delete;
   they rebuild.
-- The grant store is written atomically (temp file + rename), mode `600`.
-  Expired grants are pruned on read and on a periodic sweep. Stale
+- Grant lifecycle mutations and their event and decision records commit in one
+  SQLite transaction. Expired grants are pruned on read and on a periodic sweep. Stale
   in-flight use reservations are retained during the sweep so the
   operator can review crash-orphaned budget.
 - SQLite state is migrated at startup, uses WAL mode, and is protected by a
