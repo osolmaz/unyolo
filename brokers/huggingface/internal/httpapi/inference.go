@@ -193,7 +193,7 @@ func validOptionalStream(raw json.RawMessage) bool {
 
 func validInferenceMessages(raw json.RawMessage) bool {
 	var messages []json.RawMessage
-	if len(raw) == 0 || json.Unmarshal(raw, &messages) != nil || len(messages) == 0 || len(messages) > 128 {
+	if len(raw) == 0 || json.Unmarshal(raw, &messages) != nil || len(messages) == 0 {
 		return false
 	}
 	for _, rawMessage := range messages {

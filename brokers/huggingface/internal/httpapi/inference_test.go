@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -276,6 +277,20 @@ func TestInferenceModelValidation(t *testing.T) {
 		if got := validInferenceModel(model); got != want {
 			t.Errorf("validInferenceModel(%q) = %v, want %v", model, got, want)
 		}
+	}
+}
+
+func TestInferenceMessagesAreBoundedByRequestBytesNotCount(t *testing.T) {
+	messages := make([]map[string]string, 256)
+	for index := range messages {
+		messages[index] = map[string]string{"role": "user", "content": "hello"}
+	}
+	raw, err := json.Marshal(messages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validInferenceMessages(raw) {
+		t.Fatal("validInferenceMessages() rejected a valid tool-heavy conversation")
 	}
 }
 
