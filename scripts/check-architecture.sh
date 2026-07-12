@@ -27,6 +27,13 @@ if grep -R -n --include='*.ts' --include='*.tsx' -E "from [\"']openclaw/(src|dis
   exit 1
 fi
 
+if [ -d brokers/huggingface/internal/hfoperation ] ||
+  grep -R -n --include='*.go' 'brokers/huggingface/internal/hfoperation' . 2>/dev/null
+then
+  echo 'HF-local operation lifecycle survived the agentops cutover' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.ts' --include='*.tsx' -E 'mlclaw\.|(telegram|discord|slack)' \
   plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
   --exclude='*.test.ts' 2>/dev/null; then

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorv1"
@@ -100,7 +100,7 @@ func TestAgentRepoCreateRetryReconcilesUnboundOperation(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &request); err != nil {
 		t.Fatal(err)
 	}
-	stored, created, err := handler.operations.Submit(hfoperation.Submit{
+	stored, created, err := handler.operations.Submit(agentops.Submit{
 		Broker: "hf-broker", ClientID: "agent", IdempotencyKey: request.IdempotencyKey, Operation: request.Operation,
 		Target: request.Target, Arguments: request.Arguments, Reason: request.Reason,
 		Presentation: agentv1.Presentation{Title: "Create Hugging Face repository", Summary: "Create private dataset alice/data"},

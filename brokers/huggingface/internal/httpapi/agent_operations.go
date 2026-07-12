@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
 	bkauth "github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
@@ -109,11 +109,11 @@ func (s *Server) handleAgentOperationSubmit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	presentation := agentv1.Presentation{Title: "Create Hugging Face repository", Summary: repoCreateSummary(target, arguments)}
-	operation, created, err := s.operations.Submit(hfoperation.Submit{
+	operation, created, err := s.operations.Submit(agentops.Submit{
 		Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey, Operation: request.Operation,
 		Target: request.Target, Arguments: request.Arguments, Reason: request.Reason, Presentation: presentation,
 	})
-	if errors.Is(err, hfoperation.ErrIdempotencyConflict) {
+	if errors.Is(err, agentops.ErrIdempotencyConflict) {
 		writeAgentError(w, http.StatusConflict, "idempotency_conflict", "Idempotency key was reused with a different operation")
 		return
 	}
@@ -288,7 +288,7 @@ func (s *Server) handleAgentOperationGet(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	operation, err := s.operations.Get(client, id)
-	if errors.Is(err, hfoperation.ErrNotFound) {
+	if errors.Is(err, agentops.ErrNotFound) {
 		writeAgentError(w, http.StatusNotFound, "not_found", "Operation not found")
 		return
 	}

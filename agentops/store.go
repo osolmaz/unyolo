@@ -1,5 +1,5 @@
-// Package hfoperation stores durable hf-broker Agent Operations V1 records.
-package hfoperation
+// Package agentops owns the provider-neutral Agent Operations V1 lifecycle.
+package agentops
 
 import (
 	"bytes"
@@ -310,7 +310,6 @@ func (s *Store) read() (fileData, error) {
 }
 
 func (s *Store) write(data fileData) error {
-	data.Version = fileVersion
 	return store.WriteJSONAtomic(s.path, data, 0o600)
 }
 

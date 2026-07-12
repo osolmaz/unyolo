@@ -66,6 +66,17 @@ global built-ins. Brokers register their own vocabulary.
 
 The registry mechanism is shared. The registered vocabulary is broker-local.
 
+### Agent Operations
+
+- provider-neutral operation identity, lifecycle states, transitions, revision,
+  idempotency, retention, waiting, and restart recovery
+- durable operation repository contracts
+- shared HTTP, client, and conformance mechanics
+
+Providers register operation names and own target and argument validation,
+approval presentation, immutable plans, credentials, execution, and safe result
+formatting. Shared `agentops` code must not import a provider.
+
 ### Grants
 
 - pending, approved, denied, expired, consumed, canceled, and revoked states

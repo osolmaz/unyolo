@@ -22,13 +22,13 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/agentops"
 	bkauth "github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/jsend"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
@@ -94,7 +94,7 @@ type Server struct {
 	maxBody             int64
 	grants              *grants.Store
 	plans               *hfplan.Store
-	operations          *hfoperation.Store
+	operations          *agentops.Store
 	planValidator       hfplan.Validator
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
@@ -281,7 +281,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		maxBody:            opts.Config.MaxPackBytes,
 		grants:             store,
 		plans:              plans,
-		operations:         hfoperation.New(filepath.Join(opts.Config.StateDir, "operations", "operations.json")),
+		operations:         agentops.New(filepath.Join(opts.Config.StateDir, "operations", "operations.json")),
 		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
