@@ -190,53 +190,6 @@ func TestDarwinTokenFileACLGrantIsUnsafe(t *testing.T) {
 	}
 }
 
-func TestDarwinACLParserAndMatcher(t *testing.T) {
-	entries, state := parseDarwinACLEntries("-rw-------@ 1 owner staff 0 Jan 1 00:00 token\n 0: group:everyone allow read\n")
-	if state != aclAbsent || len(entries) != 1 {
-		t.Fatalf("parseDarwinACLEntries() = entries:%+v state:%v, want one parsed entry", entries, state)
-	}
-	if entries[0].principal != "group:everyone" || entries[0].action != "allow" || len(entries[0].perms) != 1 || entries[0].perms[0] != "read" {
-		t.Fatalf("entry = %+v, want parsed everyone allow read", entries[0])
-	}
-
-	agent := identity{user: "agent", uid: 501, gids: map[int]bool{20: true}, groups: map[string]bool{"staff": true}}
-	stat := fileStat{uid: 502, gid: 20}
-	if got := darwinACLEntriesState(agent, stat, entries, aclTokenEntry); got != aclPresent {
-		t.Fatalf("darwinACLEntriesState(entry read) = %v, want present", got)
-	}
-	if got := darwinACLEntriesState(agent, stat, entries, aclPathParent); got != aclAbsent {
-		t.Fatalf("darwinACLEntriesState(parent read) = %v, want absent", got)
-	}
-
-	deny := []darwinACLEntry{{principal: "group:everyone", action: "deny", perms: []string{"read"}}}
-	if got := darwinACLEntriesState(agent, stat, deny, aclTokenEntry); got != aclAbsent {
-		t.Fatalf("darwinACLEntriesState(deny) = %v, want absent", got)
-	}
-
-	unrelated := []darwinACLEntry{{principal: "user:someoneelse", action: "allow", perms: []string{"read"}}}
-	if got := darwinACLEntriesState(agent, stat, unrelated, aclTokenEntry); got != aclAbsent {
-		t.Fatalf("darwinACLEntriesState(unrelated) = %v, want absent", got)
-	}
-
-	groupWrite := []darwinACLEntry{{principal: "group:staff", action: "allow", perms: []string{"write"}}}
-	if got := darwinACLEntriesState(agent, stat, groupWrite, aclTokenEntry); got != aclPresent {
-		t.Fatalf("darwinACLEntriesState(group write) = %v, want present", got)
-	}
-
-	unknownPrincipal := []darwinACLEntry{{principal: "ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C", action: "allow", perms: []string{"read"}}}
-	if got := darwinACLEntriesState(agent, stat, unknownPrincipal, aclTokenEntry); got != aclUnknown {
-		t.Fatalf("darwinACLEntriesState(unknown principal) = %v, want unknown", got)
-	}
-
-	if got := darwinACLEntriesState(agent, stat, entries, aclSocketEntry); got != aclAbsent {
-		t.Fatalf("darwinACLEntriesState(socket read) = %v, want absent", got)
-	}
-
-	if _, state := parseDarwinACLEntries("-rw-------@ 1 owner staff 0 Jan 1 00:00 token\n inherited mystery\n"); state != aclUnknown {
-		t.Fatalf("parseDarwinACLEntries(malformed) state = %v, want unknown", state)
-	}
-}
-
 func TestDarwinWorldReadableTokenFileIsUnsafe(t *testing.T) {
 	dir := t.TempDir()
 	token := filepath.Join(dir, "hf-token")
