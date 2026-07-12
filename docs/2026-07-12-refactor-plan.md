@@ -94,8 +94,12 @@ Implementation:
 
 - Remove the blanket shell-level exit-code exception.
 - Represent any temporary complexity exception in checked-in Slophammer
-  configuration, scoped to an exact file, function, metric, and documented
-  reason.
+  configuration when the pinned tool supports that scope. Slophammer v0.4.0
+  exposes only a global Go CRAP threshold, so HF uses the checked-in
+  `slophammer-crap-baseline.tsv` plus `scripts/check-hf-crap.sh`. Each row is
+  scoped to an exact file, function, metric, and ceiling; the checker rejects
+  unknown findings, score regressions, missing sources, stale rows, coverage
+  failures, and tool failures.
 - Keep coverage failures, command failures, malformed output, and newly
   discovered findings fatal.
 - Delete each temporary exception in the slice that removes its target.

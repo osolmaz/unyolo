@@ -45,10 +45,8 @@ jobs:
       - name: Slophammer complexity gates
         run: |
           slophammer-go crap .
-          # Agent operations are state-machine orchestration covered by race,
-          # restart, protocol, and integration tests. Keep reporting its CRAP
-          # findings without hiding tool failures from CI.
-          (cd brokers/huggingface && slophammer-go crap .) || test $? -eq 1
+          ./scripts/test-check-hf-crap.sh
+          ./scripts/check-hf-crap.sh
           (cd brokers/github && slophammer-go crap .)
       - name: mutate4go gate (opt-in)
         if: ${{ vars.RUN_MUTATION == 'true' }}

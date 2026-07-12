@@ -1,0 +1,27 @@
+# Temporary exact exceptions. Columns: source path, function, metric, maximum score.
+# Delete each row when its function is simplified or removed by the cutover.
+internal/hfplan/plan.go	Store.Put	crap	20.0
+internal/httpapi/agent_operations.go	Server.syncOperationApproval	crap	18.4
+internal/httpapi/agent_operations.go	Server.advanceOperation	crap	16.0
+internal/httpapi/server.go	Server.sweepPendingGrantApprovals	crap	14.4
+cmd/hf-broker/main.go	runCommand	crap	13.6
+internal/httpapi/agent_operations.go	Server.existingRepoCreateNotification	crap	12.0
+cmd/hf-broker/agent_client.go	runClientOperation	crap	11.1
+cmd/hf-broker/mcp.go	callMCPOperation	crap	11.0
+cmd/hf-broker/mcp.go	callMCPRepoCreate	crap	10.5
+internal/httpapi/agent_operations.go	Server.serveAgentAPI	crap	10.3
+cmd/hf-broker/agent_client.go	validateRepoCreateClientOptions	crap	10.0
+cmd/hf-broker/agent_client.go	runClientRepoCreate	crap	9.6
+internal/httpapi/agent_operations.go	decodeRepoCreateArguments	crap	9.6
+internal/httpapi/agent_operations.go	Server.createUpstreamRepo	crap	9.6
+internal/httpapi/agent_operations.go	Server.bindRepoCreateApproval	crap	9.5
+cmd/hf-broker/mcp.go	handleMCPRequest	crap	9.2
+cmd/hf-broker/agent_client.go	runAgentClient	crap	9.2
+internal/httpapi/agent_operations.go	Server.handleAgentOperationSubmit	crap	9.1
+cmd/hf-broker/agent_client.go	parseAgentBaseURL	crap	9.0
+cmd/hf-broker/mcp.go	mcpRepoCreateRequest	crap	9.0
+internal/httpapi/agent_operations.go	Server.authorizeRepoCreate	crap	8.7
+cmd/hf-broker/mcp.go	runMCP	crap	8.5
+internal/httpapi/inference.go	Server.serveChatCompletion	crap	8.3
+cmd/hf-broker/agent_client.go	repoCreateSubmitRequest	crap	8.2
+internal/httpapi/agent_operations.go	Server.upstreamIdentity	crap	8.1
