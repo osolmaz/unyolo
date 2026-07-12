@@ -23,10 +23,11 @@ type DecideFunc func(policy.Request, policy.DecisionOptions) policy.Decision
 
 // Coordinator owns the provider-neutral authorize-or-request transition.
 type Coordinator struct {
-	registry policy.Registry
-	decide   DecideFunc
-	grants   *grants.Store
-	now      func() time.Time
+	registry     policy.Registry
+	decide       DecideFunc
+	grants       *grants.Store
+	activeGrants func() ([]policy.Grant, error)
+	now          func() time.Time
 }
 
 // Options configures a Coordinator.
@@ -34,14 +35,19 @@ type Options struct {
 	Registry policy.Registry
 	Decide   DecideFunc
 	Grants   *grants.Store
-	Now      func() time.Time
+	// ActiveGrants projects durable provider grants into policy grants. It
+	// defaults to Grants.ActivePolicyGrants when provider-native storage already
+	// uses the policy target schema.
+	ActiveGrants func() ([]policy.Grant, error)
+	Now          func() time.Time
 }
 
 // GrantIntent is a provider-built canonical approval request and immutable plan.
 type GrantIntent struct {
-	Mode    policy.GrantMode
-	Request grants.Request
-	Plan    grants.ImmutablePlan
+	Mode          policy.GrantMode
+	Authorization policy.Request
+	Request       grants.Request
+	Plan          grants.ImmutablePlan
 }
 
 // Result is one authorization decision and optional durable approval request.
@@ -62,7 +68,13 @@ func New(options Options) (*Coordinator, error) {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	return &Coordinator{registry: options.Registry, decide: options.Decide, grants: options.Grants, now: options.Now}, nil
+	if options.ActiveGrants == nil {
+		options.ActiveGrants = options.Grants.ActivePolicyGrants
+	}
+	return &Coordinator{
+		registry: options.Registry, decide: options.Decide, grants: options.Grants,
+		activeGrants: options.ActiveGrants, now: options.Now,
+	}, nil
 }
 
 // Authorize allows, refuses, or durably creates an approval request.
@@ -70,7 +82,7 @@ func (c *Coordinator) Authorize(request policy.Request, intent *GrantIntent) (Re
 	if err := c.registry.ValidateRequest(request); err != nil {
 		return Result{Decision: policy.Decision{Effect: policy.EffectNoMatch, Reason: err.Error()}}, fmt.Errorf("%w: %v", ErrNoMatch, err)
 	}
-	active, err := c.grants.ActivePolicyGrants()
+	active, err := c.activeGrants()
 	if err != nil {
 		return Result{}, fmt.Errorf("load active grants: %w", err)
 	}
@@ -101,7 +113,7 @@ func refusedResult(decision policy.Decision) (Result, error) {
 }
 
 func (c *Coordinator) validateIntent(request policy.Request, decision policy.Decision, intent *GrantIntent) error {
-	if intent == nil || !grantRequestMatches(request, intent.Request) {
+	if intent == nil || !reflect.DeepEqual(request, intent.Authorization) {
 		return ErrInvalidGrantIntent
 	}
 	spec, ok := c.registry.Operation(request.Operation)
@@ -112,11 +124,6 @@ func (c *Coordinator) validateIntent(request policy.Request, decision policy.Dec
 		return fmt.Errorf("%w: %v", ErrInvalidGrantIntent, err)
 	}
 	return nil
-}
-
-func grantRequestMatches(request policy.Request, grant grants.Request) bool {
-	return request.Client == grant.Client && request.Operation == grant.Operation &&
-		reflect.DeepEqual(request.Target, grant.Target) && reflect.DeepEqual(request.Attrs, grant.Attrs)
 }
 
 func validateGrantBounds(intent *GrantIntent, bounds *policy.GrantPolicy) error {

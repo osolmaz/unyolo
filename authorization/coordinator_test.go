@@ -138,7 +138,7 @@ func testRegistry() policy.Registry {
 func testIntent(now time.Time, request policy.Request) GrantIntent {
 	canonical := []byte(`{"operation":"repo.write"}`)
 	digest := plandigest.Digest(canonical)
-	return GrantIntent{Mode: policy.GrantModeWindow, Request: grants.Request{
+	return GrantIntent{Mode: policy.GrantModeWindow, Authorization: request, Request: grants.Request{
 		Client: request.Client, ClientRequestID: "request-1", Operation: request.Operation,
 		Target: request.Target, Attrs: request.Attrs, Metadata: map[string]string{"test_plan_digest": digest},
 		Reason: "test", Duration: 5 * time.Minute, PendingTimeout: 5 * time.Minute, MaxUses: 1,
