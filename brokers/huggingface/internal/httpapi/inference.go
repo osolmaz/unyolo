@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	maxInferenceRequestBytes  = 4 * 1024 * 1024
+	maxInferenceRequestBytes  = 100 * 1024 * 1024
 	maxInferenceResponseBytes = 64 * 1024 * 1024
 )
 
@@ -134,7 +134,11 @@ func jsonContentType(value string) bool {
 }
 
 func readInferenceRequest(w http.ResponseWriter, r *http.Request) ([]byte, int, string) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxInferenceRequestBytes))
+	return readInferenceRequestWithLimit(w, r, maxInferenceRequestBytes)
+}
+
+func readInferenceRequestWithLimit(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, int, string) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err == nil {
 		return body, 0, ""
 	}
@@ -193,7 +197,7 @@ func validOptionalStream(raw json.RawMessage) bool {
 
 func validInferenceMessages(raw json.RawMessage) bool {
 	var messages []json.RawMessage
-	if len(raw) == 0 || json.Unmarshal(raw, &messages) != nil || len(messages) == 0 || len(messages) > 128 {
+	if len(raw) == 0 || json.Unmarshal(raw, &messages) != nil || len(messages) == 0 {
 		return false
 	}
 	for _, rawMessage := range messages {

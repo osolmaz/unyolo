@@ -77,6 +77,7 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("fetch", fetchMock);
     const api = new BrokerKitUiApi(parseUiBootstrap(direct));
     await api.snapshot();
+    expect(api.canDecide()).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       "/plugins/brokerkit/api/v1/snapshot",
       expect.objectContaining({
@@ -96,9 +97,10 @@ describe("BrokerKitUiApi", () => {
         new Response(
           JSON.stringify({
             api_version: "brokerkit.io/delegated-web/v1",
-            actor: "osolmaz",
-            decision_token: "d".repeat(48),
+            token: "d".repeat(48),
             expires_at: expires,
+            access: "decide",
+            renewal_transport: "direct",
           }),
           { status: 200 },
         ),
@@ -114,6 +116,7 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("fetch", fetchMock);
     const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
     await api.snapshot();
+    expect(api.canDecide()).toBe(true);
     expect(fetchMock.mock.calls[0]).toEqual([
       "/trusted-host/api/brokerkit/session",
       expect.objectContaining({ credentials: "include" }),
@@ -132,9 +135,10 @@ describe("BrokerKitUiApi", () => {
   it("consumes a one-shot delegated session embedded by a trusted host", async () => {
     const session = {
       api_version: "brokerkit.io/delegated-web/v1",
-      actor: "osolmaz",
-      decision_token: "e".repeat(48),
+      token: "e".repeat(48),
       expires_at: new Date(Date.now() + 60_000).toISOString(),
+      access: "decide",
+      renewal_transport: "direct",
     };
     const meta = {
       getAttribute: vi.fn(() => encoded(session)),
@@ -158,9 +162,11 @@ describe("BrokerKitUiApi", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await new BrokerKitUiApi(parseUiBootstrap(delegated)).snapshot();
+    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    await api.snapshot();
 
     expect(meta.remove).toHaveBeenCalledOnce();
+    expect(api.canDecide()).toBe(true);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledWith(
       "/trusted-host/api/brokerkit/snapshot",
@@ -172,20 +178,62 @@ describe("BrokerKitUiApi", () => {
     );
   });
 
-  it("rejects an embedded delegated session while framed", async () => {
+  it("consumes a trusted embedded delegated session while framed", async () => {
+    const session = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      token: "e".repeat(48),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      access: "read",
+      renewal_transport: "direct",
+    };
     const meta = {
-      getAttribute: vi.fn(() =>
-        encoded({
-          api_version: "brokerkit.io/delegated-web/v1",
-          decision_token: "e".repeat(48),
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
-        }),
-      ),
+      getAttribute: vi.fn(() => encoded(session)),
       remove: vi.fn(),
     };
     vi.stubGlobal("document", { querySelector: vi.fn(() => meta) });
     const parent = { postMessage: vi.fn() };
     vi.stubGlobal("window", { parent });
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ sources: [], requests: [], synchronizedAt: "now" }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    await api.snapshot();
+
+    expect(meta.remove).toHaveBeenCalledOnce();
+    expect(api.canDecide()).toBe(false);
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/trusted-host/api/brokerkit/snapshot",
+      expect.objectContaining({
+        credentials: "omit",
+        headers: expect.objectContaining({
+          authorization: `Bearer ${"e".repeat(48)}`,
+        }),
+      }),
+    );
+  });
+
+  it("rejects decision authority inside a delegated frame", async () => {
+    const session = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      token: "e".repeat(48),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      access: "decide",
+      renewal_transport: "direct",
+    };
+    const meta = {
+      getAttribute: vi.fn(() => encoded(session)),
+      remove: vi.fn(),
+    };
+    vi.stubGlobal("document", { querySelector: vi.fn(() => meta) });
+    vi.stubGlobal("window", { parent: {} });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -194,7 +242,6 @@ describe("BrokerKitUiApi", () => {
     ).rejects.toThrow("session is invalid");
 
     expect(meta.remove).toHaveBeenCalledOnce();
-    expect(parent.postMessage).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -203,13 +250,17 @@ describe("BrokerKitUiApi", () => {
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const first = {
       api_version: "brokerkit.io/delegated-web/v1",
-      decision_token: "f".repeat(48),
+      token: "f".repeat(48),
       expires_at: new Date(now + 31_000).toISOString(),
+      access: "decide",
+      renewal_transport: "direct",
     };
     const renewed = {
       api_version: "brokerkit.io/delegated-web/v1",
-      decision_token: "r".repeat(48),
+      token: "r".repeat(48),
       expires_at: new Date(now + 60_000).toISOString(),
+      access: "decide",
+      renewal_transport: "direct",
     };
     const meta = { getAttribute: vi.fn(() => encoded(first)), remove: vi.fn() };
     let embedded: typeof meta | null = meta;
@@ -263,13 +314,17 @@ describe("BrokerKitUiApi", () => {
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const initial = {
       api_version: "brokerkit.io/delegated-web/v1",
-      decision_token: "f".repeat(48),
+      token: "f".repeat(48),
       expires_at: new Date(now + 31_000).toISOString(),
+      access: "decide",
+      renewal_transport: "direct",
     };
     const renewed = {
       api_version: "brokerkit.io/delegated-web/v1",
-      decision_token: "r".repeat(48),
+      token: "r".repeat(48),
       expires_at: new Date(now + 60_000).toISOString(),
+      access: "decide",
+      renewal_transport: "direct",
     };
     const snapshot = { sources: [], requests: [], synchronizedAt: "now" };
     const fetchMock = vi
@@ -327,9 +382,10 @@ describe("BrokerKitUiApi", () => {
           new Response(
             JSON.stringify({
               api_version: "brokerkit.io/delegated-web/v1",
-              actor: "osolmaz",
-              decision_token: "d".repeat(48),
+              token: "d".repeat(48),
               expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+              access: "decide",
+              renewal_transport: "direct",
             }),
             { status: 200 },
           ),
@@ -353,8 +409,10 @@ describe("BrokerKitUiApi", () => {
             nonce: message.nonce,
             session: {
               api_version: "brokerkit.io/delegated-web/v1",
-              decision_token: "d".repeat(48),
+              token: "d".repeat(48),
               expires_at: new Date(Date.now() + 60_000).toISOString(),
+              access: "read",
+              renewal_transport: "parent",
             },
           },
         } as unknown as MessageEvent);
@@ -407,10 +465,12 @@ describe("BrokerKitUiApi", () => {
             nonce: message.nonce,
             session: {
               api_version: "brokerkit.io/delegated-web/v1",
-              decision_token: (sessions === 1 ? "f" : "r").repeat(48),
+              token: (sessions === 1 ? "f" : "r").repeat(48),
               expires_at: new Date(
                 now + (sessions === 1 ? 31_000 : 60_000),
               ).toISOString(),
+              access: "read",
+              renewal_transport: "parent",
             },
           },
         } as unknown as MessageEvent);
