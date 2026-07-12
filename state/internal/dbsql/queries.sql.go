@@ -406,6 +406,52 @@ func (q *Queries) InsertGrantLifecycleEvent(ctx context.Context, arg InsertGrant
 	return err
 }
 
+const insertNotificationOutbox = `-- name: InsertNotificationOutbox :exec
+INSERT INTO notification_outbox (
+    grant_id, kind, payload_json, idempotency_key, status, attempts,
+    available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertNotificationOutboxParams struct {
+	GrantID        string
+	Kind           string
+	PayloadJson    string
+	IdempotencyKey string
+	Status         string
+	Attempts       int64
+	AvailableAt    string
+	ClaimedUntil   sql.NullString
+	DeliveredAt    sql.NullString
+	LastErrorCode  string
+	CreatedAt      string
+	UpdatedAt      string
+}
+
+// InsertNotificationOutbox
+//
+//	INSERT INTO notification_outbox (
+//	    grant_id, kind, payload_json, idempotency_key, status, attempts,
+//	    available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at
+//	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+func (q *Queries) InsertNotificationOutbox(ctx context.Context, arg InsertNotificationOutboxParams) error {
+	_, err := q.db.ExecContext(ctx, insertNotificationOutbox,
+		arg.GrantID,
+		arg.Kind,
+		arg.PayloadJson,
+		arg.IdempotencyKey,
+		arg.Status,
+		arg.Attempts,
+		arg.AvailableAt,
+		arg.ClaimedUntil,
+		arg.DeliveredAt,
+		arg.LastErrorCode,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const insertOperation = `-- name: InsertOperation :exec
 INSERT INTO operations (
     id, api_version, broker, client_id, idempotency_key, operation,
@@ -619,6 +665,50 @@ func (q *Queries) ListGrants(ctx context.Context) ([]Grant, error) {
 	return items, nil
 }
 
+const listNotificationOutbox = `-- name: ListNotificationOutbox :many
+SELECT id, grant_id, kind, payload_json, idempotency_key, status, attempts, available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at FROM notification_outbox ORDER BY id
+`
+
+// ListNotificationOutbox
+//
+//	SELECT id, grant_id, kind, payload_json, idempotency_key, status, attempts, available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at FROM notification_outbox ORDER BY id
+func (q *Queries) ListNotificationOutbox(ctx context.Context) ([]NotificationOutbox, error) {
+	rows, err := q.db.QueryContext(ctx, listNotificationOutbox)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotificationOutbox{}
+	for rows.Next() {
+		var i NotificationOutbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.GrantID,
+			&i.Kind,
+			&i.PayloadJson,
+			&i.IdempotencyKey,
+			&i.Status,
+			&i.Attempts,
+			&i.AvailableAt,
+			&i.ClaimedUntil,
+			&i.DeliveredAt,
+			&i.LastErrorCode,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnfinishedOperations = `-- name: ListUnfinishedOperations :many
 SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations
 WHERE state NOT IN ('succeeded','failed','denied','expired','canceled')
@@ -811,6 +901,59 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (int64
 		arg.NotificationDeliveryUnresolved,
 		arg.ID,
 		arg.Revision_2,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateNotificationOutbox = `-- name: UpdateNotificationOutbox :execrows
+UPDATE notification_outbox SET
+    kind = ?, payload_json = ?, idempotency_key = ?, status = ?, attempts = ?,
+    available_at = ?, claimed_until = ?, delivered_at = ?, last_error_code = ?, updated_at = ?
+WHERE id = ? AND grant_id = ? AND status = ? AND attempts = ?
+`
+
+type UpdateNotificationOutboxParams struct {
+	Kind           string
+	PayloadJson    string
+	IdempotencyKey string
+	Status         string
+	Attempts       int64
+	AvailableAt    string
+	ClaimedUntil   sql.NullString
+	DeliveredAt    sql.NullString
+	LastErrorCode  string
+	UpdatedAt      string
+	ID             int64
+	GrantID        string
+	Status_2       string
+	Attempts_2     int64
+}
+
+// UpdateNotificationOutbox
+//
+//	UPDATE notification_outbox SET
+//	    kind = ?, payload_json = ?, idempotency_key = ?, status = ?, attempts = ?,
+//	    available_at = ?, claimed_until = ?, delivered_at = ?, last_error_code = ?, updated_at = ?
+//	WHERE id = ? AND grant_id = ? AND status = ? AND attempts = ?
+func (q *Queries) UpdateNotificationOutbox(ctx context.Context, arg UpdateNotificationOutboxParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateNotificationOutbox,
+		arg.Kind,
+		arg.PayloadJson,
+		arg.IdempotencyKey,
+		arg.Status,
+		arg.Attempts,
+		arg.AvailableAt,
+		arg.ClaimedUntil,
+		arg.DeliveredAt,
+		arg.LastErrorCode,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.GrantID,
+		arg.Status_2,
+		arg.Attempts_2,
 	)
 	if err != nil {
 		return 0, err

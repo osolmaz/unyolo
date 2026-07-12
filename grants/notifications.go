@@ -1,6 +1,7 @@
 package grants
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -40,6 +41,67 @@ type StatusUpdate struct {
 type NotificationClaim struct {
 	Grant         Grant  `json:"grant"`
 	DecisionToken string `json:"-"`
+}
+
+// ApprovalNotificationsDue returns pending approval deliveries in durable
+// outbox order. SQLite-backed stores recover these entries after restart.
+func (s *Store) ApprovalNotificationsDue() ([]Grant, error) {
+	if s == nil {
+		return nil, errors.New("grant store is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
+	changed := s.prepareLifecycle(&data)
+	changed = s.reconcileLifecycle(&data, before) || changed
+	if changed {
+		if err := s.save(data); err != nil {
+			return nil, err
+		}
+		s.signalNewEvents(eventSequence, data.NextEvent)
+	}
+	if s.database == nil {
+		return pendingApprovalGrants(data.Grants, s.opts.Now().UTC()), nil
+	}
+	snapshot, err := s.database.GrantSnapshot(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	loaded, err := fileDataFromSQLite(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]Grant, len(loaded.Grants))
+	for _, grant := range loaded.Grants {
+		byID[grant.ID] = grant
+	}
+	now := s.opts.Now().UTC()
+	out := make([]Grant, 0)
+	for _, record := range snapshot.Outbox {
+		if record.Kind != "approval" || (record.Status != "pending" && record.Status != "ambiguous") || now.Before(record.AvailableAt) {
+			continue
+		}
+		if grant, ok := byID[record.GrantID]; ok && grant.Status == StatusPending && grant.Notification == nil {
+			out = append(out, grant)
+		}
+	}
+	return out, nil
+}
+
+func pendingApprovalGrants(grants []Grant, now time.Time) []Grant {
+	out := make([]Grant, 0)
+	for _, grant := range grants {
+		if grant.Status == StatusPending && grant.Notification == nil &&
+			(grant.NotificationClaimedAt.IsZero() || !now.Before(grant.NotificationClaimUntil)) {
+			out = append(out, grant)
+		}
+	}
+	return out
 }
 
 // NotificationStatusKey returns the durable delivery key for this update.

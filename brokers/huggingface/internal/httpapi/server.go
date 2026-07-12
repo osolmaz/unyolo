@@ -74,6 +74,7 @@ type Options struct {
 	GrantNotifier         bknotify.Notifier
 	TelegramBaseURL       string
 	OperatorAudit         operatorapi.AuditRecorder
+	Now                   func() time.Time
 }
 
 // Server is an Echo-backed http.Handler for the broker.
@@ -98,7 +99,10 @@ type Server struct {
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
 	lifecycleContext    context.Context
+	lifecycleCancel     context.CancelFunc
 	backgroundWorkers   sync.WaitGroup
+	closeOnce           sync.Once
+	closeErr            error
 	operationAuthLocks  [64]sync.Mutex
 
 	lfsMu      sync.Mutex
@@ -176,17 +180,18 @@ func prepareServer(opts Options) (*Server, context.Context, error) {
 }
 
 func startServer(ctx context.Context, server *Server, opts Options) (*Server, error) {
-	server.lifecycleContext = ctx
-	if err := server.startTelegram(ctx, opts); err != nil {
+	lifecycleContext, cancel := context.WithCancel(ctx)
+	server.lifecycleContext = lifecycleContext
+	server.lifecycleCancel = cancel
+	if err := server.startTelegram(lifecycleContext, opts); err != nil {
+		cancel()
 		_ = server.database.Close()
 		return nil, err
 	}
-	if opts.Config.TelegramBotToken != "" {
-		server.startGrantNotificationSweeper(ctx)
-	}
-	server.startOperationWorker(ctx)
+	server.startGrantNotificationSweeper(lifecycleContext)
+	server.startOperationWorker(lifecycleContext)
 	go func() {
-		<-ctx.Done()
+		<-lifecycleContext.Done()
 		_ = server.database.Close()
 	}()
 	return server, nil
@@ -196,7 +201,19 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
 
 // Close releases the broker state lease and database resources.
-func (s *Server) Close() error { return s.database.Close() }
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.closeOnce.Do(func() {
+		if s.lifecycleCancel != nil {
+			s.lifecycleCancel()
+		}
+		s.backgroundWorkers.Wait()
+		s.closeErr = s.database.Close()
+	})
+	return s.closeErr
+}
 
 func namedSecrets(identities []config.Client) map[string]string {
 	secrets := make(map[string]string, len(identities))
@@ -258,8 +275,9 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	store := grants.NewDatabase(database, grants.Options{
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
+		Now: opts.Now,
 	})
-	plans, err := hfplan.NewStore(database)
+	plans, err := hfplan.NewStoreWithClock(database, opts.Now)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
@@ -2380,6 +2398,7 @@ func (s *Server) startGrantNotificationSweeper(ctx context.Context) {
 }
 
 func (s *Server) sweepGrantNotifications(ctx context.Context) {
+	s.sweepPendingGrantApprovals(ctx)
 	updates, err := s.grants.StatusUpdatesDue()
 	if err != nil {
 		return
@@ -2388,6 +2407,32 @@ func (s *Server) sweepGrantNotifications(ctx context.Context) {
 		status := grantStatusUpdateText(item)
 		if err := s.updateGrantMessage(ctx, item.Grant, status); err == nil {
 			_ = s.grants.MarkNotificationStatus(item.Grant.ID, item.NotificationStatusKey())
+		}
+	}
+}
+
+func (s *Server) sweepPendingGrantApprovals(ctx context.Context) {
+	pending, err := s.grants.ApprovalNotificationsDue()
+	if err != nil {
+		return
+	}
+	for _, grant := range pending {
+		claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
+		if err != nil || !claimed {
+			continue
+		}
+		ref, err := s.notifier.SendApproval(ctx, grantApprovalMessage(claim.Grant, claim.DecisionToken))
+		if err != nil || ref.MessageID <= 0 {
+			_, _, _ = s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
+			continue
+		}
+		updated, recorded, err := s.grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
+		if err != nil {
+			_, _, _ = s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
+			continue
+		}
+		if !recorded && shouldSupersedeNotifier(updated.Notification, ref) {
+			s.supersedeGrantMessage(ctx, ref)
 		}
 	}
 }

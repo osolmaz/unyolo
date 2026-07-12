@@ -69,6 +69,21 @@ INSERT INTO decision_records (
     result_json, previous_json, event_cursor, committed_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- name: ListNotificationOutbox :many
+SELECT * FROM notification_outbox ORDER BY id;
+
+-- name: InsertNotificationOutbox :exec
+INSERT INTO notification_outbox (
+    grant_id, kind, payload_json, idempotency_key, status, attempts,
+    available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: UpdateNotificationOutbox :execrows
+UPDATE notification_outbox SET
+    kind = ?, payload_json = ?, idempotency_key = ?, status = ?, attempts = ?,
+    available_at = ?, claimed_until = ?, delivered_at = ?, last_error_code = ?, updated_at = ?
+WHERE id = ? AND grant_id = ? AND status = ? AND attempts = ?;
+
 -- name: InsertOperation :exec
 INSERT INTO operations (
     id, api_version, broker, client_id, idempotency_key, operation,

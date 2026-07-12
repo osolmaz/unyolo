@@ -52,6 +52,10 @@ func NewStore(database *state.Database) (*Store, error) {
 	return newStore(database, time.Now)
 }
 
+func NewStoreWithClock(database *state.Database, now func() time.Time) (*Store, error) {
+	return newStore(database, now)
+}
+
 func newStore(database *state.Database, now func() time.Time) (*Store, error) {
 	if database == nil {
 		return nil, errors.New("HF plan database is required")

@@ -65,7 +65,8 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	if err != nil || len(events.Events) != 4 {
 		t.Fatalf("EventsAfter() = %+v, %v", events, err)
 	}
-	var grantsCount, eventsCount, decisionsCount int
+	var grantsCount, eventsCount, decisionsCount, outboxCount, outboxAttempts int
+	var outboxStatus string
 	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM grants").Scan(&grantsCount); err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +76,11 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM decision_records").Scan(&decisionsCount); err != nil {
 		t.Fatal(err)
 	}
-	if grantsCount != 1 || eventsCount != 4 || decisionsCount != 1 {
-		t.Fatalf("SQLite rows = grants %d events %d decisions %d", grantsCount, eventsCount, decisionsCount)
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*), status, attempts FROM notification_outbox GROUP BY status, attempts").Scan(&outboxCount, &outboxStatus, &outboxAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if grantsCount != 1 || eventsCount != 4 || decisionsCount != 1 || outboxCount != 1 || outboxStatus != "delivered" || outboxAttempts != 1 {
+		t.Fatalf("SQLite rows = grants %d events %d decisions %d outbox %d/%s/%d", grantsCount, eventsCount, decisionsCount, outboxCount, outboxStatus, outboxAttempts)
 	}
 }
 
@@ -121,9 +125,52 @@ func TestRequestWithPlanCommitsAndRollsBackAtomically(t *testing.T) {
 	if _, err := database.Plan(t.Context(), failedDigest); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("rolled-back plan lookup error = %v", err)
 	}
-	var grantsCount int
+	var grantsCount, outboxCount int
 	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM grants").Scan(&grantsCount); err != nil || grantsCount != 1 {
 		t.Fatalf("grant rows after rollback = %d, %v", grantsCount, err)
+	}
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM notification_outbox").Scan(&outboxCount); err != nil || outboxCount != 1 {
+		t.Fatalf("outbox rows after rollback = %d, %v", outboxCount, err)
+	}
+}
+
+func TestSQLiteNotificationOutboxRecoversAmbiguousClaim(t *testing.T) {
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Date(2026, 7, 13, 4, 0, 0, 0, time.UTC)
+	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant", "token", "claim-1", "claim-2")})
+	requested, _, err := store.Request(Request{Client: "bob", ClientRequestID: "request", Operation: "repo.create",
+		Target: policy.Target{Kind: "test", Fields: map[string][]string{"name": {"repo"}}}, Reason: "test", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, claimed, err := store.ClaimNotification(requested.Grant.ID, time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("first claim = %+v, %v, %v", claim, claimed, err)
+	}
+	if _, retained, err := store.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt); err != nil || !retained {
+		t.Fatalf("retain = %v, %v", retained, err)
+	}
+	var status string
+	var attempts int
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT status, attempts FROM notification_outbox").Scan(&status, &attempts); err != nil || status != "ambiguous" || attempts != 1 {
+		t.Fatalf("ambiguous outbox = %s/%d, %v", status, attempts, err)
+	}
+	if due, err := store.ApprovalNotificationsDue(); err != nil || len(due) != 0 {
+		t.Fatalf("pre-lease ApprovalNotificationsDue() = %+v, %v", due, err)
+	}
+	now = now.Add(time.Minute + time.Second)
+	if due, err := store.ApprovalNotificationsDue(); err != nil || len(due) != 1 || due[0].ID != requested.Grant.ID {
+		t.Fatalf("post-lease ApprovalNotificationsDue() = %+v, %v", due, err)
+	}
+	if _, claimed, err := store.ClaimNotification(requested.Grant.ID, time.Minute); err != nil || !claimed {
+		t.Fatalf("reclaim = %v, %v", claimed, err)
+	}
+	if err := database.SQL().QueryRowContext(t.Context(), "SELECT status, attempts FROM notification_outbox").Scan(&status, &attempts); err != nil || status != "claimed" || attempts != 2 {
+		t.Fatalf("reclaimed outbox = %s/%d, %v", status, attempts, err)
 	}
 }
 

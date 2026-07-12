@@ -55,10 +55,23 @@ type GrantDecisionRecord struct {
 	CommittedAt                                           time.Time
 }
 
+type NotificationOutboxRecord struct {
+	ID                        int64
+	GrantID, Kind             string
+	PayloadJSON               []byte
+	IdempotencyKey, Status    string
+	Attempts                  int
+	AvailableAt, ClaimedUntil time.Time
+	DeliveredAt               time.Time
+	LastErrorCode             string
+	CreatedAt, UpdatedAt      time.Time
+}
+
 type GrantSnapshot struct {
 	Grants    []GrantRecord
 	Events    []GrantLifecycleRecord
 	Decisions []GrantDecisionRecord
+	Outbox    []NotificationOutboxRecord
 }
 
 func (d *Database) GrantSnapshot(ctx context.Context) (GrantSnapshot, error) {
@@ -160,6 +173,17 @@ func loadGrantSnapshot(ctx context.Context, queries *dbsql.Queries) (GrantSnapsh
 			Action: row.Action, IdempotencyKey: row.IdempotencyKey, CommandHash: row.CommandHash,
 			ResultJSON: []byte(row.ResultJson), PreviousJSON: []byte(row.PreviousJson), EventCursor: row.EventCursor, CommittedAt: committedAt})
 	}
+	outbox, err := queries.ListNotificationOutbox(ctx)
+	if err != nil {
+		return GrantSnapshot{}, err
+	}
+	for _, row := range outbox {
+		record, err := decodeNotificationOutbox(row)
+		if err != nil {
+			return GrantSnapshot{}, err
+		}
+		snapshot.Outbox = append(snapshot.Outbox, record)
+	}
 	return snapshot, nil
 }
 
@@ -194,7 +218,10 @@ func persistGrantChanges(ctx context.Context, queries *dbsql.Queries, before, af
 	if err := persistGrantEvents(ctx, queries, before.Events, after.Events); err != nil {
 		return err
 	}
-	return persistGrantDecisions(ctx, queries, before.Decisions, after.Decisions)
+	if err := persistGrantDecisions(ctx, queries, before.Decisions, after.Decisions); err != nil {
+		return err
+	}
+	return persistNotificationOutbox(ctx, queries, before.Outbox, after.Outbox)
 }
 
 func validateGrantSnapshotTransition(before, after GrantSnapshot) error {
@@ -230,6 +257,17 @@ func validateGrantSnapshotTransition(before, after GrantSnapshot) error {
 	for _, record := range before.Decisions {
 		if !afterDecisions[record.Scope] {
 			return errors.New("grant decision record deletion is unsupported")
+		}
+	}
+	afterOutbox := make(map[int64]bool, len(after.Outbox))
+	for _, record := range after.Outbox {
+		if record.ID > 0 {
+			afterOutbox[record.ID] = true
+		}
+	}
+	for _, record := range before.Outbox {
+		if !afterOutbox[record.ID] {
+			return errors.New("notification outbox deletion is unsupported")
 		}
 	}
 	return nil
@@ -274,6 +312,37 @@ func persistGrantDecisions(ctx context.Context, queries *dbsql.Queries, before, 
 			ResultJson: string(record.ResultJSON), PreviousJson: string(record.PreviousJSON), EventCursor: record.EventCursor,
 			CommittedAt: formatTime(record.CommittedAt)}); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func persistNotificationOutbox(ctx context.Context, queries *dbsql.Queries, before, after []NotificationOutboxRecord) error {
+	old := make(map[int64]NotificationOutboxRecord, len(before))
+	for _, record := range before {
+		old[record.ID] = record
+	}
+	for _, record := range after {
+		previous, exists := old[record.ID]
+		if !exists {
+			if record.ID != 0 {
+				return errors.New("notification outbox id is invalid")
+			}
+			if err := queries.InsertNotificationOutbox(ctx, insertNotificationOutboxParams(record)); err != nil {
+				return err
+			}
+			continue
+		}
+		if reflect.DeepEqual(previous, record) {
+			continue
+		}
+		params := updateNotificationOutboxParams(record, previous)
+		updated, err := queries.UpdateNotificationOutbox(ctx, params)
+		if err != nil {
+			return err
+		}
+		if updated != 1 {
+			return ErrGrantStateConflict
 		}
 	}
 	return nil
@@ -355,4 +424,44 @@ func boolInt(value bool) int64 {
 		return 1
 	}
 	return 0
+}
+
+func decodeNotificationOutbox(row dbsql.NotificationOutbox) (NotificationOutboxRecord, error) {
+	availableAt, err := parseTime(row.AvailableAt)
+	if err != nil {
+		return NotificationOutboxRecord{}, errors.New("invalid notification outbox availability")
+	}
+	claimedUntil, err := parseNullTime(row.ClaimedUntil)
+	if err != nil {
+		return NotificationOutboxRecord{}, errors.New("invalid notification outbox claim")
+	}
+	deliveredAt, err := parseNullTime(row.DeliveredAt)
+	if err != nil {
+		return NotificationOutboxRecord{}, errors.New("invalid notification outbox delivery")
+	}
+	createdAt, err := parseTime(row.CreatedAt)
+	if err != nil {
+		return NotificationOutboxRecord{}, errors.New("invalid notification outbox creation")
+	}
+	updatedAt, err := parseTime(row.UpdatedAt)
+	if err != nil {
+		return NotificationOutboxRecord{}, errors.New("invalid notification outbox update")
+	}
+	return NotificationOutboxRecord{ID: row.ID, GrantID: row.GrantID, Kind: row.Kind, PayloadJSON: []byte(row.PayloadJson),
+		IdempotencyKey: row.IdempotencyKey, Status: row.Status, Attempts: int(row.Attempts), AvailableAt: availableAt,
+		ClaimedUntil: claimedUntil, DeliveredAt: deliveredAt, LastErrorCode: row.LastErrorCode, CreatedAt: createdAt, UpdatedAt: updatedAt}, nil
+}
+
+func insertNotificationOutboxParams(record NotificationOutboxRecord) dbsql.InsertNotificationOutboxParams {
+	return dbsql.InsertNotificationOutboxParams{GrantID: record.GrantID, Kind: record.Kind, PayloadJson: string(record.PayloadJSON),
+		IdempotencyKey: record.IdempotencyKey, Status: record.Status, Attempts: int64(record.Attempts), AvailableAt: formatTime(record.AvailableAt),
+		ClaimedUntil: nullTime(record.ClaimedUntil), DeliveredAt: nullTime(record.DeliveredAt), LastErrorCode: record.LastErrorCode,
+		CreatedAt: formatTime(record.CreatedAt), UpdatedAt: formatTime(record.UpdatedAt)}
+}
+
+func updateNotificationOutboxParams(record, previous NotificationOutboxRecord) dbsql.UpdateNotificationOutboxParams {
+	return dbsql.UpdateNotificationOutboxParams{Kind: record.Kind, PayloadJson: string(record.PayloadJSON), IdempotencyKey: record.IdempotencyKey,
+		Status: record.Status, Attempts: int64(record.Attempts), AvailableAt: formatTime(record.AvailableAt), ClaimedUntil: nullTime(record.ClaimedUntil),
+		DeliveredAt: nullTime(record.DeliveredAt), LastErrorCode: record.LastErrorCode, UpdatedAt: formatTime(record.UpdatedAt),
+		ID: record.ID, GrantID: record.GrantID, Status_2: previous.Status, Attempts_2: int64(previous.Attempts)}
 }

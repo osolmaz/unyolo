@@ -1946,11 +1946,11 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 			Scope:           scp,
 			UpstreamBaseURL: "http://127.0.0.1:1",
 			GrantNotifier:   notifier,
+			Now:             nowFunc,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		handler.grants = grants.NewDatabase(handler.database, grants.Options{Now: nowFunc})
 		return handler
 	}
 	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "restart-unresolved", 0, 0)
@@ -1971,7 +1971,6 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 
 	restartedHandler := newHandler()
 	restartedBroker := httptest.NewServer(restartedHandler)
-	defer restartedBroker.Close()
 	started := time.Now()
 	resp, responseBody = doRequest(t, http.MethodPost, restartedBroker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
 	if resp.StatusCode != http.StatusBadGateway || time.Since(started) >= time.Second {
@@ -1980,20 +1979,26 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 	if notifier.calls() != 1 {
 		t.Fatalf("restart notifier calls = %d, want no duplicate", notifier.calls())
 	}
+	restartedBroker.Close()
+	if err := restartedHandler.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	advanceNow(grantNotificationClaimLease + time.Second)
-	resp, responseBody = doRequest(t, http.MethodPost, restartedBroker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("post-lease retry status=%d body=%q, want 202", resp.StatusCode, responseBody)
+	recoveredHandler := newHandler()
+	t.Cleanup(func() { _ = recoveredHandler.Close() })
+	deadline := time.Now().Add(2 * time.Second)
+	for notifier.calls() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
 	}
 	if notifier.calls() != 2 {
-		t.Fatalf("post-lease notifier calls = %d, want two", notifier.calls())
+		t.Fatalf("recovered notifier calls = %d, want two without a client retry", notifier.calls())
 	}
 	tokens := notifier.decisionTokens()
 	if len(tokens) != 2 || tokens[0] == "" || tokens[0] == tokens[1] {
 		t.Fatalf("notification tokens = %+v, want two distinct non-empty tokens", tokens)
 	}
-	stored, err := restartedHandler.grants.ListForClient("agent")
+	stored, err := recoveredHandler.grants.ListForClient("agent")
 	if err != nil || len(stored) != 1 || stored[0].Notification == nil || stored[0].NotificationDeliveryUnresolved {
 		t.Fatalf("stored post-lease grant = %+v err=%v", stored, err)
 	}
@@ -2795,11 +2800,11 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 		Scope:           scp,
 		UpstreamBaseURL: "http://127.0.0.1:1",
 		GrantNotifier:   notifier,
+		Now:             nowFunc,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.grants = grants.NewDatabase(handler.database, grants.Options{Now: nowFunc})
 	broker := httptest.NewServer(handler)
 	defer broker.Close()
 	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "stale-notify-failure", 0, 0)

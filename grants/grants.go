@@ -659,7 +659,7 @@ func (s *Store) saveWithPlan(data fileData, plan *state.PlanRecord) error {
 			return errors.New("grant SQLite snapshot is unavailable")
 		}
 		before := *s.loadedSnapshot
-		after, err := fileDataToSQLite(data)
+		after, err := fileDataToSQLite(data, before.Outbox, s.opts.Now().UTC())
 		if err != nil {
 			return err
 		}

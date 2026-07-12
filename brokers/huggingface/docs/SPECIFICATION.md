@@ -680,8 +680,11 @@ available.
   in-flight use reservations are retained during the sweep so the
   operator can review crash-orphaned budget.
 - A new request commits its immutable provider plan, pending grant, and
-  `request.created` lifecycle event together; any failed write rolls back all
-  three records.
+  `request.created` lifecycle event and approval-notification outbox entry
+  together; any failed write rolls back the complete request.
+- Notification claims, ambiguous sends, retry availability, attempt counts,
+  and successful delivery are durable. On restart the sweeper resumes due
+  approval deliveries without requiring the client to repeat its request.
 - SQLite state is migrated at startup, uses WAL mode, and is protected by a
   single-process ownership lease. Plans are addressed by their canonical
   content digest and operation updates use optimistic revisions.
