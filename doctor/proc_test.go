@@ -51,3 +51,13 @@ func TestProcessStatusUIDPredicates(t *testing.T) {
 		t.Fatal("mixed UID set matched")
 	}
 }
+
+func TestRootEquivalentCapabilityNames(t *testing.T) {
+	got := RootEquivalentCapabilityNames(1<<21, 1<<1)
+	if len(got) != 2 || got[0] != "CAP_DAC_OVERRIDE" || got[1] != "CAP_SYS_ADMIN" {
+		t.Fatalf("capabilities = %v", got)
+	}
+	if got := RootEquivalentCapabilityNames(0, 0); len(got) != 0 {
+		t.Fatalf("empty capabilities = %v", got)
+	}
+}

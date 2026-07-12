@@ -3,9 +3,17 @@ package doctor
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
+
+var rootEquivalentCapabilities = map[int]string{
+	0: "CAP_CHOWN", 1: "CAP_DAC_OVERRIDE", 2: "CAP_DAC_READ_SEARCH",
+	3: "CAP_FOWNER", 4: "CAP_FSETID", 6: "CAP_SETGID", 7: "CAP_SETUID",
+	16: "CAP_SYS_MODULE", 17: "CAP_SYS_RAWIO", 19: "CAP_SYS_PTRACE",
+	21: "CAP_SYS_ADMIN", 31: "CAP_SETFCAP",
+}
 
 // ProcessStatus contains the Linux process credentials and capabilities used
 // by host-isolation checks.
@@ -33,6 +41,20 @@ func (s ProcessStatus) HasUID(uid int) bool {
 		}
 	}
 	return false
+}
+
+// RootEquivalentCapabilityNames returns dangerous Linux capability names set
+// in effective or permitted.
+func RootEquivalentCapabilityNames(effective, permitted uint64) []string {
+	bits := effective | permitted
+	var names []string
+	for bit, name := range rootEquivalentCapabilities {
+		if bits&(uint64(1)<<bit) != 0 {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func allProcessIDsMatch(values []int, want int) bool {

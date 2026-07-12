@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os/user"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -15,21 +14,6 @@ import (
 )
 
 type procStatus = bkdoctor.ProcessStatus
-
-var dangerousCapabilities = map[int]string{
-	0:  "CAP_CHOWN",
-	1:  "CAP_DAC_OVERRIDE",
-	2:  "CAP_DAC_READ_SEARCH",
-	3:  "CAP_FOWNER",
-	4:  "CAP_FSETID",
-	6:  "CAP_SETGID",
-	7:  "CAP_SETUID",
-	16: "CAP_SYS_MODULE",
-	17: "CAP_SYS_RAWIO",
-	19: "CAP_SYS_PTRACE",
-	21: "CAP_SYS_ADMIN",
-	31: "CAP_SETFCAP",
-}
 
 // Run evaluates the requested isolation checks.
 func Run(ctx context.Context, opts Options) (Report, error) {
@@ -198,13 +182,7 @@ func runAgentProcChecks(report *Report, agent identity, pid int, status *procSta
 }
 
 func runCapabilityCheck(report *Report, capEff uint64) {
-	var found []string
-	for bit, name := range dangerousCapabilities {
-		if capEff&(uint64(1)<<bit) != 0 {
-			found = append(found, name)
-		}
-	}
-	sort.Strings(found)
+	found := bkdoctor.RootEquivalentCapabilityNames(capEff, 0)
 	if len(found) > 0 {
 		add(report, CheckFail, "agent_capabilities", "agent process has root-equivalent capability bits: "+strings.Join(found, ", "))
 		return
