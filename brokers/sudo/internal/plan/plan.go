@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/planstore"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
@@ -440,7 +441,7 @@ func validate(value Plan) error {
 }
 
 func validPlanCollectionLimits(value Plan) bool {
-	return planstore.ValidDigest(value.CatalogDigest) && len(value.Arguments) <= 64 && len(value.Environment) <= 128 &&
+	return plandigest.Valid(value.CatalogDigest) && len(value.Arguments) <= 64 && len(value.Environment) <= 128 &&
 		len(value.SlotValues) <= 64 && len(value.SupplementaryGIDs) <= 256
 }
 

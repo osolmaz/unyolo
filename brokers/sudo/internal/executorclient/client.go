@@ -9,7 +9,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
 )
 
 type Client struct {
@@ -50,7 +50,7 @@ func (c *Client) Execute(ctx context.Context, executionID string, value plan.Pla
 	}
 	request := executorprotocol.Request{
 		Version: executorprotocol.Version, Type: executorprotocol.TypeExecute, ExecutionID: executionID,
-		Plan: canonical, PlanDigest: planstore.Digest(canonical), GrantID: grantID, ReservationID: reservationID, ExpiresAt: expiresAt.UTC(),
+		Plan: canonical, PlanDigest: plandigest.Digest(canonical), GrantID: grantID, ReservationID: reservationID, ExpiresAt: expiresAt.UTC(),
 	}
 	return c.exchange(ctx, request)
 }

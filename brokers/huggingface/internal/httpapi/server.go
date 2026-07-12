@@ -47,8 +47,6 @@ const (
 	lfsActionTTL   = time.Hour
 )
 
-const hfPlanOrphanGrace = 24 * time.Hour
-
 const (
 	grantNotificationClaimLease = 2 * time.Minute
 	grantNotificationClaimWait  = 10 * time.Second
@@ -101,7 +99,6 @@ type Server struct {
 	notifier            bknotify.Notifier
 	operatorConfigured  bool
 	lifecycleContext    context.Context
-	planGCOnce          sync.Once
 	backgroundWorkers   sync.WaitGroup
 	operationAuthLocks  [64]sync.Mutex
 
@@ -263,7 +260,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
 	})
-	plans, err := hfplan.NewStore(filepath.Join(opts.Config.StateDir, "plans"))
+	plans, err := hfplan.NewStore(database)
 	if err != nil {
 		_ = database.Close()
 		return nil, err
@@ -306,21 +303,6 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	}
 	server.router = newRouter(server)
 	return server, nil
-}
-
-func collectHFPlanOrphans(grantStore *grants.Store, plans *hfplan.Store, now time.Time) error {
-	items, err := grantStore.List()
-	if err != nil {
-		return err
-	}
-	referenced := make(map[string]bool, len(items))
-	for _, grant := range items {
-		if grant.Metadata[hfplan.MetadataSchema] == hfplan.SchemaV1 {
-			referenced[grant.Metadata[hfplan.MetadataDigest]] = true
-		}
-	}
-	_, err = plans.CollectOrphans(referenced, now.Add(-hfPlanOrphanGrace))
-	return err
 }
 
 func newRouter(server *Server) *echo.Echo {
@@ -389,11 +371,6 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveAgentAPI(w, r)
 		return
 	}
-	s.planGCOnce.Do(func() {
-		if err := collectHFPlanOrphans(s.grants, s.plans, time.Now().UTC()); err != nil {
-			s.record("system", "plan.gc", "plans", audit.DecisionRefused, "plan_gc_failed", 0)
-		}
-	})
 	if isAPIPath(r.URL.Path) {
 		s.serveAPI(w, r)
 		return

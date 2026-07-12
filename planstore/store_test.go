@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/osolmaz/brokerkit/plandigest"
 )
 
 func TestStoreRoundTripAndCorruption(t *testing.T) {
@@ -15,7 +17,7 @@ func TestStoreRoundTripAndCorruption(t *testing.T) {
 	}
 	canonical := []byte(`{"schema":"test/v1","value":1}`)
 	digest, err := store.Put(canonical)
-	if err != nil || !ValidDigest(digest) {
+	if err != nil || !plandigest.Valid(digest) {
 		t.Fatalf("Put() = %q, %v", digest, err)
 	}
 	again, err := store.Put(canonical)

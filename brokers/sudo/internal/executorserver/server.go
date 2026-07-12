@@ -11,7 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
 )
 
 const defaultMaxConnections = 32
@@ -140,7 +140,7 @@ func (s *Server) execute(ctx context.Context, request executorprotocol.Request) 
 	if !request.ExpiresAt.After(now) {
 		return executorprotocol.NewRejected("request_expired")
 	}
-	if planstore.Digest(request.Plan) != request.PlanDigest {
+	if plandigest.Digest(request.Plan) != request.PlanDigest {
 		return executorprotocol.NewRejected("plan_digest_mismatch")
 	}
 	value, err := plan.DecodeCanonical(request.Plan)

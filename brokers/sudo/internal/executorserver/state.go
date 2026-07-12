@@ -15,7 +15,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/store"
 )
 
@@ -210,7 +210,7 @@ func (s *executionState) save(data executionFile) error {
 }
 
 func validateExecutionRecord(record executionRecord) error {
-	if !boundedStateID(record.ID) || !planstore.ValidDigest(record.PlanDigest) || !boundedStateID(record.GrantID) || !boundedStateID(record.ReservationID) || record.ClaimedAt.IsZero() {
+	if !boundedStateID(record.ID) || !plandigest.Valid(record.PlanDigest) || !boundedStateID(record.GrantID) || !boundedStateID(record.ReservationID) || record.ClaimedAt.IsZero() {
 		return errors.New("execution binding is invalid")
 	}
 	switch record.Status {

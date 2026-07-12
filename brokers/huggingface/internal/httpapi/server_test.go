@@ -31,6 +31,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 const (
@@ -68,7 +69,12 @@ func requestHFGrant(t *testing.T, store *grants.Store, plans *hfplan.Store, inpu
 
 func testPlanStore(t *testing.T) *hfplan.Store {
 	t.Helper()
-	plans, err := hfplan.NewStore(filepath.Join(t.TempDir(), "plans"))
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	plans, err := hfplan.NewStore(database)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/policy"
 )
 
@@ -68,7 +68,7 @@ func TestCanonicalPlanDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	const expected = "986bf18a493e4dbbeef6bb4a9c701f845f30a9d602dc7506d3fa920163ff9a8c"
-	if got := planstore.Digest(encoded); got != expected {
+	if got := plandigest.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}
 }

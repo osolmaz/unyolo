@@ -9,11 +9,12 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 func TestCanonicalRequestRoundTrip(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	plans, _ := hfplan.NewStore(filepath.Join(t.TempDir(), "plans"))
+	plans := mustPlanStore(t)
 	result, created, err := Request(store, plans, Input{
 		Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force", Mode: ModeWindow,
 		Target: "model/owner/repo", Ref: "refs/heads/main", Attrs: map[string]any{"max_bytes": int64(42)},
@@ -67,7 +68,7 @@ func TestCanonicalRequestValidation(t *testing.T) {
 
 func TestStoredGrantAccessorsAndMatching(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	plans, _ := hfplan.NewStore(filepath.Join(t.TempDir(), "plans"))
+	plans := mustPlanStore(t)
 	result, _, err := Request(store, plans, Input{
 		Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force", Target: "model/owner/repo", Ref: "refs/heads/main",
 		Reason: "test", RequestedDuration: 3 * time.Minute, MaxUses: 2,
@@ -100,26 +101,51 @@ func TestRequestRetryReusesImmutablePlanAcrossRestart(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	grantPath := filepath.Join(directory, "grants.json")
-	planPath := filepath.Join(directory, "plans")
+	statePath := filepath.Join(directory, "state")
 	input := Input{Client: "bob", ClientRequestID: "retry-1", Operation: "git.push.force", Mode: ModeWindow,
 		Target: "dataset/acme/demo", Ref: "refs/heads/main", Reason: "repair", RequestedDuration: time.Minute, MaxUses: 1}
-	first, created, err := Request(grants.New(grantPath, grants.Options{}), mustPlanStore(t, planPath), input)
+	firstDatabase, err := state.Open(t.Context(), statePath, state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPlans, err := hfplan.NewStore(firstDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, created, err := Request(grants.New(grantPath, grants.Options{}), firstPlans, input)
 	if err != nil || !created {
 		t.Fatalf("first Request() = %+v, %v, %v", first, created, err)
 	}
-	second, created, err := Request(grants.New(grantPath, grants.Options{}), mustPlanStore(t, planPath), input)
+	if err := firstDatabase.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondDatabase, err := state.Open(t.Context(), statePath, state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = secondDatabase.Close() })
+	secondPlans, err := hfplan.NewStore(secondDatabase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, created, err := Request(grants.New(grantPath, grants.Options{}), secondPlans, input)
 	if err != nil || created || second.Grant.ID != first.Grant.ID || second.Grant.Metadata[hfplan.MetadataDigest] != first.Grant.Metadata[hfplan.MetadataDigest] {
 		t.Fatalf("retry Request() = %+v, %v, %v", second, created, err)
 	}
 	input.Target = "dataset/acme/other"
-	if _, _, err := Request(grants.New(grantPath, grants.Options{}), mustPlanStore(t, planPath), input); !errors.Is(err, grants.ErrIdempotencyConflict) {
+	if _, _, err := Request(grants.New(grantPath, grants.Options{}), secondPlans, input); !errors.Is(err, grants.ErrIdempotencyConflict) {
 		t.Fatalf("changed retry error = %v", err)
 	}
 }
 
-func mustPlanStore(t *testing.T, path string) *hfplan.Store {
+func mustPlanStore(t *testing.T) *hfplan.Store {
 	t.Helper()
-	plans, err := hfplan.NewStore(path)
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	plans, err := hfplan.NewStore(database)
 	if err != nil {
 		t.Fatal(err)
 	}

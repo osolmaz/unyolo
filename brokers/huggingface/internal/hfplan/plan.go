@@ -2,12 +2,10 @@
 package hfplan
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
 	"time"
@@ -15,7 +13,7 @@ import (
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 const (
@@ -45,23 +43,22 @@ type Constraints struct {
 }
 
 type Store struct {
-	shared *planstore.Store
-	now    func() time.Time
+	database *state.Database
+	now      func() time.Time
 }
 
-func NewStore(directory string) (*Store, error) {
-	return newStore(directory, time.Now)
+func NewStore(database *state.Database) (*Store, error) {
+	return newStore(database, time.Now)
 }
 
-func newStore(directory string, now func() time.Time) (*Store, error) {
-	shared, err := planstore.New(directory, "HF")
-	if err != nil {
-		return nil, err
+func newStore(database *state.Database, now func() time.Time) (*Store, error) {
+	if database == nil {
+		return nil, errors.New("HF plan database is required")
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{shared: shared, now: now}, nil
+	return &Store{database: database, now: now}, nil
 }
 
 func FromRequest(request grants.Request, createdAt time.Time) Plan {
@@ -76,39 +73,34 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 }
 
 func (s *Store) Put(plan Plan) (string, error) {
-	if s == nil || s.shared == nil {
+	if s == nil || s.database == nil {
 		return "", errors.New("HF plan store is unavailable")
 	}
 	encoded, err := encode(plan)
 	if err != nil {
 		return "", err
 	}
-	return s.shared.Put(encoded)
+	return s.database.PutPlan(context.Background(), SchemaV1, encoded, plan.CreatedAt)
 }
 
 func (s *Store) Get(value string) (Plan, error) {
-	if s == nil || s.shared == nil {
+	if s == nil || s.database == nil {
 		return Plan{}, errors.New("HF plan store is unavailable")
 	}
-	data, err := s.shared.Get(value)
+	record, err := s.database.Plan(context.Background(), value)
 	if err != nil {
 		return Plan{}, err
 	}
-	return decode(data)
+	if record.SchemaName != SchemaV1 {
+		return Plan{}, errors.New("HF plan schema is unsupported")
+	}
+	return decode(record.Canonical)
 }
 
 func decode(data []byte) (Plan, error) {
-	if err := strictjson.RejectDuplicateKeys(data); err != nil {
-		return Plan{}, fmt.Errorf("decode HF plan: %w", err)
-	}
 	var plan Plan
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&plan); err != nil {
+	if err := strictjson.Decode(data, &plan, true); err != nil {
 		return Plan{}, fmt.Errorf("decode HF plan: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return Plan{}, errors.New("decode HF plan: trailing data")
 	}
 	if err := validate(plan); err != nil {
 		return Plan{}, err
@@ -137,13 +129,6 @@ func (s *Store) BindAt(request *grants.Request, createdAt time.Time) error {
 	request.Metadata[MetadataSchema] = SchemaV1
 	request.Metadata[MetadataDigest] = digest
 	return nil
-}
-
-func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) (int, error) {
-	if s == nil || s.shared == nil {
-		return 0, errors.New("HF plan store is unavailable")
-	}
-	return s.shared.CollectOrphans(referenced, olderThan)
 }
 
 type Validator struct{ Store *Store }

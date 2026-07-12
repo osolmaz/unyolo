@@ -3,25 +3,20 @@ package hfplan
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 	t.Parallel()
-	directory := filepath.Join(t.TempDir(), "plans")
 	fixedNow := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
-	plans, err := newStore(directory, func() time.Time { return fixedNow })
-	if err != nil {
-		t.Fatal(err)
-	}
+	plans := newTestPlanStore(t, func() time.Time { return fixedNow })
 	request := grants.Request{Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force", Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
 		Attrs: map[string][]string{"ref_change": {`"non_fast_forward"`}}, Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "repair", Duration: 5 * time.Minute, MaxUses: 2}
 	if err := plans.Bind(&request); err != nil {
@@ -37,7 +32,7 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 		t.Fatalf("second bind = %+v, %v", second.Metadata, err)
 	}
 
-	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	store := grants.New(t.TempDir()+"/grants.json", grants.Options{})
 	created, _, err := store.Request(request)
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +71,7 @@ func TestCanonicalPlanDigestFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	const expected = "b81f9373519474f5d95ecbebe58f04c86bc651c9b3c810c4e948f07c05107a36"
-	if got := planstore.Digest(encoded); got != expected {
+	if got := plandigest.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}
 }
@@ -118,7 +113,7 @@ func FuzzDecodePlan(f *testing.F) {
 
 func TestStoreRejectsMissingAndCorruptPlans(t *testing.T) {
 	t.Parallel()
-	plans, _ := NewStore(filepath.Join(t.TempDir(), "plans"))
+	plans := newTestPlanStore(t, time.Now)
 	request := grants.Request{Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force", Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"model/acme/demo"}}},
 		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "test", Duration: time.Minute, MaxUses: 1}
 	if err := plans.Bind(&request); err != nil {
@@ -127,7 +122,7 @@ func TestStoreRejectsMissingAndCorruptPlans(t *testing.T) {
 	grant := grants.Grant{Client: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, Target: request.Target, Metadata: request.Metadata, Duration: request.Duration,
 		RequestedDuration: request.Duration, MaxUses: request.MaxUses, RequestedMaxUses: request.MaxUses}
 	digest := request.Metadata[MetadataDigest]
-	if err := os.WriteFile(plans.shared.Path(digest), []byte(`{"schema_version":"hf-broker.io/plan/v1"}`), 0o600); err != nil {
+	if _, err := plans.database.SQL().ExecContext(t.Context(), "UPDATE plans SET canonical = ? WHERE digest = ?", []byte(`{"schema_version":"hf-broker.io/plan/v1"}`), digest); err != nil {
 		t.Fatal(err)
 	}
 	if err := (Validator{Store: plans}).ValidateExecution(grant); err == nil {
@@ -137,44 +132,24 @@ func TestStoreRejectsMissingAndCorruptPlans(t *testing.T) {
 	if err := (Validator{Store: plans}).ValidateExecution(grant); err == nil {
 		t.Fatal("validator accepted missing digest")
 	}
-	if _, err := NewStore(""); err == nil {
-		t.Fatal("NewStore accepted empty path")
+	if _, err := NewStore(nil); err == nil {
+		t.Fatal("NewStore accepted a nil database")
 	}
 	if err := (*Store)(nil).Bind(&request); err == nil {
 		t.Fatal("nil store accepted binding")
 	}
 }
 
-func TestStoreCollectsOnlyOldUnreferencedPlans(t *testing.T) {
-	t.Parallel()
-	directory := filepath.Join(t.TempDir(), "plans")
-	plans, _ := newStore(directory, func() time.Time { return time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC) })
-	request := grants.Request{Client: "bob", ClientRequestID: "referenced", Operation: "git.push.force",
-		Target:   policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Duration: time.Minute, MaxUses: 1}
-	referenced, err := plans.Put(FromRequest(request, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)))
+func newTestPlanStore(t *testing.T, now func() time.Time) *Store {
+	t.Helper()
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.ClientRequestID = "orphan"
-	orphan, err := plans.Put(FromRequest(request, time.Date(2026, 7, 11, 12, 1, 0, 0, time.UTC)))
+	t.Cleanup(func() { _ = database.Close() })
+	plans, err := newStore(database, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	for _, digest := range []string{referenced, orphan} {
-		if err := os.Chtimes(plans.shared.Path(digest), old, old); err != nil {
-			t.Fatal(err)
-		}
-	}
-	removed, err := plans.CollectOrphans(map[string]bool{referenced: true}, time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC))
-	if err != nil || removed != 1 {
-		t.Fatalf("CollectOrphans() = %d, %v", removed, err)
-	}
-	if _, err := plans.Get(referenced); err != nil {
-		t.Fatalf("referenced plan removed: %v", err)
-	}
-	if _, err := plans.Get(orphan); err == nil {
-		t.Fatal("old orphan was retained")
-	}
+	return plans
 }

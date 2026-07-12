@@ -39,6 +39,13 @@ if grep -R -n --include='*.go' -E 'operations\.json|store\.WriteJSONAtomic' agen
   exit 1
 fi
 
+if grep -R -n --include='*.go' 'github.com/osolmaz/brokerkit/planstore' \
+  brokers/huggingface/internal/hfplan 2>/dev/null
+then
+  echo 'HF plans must persist only through the shared SQLite state layer' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.go' -E 'gorm\.io/|github\.com/jmoiron/sqlx|github\.com/mattn/go-sqlite3' \
   . --exclude-dir=.git 2>/dev/null
 then

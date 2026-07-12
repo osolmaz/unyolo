@@ -3,8 +3,6 @@ package planstore
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/store"
 )
 
@@ -31,7 +30,7 @@ func (s *Store) Put(canonical []byte) (string, error) {
 	if s == nil || len(bytes.TrimSpace(canonical)) == 0 || !bytes.Equal(bytes.TrimSpace(canonical), canonical) {
 		return "", errors.New("canonical plan bytes are required")
 	}
-	digest := Digest(canonical)
+	digest := plandigest.Digest(canonical)
 	path := s.Path(digest)
 	found, err := s.checkExisting(path, canonical)
 	if err != nil {
@@ -61,7 +60,7 @@ func (s *Store) checkExisting(path string, canonical []byte) (bool, error) {
 }
 
 func (s *Store) Get(digest string) ([]byte, error) {
-	if s == nil || !ValidDigest(digest) {
+	if s == nil || !plandigest.Valid(digest) {
 		return nil, errors.New("plan digest is invalid")
 	}
 	data, err := os.ReadFile(s.Path(digest))
@@ -69,7 +68,7 @@ func (s *Store) Get(digest string) ([]byte, error) {
 		return nil, fmt.Errorf("read %s plan: %w", s.label, err)
 	}
 	canonical := bytes.TrimSpace(data)
-	if Digest(canonical) != digest {
+	if plandigest.Digest(canonical) != digest {
 		return nil, fmt.Errorf("%s plan content digest mismatch", s.label)
 	}
 	return append([]byte(nil), canonical...), nil
@@ -104,7 +103,7 @@ func (s *Store) removeOrphan(entry os.DirEntry, referenced map[string]bool, olde
 		return false, nil
 	}
 	digest := strings.TrimSuffix(entry.Name(), ".json")
-	if !ValidDigest(digest) || referenced[digest] {
+	if !plandigest.Valid(digest) || referenced[digest] {
 		return false, nil
 	}
 	info, err := entry.Info()
@@ -123,16 +122,3 @@ func ignoreMissing(err error) error {
 }
 
 func (s *Store) Path(digest string) string { return filepath.Join(s.directory, digest+".json") }
-
-func Digest(canonical []byte) string {
-	sum := sha256.Sum256(canonical)
-	return hex.EncodeToString(sum[:])
-}
-
-func ValidDigest(value string) bool {
-	if len(value) != sha256.Size*2 {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil
-}
