@@ -16,7 +16,8 @@ Brokerkit owns:
 - creating and validating the config, state, and systemd directories;
 - enforcing exact directory ownership and safe modes;
 - writing opaque managed files atomically beneath config or state;
-- retiring explicitly named managed files during direct configuration cutovers;
+- removing explicitly named managed files after successful configuration
+  activation;
 - assigning every managed file to either the root or service ownership class;
 - rendering and atomically installing the hardened systemd unit last;
 - running `systemctl daemon-reload`, `systemctl enable`, and `systemctl restart`
@@ -108,7 +109,7 @@ separately owned state roots without making the parent writable.
 11. Reload systemd, enable the unit, and restart it so reruns apply changed
     configuration unless `NoStart` is set.
 12. Poll the provider readiness check after activation.
-13. Only after readiness succeeds, remove retired config files that the new
+13. Only after readiness succeeds, remove config files that the new
     process no longer references. Preserve them when activation is disabled,
     fails, or never becomes ready.
 
@@ -146,21 +147,21 @@ An install plan is rejected when:
   modes, unit ordering, and no `systemctl` calls when disabled;
 - failed and successful service activation calls;
 - symlink replacement cannot modify the link target;
-- new secrets are installed before the environment is committed, and retired
+- new secrets are installed before the environment is committed, and replaced
   secrets are removed only after successful activation;
 - invalid names, duplicate files, unsafe modes, oversized files, path overlap,
   and plan/unit mismatch fail before mutation;
 - strict service rendering rejects a directory or inaccessible file as the
   executable;
-- Linux race tests, coverage, vet, lint, Slophammer, review, and consumer
-  cutover tests all pass before adoption.
+- Linux race tests, coverage, vet, lint, Slophammer, review, and consumer tests
+  all pass.
 
 Mutation tooling remains checked in but is disabled and non-blocking. It must
 not run in the default required workflow unless a later explicit decision
 re-enables it.
 
-## Cutover Rule
+## Ownership Rule
 
-Once a broker adopts this API, it deletes its local account creation, UID/GID
-lookup, directory creation, file write/chown, unit write, and systemctl helpers
-in the same change. Provider-specific payload rendering remains local.
+BrokerKit owns account creation, UID/GID lookup, directory creation, file
+installation, unit installation, and systemctl execution. Provider-specific
+payload rendering remains local.

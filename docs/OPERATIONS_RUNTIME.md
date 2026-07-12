@@ -69,7 +69,7 @@ explicit read-only config and writable state paths
 
 Consumers may append only the explicitly allowed additive hardening directives.
 Extensions cannot override the shared identity, execution, restart, filesystem,
-or hardening directives, including through legacy systemd aliases. Paths
+or hardening directives through equivalent systemd settings. Paths
 containing systemd specifier or tokenization syntax are rejected instead of
 being rendered ambiguously. Trusted service paths are always rejected below
 `/home`, `/root`, and `/run/user`, even when broker operations may access those
@@ -78,8 +78,8 @@ outside user-controlled home directories.
 Provider credentials and policy do not enter Brokerkit.
 
 Home access is an explicit typed policy. The default is `deny`; `read-only` is
-available for read-only integrations; and a future provider may select `allow`
-only when its reviewed operations must access user home directories. sudo-broker
+available for read-only integrations; and `allow` is available only when a
+provider's reviewed operations must access user home directories. sudo-broker
 V1 keeps home access denied and requires root-trusted executable and working
 directory chains. On systemd, `allow` adds explicit writable exceptions for
 `/home`, `/root`, and `/run/user`; the rest of the filesystem remains protected
@@ -117,9 +117,8 @@ Hugging Face credential-source and mirror checks, gh-broker owns GitHub App and
 ruleset checks, and sudo-broker owns catalog, target-user, and
 privileged-executor checks.
 
-## Adoption Rule
+## Ownership Rule
 
-Cutover is direct. Once a broker adopts one of these APIs, its equivalent local
-parser, renderer, installer body, or generic doctor helper is deleted in the
-same pull request. Backward compatibility with the duplicated implementation
-is not required.
+Broker directories contain only thin command adapters and provider-specific
+inputs. Generic parser, renderer, installer, and doctor behavior belongs in
+BrokerKit.

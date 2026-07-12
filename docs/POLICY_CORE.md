@@ -162,7 +162,7 @@ Examples:
 
 The policy core uses canonical string lists at its boundary. Singleton fields
 still contain a one-element list. Multi-value provider fields such as Git refs,
-repository paths, and bucket keys stay as lists instead of being joined into an
+repository paths and provider keys stay as lists instead of being joined into an
 ambiguous delimiter-based string. For `allow` and `request` rules, every
 concrete value must satisfy the rule's constraint. For `deny` rules, any
 matching concrete value denies the batch so a forbidden ref or path cannot be
@@ -251,8 +251,7 @@ Minimal example:
 }
 ```
 
-The first shared grant mode should be `window`: a short time window with a use
-budget. Execution-plan grants can come later.
+The shared `window` grant mode is a short time window with a use budget.
 
 ## Validation
 

@@ -237,7 +237,7 @@ Authenticate with the separate operator credential from
 `/etc/gh-broker/operator-secrets`. Agent credentials cannot use this listener.
 Telegram is an optional notification view over the same durable request, so a
 decision through either path closes the same state exactly once. A trusted web
-host such as mlclaw keeps this credential server-side and exposes only its own
+host keeps this credential server-side and exposes only its own
 authenticated browser session and bounded Brokerkit response fields.
 
 ## Security Model

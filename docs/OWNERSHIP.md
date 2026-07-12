@@ -14,10 +14,6 @@ the broker decides how a Hugging Face, GitHub, or Unix action is classified and
 executed.
 ```
 
-There is no backward-compatibility requirement for old broker-local control
-planes. When a broker adopts a brokerkit package, the local duplicate should be
-deleted in the same change.
-
 ## Owned By brokerkit
 
 brokerkit should provide these reusable packages.
@@ -122,8 +118,8 @@ Generated grants must never use wildcard clients.
 - trusted-host Go client, checked-in wire fixtures, and fake test server
 
 The consuming broker supplies provider wording and exposes the handler on a
-protected operator transport. A web host such as mlclaw keeps the operator
-credential server-side and renders the safe projection. Brokerkit does not own
+protected operator transport. A trusted web host keeps the operator credential
+server-side and renders the safe projection. BrokerKit does not own
 browser sessions, frontend components, or provider execution plans.
 
 ### Notifications
@@ -188,9 +184,6 @@ Every broker invokes it in its own tests. `brokerkit-coverage` and
 `brokerkit-release` provide common quality and release behavior. Mutation
 targets remain broker-local and checked in, but are disabled and non-blocking
 until a later explicit decision re-enables them.
-
-This is the only supported lifecycle. There is no in-memory Telegram tracking
-mode and no compatibility option that enables one.
 
 brokerkit should not own text such as "approve this force-push" or "approve
 this shell as deploy." Brokers compose those summaries.
@@ -288,7 +281,7 @@ hf-broker owns:
 - Git/LFS/Xet forwarding
 - commits-only mirrors
 - append-only checks
-- bucket snapshot behavior
+- inference request classification and forwarding
 - HF-specific request classification
 - HF-specific audit extension fields
 - HF-specific approval wording
@@ -325,12 +318,10 @@ sudo-broker owns:
 V1 does not include shell/session lifecycle, TTY handling, stdin, arbitrary
 argv/environment input, or a launchd installer.
 
-## Cutover Tests
+## Conformance Tests
 
-Each broker cutover should prove:
+Each broker should prove:
 
-- old local auth, policy, grants, approval, Telegram, audit, storage, and
-  notification runtimes were removed
 - the broker registers only its provider vocabulary
 - valid requests go through brokerkit decisions
 - malformed or unclassified requests fail closed before execution

@@ -5,8 +5,7 @@ makes repeated broker machinery reusable without hiding the dangerous
 provider-specific boundary.
 
 `hf-broker`, `gh-broker`, and `sudo-broker` use BrokerKit for the shared control
-plane. The completed migration used a direct cutover rather than compatibility
-layers; provider directories do not retain local copies of shared behavior.
+plane. Provider directories contain only their platform-specific behavior.
 
 ## Broker Shape
 
@@ -32,7 +31,7 @@ provider-specific message wording, and execution.
 
 ## Package Boundaries
 
-Current and planned package boundaries:
+Current package boundaries:
 
 ```text
 brokerkit/
@@ -93,7 +92,7 @@ Each broker must register its own vocabulary.
 
 - operations such as `git.push.append`, `git.push.force`, and
   `repo.contents.read`
-- target kinds such as `repo` and `bucket`
+- target kinds such as `repo` and `inference`
 - attrs such as `ref`, `path`, `max_bytes`, and object keys
 - Hugging Face-specific approval text
 
@@ -127,12 +126,7 @@ brokerkit must preserve these invariants:
 - Grant records must be scoped to one client, one operation, one target, and the
   attrs approved by policy.
 
-## First Extraction Rule
+## Shared-Package Rule
 
-Do not extract a package because two repositories have similar names or files.
-Extract only when the same behavior has the same tests in at least two brokers
-and the third broker design can use the same API without special cases.
-
-When extraction happens, do not keep compatibility layers indefinitely. The
-consumer broker should move to the brokerkit API, delete its local duplicate,
-and keep provider-specific adapters at the edge.
+Shared packages must expose provider-neutral behavior and tests. Provider
+classifiers, credentials, execution, and wording remain in their broker.

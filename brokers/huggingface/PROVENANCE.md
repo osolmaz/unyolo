@@ -6,9 +6,6 @@
 - No-squash subtree merge: `1bba2bc16c01b84bd973b14f891daaaa228222f3`
 - Destination: `brokers/huggingface`
 
-The coordinated source import is recorded in the
-[dated import ledger](../../docs/cutover/2026-07-11-import-ledger.md).
-
 Verified during import:
 
 ```sh

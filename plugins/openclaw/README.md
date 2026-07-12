@@ -24,11 +24,6 @@ pnpm --filter openclaw-brokerkit build
 openclaw plugins install --link ./plugins/openclaw
 ```
 
-This release is a direct cutover. State databases created by the earlier
-prototype schema are rejected rather than migrated; remove the plugin-owned
-`plugins/brokerkit/state.sqlite*` files before the first start when replacing a
-prototype installation. Broker state is not stored in that database.
-
 Choose one explicit trust mode:
 
 - `direct` trusts the OpenClaw process with operator SecretRefs and enables the

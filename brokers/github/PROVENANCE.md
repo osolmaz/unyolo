@@ -6,9 +6,6 @@
 - No-squash subtree merge: `6f75d6c83d8d06f93a5928b70b2b4738d9dde7c4`
 - Destination: `brokers/github`
 
-The coordinated source import is recorded in the
-[dated import ledger](../../docs/cutover/2026-07-11-import-ledger.md).
-
 Verified during import:
 
 ```sh

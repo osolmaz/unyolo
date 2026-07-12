@@ -2,16 +2,12 @@
 
 hf-broker is a self-hosted credential broker between a coding agent and
 Hugging Face. It exposes only registered, policy-gated Git, LFS, repository,
-bucket, and Router operations. Broad Hugging Face credentials remain inside
+and Router operations. Broad Hugging Face credentials remain inside
 the broker; agents receive only revocable broker credentials. Dangerous
 operations can require a short-lived approval without weakening append-only or
 execution-time provider checks.
 
-It is the level-2 companion to
-[hf-auth-helper](https://github.com/osolmaz/hf-auth-helper) (level 1,
-propose-only): use hf-auth-helper for everything, and a broker remote for
-the specific repos that need direct writes. The full design, threat
-model, and roadmap (bucket proxy, time-boxed grants) are in
+The provider-specific design and threat model are in
 [docs/SPECIFICATION.md](docs/SPECIFICATION.md).
 The shared install, setup, policy, approval, and release contract is in
 [BrokerKit's unified broker contract](../../docs/UNIFIED_BROKER_CONTRACT.md).
@@ -290,8 +286,8 @@ Authenticate with a bearer token from `/etc/hf-broker/operator-secrets`.
 Do not give that file or token to an agent. The listener returns bounded
 Hugging Face-specific display fields while decisions apply only to the
 canonical stored request. Lifecycle events use durable SSE cursors, so a
-trusted host such as mlclaw can reconnect after a restart without depending on
-Telegram. The browser must authenticate to the trusted host; the host keeps
+trusted host can reconnect after a restart without depending on Telegram. The
+browser must authenticate to the trusted host; the host keeps
 the broker operator credential server-side.
 
 ## Telegram Grants

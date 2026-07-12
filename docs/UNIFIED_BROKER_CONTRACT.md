@@ -4,9 +4,6 @@ This is the shared contract for `hf-broker`, `gh-broker`, and `sudo-broker`.
 It defines one install, setup, config, policy, approval, audit, and release
 shape. Each broker keeps only its dangerous platform adapter.
 
-The completed migration used a direct cutover. Broker directories do not keep
-compatibility copies of behavior owned by BrokerKit.
-
 ## Boundary
 
 brokerkit owns the reusable broker control plane:
@@ -384,7 +381,7 @@ Brokers add provider-specific checks:
 
 ## Test Contract
 
-Every broker cutover should test:
+Every broker should test:
 
 - install script platform selection and checksum handling
 - `setup systemd --dry-run`

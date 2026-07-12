@@ -72,11 +72,9 @@ Attrs:
 
 V1 supports only `exec.command` with one exact cataloged command shape. It does
 not support shell sessions, TTY attachment, arbitrary command lines, caller
-environment variables, stdin, or command discovery. Any future shell product
-would be a separate identity-grant design and protocol version, not an
-extension hidden inside `exec.command`.
+environment variables, stdin, or command discovery.
 
-## Cutover Rule
+## Runtime Boundary
 
-sudo-broker starts on brokerkit. It should not implement a separate local policy
-or grant runtime first and migrate later.
+sudo-broker uses BrokerKit policy and grants directly and does not implement a
+separate local control plane.
