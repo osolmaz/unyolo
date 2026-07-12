@@ -4,7 +4,6 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -1007,87 +1006,4 @@ func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {
 		result.SocketConnectable = dialUnixWithTimeout(socket)
 	}
 	return result
-}
-
-func runActiveProbe(ctx context.Context, agent identity, opts Options) (ProbeResult, bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	cmd, ok := activeProbeCommand(ctx, agent, opts)
-	if !ok {
-		return ProbeResult{}, false, nil
-	}
-	out, err := cmd.Output()
-	if ctx.Err() != nil {
-		return ProbeResult{}, true, ctx.Err()
-	}
-	if err != nil {
-		return ProbeResult{}, true, err
-	}
-	var result ProbeResult
-	if err := json.Unmarshal(out, &result); err != nil {
-		return ProbeResult{}, true, err
-	}
-	return result, true, nil
-}
-
-func activeProbeCommand(ctx context.Context, agent identity, opts Options) (*exec.Cmd, bool) {
-	cmd := exec.CommandContext(ctx, opts.HelperPath, activeProbeArgs(opts)...) // #nosec G204 -- helper path is os.Executable from the CLI.
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C"}
-	currentUID := os.Geteuid()
-	if currentUID == agent.uid {
-		return cmd, true
-	}
-	if currentUID == 0 && agent.uid != 0 {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: agent.credential()}
-		return cmd, true
-	}
-	return nil, false
-}
-
-func activeProbeArgs(opts Options) []string {
-	args := []string{"__doctor-isolation-probe"}
-	if opts.TokenFile != "" {
-		args = append(args, "--token-file", opts.TokenFile)
-	}
-	if opts.BrokerPID > 0 {
-		args = append(args, "--broker-pid", strconv.Itoa(opts.BrokerPID))
-	}
-	if opts.Socket != "" {
-		args = append(args, "--socket", opts.Socket)
-	}
-	return args
-}
-
-func (i identity) credential() *syscall.Credential {
-	groups := i.credentialGroups()
-	return &syscall.Credential{Uid: uint32(i.uid), Gid: i.primaryCredentialGroup(groups), Groups: groups}
-}
-
-func (i identity) credentialGroups() []uint32 {
-	groups := make([]uint32, 0, len(i.gids))
-	for gid := range i.gids {
-		groups = append(groups, uint32(gid))
-	}
-	sort.Slice(groups, func(a, b int) bool { return groups[a] < groups[b] })
-	return groups
-}
-
-func (i identity) primaryCredentialGroup(groups []uint32) uint32 {
-	if i.gidSet {
-		return uint32(i.gid)
-	}
-	return firstCredentialGroup(groups)
-}
-
-func firstCredentialGroup(groups []uint32) uint32 {
-	if len(groups) == 0 {
-		return 0
-	}
-	return groups[0]
-}
-
-func dialUnixWithTimeout(socket string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	return bkdoctor.DialUnix(ctx, socket)
 }

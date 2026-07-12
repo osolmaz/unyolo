@@ -762,22 +762,6 @@ func TestActiveProbeRunsForSocketOnlyChecks(t *testing.T) {
 	}
 }
 
-func TestActiveProbeScrubsEnvironment(t *testing.T) {
-	t.Setenv("HF_BROKER_HF_TOKEN", "hf_secret_value")
-	cmd, ok := activeProbeCommand(context.Background(), identity{uid: os.Getuid(), gid: os.Getgid()}, Options{
-		HelperPath: "/bin/echo",
-		TokenFile:  "/tmp/token",
-	})
-	if !ok {
-		t.Fatal("active probe command did not build")
-	}
-	for _, item := range cmd.Env {
-		if strings.Contains(item, "hf_secret_value") || strings.HasPrefix(item, "HF_BROKER_HF_TOKEN=") {
-			t.Fatalf("active probe env leaked secret: %q", item)
-		}
-	}
-}
-
 func TestActiveProbeCannotSwitchUserWithoutRoot(t *testing.T) {
 	_, ok, err := runActiveProbe(context.Background(), identity{uid: syntheticOtherUID()}, Options{
 		HelperPath: "/bin/echo",
@@ -788,20 +772,6 @@ func TestActiveProbeCannotSwitchUserWithoutRoot(t *testing.T) {
 	}
 	if ok && os.Geteuid() != 0 {
 		t.Fatalf("active probe unexpectedly ran as another user")
-	}
-}
-
-func TestCredentialHelpers(t *testing.T) {
-	cred := identity{uid: 42, gids: map[int]bool{9: true, 3: true}}.credential()
-	if cred.Uid != 42 || cred.Gid != 3 {
-		t.Fatalf("credential = %+v, want uid 42 gid 3", cred)
-	}
-	withPrimary := identity{uid: 42, gid: 9, gidSet: true, gids: map[int]bool{9: true, 3: true}}.credential()
-	if withPrimary.Gid != 9 {
-		t.Fatalf("credential with primary gid = %+v, want gid 9", withPrimary)
-	}
-	if firstCredentialGroup(nil) != 0 {
-		t.Fatalf("firstCredentialGroup(nil) != 0")
 	}
 }
 
