@@ -164,7 +164,7 @@ func testIntent(now time.Time, request policy.Request) GrantIntent {
 }
 
 func fixedIntent(intent GrantIntent) IntentBuilder {
-	return func(*policy.GrantPolicy) (GrantIntent, error) { return intent, nil }
+	return func(policy.Decision) (GrantIntent, error) { return intent, nil }
 }
 
 func testIDSource() func(int) (string, error) {

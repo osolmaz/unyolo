@@ -496,6 +496,21 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	if got := upstream.receivePackHits(); got != beforeGrant {
 		t.Fatalf("force push without grant reached upstream: hits=%d want %d", got, beforeGrant)
 	}
+	automatic, err := handler.grants.ListForClient("agent")
+	if err != nil || len(automatic) != 1 || automatic[0].Status != grants.StatusPending || !strings.Contains(output, automatic[0].ID) {
+		t.Fatalf("automatic approval = %+v, err=%v, output=%q", automatic, err, output)
+	}
+	output, err = runClientGitErr(clone, "push", "--force", "origin", "main")
+	if err == nil || !strings.Contains(output, automatic[0].ID) {
+		t.Fatalf("automatic approval retry err=%v output=%q", err, output)
+	}
+	replayed, err := handler.grants.ListForClient("agent")
+	if err != nil || len(replayed) != 1 || replayed[0].ID != automatic[0].ID {
+		t.Fatalf("automatic approval replay = %+v, err=%v", replayed, err)
+	}
+	if err := handler.grants.Cancel(automatic[0].ID); err != nil {
+		t.Fatal(err)
+	}
 
 	resp, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover main", "recover-main", 5, 0)))
 	if resp.StatusCode != http.StatusAccepted {

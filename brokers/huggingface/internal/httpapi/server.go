@@ -39,6 +39,7 @@ import (
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
+	"github.com/osolmaz/brokerkit/plandigest"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 	"github.com/osolmaz/brokerkit/state"
@@ -1089,8 +1090,8 @@ func grantRefFromTarget(target policy.Target) (string, error) {
 func (s *Server) requestAPIGrant(client string, req apiGrantRequestBody) (grants.Grant, bool, error) {
 	providerRequest := policy.Request{Client: client, Operation: req.Operation, Target: req.Target, Attrs: req.Attrs}
 	authorizationRequest := policy.AuthorizationRequest(providerRequest)
-	result, err := s.authorization.RequestApproval(authorizationRequest, func(bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
-		return s.prepareAPIGrantIntent(client, req, authorizationRequest, bounds)
+	result, err := s.authorization.RequestApproval(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+		return s.prepareAPIGrantIntent(client, req, authorizationRequest, decision.GrantPolicy)
 	})
 	return result.Request.Grant, result.Created, err
 }
@@ -2145,21 +2146,98 @@ func (s *Server) refusePolicyDeniedPush(classes []gitproxy.ClassifiedCommand, cl
 func (s *Server) refusalForClassifiedPush(class gitproxy.ClassifiedCommand, client string, rt route, target string, packSize int64, used map[string]grantUse) (gitproxy.RefFailure, bool, error) {
 	operation := operationForRefUpdate(class.Kind)
 	attrs := pushAttrs(class, packSize)
-	decision, err := s.decideRepo(client, operation, rt, []string{class.Command.Ref}, attrs, false)
+	providerRequest := policy.Request{Client: client, Operation: operation, Target: routeTarget(rt, []string{class.Command.Ref}), Attrs: attrs}
+	authorizationRequest := policy.AuthorizationRequest(providerRequest)
+	result, err := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+		return s.preparePushIntent(client, operation, target, class.Command.Ref, attrs, authorizationRequest, decision)
+	})
+	return s.pushAuthorizationRefusal(class.Command.Ref, client, operation, target, attrs, used, result, err)
+}
+
+func (s *Server) pushAuthorizationRefusal(ref, client string, operation policy.Operation, target string, attrs map[string]any, used map[string]grantUse, result bkauthorization.Result, err error) (gitproxy.RefFailure, bool, error) {
+	decision := s.policy.AuthorizationDecision(result.Decision)
+	if err != nil {
+		return s.failedPushAuthorization(ref, result, decision, err)
+	}
+	if result.Request.Grant.ID != "" {
+		return gitproxy.RefFailure{Ref: ref, Reason: approvalRetryReason(result.Request.Grant.ID)}, true, nil
+	}
+	if decision.Reason != "grant_allowed" {
+		return gitproxy.RefFailure{}, false, nil
+	}
+	matched, err := s.useGrantAllowedDecision(decision, client, operation, target, ref, attrs, used)
 	if err != nil {
 		return gitproxy.RefFailure{}, false, err
 	}
-	if decision.Effect == policy.EffectAllow && decision.Reason != "grant_allowed" {
-		return gitproxy.RefFailure{}, false, nil
+	if !matched {
+		return gitproxy.RefFailure{}, false, errors.New("authorized grant is unavailable")
 	}
-	if policyDenyRefusesGrant(decision) {
-		return refFailureForDecision(class.Command.Ref, decision), true, nil
+	return gitproxy.RefFailure{}, false, nil
+}
+
+func (s *Server) failedPushAuthorization(ref string, result bkauthorization.Result, decision policy.Decision, err error) (gitproxy.RefFailure, bool, error) {
+	if errors.Is(err, bkauthorization.ErrDenied) {
+		return refFailureForDecision(ref, decision), true, nil
 	}
-	matched, err := s.useGrantAllowedDecision(decision, client, operation, target, class.Command.Ref, attrs, used)
-	if err != nil || matched {
+	return s.failedPushAuthorizationWithoutDeny(ref, result, decision, err)
+}
+
+func (s *Server) failedPushAuthorizationWithoutDeny(ref string, result bkauthorization.Result, decision policy.Decision, err error) (gitproxy.RefFailure, bool, error) {
+	if errors.Is(err, bkauthorization.ErrNoMatch) {
+		return refFailureForDecision(ref, decision), true, nil
+	}
+	if result.Decision.Effect != corepolicy.EffectRequest {
 		return gitproxy.RefFailure{}, false, err
 	}
-	return refFailureForDecision(class.Command.Ref, decision), true, nil
+	return s.failedPushRequest(ref, decision, err)
+}
+
+func (s *Server) failedPushRequest(ref string, decision policy.Decision, err error) (gitproxy.RefFailure, bool, error) {
+	if !s.hasApprovalChannel() {
+		return refFailureForDecision(ref, decision), true, nil
+	}
+	return gitproxy.RefFailure{}, false, err
+}
+
+func (s *Server) preparePushIntent(client string, operation policy.Operation, target, ref string, attrs map[string]any, authorizationRequest corepolicy.Request, decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+	if !s.hasApprovalChannel() {
+		return bkauthorization.GrantIntent{}, errors.New("approval channel is not configured")
+	}
+	bounds := decision.GrantPolicy
+	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeWindow {
+		return bkauthorization.GrantIntent{}, errors.New("Git push requires a window approval")
+	}
+	id, err := pushApprovalRequestID(authorizationRequest, decision.MatchedRequestRuleIDs)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
+		Client: client, ClientRequestID: id, Operation: string(operation), Mode: hfgrant.ModeWindow,
+		Target: target, Ref: ref, Attrs: attrs, Reason: "Git push requires approval",
+		RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
+		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: bounds.DefaultMaxUses,
+	})
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	return bkauthorization.GrantIntent{
+		Mode: corepolicy.GrantModeWindow, Authorization: authorizationRequest, Request: request, Plan: plan,
+	}, nil
+}
+
+func pushApprovalRequestID(request corepolicy.Request, ruleIDs []string) (string, error) {
+	encoded, err := json.Marshal(struct {
+		Request corepolicy.Request `json:"request"`
+		Rules   []string           `json:"rules"`
+	}{Request: request, Rules: ruleIDs})
+	if err != nil {
+		return "", err
+	}
+	return "git-" + plandigest.Digest(encoded)[:48], nil
+}
+
+func approvalRetryReason(id string) string {
+	return "approval required (" + id + "); approve and retry"
 }
 
 func (s *Server) useGrantAllowedDecision(decision policy.Decision, client string, operation policy.Operation, target, ref string, attrs map[string]any, used map[string]grantUse) (bool, error) {

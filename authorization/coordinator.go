@@ -55,7 +55,7 @@ type GrantIntent struct {
 
 // IntentBuilder resolves provider defaults and builds an immutable request
 // after the coordinator has selected the request rule and its bounds.
-type IntentBuilder func(*policy.GrantPolicy) (GrantIntent, error)
+type IntentBuilder func(policy.Decision) (GrantIntent, error)
 
 // Result is one authorization decision and optional durable approval request.
 type Result struct {
@@ -121,7 +121,7 @@ func (c *Coordinator) RequestApproval(request policy.Request, build IntentBuilde
 }
 
 func (c *Coordinator) createApprovalRequest(request policy.Request, decision policy.Decision, build IntentBuilder) (Result, error) {
-	intent, err := buildIntent(build, decision.GrantPolicy)
+	intent, err := buildIntent(build, decision)
 	if err != nil {
 		return Result{Decision: decision}, err
 	}
@@ -135,11 +135,11 @@ func (c *Coordinator) createApprovalRequest(request policy.Request, decision pol
 	return Result{Decision: decision, Request: created, Created: wasCreated}, nil
 }
 
-func buildIntent(build IntentBuilder, bounds *policy.GrantPolicy) (GrantIntent, error) {
+func buildIntent(build IntentBuilder, decision policy.Decision) (GrantIntent, error) {
 	if build == nil {
 		return GrantIntent{}, ErrInvalidGrantIntent
 	}
-	intent, err := build(bounds)
+	intent, err := build(decision)
 	if err != nil {
 		return GrantIntent{}, fmt.Errorf("%w: %v", ErrInvalidGrantIntent, err)
 	}

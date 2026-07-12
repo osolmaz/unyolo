@@ -163,8 +163,8 @@ func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Oper
 	attrs := repoCreateAttrs(arguments)
 	providerRequest := policy.Request{Client: operation.ClientID, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
 	authorizationRequest := policy.AuthorizationRequest(providerRequest)
-	result, err := s.authorization.Authorize(authorizationRequest, func(bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
-		return s.prepareRepoCreateIntent(operation, target, attrs, authorizationRequest, bounds)
+	result, err := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+		return s.prepareRepoCreateIntent(operation, target, attrs, authorizationRequest, decision.GrantPolicy)
 	})
 	return s.applyRepoCreateAuthorization(ctx, operation, target, result, err)
 }
