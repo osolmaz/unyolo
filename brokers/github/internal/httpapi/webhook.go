@@ -4,7 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 const maxWebhookBodyBytes int64 = 1024 * 1024
@@ -107,7 +107,7 @@ func githubWebhookBodyMetadata(body []byte) (githubWebhookMetadata, error) {
 	if len(strings.TrimSpace(string(body))) == 0 {
 		return githubWebhookMetadata{}, echo.NewHTTPError(http.StatusBadRequest, "github webhook body is empty")
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := strictjson.Decode(body, &payload, false); err != nil {
 		return githubWebhookMetadata{}, echo.NewHTTPError(http.StatusBadRequest, "invalid github webhook json")
 	}
 	return githubWebhookMetadata{

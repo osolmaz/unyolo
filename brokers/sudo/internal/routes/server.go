@@ -2,7 +2,6 @@
 package routes
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -28,7 +27,6 @@ import (
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
@@ -416,19 +414,10 @@ func (s *Server) notifyRequest(ctx context.Context, result grants.RequestResult)
 }
 
 func decodeBody(c echo.Context, out any) error {
-	body, err := httpx.ReadLimited(c.Request().Body, maxBodyBytes)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "request body is too large")
-	}
-	if err := strictjson.RejectDuplicateKeys(body); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request JSON")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request JSON")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	if err := httpx.DecodeJSON(c.Request().Body, maxBodyBytes, out, true); err != nil {
+		if errors.Is(err, httpx.ErrBodyTooLarge) {
+			return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "request body is too large")
+		}
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request JSON")
 	}
 	return nil

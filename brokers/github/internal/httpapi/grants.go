@@ -1,12 +1,9 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -301,20 +298,11 @@ func (s *Server) getGrant(c echo.Context) error {
 }
 
 func decodeGrantCreate(c echo.Context) (grantCreateRequest, error) {
-	body, err := httpx.ReadLimited(c.Request().Body, maxGrantRequestBodyBytes)
-	if err != nil {
-		return grantCreateRequest{}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "grant request body is too large")
-	}
 	var payload grantCreateRequest
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
-		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, "invalid grant request json")
-	}
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); err == nil {
-		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, "invalid grant request json")
-	} else if !errors.Is(err, io.EOF) {
+	if err := httpx.DecodeJSON(c.Request().Body, maxGrantRequestBodyBytes, &payload, true); err != nil {
+		if errors.Is(err, httpx.ErrBodyTooLarge) {
+			return grantCreateRequest{}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "grant request body is too large")
+		}
 		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, "invalid grant request json")
 	}
 	if strings.TrimSpace(payload.Reason) == "" {

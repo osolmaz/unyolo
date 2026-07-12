@@ -27,6 +27,7 @@ import (
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
@@ -508,9 +509,7 @@ func pullRequestAttrs(body []byte) (map[string]string, error) {
 		Draft               bool   `json:"draft"`
 		MaintainerCanModify *bool  `json:"maintainer_can_modify"`
 	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
+	if err := strictjson.Decode(body, &payload, true); err != nil {
 		return nil, errors.New("invalid pull request json")
 	}
 	if strings.TrimSpace(payload.Title) == "" {

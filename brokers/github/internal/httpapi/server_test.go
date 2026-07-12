@@ -1529,6 +1529,25 @@ func TestDecodeGrantCreateDirect(t *testing.T) {
 	}
 }
 
+func TestPullRequestClassificationRejectsAmbiguousJSON(t *testing.T) {
+	valid := []byte(`{"title":"Change","head":"feature","base":"main"}`)
+	attrs, err := pullRequestAttrs(valid)
+	if err != nil || attrs["base_ref"] != "refs/heads/main" || attrs["head_ref"] != "refs/heads/feature" {
+		t.Fatalf("pullRequestAttrs(valid) = %+v, %v", attrs, err)
+	}
+	for name, body := range map[string][]byte{
+		"duplicate": []byte(`{"title":"Change","head":"feature","head":"other","base":"main"}`),
+		"trailing":  append(append([]byte(nil), valid...), []byte(` {}`)...),
+		"unknown":   []byte(`{"title":"Change","head":"feature","base":"main","future":true}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := pullRequestAttrs(body); err == nil {
+				t.Fatal("pullRequestAttrs() accepted ambiguous JSON")
+			}
+		})
+	}
+}
+
 func TestPlanGrantCreateDirect(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {

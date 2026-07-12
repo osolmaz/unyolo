@@ -8,12 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 )
 
@@ -296,10 +296,10 @@ func decodeTelegramResponse(resp *http.Response, out any) error {
 		return decodeTelegramError(resp)
 	}
 	if out == nil {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil
+		_, err := httpx.ReadLimited(resp.Body, 64*1024)
+		return err
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := httpx.DecodeJSON(resp.Body, 64*1024, out, false); err != nil {
 		return fmt.Errorf("decode telegram response: %w", err)
 	}
 	if err := checkTelegramResponse(out); err != nil {
@@ -310,7 +310,7 @@ func decodeTelegramResponse(resp *http.Response, out any) error {
 
 func decodeTelegramError(resp *http.Response) error {
 	var apiError telegramErrorResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&apiError); err != nil || apiError.Description == "" {
+	if err := httpx.DecodeJSON(resp.Body, 64*1024, &apiError, false); err != nil || apiError.Description == "" {
 		return fmt.Errorf("telegram request returned status %d", resp.StatusCode)
 	}
 	if strings.Contains(strings.ToLower(apiError.Description), "message is not modified") {

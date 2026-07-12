@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -384,6 +385,22 @@ func TestTelegramOKFalseIsError(t *testing.T) {
 	_, err = client.SendApproval(context.Background(), notify.ApprovalMessage{GrantID: "g", DecisionToken: "t"})
 	if err == nil || !strings.Contains(err.Error(), "ok=false") {
 		t.Fatalf("SendApproval(ok=false) error = %v, want ok=false error", err)
+	}
+}
+
+func TestTelegramResponseIsBoundedAndUnambiguous(t *testing.T) {
+	for name, body := range map[string]string{
+		"oversized": strings.Repeat(" ", 64*1024+1),
+		"duplicate": `{"ok":true,"ok":false}`,
+		"trailing":  `{"ok":true} {}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}
+			var result okResponse
+			if err := decodeTelegramResponse(response, &result); err == nil {
+				t.Fatal("decodeTelegramResponse() accepted an invalid response")
+			}
+		})
 	}
 }
 

@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 const defaultClientWait = 15 * time.Minute
@@ -288,7 +290,7 @@ func (client *agentClient) request(ctx context.Context, method, path string, pay
 		return agentv1.Operation{}, err
 	}
 	defer func() { _ = response.Body.Close() }()
-	data, err := io.ReadAll(io.LimitReader(response.Body, 64*1024))
+	data, err := httpx.ReadLimited(response.Body, 64*1024)
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
@@ -298,13 +300,13 @@ func (client *agentClient) request(ctx context.Context, method, path string, pay
 func decodeAgentResponse(status int, data []byte) (agentv1.Operation, error) {
 	if status < 200 || status >= 300 {
 		var envelope agentv1.ErrorEnvelope
-		if json.Unmarshal(data, &envelope) == nil && envelope.Error.Message != "" {
+		if strictjson.Decode(data, &envelope, false) == nil && envelope.Error.Message != "" {
 			return agentv1.Operation{}, errors.New(envelope.Error.Message)
 		}
 		return agentv1.Operation{}, fmt.Errorf("HF Broker request failed with HTTP %d", status)
 	}
 	var operation agentv1.Operation
-	if err := json.Unmarshal(data, &operation); err != nil || operation.APIVersion != agentv1.APIVersion {
+	if err := strictjson.Decode(data, &operation, false); err != nil || operation.APIVersion != agentv1.APIVersion {
 		return agentv1.Operation{}, errors.New("HF Broker returned an invalid operation")
 	}
 	return operation, nil

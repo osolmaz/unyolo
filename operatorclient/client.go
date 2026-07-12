@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
@@ -311,20 +313,12 @@ func decodeAPIError(response *http.Response) error {
 }
 
 func decodeBounded(reader io.Reader, target any) error {
-	limited := io.LimitReader(reader, maxResponseBytes+1)
-	data, err := io.ReadAll(limited)
+	data, err := httpx.ReadLimited(reader, maxResponseBytes)
 	if err != nil {
 		return err
 	}
-	if len(data) > maxResponseBytes {
-		return errors.New("operator response exceeds size limit")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := decoder.Decode(target); err != nil {
+	if err := strictjson.Decode(data, target, false); err != nil {
 		return fmt.Errorf("decode operator response: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("decode operator response: trailing data")
 	}
 	return nil
 }

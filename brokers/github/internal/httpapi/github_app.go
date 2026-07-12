@@ -12,6 +12,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 func configuredGitHubApp(cfg config.Config, apiBaseURL *url.URL, client *http.Client) (*githubapp.Source, error) {
@@ -85,7 +86,7 @@ func decodeInstallationRepos(body io.Reader) ([]json.RawMessage, error) {
 	var payload struct {
 		Repositories []json.RawMessage `json:"repositories"`
 	}
-	if err := json.Unmarshal(data, &payload); err != nil {
+	if err := strictjson.Decode(data, &payload, false); err != nil {
 		return nil, err
 	}
 	return payload.Repositories, nil

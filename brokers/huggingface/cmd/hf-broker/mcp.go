@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 type mcpRequest struct {
@@ -201,9 +202,7 @@ func callMCPOperation(ctx context.Context, client *agentClient, name string, raw
 }
 
 func decodeMCPArguments(raw json.RawMessage, out any) error {
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
+	if err := strictjson.Decode(raw, out, true); err != nil {
 		return errors.New("invalid tool arguments")
 	}
 	return nil
