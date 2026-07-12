@@ -189,13 +189,30 @@ Implementation:
 - Store grants, immutable plans, Agent operations, lifecycle events, decision
   records, notification outbox entries, idempotency records, and schema metadata
   in normalized tables with explicit foreign keys and unique constraints.
+- Keep schema and query SQL canonical. Use pinned
+  [`sqlc`](https://github.com/sqlc-dev/sqlc) tooling to generate typed
+  `database/sql` query code for SQLite; commit generated output and never edit it
+  by hand.
+- Keep generated sqlc row and parameter types inside the state repository.
+  Convert them to BrokerKit domain types at that boundary so storage details do
+  not leak into policy, grants, Agent V1, or provider packages.
 - Put plan binding, grant or operation creation, lifecycle event append, and
-  notification outbox insertion in one SQL transaction.
+  notification outbox insertion in one SQL transaction. Use the sqlc
+  transaction binding rather than issuing related statements through the base
+  connection.
 - Enable foreign keys, WAL mode, a bounded busy timeout, and an explicitly
   documented synchronous policy during every database initialization. Use the
   stronger durability setting for authorization and execution state.
-- Add ordered, checksummed schema migrations owned by BrokerKit. Do not use GORM
-  or automatic schema migration for broker state.
+- Use pinned [`Goose`](https://github.com/pressly/goose) tooling and its library
+  with embedded, ordered SQL migrations. Run migrations after acquiring the
+  state lease and before opening listeners or approval transports.
+- Keep applied migration history in SQLite and a repository-owned checksum
+  manifest in CI so an applied migration can never be silently rewritten.
+- Use forward migrations for released schemas and test upgrades from every
+  supported prior SQLite schema. The initial SQLite cutover starts from an empty
+  database and does not import the superseded JSON state.
+- Do not use GORM, sqlx, `AutoMigrate`, or a second migration runner for broker
+  state.
 - Acquire a small OS-level process-lifetime state-directory lease before opening
   the database, listeners, or approval transports. SQLite protects database
   writes; the lease prevents two broker processes from duplicating external side
@@ -228,6 +245,13 @@ Acceptance:
   under concurrent requests and across restarts.
 - Corrupt databases, failed migrations, oversized values, and unknown schema
   versions fail closed without being overwritten.
+- `sqlc generate` and `sqlc vet` pass and leave no repository diff; all
+  handwritten SQL is covered by generated typed methods or an explicitly
+  documented operational query.
+- Embedded Goose migrations create an empty database, upgrade every retained
+  fixture schema, reject checksum drift, and fail startup before side effects on
+  migration error.
+- Architecture checks reject GORM and sqlx imports in BrokerKit state packages.
 - `PRAGMA integrity_check`, backup/restore, and redacted export have automated
   tests.
 - Linux and macOS ownership behavior has focused tests.
@@ -650,6 +674,23 @@ Dependency and vendoring changes must also verify:
 - retained upstream tests plus BrokerKit boundary, redaction, limit, race, and
   supported-platform tests pass.
 
+SQLite changes must also run pinned `sqlc generate` and `sqlc vet`, verify a
+clean generated-code diff, apply embedded Goose migrations to an empty database
+and all retained prior-schema fixtures, and run `PRAGMA integrity_check` on the
+result.
+
+`scripts/check-architecture.sh` must gain a forbidden-import or forbidden-path
+rule in the same slice as each cutover. Once a replacement lands, CI must reject:
+
+- GORM, sqlx, alternate SQLite drivers, and alternate migration runners in the
+  BrokerKit state layer;
+- JSON lifecycle stores and filesystem plan stores after the SQLite cutover;
+- direct `bradleyfalzon/ghinstallation` imports after source vendoring;
+- custom GitHub JWT, installation-token, pagination, and replaced webhook code;
+- handwritten Operator V1 or Agent V1 wire and route bindings after generation;
+- Echo after the final generated `net/http` route cutover; and
+- broker-local Git parsers superseded by the selected `gitx` implementation.
+
 Review each slice against these invariants:
 
 - no provider import from a root package;
@@ -664,6 +705,8 @@ Review each slice against these invariants:
   transition;
 - no external provider or generated type leaking into policy, grant, plan, or
   executor ownership boundaries;
+- no ORM, alternate SQL helper, or migration framework beside the selected
+  SQLite stack in BrokerKit's state layer;
 - no modified third-party source without recorded license, provenance, upstream
   revision, and comparison procedure;
 - no new shared abstraction without two concrete consumers or an existing
@@ -679,6 +722,9 @@ The refactor is complete when:
 - all security-relevant JSON and buffered I/O boundaries use shared strict,
   bounded mechanics;
 - each broker exclusively owns and can recover its transactional SQLite state;
+- BrokerKit state uses only `modernc.org/sqlite`, `database/sql`, generated sqlc
+  queries, and embedded Goose migrations, with storage types contained behind
+  shared repositories;
 - lifecycle time and secure identifiers come from explicit, testable runtime
   dependencies;
 - OpenAPI 3.1 components are the sole protocol source and generate Go,
@@ -703,6 +749,9 @@ The refactor is complete when:
   behavior changes;
 - all architecture, security, test, coverage, Slophammer, plugin, and CI gates
   pass; and
+- architecture checks reject every superseded framework, store, parser,
+  provider-protocol implementation, and direct vendored-module import after its
+  cutover;
 - every source-vendored dependency is minimal, licensed, attributable,
   comparison-tested, and assigned an upstream update procedure;
 - no provider-specific credential, policy vocabulary, plan schema, or executor
