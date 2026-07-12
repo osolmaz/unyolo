@@ -21,10 +21,10 @@ type mcpRequest struct {
 }
 
 type mcpResponse struct {
-	JSONRPC string    `json:"jsonrpc"`
-	ID      any       `json:"id,omitempty"`
-	Result  any       `json:"result,omitempty"`
-	Error   *mcpError `json:"error,omitempty"`
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Result  any             `json:"result,omitempty"`
+	Error   *mcpError       `json:"error,omitempty"`
 }
 
 type mcpError struct {
@@ -68,7 +68,7 @@ func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, st
 }
 
 func handleMCPRequest(ctx context.Context, client *agentClient, request mcpRequest) mcpResponse {
-	response := mcpResponse{JSONRPC: "2.0", ID: rawID(request.ID)}
+	response := mcpResponse{JSONRPC: "2.0", ID: request.ID}
 	switch request.Method {
 	case "initialize":
 		response.Result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "hf-broker", "version": version}}
@@ -94,17 +94,9 @@ func handleMCPRequest(ctx context.Context, client *agentClient, request mcpReque
 	return response
 }
 
-func rawID(raw json.RawMessage) any {
-	var value any
-	if json.Unmarshal(raw, &value) != nil {
-		return nil
-	}
-	return value
-}
-
 func mcpTools() []map[string]any {
 	return []map[string]any{
-		{"name": "hf_repo_create", "description": "Create a Hugging Face repository through HF Broker. Never ask for a Hugging Face token. The operation may wait for user approval.", "inputSchema": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"repo_id", "type", "private", "reason", "idempotency_key"}, "properties": map[string]any{"repo_id": map[string]any{"type": "string"}, "type": map[string]any{"enum": []string{"model", "dataset", "space"}}, "private": map[string]any{"type": "boolean"}, "sdk": map[string]any{"enum": []string{"docker", "gradio", "static"}}, "reason": map[string]any{"type": "string"}, "idempotency_key": map[string]any{"type": "string"}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": 900}}}},
+		{"name": "hf_repo_create", "description": "Create a Hugging Face repository through HF Broker. Never ask for a Hugging Face token. The operation may wait for user approval.", "inputSchema": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"repo_id", "type", "private", "reason", "idempotency_key"}, "properties": map[string]any{"repo_id": map[string]any{"type": "string"}, "type": map[string]any{"enum": []string{"model", "dataset", "space"}}, "private": map[string]any{"type": "boolean"}, "sdk": map[string]any{"enum": []string{"docker", "gradio", "static"}, "default": "docker", "description": "Space SDK; defaults to docker for Spaces"}, "reason": map[string]any{"type": "string"}, "idempotency_key": map[string]any{"type": "string"}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": 900}}}},
 		{"name": "hf_operation_get", "description": "Get a resumable HF Broker operation by ID.", "inputSchema": operationIDSchema(false)},
 		{"name": "hf_operation_wait", "description": "Wait for a resumable HF Broker operation without requesting a Hugging Face token.", "inputSchema": operationIDSchema(true)},
 	}
@@ -154,7 +146,11 @@ func callMCPRepoCreate(ctx context.Context, client *agentClient, raw json.RawMes
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
 	defer cancel()
-	return client.wait(waitCtx, operation)
+	operation, err = client.wait(waitCtx, operation)
+	if waitCtx.Err() != nil && operation.ID != "" {
+		return operation, nil
+	}
+	return operation, err
 }
 
 func mcpRepoCreateRequest(input mcpRepoCreateInput) (agentv1.SubmitRequest, error) {
@@ -167,6 +163,9 @@ func mcpRepoCreateRequest(input mcpRepoCreateInput) (agentv1.SubmitRequest, erro
 	}
 	target, _ := json.Marshal(map[string]any{"kind": "repo", "type": input.Type, "owner": owner, "name": name})
 	arguments := map[string]any{"private": *input.Private}
+	if input.Type == "space" && input.SDK == "" {
+		input.SDK = "docker"
+	}
 	if input.SDK != "" {
 		arguments["sdk"] = input.SDK
 	}
@@ -191,7 +190,11 @@ func callMCPOperation(ctx context.Context, client *agentClient, name string, raw
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
 	defer cancel()
-	return client.wait(waitCtx, operation)
+	operation, err = client.wait(waitCtx, operation)
+	if waitCtx.Err() != nil && operation.ID != "" {
+		return operation, nil
+	}
+	return operation, err
 }
 
 func decodeMCPArguments(raw json.RawMessage, out any) error {

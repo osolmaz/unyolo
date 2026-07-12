@@ -118,19 +118,19 @@ func (s *Server) handleAgentOperationSubmit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if created {
-		operation = s.authorizeRepoCreate(operation, target, arguments)
+		operation = s.authorizeRepoCreate(r.Context(), operation, target, arguments)
 	}
 	writeAgentOperation(w, operation, created)
 }
 
-func (s *Server) authorizeRepoCreate(operation agentv1.Operation, target repoCreateTarget, arguments repoCreateArguments) agentv1.Operation {
+func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, arguments repoCreateArguments) agentv1.Operation {
 	attrs := repoCreateAttrs(arguments)
 	decision := s.repoCreateDecision(operation.ClientID, target, attrs)
 	switch decision.Effect {
 	case policy.EffectAllow:
 		return s.approveStoredOperation(operation)
 	case policy.EffectRequest:
-		return s.bindRepoCreateApproval(operation, target, attrs, decision.GrantPolicy)
+		return s.bindRepoCreateApproval(ctx, operation, target, attrs, decision.GrantPolicy)
 	case policy.EffectDeny:
 		return s.failOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation")
 	default:
@@ -155,7 +155,7 @@ func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Ope
 	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not update operation")
 }
 
-func (s *Server) bindRepoCreateApproval(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) agentv1.Operation {
+func (s *Server) bindRepoCreateApproval(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) agentv1.Operation {
 	if !s.operatorConfigured && s.notifier == nil {
 		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
 	}
@@ -163,11 +163,68 @@ func (s *Server) bindRepoCreateApproval(operation agentv1.Operation, target repo
 	if err != nil {
 		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
 	}
+	if s.notifier != nil {
+		if err := s.notifyRepoCreateApproval(ctx, grant); err != nil {
+			return s.failOperation(operation.ID, agentv1.StateFailed, "approval_notification_failed", "Could not notify the operator")
+		}
+	}
 	updated, err := s.operations.SetApproval(operation.ID, grant.ID)
 	if err == nil {
 		return updated
 	}
 	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind approval request")
+}
+
+func (s *Server) notifyRepoCreateApproval(ctx context.Context, grant grants.Grant) error {
+	claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return s.existingRepoCreateNotification(grant.ID)
+	}
+	ref, err := s.notifier.SendApproval(ctx, grantApprovalMessage(claim.Grant, claim.DecisionToken))
+	if err != nil {
+		return s.settleRepoCreateNotificationFailure(claim, err)
+	}
+	if ref.MessageID <= 0 {
+		return s.settleRepoCreateNotificationFailure(claim, errors.New("approval notifier returned an invalid message"))
+	}
+	if err := s.recordRepoCreateNotification(claim, ref); err != nil {
+		return s.settleRepoCreateNotificationFailure(claim, err)
+	}
+	return nil
+}
+
+func (s *Server) existingRepoCreateNotification(grantID string) error {
+	current, err := s.grants.Get(grantID)
+	if err == nil && current.Notification != nil {
+		return nil
+	}
+	return errors.New("approval notification is already claimed")
+}
+
+func (s *Server) recordRepoCreateNotification(claim grants.NotificationClaim, ref grants.MessageRef) error {
+	current, recorded, err := s.grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
+	if err != nil {
+		return err
+	}
+	if recorded || current.Notification != nil {
+		return nil
+	}
+	return errors.New("approval notification claim changed")
+}
+
+func (s *Server) settleRepoCreateNotificationFailure(claim grants.NotificationClaim, cause error) error {
+	if s.operatorConfigured {
+		_, _, retainErr := s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
+		return retainErr
+	}
+	_, _, cancelErr := s.grants.CancelIfNotificationClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
+	if cancelErr != nil {
+		return cancelErr
+	}
+	return cause
 }
 
 func (s *Server) createRepoApproval(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) (grants.Grant, error) {

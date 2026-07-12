@@ -224,12 +224,18 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "bad", Private: &private}); err == nil {
 		t.Fatal("bad MCP repo accepted")
 	}
-	response := handleMCPRequest(context.Background(), client, mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "unknown"})
+	space, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "alice/app", Type: "space", Private: &private, Reason: "create", IdempotencyKey: "space"})
+	if err != nil || !strings.Contains(string(space.Arguments), `"sdk":"docker"`) {
+		t.Fatalf("Space MCP default = %s, %v", space.Arguments, err)
+	}
+	largeID := json.RawMessage(`9007199254740993`)
+	response := handleMCPRequest(context.Background(), client, mcpRequest{JSONRPC: "2.0", ID: largeID, Method: "unknown"})
 	if response.Error == nil || response.Error.Code != -32601 {
 		t.Fatalf("unknown method response = %#v", response)
 	}
-	if rawID(json.RawMessage(`bad`)) != nil {
-		t.Fatal("invalid raw ID accepted")
+	encoded, _ := json.Marshal(response)
+	if !strings.Contains(string(encoded), `"id":9007199254740993`) {
+		t.Fatalf("response ID changed: %s", encoded)
 	}
 	var output bytes.Buffer
 	if err := runMCP(context.Background(), agentClientTestEnv(server.URL), strings.NewReader("bad\n"), &output, &bytes.Buffer{}, nil); err != nil || !strings.Contains(output.String(), "-32700") {
@@ -238,6 +244,38 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	if err := runMCP(context.Background(), agentClientTestEnv(server.URL), strings.NewReader(""), &output, &bytes.Buffer{}, []string{"bad"}); err == nil {
 		t.Fatal("MCP args accepted")
 	}
+}
+
+func TestMCPWaitDeadlineReturnsResumableOperation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(testAgentOperation(agentv1.StatePending))
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := true
+	for _, call := range []mcpToolCall{
+		{Name: "hf_operation_wait", Arguments: json.RawMessage(`{"operation_id":"op_test","wait_seconds":1}`)},
+		{Name: "hf_repo_create", Arguments: mustJSON(t, mcpRepoCreateInput{RepoID: "alice/data", Type: "dataset", Private: &private, Reason: "create", IdempotencyKey: "create", WaitSeconds: 1})},
+	} {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		operation, callErr := callMCPTool(ctx, client, call)
+		cancel()
+		if callErr != nil || operation.ID != "op_test" || operation.State != agentv1.StatePending {
+			t.Fatalf("%s = %#v, %v", call.Name, operation, callErr)
+		}
+	}
+}
+
+func mustJSON(t *testing.T, value any) json.RawMessage {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func agentClientTestEnv(serverURL string) func(string) string {

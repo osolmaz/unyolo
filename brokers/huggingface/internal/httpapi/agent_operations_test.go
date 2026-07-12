@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	bknotify "github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
@@ -83,6 +84,43 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	defer mu.Unlock()
 	if createHits != 1 {
 		t.Fatalf("create hits = %d, want 1", createHits)
+	}
+}
+
+func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+	notifier := &bknotify.Memory{}
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"notify","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"notify operator"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	var operation agentv1.Operation
+	if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &operation) != nil || len(notifier.Messages) != 1 {
+		t.Fatalf("submit = %d %#v, notifications = %d", response.StatusCode, operation, len(notifier.Messages))
+	}
+	grant, err := handler.grants.Get(operation.ApprovalID)
+	if err != nil || grant.Notification == nil {
+		t.Fatalf("grant notification = %#v, %v", grant.Notification, err)
+	}
+}
+
+func TestAgentRepoCreateFailsClosedWhenNotifierFails(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, failingGrantNotifier{})
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"notify-failure","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"notify operator"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	var operation agentv1.Operation
+	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_notification_failed" {
+		t.Fatalf("submit = %d %#v", response.StatusCode, operation)
+	}
+	values, err := handler.grants.ListForClient("agent")
+	if err != nil || len(values) != 1 || string(values[0].Status) != "canceled" {
+		t.Fatalf("grants = %#v, %v", values, err)
 	}
 }
 
@@ -213,18 +251,24 @@ func TestAgentRepoCreateUpstreamFailures(t *testing.T) {
 	}
 }
 
-func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string) (*httptest.Server, *Server, context.CancelFunc) {
+func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, notifiers ...bknotify.Notifier) (*httptest.Server, *Server, context.CancelFunc) {
 	t.Helper()
 	scope, err := policy.Parse([]byte(scopeJSON))
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	operators := []config.Client{{Name: "operator", Secret: testOtherSecret}}
+	var notifier bknotify.Notifier
+	if len(notifiers) > 0 {
+		notifier = notifiers[0]
+		operators = nil
+	}
 	handler, err := New(Options{Config: config.Config{
 		HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
-		Operators: []config.Client{{Name: "operator", Secret: testOtherSecret}}, StateDir: filepath.Join(t.TempDir(), "state"),
+		Operators: operators, StateDir: filepath.Join(t.TempDir(), "state"),
 		MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 5 * time.Second,
-	}, Scope: scope, Audit: audit.New(io.Discard), UpstreamBaseURL: upstreamURL, Context: ctx})
+	}, Scope: scope, Audit: audit.New(io.Discard), UpstreamBaseURL: upstreamURL, Context: ctx, GrantNotifier: notifier})
 	if err != nil {
 		cancel()
 		t.Fatal(err)
