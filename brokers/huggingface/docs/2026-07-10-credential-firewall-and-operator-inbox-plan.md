@@ -47,12 +47,11 @@ The broker must never expose a generic authenticated Hub proxy.
 
 ## Existing Refactor Baseline
 
-This plan builds on pull request
-[#19](https://github.com/osolmaz/hf-broker/pull/19). That change already cuts
-Telegram transport and durable notification behavior over to Brokerkit commit
-`5d682c4`, requires idempotent grant request IDs, and makes callback decisions
-restart-safe. The operator inbox must reuse that exact grant store and
-notification lifecycle.
+This plan built on standalone `hf-broker` pull request #19, now retained only
+in the private archived repository. That change cut Telegram transport and
+durable notification behavior over to Brokerkit commit `5d682c4`, required
+idempotent grant request IDs, and made callback decisions restart-safe. The
+operator inbox reuses that grant store and notification lifecycle.
 
 Do not create another approval model, copy the Telegram state machine, or
 replace the callback durability work from pull request #19. Merge or rebase

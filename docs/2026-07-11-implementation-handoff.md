@@ -2,13 +2,13 @@
 
 Date: 2026-07-11
 
-Status: approved planning package for one coordinated implementation and
-cutover
+Status: implemented; retained as a historical handoff record
 
-## Start Here
+## Historical Reading Order
 
-This file is the entry point for an agent implementing the complete BrokerKit
-platform without relying on the conversation that produced the plans.
+This file was the entry point for the coordinated BrokerKit implementation.
+Use [the documentation index](README.md) and its maintained contracts for
+current work.
 
 Read these files in order:
 
@@ -20,10 +20,9 @@ Read these files in order:
 6. `docs/components/2026-07-11-sudo-broker-implementation-plan.md`
 7. `docs/2026-07-11-openclaw-plugin-implementation-plan.md`
 
-Together they are the implementation specification. Existing BrokerKit design
-documents remain useful codebase background, but they do not override this
-package. If an older document conflicts, this dated package wins and the
-implementation must update or remove the conflicting text.
+Together they record the implementation specification used for the cutover.
+They are historical and do not override maintained BrokerKit contracts or
+current code.
 
 ## Objective
 

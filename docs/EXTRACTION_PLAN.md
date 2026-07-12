@@ -1,5 +1,7 @@
 # Extraction Plan
 
+Status: implemented; retained as a historical extraction record
+
 This plan keeps brokerkit small while `hf-broker`, `gh-broker`, and
 `sudo-broker` prove the shared shape.
 

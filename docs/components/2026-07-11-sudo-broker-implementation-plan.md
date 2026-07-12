@@ -2,8 +2,8 @@
 
 Date: 2026-07-11
 
-Status: implemented; final repository review, CI, live isolated privilege test,
-and coordinated installation remain
+Status: implementation, repository review, CI, live isolated privilege test,
+and coordinated installation complete; first component release pending
 
 Monorepo destination: `brokers/sudo`
 

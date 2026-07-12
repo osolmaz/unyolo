@@ -2,8 +2,9 @@
 
 Date: 2026-07-11
 
-Status: implementation, coordinated cutover, and installed-system verification
-complete; final review, source-repository archival, and publication pending
+Status: implementation, coordinated cutover, review, source-repository
+retirement, and installed-system verification complete; component publication
+pending
 
 Target repository: `github.com/osolmaz/brokerkit`
 
@@ -16,9 +17,9 @@ Source repositories:
 - `openclaw-brokerkit`, implemented as a new component rather than created as
   a fourth repository
 
-This document plans the consolidation. It does not authorize archiving source
-repositories, changing published module paths, releasing artifacts, or moving
-production state by itself.
+This historical document planned the consolidation. It did not by itself
+authorize archiving source repositories, changing published module paths,
+releasing artifacts, or moving production state.
 
 ## Decision
 

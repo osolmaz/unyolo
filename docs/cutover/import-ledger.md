@@ -3,8 +3,9 @@
 Date frozen: 2026-07-11
 
 This ledger records the immutable source tips used by the coordinated
-BrokerKit monorepo cutover. Source repositories remain intact and are not
-deleted.
+BrokerKit monorepo cutover. The source repositories are now private,
+deprecated, and archived. Their final Markdown snapshots are preserved in
+[the standalone repository archive](../archive/standalone-repositories/README.md).
 
 | Component | Source | Frozen commit | Source tag | Open work | Ruleset |
 | --- | --- | --- | --- | --- | --- |

@@ -52,9 +52,8 @@ references, or delivery progress in memory.
 - Done: shared privileged systemd installation for account creation,
   managed files, ownership, atomic unit installation, and service activation.
 - Done: race tests, 85% coverage, vet, lint, Slophammer checks, secret scanning,
-  vulnerability scanning, and CI pass. The final review and publication gate
-  remains. Mutation tooling remains checked in but is disabled and non-blocking
-  for this cutover.
+  vulnerability scanning, final review, and post-merge CI pass. Mutation
+  tooling remains checked in but is disabled and non-blocking for this cutover.
 
 ### 2. hf-broker
 
@@ -85,11 +84,8 @@ references, or delivery progress in memory.
   implemented and tested.
 - Done: Linux descriptor-safe execution uses `openat2` plus `execveat`; macOS
   uses the documented immediate-revalidation fallback.
-- Gate: the monorepo Slophammer repository rules and sudo-broker's zero-finding
-  DRY check are blocking. The CRAP report for privileged syscall and process
-  orchestration code is retained as a refactoring baseline, but is not a
-  release blocker for this security-sensitive cutover; broad metric-driven
-  rewrites require their own focused review.
+- Done: the monorepo Slophammer repository rules, sudo-broker's zero-finding
+  DRY check, and the reviewed CRAP threshold pass.
 - Done: the isolated root helper executed the approved exact command as `onur`,
   consumed its one-shot approval, and rejected replay. `bob` remains outside
   the `sudo` and `docker` groups.
@@ -111,5 +107,14 @@ After code review and CI pass:
   one Telegram bot token must not be polled by multiple broker processes.
 - Done: run real Hugging Face, GitHub, and Unix request flows from `bob`,
   including fail-closed, one-shot replay, and default-branch denial cases.
-- Gate: complete the final repository review, merge, reinstall from the merged
-  revision, and confirm CI remains green.
+- Done: completed the final repository review and merge, retained global
+  BrokerKit-built installations, and confirmed post-merge CI remains green.
+
+## Remaining Publication Work
+
+The code cutover is complete. Publication remains separate work:
+
+- publish the first `hf-broker/v*`, `gh-broker/v*`, and `sudo-broker/v*`
+  component releases with checksums and platform archives; and
+- publish `openclaw-brokerkit` to npm when the package is ready for external
+  installation.

@@ -1,10 +1,13 @@
 # Import Provenance
 
-- Source: `https://github.com/osolmaz/hf-broker`
+- Source: `https://github.com/osolmaz/hf-broker` (private and archived)
 - Frozen source commit: `d277504f78fbdb44601a139ec5b94882767a709c`
 - Historical source tag: `v0.1.0`
 - No-squash subtree merge: `1bba2bc16c01b84bd973b14f891daaaa228222f3`
 - Destination: `brokers/huggingface`
+
+The final standalone Markdown snapshot is preserved in
+[`docs/archive/standalone-repositories/hf-broker`](../../docs/archive/standalone-repositories/hf-broker/README.md).
 
 Verified during import:
 

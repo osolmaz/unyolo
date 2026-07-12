@@ -1,7 +1,7 @@
 # Broker Operations Runtime
 
 Brokerkit owns the provider-neutral install, setup, service, and doctor logic
-used by the broker family. Consumer repositories keep only thin command
+used by the broker family. Component directories keep only thin command
 adapters and provider-specific service inputs.
 
 ## Installer

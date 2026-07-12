@@ -56,10 +56,13 @@ stored request.
 
 ## Binary Install
 
-Every broker binary should have the same install shape:
+Every broker binary uses a component-local wrapper around BrokerKit's shared
+installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/<broker>/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/sudo/install.sh | sh
 ```
 
 Common environment variables:

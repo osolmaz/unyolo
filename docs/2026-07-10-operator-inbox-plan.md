@@ -2,7 +2,7 @@
 
 Date: 2026-07-10
 
-Status: Brokerkit backend implemented; consuming-broker cutover pending
+Status: implemented and adopted by all three brokers
 
 ## Motivation
 
@@ -12,8 +12,8 @@ allowed automatically. Others need a human decision before they are executed.
 
 Brokerkit already owns the generic grant lifecycle, durable notification
 state, approval decisions, use budgets, reservations, and audit primitives.
-What is missing is a reusable operator-inbox surface that applications can use
-to build notification drawers, dashboards, CLIs, desktop prompts, or other
+The reusable operator-inbox surface lets applications build notification
+drawers, dashboards, CLIs, desktop prompts, or other
 approval experiences without reimplementing grant queries and transitions in
 every broker.
 
@@ -25,25 +25,23 @@ privilege execution, Telegram, and any specific frontend framework.
 This work extends the existing Brokerkit grant system. It must not introduce a
 second request or approval state machine.
 
-As of 2026-07-10:
+At the start of this work on 2026-07-10:
 
 - Brokerkit already owns durable grant states, decision tokens, notification
   claims and references, callback recovery, status delivery, reservations, use
   budgets, and expiry;
-- `hf-broker` pull request
-  [#19](https://github.com/osolmaz/hf-broker/pull/19) cuts Telegram transport
-  and durable approval behavior over to Brokerkit commit `5d682c4`;
-- `sudo-broker` pull request
-  [#7](https://github.com/osolmaz/sudo-broker/pull/7) makes approval-message
-  and execution-settlement state durable using Brokerkit;
+- the Hugging Face broker's archived credential-firewall and operator-inbox
+  plan described its Telegram and durable approval cutover;
+- the sudo broker's archived operator-inbox adoption plan described durable
+  approval-message and execution-settlement state;
 - `hf-broker`, `gh-broker`, and `sudo-broker` already use the common
   `POST/GET /api/grants` shape for agent-facing grant creation and reads;
 - `sudo-broker` already exposes HTTP approve, deny, and revoke routes, while
   `hf-broker` and `gh-broker` currently make those decisions through Telegram
   callbacks.
 
-Implementation must land after, or be rebased onto, those durable-lifecycle
-changes. It should extract and extend shared behavior, not replace it.
+The implementation landed on those durable-lifecycle changes and extracted
+shared behavior without replacing the broker-specific state machines.
 
 ## Goal
 

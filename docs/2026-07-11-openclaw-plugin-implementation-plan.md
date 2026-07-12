@@ -2,8 +2,8 @@
 
 Date: 2026-07-11
 
-Status: implementation, packaged installation, and installed-system verification
-complete; final monorepo review, merge, and publication pending
+Status: implementation, packaged installation, review, merge, and
+installed-system verification complete; npm publication pending
 
 Plugin id: `brokerkit`
 
@@ -430,9 +430,18 @@ plugin UI API. It is never written to storage, logs, DOM text, analytics, or
 error reports and rotates on restart.
 
 In `delegated-web` mode the fragment contains only the versioned mode and
-same-origin base path. The UI obtains a short-lived decision token from
-`POST <basePath>/session`. A sandboxed frame may ask its parent for that same
-session through the host-neutral messages
+same-origin base path. An untrusted parent receives an authority-free framed
+launcher marked by `brokerkit-delegated-top-level`. After an operator click,
+the launcher posts `brokerkit.delegated-web.open`; the trusted host verifies
+the exact frame source and navigates the browser to an unframeable top-level
+decision document. Only that document may consume the one-shot
+`brokerkit-delegated-session` metadata. Framed embedded sessions are removed
+and rejected.
+
+The top-level UI renews its short-lived decision token through `POST
+<basePath>/session` with the current bearer token and no cookies. Concurrent
+requests share one in-flight renewal. A trusted parent deployment may instead
+provide initial and renewed sessions through the host-neutral messages
 `brokerkit.delegated-web.session.request` and
 `brokerkit.delegated-web.session.response`; requests carry a fresh 128-bit
 nonce and responses must echo it. No product-specific message namespace or
