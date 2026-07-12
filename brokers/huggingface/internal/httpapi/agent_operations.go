@@ -132,8 +132,10 @@ func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Oper
 	case policy.EffectRequest:
 		return s.bindRepoCreateApproval(ctx, operation, target, attrs, decision.GrantPolicy)
 	case policy.EffectDeny:
+		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "policy_denied", 0, decision)
 		return s.failOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation")
 	default:
+		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "not_allowed", 0, decision)
 		return s.failOperation(operation.ID, agentv1.StateDenied, "not_allowed", "No policy rule allows this operation")
 	}
 }

@@ -21,14 +21,17 @@ import (
 )
 
 const (
-	fileVersion  = 1
-	maxJSONBytes = 4096
+	fileVersion       = 1
+	maxJSONBytes      = 4096
+	maxOperations     = 2048
+	terminalRetention = 30 * 24 * time.Hour
 )
 
 var (
 	ErrNotFound            = errors.New("operation not found")
 	ErrIdempotencyConflict = errors.New("operation idempotency conflict")
 	ErrInvalidTransition   = errors.New("invalid operation state transition")
+	ErrCapacity            = errors.New("operation store capacity reached")
 )
 
 type Submit struct {
@@ -74,6 +77,8 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
+	now := s.now().UTC()
+	data.Operations = retainedOperations(data.Operations, now.Add(-terminalRetention))
 	for _, existing := range data.Operations {
 		if existing.ClientID != normalized.ClientID || existing.IdempotencyKey != normalized.IdempotencyKey {
 			continue
@@ -83,11 +88,13 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 		}
 		return clone(existing), false, nil
 	}
+	if len(data.Operations) >= maxOperations {
+		return agentv1.Operation{}, false, ErrCapacity
+	}
 	id, err := s.newID()
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
-	now := s.now().UTC()
 	op := agentv1.Operation{
 		APIVersion: agentv1.APIVersion, ID: id, Broker: normalized.Broker, ClientID: normalized.ClientID,
 		IdempotencyKey: normalized.IdempotencyKey, Operation: normalized.Operation, Target: normalized.Target,
@@ -100,6 +107,17 @@ func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
 	}
 	s.notify()
 	return clone(op), true, nil
+}
+
+func retainedOperations(operations []agentv1.Operation, cutoff time.Time) []agentv1.Operation {
+	retained := operations[:0]
+	for _, operation := range operations {
+		if operation.State.Terminal() && operation.UpdatedAt.Before(cutoff) {
+			continue
+		}
+		retained = append(retained, operation)
+	}
+	return retained
 }
 
 func (s *Store) Get(clientID, id string) (agentv1.Operation, error) {

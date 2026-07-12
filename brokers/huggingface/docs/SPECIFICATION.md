@@ -667,6 +667,11 @@ state/
   operations/operations.json            durable Agent Operations V1 records
 ```
 
+The operation ledger is bounded to 2,048 records. Terminal records older than
+30 days are pruned when a new operation is accepted. If nonterminal or recent
+records fill the bound, new submissions fail closed until capacity becomes
+available.
+
 - Mirrors are created lazily on first push to a repo and refreshed per
   push. They contain no file contents, only commit graph. Safe to delete;
   they rebuild.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,6 +149,42 @@ func TestStoreRejectsCorruptFiles(t *testing.T) {
 			t.Fatalf("corrupt file accepted: %s", data)
 		}
 	}
+}
+
+func TestStoreBoundsAndPrunesOperations(t *testing.T) {
+	now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "operations.json")
+	store := newStore(path, func() time.Time { return now }, func() (string, error) { return "op_new", nil })
+	operations := make([]agentv1.Operation, maxOperations)
+	for index := range operations {
+		operations[index] = validOperationForStore(fmt.Sprintf("op_%d", index), agentv1.StatePending, now)
+	}
+	if err := store.write(fileData{Version: fileVersion, Operations: operations}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Submit(validSubmit("full")); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("full store error = %v", err)
+	}
+	operations[0] = validOperationForStore("op_old", agentv1.StateSucceeded, now.Add(-terminalRetention-time.Hour))
+	terminalAt := operations[0].UpdatedAt
+	operations[0].TerminalAt = &terminalAt
+	operations[0].Result = json.RawMessage(`{"repo_id":"alice/old"}`)
+	if err := store.write(fileData{Version: fileVersion, Operations: operations}); err != nil {
+		t.Fatal(err)
+	}
+	created, fresh, err := store.Submit(validSubmit("after-prune"))
+	if err != nil || !fresh || created.ID != "op_new" {
+		t.Fatalf("submit after prune = %#v, %v, %v", created, fresh, err)
+	}
+}
+
+func validOperationForStore(id string, state agentv1.State, updated time.Time) agentv1.Operation {
+	operation := agentv1.Operation{
+		APIVersion: agentv1.APIVersion, ID: id, Broker: "hf-broker", ClientID: "agent", IdempotencyKey: id,
+		Operation: "repo.create", Target: json.RawMessage(`{"kind":"repo"}`), Arguments: json.RawMessage(`{"private":true}`),
+		State: state, Revision: 1, CreatedAt: updated, UpdatedAt: updated, Presentation: agentv1.Presentation{Title: "Create"},
+	}
+	return operation
 }
 
 func TestRandomIDAndValidationHelpers(t *testing.T) {
