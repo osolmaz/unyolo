@@ -96,18 +96,22 @@ sandbox.
 
 When OpenClaw is outside the credential trust boundary, the trusted backend
 must serve the packaged `dist/ui` files at the registered UI path itself. A
-framed popover may receive only a server-enforced read session. It can show
-requests, but its decision endpoints must reject that token. The UI also
-rejects a decision-capable delegated session whenever it is framed.
+framed popover may receive a server-enforced `read` or `decide` session. A
+`read` session shows requests without action controls. A `decide` session lets
+the operator act directly in the frame. Hosts that use framed decisions accept
+that the surrounding application controls the iframe's placement and can
+attempt UI redressing; use the navigation-only launcher below when that threat
+must remain out of scope.
 
-The host injects the short-lived read session into the sandboxed response:
+The host injects the short-lived delegated session into the sandboxed response:
 
 ```html
 <meta name="brokerkit-delegated-session" content="BASE64URL_SESSION_JSON" />
 ```
 
-Each actionable request renders a **Review securely** button instead of
-decision controls. The button posts this navigation-only message:
+With `access: "read"`, each actionable request renders a **Review securely**
+button instead of decision controls. The button posts this navigation-only
+message:
 
 ```text
 { type: "brokerkit.delegated-web.open", version: 1, nonce }
@@ -118,8 +122,8 @@ browser tab to the trusted UI URL. The top-level response is unframeable and
 contains a server-enforced decision session, so approval, denial, cancellation,
 and revocation require a second explicit action in the trusted document.
 
-A host that does not provide a read-only framed inbox can inject this marker so
-the UI renders only the secure-navigation launcher:
+A host that does not provide a framed inbox can inject this marker so the UI
+renders only the secure-navigation launcher:
 
 ```html
 <meta name="brokerkit-delegated-top-level" />

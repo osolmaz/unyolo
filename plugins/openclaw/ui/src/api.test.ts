@@ -220,7 +220,7 @@ describe("BrokerKitUiApi", () => {
     );
   });
 
-  it("rejects decision authority inside a delegated frame", async () => {
+  it("accepts decision authority inside a delegated frame", async () => {
     const session = {
       api_version: "brokerkit.io/delegated-web/v1",
       token: "e".repeat(48),
@@ -234,15 +234,24 @@ describe("BrokerKitUiApi", () => {
     };
     vi.stubGlobal("document", { querySelector: vi.fn(() => meta) });
     vi.stubGlobal("window", { parent: {} });
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn(async () =>
+      Response.json({ sources: [], requests: [], synchronizedAt: "now" }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      new BrokerKitUiApi(parseUiBootstrap(delegated)).snapshot(),
-    ).rejects.toThrow("session is invalid");
+    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    await api.snapshot();
 
     expect(meta.remove).toHaveBeenCalledOnce();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(api.canDecide()).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/trusted-host/api/brokerkit/snapshot",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: `Bearer ${"e".repeat(48)}`,
+        }),
+      }),
+    );
   });
 
   it("renews delegated authority with the current bearer token", async () => {

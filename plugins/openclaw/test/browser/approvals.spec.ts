@@ -167,7 +167,7 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   await expect(page).not.toHaveURL(/#/);
 });
 
-test("loads a trusted embedded session inside the sandboxed approval frame", async ({
+test("decides with a trusted embedded session inside the sandboxed approval frame", async ({
   page,
 }) => {
   const token = "embedded-decision-token-that-is-long-enough";
@@ -180,7 +180,7 @@ test("loads a trusted embedded session inside the sandboxed approval frame", asy
     api_version: "brokerkit.io/delegated-web/v1",
     token,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
-    access: "read",
+    access: "decide",
     renewal_transport: "direct",
   });
   await page.route("**/plugins/brokerkit/ui/**", async (route) => {
@@ -217,11 +217,25 @@ test("loads a trusted embedded session inside the sandboxed approval frame", asy
       headers: { "access-control-allow-origin": "null" },
     });
   });
+  let decisionReceived = false;
+  await page.route(
+    "**/trusted-host/api/brokerkit/requests/*/deny",
+    async (route) => {
+      expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+      expect(route.request().postDataJSON()).toEqual({ expectedRevision: 1 });
+      decisionReceived = true;
+      await route.fulfill({
+        json: { ...snapshot.requests[0], status: "denied" },
+        headers: { "access-control-allow-origin": "null" },
+      });
+    },
+  );
 
   await page.goto("/");
   await page.setContent(
     `<iframe title="Approvals" sandbox="allow-scripts" src="http://127.0.0.1:4179/plugins/brokerkit/ui/#${encodedBootstrap}"></iframe>`,
   );
+  const parentUrl = page.url();
 
   const approvals = page.frameLocator('iframe[title="Approvals"]');
   await expect(
@@ -229,26 +243,14 @@ test("loads a trusted embedded session inside the sandboxed approval frame", asy
   ).toBeVisible();
   await expect(
     approvals.getByRole("button", { name: "Approve" }),
-  ).not.toBeVisible();
-  const openMessage = page.evaluate(
-    () =>
-      new Promise<Record<string, unknown>>((resolve) => {
-        window.addEventListener(
-          "message",
-          (event) => resolve(event.data as Record<string, unknown>),
-          { once: true },
-        );
-      }),
-  );
-  await approvals
-    .getByRole("button", { name: "Review securely" })
-    .first()
-    .click();
-  await expect(openMessage).resolves.toMatchObject({
-    type: "brokerkit.delegated-web.open",
-    version: 1,
-    nonce: expect.stringMatching(/^[a-f0-9]{32}$/u),
-  });
+  ).toBeVisible();
+  await approvals.getByRole("button", { name: "Deny" }).first().click();
+  const dialog = approvals.getByRole("dialog", { name: "Deny request" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Deny" }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(decisionReceived).toBe(true);
+  await expect(page).toHaveURL(parentUrl);
 });
 
 test("keeps framed delegated UI authority-free until top-level navigation", async ({
