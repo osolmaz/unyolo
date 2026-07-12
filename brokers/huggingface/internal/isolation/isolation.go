@@ -173,14 +173,6 @@ func resolveImplicitIdentity(agentPID int) (identity, error) {
 	return userIdentity(current, agentPID)
 }
 
-func lookupUserIdentity(name string, pid int) (identity, error) {
-	u, err := user.Lookup(name)
-	if err != nil {
-		return identity{}, fmt.Errorf("lookup agent user %q: %w", name, err)
-	}
-	return userIdentity(u, pid)
-}
-
 func lookupUIDIdentity(uid, pid int) (identity, error) {
 	u, err := user.LookupId(strconv.Itoa(uid))
 	if err == nil {
@@ -190,68 +182,6 @@ func lookupUIDIdentity(uid, pid int) (identity, error) {
 		return identity{}, fmt.Errorf("lookup agent UID %d: not found; pass --agent-pid to derive runtime groups", uid)
 	}
 	return identity{uid: uid, gids: map[int]bool{}, groups: map[string]bool{}, pid: pid}, nil
-}
-
-func userIdentity(u *user.User, pid int) (identity, error) {
-	uid, gid, err := parseUserIDs(u)
-	if err != nil {
-		return identity{}, err
-	}
-	gids, groups, err := userGroupMaps(u, gid)
-	if err != nil {
-		return identity{}, err
-	}
-	return identity{user: u.Username, uid: uid, gid: gid, gidSet: true, gids: gids, groups: groups, pid: pid}, nil
-}
-
-func parseUserIDs(u *user.User) (int, int, error) {
-	uid, err := strconv.Atoi(u.Uid)
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse uid for %q: %w", u.Username, err)
-	}
-	gid, err := strconv.Atoi(u.Gid)
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse gid for %q: %w", u.Username, err)
-	}
-	return uid, gid, nil
-}
-
-func userGroupMaps(u *user.User, primaryGID int) (map[int]bool, map[string]bool, error) {
-	gidValues, err := u.GroupIds()
-	if err != nil {
-		return nil, nil, fmt.Errorf("lookup groups for %q: %w", u.Username, err)
-	}
-	gids := make(map[int]bool, len(gidValues))
-	groups := map[string]bool{}
-	for _, raw := range gidValues {
-		gid, err := strconv.Atoi(raw)
-		if err != nil {
-			continue
-		}
-		gids[gid] = true
-		if group, err := user.LookupGroupId(raw); err == nil {
-			groups[group.Name] = true
-		}
-	}
-	gids[primaryGID] = true
-	if group, err := user.LookupGroupId(u.Gid); err == nil {
-		groups[group.Name] = true
-	}
-	return gids, groups, nil
-}
-
-func (i identity) info() AgentInfo {
-	gids := make([]int, 0, len(i.gids))
-	for gid := range i.gids {
-		gids = append(gids, gid)
-	}
-	sort.Ints(gids)
-	groups := make([]string, 0, len(i.groups))
-	for group := range i.groups {
-		groups = append(groups, group)
-	}
-	sort.Strings(groups)
-	return AgentInfo{User: i.user, UID: i.uid, GID: i.gid, GIDs: gids, Groups: groups, PID: i.pid}
 }
 
 func identityWithProcessStatus(agent identity, status procStatus) identity {
@@ -304,25 +234,6 @@ func intsString(values []int) string {
 		parts = append(parts, strconv.Itoa(value))
 	}
 	return "[" + strings.Join(parts, " ") + "]"
-}
-
-func gidsMap(values []int) map[int]bool {
-	gids := make(map[int]bool, len(values))
-	for _, gid := range values {
-		gids[gid] = true
-	}
-	return gids
-}
-
-func groupNames(gids map[int]bool) map[string]bool {
-	groups := map[string]bool{}
-	for gid := range gids {
-		group, err := user.LookupGroupId(strconv.Itoa(gid))
-		if err == nil {
-			groups[group.Name] = true
-		}
-	}
-	return groups
 }
 
 func runAgentChecks(report *Report, agent identity) {
