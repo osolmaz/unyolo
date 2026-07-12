@@ -599,12 +599,12 @@ The authenticated inference surface is deliberately limited to:
 | `GET /v1/models` | `GET {HF_BROKER_UPSTREAM_ROUTER_URL}/v1/models` |
 | `POST /v1/chat/completions` | `POST {HF_BROKER_UPSTREAM_ROUTER_URL}/v1/chat/completions` |
 
-Chat requests must be JSON, fit within 4 MiB, and contain a canonical
+Chat requests must be JSON, fit within 100 MiB, and contain a canonical
 `owner/model` identifier with an optional provider suffix. Streaming and
 non-streaming responses preserve their content type and status. The broker
 forwards only fixed headers, replaces authorization with the real HF token,
 refuses redirects, bounds responses, and applies explicit connection, response
-header, TLS, and total timeouts. Conversation length is bounded by the 4 MiB
+header, TLS, and total timeouts. Conversation length is bounded by the 100 MiB
 request limit rather than a separate message-count ceiling, so tool-heavy
 sessions remain valid. Every other `/v1/*` path is refused before any
 upstream contact. Inference audit entries contain the operation, model, status,

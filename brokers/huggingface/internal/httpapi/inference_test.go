@@ -168,14 +168,13 @@ func TestInferenceRejectsOversizedBodyAndBoundsTimeout(t *testing.T) {
 	broker, auditLog := newInferenceBroker(t, router.URL, 20*time.Millisecond)
 	defer broker.Close()
 
-	oversized := `{"model":"acme/model","input":"` + strings.Repeat("x", maxInferenceRequestBytes) + `"}`
-	resp := inferenceRequestToBroker(t, broker, oversized)
-	if resp.StatusCode != http.StatusRequestEntityTooLarge {
-		t.Fatalf("oversized status = %d", resp.StatusCode)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(strings.Repeat("x", 65)))
+	_, status, reason := readInferenceRequestWithLimit(httptest.NewRecorder(), request, 64)
+	if status != http.StatusRequestEntityTooLarge || reason != "request_body_too_large" {
+		t.Fatalf("oversized status = %d reason = %q", status, reason)
 	}
-	_ = resp.Body.Close()
 
-	resp = inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`)
+	resp := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("timeout status = %d", resp.StatusCode)
 	}
