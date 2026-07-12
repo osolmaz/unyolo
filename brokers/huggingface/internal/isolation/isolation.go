@@ -65,19 +65,6 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	return report, nil
 }
 
-func validateOptions(opts Options) error {
-	if opts.AgentUIDSet && opts.AgentUser != "" {
-		return errors.New("--agent-user and --agent-uid are mutually exclusive")
-	}
-	if opts.AgentPID < 0 {
-		return errors.New("--agent-pid must be non-negative")
-	}
-	if opts.BrokerPID < 0 {
-		return errors.New("--broker-pid must be non-negative")
-	}
-	return nil
-}
-
 func runCredentialTargetCheck(report *Report, opts Options) {
 	if opts.TokenFile != "" && opts.BrokerPID <= 0 {
 		add(report, CheckPass, "credential_target", "token file supplied for credential reachability checks")
@@ -234,26 +221,6 @@ func intsString(values []int) string {
 		parts = append(parts, strconv.Itoa(value))
 	}
 	return "[" + strings.Join(parts, " ") + "]"
-}
-
-func runAgentChecks(report *Report, agent identity) {
-	if agent.uid == 0 {
-		add(report, CheckFail, "agent_not_root", "agent UID is 0; host root can read local credentials and bypass broker isolation")
-	} else {
-		add(report, CheckPass, "agent_not_root", fmt.Sprintf("agent UID %d is not root", agent.uid))
-	}
-	var risky []string
-	for group := range agent.groups {
-		if bkdoctor.RootEquivalentGroup(group) {
-			risky = append(risky, group)
-		}
-	}
-	sort.Strings(risky)
-	if len(risky) > 0 {
-		add(report, CheckFail, "agent_not_root_equivalent_group", "agent is in root-equivalent group(s): "+strings.Join(risky, ", "))
-		return
-	}
-	add(report, CheckPass, "agent_not_root_equivalent_group", "agent is not in a known root-equivalent group")
 }
 
 func runAgentProcChecks(report *Report, agent identity, pid int, status *procStatus, statusErr error) {
