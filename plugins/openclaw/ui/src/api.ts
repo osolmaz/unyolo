@@ -25,9 +25,13 @@ export const DELEGATED_SESSION_REQUEST =
   "brokerkit.delegated-web.session.request";
 export const DELEGATED_SESSION_RESPONSE =
   "brokerkit.delegated-web.session.response";
+export const DELEGATED_SESSION_META = "brokerkit-delegated-session";
+export const DELEGATED_TOP_LEVEL_META = "brokerkit-delegated-top-level";
+export const DELEGATED_OPEN_REQUEST = "brokerkit.delegated-web.open";
 
 export class BrokerKitUiApi {
   private delegatedSession?: DelegatedSession;
+  private delegatedRefresh: Promise<string> | undefined;
 
   constructor(private readonly bootstrap: UiBootstrap) {}
 
@@ -84,7 +88,22 @@ export class BrokerKitUiApi {
     ) {
       return this.delegatedSession.token;
     }
-    const value = await delegatedSession(this.bootstrap.basePath);
+    if (this.delegatedRefresh) return this.delegatedRefresh;
+    this.delegatedRefresh = this.refreshDelegatedAuthorization();
+    try {
+      return await this.delegatedRefresh;
+    } finally {
+      this.delegatedRefresh = undefined;
+    }
+  }
+
+  private async refreshDelegatedAuthorization(): Promise<string> {
+    if (this.bootstrap.mode !== "delegated-web")
+      throw new Error("Delegated approval session is invalid");
+    const value = await delegatedSession(
+      this.bootstrap.basePath,
+      this.delegatedSession?.token,
+    );
     const expiresAtMs = Date.parse(
       typeof value.expires_at === "string" ? value.expires_at : "",
     );
@@ -109,8 +128,22 @@ export class BrokerKitUiApi {
 
 async function delegatedSession(
   basePath: string,
+  renewalToken?: string,
 ): Promise<Record<string, unknown>> {
-  if (typeof window === "undefined" || window.parent === window) {
+  const embedded = embeddedDelegatedSession();
+  if (embedded) return embedded;
+  const topLevel = typeof window === "undefined" || window.parent === window;
+  if (renewalToken && topLevel) {
+    const response = await fetch(`${basePath}/session`, {
+      method: "POST",
+      credentials: "omit",
+      cache: "no-store",
+      headers: { authorization: `Bearer ${renewalToken}` },
+    });
+    if (!response.ok) throw new Error(await safeError(response));
+    return (await response.json()) as Record<string, unknown>;
+  }
+  if (topLevel) {
     const response = await fetch(`${basePath}/session`, {
       method: "POST",
       credentials: "include",
@@ -121,6 +154,44 @@ async function delegatedSession(
     return (await response.json()) as Record<string, unknown>;
   }
   return delegatedSessionFromParent();
+}
+
+export function takeDelegatedTopLevelLauncher(): boolean {
+  if (typeof document === "undefined") return false;
+  const element = document.querySelector(
+    `meta[name="${DELEGATED_TOP_LEVEL_META}"]`,
+  );
+  if (!element) return false;
+  element.remove();
+  return true;
+}
+
+export function requestDelegatedTopLevelOpen(): void {
+  if (typeof window === "undefined" || window.parent === window) return;
+  window.parent.postMessage(
+    { type: DELEGATED_OPEN_REQUEST, version: 1, nonce: randomNonce() },
+    "*",
+  );
+}
+
+function embeddedDelegatedSession(): Record<string, unknown> | undefined {
+  if (typeof document === "undefined") return undefined;
+  const element = document.querySelector(
+    `meta[name="${DELEGATED_SESSION_META}"]`,
+  );
+  if (!element) return undefined;
+  const encoded = element.getAttribute("content") ?? "";
+  element.remove();
+  if (typeof window === "undefined" || window.parent !== window) return {};
+  if (!encoded || encoded.length > 8192) return {};
+  try {
+    const normalized = encoded.replace(/-/gu, "+").replace(/_/gu, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const value = JSON.parse(atob(padded)) as unknown;
+    return record(value) ? value : {};
+  } catch {
+    return {};
+  }
 }
 
 function delegatedSessionFromParent(): Promise<Record<string, unknown>> {
