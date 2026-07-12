@@ -140,36 +140,65 @@ Acceptance:
 - One request or transition uses one captured timestamp where consistency
   matters.
 
-### 4. Enforce Durable Store Ownership and Recovery
+### 4. Move Durable State to SQLite
 
 Problem: grant, operation, and helper stores use process-local mutexes and atomic
 rename but have no cross-process ownership. Two broker processes can read the
 same old state and overwrite each other. Atomic replacement prevents torn files;
-it does not prevent lost updates.
+it does not prevent lost updates. Separate grant, plan, operation, event, and
+notification files also prevent one atomic lifecycle transaction.
 
 Implementation:
 
-- Add a root store-directory lease that acquires a non-blocking, process-lifetime
-  exclusive lock using OS-specific adapters.
-- Have each broker acquire its state lease before opening stores, listeners, or
-  approval transports. A second owner must fail startup with a stable diagnostic.
-- Keep state writes temp-file based, fsynced, atomically renamed, and followed by
-  directory sync.
-- Make durable readers reject duplicate keys, trailing content, unknown state
-  versions, invalid required fields, and oversized state files.
+- Use `database/sql` with the pure-Go `modernc.org/sqlite` driver so Linux and
+  macOS releases remain CGO-free.
+- Give each independently deployed broker one local `state.db`. Keep the sudo
+  privileged helper's root-owned execution database separate from the
+  unprivileged frontend database.
+- Store grants, immutable plans, Agent operations, lifecycle events, decision
+  records, notification outbox entries, idempotency records, and schema metadata
+  in normalized tables with explicit foreign keys and unique constraints.
+- Put plan binding, grant or operation creation, lifecycle event append, and
+  notification outbox insertion in one SQL transaction.
+- Enable foreign keys, WAL mode, a bounded busy timeout, and an explicitly
+  documented synchronous policy during every database initialization. Use the
+  stronger durability setting for authorization and execution state.
+- Add ordered, checksummed schema migrations owned by BrokerKit. Do not use GORM
+  or automatic schema migration for broker state.
+- Acquire a small OS-level process-lifetime state-directory lease before opening
+  the database, listeners, or approval transports. SQLite protects database
+  writes; the lease prevents two broker processes from duplicating external side
+  effects such as polling and notification delivery.
+- Bound every text and blob column at ingress and reject unknown schema versions
+  or invalid required state before serving traffic.
 - Define restart recovery for reservations, pending notifications, retained
-  executions, Agent operations, and orphan plans, and test interruption at each
-  durable transition.
-- Keep one independently locked state directory per broker; do not create a
-  shared multi-broker database.
+  executions, Agent operations, and outbox delivery, and test interruption at
+  each durable transition.
+- Provide integrity checking, consistent backup, and redacted JSON export for
+  operators. The live database is not an operator-edited configuration surface.
+- Require local-disk state. Network filesystems are unsupported unless their
+  SQLite locking and durability behavior is separately proven.
+- Cut over directly. Do not read, migrate, or dual-write the superseded JSON
+  lifecycle stores.
+
+Deletion targets:
+
+- JSON lifecycle stores and their process-local transaction emulation;
+- filesystem-backed immutable plan storage and orphan-plan garbage collection;
+  and
+- durable-state parsing paths that exist only for the replaced JSON formats.
 
 Acceptance:
 
 - A second process cannot open the same broker state directory.
-- Crash-point tests prove committed state is recoverable and uncommitted state is
-  either absent or safely reconcilable.
-- Corrupt, truncated, oversized, duplicate-key, and unknown-version state fails
-  closed without being overwritten.
+- Crash-point tests prove a lifecycle transaction is entirely committed or
+  entirely absent, including its immutable plan, event, and outbox entry.
+- Foreign-key, idempotency, revision, and state-transition invariants are enforced
+  under concurrent requests and across restarts.
+- Corrupt databases, failed migrations, oversized values, and unknown schema
+  versions fail closed without being overwritten.
+- `PRAGMA integrity_check`, backup/restore, and redacted export have automated
+  tests.
 - Linux and macOS ownership behavior has focused tests.
 
 ### 5. Make Protocol Artifacts Single-Source
@@ -285,20 +314,18 @@ Acceptance:
   retain fail-closed tests.
 - HF isolation code contains only HF configuration and presentation adapters.
 
-### 9. Extract Immutable Plan and Grant Coordination
+### 9. Unify Immutable Plan and Grant Transactions
 
 Problem: HF, GH, and sudo independently implement the same provider-neutral
-sequence: locate an idempotent request, recover its original plan timestamp,
-bind an immutable content-addressed plan, create the durable grant, and collect
-orphan plans. The separate implementations can drift in replay, cancellation,
-and cleanup behavior.
+sequence: locate an idempotent request, bind an immutable plan, create the
+durable grant, and recover or clean up after partial failure. SQLite now permits
+that sequence to become one transaction rather than coordinated filesystem and
+JSON writes.
 
 Shared ownership:
 
-- `planstore` continues to own content-addressed bytes, integrity verification,
-  and bounded orphan collection.
-- A small root coordinator owns the ordering and idempotency contract between a
-  provider plan adapter and `grants.Store`.
+- A small root transaction service owns the ordering, idempotency, revision, and
+  event/outbox contract across shared SQLite repositories.
 - The coordinator accepts a narrow typed plan interface. It must not accept
   unstructured callbacks or know provider schemas.
 
@@ -313,17 +340,19 @@ Implementation:
 
 - Define the shared bind/request/replay contract from the three existing broker
   implementations and conformance tests before moving code.
-- Move existing-plan timestamp recovery, request ordering, and orphan reference
-  collection into the coordinator.
+- Persist canonical provider plan bytes and their digest in the same transaction
+  that creates the grant or operation reference.
+- Make replay a unique-key lookup that returns the original immutable plan and
+  committed lifecycle record without rewriting timestamps.
 - Adopt it in HF first, then GH and sudo, deleting each local implementation in
   the same change.
-- Integrate the coordinator with the state lease and Agent operation transaction
-  boundaries instead of introducing a second locking mechanism.
+- Use the SQLite transaction and state-directory lease instead of introducing a
+  second locking or orphan-reconciliation mechanism.
 
 Acceptance:
 
 - HF, GH, and sudo pass the same create, replay, cancellation, missing-plan,
-  digest-mismatch, crash-recovery, and orphan-retention fixtures.
+  digest-mismatch, concurrent-request, rollback, and crash-recovery fixtures.
 - An idempotent replay resolves to the original immutable plan and timestamp.
 - Approval can never activate a missing, changed, or mismatched plan.
 - No provider plan type or policy vocabulary enters a root package.
@@ -505,14 +534,14 @@ The refactor is complete when:
 
 - all security-relevant JSON and buffered I/O boundaries use shared strict,
   bounded mechanics;
-- each broker exclusively owns and can recover its durable state directory;
+- each broker exclusively owns and can recover its transactional SQLite state;
 - lifecycle time and secure identifiers come from explicit, testable runtime
   dependencies;
 - schemas drive protocol enums, limits, and bindings;
 - HF and GH use one Git framing implementation;
 - HF uses the shared audit recorder;
 - HF isolation is a thin provider adapter over shared doctor primitives;
-- HF, GH, and sudo use one provider-neutral immutable plan/grant coordination
+- HF, GH, and sudo use one provider-neutral immutable plan/grant SQL transaction
   contract while retaining provider plan schemas;
 - HF, GH, and sudo use the shared Agent V1 lifecycle for discrete approved
   operations;
