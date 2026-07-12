@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
@@ -133,6 +134,17 @@ func (s *Server) agentLifecycleContext() context.Context {
 }
 
 func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, arguments repoCreateArguments) agentv1.Operation {
+	lock := s.operationAuthorizationLock(operation.ID)
+	lock.Lock()
+	defer lock.Unlock()
+	current, err := s.operations.GetByID(operation.ID)
+	if err != nil {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not read operation")
+	}
+	if current.State != agentv1.StatePending || current.ApprovalID != "" {
+		return current
+	}
+	operation = current
 	attrs := repoCreateAttrs(arguments)
 	decision := s.repoCreateDecision(operation.ClientID, target, attrs)
 	switch decision.Effect {
@@ -147,6 +159,15 @@ func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Oper
 		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "not_allowed", 0, decision)
 		return s.failOperation(operation.ID, agentv1.StateDenied, "not_allowed", "No policy rule allows this operation")
 	}
+}
+
+func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
+	var hash uint64 = 14695981039346656037
+	for i := 0; i < len(id); i++ {
+		hash ^= uint64(id[i])
+		hash *= 1099511628211
+	}
+	return &s.operationAuthLocks[hash%uint64(len(s.operationAuthLocks))]
 }
 
 func (s *Server) repoCreateDecision(client string, target repoCreateTarget, attrs map[string]any) policy.Decision {
@@ -454,7 +475,9 @@ func (s *Server) failOperation(id string, state agentv1.State, code, message str
 }
 
 func (s *Server) startOperationWorker(ctx context.Context) {
+	s.backgroundWorkers.Add(1)
 	go func() {
+		defer s.backgroundWorkers.Done()
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 		s.recoverOperations(ctx)

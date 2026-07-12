@@ -394,7 +394,11 @@ func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, no
 		cancel()
 		t.Fatal(err)
 	}
-	return httptest.NewServer(handler), handler, cancel
+	stop := func() {
+		cancel()
+		handler.backgroundWorkers.Wait()
+	}
+	return httptest.NewServer(handler), handler, stop
 }
 
 func waitForTestOperation(t *testing.T, serverURL, id string) agentv1.Operation {

@@ -99,6 +99,8 @@ type Server struct {
 	operatorConfigured  bool
 	lifecycleContext    context.Context
 	planGCOnce          sync.Once
+	backgroundWorkers   sync.WaitGroup
+	operationAuthLocks  [64]sync.Mutex
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
@@ -2378,7 +2380,9 @@ func (s *Server) startGrantNotificationSweeper(ctx context.Context) {
 	if s.notifier == nil {
 		return
 	}
+	s.backgroundWorkers.Add(1)
 	go func() {
+		defer s.backgroundWorkers.Done()
 		s.sweepGrantNotifications(ctx)
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
