@@ -149,9 +149,10 @@ test("uses delegated web session authority without exposing it in the URL", asyn
     route.fulfill({
       json: {
         api_version: "brokerkit.io/delegated-web/v1",
-        actor: "osolmaz",
-        decision_token: token,
+        token,
         expires_at: new Date(Date.now() + 60_000).toISOString(),
+        access: "decide",
+        renewal_transport: "direct",
       },
     }),
   );
@@ -164,6 +165,90 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   );
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page).not.toHaveURL(/#/);
+});
+
+test("loads a trusted embedded session inside the sandboxed approval frame", async ({
+  page,
+}) => {
+  const token = "embedded-decision-token-that-is-long-enough";
+  const encodedBootstrap = bootstrap({
+    version: 1,
+    mode: "delegated-web",
+    basePath: "/trusted-host/api/brokerkit",
+  });
+  const encodedSession = bootstrap({
+    api_version: "brokerkit.io/delegated-web/v1",
+    token,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+    access: "read",
+    renewal_transport: "direct",
+  });
+  await page.route("**/plugins/brokerkit/ui/**", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        "access-control-allow-origin": "null",
+        "access-control-allow-private-network": "true",
+      },
+    });
+  });
+  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      "<head>",
+      `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+    );
+    await route.fulfill({
+      response,
+      body,
+      headers: {
+        ...response.headers(),
+        "access-control-allow-origin": "null",
+        "access-control-allow-private-network": "true",
+      },
+    });
+  });
+  await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+    await route.fulfill({
+      json: snapshot,
+      headers: { "access-control-allow-origin": "null" },
+    });
+  });
+
+  await page.goto("/");
+  await page.setContent(
+    `<iframe title="Approvals" sandbox="allow-scripts" src="http://127.0.0.1:4179/plugins/brokerkit/ui/#${encodedBootstrap}"></iframe>`,
+  );
+
+  const approvals = page.frameLocator('iframe[title="Approvals"]');
+  await expect(
+    approvals.getByText("Hugging Face repository write"),
+  ).toBeVisible();
+  await expect(
+    approvals.getByRole("button", { name: "Approve" }),
+  ).not.toBeVisible();
+  const openMessage = page.evaluate(
+    () =>
+      new Promise<Record<string, unknown>>((resolve) => {
+        window.addEventListener(
+          "message",
+          (event) => resolve(event.data as Record<string, unknown>),
+          { once: true },
+        );
+      }),
+  );
+  await approvals
+    .getByRole("button", { name: "Review securely" })
+    .first()
+    .click();
+  await expect(openMessage).resolves.toMatchObject({
+    type: "brokerkit.delegated-web.open",
+    version: 1,
+    nonce: expect.stringMatching(/^[a-f0-9]{32}$/u),
+  });
 });
 
 test("keeps framed delegated UI authority-free until top-level navigation", async ({
