@@ -50,10 +50,8 @@ type hfGrantRequest struct {
 type grantRequestOptions struct {
 	operation      string
 	target         string
-	targetKind     string
 	repoType       string
 	refs           stringListFlag
-	keys           stringListFlag
 	reason         string
 	idempotencyKey string
 	minutes        int
@@ -167,7 +165,7 @@ func requestHFGrant(ctx context.Context, client *hfGrantClient, request hfGrantR
 
 func parseGrantRequestOptions(args []string) (grantRequestOptions, error) {
 	options := grantRequestOptions{
-		targetKind: "repo", repoType: "dataset", reason: "Request temporary Hugging Face access through HF Broker",
+		repoType: "dataset", reason: "Request temporary Hugging Face access through HF Broker",
 		wait: true, waitTimeout: defaultClientWait,
 	}
 	if len(args) >= 2 && !strings.HasPrefix(args[0], "-") && !strings.HasPrefix(args[1], "-") {
@@ -175,10 +173,8 @@ func parseGrantRequestOptions(args []string) (grantRequestOptions, error) {
 	}
 	flags := flag.NewFlagSet("grant request", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.StringVar(&options.targetKind, "kind", options.targetKind, "repo or bucket")
 	flags.StringVar(&options.repoType, "type", options.repoType, "model, dataset, or space")
 	flags.Var(&options.refs, "ref", "exact repository ref; repeatable")
-	flags.Var(&options.keys, "key", "exact bucket object key; repeatable")
 	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
 	flags.StringVar(&options.idempotencyKey, "idempotency-key", "", "stable retry key")
 	flags.IntVar(&options.minutes, "minutes", 0, "requested duration; omit for policy default")
@@ -196,35 +192,11 @@ func validateGrantRequestOptions(options grantRequestOptions) error {
 	if !policy.IsOperation(options.operation) || options.target == "" {
 		return errors.New("a registered operation and OWNER/NAME target are required")
 	}
-	if err := validateGrantTargetFlags(options); err != nil {
-		return err
-	}
-	if options.minutes < 0 || options.waitTimeout <= 0 || strings.TrimSpace(options.reason) == "" {
-		return errors.New("minutes, reason, or wait timeout is invalid")
-	}
-	return nil
-}
-
-func validateGrantTargetFlags(options grantRequestOptions) error {
-	switch options.targetKind {
-	case "repo":
-		return validateGrantRepoFlags(options)
-	case "bucket":
-		if len(options.refs) != 0 {
-			return errors.New("--ref requires --kind repo")
-		}
-		return nil
-	default:
-		return errors.New("kind must be repo or bucket")
-	}
-}
-
-func validateGrantRepoFlags(options grantRequestOptions) error {
 	if !validGrantRepoType(options.repoType) {
 		return errors.New("type must be model, dataset, or space")
 	}
-	if len(options.keys) != 0 {
-		return errors.New("--key requires --kind bucket")
+	if options.minutes < 0 || options.waitTimeout <= 0 || strings.TrimSpace(options.reason) == "" {
+		return errors.New("minutes, reason, or wait timeout is invalid")
 	}
 	return nil
 }
@@ -260,13 +232,9 @@ func buildHFGrantTarget(options grantRequestOptions) (policy.Target, error) {
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return policy.Target{}, errors.New("target must be OWNER/NAME")
 	}
-	target := policy.Target{Owner: owner, Name: name}
-	if options.targetKind == "repo" {
-		target.Kind, target.Type, target.Refs = policy.KindRepo, policy.RepoType(options.repoType), options.refs
-	} else {
-		target.Kind, target.Keys = policy.KindBucket, options.keys
-	}
-	return target, nil
+	return policy.Target{
+		Kind: policy.KindRepo, Type: policy.RepoType(options.repoType), Owner: owner, Name: name, Refs: options.refs,
+	}, nil
 }
 
 func runClientGrantLifecycle(ctx context.Context, client *hfGrantClient, stdout io.Writer, action string, args []string) error {

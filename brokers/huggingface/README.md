@@ -125,10 +125,9 @@ hf-broker client grant cancel <grant-id>
 hf-broker client grant revoke <grant-id>
 ```
 
-Bucket requests use `--kind bucket` with repeatable `--key` flags. Repository
-requests use repeatable `--ref` flags. The broker validates the operation,
-target, attributes, duration, and use budget against the exact matched policy
-rule before creating an approval.
+Repository requests use repeatable `--ref` flags. The broker validates the
+operation, target, attributes, duration, and use budget against the exact
+matched policy rule before creating an approval.
 
 Inference defaults to denied. This rule allows one client to list Router models
 and call models under one owner:

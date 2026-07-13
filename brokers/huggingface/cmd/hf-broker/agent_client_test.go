@@ -142,14 +142,11 @@ func TestRunAgentClientGrantLifecycle(t *testing.T) {
 func TestGrantRequestOptionValidation(t *testing.T) {
 	t.Parallel()
 	valid := grantRequestOptions{
-		operation: "git.push.force", target: "acme/repo", targetKind: "repo", repoType: "dataset",
+		operation: "git.push.force", target: "acme/repo", repoType: "dataset",
 		reason: "repair", waitTimeout: time.Minute,
 	}
 	for _, mutate := range []func(*grantRequestOptions){
-		func(value *grantRequestOptions) { value.targetKind = "invalid" },
 		func(value *grantRequestOptions) { value.repoType = "invalid" },
-		func(value *grantRequestOptions) { value.keys = []string{"key"} },
-		func(value *grantRequestOptions) { value.targetKind, value.refs = "bucket", []string{"refs/heads/main"} },
 		func(value *grantRequestOptions) { value.minutes = -1 },
 		func(value *grantRequestOptions) { value.operation = "missing" },
 	} {

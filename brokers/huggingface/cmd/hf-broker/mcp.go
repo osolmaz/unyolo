@@ -116,10 +116,8 @@ func mcpGrantRequestSchema() map[string]any {
 		"properties": map[string]any{
 			"operation":       map[string]any{"type": "string"},
 			"target":          map[string]any{"type": "string", "description": "Exact OWNER/NAME target"},
-			"kind":            map[string]any{"enum": []string{"repo", "bucket"}, "default": "repo"},
 			"type":            map[string]any{"enum": []string{"model", "dataset", "space"}, "default": "dataset"},
 			"refs":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-			"keys":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"attrs":           map[string]any{"type": "object"},
 			"reason":          map[string]any{"type": "string"},
 			"idempotency_key": map[string]any{"type": "string"},
@@ -156,10 +154,8 @@ func callMCPTool(ctx context.Context, client *agentClient, call mcpToolCall) (an
 type mcpGrantRequestInput struct {
 	Operation      string             `json:"operation"`
 	Target         string             `json:"target"`
-	Kind           string             `json:"kind"`
 	Type           string             `json:"type"`
 	Refs           []string           `json:"refs"`
-	Keys           []string           `json:"keys"`
 	Attrs          map[string]any     `json:"attrs"`
 	Reason         string             `json:"reason"`
 	IdempotencyKey string             `json:"idempotency_key"`
@@ -203,13 +199,10 @@ func prepareMCPGrantRequest(raw json.RawMessage) (hfGrantRequest, grantRequestOp
 
 func mcpGrantRequestOptions(input mcpGrantRequestInput) (grantRequestOptions, error) {
 	options := grantRequestOptions{
-		operation: input.Operation, target: input.Target, targetKind: input.Kind, repoType: input.Type,
-		refs: input.Refs, keys: input.Keys, reason: input.Reason, idempotencyKey: input.IdempotencyKey,
+		operation: input.Operation, target: input.Target, repoType: input.Type,
+		refs: input.Refs, reason: input.Reason, idempotencyKey: input.IdempotencyKey,
 		minutes: input.Minutes, maxUses: optionalUseFlag{set: input.MaxUses.Specified, limit: input.MaxUses.Limit},
 		wait: input.WaitSeconds > 0, waitTimeout: time.Duration(input.WaitSeconds) * time.Second,
-	}
-	if options.targetKind == "" {
-		options.targetKind = "repo"
 	}
 	if options.repoType == "" {
 		options.repoType = "dataset"
