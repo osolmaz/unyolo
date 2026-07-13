@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 )
@@ -144,6 +146,27 @@ func TestInterruptedOperationCommitsReservedApproval(t *testing.T) {
 	settled, grantErr := handler.grants.Get(approved.ID)
 	if err != nil || stored.State != agentv1.StateSucceeded || grantErr != nil || settled.UsedCount != 1 || settled.ReservedCount != 0 {
 		t.Fatalf("recovered operation = %#v, %v; grant = %#v, %v", stored, err, settled, grantErr)
+	}
+}
+
+func TestExecutedOperationFailsClosedWhenResultCannotBeStored(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "recovery")
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
+	defer func() { _ = handler.Close() }()
+	operation := seedExecutingRepoCreate(t, handler, "op_store_failure")
+	oversized := json.RawMessage(`{"value":"` + strings.Repeat("x", 2*1024*1024) + `"}`)
+	handler.succeedExecutedOperation(operation, operations.Plan{}, oversized, false, "")
+	stored, err := handler.operations.GetByID(operation.ID)
+	if err != nil || stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "operation_store_unavailable" {
+		t.Fatalf("stored operation = %+v, %v", stored, err)
+	}
+}
+
+func TestNormalizedOperationResultDescribesRecoveredSuccess(t *testing.T) {
+	result := normalizedOperationResult("repo.delete", nil)
+	if !strings.Contains(string(result), `"operation":"repo.delete"`) || !strings.Contains(string(result), `"reconciled":true`) {
+		t.Fatalf("normalized result = %s", result)
 	}
 }
 

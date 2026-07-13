@@ -234,6 +234,25 @@ func TestAgentRequesterCancelsPendingOperationAndApproval(t *testing.T) {
 	}
 }
 
+func TestAgentRequesterCancelsApprovalBeforeBindingRecovery(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "cancel-unbound")
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
+	defer func() { _ = handler.Close() }()
+	operation, requested := seedPendingRepoCreateGrant(t, handler, "op_cancel_unbound", "cancel-unbound")
+	if operation.ApprovalID != "" {
+		t.Fatalf("seeded operation unexpectedly bound approval %q", operation.ApprovalID)
+	}
+	canceled, err := handler.cancelAgentOperation(t.Context(), "agent", operation.ID)
+	if err != nil || canceled.State != agentv1.StateCanceled {
+		t.Fatalf("cancelAgentOperation() = %+v, %v", canceled, err)
+	}
+	grant, err := handler.grants.Get(requested.Grant.ID)
+	if err != nil || grant.Status != grants.StatusCanceled {
+		t.Fatalf("recovered approval = %+v, %v", grant, err)
+	}
+}
+
 func TestGrantCancellationFailureIsNotDiscarded(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "cancel-error")
 	defer upstream.Close()

@@ -269,6 +269,12 @@ func operationUsesRefs(operation Operation) bool {
 	return refScopedOperations[operation]
 }
 
+// OperationUsesRefs reports whether ref constraints participate in policy
+// matching for an operation.
+func OperationUsesRefs(operation Operation) bool {
+	return operationUsesRefs(operation)
+}
+
 func bucketOperationMutatesObjects(operation Operation) bool {
 	return operation == OpBucketObjectWrite || operation == OpBucketObjectDel ||
 		operation == "bucket.batch.apply" || operation == "bucket.sync.apply" || operation == "bucket.object.delete"

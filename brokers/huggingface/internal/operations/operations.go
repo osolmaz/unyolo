@@ -153,7 +153,7 @@ type Adapter interface {
 // ClientBoundAdapter binds requester-owned external references after the
 // authenticated client is known and before provider resolution begins.
 type ClientBoundAdapter interface {
-	ValidateClient(Input, string) error
+	ValidateClient(Input, string, string) error
 }
 
 // PlanCleaner removes transient provider material when an operation reaches a

@@ -106,7 +106,7 @@ func (a *sealedBoundAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (In
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, err
 }
 
-func (a *sealedBoundAdapter) ValidateClient(input Input, client string) error {
+func (a *sealedBoundAdapter) ValidateClient(input Input, client, requestKey string) error {
 	arguments, err := decodeSealedArguments(input.Arguments)
 	if err != nil {
 		return err
@@ -114,8 +114,8 @@ func (a *sealedBoundAdapter) ValidateClient(input Input, client string) error {
 	if arguments.SealedPayload == nil {
 		return nil
 	}
-	if arguments.SealedPayload.Owner != client || arguments.SealedPayload.Purpose != a.descriptor.Name {
-		return errors.New("sealed payload does not belong to this client and operation")
+	if err := validateSealedReference(arguments.SealedPayload, client, a.descriptor.Name, requestKey); err != nil {
+		return err
 	}
 	payload, err := a.store.Get(*arguments.SealedPayload)
 	zero(payload)
@@ -185,15 +185,29 @@ func (a *sealedBoundAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome,
 	if err != nil {
 		return Outcome{}, err
 	}
-	proven := a.binding.Reconcile == "absent" && absent
-	if a.binding.Reconcile == "present" && !absent {
-		arguments, decodeErr := decodeSealedArguments(plan.Arguments)
-		if decodeErr != nil {
-			return Outcome{}, decodeErr
-		}
-		proven = requestedStateMatches(arguments.Public, observed)
+	proven, err := a.reconciliationProven(plan, observed, absent)
+	if err != nil {
+		return Outcome{}, err
 	}
-	return Outcome{Proven: proven}, nil
+	var result json.RawMessage
+	if proven {
+		result, _ = canonical(map[string]any{"operation": a.descriptor.Name, "reconciled": true})
+	}
+	return Outcome{Proven: proven, Result: result}, nil
+}
+
+func (a *sealedBoundAdapter) reconciliationProven(plan Plan, observed json.RawMessage, absent bool) (bool, error) {
+	if a.binding.Reconcile == "absent" {
+		return absent, nil
+	}
+	if a.binding.Reconcile != "present" || absent {
+		return false, nil
+	}
+	arguments, err := decodeSealedArguments(plan.Arguments)
+	if err != nil || arguments.SealedPayload != nil {
+		return false, err
+	}
+	return requestedStateMatches(arguments.Public, observed), nil
 }
 
 func (a *sealedBoundAdapter) Cleanup(plan Plan) error {
@@ -258,6 +272,13 @@ func decodeSealedArguments(raw json.RawMessage) (sealedBoundArguments, error) {
 		return sealedBoundArguments{}, errors.New("sealed operation arguments are invalid")
 	}
 	return arguments, nil
+}
+
+func validateSealedReference(reference *sealedstore.Reference, client, operation, requestKey string) error {
+	if reference.Owner != client || reference.Purpose != operation || reference.RequestKey != requestKey {
+		return errors.New("sealed payload does not belong to this client, operation, and request")
+	}
+	return nil
 }
 
 func decodeObject(raw []byte) (map[string]any, error) {

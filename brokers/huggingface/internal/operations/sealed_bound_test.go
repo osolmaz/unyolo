@@ -38,7 +38,7 @@ func (f *sealedBoundFake) ObserveBound(context.Context, string, json.RawMessage)
 
 func TestSealedBoundAdapterKeepsSecretOutsidePlanAndConsumesOnce(t *testing.T) {
 	store, _ := sealedstore.Open(t.TempDir())
-	reference, err := store.Put("bob", "space.secret.set", []byte(`{"value":"canary-secret"}`), time.Now().Add(time.Hour))
+	reference, err := store.PutForRequest("bob", "space.secret.set", "secret-request", []byte(`{"value":"canary-secret"}`), time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestSealedBoundAdapterKeepsSecretOutsidePlanAndConsumesOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob"); err != nil {
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "secret-request"); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := adapter.Resolve(context.Background(), input)
@@ -73,7 +73,7 @@ func TestSealedBoundAdapterKeepsSecretOutsidePlanAndConsumesOnce(t *testing.T) {
 
 func TestSealedBoundAdapterRejectsOwnershipLeaksAndSecretSmuggling(t *testing.T) {
 	store, _ := sealedstore.Open(t.TempDir())
-	reference, _ := store.Put("bob", "space.secret.set", []byte(`{"value":"secret"}`), time.Now().Add(time.Hour))
+	reference, _ := store.PutForRequest("bob", "space.secret.set", "secret-request", []byte(`{"value":"secret"}`), time.Now().Add(time.Hour))
 	adapters, _ := NewSealedBoundAdapters(&sealedBoundFake{identity: "operator"}, store)
 	registry, _ := NewRegistry(adapters...)
 	adapter, _ := registry.Lookup("space.secret.set")
@@ -84,14 +84,36 @@ func TestSealedBoundAdapterRejectsOwnershipLeaksAndSecretSmuggling(t *testing.T)
 	}
 	arguments, _ := json.Marshal(sealedBoundArguments{Public: json.RawMessage(`{"key":"TOKEN"}`), SealedPayload: &reference})
 	input, _ := adapter.Decode(target, arguments)
-	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "alice"); err == nil {
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "alice", "secret-request"); err == nil {
 		t.Fatal("cross-client sealed reference accepted")
 	}
-	badReference, _ := store.Put("bob", "webhook.create", []byte(`{"secret":"secret"}`), time.Now().Add(time.Hour))
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "other-request"); err == nil {
+		t.Fatal("cross-request sealed reference accepted")
+	}
+	badReference, _ := store.PutForRequest("bob", "webhook.create", "secret-request", []byte(`{"secret":"secret"}`), time.Now().Add(time.Hour))
 	wrongPurpose, _ := json.Marshal(sealedBoundArguments{Public: json.RawMessage(`{"key":"TOKEN"}`), SealedPayload: &badReference})
 	input, _ = adapter.Decode(target, wrongPurpose)
-	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob"); err == nil {
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "secret-request"); err == nil {
 		t.Fatal("cross-operation sealed reference accepted")
+	}
+}
+
+func TestSealedBoundAdapterDoesNotReconcileSecretStateFromPublicArguments(t *testing.T) {
+	store, _ := sealedstore.Open(t.TempDir())
+	reference, _ := store.PutForRequest("bob", "space.secret.set", "secret-request", []byte(`{"value":"secret"}`), time.Now().Add(time.Hour))
+	client := &sealedBoundFake{identity: "operator", observed: json.RawMessage(`{"key":"TOKEN"}`)}
+	adapters, _ := NewSealedBoundAdapters(client, store)
+	registry, _ := NewRegistry(adapters...)
+	adapter, _ := registry.Lookup("space.secret.set")
+	arguments, _ := json.Marshal(sealedBoundArguments{Public: json.RawMessage(`{"key":"TOKEN"}`), SealedPayload: &reference})
+	input, _ := adapter.Decode(json.RawMessage(`{"namespace":"acme","repo":"demo"}`), arguments)
+	plan, err := adapter.Resolve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := adapter.Reconcile(context.Background(), plan)
+	if err != nil || outcome.Proven {
+		t.Fatalf("Reconcile() = %+v, %v; want unproven secret state", outcome, err)
 	}
 }
 

@@ -159,7 +159,7 @@ func (a *sandboxAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input,
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
-func (a *sandboxAdapter) ValidateClient(input Input, client string) error {
+func (a *sandboxAdapter) ValidateClient(input Input, client, requestKey string) error {
 	if !a.descriptor.Sealed {
 		return nil
 	}
@@ -167,8 +167,8 @@ func (a *sandboxAdapter) ValidateClient(input Input, client string) error {
 	if err != nil || arguments.SealedPayload == nil {
 		return err
 	}
-	if arguments.SealedPayload.Owner != client || arguments.SealedPayload.Purpose != a.descriptor.Name {
-		return errors.New("sealed payload does not belong to this client and operation")
+	if err := validateSealedReference(arguments.SealedPayload, client, a.descriptor.Name, requestKey); err != nil {
+		return err
 	}
 	payload, err := a.store.Get(*arguments.SealedPayload)
 	zero(payload)

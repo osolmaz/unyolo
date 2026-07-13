@@ -80,8 +80,8 @@ func TestCleanupAndReconciliationHelpers(t *testing.T) {
 		t.Fatalf("mismatched sealed Reconcile() = %+v, %v", outcome, err)
 	}
 	client.observed = json.RawMessage(`{"key":"TOKEN"}`)
-	if outcome, err := adapter.Reconcile(context.Background(), plan); err != nil || !outcome.Proven {
-		t.Fatalf("matching sealed Reconcile() = %+v, %v", outcome, err)
+	if outcome, err := adapter.Reconcile(context.Background(), plan); err != nil || outcome.Proven {
+		t.Fatalf("secret-only sealed Reconcile() = %+v, %v", outcome, err)
 	}
 	if err := adapter.(PlanCleaner).Cleanup(plan); err != nil {
 		t.Fatal(err)

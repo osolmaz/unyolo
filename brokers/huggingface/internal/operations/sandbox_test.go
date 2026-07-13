@@ -36,7 +36,7 @@ func TestSandboxAdaptersRegisterEveryExecutionOperation(t *testing.T) {
 
 func TestSandboxCreateConsumesSealedSecretsWithoutLeakingThemIntoPlan(t *testing.T) {
 	store, _ := sealedstore.Open(t.TempDir())
-	reference, err := store.Put("bob", "sandbox.create", []byte(`{"secrets":{"API_TOKEN":"canary-secret"}}`), time.Now().Add(time.Hour))
+	reference, err := store.PutForRequest("bob", "sandbox.create", "sandbox-request", []byte(`{"secrets":{"API_TOKEN":"canary-secret"}}`), time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestSandboxCreateConsumesSealedSecretsWithoutLeakingThemIntoPlan(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob"); err != nil {
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "sandbox-request"); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := adapter.Resolve(context.Background(), input)

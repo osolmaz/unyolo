@@ -203,6 +203,8 @@ func validateGrantTargetRefForOperation(operation policy.Operation, target polic
 		if !gitproxy.ValidRefName(ref) || !grantRefMatchesOperation(operation, ref) {
 			return errors.New("grant target ref is invalid for operation")
 		}
+	} else if ref != "" && !policy.OperationUsesRefs(operation) {
+		return errors.New("grant target refs are not supported for operation")
 	}
 	return nil
 }

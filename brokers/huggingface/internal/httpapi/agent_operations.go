@@ -54,10 +54,19 @@ func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (age
 }
 
 func (s *Server) cancelOperationApproval(operation agentv1.Operation, client string) error {
-	if operation.ApprovalID == "" {
-		return nil
+	approvalID := operation.ApprovalID
+	if approvalID == "" {
+		values, err := s.grants.ListForClient(client)
+		if err != nil {
+			return err
+		}
+		grant, found := operationApproval(values, operation)
+		if !found {
+			return nil
+		}
+		approvalID = grant.ID
 	}
-	grant, err := s.grants.Get(operation.ApprovalID)
+	grant, err := s.grants.Get(approvalID)
 	if err != nil {
 		return err
 	}
@@ -89,7 +98,7 @@ func (s *Server) submitAgentOperation(ctx context.Context, client string, reques
 	if existing, found, err := s.replayedOperation(client, request, input); err != nil || found {
 		return existing, false, err
 	}
-	if err := validateOperationClient(adapter, input, client); err != nil {
+	if err := validateOperationClient(adapter, input, client, request.IdempotencyKey); err != nil {
 		return agentv1.Operation{}, false, err
 	}
 	resolved, err := adapter.Resolve(ctx, input)
@@ -160,12 +169,12 @@ func (s *Server) decodeAgentOperation(request agentv1.SubmitRequest) (operations
 	return adapter, input, nil
 }
 
-func validateOperationClient(adapter operations.Adapter, input operations.Input, client string) error {
+func validateOperationClient(adapter operations.Adapter, input operations.Input, client, requestKey string) error {
 	bound, ok := adapter.(operations.ClientBoundAdapter)
 	if !ok {
 		return nil
 	}
-	if err := bound.ValidateClient(input, client); err != nil {
+	if err := bound.ValidateClient(input, client, requestKey); err != nil {
 		return operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
 	}
 	return nil
@@ -571,11 +580,23 @@ func (s *Server) reconcileAmbiguousOperation(ctx context.Context, adapter operat
 }
 
 func (s *Server) succeedExecutedOperation(operation agentv1.Operation, plan operations.Plan, result json.RawMessage, reserved bool, detail string) {
+	result = normalizedOperationResult(operation.Operation, result)
 	if !s.settleOperationApproval(operation, reserved, false) {
 		return
 	}
-	_, _ = s.operations.Succeed(operation.ID, result)
+	if _, err := s.operations.Succeed(operation.ID, result); err != nil {
+		s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Operation ran but its result could not be stored")
+		return
+	}
 	s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, detail, http.StatusOK)
+}
+
+func normalizedOperationResult(operation string, result json.RawMessage) json.RawMessage {
+	if len(result) > 0 {
+		return result
+	}
+	encoded, _ := json.Marshal(map[string]any{"operation": operation, "reconciled": true})
+	return encoded
 }
 
 func (s *Server) failDefinitiveOperation(operation agentv1.Operation, executionErr error, reserved bool) {
@@ -612,7 +633,11 @@ func (s *Server) reconcileInterruptedOperation(ctx context.Context, operation ag
 		if !s.settleRecoveredOperationApproval(operation) {
 			return
 		}
-		_, _ = s.operations.Succeed(operation.ID, outcome.Result)
+		result := normalizedOperationResult(operation.Operation, outcome.Result)
+		if _, succeedErr := s.operations.Succeed(operation.ID, result); succeedErr != nil {
+			s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Operation ran but its result could not be stored")
+			return
+		}
 		s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, "reconciled after restart", http.StatusOK)
 		return
 	}
@@ -680,7 +705,7 @@ func (s *Server) loadOperationPlan(operation agentv1.Operation) (operations.Adap
 		return nil, operations.Plan{}, errors.New("operation plan payload is invalid")
 	}
 	if bound, ok := adapter.(operations.ClientBoundAdapter); ok {
-		if err := bound.ValidateClient(input, operation.ClientID); err != nil {
+		if err := bound.ValidateClient(input, operation.ClientID, operation.IdempotencyKey); err != nil {
 			return nil, operations.Plan{}, errors.New("operation client binding is invalid")
 		}
 	}
