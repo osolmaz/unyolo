@@ -50,6 +50,23 @@ if (installed.peerDependencies?.openclaw !== ">=2026.7.1-beta.5")
   throw new Error(
     "packed plugin has an unexpected OpenClaw compatibility range",
   );
+const installedRoot = path.join(
+  temporary,
+  "node_modules",
+  "openclaw-brokerkit",
+);
+const uiIndex = readFileSync(
+  path.join(installedRoot, "dist", "ui", "index.html"),
+  "utf8",
+);
+if (uiIndex.includes('type="module"'))
+  throw new Error("packed UI must not require a module entrypoint");
+if (
+  !/<script defer crossorigin src="\/plugins\/brokerkit\/ui\/assets\/index-[^"]+\.js"><\/script>/u.test(
+    uiIndex,
+  )
+)
+  throw new Error("packed UI is missing its classic sandbox entrypoint");
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
