@@ -2,6 +2,7 @@ package clientconfig
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,9 +18,17 @@ func TestRenderClientEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	want := "GH_BROKER_URL='http://127.0.0.1:8081'\nGH_BROKER_SHARED_SECRET='secret-with-'\\''quote'\\'''\n"
+	want := "export GH_BROKER_URL='http://127.0.0.1:8081'\nexport GH_BROKER_SHARED_SECRET='secret-with-'\\''quote'\\'''\n"
 	if string(body) != want {
 		t.Fatalf("Render() = %q, want %q", body, want)
+	}
+	path := filepath.Join(t.TempDir(), "client.env")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "-c", `. "$1" && test "$GH_BROKER_URL" = 'http://127.0.0.1:8081' && test "$GH_BROKER_SHARED_SECRET" = "secret-with-'quote'" && env | grep -q '^GH_BROKER_URL=' && env | grep -q '^GH_BROKER_SHARED_SECRET='`, "sh", path) // #nosec G204 -- fixed test command and generated temp path.
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("source rendered client env: %v: %s", err, output)
 	}
 }
 
@@ -51,10 +60,10 @@ func TestWriteClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "HF_BROKER_URL='https://broker.example.test'\n") {
+	if !strings.Contains(text, "export HF_BROKER_URL='https://broker.example.test'\n") {
 		t.Fatalf("client env missing URL: %q", text)
 	}
-	if !strings.Contains(text, "HF_BROKER_SHARED_SECRET='client-secret'\n") {
+	if !strings.Contains(text, "export HF_BROKER_SHARED_SECRET='client-secret'\n") {
 		t.Fatalf("client env missing secret: %q", text)
 	}
 }
