@@ -13,6 +13,7 @@ export default defineConfig({
     tailwindcss(),
     {
       name: "brokerkit-classic-sandbox-entry",
+      apply: "build",
       enforce: "post",
       transformIndexHtml: {
         order: "post",
