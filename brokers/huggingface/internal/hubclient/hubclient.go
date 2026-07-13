@@ -106,12 +106,14 @@ func New(baseURL, token string, options ...Option) (*Client, error) {
 // callSpec is an internal, fully broker-owned request description. Paths are
 // composed only from static literals and validated, escaped identifiers.
 type callSpec struct {
-	method string
-	path   string
-	origin string
-	query  url.Values
-	body   any
-	out    any
+	method      string
+	path        string
+	origin      string
+	query       url.Values
+	body        any
+	rawBody     []byte
+	contentType string
+	out         any
 }
 
 func (c *Client) call(ctx context.Context, spec callSpec) error {
@@ -150,7 +152,15 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 
 func (c *Client) newRequest(ctx context.Context, spec callSpec) (*http.Request, error) {
 	var reader io.Reader
-	if spec.body != nil {
+	if spec.body != nil && len(spec.rawBody) > 0 {
+		return nil, errors.New("hubclient: request has conflicting body encodings")
+	}
+	if len(spec.rawBody) > 0 {
+		if len(spec.rawBody) > maxRequestBodyBytes {
+			return nil, errors.New("hubclient: request body is invalid")
+		}
+		reader = bytes.NewReader(spec.rawBody)
+	} else if spec.body != nil {
 		encoded, err := json.Marshal(spec.body)
 		if err != nil || len(encoded) > maxRequestBodyBytes {
 			return nil, fmt.Errorf("hubclient: request body is invalid")
@@ -175,8 +185,12 @@ func (c *Client) newRequest(ctx context.Context, spec callSpec) (*http.Request, 
 	}
 	request.Header.Set("Authorization", "Bearer "+c.token)
 	request.Header.Set("Accept", "application/json")
-	if spec.body != nil {
-		request.Header.Set("Content-Type", "application/json")
+	if spec.body != nil || len(spec.rawBody) > 0 {
+		contentType := spec.contentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		request.Header.Set("Content-Type", contentType)
 	}
 	return request, nil
 }

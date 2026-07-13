@@ -336,10 +336,16 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	bucketAdapters, err := operations.NewBucketAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	providerAdapters = append(providerAdapters, settingsAdapters...)
 	providerAdapters = append(providerAdapters, refsAdapters...)
 	providerAdapters = append(providerAdapters, spaceAdapters...)
 	providerAdapters = append(providerAdapters, boundAdapters...)
+	providerAdapters = append(providerAdapters, bucketAdapters...)
 	operationRegistry, err := operations.NewRegistry(providerAdapters...)
 	if err != nil {
 		_ = database.Close()

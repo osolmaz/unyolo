@@ -117,6 +117,47 @@ type SpaceRef struct {
 	Name  string
 }
 
+// BucketRef identifies one exact Hub storage bucket.
+type BucketRef struct {
+	Namespace string
+	Name      string
+}
+
+func (b BucketRef) Validate() error {
+	if !ValidNamespaceSegment(b.Namespace) || !ValidNamespaceSegment(b.Name) {
+		return errors.New("hubclient: bucket namespace and name must be exact safe segments")
+	}
+	return nil
+}
+
+func (b BucketRef) ID() string { return b.Namespace + "/" + b.Name }
+
+func (b BucketRef) apiPath(suffix ...string) string {
+	parts := append([]string{"/api/buckets", url.PathEscape(b.Namespace), url.PathEscape(b.Name)}, suffix...)
+	return strings.Join(parts, "/")
+}
+
+// BucketInfo is the bounded bucket state used for operation preconditions.
+type BucketInfo struct {
+	ID         string  `json:"id"`
+	Private    *bool   `json:"private"`
+	UpdatedAt  string  `json:"updatedAt"`
+	Size       float64 `json:"size"`
+	TotalFiles float64 `json:"totalFiles"`
+}
+
+// BucketBatchOperation is one content-addressed bucket manifest mutation.
+// Content upload happens through the bounded Xet protocol before approval.
+type BucketBatchOperation struct {
+	Type           string `json:"type"`
+	Path           string `json:"path"`
+	XetHash        string `json:"xetHash,omitempty"`
+	MTime          int64  `json:"mtime,omitempty"`
+	ContentType    string `json:"contentType,omitempty"`
+	SourceRepoType string `json:"sourceRepoType,omitempty"`
+	SourceRepoID   string `json:"sourceRepoId,omitempty"`
+}
+
 // Validate rejects unsafe or ambiguous Space identities.
 func (s SpaceRef) Validate() error {
 	if !ValidNamespaceSegment(s.Owner) || !ValidNamespaceSegment(s.Name) {

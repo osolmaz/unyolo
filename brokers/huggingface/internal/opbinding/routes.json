@@ -1,9 +1,7 @@
 [
-  {"operation":"bucket.batch.apply","method":"POST","path":"/api/buckets/{namespace}/{repo}/batch"},
   {"operation":"bucket.create","method":"POST","path":"/api/buckets/{namespace}/{repo}","observe_method":"GET","observe_path":"/api/buckets/{namespace}/{repo}","reconcile":"present"},
   {"operation":"bucket.delete","method":"DELETE","path":"/api/buckets/{namespace}/{repo}","observe_method":"GET","observe_path":"/api/buckets/{namespace}/{repo}","reconcile":"absent"},
   {"operation":"bucket.object.copy","method":"POST","path":"/api/buckets/{namespace}/{repo}/lfs-files/duplicate"},
-  {"operation":"bucket.object.delete","method":"POST","path":"/api/buckets/{namespace}/{repo}/batch","argument_projection":"delete"},
   {"operation":"bucket.resource_group.set","method":"POST","path":"/api/buckets/{namespace}/{repo}/resource-group","observe_method":"GET","observe_path":"/api/buckets/{namespace}/{repo}/resource-group","reconcile":"present"},
   {"operation":"bucket.visibility.update","method":"PUT","path":"/api/buckets/{namespace}/{repo}/settings","observe_method":"GET","observe_path":"/api/buckets/{namespace}/{repo}","reconcile":"present"},
 
