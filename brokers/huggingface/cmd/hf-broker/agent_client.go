@@ -25,8 +25,9 @@ import (
 const defaultClientWait = 15 * time.Minute
 
 type agentClient struct {
-	api    agentwire.ClientInterface
-	secret string
+	api         agentwire.ClientInterface
+	secret      string
+	grantClient *hfGrantClient
 }
 
 type repoCreateClientOptions struct {
@@ -52,7 +53,7 @@ func runAgentClient(ctx context.Context, getenv func(string) string, stdout, std
 	if len(args) >= 2 && args[0] == "operation" && (args[1] == "get" || args[1] == "wait") {
 		return runClientOperation(ctx, client, stdout, args[1], args[2:])
 	}
-	return exitError{code: 64, message: "usage: hf-broker client repo create OWNER/NAME [options] | hf-broker client operation <get|wait> ID"}
+	return exitError{code: 64, message: "usage: hf-broker client repo create OWNER/NAME [options] | hf-broker client operation <get|wait> ID | hf-broker client grant ..."}
 }
 
 func runClientRepoCreate(ctx context.Context, client *agentClient, stdout, stderr io.Writer, args []string) error {
@@ -217,7 +218,11 @@ func loadAgentClient(getenv func(string) string) (*agentClient, error) {
 	if err != nil {
 		return nil, errors.New("HF Broker URL is invalid")
 	}
-	return &agentClient{api: api, secret: secret}, nil
+	grantClient, err := newHFGrantClient(parsed.String(), secret)
+	if err != nil {
+		return nil, err
+	}
+	return &agentClient{api: api, secret: secret, grantClient: grantClient}, nil
 }
 
 func parseAgentBaseURL(value string) (*url.URL, error) {
@@ -260,11 +265,13 @@ func (client *agentClient) submit(ctx context.Context, request agentv1.SubmitReq
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
+	//nolint:bodyclose // decodeAgentHTTPResponse owns and closes generated responses.
 	response, err := client.api.SubmitAgentOperation(ctx, wire)
 	return decodeAgentHTTPResponse(response, err)
 }
 
 func (client *agentClient) get(ctx context.Context, id string) (agentv1.Operation, error) {
+	//nolint:bodyclose // decodeAgentHTTPResponse owns and closes generated responses.
 	response, err := client.api.GetAgentOperation(ctx, id)
 	return decodeAgentHTTPResponse(response, err)
 }
@@ -272,6 +279,7 @@ func (client *agentClient) get(ctx context.Context, id string) (agentv1.Operatio
 func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
 	for !operation.State.Terminal() {
 		after, wait := int(operation.Revision), 30
+		//nolint:bodyclose // decodeAgentHTTPResponse owns and closes generated responses.
 		response, requestErr := client.api.WaitForAgentOperation(ctx, operation.ID, &agentwire.WaitForAgentOperationParams{AfterRevision: &after, WaitSeconds: &wait})
 		next, err := decodeAgentHTTPResponse(response, requestErr)
 		if err != nil {

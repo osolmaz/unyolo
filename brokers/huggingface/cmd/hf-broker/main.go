@@ -67,7 +67,7 @@ func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr 
 	case "setup":
 		return runSetup(ctx, stdout, stderr, args[1:])
 	case "client":
-		return runAgentClient(ctx, getenv, stdout, stderr, args[1:])
+		return runClientCommand(ctx, getenv, stdout, stderr, args[1:])
 	case "mcp":
 		return runMCP(ctx, getenv, os.Stdin, stdout, stderr, args[1:])
 	case "__doctor-isolation-probe":
@@ -75,6 +75,13 @@ func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr 
 	default:
 		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|client|mcp]"}
 	}
+}
+
+func runClientCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
+	if len(args) >= 1 && args[0] == "grant" {
+		return runGrantClientFromEnv(ctx, getenv, stdout, stderr, args[1:])
+	}
+	return runAgentClient(ctx, getenv, stdout, stderr, args)
 }
 
 func runServer(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer) error {

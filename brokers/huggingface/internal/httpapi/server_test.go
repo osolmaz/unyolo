@@ -1619,6 +1619,30 @@ func TestGrantRequestAcceptsExplicitUnlimitedUseBudget(t *testing.T) {
 			t.Fatalf("CommitUse() = %+v, %v", used, err)
 		}
 	}
+	resp, responseBody = doRequest(t, http.MethodPost, broker.URL+"/api/grants/"+created.ID+"/revoke", "Bearer "+testSecret, strings.NewReader("{}"))
+	if resp.StatusCode != http.StatusOK || decodeAPIGrantResponse(t, responseBody).Status != string(grants.StatusRevoked) {
+		t.Fatalf("revoke = %d %s", resp.StatusCode, responseBody)
+	}
+	resp, responseBody = doRequest(t, http.MethodPost, broker.URL+"/api/grants/"+created.ID+"/revoke", "Bearer "+testSecret, strings.NewReader("{}"))
+	if resp.StatusCode != http.StatusConflict || !strings.Contains(responseBody, "invalid_grant_state") {
+		t.Fatalf("repeat revoke = %d %s", resp.StatusCode, responseBody)
+	}
+	pending, _, err := handler.grants.Request(grants.Request{
+		Client: "agent", ClientRequestID: "cancel-me", Operation: string(policy.OpGitPushForce),
+		Target: rootpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/repo"}}},
+		Reason: "cancel", Duration: time.Minute, MaxUses: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, responseBody = doRequest(t, http.MethodPost, broker.URL+"/api/grants/"+pending.Grant.ID+"/cancel", "Bearer "+testSecret, strings.NewReader("{}"))
+	if resp.StatusCode != http.StatusOK || decodeAPIGrantResponse(t, responseBody).Status != string(grants.StatusCanceled) {
+		t.Fatalf("cancel = %d %s", resp.StatusCode, responseBody)
+	}
+	resp, responseBody = doRequest(t, http.MethodPost, broker.URL+"/api/grants/"+pending.Grant.ID+"/cancel", "Bearer "+testSecret, strings.NewReader(`{"unexpected":true}`))
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(responseBody, "validation_failed") {
+		t.Fatalf("invalid cancel = %d %s", resp.StatusCode, responseBody)
+	}
 }
 
 func TestResolveAPIGrantUses(t *testing.T) {

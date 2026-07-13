@@ -12,6 +12,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 type mcpRequest struct {
@@ -98,28 +99,179 @@ func handleMCPRequest(ctx context.Context, client *agentClient, request mcpReque
 func mcpTools() []map[string]any {
 	return []map[string]any{
 		{"name": "hf_repo_create", "description": "Create a Hugging Face repository through HF Broker. Never ask for a Hugging Face token. The operation may wait for user approval.", "inputSchema": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"repo_id", "type", "private", "reason", "idempotency_key"}, "properties": map[string]any{"repo_id": map[string]any{"type": "string"}, "type": map[string]any{"enum": []string{"model", "dataset", "space"}}, "private": map[string]any{"type": "boolean"}, "sdk": map[string]any{"enum": []string{"docker", "gradio", "static"}, "default": "docker", "description": "Space SDK; defaults to docker for Spaces"}, "reason": map[string]any{"type": "string"}, "idempotency_key": map[string]any{"type": "string"}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": 900}}}},
-		{"name": "hf_operation_get", "description": "Get a resumable HF Broker operation by ID.", "inputSchema": operationIDSchema(false)},
-		{"name": "hf_operation_wait", "description": "Wait for a resumable HF Broker operation without requesting a Hugging Face token.", "inputSchema": operationIDSchema(true)},
+		{"name": "hf_operation_get", "description": "Get a resumable HF Broker operation by ID.", "inputSchema": mcpIDSchema("operation_id", false)},
+		{"name": "hf_operation_wait", "description": "Wait for a resumable HF Broker operation without requesting a Hugging Face token.", "inputSchema": mcpIDSchema("operation_id", true)},
+		{"name": "hf_grant_request", "description": "Request temporary, policy-bounded Hugging Face access. Never ask for a Hugging Face token.", "inputSchema": mcpGrantRequestSchema()},
+		{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
+		{"name": "hf_grant_wait", "description": "Wait for a temporary HF Broker grant decision.", "inputSchema": mcpIDSchema("grant_id", true)},
+		{"name": "hf_grant_cancel", "description": "Cancel a pending temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
+		{"name": "hf_grant_revoke", "description": "Revoke an active temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
 	}
 }
 
-func operationIDSchema(wait bool) map[string]any {
-	properties := map[string]any{"operation_id": map[string]any{"type": "string"}}
+func mcpGrantRequestSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false,
+		"required": []string{"operation", "target", "reason", "idempotency_key"},
+		"properties": map[string]any{
+			"operation":       map[string]any{"type": "string"},
+			"target":          map[string]any{"type": "string", "description": "Exact OWNER/NAME target"},
+			"kind":            map[string]any{"enum": []string{"repo", "bucket"}, "default": "repo"},
+			"type":            map[string]any{"enum": []string{"model", "dataset", "space"}, "default": "dataset"},
+			"refs":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"keys":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"attrs":           map[string]any{"type": "object"},
+			"reason":          map[string]any{"type": "string"},
+			"idempotency_key": map[string]any{"type": "string"},
+			"minutes":         map[string]any{"type": "integer", "minimum": 1},
+			"max_uses":        map[string]any{"type": []string{"integer", "null"}, "minimum": 1},
+			"wait_seconds":    map[string]any{"type": "integer", "minimum": 0, "maximum": 900},
+		},
+	}
+}
+
+func mcpIDSchema(idField string, wait bool) map[string]any {
+	properties := map[string]any{idField: map[string]any{"type": "string"}}
 	if wait {
 		properties["wait_seconds"] = map[string]any{"type": "integer", "minimum": 1, "maximum": 900}
 	}
-	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"operation_id"}, "properties": properties}
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{idField}, "properties": properties}
 }
 
-func callMCPTool(ctx context.Context, client *agentClient, call mcpToolCall) (agentv1.Operation, error) {
+func callMCPTool(ctx context.Context, client *agentClient, call mcpToolCall) (any, error) {
 	switch call.Name {
 	case "hf_repo_create":
 		return callMCPRepoCreate(ctx, client, call.Arguments)
 	case "hf_operation_get", "hf_operation_wait":
 		return callMCPOperation(ctx, client, call.Name, call.Arguments)
+	case "hf_grant_request":
+		return callMCPGrantRequest(ctx, client.grantClient, call.Arguments)
+	case "hf_grant_get", "hf_grant_wait", "hf_grant_cancel", "hf_grant_revoke":
+		return callMCPGrantLifecycle(ctx, client.grantClient, call.Name, call.Arguments)
 	default:
-		return agentv1.Operation{}, fmt.Errorf("unknown tool %q", call.Name)
+		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
+}
+
+type mcpGrantRequestInput struct {
+	Operation      string             `json:"operation"`
+	Target         string             `json:"target"`
+	Kind           string             `json:"kind"`
+	Type           string             `json:"type"`
+	Refs           []string           `json:"refs"`
+	Keys           []string           `json:"keys"`
+	Attrs          map[string]any     `json:"attrs"`
+	Reason         string             `json:"reason"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Minutes        int                `json:"minutes"`
+	MaxUses        usebudget.Optional `json:"max_uses"`
+	WaitSeconds    int                `json:"wait_seconds"`
+}
+
+func callMCPGrantRequest(ctx context.Context, client *hfGrantClient, raw json.RawMessage) (hfClientGrant, error) {
+	request, options, err := prepareMCPGrantRequest(raw)
+	if err != nil {
+		return hfClientGrant{}, err
+	}
+	return requestMCPGrant(ctx, client, request, options)
+}
+
+func requestMCPGrant(ctx context.Context, client *hfGrantClient, request hfGrantRequest, options grantRequestOptions) (hfClientGrant, error) {
+	grant, err := client.Request(ctx, request)
+	if err != nil || !options.wait || grant.Status != "pending" {
+		return grant, err
+	}
+	return waitForMCPGrant(ctx, client, grant.ID, options.waitTimeout)
+}
+
+func prepareMCPGrantRequest(raw json.RawMessage) (hfGrantRequest, grantRequestOptions, error) {
+	var input mcpGrantRequestInput
+	if err := decodeMCPArguments(raw, &input); err != nil {
+		return hfGrantRequest{}, grantRequestOptions{}, err
+	}
+	options, err := mcpGrantRequestOptions(input)
+	if err != nil {
+		return hfGrantRequest{}, grantRequestOptions{}, err
+	}
+	request, err := buildHFGrantRequest(&options)
+	if err != nil {
+		return hfGrantRequest{}, grantRequestOptions{}, err
+	}
+	request.Attrs = input.Attrs
+	return request, options, nil
+}
+
+func mcpGrantRequestOptions(input mcpGrantRequestInput) (grantRequestOptions, error) {
+	options := grantRequestOptions{
+		operation: input.Operation, target: input.Target, targetKind: input.Kind, repoType: input.Type,
+		refs: input.Refs, keys: input.Keys, reason: input.Reason, idempotencyKey: input.IdempotencyKey,
+		minutes: input.Minutes, maxUses: optionalUseFlag{set: input.MaxUses.Specified, limit: input.MaxUses.Limit},
+		wait: input.WaitSeconds > 0, waitTimeout: time.Duration(input.WaitSeconds) * time.Second,
+	}
+	if options.targetKind == "" {
+		options.targetKind = "repo"
+	}
+	if options.repoType == "" {
+		options.repoType = "dataset"
+	}
+	if options.waitTimeout <= 0 {
+		options.waitTimeout = defaultClientWait
+	}
+	if input.WaitSeconds < 0 || input.WaitSeconds > 900 {
+		return grantRequestOptions{}, errors.New("wait_seconds must be between 0 and 900")
+	}
+	if err := validateGrantRequestOptions(options); err != nil {
+		return grantRequestOptions{}, err
+	}
+	return options, nil
+}
+
+func callMCPGrantLifecycle(ctx context.Context, client *hfGrantClient, name string, raw json.RawMessage) (hfClientGrant, error) {
+	input, err := decodeMCPGrantLifecycle(raw)
+	if err != nil {
+		return hfClientGrant{}, err
+	}
+	action := strings.TrimPrefix(name, "hf_grant_")
+	if action == "wait" {
+		return waitForMCPGrantInput(ctx, client, input)
+	}
+	if input.WaitSeconds != 0 {
+		return hfClientGrant{}, errors.New("wait_seconds is valid only for hf_grant_wait")
+	}
+	return performGrantAction(ctx, client, action, input.GrantID, time.Duration(input.WaitSeconds)*time.Second)
+}
+
+type mcpGrantLifecycleInput struct {
+	GrantID     string `json:"grant_id"`
+	WaitSeconds int    `json:"wait_seconds"`
+}
+
+func decodeMCPGrantLifecycle(raw json.RawMessage) (mcpGrantLifecycleInput, error) {
+	var input mcpGrantLifecycleInput
+	if err := decodeMCPArguments(raw, &input); err != nil || input.GrantID == "" {
+		return input, errors.New("grant_id is required")
+	}
+	return input, nil
+}
+
+func waitForMCPGrantInput(ctx context.Context, client *hfGrantClient, input mcpGrantLifecycleInput) (hfClientGrant, error) {
+	if input.WaitSeconds < 0 || input.WaitSeconds > 900 {
+		return hfClientGrant{}, errors.New("wait_seconds must be between 0 and 900")
+	}
+	if input.WaitSeconds == 0 {
+		input.WaitSeconds = 30
+	}
+	return waitForMCPGrant(ctx, client, input.GrantID, time.Duration(input.WaitSeconds)*time.Second)
+}
+
+func waitForMCPGrant(ctx context.Context, client *hfGrantClient, id string, timeout time.Duration) (hfClientGrant, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	grant, err := client.Wait(waitCtx, id)
+	if waitCtx.Err() != nil && grant.ID != "" {
+		return grant, nil
+	}
+	return grant, err
 }
 
 type mcpRepoCreateInput struct {

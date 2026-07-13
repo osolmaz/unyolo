@@ -93,9 +93,42 @@ waits. Resume it after a disconnect with:
 hf-broker client operation wait <operation-id>
 ```
 
-Run `hf-broker mcp` as a stdio MCP server to expose `hf_repo_create`,
-`hf_operation_get`, and `hf_operation_wait`. The tool descriptions explicitly
-tell agents not to request a Hugging Face token.
+Run `hf-broker mcp` as a stdio MCP server to expose the repository operation
+tools and the `hf_grant_request|get|wait|cancel|revoke` tools. The tool
+descriptions explicitly tell agents not to request a Hugging Face token.
+
+## Temporary grants
+
+Request an exact temporary capability when the policy marks an operation as
+requestable:
+
+```sh
+hf-broker client grant request git.push.force osolmaz/model \
+  --type model \
+  --ref refs/heads/main \
+  --minutes 30 \
+  --max-uses unlimited \
+  --reason "Repair protected history" \
+  --idempotency-key repair-main
+```
+
+Omit `--minutes` or `--max-uses` to use the matched policy's finite default.
+`--max-uses` accepts a positive integer or `unlimited`; unlimited grants
+still expire at the approved time. The command waits for a decision by default.
+Grant state can be resumed or changed without holding the protected operation
+open:
+
+```sh
+hf-broker client grant get <grant-id>
+hf-broker client grant wait <grant-id>
+hf-broker client grant cancel <grant-id>
+hf-broker client grant revoke <grant-id>
+```
+
+Bucket requests use `--kind bucket` with repeatable `--key` flags. Repository
+requests use repeatable `--ref` flags. The broker validates the operation,
+target, attributes, duration, and use budget against the exact matched policy
+rule before creating an approval.
 
 Inference defaults to denied. This rule allows one client to list Router models
 and call models under one owner:

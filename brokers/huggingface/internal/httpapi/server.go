@@ -983,6 +983,7 @@ type pushPolicyCandidate struct {
 
 var apiRoutes = []apiRoute{
 	{method: http.MethodPost, path: "/api/grants", handle: (*Server).handleAPIGrantCreate},
+	{method: http.MethodPost, prefix: "/api/grants/", handle: (*Server).handleAPIGrantAction},
 	{method: http.MethodGet, path: "/api/grants", handle: (*Server).handleAPIGrantList},
 	{method: http.MethodGet, prefix: "/api/grants/", handle: (*Server).handleAPIGrantGet},
 	{method: http.MethodGet, path: "/api/repos", handle: (*Server).handleAPIRepos},
@@ -1364,6 +1365,53 @@ func (s *Server) handleAPIGrantGet(w http.ResponseWriter, r *http.Request, clien
 	s.record(client, "grant_read", id, audit.DecisionAllowed, "", 0)
 }
 
+func (s *Server) handleAPIGrantAction(w http.ResponseWriter, r *http.Request, client string) {
+	id, action, ok := parseAPIGrantAction(r.URL.Path)
+	if !ok {
+		writeJSendFail(w, http.StatusNotFound, "grant_not_found", "Grant not found")
+		return
+	}
+	var body struct{}
+	if err := httpx.DecodeJSON(r.Body, 1024, &body, true); err != nil {
+		writeJSendFail(w, http.StatusBadRequest, "validation_failed", "Invalid grant action")
+		return
+	}
+	updated, err := s.applyAPIGrantAction(id, client, action)
+	if err != nil {
+		s.writeAPIGrantActionError(w, client, id, action, err)
+		return
+	}
+	writeJSendSuccess(w, http.StatusOK, map[string]any{"grant": apiGrantFromStore(updated, targetFromGrant(updated))})
+	s.record(client, "grant_"+action, id, audit.DecisionAllowed, "", 0)
+}
+
+func (s *Server) writeAPIGrantActionError(w http.ResponseWriter, client, id, action string, err error) {
+	if errors.Is(err, grants.ErrNotFound) {
+		writeJSendFail(w, http.StatusNotFound, "grant_not_found", "Grant not found")
+		return
+	}
+	if errors.Is(err, grants.ErrNotPending) || errors.Is(err, grants.ErrNotActive) {
+		writeJSendFail(w, http.StatusConflict, "invalid_grant_state", "Grant action is not valid for its current state")
+		s.record(client, "grant_"+action, id, audit.DecisionRefused, "invalid_grant_state", 0)
+		return
+	}
+	writeJSendError(w, http.StatusInternalServerError, "could not update grant", "internal_error")
+	s.record(client, "grant_"+action, id, audit.DecisionRefused, "internal_error", 0)
+}
+
+func parseAPIGrantAction(value string) (string, string, bool) {
+	tail := strings.TrimPrefix(value, "/api/grants/")
+	id, action, ok := strings.Cut(tail, "/")
+	return id, action, ok && id != "" && !strings.Contains(action, "/") && (action == "cancel" || action == "revoke")
+}
+
+func (s *Server) applyAPIGrantAction(id, client, action string) (grants.Grant, error) {
+	if action == "cancel" {
+		return s.grants.CancelForClient(id, client)
+	}
+	return s.grants.RevokeForClient(id, client)
+}
+
 func (s *Server) handleAPIRepos(w http.ResponseWriter, r *http.Request, client string) {
 	query, reason, ok := readRepoListQuery(w, r)
 	if !ok {
@@ -1633,20 +1681,6 @@ func targetNameFromPolicy(target policy.Target) string {
 		return ""
 	}
 	return string(target.Type) + "/" + target.Owner + "/" + target.Name
-}
-
-func policyReasonMessage(reason string) string {
-	message := policyReasonMessages[reason]
-	if message == "" {
-		return reason
-	}
-	return message
-}
-
-var policyReasonMessages = map[string]string{
-	"approval_required": "Approval required",
-	"policy_denied":     "Policy denied",
-	"no_matching_rule":  "No matching policy rule",
 }
 
 func writeJSendSuccess(w http.ResponseWriter, status int, data any) {
@@ -2296,7 +2330,7 @@ func (s *Server) preparePushIntent(client string, operation policy.Operation, ta
 	}
 	bounds := decision.GrantPolicy
 	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeWindow {
-		return bkauthorization.GrantIntent{}, errors.New("Git push requires a window approval")
+		return bkauthorization.GrantIntent{}, errors.New("Git push requires a window approval") //nolint:staticcheck // User-facing provider name starts the sentence.
 	}
 	id, err := approvalRequestID("git", authorizationRequest, decision.MatchedRequestRuleIDs)
 	if err != nil {
