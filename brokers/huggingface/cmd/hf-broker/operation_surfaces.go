@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialstore"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
@@ -31,6 +32,7 @@ type operationClientOptions struct {
 	arguments      json.RawMessage
 	attrs          map[string]any
 	sealedFile     string
+	credentialSlot string
 	reason         string
 	idempotencyKey string
 	minutes        int
@@ -45,6 +47,7 @@ type mcpCatalogOperationInput struct {
 	Arguments       json.RawMessage    `json:"arguments"`
 	Attrs           map[string]any     `json:"attrs"`
 	SealedArguments json.RawMessage    `json:"sealed_arguments"`
+	CredentialSlot  string             `json:"credential_slot"`
 	Reason          string             `json:"reason"`
 	IdempotencyKey  string             `json:"idempotency_key"`
 	Minutes         int                `json:"minutes"`
@@ -91,7 +94,7 @@ func runCatalogOperation(ctx context.Context, client *agentClient, stdout, stder
 	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
 		return runCatalogGrant(ctx, client.grantClient, stdout, stderr, descriptor, options)
 	}
-	request, err := buildOperationSubmitRequest(ctx, client, descriptor, options.target, options.arguments, options.sealedFile, nil, options.reason, options.idempotencyKey)
+	request, err := buildOperationSubmitRequest(ctx, client, descriptor, options.target, options.arguments, options.sealedFile, nil, options.credentialSlot, options.reason, options.idempotencyKey)
 	if err != nil {
 		return err
 	}
@@ -128,6 +131,7 @@ func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string)
 	flags.StringVar(&argumentsFile, "arguments-file", "", "file containing closed public argument JSON")
 	flags.StringVar(&attrsJSON, "attrs-json", "", "window grant attributes JSON")
 	flags.StringVar(&options.sealedFile, "sealed-file", "", "file containing secret argument JSON")
+	flags.StringVar(&options.credentialSlot, "credential-slot", "", "encrypted destination for generated credentials")
 	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
 	flags.StringVar(&options.idempotencyKey, "idempotency-key", "", "stable retry key")
 	flags.IntVar(&options.minutes, "minutes", 0, "window duration; omit for policy default")
@@ -195,8 +199,8 @@ func validateOperationClientOptions(descriptor opcatalog.Descriptor, options ope
 		return errors.New("reason must contain at most 2000 characters and wait timeout must be positive")
 	}
 	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
-		if options.sealedFile != "" {
-			return errors.New("window operations do not accept sealed arguments")
+		if options.sealedFile != "" || options.credentialSlot != "" {
+			return errors.New("window operations do not accept sealed arguments or credential slots")
 		}
 		if options.minutes < 0 {
 			return errors.New("minutes must not be negative")
@@ -209,10 +213,19 @@ func validateOperationClientOptions(descriptor opcatalog.Descriptor, options ope
 	if !descriptor.Sealed && options.sealedFile != "" {
 		return errors.New("this operation does not accept sealed arguments")
 	}
+	if descriptor.CredentialOutputKind != nil && !credentialstore.ValidSlot(options.credentialSlot) {
+		return errors.New("this operation requires a valid credential-slot")
+	}
+	if descriptor.CredentialOutputKind != nil && options.sealedFile != "" {
+		return errors.New("credential output operations do not accept sealed input")
+	}
+	if descriptor.CredentialOutputKind == nil && options.credentialSlot != "" {
+		return errors.New("this operation does not produce a credential")
+	}
 	return nil
 }
 
-func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, target, arguments json.RawMessage, sealedFile string, sealed json.RawMessage, reason, idempotencyKey string) (agentv1.SubmitRequest, error) {
+func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, target, arguments json.RawMessage, sealedFile string, sealed json.RawMessage, credentialSlot, reason, idempotencyKey string) (agentv1.SubmitRequest, error) {
 	if idempotencyKey == "" {
 		var err error
 		idempotencyKey, err = randomClientID()
@@ -228,7 +241,7 @@ func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descr
 				return agentv1.SubmitRequest{}, fmt.Errorf("sealed arguments: %w", err)
 			}
 		}
-		wrapped, err := client.wrapSealedArguments(ctx, descriptor.Name, arguments, sealed)
+		wrapped, err := client.wrapSealedArguments(ctx, descriptor.Name, arguments, sealed, credentialSlot)
 		if err != nil {
 			return agentv1.SubmitRequest{}, err
 		}
@@ -239,8 +252,11 @@ func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descr
 	return agentv1.SubmitRequest{IdempotencyKey: idempotencyKey, Operation: descriptor.Name, Target: target, Arguments: arguments, Reason: strings.TrimSpace(reason)}, nil
 }
 
-func (client *agentClient) wrapSealedArguments(ctx context.Context, operation string, public, secret json.RawMessage) (json.RawMessage, error) {
+func (client *agentClient) wrapSealedArguments(ctx context.Context, operation string, public, secret json.RawMessage, credentialSlot string) (json.RawMessage, error) {
 	wrapper := map[string]any{"public": public}
+	if credentialSlot != "" {
+		wrapper["credential_slot"] = credentialSlot
+	}
 	if len(secret) != 0 {
 		reference, err := client.uploadSealedPayload(ctx, operation, secret)
 		if err != nil {
@@ -358,7 +374,12 @@ func catalogMCPToolSchema(descriptor opcatalog.Descriptor) map[string]any {
 		properties["arguments"] = argumentsSchema
 		required = append(required, "arguments")
 		if descriptor.Sealed {
-			properties["sealed_arguments"] = genericObjectSchema()
+			if descriptor.CredentialOutputKind != nil {
+				properties["credential_slot"] = map[string]any{"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"}
+				required = append(required, "credential_slot")
+			} else {
+				properties["sealed_arguments"] = genericObjectSchema()
+			}
 		}
 	} else {
 		properties["attrs"] = genericObjectSchema()
@@ -392,7 +413,19 @@ func callMCPCatalogOperation(ctx context.Context, client *agentClient, descripto
 	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
 		return callMCPWindowOperation(ctx, client.grantClient, descriptor, input)
 	}
-	request, err := buildOperationSubmitRequest(ctx, client, descriptor, input.Target, input.Arguments, "", input.SealedArguments, input.Reason, input.IdempotencyKey)
+	if descriptor.CredentialOutputKind != nil && len(input.SealedArguments) != 0 {
+		return nil, errors.New("credential output operations do not accept sealed input")
+	}
+	if descriptor.CredentialOutputKind != nil && !credentialstore.ValidSlot(input.CredentialSlot) {
+		return nil, errors.New("credential_slot is required")
+	}
+	if descriptor.CredentialOutputKind == nil && input.CredentialSlot != "" {
+		return nil, errors.New("this operation does not produce a credential")
+	}
+	if !descriptor.Sealed && len(input.SealedArguments) != 0 {
+		return nil, errors.New("this operation does not accept sealed arguments")
+	}
+	request, err := buildOperationSubmitRequest(ctx, client, descriptor, input.Target, input.Arguments, "", input.SealedArguments, input.CredentialSlot, input.Reason, input.IdempotencyKey)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +437,7 @@ func callMCPCatalogOperation(ctx context.Context, client *agentClient, descripto
 }
 
 func callMCPWindowOperation(ctx context.Context, client *hfGrantClient, descriptor opcatalog.Descriptor, input mcpCatalogOperationInput) (hfClientGrant, error) {
-	if len(input.Arguments) != 0 || len(input.SealedArguments) != 0 || input.Minutes < 0 {
+	if len(input.Arguments) != 0 || len(input.SealedArguments) != 0 || input.CredentialSlot != "" || input.Minutes < 0 {
 		return hfClientGrant{}, errors.New("window operation arguments are invalid")
 	}
 	var target policy.Target

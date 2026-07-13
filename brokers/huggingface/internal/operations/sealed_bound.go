@@ -29,8 +29,9 @@ type sealedBoundAdapter struct {
 }
 
 type sealedBoundArguments struct {
-	Public        json.RawMessage        `json:"public"`
-	SealedPayload *sealedstore.Reference `json:"sealed_payload,omitempty"`
+	Public         json.RawMessage        `json:"public"`
+	SealedPayload  *sealedstore.Reference `json:"sealed_payload,omitempty"`
+	CredentialSlot string                 `json:"credential_slot,omitempty"`
 }
 
 var sealedInputPaths = map[string][]string{
@@ -61,6 +62,9 @@ func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Ada
 		if !found || descriptor.AuthorizationMode != opcatalog.ModeExecution || !descriptor.Sealed {
 			continue
 		}
+		if descriptor.CredentialOutputKind != nil {
+			continue
+		}
 		adapters = append(adapters, &sealedBoundAdapter{descriptor: descriptor, binding: binding, client: client, store: store, paths: sealedInputPaths[binding.Operation]})
 	}
 	return adapters, nil
@@ -73,7 +77,7 @@ func (a *sealedBoundAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (In
 		return Input{}, errors.New("operation target does not match its closed schema")
 	}
 	var arguments sealedBoundArguments
-	if err := decodeClosed(argumentsRaw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 {
+	if err := decodeClosed(argumentsRaw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 || arguments.CredentialSlot != "" {
 		return Input{}, errors.New("sealed operation arguments are invalid")
 	}
 	public, err := decodeObject(arguments.Public)
@@ -159,29 +163,37 @@ func (a *sealedBoundAdapter) Present(plan Plan) agentv1.Presentation {
 }
 
 func (a *sealedBoundAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
-	var expected boundPreconditions
-	if err := decodeClosed(plan.Preconditions, &expected, maxTargetBytes); err != nil || expected.CredentialIdentity == "" {
-		return Outcome{}, errors.New("operation plan preconditions are invalid")
-	}
-	identity, err := a.client.WhoAmI(ctx)
-	if err != nil || identity.Name != expected.CredentialIdentity {
-		if err != nil {
-			return Outcome{}, err
-		}
-		return Outcome{}, errors.New("operation_precondition_failed")
-	}
-	if err := a.checkObservation(ctx, plan.Target, expected); err != nil {
+	merged, err := a.prepareExecution(ctx, plan)
+	if err != nil {
 		return Outcome{}, err
-	}
-	merged, _, err := a.materialize(plan.Arguments, true)
-	if err != nil || a.binding.Validate(plan.Target, merged) != nil {
-		return Outcome{}, errors.New("sealed operation payload is invalid")
 	}
 	if err := a.client.ExecuteBound(ctx, a.descriptor.Name, plan.Target, merged); err != nil {
 		return Outcome{}, err
 	}
 	result, _ := canonical(map[string]any{"accepted": true, "operation": a.descriptor.Name})
 	return Outcome{Proven: true, Result: result}, nil
+}
+
+func (a *sealedBoundAdapter) prepareExecution(ctx context.Context, plan Plan) (json.RawMessage, error) {
+	var expected boundPreconditions
+	if err := decodeClosed(plan.Preconditions, &expected, maxTargetBytes); err != nil || expected.CredentialIdentity == "" {
+		return nil, errors.New("operation plan preconditions are invalid")
+	}
+	identity, err := a.client.WhoAmI(ctx)
+	if err != nil || identity.Name != expected.CredentialIdentity {
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("operation_precondition_failed")
+	}
+	if err := a.checkObservation(ctx, plan.Target, expected); err != nil {
+		return nil, err
+	}
+	merged, _, err := a.materialize(plan.Arguments, true)
+	if err != nil || a.binding.Validate(plan.Target, merged) != nil {
+		return nil, errors.New("sealed operation payload is invalid")
+	}
+	return merged, nil
 }
 
 func (a *sealedBoundAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {

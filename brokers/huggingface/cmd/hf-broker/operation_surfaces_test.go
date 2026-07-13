@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -131,5 +132,21 @@ func TestCatalogSchemaUsesPinnedBindingWhenAvailable(t *testing.T) {
 	arguments := properties["arguments"].(map[string]any)
 	if arguments["type"] != "object" || properties["sealed_arguments"] == nil {
 		t.Fatalf("schema = %#v", schema)
+	}
+}
+
+func TestCredentialOutputToolRequiresSlotAndHidesSealedInput(t *testing.T) {
+	descriptor, found := opcatalog.ByName("service_account.token.create")
+	if !found || descriptor.CredentialOutputKind == nil {
+		t.Fatal("credential output metadata missing")
+	}
+	schema := catalogMCPToolSchema(descriptor)
+	properties := schema["properties"].(map[string]any)
+	if properties["credential_slot"] == nil || properties["sealed_arguments"] != nil {
+		t.Fatalf("credential output schema = %#v", schema)
+	}
+	required := schema["required"].([]string)
+	if !slices.Contains(required, "credential_slot") {
+		t.Fatalf("required = %v", required)
 	}
 }

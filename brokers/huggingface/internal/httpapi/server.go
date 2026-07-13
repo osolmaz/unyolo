@@ -21,6 +21,7 @@ import (
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialstore"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
@@ -96,6 +97,7 @@ type Server struct {
 	operationRegistry   *operations.Registry
 	hubClient           *hubclient.Client
 	sealedStore         *sealedstore.Store
+	credentialStore     *credentialstore.Store
 	agentAPI            *agentapi.Handler
 	database            *state.Database
 	planValidator       hfplan.Validator
@@ -302,6 +304,11 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	credentialSlots, err := credentialstore.Open(opts.Config.StateDir)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	store := grants.NewDatabase(database, grants.Options{
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
@@ -358,6 +365,11 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	credentialAdapters, err := operations.NewCredentialOutputAdapters(hub, sealedPayloads, credentialSlots)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	sandboxAdapters, err := operations.NewSandboxAdapters(hub, sealedPayloads)
 	if err != nil {
 		_ = database.Close()
@@ -370,6 +382,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	providerAdapters = append(providerAdapters, bucketAdapters...)
 	providerAdapters = append(providerAdapters, contentAdapters...)
 	providerAdapters = append(providerAdapters, sealedAdapters...)
+	providerAdapters = append(providerAdapters, credentialAdapters...)
 	providerAdapters = append(providerAdapters, sandboxAdapters...)
 	operationRegistry, err := operations.NewRegistry(providerAdapters...)
 	if err != nil {
@@ -412,6 +425,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		operationRegistry:  operationRegistry,
 		hubClient:          hub,
 		sealedStore:        sealedPayloads,
+		credentialStore:    credentialSlots,
 		database:           database,
 		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,

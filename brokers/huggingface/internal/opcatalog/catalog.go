@@ -44,23 +44,24 @@ const (
 // Descriptor is the provider-owned registration record consumed by every HF
 // broker surface. It contains no credentials or requester-controlled values.
 type Descriptor struct {
-	Name               string               `json:"name"`
-	OperationRevision  int                  `json:"operation_revision"`
-	Disposition        string               `json:"disposition"`
-	AuthorizationMode  AuthorizationMode    `json:"authorization_mode"`
-	ExplicitOnly       bool                 `json:"explicit_only"`
-	Sealed             bool                 `json:"sealed"`
-	Internal           bool                 `json:"internal"`
-	Implementation     ImplementationStatus `json:"implementation_status"`
-	Risk               Risk                 `json:"risk"`
-	TargetKind         string               `json:"target_kind"`
-	MaxUses            int                  `json:"max_uses"`
-	RequestTTLSeconds  int                  `json:"request_ttl_seconds"`
-	ApprovalTTLSeconds int                  `json:"approval_ttl_seconds"`
-	FamilyGlobAllowed  bool                 `json:"family_glob_allowed"`
-	AgentFacing        bool                 `json:"agent_facing"`
-	MCPTool            *string              `json:"mcp_tool"`
-	CLICommand         *string              `json:"cli_command"`
+	Name                 string               `json:"name"`
+	OperationRevision    int                  `json:"operation_revision"`
+	Disposition          string               `json:"disposition"`
+	AuthorizationMode    AuthorizationMode    `json:"authorization_mode"`
+	ExplicitOnly         bool                 `json:"explicit_only"`
+	Sealed               bool                 `json:"sealed"`
+	CredentialOutputKind *string              `json:"credential_output_kind,omitempty"`
+	Internal             bool                 `json:"internal"`
+	Implementation       ImplementationStatus `json:"implementation_status"`
+	Risk                 Risk                 `json:"risk"`
+	TargetKind           string               `json:"target_kind"`
+	MaxUses              int                  `json:"max_uses"`
+	RequestTTLSeconds    int                  `json:"request_ttl_seconds"`
+	ApprovalTTLSeconds   int                  `json:"approval_ttl_seconds"`
+	FamilyGlobAllowed    bool                 `json:"family_glob_allowed"`
+	AgentFacing          bool                 `json:"agent_facing"`
+	MCPTool              *string              `json:"mcp_tool"`
+	CLICommand           *string              `json:"cli_command"`
 }
 
 //go:embed catalog.json
@@ -73,9 +74,10 @@ var (
 )
 
 var (
-	operationPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`)
-	targetPattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	toolPattern      = regexp.MustCompile(`^hf_[a-z][a-z0-9_]*$`)
+	operationPattern      = regexp.MustCompile(`^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`)
+	targetPattern         = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	toolPattern           = regexp.MustCompile(`^hf_[a-z][a-z0-9_]*$`)
+	credentialKindPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
 // All returns the validated, name-sorted capability catalog.
@@ -171,6 +173,9 @@ func validateDescriptor(value Descriptor) error {
 	}
 	if value.Sealed && value.AuthorizationMode != ModeExecution {
 		return fmt.Errorf("sealed operation %q is not execution-scoped", value.Name)
+	}
+	if value.CredentialOutputKind != nil && (!value.Sealed || !value.ExplicitOnly || !credentialKindPattern.MatchString(*value.CredentialOutputKind)) {
+		return fmt.Errorf("credential output operation %q is invalid", value.Name)
 	}
 	if value.Internal && (value.AgentFacing || value.MCPTool != nil || value.CLICommand != nil || value.Implementation != StatusInternal) {
 		return fmt.Errorf("internal operation %q is agent-facing", value.Name)

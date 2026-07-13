@@ -90,22 +90,12 @@ func TestSealedBoundAdapterRejectsOwnershipLeaksAndSecretSmuggling(t *testing.T)
 	}
 }
 
-func TestSealedBoundAdapterSupportsOutputSensitiveOperationWithoutInput(t *testing.T) {
+func TestSealedBoundAdapterLeavesCredentialOutputsToDedicatedAdapter(t *testing.T) {
 	store, _ := sealedstore.Open(t.TempDir())
 	client := &sealedBoundFake{identity: "operator"}
 	adapters, _ := NewSealedBoundAdapters(client, store)
 	registry, _ := NewRegistry(adapters...)
-	adapter, _ := registry.Lookup("service_account.token.create")
-	input, err := adapter.Decode(json.RawMessage(`{"name":"acme","serviceAccountId":"0123456789abcdef01234567"}`),
-		json.RawMessage(`{"public":{"permissions":["repo.content.read"]}}`))
-	if err != nil || adapter.(ClientBoundAdapter).ValidateClient(input, "bob") != nil {
-		t.Fatalf("Decode() = %+v, %v", input, err)
-	}
-	plan, err := adapter.Resolve(context.Background(), input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := adapter.Execute(context.Background(), plan); err != nil {
-		t.Fatal(err)
+	if _, found := registry.Lookup("service_account.token.create"); found {
+		t.Fatal("credential output operation used generic sealed adapter")
 	}
 }
