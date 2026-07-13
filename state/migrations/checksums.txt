@@ -1,1 +1,2 @@
 d2033d0620bbacf7f75ca2e865dd93a544a5ceaef9b9dcc306ae73156776f4d7  00001_initial.sql
+2f579ee8fac359719e5727adea7a29dafe81bbf7dff4a8a3f7338cc33e6069cc  00002_expand_operation_payloads.sql
