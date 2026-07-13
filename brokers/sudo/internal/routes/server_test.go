@@ -173,6 +173,22 @@ func TestReadinessAndNotificationFailure(t *testing.T) {
 	if err != nil || operation.State != agentv1.StateFailed {
 		t.Fatalf("notification failure = %#v, %v", operation, err)
 	}
+	server.notifier = nil
+	operation, _, err = server.submitAgentOperation(t.Context(), "bob", validSubmission("no-approval-channel"))
+	if err != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_channel_not_configured" {
+		t.Fatalf("missing approval channel = %#v, %v", operation, err)
+	}
+	server.operatorConfigured = true
+	server.identities = failingIdentities{}
+	operation, _, err = server.submitAgentOperation(t.Context(), "bob", validSubmission("identity-failure"))
+	if err != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "target_identity_invalid" {
+		t.Fatalf("identity failure = %#v, %v", operation, err)
+	}
+	server.identities = fakeIdentities{}
+	operation, _, err = server.submitAgentOperation(t.Context(), "unmatched-client", validSubmission("policy-denial"))
+	if err != nil || operation.State != agentv1.StateDenied || operation.Error == nil || operation.Error.Code != "policy_denied" {
+		t.Fatalf("policy denial = %#v, %v", operation, err)
+	}
 }
 
 func TestAdvancePendingOperationAndInvalidApproval(t *testing.T) {
@@ -212,6 +228,19 @@ func TestAdvancePendingOperationAndInvalidApproval(t *testing.T) {
 	failed, _ := server.operations.GetByID(invalid.ID)
 	if failed.State != agentv1.StateFailed || failed.Error == nil || failed.Error.Code != "approval_unavailable" {
 		t.Fatalf("invalid approval operation = %#v", failed)
+	}
+	malformedRequest := validSubmission("malformed-stored")
+	malformedRequest.Target = json.RawMessage(`{"kind":"repo","name":"root"}`)
+	malformed, _, err := server.operations.Submit(agentops.Submit{Broker: "sudo-broker", ClientID: "bob", IdempotencyKey: malformedRequest.IdempotencyKey,
+		Operation: malformedRequest.Operation, Target: malformedRequest.Target, Arguments: malformedRequest.Arguments, Reason: malformedRequest.Reason,
+		Presentation: agentv1.Presentation{Title: "malformed"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.advanceOperation(t.Context(), malformed)
+	malformed, _ = server.operations.GetByID(malformed.ID)
+	if malformed.State != agentv1.StateFailed || malformed.Error == nil || malformed.Error.Code != "invalid_stored_operation" {
+		t.Fatalf("malformed stored operation = %#v", malformed)
 	}
 }
 
@@ -264,6 +293,43 @@ func TestSudoApprovalTransitionsAndRecovery(t *testing.T) {
 	}
 	if denied := server.syncOperationApproval(operation); denied.State != agentv1.StateDenied {
 		t.Fatalf("denied operation = %#v", denied)
+	}
+	for _, test := range []struct {
+		name   string
+		close  func(grants.Grant) error
+		key    string
+		status agentv1.State
+	}{
+		{name: "canceled", key: "cancel", status: agentv1.StateCanceled, close: func(grant grants.Grant) error {
+			_, err := server.grants.CancelForClient(grant.ID, grant.Client)
+			return err
+		}},
+		{name: "revoked", key: "revoke", status: agentv1.StateCanceled, close: func(grant grants.Grant) error {
+			approved, err := server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+				ExpectedRevision: grant.Revision, IdempotencyKey: "approve-before-revoke"})
+			if err != nil {
+				return err
+			}
+			_, err = server.grants.Revoke(approved.Grant.ID, "operator")
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pending, _, submitErr := server.submitAgentOperation(t.Context(), "bob", validSubmission(test.key))
+			if submitErr != nil {
+				t.Fatal(submitErr)
+			}
+			pendingGrant, getErr := server.grants.Get(pending.ApprovalID)
+			if getErr != nil {
+				t.Fatal(getErr)
+			}
+			if closeErr := test.close(pendingGrant); closeErr != nil {
+				t.Fatal(closeErr)
+			}
+			if closed := server.syncOperationApproval(pending); closed.State != test.status {
+				t.Fatalf("closed operation = %#v", closed)
+			}
+		})
 	}
 	executing, _, err := server.operations.Submit(agentops.Submit{Broker: "sudo-broker", ClientID: "bob", IdempotencyKey: "recover",
 		Operation: sudopolicy.OperationExecCommand, Target: validSubmission("x").Target, Arguments: validSubmission("x").Arguments,
@@ -408,6 +474,12 @@ type fakeIdentities struct{}
 
 func (fakeIdentities) Lookup(string) (plan.Identity, error) {
 	return plan.Identity{Name: "root", UID: 0, GID: 0}, nil
+}
+
+type failingIdentities struct{}
+
+func (failingIdentities) Lookup(string) (plan.Identity, error) {
+	return plan.Identity{}, errors.New("lookup failed")
 }
 
 type fakeHelper struct {
