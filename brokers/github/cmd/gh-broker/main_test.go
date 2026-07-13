@@ -194,6 +194,7 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", writeScopeFile(t))
+	t.Setenv("GH_BROKER_STATE_DIR", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := run(ctx); err != nil {
@@ -274,6 +275,7 @@ func configForBuildTest(t *testing.T) config.Config {
 		SharedSecret:        strings.Repeat("a", 32),
 		GitHubToken:         "github-token",
 		ScopeFile:           writeScopeFile(t),
+		StateDir:            t.TempDir(),
 		GitHubHTTPTimeout:   time.Second,
 		MaxReceivePackBytes: 1,
 		ReadHeaderTimeout:   time.Second,

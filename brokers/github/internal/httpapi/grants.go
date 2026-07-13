@@ -1,12 +1,9 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const maxGrantRequestBodyBytes int64 = 32 * 1024
@@ -45,7 +43,7 @@ type grantCreatePlan struct {
 	decision       policy.Decision
 	duration       time.Duration
 	pendingTimeout time.Duration
-	maxUses        int
+	maxUses        usebudget.Limit
 }
 
 type apiGrant struct {
@@ -86,15 +84,16 @@ func (s *Server) requestGrant(request grants.Request) (grants.RequestResult, boo
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
+	var plan grants.ImmutablePlan
 	if exists {
-		err = s.plans.BindAt(&request, createdAt)
+		plan, err = s.plans.PrepareBindAt(&request, createdAt)
 	} else {
-		err = s.plans.Bind(&request)
+		plan, err = s.plans.PrepareBind(&request)
 	}
 	if err != nil {
 		return grants.RequestResult{}, false, fmt.Errorf("store immutable GitHub plan: %w", err)
 	}
-	return s.grants.Request(request)
+	return s.grants.RequestWithPlan(request, plan)
 }
 
 func existingGitHubPlanCreatedAt(store *grants.Store, plans *ghplan.Store, client string, clientRequestID string) (time.Time, bool, error) {
@@ -301,20 +300,11 @@ func (s *Server) getGrant(c echo.Context) error {
 }
 
 func decodeGrantCreate(c echo.Context) (grantCreateRequest, error) {
-	body, err := httpx.ReadLimited(c.Request().Body, maxGrantRequestBodyBytes)
-	if err != nil {
-		return grantCreateRequest{}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "grant request body is too large")
-	}
 	var payload grantCreateRequest
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
-		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, "invalid grant request json")
-	}
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); err == nil {
-		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, "invalid grant request json")
-	} else if !errors.Is(err, io.EOF) {
+	if err := httpx.DecodeJSON(c.Request().Body, maxGrantRequestBodyBytes, &payload, true); err != nil {
+		if errors.Is(err, httpx.ErrBodyTooLarge) {
+			return grantCreateRequest{}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "grant request body is too large")
+		}
 		return grantCreateRequest{}, echo.NewHTTPError(http.StatusBadRequest, "invalid grant request json")
 	}
 	if strings.TrimSpace(payload.Reason) == "" {
@@ -326,7 +316,7 @@ func decodeGrantCreate(c echo.Context) (grantCreateRequest, error) {
 	return payload, nil
 }
 
-func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requestedUses int) (time.Duration, time.Duration, int, error) {
+func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requestedUses int) (time.Duration, time.Duration, usebudget.Limit, error) {
 	minutes := requestedMinutes
 	if minutes <= 0 {
 		minutes = grantPolicy.DefaultMinutes
@@ -334,11 +324,11 @@ func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requ
 	if minutes > grantPolicy.MaxMinutes {
 		return 0, 0, 0, fmt.Errorf("requested minutes %d exceeds policy max %d", minutes, grantPolicy.MaxMinutes)
 	}
-	maxUses := requestedUses
+	maxUses := usebudget.Limit(requestedUses)
 	if maxUses <= 0 {
 		maxUses = grantPolicy.DefaultMaxUses
 	}
-	if maxUses > grantPolicy.MaxUses {
+	if grantPolicy.MaxUses.IsFinite() && maxUses > grantPolicy.MaxUses {
 		return 0, 0, 0, fmt.Errorf("requested max uses %d exceeds policy max %d", maxUses, grantPolicy.MaxUses)
 	}
 	return time.Duration(minutes) * time.Minute, time.Duration(grantPolicy.RequestTTLMinutes) * time.Minute, maxUses, nil
@@ -360,7 +350,7 @@ func apiGrantFromStore(grant grants.Grant) apiGrant {
 		Attrs:           flattenCoreValues(grant.Attrs),
 		Reason:          grant.Reason,
 		Minutes:         int(grant.Duration / time.Minute),
-		MaxUses:         grant.MaxUses,
+		MaxUses:         int(grant.MaxUses),
 		UsesRemaining:   grantUsesRemaining(grant),
 		UsedCount:       grant.UsedCount,
 		PendingUntil:    timePointer(grant.PendingExpiresAt),
@@ -437,6 +427,8 @@ func approvalFields(grant grants.Grant) []notify.Field {
 	}
 	if grant.MaxUses > 0 {
 		fields = append(fields, notify.Field{Name: "max_uses", Value: fmt.Sprintf("%d", grant.MaxUses)})
+	} else {
+		fields = append(fields, notify.Field{Name: "max_uses", Value: "unlimited until expiry"})
 	}
 	return fields
 }

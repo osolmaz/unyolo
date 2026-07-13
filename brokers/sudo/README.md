@@ -59,19 +59,16 @@ sudo sudo-broker doctor host --agent bob
 ## Use
 
 ```sh
-sudo-broker request nginx-reload \
+sudo-broker run nginx-reload \
   --as root \
-  --reason "Apply reviewed nginx configuration"
-
-sudo-broker status REQUEST_ID
-
-sudo-broker run nginx-reload --as root
+  --reason "Apply reviewed nginx configuration" \
+  --operation-id nginx-reload-20260713
 ```
 
-For typed catalog slots, repeat `--arg-json NAME=JSON` on both `request` and
-`run`. Reuse a stable `--request-id` when retrying a request and a stable
-`--execution-id` when reconciling one execution. Never retry an ambiguous
-execution under a new id.
+`run` submits one Agent V1 operation, waits for approval, and executes the exact
+cataloged command through the privileged helper. For typed catalog slots,
+repeat `--arg-json NAME=JSON`. Reuse a stable `--operation-id` when retrying;
+never retry an ambiguous execution under a new id.
 
 See [the threat model](../../docs/security/THREAT_MODEL.md) for the security
 boundary and platform-specific guarantees.

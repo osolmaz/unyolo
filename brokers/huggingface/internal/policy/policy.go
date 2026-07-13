@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/usebudget"
+
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
@@ -126,6 +128,7 @@ type Rule struct {
 	GrantID   string
 	ExpiresAt time.Time
 	UsesLeft  int
+	Unlimited bool
 }
 
 type TargetMatcher struct {
@@ -153,12 +156,12 @@ type AttrConstraint struct {
 }
 
 type GrantPolicy struct {
-	Mode              GrantMode `json:"mode"`
-	DefaultMinutes    int       `json:"default_minutes"`
-	MaxMinutes        int       `json:"max_minutes"`
-	RequestTTLMinutes int       `json:"request_ttl_minutes"`
-	DefaultMaxUses    int       `json:"default_max_uses"`
-	MaxUses           int       `json:"max_uses"`
+	Mode              GrantMode       `json:"mode"`
+	DefaultMinutes    int             `json:"default_minutes"`
+	MaxMinutes        int             `json:"max_minutes"`
+	RequestTTLMinutes int             `json:"request_ttl_minutes"`
+	DefaultMaxUses    usebudget.Limit `json:"default_max_uses"`
+	MaxUses           usebudget.Limit `json:"max_uses"`
 }
 
 type Decision struct {
@@ -188,12 +191,12 @@ type rawRule struct {
 }
 
 type rawGrantPolicy struct {
-	Mode              *string `json:"mode"`
-	DefaultMinutes    *int    `json:"default_minutes"`
-	MaxMinutes        *int    `json:"max_minutes"`
-	RequestTTLMinutes *int    `json:"request_ttl_minutes"`
-	DefaultMaxUses    *int    `json:"default_max_uses"`
-	MaxUses           *int    `json:"max_uses"`
+	Mode              *string            `json:"mode"`
+	DefaultMinutes    *int               `json:"default_minutes"`
+	MaxMinutes        *int               `json:"max_minutes"`
+	RequestTTLMinutes *int               `json:"request_ttl_minutes"`
+	DefaultMaxUses    usebudget.Optional `json:"default_max_uses"`
+	MaxUses           usebudget.Optional `json:"max_uses"`
 }
 
 type targetMatcherJSON struct {
@@ -1116,12 +1119,16 @@ func assignGrantPolicyInts(policy *GrantPolicy, raw *rawGrantPolicy) {
 	assignInt(&policy.DefaultMinutes, raw.DefaultMinutes)
 	assignInt(&policy.MaxMinutes, raw.MaxMinutes)
 	assignInt(&policy.RequestTTLMinutes, raw.RequestTTLMinutes)
-	assignInt(&policy.DefaultMaxUses, raw.DefaultMaxUses)
-	assignInt(&policy.MaxUses, raw.MaxUses)
+	if raw.DefaultMaxUses.Specified {
+		policy.DefaultMaxUses = raw.DefaultMaxUses.Limit
+	}
+	if raw.MaxUses.Specified {
+		policy.MaxUses = raw.MaxUses.Limit
+	}
 }
 
 func defaultGrantMaxUses(policy *GrantPolicy, raw *rawGrantPolicy) {
-	if raw.MaxUses == nil {
+	if !raw.MaxUses.Specified {
 		policy.MaxUses = policy.DefaultMaxUses
 	}
 }
@@ -1141,9 +1148,15 @@ func executionGrantPolicy(policy GrantPolicy) GrantPolicy {
 }
 
 func validateGrantUsePolicy(policy GrantPolicy) error {
+	if policy.MaxUses.IsUnlimited() {
+		if !policy.DefaultMaxUses.IsFinite() || policy.DefaultMaxUses > MaxGrantUses {
+			return fmt.Errorf("default_max_uses must be between 1 and %d", MaxGrantUses)
+		}
+		return nil
+	}
 	return validateGrantPolicyBounds([]grantPolicyBound{
-		{value: policy.DefaultMaxUses, min: 1, max: MaxGrantUses, message: "default_max_uses must be between 1 and %d"},
-		{value: policy.MaxUses, min: policy.DefaultMaxUses, max: MaxGrantUses, message: "max_uses must be between default_max_uses and %d"},
+		{value: int(policy.DefaultMaxUses), min: 1, max: MaxGrantUses, message: "default_max_uses must be between 1 and %d"},
+		{value: int(policy.MaxUses), min: int(policy.DefaultMaxUses), max: MaxGrantUses, message: "max_uses must be between default_max_uses and %d"},
 	})
 }
 

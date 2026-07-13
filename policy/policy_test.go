@@ -30,6 +30,28 @@ func TestParseValidatesRegistryVocabulary(t *testing.T) {
 	}
 }
 
+func TestRegistryPublicContract(t *testing.T) {
+	registry := testRegistry()
+	if err := registry.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	spec, ok := registry.Operation("git.fetch")
+	if !ok || spec.Grantable || spec.AllowsGrantMode(GrantModeWindow) {
+		t.Fatalf("git.fetch spec = %+v, %v", spec, ok)
+	}
+	requestable, ok := registry.Operation("session.shell")
+	if !ok || !requestable.AllowsGrantMode(GrantModeWindow) {
+		t.Fatalf("session.shell spec = %+v, %v", requestable, ok)
+	}
+	requestable.TargetKinds[0] = "mutated"
+	if fresh, _ := registry.Operation("session.shell"); fresh.TargetKinds[0] == "mutated" {
+		t.Fatal("Operation returned aliased registry data")
+	}
+	if err := registry.ValidateRequest(Request{Client: "bob", Operation: "missing", Target: Target{Kind: "user"}}); err == nil {
+		t.Fatal("ValidateRequest accepted an unknown operation")
+	}
+}
+
 func TestDecisionOrder(t *testing.T) {
 	policy := mustParse(t, `{"rules":[
 		{
@@ -114,6 +136,37 @@ func TestRequestRuleAndGrantOverlay(t *testing.T) {
 	}
 }
 
+func TestRequestRuleMayAllowUnlimitedUseBudget(t *testing.T) {
+	t.Parallel()
+	policy := mustParse(t, `{"rules":[{
+		"id":"request-shell",
+		"effect":"request",
+		"clients":["bob"],
+		"operations":["session.shell"],
+		"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"default_max_uses":2,"max_uses":null}
+	}]}`)
+	decision := policy.Decide(
+		Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}},
+		DecisionOptions{ForGrantRequest: true},
+	)
+	if decision.GrantPolicy == nil || decision.GrantPolicy.DefaultMaxUses != 2 || !decision.GrantPolicy.MaxUses.IsUnlimited() {
+		t.Fatalf("decision = %+v", decision)
+	}
+}
+
+func TestRequestRuleRejectsUnlimitedDefaultUseBudget(t *testing.T) {
+	t.Parallel()
+	_, err := Parse([]byte(`{"rules":[{
+		"id":"request-shell","effect":"request","clients":["bob"],
+		"operations":["session.shell"],"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"default_max_uses":null,"max_uses":null}
+	}]}`), testRegistry())
+	if err == nil || !strings.Contains(err.Error(), "default_max_uses") {
+		t.Fatalf("Parse() error = %v", err)
+	}
+}
+
 func TestGrantOverlayRequiresRemainingUseBudget(t *testing.T) {
 	policy := requestShellPolicy(t)
 	req := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}
@@ -127,6 +180,19 @@ func TestGrantOverlayRequiresRemainingUseBudget(t *testing.T) {
 	}}})
 	if exhaustedDecision.Allowed || exhaustedDecision.Reason == "grant_allowed" {
 		t.Fatalf("exhausted grant decision = %+v, want denied", exhaustedDecision)
+	}
+}
+
+func TestGrantOverlayAllowsUnlimitedUseBudget(t *testing.T) {
+	t.Parallel()
+	policy := requestShellPolicy(t)
+	request := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}
+	decision := policy.Decide(request, DecisionOptions{ActiveGrants: []Grant{{
+		ID: "unlimited", Client: "bob", Operation: "session.shell", Target: request.Target,
+		ExpiresAt: time.Now().Add(time.Minute), Unlimited: true,
+	}}})
+	if !decision.Allowed || decision.GrantID != "unlimited" {
+		t.Fatalf("decision = %+v", decision)
 	}
 }
 

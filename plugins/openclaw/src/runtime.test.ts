@@ -27,13 +27,13 @@ describe("BrokerRuntime", () => {
       requested_at: "2026-07-11T00:00:00Z",
       pending_expires_at: "2099-07-11T00:10:00Z",
       requested_duration_seconds: 300,
-      requested_max_uses: 1,
+      requested_max_uses: null,
       granted_max_uses: status === "pending" ? null : 1,
       used_count: 0,
       presentation: { risk: "high", title: "Protected write", facts: [] },
       allowed_actions:
         status === "pending" ? ["approve", "deny", "cancel"] : ["revoke"],
-      approval_bounds: { max_duration_seconds: 300, max_uses: 1 },
+      approval_bounds: { max_duration_seconds: 300, max_uses: null },
     });
     const server = createServer(async (req, res) => {
       res.setHeader("content-type", "application/json");
@@ -119,16 +119,16 @@ describe("BrokerRuntime", () => {
     ).toBe(true);
     await expect(
       runtime.decide(handle!, "approve", 1, "operator:onur", {
-        constraints: { duration_seconds: 301, max_uses: 1 },
+        constraints: { duration_seconds: 301, max_uses: null },
       }),
     ).rejects.toThrow("action_not_allowed");
     await runtime.decide(handle!, "approve", 1, "operator:onur", {
-      constraints: { duration_seconds: 300, max_uses: 1 },
+      constraints: { duration_seconds: 300, max_uses: null },
     });
     expect(JSON.parse(decisionBody)).toMatchObject({
       expected_revision: 1,
       on_behalf_of: "operator:onur",
-      constraints: { duration_seconds: 300, max_uses: 1 },
+      constraints: { duration_seconds: 300, max_uses: null },
     });
     expect(decisionAttempts).toBe(2);
     expect(decisionBodies[1]).toBe(decisionBodies[0]);
@@ -137,8 +137,10 @@ describe("BrokerRuntime", () => {
     await runtime.start(stateDir);
     expect(runtime.snapshot().requests).toEqual([
       expect.objectContaining({
-        status: "active",
-        allowed_actions: ["revoke"],
+        request: expect.objectContaining({
+          status: "active",
+          allowed_actions: ["revoke"],
+        }),
       }),
     ]);
     await runtime.stop();

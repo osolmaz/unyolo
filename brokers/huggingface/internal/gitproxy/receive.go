@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy/pktline"
+	"github.com/osolmaz/brokerkit/gitx"
 )
 
 const zeroSHA = "0000000000000000000000000000000000000000"
@@ -37,7 +37,7 @@ type RefFailure struct {
 // ParseReceivePack parses git-receive-pack's pkt-line command prelude and
 // returns the trailing pack bytes unchanged.
 func ParseReceivePack(body []byte) (ReceivePackRequest, error) {
-	scanner := pktline.NewScanner(body)
+	scanner := gitx.NewScanner(body)
 	var req ReceivePackRequest
 	req.Capabilities = map[string]bool{}
 	first := true
@@ -52,15 +52,15 @@ func ParseReceivePack(body []byte) (ReceivePackRequest, error) {
 	}
 }
 
-func parseReceiveFrame(body []byte, scanner *pktline.Scanner, req *ReceivePackRequest, first *bool) (bool, error) {
-	payload, kind, err := scanner.Next()
-	if errors.Is(err, pktline.ErrDone) {
+func parseReceiveFrame(body []byte, scanner *gitx.Scanner, req *ReceivePackRequest, first *bool) (bool, error) {
+	payload, flush, err := scanner.Next()
+	if errors.Is(err, gitx.ErrDone) {
 		return false, errors.New("receive-pack command list missing flush")
 	}
 	if err != nil {
 		return false, err
 	}
-	if kind == pktline.KindFlush {
+	if flush {
 		if err := skipPushOptions(body, scanner, req.Capabilities["push-options"]); err != nil {
 			return false, err
 		}
@@ -70,26 +70,26 @@ func parseReceiveFrame(body []byte, scanner *pktline.Scanner, req *ReceivePackRe
 	return false, appendReceiveCommand(req, bytes.TrimSuffix(payload, []byte{'\n'}), first)
 }
 
-func skipPushOptions(body []byte, scanner *pktline.Scanner, enabled bool) error {
+func skipPushOptions(body []byte, scanner *gitx.Scanner, enabled bool) error {
 	if !enabled || !looksLikePktLine(body, scanner.Offset()) {
 		return nil
 	}
 	for {
-		_, kind, err := scanner.Next()
-		if errors.Is(err, pktline.ErrDone) {
+		_, flush, err := scanner.Next()
+		if errors.Is(err, gitx.ErrDone) {
 			return errors.New("receive-pack push-options missing flush")
 		}
 		if err != nil {
 			return err
 		}
-		if kind == pktline.KindFlush {
+		if flush {
 			return nil
 		}
 	}
 }
 
-func looksLikePktLine(body []byte, offset int) bool {
-	if len(body)-offset < 4 {
+func looksLikePktLine(body []byte, offset int64) bool {
+	if int64(len(body))-offset < 4 {
 		return false
 	}
 	for _, c := range body[offset : offset+4] {

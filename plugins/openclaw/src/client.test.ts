@@ -46,8 +46,9 @@ describe("BrokerClient", () => {
     expect((await stream.next()).value?.cursor).toBe("cursor-2");
   });
 
-  it("drops unknown response fields and rejects malformed broker data", async () => {
+  it("rejects unknown response fields and malformed broker data", async () => {
     let malformed = false;
+    let includeUnknown = true;
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json; charset=utf-8");
       if (req.url?.startsWith("/api/operator/v1/requests?")) {
@@ -57,7 +58,7 @@ describe("BrokerClient", () => {
               ? [{ id: "request-1", revision: "not-an-integer" }]
               : [],
             event_cursor: "cursor-1",
-            future_field: "ignored",
+            ...(includeUnknown ? { future_field: "rejected" } : {}),
           }),
         );
       }
@@ -74,8 +75,8 @@ describe("BrokerClient", () => {
       async () => "operator",
       1000,
     );
-    const page = await client.list();
-    expect(page).toEqual({ requests: [], event_cursor: "cursor-1" });
+    await expect(client.list()).rejects.toThrow();
+    includeUnknown = false;
     malformed = true;
     await expect(client.list()).rejects.toThrow();
   });

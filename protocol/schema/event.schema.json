@@ -1,16 +1,74 @@
 {
+  "$comment": "Generated from protocol/openapi/operator-v1.yaml; do not edit.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://brokerkit.dev/schema/operator/v1/event.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["cursor", "kind", "request_id", "revision", "status", "occurred_at", "used_count"],
+  "required": [
+    "cursor",
+    "kind",
+    "request_id",
+    "revision",
+    "status",
+    "occurred_at",
+    "used_count"
+  ],
   "properties": {
-    "cursor": {"type": "string", "minLength": 1, "maxLength": 1024},
-    "kind": {"enum": ["request.created", "request.approved", "request.denied", "request.canceled", "request.expired", "request.consumed", "request.revoked", "request.updated"]},
-    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
-    "revision": {"type": "integer", "minimum": 1},
-    "status": {"enum": ["pending", "active", "denied", "canceled", "expired", "consumed", "revoked"]},
-    "occurred_at": {"type": "string", "format": "date-time"},
-    "used_count": {"type": "integer", "minimum": 0}
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "request.created",
+        "request.approved",
+        "request.denied",
+        "request.canceled",
+        "request.expired",
+        "grant.revoked",
+        "grant.reserved",
+        "grant.consumed",
+        "grant.released",
+        "execution.succeeded",
+        "execution.failed",
+        "execution.ambiguous"
+      ]
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "$ref": "#/$defs/Status"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "used_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "Status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "denied",
+        "canceled",
+        "expired",
+        "consumed",
+        "revoked"
+      ]
+    }
   }
 }

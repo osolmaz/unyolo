@@ -40,6 +40,7 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 }
 
 func (s *Server) Start(ctx context.Context) {
+	s.startOperationWorker(ctx)
 	s.startTelegram(ctx)
 	s.startNotificationSweeper(ctx)
 }
@@ -120,11 +121,14 @@ func grantLifecycleStatusText(status grants.Status) string {
 }
 
 func grantUseStatusText(grant grants.Grant) string {
-	remaining := grant.MaxUses - grant.UsedCount
+	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, 0)
+	if !finite {
+		return fmt.Sprintf("Used %d times. Access remains active until expiry.", grant.UsedCount)
+	}
 	if grant.Status != grants.StatusActive || grant.ReservationRetained || remaining <= 0 {
 		return "Used. Access is now closed."
 	}
-	return fmt.Sprintf("Used %d of %d. %d uses remain.", grant.UsedCount, grant.MaxUses, remaining)
+	return fmt.Sprintf("Used %d of %d. %d uses remain.", grant.UsedCount, int(grant.MaxUses), remaining)
 }
 
 func (s *Server) settleFailedExecution(c echo.Context, reserved []grants.Grant, executionErr error) error {

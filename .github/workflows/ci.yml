@@ -24,6 +24,7 @@ jobs:
       - name: gofmt check
         run: test -z "$(gofmt -l .)"
       - run: ./scripts/check-architecture.sh
+      - run: ./scripts/check-sql.sh
       - run: go test ./protocol
       - run: go vet ./...
       - run: go test -race ./...
@@ -44,10 +45,8 @@ jobs:
       - name: Slophammer complexity gates
         run: |
           slophammer-go crap .
-          # Agent operations are state-machine orchestration covered by race,
-          # restart, protocol, and integration tests. Keep reporting its CRAP
-          # findings without hiding tool failures from CI.
-          (cd brokers/huggingface && slophammer-go crap .) || test $? -eq 1
+          ./scripts/test-check-hf-crap.sh
+          ./scripts/check-hf-crap.sh
           (cd brokers/github && slophammer-go crap .)
       - name: mutate4go gate (opt-in)
         if: ${{ vars.RUN_MUTATION == 'true' }}
@@ -66,6 +65,10 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test

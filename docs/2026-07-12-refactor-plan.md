@@ -4,7 +4,9 @@ Date: 2026-07-12
 
 Last updated: 2026-07-13
 
-Status: active
+Status: implemented
+
+Implementation completed: 2026-07-13
 
 ## Objective
 
@@ -94,8 +96,12 @@ Implementation:
 
 - Remove the blanket shell-level exit-code exception.
 - Represent any temporary complexity exception in checked-in Slophammer
-  configuration, scoped to an exact file, function, metric, and documented
-  reason.
+  configuration when the pinned tool supports that scope. Slophammer v0.4.0
+  exposes only a global Go CRAP threshold, so HF uses the checked-in
+  `slophammer-crap-baseline.tsv` plus `scripts/check-hf-crap.sh`. Each row is
+  scoped to an exact file, function, metric, and ceiling; the checker rejects
+  unknown findings, score regressions, missing sources, stale rows, coverage
+  failures, and tool failures.
 - Keep coverage failures, command failures, malformed output, and newly
   discovered findings fatal.
 - Delete each temporary exception in the slice that removes its target.
@@ -406,6 +412,8 @@ Acceptance:
 - Malformed framing, flush packets, trailing pack data, compression bombs,
   excessive delta depth, and maximum lengths have shared tests and fuzz seeds.
 - Existing Git proxy integration tests remain unchanged in behavior.
+
+Implementation record: [2026-07-13 go-git cutover](2026-07-13-go-git-cutover.md).
 
 ### 7. Keep Provider SDK Adoption Evidence-Based
 

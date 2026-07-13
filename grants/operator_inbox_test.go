@@ -236,7 +236,7 @@ func TestOperatorTerminalCommandsAndValidation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		grant, err := action(DecisionCommand{ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision, Reason: "reviewed"})
+		grant, err := action(DecisionCommand{ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision})
 		if err != nil || grant.Revision != result.Grant.Revision+1 {
 			t.Fatalf("terminal command = %+v, %v", grant, err)
 		}
@@ -252,8 +252,6 @@ func TestOperatorTerminalCommandsAndValidation(t *testing.T) {
 	invalid := []DecisionCommand{
 		{},
 		{ID: pendingID(t, store, "bad-approver"), Approver: "bad\nname", ExpectedRevision: 1},
-		{ID: pendingID(t, store, "bad-reason"), Approver: "onur", ExpectedRevision: 1, Reason: "bad\x00reason"},
-		{ID: pendingID(t, store, "long-reason"), Approver: "onur", ExpectedRevision: 1, Reason: strings.Repeat("x", maxDecisionReasonBytes+1)},
 	}
 	for _, command := range invalid {
 		if _, err := store.OperatorDeny(command); !errors.Is(err, ErrInvalidCommand) {
@@ -315,7 +313,7 @@ func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 	for _, command := range []ApproveCommand{
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, Duration: -time.Second},
 		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: -1},
-		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: bounds.Grant.MaxUses + 1},
+		{DecisionCommand: DecisionCommand{ID: bounds.Grant.ID, Approver: "onur", ExpectedRevision: bounds.Grant.Revision}, MaxUses: int(bounds.Grant.MaxUses + 1)},
 	} {
 		if _, err := store.OperatorApprove(command); !errors.Is(err, ErrConstraintExceeded) {
 			t.Fatalf("OperatorApprove(%+v) error = %v", command, err)
@@ -401,7 +399,7 @@ func TestDecisionLifecycleRecordContainsDurableAuditFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	approved, err := store.OperatorApprove(ApproveCommand{DecisionCommand: DecisionCommand{
-		ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision, Reason: "reviewed",
+		ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -413,7 +411,7 @@ func TestDecisionLifecycleRecordContainsDurableAuditFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := data.Events[len(data.Events)-1]
-	if record.Approver != "onur" || record.Reason != "reviewed" || record.PreviousStatus != StatusPending ||
+	if record.Approver != "onur" || record.PreviousStatus != StatusPending ||
 		record.PreviousRevision != result.Grant.Revision || record.ExpectedRevision != result.Grant.Revision || record.Revision != approved.Revision {
 		t.Fatalf("durable audit record = %+v", record)
 	}

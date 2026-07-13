@@ -1,11 +1,13 @@
 package grants
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
 
 	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 // MessageRef is the durable form of an editable operator notification.
@@ -40,6 +42,82 @@ type StatusUpdate struct {
 type NotificationClaim struct {
 	Grant         Grant  `json:"grant"`
 	DecisionToken string `json:"-"`
+}
+
+// ApprovalNotificationsDue returns pending approval deliveries in durable
+// outbox order. SQLite-backed stores recover these entries after restart.
+func (s *Store) ApprovalNotificationsDue() ([]Grant, error) {
+	if s == nil {
+		return nil, errors.New("grant store is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	before := grantSnapshots(data.Grants)
+	eventSequence := data.NextEvent
+	if err := s.refreshApprovalLifecycle(&data, before, eventSequence); err != nil {
+		return nil, err
+	}
+	if s.database == nil {
+		return pendingApprovalGrants(data.Grants, s.opts.Now().UTC()), nil
+	}
+	return s.sqliteApprovalNotificationsDue()
+}
+
+func (s *Store) refreshApprovalLifecycle(data *fileData, before map[string]Grant, eventSequence uint64) error {
+	changed := s.prepareLifecycle(data)
+	changed = s.reconcileLifecycle(data, before) || changed
+	if !changed {
+		return nil
+	}
+	if err := s.save(*data); err != nil {
+		return err
+	}
+	s.signalNewEvents(eventSequence, data.NextEvent)
+	return nil
+}
+
+func (s *Store) sqliteApprovalNotificationsDue() ([]Grant, error) {
+	snapshot, err := s.database.GrantSnapshot(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	loaded, err := fileDataFromSQLite(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return dueApprovalGrants(snapshot.Outbox, grantSnapshots(loaded.Grants), s.opts.Now().UTC()), nil
+}
+
+func dueApprovalGrants(records []state.NotificationOutboxRecord, byID map[string]Grant, now time.Time) []Grant {
+	out := make([]Grant, 0)
+	for _, record := range records {
+		if !approvalOutboxDue(record, now) {
+			continue
+		}
+		if grant, ok := byID[record.GrantID]; ok && grant.Status == StatusPending && grant.Notification == nil {
+			out = append(out, grant)
+		}
+	}
+	return out
+}
+
+func approvalOutboxDue(record state.NotificationOutboxRecord, now time.Time) bool {
+	return record.Kind == "approval" && (record.Status == "pending" || record.Status == "ambiguous") && !now.Before(record.AvailableAt)
+}
+
+func pendingApprovalGrants(grants []Grant, now time.Time) []Grant {
+	out := make([]Grant, 0)
+	for _, grant := range grants {
+		if grant.Status == StatusPending && grant.Notification == nil &&
+			(grant.NotificationClaimedAt.IsZero() || !now.Before(grant.NotificationClaimUntil)) {
+			out = append(out, grant)
+		}
+	}
+	return out
 }
 
 // NotificationStatusKey returns the durable delivery key for this update.

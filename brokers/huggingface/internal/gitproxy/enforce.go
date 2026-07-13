@@ -230,7 +230,7 @@ func storeIncomingObjects(ctx context.Context, pack []byte, mirror Mirror) error
 }
 
 func extractIncomingObjects(ctx context.Context, pack []byte, mirror Mirror) ([]GitObject, error) {
-	return ExtractCommitAndTagObjects(pack, func(sha string) (GitObject, bool, error) {
+	return ExtractCommitAndTagObjects(ctx, pack, func(sha string) (GitObject, bool, error) {
 		objectType, data, found, err := mirror.ReadObject(ctx, sha)
 		if err != nil || !found {
 			return GitObject{}, found, err

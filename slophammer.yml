@@ -6,8 +6,14 @@ go:
       reason: TypeScript packages use their native lint, typecheck, test, and build gates
     - pattern: "cmd/brokerkit-*/**"
       reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
+    - pattern: "state/internal/dbsql/**"
+      reason: deterministic sqlc-generated database bindings are checked by the pinned generation gate
     - pattern: "conformance/**"
       reason: reusable black-box test harness code is exercised by consumer repositories rather than shipped at runtime
+    - pattern: protocol/operatorwire/generated.go
+      reason: Deterministic oapi-codegen output is verified by scripts/check-protocol.sh.
+    - pattern: protocol/agentwire/generated.go
+      reason: Deterministic oapi-codegen output is verified by scripts/check-protocol.sh.
   dry:
     max_findings: 0
     paths:
@@ -18,8 +24,14 @@ go:
         reason: each broker has an independently enforced Slophammer configuration
       - pattern: "cmd/brokerkit-*/**"
         reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
+      - pattern: "state/internal/dbsql/**"
+        reason: deterministic sqlc-generated database bindings are checked by the pinned generation gate
       - pattern: "conformance/**"
         reason: reusable black-box test harness code is exercised by consumer repositories rather than shipped at runtime
+      - pattern: protocol/operatorwire/generated.go
+        reason: Generated clients and Echo bindings intentionally repeat protocol boilerplate.
+      - pattern: protocol/agentwire/generated.go
+        reason: Generated clients and Echo bindings intentionally repeat protocol boilerplate.
     structural:
       enabled: true
       threshold: 0.82
@@ -30,3 +42,9 @@ go:
       min_tokens: 100
   crap:
     max_score: 8
+  mutation:
+    exclude:
+      - pattern: protocol/operatorwire/generated.go
+        reason: Generated code is tested through protocol conformance rather than mutation.
+      - pattern: protocol/agentwire/generated.go
+        reason: Generated code is tested through protocol conformance rather than mutation.

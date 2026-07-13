@@ -1,11 +1,59 @@
 package httpx
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestDecodeJSON(t *testing.T) {
+	t.Parallel()
+	type payload struct {
+		Name string `json:"name"`
+	}
+	var got payload
+	if err := DecodeJSON(strings.NewReader(`{"name":"alice"}`), 64, &got, true); err != nil || got.Name != "alice" {
+		t.Fatalf("DecodeJSON() = %+v, %v", got, err)
+	}
+	for _, test := range []struct {
+		name string
+		body string
+		max  int64
+		is   error
+	}{
+		{name: "oversized", body: `{"name":"alice"}`, max: 4, is: ErrBodyTooLarge},
+		{name: "duplicate", body: `{"name":"alice","name":"bob"}`, max: 64},
+		{name: "unknown", body: `{"name":"alice","future":true}`, max: 64},
+		{name: "trailing", body: `{"name":"alice"} {}`, max: 64},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var value payload
+			err := DecodeJSON(strings.NewReader(test.body), test.max, &value, true)
+			if err == nil || (test.is != nil && !errors.Is(err, test.is)) {
+				t.Fatalf("DecodeJSON() error = %v, want %v", err, test.is)
+			}
+		})
+	}
+	readerErr := errors.New("read failed")
+	if err := DecodeJSON(errorReader{err: readerErr}, 64, &got, true); !errors.Is(err, readerErr) {
+		t.Fatalf("DecodeJSON(reader error) = %v", err)
+	}
+	if err := DecodeJSON(bytes.NewReader([]byte(`{"name":"alice","future":true}`)), 64, &got, false); err != nil {
+		t.Fatalf("DecodeJSON(open) error = %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := DecodeJSON(strings.NewReader(`{"name":"alice"}`), 64, &raw, true); err != nil {
+		t.Fatalf("DecodeJSON(map) error = %v", err)
+	}
+}
+
+type errorReader struct{ err error }
+
+func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestReadLimited(t *testing.T) {
 	t.Parallel()

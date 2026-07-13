@@ -41,10 +41,10 @@ export async function handleCommand(
     if (tokens.length > 1) return { text: "Invalid BrokerKit command." };
     const lines = runtime
       .snapshot()
-      .requests.filter((request) => request.status === "pending")
+      .requests.filter((request) => request.request.status === "pending")
       .map(
         (request) =>
-          `${request.handle} · ${request.sourceLabel} · ${request.presentation.title}`,
+          `${request.handle} · ${request.source_label} · ${request.request.presentation.title}`,
       );
     return {
       text: lines.length ? lines.join("\n") : "No pending BrokerKit requests.",
@@ -63,11 +63,11 @@ export async function handleCommand(
       const updated = await runtime.decide(
         handle,
         command as Action,
-        request.revision,
+        request.request.revision,
         ctx.senderId,
       );
       return {
-        text: `${capitalize(command)} committed for ${updated.presentation.title}.`,
+        text: `${capitalize(command)} committed for ${updated.request.presentation.title}.`,
       };
     } catch (error) {
       return { text: commandError(error) };
@@ -113,11 +113,12 @@ function formatRequest(
   request: ReturnType<BrokerRuntime["snapshot"]>["requests"][number],
 ): string {
   const facts =
-    request.presentation.facts?.map((fact) => `${fact.label}: ${fact.value}`) ??
-    [];
+    request.request.presentation.facts?.map(
+      (fact) => `${fact.label}: ${fact.value}`,
+    ) ?? [];
   return [
-    `${request.sourceLabel}: ${request.presentation.title}`,
-    request.presentation.summary ?? "",
+    `${request.source_label}: ${request.request.presentation.title}`,
+    request.request.presentation.summary ?? "",
     ...facts,
     `Handle: ${request.handle}`,
   ]

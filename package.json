@@ -6,5 +6,9 @@
     "build": "pnpm --filter openclaw-brokerkit build",
     "check": "pnpm --filter openclaw-brokerkit check",
     "test": "pnpm --filter openclaw-brokerkit test"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.10.1",
+    "prettier": "3.6.2"
   }
 }

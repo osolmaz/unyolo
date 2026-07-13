@@ -1,14 +1,48 @@
 {
+  "$comment": "Generated from protocol/openapi/operator-v1.yaml; do not edit.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://brokerkit.dev/schema/operator/v1/decision.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["expected_revision", "idempotency_key"],
+  "required": [
+    "expected_revision",
+    "idempotency_key"
+  ],
   "properties": {
-    "expected_revision": {"type": "integer", "minimum": 1},
-    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 200},
-    "decision_reason": {"type": "string", "maxLength": 2000},
-    "on_behalf_of": {"type": "string", "maxLength": 200},
-    "constraints": {"type": "object", "additionalProperties": false, "properties": {"duration_seconds": {"type": "integer", "minimum": 1}, "max_uses": {"type": "integer", "minimum": 1}}}
+    "expected_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "on_behalf_of": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "constraints": {
+      "$ref": "#/$defs/Constraints"
+    }
+  },
+  "$defs": {
+    "Constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "duration_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_uses": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    }
   }
 }

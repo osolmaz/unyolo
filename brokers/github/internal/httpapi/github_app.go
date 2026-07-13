@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 func configuredGitHubApp(cfg config.Config, apiBaseURL *url.URL, client *http.Client) (*githubapp.Source, error) {
@@ -85,7 +87,7 @@ func decodeInstallationRepos(body io.Reader) ([]json.RawMessage, error) {
 	var payload struct {
 		Repositories []json.RawMessage `json:"repositories"`
 	}
-	if err := json.Unmarshal(data, &payload); err != nil {
+	if err := strictjson.Decode(data, &payload, false); err != nil {
 		return nil, err
 	}
 	return payload.Repositories, nil
@@ -110,15 +112,30 @@ func (s *Server) configureGitHubGitRequest(c echo.Context, request *http.Request
 }
 
 func (s *Server) githubCredentialForRepo(c echo.Context, owner string, repo string) (string, error) {
-	if s.githubApp == nil {
-		return s.githubToken, nil
-	}
-	token, err := s.githubApp.InstallationTokenForRepo(c.Request().Context(), owner, repo)
+	token, installationID, err := s.githubCredentialForRepoWithInstallation(c.Request().Context(), owner, repo)
 	if err != nil {
 		return "", echo.NewHTTPError(http.StatusBadGateway, "github app token minting failed")
 	}
-	c.Set("github_installation_id", token.InstallationID)
-	return token.Value, nil
+	if installationID != 0 {
+		c.Set("github_installation_id", installationID)
+	}
+	return token, nil
+}
+
+func (s *Server) githubCredentialForRepoContext(ctx context.Context, owner string, repo string) (string, error) {
+	token, _, err := s.githubCredentialForRepoWithInstallation(ctx, owner, repo)
+	return token, err
+}
+
+func (s *Server) githubCredentialForRepoWithInstallation(ctx context.Context, owner string, repo string) (string, int64, error) {
+	if s.githubApp == nil {
+		return s.githubToken, 0, nil
+	}
+	token, err := s.githubApp.InstallationTokenForRepo(ctx, owner, repo)
+	if err != nil {
+		return "", 0, err
+	}
+	return token.Value, token.InstallationID, nil
 }
 
 func configureInstallationTokenRequest(request *http.Request, token string) {

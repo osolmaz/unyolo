@@ -8,29 +8,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentapi"
+	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
-	bkauth "github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/audit"
+	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
-const (
-	agentDiscoveryPath  = "/.well-known/brokerkit-agent"
-	agentOperationsPath = "/api/agent/v1/operations"
-	maxAgentRequestBody = 16 * 1024
-	maxUpstreamBody     = 64 * 1024
-)
+const maxUpstreamBody = 64 * 1024
 
 var repoSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$`)
 
@@ -53,77 +49,28 @@ type repoCreateResult struct {
 	URL    string `json:"url"`
 }
 
-func isAgentAPIPath(path string) bool {
-	return path == agentDiscoveryPath || path == agentOperationsPath || strings.HasPrefix(path, agentOperationsPath+"/")
-}
-
-func (s *Server) serveAgentAPI(w http.ResponseWriter, r *http.Request) {
-	client, ok := s.authenticateAgent(w, r)
-	if !ok {
-		return
-	}
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == agentDiscoveryPath:
-		writeJSON(w, http.StatusOK, agentv1.Descriptor{APIVersion: agentv1.APIVersion})
-	case r.Method == http.MethodPost && r.URL.Path == agentOperationsPath:
-		s.handleAgentOperationSubmit(w, r, client)
-	case r.Method == http.MethodGet && operationPathID(r.URL.Path) != "":
-		s.handleAgentOperationGet(w, r, client)
-	default:
-		writeAgentError(w, http.StatusNotFound, "not_found", "Agent operation route not found")
-	}
-}
-
-func (s *Server) authenticateAgent(w http.ResponseWriter, r *http.Request) (string, bool) {
-	client, err := s.control.Clients.AuthenticateHeader(r.Header.Get("Authorization"))
-	if err == nil {
-		return client, true
-	}
-	status := http.StatusForbidden
-	if errors.Is(err, bkauth.ErrMissing) {
-		status = http.StatusUnauthorized
-	}
-	if r.Header.Get("Authorization") == "" {
-		status = http.StatusUnauthorized
-		w.Header().Set("WWW-Authenticate", `Bearer realm="hf-broker"`)
-	}
-	writeAgentError(w, status, "authentication_failed", "Authentication failed")
-	s.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
-	return "", false
-}
-
-func (s *Server) handleAgentOperationSubmit(w http.ResponseWriter, r *http.Request, client string) {
-	request, err := readAgentSubmit(r)
-	if err != nil {
-		writeAgentError(w, http.StatusBadRequest, "invalid_request", err.Error())
-		return
-	}
+func (s *Server) submitAgentOperation(_ context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
 	if request.Operation != string(policy.OpRepoCreate) {
-		writeAgentError(w, http.StatusBadRequest, "unsupported_operation", "Unsupported agent operation")
-		return
+		return agentv1.Operation{}, false, &agentapi.Error{
+			Status: http.StatusBadRequest, Code: "unsupported_operation", Message: "Unsupported agent operation",
+		}
 	}
 	target, arguments, err := decodeRepoCreate(request)
 	if err != nil {
-		writeAgentError(w, http.StatusBadRequest, "invalid_request", err.Error())
-		return
+		return agentv1.Operation{}, false, &agentapi.Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: err.Error()}
 	}
 	presentation := agentv1.Presentation{Title: "Create Hugging Face repository", Summary: repoCreateSummary(target, arguments)}
-	operation, created, err := s.operations.Submit(hfoperation.Submit{
+	operation, created, err := s.operations.Submit(agentops.Submit{
 		Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey, Operation: request.Operation,
 		Target: request.Target, Arguments: request.Arguments, Reason: request.Reason, Presentation: presentation,
 	})
-	if errors.Is(err, hfoperation.ErrIdempotencyConflict) {
-		writeAgentError(w, http.StatusConflict, "idempotency_conflict", "Idempotency key was reused with a different operation")
-		return
-	}
 	if err != nil {
-		writeAgentError(w, http.StatusInternalServerError, "operation_store_unavailable", "Could not store operation")
-		return
+		return agentv1.Operation{}, false, err
 	}
 	if created || operation.State == agentv1.StatePending && operation.ApprovalID == "" {
 		operation = s.authorizeRepoCreate(s.agentLifecycleContext(), operation, target, arguments)
 	}
-	writeAgentOperation(w, operation, created)
+	return operation, created, nil
 }
 
 func (s *Server) agentLifecycleContext() context.Context {
@@ -146,19 +93,60 @@ func (s *Server) authorizeRepoCreate(ctx context.Context, operation agentv1.Oper
 	}
 	operation = current
 	attrs := repoCreateAttrs(arguments)
-	decision := s.repoCreateDecision(operation.ClientID, target, attrs)
-	switch decision.Effect {
-	case policy.EffectAllow:
-		return s.approveStoredOperation(operation)
-	case policy.EffectRequest:
-		return s.bindRepoCreateApproval(ctx, operation, target, attrs, decision.GrantPolicy)
-	case policy.EffectDeny:
-		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "policy_denied", 0, decision)
-		return s.failOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation")
-	default:
-		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "not_allowed", 0, decision)
-		return s.failOperation(operation.ID, agentv1.StateDenied, "not_allowed", "No policy rule allows this operation")
+	providerRequest := policy.Request{Client: operation.ClientID, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
+	authorizationRequest := policy.AuthorizationRequest(providerRequest)
+	result, err := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+		return s.prepareRepoCreateIntent(operation, target, attrs, authorizationRequest, decision.GrantPolicy)
+	})
+	return s.applyRepoCreateAuthorization(ctx, operation, target, result, err)
+}
+
+func (s *Server) applyRepoCreateAuthorization(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, result bkauthorization.Result, err error) agentv1.Operation {
+	if err == nil {
+		return s.applySuccessfulRepoCreateAuthorization(ctx, operation, result)
 	}
+	return s.applyFailedRepoCreateAuthorization(operation, target, result, err)
+}
+
+func (s *Server) applySuccessfulRepoCreateAuthorization(ctx context.Context, operation agentv1.Operation, result bkauthorization.Result) agentv1.Operation {
+	if result.Request.Grant.ID == "" {
+		return s.approveStoredOperation(operation)
+	}
+	return s.bindRepoCreateApproval(ctx, operation, result.Request.Grant)
+}
+
+func (s *Server) applyFailedRepoCreateAuthorization(operation agentv1.Operation, target repoCreateTarget, result bkauthorization.Result, err error) agentv1.Operation {
+	if refused, ok := s.repoCreateRefusal(operation, target, result, err); ok {
+		return refused
+	}
+	return s.repoCreateApprovalFailure(operation, result)
+}
+
+func (s *Server) repoCreateApprovalFailure(operation agentv1.Operation, result bkauthorization.Result) agentv1.Operation {
+	if result.Decision.Effect != corepolicy.EffectRequest {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
+	}
+	return s.repoCreateRequestFailure(operation)
+}
+
+func (s *Server) repoCreateRequestFailure(operation agentv1.Operation) agentv1.Operation {
+	if !s.hasApprovalChannel() {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
+	}
+	return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
+}
+
+func (s *Server) repoCreateRefusal(operation agentv1.Operation, target repoCreateTarget, result bkauthorization.Result, err error) (agentv1.Operation, bool) {
+	decision := s.policy.AuthorizationDecision(result.Decision)
+	if errors.Is(err, bkauthorization.ErrDenied) {
+		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "policy_denied", 0, decision)
+		return s.failOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation"), true
+	}
+	if errors.Is(err, bkauthorization.ErrNoMatch) {
+		s.recordPolicyDecision(operation.ClientID, operation.Operation, target.targetName(), audit.DecisionRefused, "not_allowed", 0, decision)
+		return s.failOperation(operation.ID, agentv1.StateDenied, "not_allowed", "No policy rule allows this operation"), true
+	}
+	return agentv1.Operation{}, false
 }
 
 func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
@@ -168,15 +156,6 @@ func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
 		hash *= 1099511628211
 	}
 	return &s.operationAuthLocks[hash%uint64(len(s.operationAuthLocks))]
-}
-
-func (s *Server) repoCreateDecision(client string, target repoCreateTarget, attrs map[string]any) policy.Decision {
-	request := policy.Request{Client: client, Operation: policy.OpRepoCreate, Target: target.policyTarget(), Attrs: attrs}
-	decision := s.policy.Decide(request, nil, time.Now().UTC(), false)
-	if decision.Effect == policy.EffectDeny && decision.Reason == "approval_required" {
-		return s.policy.Decide(request, nil, time.Now().UTC(), true)
-	}
-	return decision
 }
 
 func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Operation {
@@ -191,14 +170,7 @@ func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Ope
 	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not update operation")
 }
 
-func (s *Server) bindRepoCreateApproval(ctx context.Context, operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) agentv1.Operation {
-	if !s.operatorConfigured && s.notifier == nil {
-		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
-	}
-	grant, err := s.createRepoApproval(operation, target, attrs, bounds)
-	if err != nil {
-		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
-	}
+func (s *Server) bindRepoCreateApproval(ctx context.Context, operation agentv1.Operation, grant grants.Grant) agentv1.Operation {
 	if s.notifier != nil {
 		if err := s.notifyRepoCreateApproval(ctx, grant); err != nil {
 			if errors.Is(err, errApprovalNotificationClaimed) {
@@ -266,105 +238,22 @@ func (s *Server) settleRepoCreateNotificationFailure(claim grants.NotificationCl
 	return cause
 }
 
-func (s *Server) createRepoApproval(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, bounds *policy.GrantPolicy) (grants.Grant, error) {
-	if bounds == nil || bounds.Mode != policy.GrantModeExecution {
-		return grants.Grant{}, errors.New("repo.create requires execution approval")
+func (s *Server) prepareRepoCreateIntent(operation agentv1.Operation, target repoCreateTarget, attrs map[string]any, authorizationRequest corepolicy.Request, bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
+	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeExecution {
+		return bkauthorization.GrantIntent{}, errors.New("repo.create requires execution approval")
 	}
-	minutes := bounds.DefaultMinutes
-	maxUses := bounds.DefaultMaxUses
-	result, _, err := hfgrant.Request(s.grants, s.plans, hfgrant.Input{
+	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
 		Client: operation.ClientID, ClientRequestID: operation.ID, Operation: operation.Operation, Mode: hfgrant.ModeExecution,
-		Target: target.targetName(), Attrs: attrs, Reason: operation.Reason, RequestedDuration: time.Duration(minutes) * time.Minute,
-		PendingTimeout: time.Duration(bounds.RequestTTLMinutes) * time.Minute, MaxUses: maxUses,
+		Target: target.targetName(), Attrs: attrs, Reason: operation.Reason, RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
+		PendingTimeout: time.Duration(bounds.RequestTTLMinutes) * time.Minute,
+		MaxUses:        int(bounds.DefaultMaxUses), MaxUsesSpecified: true,
 	})
-	return result.Grant, err
-}
-
-func (s *Server) handleAgentOperationGet(w http.ResponseWriter, r *http.Request, client string) {
-	id := operationPathID(r.URL.Path)
-	if id == "" {
-		writeAgentError(w, http.StatusNotFound, "not_found", "Operation not found")
-		return
-	}
-	operation, err := s.operations.Get(client, id)
-	if errors.Is(err, hfoperation.ErrNotFound) {
-		writeAgentError(w, http.StatusNotFound, "not_found", "Operation not found")
-		return
-	}
 	if err != nil {
-		writeAgentError(w, http.StatusInternalServerError, "operation_store_unavailable", "Could not read operation")
-		return
+		return bkauthorization.GrantIntent{}, err
 	}
-	if strings.HasSuffix(r.URL.Path, "/events") {
-		after, wait, ok := agentWaitQuery(r)
-		if !ok {
-			writeAgentError(w, http.StatusBadRequest, "invalid_request", "Invalid operation wait query")
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), wait)
-		defer cancel()
-		operation, err = s.operations.Wait(ctx, client, id, after)
-		if err != nil {
-			writeAgentError(w, http.StatusInternalServerError, "operation_store_unavailable", "Could not wait for operation")
-			return
-		}
-	}
-	writeAgentOperation(w, operation, false)
-}
-
-func operationPathID(path string) string {
-	if !strings.HasPrefix(path, agentOperationsPath+"/") {
-		return ""
-	}
-	tail := strings.TrimPrefix(path, agentOperationsPath+"/")
-	tail = strings.TrimSuffix(tail, "/events")
-	if tail == "" || strings.Contains(tail, "/") || len(tail) > 128 {
-		return ""
-	}
-	return tail
-}
-
-func agentWaitQuery(r *http.Request) (int64, time.Duration, bool) {
-	afterValue := r.URL.Query().Get("after_revision")
-	if afterValue == "" {
-		afterValue = "0"
-	}
-	after, err := strconv.ParseInt(afterValue, 10, 64)
-	if err != nil || after < 0 {
-		return 0, 0, false
-	}
-	waitValue := r.URL.Query().Get("wait_seconds")
-	if waitValue == "" {
-		waitValue = "30"
-	}
-	waitSeconds, err := strconv.Atoi(waitValue)
-	if err != nil || waitSeconds < 0 || waitSeconds > 30 {
-		return 0, 0, false
-	}
-	return after, time.Duration(waitSeconds) * time.Second, true
-}
-
-func readAgentSubmit(r *http.Request) (agentv1.SubmitRequest, error) {
-	body, tooLarge, err := readLimited(r.Body, maxAgentRequestBody)
-	if err != nil || tooLarge {
-		return agentv1.SubmitRequest{}, errors.New("agent operation request is too large or unreadable")
-	}
-	if err := strictjson.RejectDuplicateKeys(body); err != nil {
-		return agentv1.SubmitRequest{}, errors.New("agent operation request contains duplicate fields")
-	}
-	var request agentv1.SubmitRequest
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
-		return agentv1.SubmitRequest{}, errors.New("could not parse agent operation request")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return agentv1.SubmitRequest{}, errors.New("agent operation request has trailing data")
-	}
-	if strings.TrimSpace(request.IdempotencyKey) == "" || len(request.IdempotencyKey) > 128 || strings.TrimSpace(request.Reason) == "" || len(request.Reason) > 512 {
-		return agentv1.SubmitRequest{}, errors.New("idempotency key and reason are required")
-	}
-	return request, nil
+	return bkauthorization.GrantIntent{
+		Mode: corepolicy.GrantModeExecution, Authorization: authorizationRequest, Request: request, Plan: plan,
+	}, nil
 }
 
 func decodeRepoCreate(request agentv1.SubmitRequest) (repoCreateTarget, repoCreateArguments, error) {
@@ -408,18 +297,10 @@ func decodeRepoCreateArguments(raw []byte, repoType policy.RepoType) (repoCreate
 }
 
 func decodeStrictObject(data []byte, out any) error {
-	if len(data) == 0 || len(data) > 4096 || strictjson.RejectDuplicateKeys(data) != nil {
+	if len(data) == 0 || len(data) > 4096 {
 		return errors.New("invalid JSON object")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("trailing data")
-	}
-	return nil
+	return strictjson.Decode(data, out, true)
 }
 
 func validCreateRepoType(repoType policy.RepoType) bool {
@@ -448,22 +329,6 @@ func repoCreateSummary(target repoCreateTarget, arguments repoCreateArguments) s
 		visibility = "private"
 	}
 	return fmt.Sprintf("Create %s %s %s/%s", visibility, target.Type, target.Owner, target.Name)
-}
-
-func writeAgentOperation(w http.ResponseWriter, operation agentv1.Operation, created bool) {
-	status := http.StatusOK
-	if created && !operation.State.Terminal() {
-		status = http.StatusAccepted
-	}
-	if !operation.State.Terminal() {
-		w.Header().Set("Location", agentOperationsPath+"/"+url.PathEscape(operation.ID))
-		w.Header().Set("Retry-After", "2")
-	}
-	writeJSON(w, status, operation)
-}
-
-func writeAgentError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, agentv1.ErrorEnvelope{Error: agentv1.Error{Code: code, Message: message}})
 }
 
 func (s *Server) failOperation(id string, state agentv1.State, code, message string) agentv1.Operation {

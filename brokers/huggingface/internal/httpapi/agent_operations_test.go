@@ -12,14 +12,86 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentconformance"
+	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfoperation"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorv1"
 )
+
+const (
+	agentDiscoveryPath  = "/.well-known/brokerkit-agent"
+	agentOperationsPath = "/api/agent/v1/operations"
+)
+
+func TestAgentV1Conformance(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "state")
+	policyJSON := `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"conformance"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
+	scope, err := policy.Parse([]byte(policyJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/whoami-v2":
+			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+		case "/api/repos/create":
+			writeJSON(w, http.StatusCreated, map[string]any{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	var current *Server
+	start := func() (agentconformance.Endpoint, error) {
+		ctx, cancel := context.WithCancel(context.Background())
+		handler, err := New(Options{Config: config.Config{
+			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+			Operators: []config.Client{{Name: "operator", Secret: testOtherSecret}}, StateDir: stateDir,
+			MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 5 * time.Second,
+		}, Scope: scope, Audit: audit.New(io.Discard), UpstreamBaseURL: upstream.URL, Context: ctx})
+		if err != nil {
+			cancel()
+			return agentconformance.Endpoint{}, err
+		}
+		current = handler
+		server := httptest.NewServer(handler)
+		return agentconformance.Endpoint{BaseURL: server.URL, HTTPClient: server.Client(), Close: func() error {
+			server.Close()
+			cancel()
+			handler.backgroundWorkers.Wait()
+			return handler.database.Close()
+		}}, nil
+	}
+	agentconformance.RunAgentV1(t, agentconformance.Fixture{
+		Start: start, Token: testSecret, WaitTime: 5 * time.Second,
+		Request: agentv1.SubmitRequest{
+			IdempotencyKey: "hf-conformance", Operation: "repo.create",
+			Target:    json.RawMessage(`{"kind":"repo","type":"dataset","owner":"alice","name":"conformance"}`),
+			Arguments: json.RawMessage(`{"private":true}`), Reason: "verify Agent V1 lifecycle",
+		},
+		Approve: func(ctx context.Context, operation agentv1.Operation) error {
+			grant, err := current.grants.Get(operation.ApprovalID)
+			if err != nil {
+				return err
+			}
+			_, err = current.control.Decisions.Decide(ctx, grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+				ExpectedRevision: grant.Revision, IdempotencyKey: "approve-hf-conformance",
+			})
+			return err
+		},
+		Verify: func(t *testing.T, operation agentv1.Operation) {
+			t.Helper()
+			if operation.State != agentv1.StateSucceeded || !strings.Contains(string(operation.Result), `"repo_id":"alice/conformance"`) {
+				t.Fatalf("terminal operation = %#v", operation)
+			}
+		},
+	})
+}
 
 func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	var mu sync.Mutex
@@ -68,7 +140,7 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = handler.control.Decisions.Decide(context.Background(), grant.ID, operatorv1.ActionApprove, "alice", operatorv1.Decision{
-		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-create-data", DecisionReason: "approved in test",
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-create-data",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +172,7 @@ func TestAgentRepoCreateRetryReconcilesUnboundOperation(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &request); err != nil {
 		t.Fatal(err)
 	}
-	stored, created, err := handler.operations.Submit(hfoperation.Submit{
+	stored, created, err := handler.operations.Submit(agentops.Submit{
 		Broker: "hf-broker", ClientID: "agent", IdempotencyKey: request.IdempotencyKey, Operation: request.Operation,
 		Target: request.Target, Arguments: request.Arguments, Reason: request.Reason,
 		Presentation: agentv1.Presentation{Title: "Create Hugging Face repository", Summary: "Create private dataset alice/data"},
@@ -144,11 +216,13 @@ func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
 	ctx, cancelRequest := context.WithCancel(context.Background())
 	cancelRequest()
 	body := `{"idempotency_key":"disconnect","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"survive disconnect"}`
-	request := httptest.NewRequest(http.MethodPost, agentOperationsPath, strings.NewReader(body)).WithContext(ctx)
-	recorder := httptest.NewRecorder()
-	handler.handleAgentOperationSubmit(recorder, request, "agent")
-	if recorder.Code != http.StatusAccepted || !notifier.sent {
-		t.Fatalf("submit = %d %s, sent = %v", recorder.Code, recorder.Body.String(), notifier.sent)
+	var request agentv1.SubmitRequest
+	if err := json.Unmarshal([]byte(body), &request); err != nil {
+		t.Fatal(err)
+	}
+	operation, created, err := handler.submitAgentOperation(ctx, "agent", request)
+	if err != nil || !created || operation.State != agentv1.StatePending || !notifier.sent {
+		t.Fatalf("submit = %#v, %v, created = %v, sent = %v", operation, err, created, notifier.sent)
 	}
 }
 

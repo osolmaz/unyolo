@@ -1,13 +1,264 @@
 {
+  "$comment": "Generated from protocol/openapi/operator-v1.yaml; do not edit.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://brokerkit.dev/schema/operator/v1/error.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["error"],
-  "properties": {"error": {"type": "object", "additionalProperties": false, "required": ["code", "message", "correlation_id"], "properties": {
-    "code": {"enum": ["invalid_request", "unauthorized", "forbidden", "not_found", "revision_conflict", "invalid_transition", "constraint_exceeded", "idempotency_conflict", "cursor_expired", "rate_limited", "temporarily_unavailable", "internal_error"]},
-    "message": {"type": "string", "minLength": 1, "maxLength": 500},
-    "correlation_id": {"type": "string", "minLength": 1, "maxLength": 200},
-    "current": {"$ref": "request.schema.json"}
-  }}}
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "$ref": "#/$defs/Error"
+    }
+  },
+  "$defs": {
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "correlation_id"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "invalid_request",
+            "unauthorized",
+            "forbidden",
+            "not_found",
+            "method_not_allowed",
+            "revision_conflict",
+            "idempotency_conflict",
+            "constraint_exceeded",
+            "invalid_transition",
+            "cursor_expired",
+            "temporarily_unavailable",
+            "internal_error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "correlation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "current": {
+          "$ref": "#/$defs/BrokerRequest"
+        }
+      }
+    },
+    "BrokerRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "revision",
+        "requester",
+        "operation",
+        "status",
+        "requested_at",
+        "requested_duration_seconds",
+        "requested_max_uses",
+        "granted_max_uses",
+        "used_count",
+        "presentation",
+        "allowed_actions"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requester": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "pending_expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "active_expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requested_duration_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requested_max_uses": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "granted_max_uses": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "used_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "request_reason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "decided_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "decided_by": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "decided_on_behalf_of": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "presentation": {
+          "$ref": "#/$defs/Presentation"
+        },
+        "presentation_unavailable": {
+          "type": "boolean"
+        },
+        "allowed_actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Action"
+          }
+        },
+        "approval_bounds": {
+          "$ref": "#/$defs/ApprovalBounds"
+        }
+      }
+    },
+    "Action": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "deny",
+        "cancel",
+        "revoke"
+      ]
+    },
+    "ApprovalBounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_duration_seconds",
+        "max_uses"
+      ],
+      "properties": {
+        "max_duration_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_uses": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
+    "Presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk",
+        "title"
+      ],
+      "properties": {
+        "risk": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "facts": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/Fact"
+          }
+        }
+      }
+    },
+    "Status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "denied",
+        "canceled",
+        "expired",
+        "consumed",
+        "revoked"
+      ]
+    },
+    "Fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "value"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    }
+  }
 }

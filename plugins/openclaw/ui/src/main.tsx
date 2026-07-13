@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import type { Action, SafeRequest, Snapshot } from "../../src/types.js";
+import type { Action, SafeRequest } from "../../src/types.js";
 import {
   BrokerKitUiApi,
   parseUiBootstrap,
@@ -18,6 +18,7 @@ import {
   type UiDecisionOptions,
 } from "./api.js";
 import "./styles.css";
+import { useBrokerSnapshot } from "./use-broker-snapshot.js";
 
 const bootstrap = parseUiBootstrap(location.hash.slice(1));
 const api = new BrokerKitUiApi(bootstrap);
@@ -41,31 +42,13 @@ function DelegatedTopLevelLauncher() {
 }
 
 export function App() {
-  const [snapshot, setSnapshot] = useState<Snapshot>();
-  const [canDecide, setCanDecide] = useState(false);
-  const [error, setError] = useState("");
+  const { snapshot, canDecide, error, setError, reconcile } =
+    useBrokerSnapshot(api);
   const [busy, setBusy] = useState("");
   const [decision, setDecision] = useState<{
     request: SafeRequest;
     action: Action;
   }>();
-  const load = useCallback(async () => {
-    try {
-      setError("");
-      const next = await api.snapshot();
-      setSnapshot(next);
-      setCanDecide(api.canDecide());
-    } catch (value) {
-      setError(
-        value instanceof Error ? value.message : "Approvals are unavailable",
-      );
-    }
-  }, []);
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 15_000);
-    return () => clearInterval(timer);
-  }, [load]);
   const decide = async (
     request: SafeRequest,
     action: Action,
@@ -75,7 +58,7 @@ export function App() {
     try {
       await api.decide(request, action, options);
       setDecision(undefined);
-      await load();
+      await reconcile();
     } catch (value) {
       setError(value instanceof Error ? value.message : "Decision failed");
     } finally {
@@ -85,7 +68,7 @@ export function App() {
   const actionable = useMemo(
     () =>
       snapshot?.requests.filter(
-        (request) => request.allowed_actions.length > 0,
+        (request) => request.request.allowed_actions.length > 0,
       ) ?? [],
     [snapshot],
   );
@@ -99,13 +82,18 @@ export function App() {
           <h1>Approvals</h1>
           <p className="subtle">
             {
-              actionable.filter((request) => request.status === "pending")
-                .length
+              actionable.filter(
+                (request) => request.request.status === "pending",
+              ).length
             }{" "}
             pending across {snapshot?.sources.length ?? 0} sources
           </p>
         </div>
-        <button className="icon" title="Refresh" onClick={() => void load()}>
+        <button
+          className="icon"
+          title="Refresh"
+          onClick={() => void reconcile().catch(() => undefined)}
+        >
           <RefreshCw size={18} />
         </button>
       </header>
@@ -118,12 +106,12 @@ export function App() {
           </button>
         </div>
       )}
-      {(snapshot?.deliveryFailures ?? 0) > 0 && (
+      {(snapshot?.delivery_failures ?? 0) > 0 && (
         <div className="warning" role="status">
           <AlertTriangle size={17} />
           <span>
-            {snapshot?.deliveryFailures} notification
-            {snapshot?.deliveryFailures === 1 ? "" : "s"} need attention
+            {snapshot?.delivery_failures} notification
+            {snapshot?.delivery_failures === 1 ? "" : "s"} need attention
           </span>
         </div>
       )}
@@ -141,19 +129,19 @@ export function App() {
           <article key={request.handle}>
             <div className="request-head">
               <div>
-                <span className={`risk ${request.presentation.risk}`}>
-                  {request.presentation.risk}
+                <span className={`risk ${request.request.presentation.risk}`}>
+                  {request.request.presentation.risk}
                 </span>
-                <span className="source-label">{request.sourceLabel}</span>
-                <h2>{request.presentation.title}</h2>
+                <span className="source-label">{request.source_label}</span>
+                <h2>{request.request.presentation.title}</h2>
               </div>
               <code>{request.handle.slice(0, 8)}</code>
             </div>
-            {request.presentation.summary && (
-              <p>{request.presentation.summary}</p>
+            {request.request.presentation.summary && (
+              <p>{request.request.presentation.summary}</p>
             )}
             <dl>
-              {request.presentation.facts?.map((fact) => (
+              {request.request.presentation.facts?.map((fact) => (
                 <React.Fragment key={`${fact.label}-${fact.value}`}>
                   <dt>{fact.label}</dt>
                   <dd>{fact.value}</dd>
@@ -161,13 +149,15 @@ export function App() {
               ))}
             </dl>
             <div className="meta">
-              <span>{request.requester}</span>
+              <span>{request.request.requester}</span>
               <span>
-                {request.requested_max_uses} use
-                {request.requested_max_uses === 1 ? "" : "s"}
+                {request.request.requested_max_uses === null
+                  ? "Unlimited uses"
+                  : `${request.request.requested_max_uses} use${request.request.requested_max_uses === 1 ? "" : "s"}`}
               </span>
               <span>
-                {Math.round(request.requested_duration_seconds / 60)} min
+                {Math.round(request.request.requested_duration_seconds / 60)}{" "}
+                min
               </span>
             </div>
             <div className="actions">
@@ -180,46 +170,50 @@ export function App() {
                   Review securely
                 </button>
               )}
-              {canDecide && request.allowed_actions.includes("cancel") && (
-                <button
-                  className="secondary"
-                  disabled={busy === request.handle}
-                  onClick={() => setDecision({ request, action: "cancel" })}
-                >
-                  <CircleX size={16} />
-                  Cancel
-                </button>
-              )}
-              {canDecide && request.allowed_actions.includes("revoke") && (
-                <button
-                  className="secondary"
-                  disabled={busy === request.handle}
-                  onClick={() => setDecision({ request, action: "revoke" })}
-                >
-                  <CircleX size={16} />
-                  Revoke
-                </button>
-              )}
-              {canDecide && request.allowed_actions.includes("deny") && (
-                <button
-                  className="secondary"
-                  disabled={busy === request.handle}
-                  onClick={() => setDecision({ request, action: "deny" })}
-                >
-                  <CircleX size={16} />
-                  Deny
-                </button>
-              )}
-              {canDecide && request.allowed_actions.includes("approve") && (
-                <button
-                  className="primary"
-                  disabled={busy === request.handle}
-                  onClick={() => setDecision({ request, action: "approve" })}
-                >
-                  <Check size={16} />
-                  Approve
-                </button>
-              )}
+              {canDecide &&
+                request.request.allowed_actions.includes("cancel") && (
+                  <button
+                    className="secondary"
+                    disabled={busy === request.handle}
+                    onClick={() => setDecision({ request, action: "cancel" })}
+                  >
+                    <CircleX size={16} />
+                    Cancel
+                  </button>
+                )}
+              {canDecide &&
+                request.request.allowed_actions.includes("revoke") && (
+                  <button
+                    className="secondary"
+                    disabled={busy === request.handle}
+                    onClick={() => setDecision({ request, action: "revoke" })}
+                  >
+                    <CircleX size={16} />
+                    Revoke
+                  </button>
+                )}
+              {canDecide &&
+                request.request.allowed_actions.includes("deny") && (
+                  <button
+                    className="secondary"
+                    disabled={busy === request.handle}
+                    onClick={() => setDecision({ request, action: "deny" })}
+                  >
+                    <CircleX size={16} />
+                    Deny
+                  </button>
+                )}
+              {canDecide &&
+                request.request.allowed_actions.includes("approve") && (
+                  <button
+                    className="primary"
+                    disabled={busy === request.handle}
+                    onClick={() => setDecision({ request, action: "approve" })}
+                  >
+                    <Check size={16} />
+                    Approve
+                  </button>
+                )}
             </div>
           </article>
         ))}
@@ -260,27 +254,29 @@ function DecisionDialog({
   ): Promise<void>;
 }) {
   const request = decision?.request;
-  const bounds = request?.approval_bounds;
-  const [reason, setReason] = useState("");
+  const bounds = request?.request.approval_bounds;
   const [durationSeconds, setDurationSeconds] = useState(1);
-  const [maxUses, setMaxUses] = useState(1);
+  const [maxUses, setMaxUses] = useState<number | null>(1);
   useEffect(() => {
-    setReason("");
     if (!request) return;
     setDurationSeconds(
       Math.max(
         1,
         Math.min(
-          request.requested_duration_seconds,
-          bounds?.max_duration_seconds ?? request.requested_duration_seconds,
+          request.request.requested_duration_seconds,
+          bounds?.max_duration_seconds ??
+            request.request.requested_duration_seconds,
         ),
       ),
     );
+    const requestedUses = request.request.requested_max_uses;
+    const maximumUses = bounds?.max_uses;
     setMaxUses(
-      Math.min(
-        request.requested_max_uses,
-        bounds?.max_uses ?? request.requested_max_uses,
-      ),
+      requestedUses === null
+        ? null
+        : maximumUses === null || maximumUses === undefined
+          ? requestedUses
+          : Math.min(requestedUses, maximumUses),
     );
   }, [request, bounds]);
   if (!decision || !request) return null;
@@ -293,7 +289,8 @@ function DecisionDialog({
         <Dialog.Content className="dialog-content">
           <Dialog.Title>{title}</Dialog.Title>
           <Dialog.Description>
-            {request.presentation.title} at revision {request.revision}
+            {request.request.presentation.title} at revision{" "}
+            {request.request.revision}
           </Dialog.Description>
           {approve && bounds && (
             <div className="decision-bounds">
@@ -314,24 +311,28 @@ function DecisionDialog({
                 <input
                   type="number"
                   min={1}
-                  max={bounds.max_uses}
-                  value={maxUses}
+                  max={bounds.max_uses ?? undefined}
+                  value={maxUses ?? 1}
+                  disabled={maxUses === null}
                   onChange={(event) =>
                     setMaxUses(event.currentTarget.valueAsNumber)
                   }
                 />
               </label>
+              {bounds.max_uses === null && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={maxUses === null}
+                    onChange={(event) =>
+                      setMaxUses(event.currentTarget.checked ? null : 1)
+                    }
+                  />
+                  Unlimited until expiry
+                </label>
+              )}
             </div>
           )}
-          <label className="reason">
-            Reason (optional)
-            <textarea
-              maxLength={2000}
-              rows={3}
-              value={reason}
-              onChange={(event) => setReason(event.currentTarget.value)}
-            />
-          </label>
           <div className="dialog-actions">
             <Dialog.Close asChild>
               <button className="secondary" disabled={busy}>
@@ -345,7 +346,6 @@ function DecisionDialog({
               }
               onClick={() =>
                 void onConfirm(request, decision.action, {
-                  ...(reason.trim() ? { reason: reason.trim() } : {}),
                   ...(approve && bounds
                     ? {
                         constraints: {
@@ -369,17 +369,18 @@ function DecisionDialog({
 function validBounds(
   approve: boolean,
   durationSeconds: number,
-  maxUses: number,
-  bounds: SafeRequest["approval_bounds"],
+  maxUses: number | null,
+  bounds: SafeRequest["request"]["approval_bounds"],
 ): boolean {
   if (!approve || !bounds) return true;
+  if (maxUses === null) return bounds.max_uses === null;
   return (
     Number.isSafeInteger(durationSeconds) &&
     durationSeconds > 0 &&
     durationSeconds <= bounds.max_duration_seconds &&
     Number.isSafeInteger(maxUses) &&
     maxUses > 0 &&
-    maxUses <= bounds.max_uses
+    (bounds.max_uses === null || maxUses <= bounds.max_uses)
   );
 }
 

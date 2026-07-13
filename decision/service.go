@@ -60,14 +60,14 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 	constraints, err := normalizeConstraints(command.Constraints)
 	if err != nil {
 		current, _ := s.store.Get(id)
-		_ = s.record(current, current, string(action), actor, command.OnBehalfOf, command.DecisionReason, "revision", "", false, command.ExpectedRevision, grants.ApprovalConstraints{}, err)
+		_ = s.record(current, current, string(action), actor, command.OnBehalfOf, "revision", "", false, command.ExpectedRevision, grants.ApprovalConstraints{}, err)
 		return Result{}, err
 	}
 	decision := grants.OperatorDecision{
 		ID: id, Action: grants.DecisionAction(action), Approver: actor,
 		OnBehalfOf: command.OnBehalfOf, ExpectedRevision: command.ExpectedRevision,
-		IdempotencyKey: command.IdempotencyKey, Reason: command.DecisionReason,
-		Constraints: constraints,
+		IdempotencyKey: command.IdempotencyKey,
+		Constraints:    constraints,
 	}
 	result, decisionErr := s.store.ApplyOperatorDecision(ctx, decision, s.validate)
 	auditPrevious, auditCurrent := result.Previous, result.Grant
@@ -75,7 +75,7 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 		auditPrevious, _ = s.store.Get(id)
 		auditCurrent = auditPrevious
 	}
-	auditErr := s.record(auditPrevious, auditCurrent, string(action), actor, command.OnBehalfOf, command.DecisionReason, "revision", result.EventCursor, result.Replay, command.ExpectedRevision, constraints, decisionErr)
+	auditErr := s.record(auditPrevious, auditCurrent, string(action), actor, command.OnBehalfOf, "revision", result.EventCursor, result.Replay, command.ExpectedRevision, constraints, decisionErr)
 	return Result{OperatorDecisionResult: result, AuditExportFailed: auditErr != nil}, decisionErr
 }
 
@@ -83,10 +83,13 @@ func normalizeConstraints(value *operatorv1.Constraints) (grants.ApprovalConstra
 	if value == nil {
 		return grants.ApprovalConstraints{}, nil
 	}
-	if value.DurationSeconds < 0 || value.DurationSeconds > math.MaxInt64/int64(time.Second) || value.MaxUses < 0 {
+	if value.DurationSeconds < 0 || value.DurationSeconds > math.MaxInt64/int64(time.Second) || value.MaxUses.Limit < 0 {
 		return grants.ApprovalConstraints{}, grants.ErrInvalidCommand
 	}
-	return grants.ApprovalConstraints{Duration: time.Duration(value.DurationSeconds) * time.Second, MaxUses: value.MaxUses}, nil
+	return grants.ApprovalConstraints{
+		Duration: time.Duration(value.DurationSeconds) * time.Second,
+		MaxUses:  value.MaxUses.Limit, MaxUsesSpecified: value.MaxUses.Specified,
+	}, nil
 }
 
 func (s *Service) validate(ctx context.Context, grant grants.Grant, constraints grants.ApprovalConstraints) error {
@@ -100,7 +103,7 @@ func (s *Service) validate(ctx context.Context, grant grants.Grant, constraints 
 func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
 	result, err := s.store.ApproveWithNotificationValidated(ctx, id, token, actor, ref, s.validate)
 	previous, current := s.tokenAuditGrants(id, result)
-	_ = s.record(previous, current, string(grants.ActionApprove), actor, "", "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
+	_ = s.record(previous, current, string(grants.ActionApprove), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
 	if err != nil && !result.Changed {
 		return grants.Grant{}, err
 	}
@@ -111,7 +114,7 @@ func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref
 func (s *Service) DenyToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
 	result, err := s.store.DenyWithNotificationResult(ctx, id, token, actor, ref)
 	previous, current := s.tokenAuditGrants(id, result)
-	_ = s.record(previous, current, string(grants.ActionDeny), actor, "", "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
+	_ = s.record(previous, current, string(grants.ActionDeny), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
 	if err != nil && !result.Changed {
 		return grants.Grant{}, err
 	}
@@ -126,7 +129,7 @@ func (s *Service) tokenAuditGrants(id string, result grants.TokenDecisionResult)
 	return current, current
 }
 
-func (s *Service) record(previous, current grants.Grant, action, actor, onBehalfOf, reason, binding, eventCursor string, replay bool, expectedRevision int64, constraints grants.ApprovalConstraints, decisionErr error) error {
+func (s *Service) record(previous, current grants.Grant, action, actor, onBehalfOf, binding, eventCursor string, replay bool, expectedRevision int64, constraints grants.ApprovalConstraints, decisionErr error) error {
 	if s.audit == nil {
 		return nil
 	}
@@ -144,19 +147,29 @@ func (s *Service) record(previous, current grants.Grant, action, actor, onBehalf
 		"idempotency_replay": strconv.FormatBool(replay),
 		"expected_revision":  strconv.FormatInt(expectedRevision, 10),
 		"duration_seconds":   strconv.FormatInt(int64(constraints.Duration/time.Second), 10),
-		"max_uses":           strconv.Itoa(constraints.MaxUses),
+		"max_uses":           formatUseLimit(constraints),
 	}
 	if onBehalfOf != "" {
 		extensions["on_behalf_of"] = onBehalfOf
 	}
 	event := audit.Event{
 		Broker: s.broker, Client: grant.Client, Operation: grant.Operation, Decision: action,
-		Reason: reason, GrantID: grant.ID, Approver: actor, Extensions: extensions,
+		GrantID: grant.ID, Approver: actor, Extensions: extensions,
 	}
 	if decisionErr != nil {
 		event.ErrorCode = decisionErrorCode(decisionErr)
 	}
 	return s.audit.Record(event)
+}
+
+func formatUseLimit(constraints grants.ApprovalConstraints) string {
+	if !constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite() {
+		return ""
+	}
+	if constraints.MaxUses.IsUnlimited() {
+		return "unlimited"
+	}
+	return strconv.Itoa(int(constraints.MaxUses))
 }
 
 func decisionErrorCode(err error) string {

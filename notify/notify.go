@@ -1,7 +1,11 @@
 // Package notify defines broker approval notification interfaces.
 package notify
 
-import "context"
+import (
+	"context"
+
+	"github.com/osolmaz/brokerkit/usebudget"
+)
 
 // Action is an approval decision action.
 type Action string
@@ -21,7 +25,7 @@ type ApprovalMessage struct {
 	Target           string
 	Reason           string
 	RequestedMinutes int
-	MaxUses          int
+	MaxUses          usebudget.Limit
 	Fields           []Field
 }
 

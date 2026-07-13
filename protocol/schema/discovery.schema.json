@@ -1,8 +1,17 @@
 {
+  "$comment": "Generated from protocol/openapi/operator-v1.yaml; do not edit.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://brokerkit.dev/schema/operator/v1/discovery.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["api_version"],
-  "properties": {"api_version": {"const": "brokerkit.io/operator/v1"}}
+  "required": [
+    "api_version"
+  ],
+  "properties": {
+    "api_version": {
+      "type": "string",
+      "const": "brokerkit.io/operator/v1"
+    }
+  },
+  "$defs": {}
 }

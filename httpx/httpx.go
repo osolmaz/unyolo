@@ -7,6 +7,8 @@ import (
 	"math"
 	"net/http"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 // ErrBodyTooLarge is returned when ReadLimited sees more bytes than allowed.
@@ -62,6 +64,16 @@ func ReadLimited(reader io.Reader, limit int64) ([]byte, error) {
 		return nil, ErrBodyTooLarge
 	}
 	return body, nil
+}
+
+// DecodeJSON reads and strictly decodes one bounded JSON value. Set closed for
+// request schemas that reject unknown object fields.
+func DecodeJSON(reader io.Reader, limit int64, out any, closed bool) error {
+	body, err := ReadLimited(reader, limit)
+	if err != nil {
+		return err
+	}
+	return strictjson.Decode(body, out, closed)
 }
 
 // CopyHeaders copies src into dst unless drop returns true for the header name.

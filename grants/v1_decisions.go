@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 // DecisionAction is one Operator V1 lifecycle transition.
@@ -29,8 +31,9 @@ var (
 
 // ApprovalConstraints contains provider-neutral approval narrowing.
 type ApprovalConstraints struct {
-	Duration time.Duration
-	MaxUses  int
+	Duration         time.Duration
+	MaxUses          usebudget.Limit
+	MaxUsesSpecified bool
 }
 
 // OperatorDecision is a normalized revision-bound Operator V1 command.
@@ -41,7 +44,6 @@ type OperatorDecision struct {
 	OnBehalfOf       string
 	ExpectedRevision int64
 	IdempotencyKey   string
-	Reason           string
 	Constraints      ApprovalConstraints
 }
 
@@ -124,7 +126,6 @@ func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command 
 	grant.DecidedAt = now
 	grant.DecidedBy = command.Approver
 	grant.DecidedOnBehalfOf = command.OnBehalfOf
-	grant.DecisionReason = command.Reason
 	grant.NotificationDeliveryUnresolved = false
 	return grant, nil
 }
@@ -180,27 +181,36 @@ func applyApprovalMutation(ctx context.Context, grant Grant, constraints Approva
 	return grant, nil
 }
 
-func requestedApprovalBounds(grant Grant) (time.Duration, int) {
+func requestedApprovalBounds(grant Grant) (time.Duration, usebudget.Limit) {
 	duration := grant.RequestedDuration
 	if duration <= 0 {
 		duration = grant.Duration
 	}
 	maxUses := grant.RequestedMaxUses
-	if maxUses <= 0 {
+	if maxUses < 0 {
 		maxUses = grant.MaxUses
 	}
 	return duration, maxUses
 }
 
-func validApprovalConstraints(constraints ApprovalConstraints, duration time.Duration, maxUses int) bool {
-	return constraints.Duration >= 0 && constraints.Duration <= duration && constraints.MaxUses >= 0 && constraints.MaxUses <= maxUses
+func validApprovalConstraints(constraints ApprovalConstraints, duration time.Duration, maxUses usebudget.Limit) bool {
+	if constraints.Duration < 0 || constraints.Duration > duration || constraints.MaxUses < 0 {
+		return false
+	}
+	if !constraintUseLimitSpecified(constraints) {
+		return true
+	}
+	if constraints.MaxUses.IsUnlimited() {
+		return maxUses.IsUnlimited()
+	}
+	return maxUses.IsUnlimited() || constraints.MaxUses <= maxUses
 }
 
 func applyApprovalConstraints(grant Grant, constraints ApprovalConstraints) Grant {
 	if constraints.Duration > 0 {
 		grant.Duration = constraints.Duration
 	}
-	if constraints.MaxUses > 0 {
+	if constraintUseLimitSpecified(constraints) {
 		grant.MaxUses = constraints.MaxUses
 	}
 	return grant
@@ -211,17 +221,20 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	command.Approver = strings.TrimSpace(command.Approver)
 	command.OnBehalfOf = strings.TrimSpace(command.OnBehalfOf)
 	command.IdempotencyKey = strings.TrimSpace(command.IdempotencyKey)
-	command.Reason = strings.TrimSpace(command.Reason)
 	if !operatorDecisionRequired(command) {
 		return OperatorDecision{}, fmt.Errorf("%w: id, approver, revision, and idempotency key are required", ErrInvalidCommand)
 	}
 	if !validOperatorDecisionText(command) || !validOperatorAction(command.Action) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
-	if command.Action != ActionApprove && (command.Constraints.Duration != 0 || command.Constraints.MaxUses != 0) {
+	if command.Action != ActionApprove && (command.Constraints.Duration != 0 || constraintUseLimitSpecified(command.Constraints)) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
 	return command, nil
+}
+
+func constraintUseLimitSpecified(constraints ApprovalConstraints) bool {
+	return constraints.MaxUsesSpecified || constraints.MaxUses.IsFinite()
 }
 
 func operatorDecisionRequired(command OperatorDecision) bool {
@@ -230,8 +243,7 @@ func operatorDecisionRequired(command OperatorDecision) bool {
 
 func validOperatorDecisionText(command OperatorDecision) bool {
 	return len(command.IdempotencyKey) <= 200 && safeOperatorIdentity(command.IdempotencyKey) &&
-		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf)) &&
-		safeOperatorText(command.Reason, maxDecisionReasonBytes)
+		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf))
 }
 
 func validOperatorAction(action DecisionAction) bool {
@@ -245,7 +257,7 @@ func hashOperatorDecision(command OperatorDecision) string {
 }
 
 func decisionScope(command OperatorDecision) string {
-	return command.Approver + "\x00" + command.ID + "\x00" + string(command.Action) + "\x00" + command.IdempotencyKey
+	return command.ID + "\x00" + string(command.Action) + "\x00" + command.IdempotencyKey
 }
 
 func findDecisionRecord(records []decisionRecord, scope string) (decisionRecord, bool) {

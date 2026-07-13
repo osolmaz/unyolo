@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/operatorclient"
 	"github.com/osolmaz/brokerkit/operatorv1"
 	bkpolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestBrokerkitControlPlaneConformance(t *testing.T) {
@@ -89,7 +90,7 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 	}
 	approved, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, operatorv1.Decision{
 		ExpectedRevision: page.Requests[0].Revision, IdempotencyKey: "operator-test-approve",
-		Constraints: &operatorv1.Constraints{MaxUses: 1},
+		Constraints: &operatorv1.Constraints{MaxUses: usebudget.Finite(1)},
 	})
 	if err != nil || approved.Status != bkgrants.StatusActive {
 		t.Fatalf("Approve() = %+v, %v", approved, err)

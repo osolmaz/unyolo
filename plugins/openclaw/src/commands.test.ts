@@ -3,10 +3,13 @@ import { handleCommand } from "./commands.js";
 
 const request = {
   handle: "opaque-handle",
-  sourceLabel: "Hugging Face",
-  revision: 3,
-  status: "pending",
-  presentation: { title: "Protected write", facts: [] },
+  source_id: "hf",
+  source_label: "Hugging Face",
+  request: {
+    revision: 3,
+    status: "pending",
+    presentation: { title: "Protected write", facts: [] },
+  },
 };
 
 describe("BrokerKit command", () => {

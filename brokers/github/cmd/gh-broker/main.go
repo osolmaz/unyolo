@@ -101,6 +101,9 @@ func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error
 	if cfg.OperatorSecret != "" {
 		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, api.OperatorHandler(), cfg))
 	}
+	for _, server := range servers {
+		server.RegisterOnShutdown(func() { _ = api.Close() })
+	}
 	return servers, nil
 }
 

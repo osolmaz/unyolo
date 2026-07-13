@@ -1,4 +1,4 @@
-// Package operatorv1 defines the stable BrokerKit Operator V1 wire contract.
+// Package operatorv1 defines the provider-neutral Operator V1 domain contract.
 package operatorv1
 
 import (
@@ -8,6 +8,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const APIVersion = "brokerkit.io/operator/v1"
@@ -38,8 +39,8 @@ type Presentation struct {
 }
 
 type ApprovalBounds struct {
-	MaxDurationSeconds int64 `json:"max_duration_seconds"`
-	MaxUses            int   `json:"max_uses"`
+	MaxDurationSeconds int64           `json:"max_duration_seconds"`
+	MaxUses            usebudget.Limit `json:"max_uses"`
 }
 
 type Request struct {
@@ -52,14 +53,13 @@ type Request struct {
 	PendingExpiresAt         *time.Time      `json:"pending_expires_at,omitempty"`
 	ActiveExpiresAt          *time.Time      `json:"active_expires_at,omitempty"`
 	RequestedDurationSeconds int64           `json:"requested_duration_seconds"`
-	RequestedMaxUses         int             `json:"requested_max_uses"`
-	GrantedMaxUses           *int            `json:"granted_max_uses"`
+	RequestedMaxUses         usebudget.Limit `json:"requested_max_uses"`
+	GrantedMaxUses           usebudget.Limit `json:"granted_max_uses"`
 	UsedCount                int             `json:"used_count"`
 	RequestReason            string          `json:"request_reason,omitempty"`
 	DecidedAt                *time.Time      `json:"decided_at,omitempty"`
 	DecidedBy                string          `json:"decided_by,omitempty"`
 	DecidedOnBehalfOf        string          `json:"decided_on_behalf_of,omitempty"`
-	DecisionReason           string          `json:"decision_reason,omitempty"`
 	Presentation             Presentation    `json:"presentation"`
 	PresentationUnavailable  bool            `json:"presentation_unavailable,omitempty"`
 	AllowedActions           []Action        `json:"allowed_actions"`
@@ -82,14 +82,13 @@ type Query struct {
 }
 
 type Constraints struct {
-	DurationSeconds int64 `json:"duration_seconds,omitempty"`
-	MaxUses         int   `json:"max_uses,omitempty"`
+	DurationSeconds int64              `json:"duration_seconds,omitempty"`
+	MaxUses         usebudget.Optional `json:"max_uses,omitempty"`
 }
 
 type Decision struct {
 	ExpectedRevision int64        `json:"expected_revision"`
 	IdempotencyKey   string       `json:"idempotency_key"`
-	DecisionReason   string       `json:"decision_reason,omitempty"`
 	OnBehalfOf       string       `json:"on_behalf_of,omitempty"`
 	Constraints      *Constraints `json:"constraints,omitempty"`
 }

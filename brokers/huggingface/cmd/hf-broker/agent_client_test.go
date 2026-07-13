@@ -55,6 +55,132 @@ func TestRunAgentClientRepoCreateWaitsForApproval(t *testing.T) {
 	}
 }
 
+func TestRunAgentClientGrantLifecycle(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer "+agentClientTestSecret {
+			t.Fatalf("authorization = %q", request.Header.Get("Authorization"))
+		}
+		status := "pending"
+		if request.Method == http.MethodPost && request.URL.Path == "/api/grants" {
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if value, exists := body["max_uses"]; !exists || value != nil {
+				t.Fatalf("max_uses = %#v, exists=%v", value, exists)
+			}
+		} else if strings.HasSuffix(request.URL.Path, "/cancel") {
+			status = "canceled"
+		} else if strings.HasSuffix(request.URL.Path, "/revoke") {
+			status = "revoked"
+		} else {
+			status = "active"
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"status": "success",
+			"data": map[string]any{"grant": map[string]any{
+				"id": "grant-1", "status": status, "operation": "git.push.force",
+				"target": map[string]any{"kind": "repo", "type": "dataset", "owner": "acme", "name": "repo"},
+				"mode":   "window", "minutes": 5, "max_uses": nil, "uses_remaining": 0, "used_count": 0,
+			}},
+		})
+	}))
+	defer server.Close()
+	env := agentClientTestEnv(server.URL)
+	var stdout bytes.Buffer
+	if err := runClientCommand(t.Context(), env, &stdout, &bytes.Buffer{}, []string{
+		"grant", "request", "git.push.force", "acme/repo", "--ref", "refs/heads/main",
+		"--max-uses", "unlimited", "--idempotency-key", "request-1", "--json",
+	}); err != nil || !strings.Contains(stdout.String(), `"max_uses":null`) {
+		t.Fatalf("grant request = %q, %v", stdout.String(), err)
+	}
+	for _, action := range []string{"get", "wait", "cancel", "revoke"} {
+		stdout.Reset()
+		if err := runGrantClientFromEnv(t.Context(), env, &stdout, &bytes.Buffer{}, []string{action, "--json", "grant-1"}); err != nil {
+			t.Fatalf("grant %s error = %v", action, err)
+		}
+	}
+	mcpClient, err := loadAgentClient(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestValue, err := callMCPTool(t.Context(), mcpClient, mcpToolCall{
+		Name:      "hf_grant_request",
+		Arguments: json.RawMessage(`{"operation":"git.push.force","target":"acme/repo","refs":["refs/heads/main"],"reason":"repair","idempotency_key":"mcp-1","max_uses":null,"wait_seconds":1}`),
+	})
+	requestGrant, ok := requestValue.(hfClientGrant)
+	if err != nil || !ok || !requestGrant.MaxUses.IsUnlimited() {
+		t.Fatalf("MCP grant request = %#v, %v", requestValue, err)
+	}
+	for _, name := range []string{"hf_grant_get", "hf_grant_wait", "hf_grant_cancel", "hf_grant_revoke"} {
+		arguments := `{"grant_id":"grant-1"}`
+		if name == "hf_grant_wait" {
+			arguments = `{"grant_id":"grant-1","wait_seconds":1}`
+		}
+		value, err := callMCPTool(t.Context(), mcpClient, mcpToolCall{
+			Name: name, Arguments: json.RawMessage(arguments),
+		})
+		if grant, ok := value.(hfClientGrant); err != nil || !ok || grant.ID != "grant-1" {
+			t.Fatalf("%s = %#v, %v", name, value, err)
+		}
+	}
+	if _, err := callMCPTool(t.Context(), mcpClient, mcpToolCall{
+		Name: "hf_grant_get", Arguments: json.RawMessage(`{"grant_id":"grant-1","wait_seconds":1}`),
+	}); err == nil {
+		t.Fatal("hf_grant_get accepted wait_seconds")
+	}
+	if err := runGrantClientFromEnv(t.Context(), env, &stdout, &bytes.Buffer{}, []string{"request", "missing", "bad"}); err == nil {
+		t.Fatal("invalid grant request succeeded")
+	}
+	if err := runClientCommand(t.Context(), env, &stdout, &bytes.Buffer{}, []string{"unknown"}); err == nil {
+		t.Fatal("unknown client command succeeded")
+	}
+}
+
+func TestGrantRequestOptionValidation(t *testing.T) {
+	t.Parallel()
+	valid := grantRequestOptions{
+		operation: "git.push.force", target: "acme/repo", repoType: "dataset",
+		reason: "repair", waitTimeout: time.Minute,
+	}
+	for _, mutate := range []func(*grantRequestOptions){
+		func(value *grantRequestOptions) { value.repoType = "invalid" },
+		func(value *grantRequestOptions) { value.minutes = -1 },
+		func(value *grantRequestOptions) { value.operation = "missing" },
+	} {
+		candidate := valid
+		mutate(&candidate)
+		if err := validateGrantRequestOptions(candidate); err == nil {
+			t.Fatalf("validateGrantRequestOptions(%+v) succeeded", candidate)
+		}
+	}
+	badTarget := valid
+	badTarget.target = "invalid"
+	if _, err := buildHFGrantRequest(&badTarget); err == nil {
+		t.Fatal("buildHFGrantRequest accepted invalid target")
+	}
+	omitted := valid
+	omitted.idempotencyKey = "omitted"
+	request, err := buildHFGrantRequest(&omitted)
+	if err != nil || request.MaxUses != nil {
+		t.Fatalf("omitted max uses = %+v, %v", request.MaxUses, err)
+	}
+	finite := valid
+	finite.idempotencyKey = "finite"
+	if err := finite.maxUses.Set("3"); err != nil {
+		t.Fatal(err)
+	}
+	request, err = buildHFGrantRequest(&finite)
+	if err != nil || request.MaxUses == nil || *request.MaxUses != 3 {
+		t.Fatalf("finite max uses = %+v, %v", request.MaxUses, err)
+	}
+	if err := finite.maxUses.Set("zero"); err == nil {
+		t.Fatal("invalid max uses succeeded")
+	}
+}
+
 func TestRunMCPListsAndCallsTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(testAgentOperation(agentv1.StatePending))
@@ -134,11 +260,19 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 			return ""
 		}
 	})
-	if err != nil || client.secret != agentClientTestSecret {
+	if err != nil || client.secret != agentClientTestSecret || client.operations == nil {
 		t.Fatalf("file client = %#v, %v", client, err)
 	}
 	for _, value := range []string{"", "ftp://example.test", "http://user@example.test", "http://example.test?q=1"} {
-		if _, err := parseAgentBaseURL(value); err == nil {
+		if _, err := loadAgentClient(func(name string) string {
+			if name == "HF_BROKER_URL" {
+				return value
+			}
+			if name == "HF_BROKER_SHARED_SECRET" {
+				return agentClientTestSecret
+			}
+			return ""
+		}); err == nil {
 			t.Fatalf("URL %q accepted", value)
 		}
 	}
@@ -149,15 +283,6 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 		return ""
 	}); err == nil {
 		t.Fatal("missing secret file accepted")
-	}
-	if _, err := decodeAgentResponse(http.StatusForbidden, []byte(`{"error":{"code":"denied","message":"no"}}`)); err == nil || err.Error() != "no" {
-		t.Fatalf("structured error = %v", err)
-	}
-	if _, err := decodeAgentResponse(http.StatusBadGateway, []byte(`bad`)); err == nil {
-		t.Fatal("HTTP error accepted")
-	}
-	if _, err := decodeAgentResponse(http.StatusOK, []byte(`{}`)); err == nil {
-		t.Fatal("invalid operation accepted")
 	}
 }
 
@@ -209,9 +334,10 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"hf_operation_get", "hf_operation_wait"} {
-		operation, err := callMCPTool(context.Background(), client, mcpToolCall{Name: name, Arguments: json.RawMessage(`{"operation_id":"op_test"}`)})
-		if err != nil || operation.ID != "op_test" {
-			t.Fatalf("%s = %#v, %v", name, operation, err)
+		value, err := callMCPTool(context.Background(), client, mcpToolCall{Name: name, Arguments: json.RawMessage(`{"operation_id":"op_test"}`)})
+		operation, ok := value.(agentv1.Operation)
+		if err != nil || !ok || operation.ID != "op_test" {
+			t.Fatalf("%s = %#v, %v", name, value, err)
 		}
 	}
 	if _, err := callMCPTool(context.Background(), client, mcpToolCall{Name: "unknown", Arguments: json.RawMessage(`{}`)}); err == nil {
@@ -264,10 +390,11 @@ func TestMCPWaitDeadlineReturnsResumableOperation(t *testing.T) {
 		{Name: "hf_repo_create", Arguments: mustJSON(t, mcpRepoCreateInput{RepoID: "alice/data", Type: "dataset", Private: &private, Reason: "create", IdempotencyKey: "create", WaitSeconds: 1})},
 	} {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-		operation, callErr := callMCPTool(ctx, client, call)
+		value, callErr := callMCPTool(ctx, client, call)
 		cancel()
-		if callErr != nil || operation.ID != "op_test" || operation.State != agentv1.StatePending {
-			t.Fatalf("%s = %#v, %v", call.Name, operation, callErr)
+		operation, ok := value.(agentv1.Operation)
+		if callErr != nil || !ok || operation.ID != "op_test" || operation.State != agentv1.StatePending {
+			t.Fatalf("%s = %#v, %v", call.Name, value, callErr)
 		}
 	}
 }

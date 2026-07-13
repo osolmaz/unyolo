@@ -1,0 +1,7 @@
+package: agentwire
+generate:
+  models: true
+  client: true
+  echo-server: true
+output-options:
+  skip-prune: true

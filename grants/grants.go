@@ -3,8 +3,7 @@ package grants
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/base64"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +16,9 @@ import (
 	"github.com/osolmaz/brokerkit/internal/copyx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/store"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -66,16 +67,18 @@ type Options struct {
 
 // Request creates one pending approval grant.
 type Request struct {
-	Client          string
-	ClientRequestID string
-	Operation       string
-	Target          policy.Target
-	Attrs           map[string][]string
-	Metadata        map[string]string
-	Reason          string
-	Duration        time.Duration
-	PendingTimeout  time.Duration
-	MaxUses         int
+	Client           string
+	ClientRequestID  string
+	Operation        string
+	Target           policy.Target
+	Attrs            map[string][]string
+	Metadata         map[string]string
+	Reason           string
+	Duration         time.Duration
+	PendingTimeout   time.Duration
+	MaxUses          usebudget.Limit
+	MaxUsesSpecified bool
+	MaxUsesDefaulted bool
 }
 
 // RequestResult returns the durable grant plus the raw one-time decision token
@@ -86,43 +89,51 @@ type RequestResult struct {
 	DecisionToken string `json:"-"`
 }
 
+// ImmutablePlan is the provider-neutral envelope committed with a grant.
+type ImmutablePlan struct {
+	Digest     string
+	SchemaName string
+	Canonical  []byte
+	CreatedAt  time.Time
+}
+
 // Grant is one durable approval record.
 type Grant struct {
-	ID                     string              `json:"id"`
-	DecisionTokenVerifier  string              `json:"decision_token_verifier"`
-	Client                 string              `json:"client"`
-	ClientRequestID        string              `json:"client_request_id,omitempty"`
-	Operation              string              `json:"operation"`
-	Target                 policy.Target       `json:"target"`
-	Attrs                  map[string][]string `json:"attrs,omitempty"`
-	Metadata               map[string]string   `json:"metadata,omitempty"`
-	Reason                 string              `json:"reason"`
-	Status                 Status              `json:"status"`
-	Revision               int64               `json:"revision"`
-	CreatedAt              time.Time           `json:"created_at"`
-	PendingExpiresAt       time.Time           `json:"pending_expires_at"`
-	ExpiresAt              time.Time           `json:"expires_at,omitzero"`
-	Duration               time.Duration       `json:"duration"`
-	RequestedDuration      time.Duration       `json:"requested_duration"`
-	PendingTimeout         time.Duration       `json:"pending_timeout"`
-	DecidedAt              time.Time           `json:"decided_at,omitzero"`
-	DecidedBy              string              `json:"decided_by,omitempty"`
-	DecidedOnBehalfOf      string              `json:"decided_on_behalf_of,omitempty"`
-	DecisionReason         string              `json:"decision_reason,omitempty"`
-	UsedAt                 time.Time           `json:"used_at,omitzero"`
-	UsedCount              int                 `json:"used_count"`
-	UseRevision            int                 `json:"use_revision,omitempty"`
-	ReservedCount          int                 `json:"reserved_count,omitempty"`
-	ReservedAt             time.Time           `json:"reserved_at,omitzero"`
-	ReservationRetained    bool                `json:"reservation_retained,omitempty"`
-	ReservationRevision    int                 `json:"reservation_revision,omitempty"`
-	MaxUses                int                 `json:"max_uses"`
-	RequestedMaxUses       int                 `json:"requested_max_uses"`
-	ExpiredFrom            Status              `json:"expired_from,omitempty"`
-	Notification           *MessageRef         `json:"notification,omitempty"`
-	NotificationStatus     string              `json:"notification_status,omitempty"`
-	NotificationClaimedAt  time.Time           `json:"notification_claimed_at,omitzero"`
-	NotificationClaimUntil time.Time           `json:"notification_claim_until,omitzero"`
+	ID                        string              `json:"id"`
+	DecisionTokenVerifier     string              `json:"decision_token_verifier"`
+	Client                    string              `json:"client"`
+	ClientRequestID           string              `json:"client_request_id,omitempty"`
+	Operation                 string              `json:"operation"`
+	Target                    policy.Target       `json:"target"`
+	Attrs                     map[string][]string `json:"attrs,omitempty"`
+	Metadata                  map[string]string   `json:"metadata,omitempty"`
+	Reason                    string              `json:"reason"`
+	Status                    Status              `json:"status"`
+	Revision                  int64               `json:"revision"`
+	CreatedAt                 time.Time           `json:"created_at"`
+	PendingExpiresAt          time.Time           `json:"pending_expires_at"`
+	ExpiresAt                 time.Time           `json:"expires_at,omitzero"`
+	Duration                  time.Duration       `json:"duration"`
+	RequestedDuration         time.Duration       `json:"requested_duration"`
+	PendingTimeout            time.Duration       `json:"pending_timeout"`
+	DecidedAt                 time.Time           `json:"decided_at,omitzero"`
+	DecidedBy                 string              `json:"decided_by,omitempty"`
+	DecidedOnBehalfOf         string              `json:"decided_on_behalf_of,omitempty"`
+	UsedAt                    time.Time           `json:"used_at,omitzero"`
+	UsedCount                 int                 `json:"used_count"`
+	UseRevision               int                 `json:"use_revision,omitempty"`
+	ReservedCount             int                 `json:"reserved_count,omitempty"`
+	ReservedAt                time.Time           `json:"reserved_at,omitzero"`
+	ReservationRetained       bool                `json:"reservation_retained,omitempty"`
+	ReservationRevision       int                 `json:"reservation_revision,omitempty"`
+	MaxUses                   usebudget.Limit     `json:"max_uses"`
+	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
+	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted"`
+	ExpiredFrom               Status              `json:"expired_from,omitempty"`
+	Notification              *MessageRef         `json:"notification,omitempty"`
+	NotificationStatus        string              `json:"notification_status,omitempty"`
+	NotificationClaimedAt     time.Time           `json:"notification_claimed_at,omitzero"`
+	NotificationClaimUntil    time.Time           `json:"notification_claim_until,omitzero"`
 	// NotificationDeliveryUnresolved records an ambiguous send attempt until
 	// the current claim is completed or reclaimed.
 	NotificationDeliveryUnresolved bool `json:"notification_delivery_unresolved,omitempty"`
@@ -138,15 +149,31 @@ type fileData struct {
 
 // Store owns one durable grant file.
 type Store struct {
-	path        string
-	opts        Options
-	mu          sync.Mutex
-	eventMu     sync.Mutex
-	eventSignal chan struct{}
+	path           string
+	database       *state.Database
+	loadedSnapshot *state.GrantSnapshot
+	opts           Options
+	mu             sync.Mutex
+	eventMu        sync.Mutex
+	eventSignal    chan struct{}
 }
 
 // New returns a Store.
 func New(path string, opts Options) *Store {
+	return newStore(path, nil, opts)
+}
+
+// NewDatabase returns a Store backed by BrokerKit's transactional SQLite
+// state. The database owner remains responsible for closing it.
+func NewDatabase(database *state.Database, opts Options) *Store {
+	return newStore("", database, opts)
+}
+
+// SupportsPlanTransactions reports whether immutable plans can commit with
+// grant creation in one database transaction.
+func (s *Store) SupportsPlanTransactions() bool { return s != nil && s.database != nil }
+
+func newStore(path string, database *state.Database, opts Options) *Store {
 	if opts.PendingTimeout <= 0 {
 		opts.PendingTimeout = defaultPendingTimeout
 	}
@@ -168,18 +195,43 @@ func New(path string, opts Options) *Store {
 	if opts.NewID == nil {
 		opts.NewID = randomID
 	}
-	return &Store{path: path, opts: opts, eventSignal: make(chan struct{})}
+	return &Store{path: path, database: database, opts: opts, eventSignal: make(chan struct{})}
 }
 
 // Request creates or returns an idempotent pending grant.
 func (s *Store) Request(req Request) (RequestResult, bool, error) {
+	return s.request(req, nil)
+}
+
+// RequestWithPlan atomically creates or replays a SQLite-backed grant and its
+// immutable provider plan.
+func (s *Store) RequestWithPlan(req Request, plan ImmutablePlan) (RequestResult, bool, error) {
+	if s == nil || s.database == nil {
+		return RequestResult{}, false, errors.New("SQLite grant store is required")
+	}
+	if err := validateImmutableRequestPlan(req.Metadata, plan); err != nil {
+		return RequestResult{}, false, err
+	}
+	record := &state.PlanRecord{Digest: plan.Digest, SchemaName: plan.SchemaName, Canonical: bytes.Clone(plan.Canonical), CreatedAt: plan.CreatedAt}
+	return s.request(req, record)
+}
+
+func validateImmutableRequestPlan(metadata map[string]string, plan ImmutablePlan) error {
+	digest, err := metadataPlanDigest(metadata)
+	if err != nil || digest == "" || digest != plan.Digest || plan.CreatedAt.IsZero() {
+		return errors.New("grant immutable plan is invalid")
+	}
+	return nil
+}
+
+func (s *Store) request(req Request, plan *state.PlanRecord) (RequestResult, bool, error) {
 	req, err := s.normalizeRequest(req)
 	if err != nil {
 		return RequestResult{}, false, err
 	}
 	var out RequestResult
 	created := false
-	err = s.update(func(data *fileData) error {
+	err = s.updateWithPlan(plan, func(data *fileData) error {
 		s.expireDue(data)
 		if index, existing, ok := findIdempotent(data.Grants, req); ok {
 			var existingErr error
@@ -285,7 +337,7 @@ func (s *Store) CommitUse(id string) (Grant, error) {
 		} else {
 			grant.ReservedAt = s.opts.Now().UTC()
 		}
-		if grant.UsedCount >= grant.MaxUses {
+		if grant.MaxUses.Exhausted(grant.UsedCount) {
 			if grant.Status != StatusRevoked {
 				grant.Status = StatusConsumed
 				grant.ExpiredFrom = ""
@@ -480,8 +532,17 @@ func (s *Store) normalizeRequestBounds(req Request) (Request, error) {
 	if req.PendingTimeout <= 0 {
 		req.PendingTimeout = s.opts.PendingTimeout
 	}
-	if req.MaxUses <= 0 {
+	return normalizeRequestUseLimit(req)
+}
+
+func normalizeRequestUseLimit(req Request) (Request, error) {
+	if !req.MaxUsesSpecified && req.MaxUses.IsUnlimited() {
 		req.MaxUses = defaultMaxUses
+		req.MaxUsesDefaulted = true
+	}
+	req.MaxUsesSpecified = true
+	if req.MaxUses < 0 {
+		return Request{}, errors.New("grant max uses must be positive or unlimited")
 	}
 	if req.MaxUses > maxMaxUses {
 		return Request{}, errors.New("grant max uses exceeds maximum")
@@ -500,23 +561,24 @@ func (s *Store) newGrant(req Request) (Grant, string, error) {
 	}
 	now := s.opts.Now().UTC()
 	return Grant{
-		ID:                    id,
-		DecisionTokenVerifier: decisionTokenVerifier(token),
-		Client:                req.Client,
-		ClientRequestID:       req.ClientRequestID,
-		Operation:             req.Operation,
-		Target:                req.Target,
-		Attrs:                 req.Attrs,
-		Metadata:              req.Metadata,
-		Reason:                req.Reason,
-		Status:                StatusPending,
-		CreatedAt:             now,
-		PendingExpiresAt:      now.Add(req.PendingTimeout),
-		Duration:              req.Duration,
-		RequestedDuration:     req.Duration,
-		PendingTimeout:        req.PendingTimeout,
-		MaxUses:               req.MaxUses,
-		RequestedMaxUses:      req.MaxUses,
+		ID:                        id,
+		DecisionTokenVerifier:     decisionTokenVerifier(token),
+		Client:                    req.Client,
+		ClientRequestID:           req.ClientRequestID,
+		Operation:                 req.Operation,
+		Target:                    req.Target,
+		Attrs:                     req.Attrs,
+		Metadata:                  req.Metadata,
+		Reason:                    req.Reason,
+		Status:                    StatusPending,
+		CreatedAt:                 now,
+		PendingExpiresAt:          now.Add(req.PendingTimeout),
+		Duration:                  req.Duration,
+		RequestedDuration:         req.Duration,
+		PendingTimeout:            req.PendingTimeout,
+		MaxUses:                   req.MaxUses,
+		RequestedMaxUses:          req.MaxUses,
+		RequestedMaxUsesDefaulted: req.MaxUsesDefaulted,
 	}, token, nil
 }
 
@@ -541,6 +603,10 @@ func (s *Store) durationFromGrant(grant Grant) time.Duration {
 }
 
 func (s *Store) update(mutator func(*fileData) error) error {
+	return s.updateWithPlan(nil, mutator)
+}
+
+func (s *Store) updateWithPlan(plan *state.PlanRecord, mutator func(*fileData) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	data, err := s.load()
@@ -562,7 +628,7 @@ func (s *Store) update(mutator func(*fileData) error) error {
 		return err
 	}
 	s.reconcileLifecycle(&data, before)
-	if err := s.save(data); err != nil {
+	if err := s.saveWithPlan(data, plan); err != nil {
 		return err
 	}
 	s.signalNewEvents(eventSequence, data.NextEvent)
@@ -570,7 +636,7 @@ func (s *Store) update(mutator func(*fileData) error) error {
 }
 
 func (s *Store) load() (fileData, error) {
-	data, err := s.readState()
+	data, err := s.loadRaw()
 	if err != nil {
 		return fileData{}, err
 	}
@@ -583,7 +649,41 @@ func (s *Store) load() (fileData, error) {
 	return data, nil
 }
 
+func (s *Store) loadRaw() (fileData, error) {
+	if s.database != nil {
+		snapshot, err := s.database.GrantSnapshot(context.Background())
+		if err != nil {
+			return fileData{}, err
+		}
+		s.loadedSnapshot = &snapshot
+		return fileDataFromSQLite(snapshot)
+	}
+	return s.readState()
+}
+
 func (s *Store) save(data fileData) error {
+	return s.saveWithPlan(data, nil)
+}
+
+func (s *Store) saveWithPlan(data fileData, plan *state.PlanRecord) error {
+	if s.database != nil {
+		if s.loadedSnapshot == nil {
+			return errors.New("grant SQLite snapshot is unavailable")
+		}
+		before := *s.loadedSnapshot
+		after, err := fileDataToSQLite(data, before.Outbox, s.opts.Now().UTC())
+		if err != nil {
+			return err
+		}
+		s.loadedSnapshot = nil
+		if plan != nil {
+			return s.database.SaveGrantSnapshotWithPlan(context.Background(), before, after, *plan)
+		}
+		return s.database.SaveGrantSnapshot(context.Background(), before, after)
+	}
+	if plan != nil {
+		return errors.New("immutable plan transactions require SQLite")
+	}
 	data.Version = grantFileVersion
 	return store.WriteJSONAtomic(s.path, data, 0o600)
 }
@@ -656,7 +756,7 @@ func validGrantLifecycle(grant Grant) bool {
 }
 
 func validGrantUsage(grant Grant) bool {
-	return grant.MaxUses > 0 && grant.RequestedMaxUses > 0 && grant.UsedCount >= 0 &&
+	return grant.MaxUses >= 0 && grant.RequestedMaxUses >= 0 && grant.UsedCount >= 0 &&
 		grant.ReservedCount >= 0 && grant.UseRevision >= grant.UsedCount
 }
 
@@ -693,113 +793,4 @@ func (s *Store) expireDue(data *fileData) bool {
 		changed = true
 	}
 	return changed
-}
-
-func (s *Store) prepareLifecycle(data *fileData) bool {
-	expired := s.expireDue(data)
-	retained := s.retainStaleReservations(data)
-	return expired || retained
-}
-
-func (s *Store) retainStaleReservations(data *fileData) bool {
-	now := s.opts.Now().UTC()
-	changed := false
-	for index, grant := range data.Grants {
-		if !reservationIsStale(grant, now, s.opts.ReservationTimeout) {
-			continue
-		}
-		grant.ReservationRetained = true
-		if grant.ReservedAt.IsZero() {
-			grant.ReservedAt = now
-		}
-		data.Grants[index] = grant
-		changed = true
-	}
-	return changed
-}
-
-func reservationIsStale(grant Grant, now time.Time, timeout time.Duration) bool {
-	if grant.ReservationRetained || grant.ReservedCount <= 0 ||
-		!reservationCanSettle(grant.Status) {
-		return false
-	}
-	return grant.ReservedAt.IsZero() || !now.Before(grant.ReservedAt.Add(timeout))
-}
-
-func grantCanUse(grant Grant, now time.Time) bool {
-	return grant.Status == StatusActive &&
-		!grant.ReservationRetained &&
-		now.Before(grant.ExpiresAt) &&
-		grant.UsedCount+grant.ReservedCount < grant.MaxUses
-}
-
-func grantCanCommitUse(grant Grant) bool {
-	return grant.ReservedCount > 0 && reservationCanSettle(grant.Status)
-}
-
-func reservationCanSettle(status Status) bool {
-	return status == StatusActive || status == StatusExpired || status == StatusRevoked
-}
-
-func (g Grant) toPolicyGrant() policy.Grant {
-	return policy.Grant{
-		ID:        g.ID,
-		Client:    g.Client,
-		Operation: g.Operation,
-		Target: policy.Target{
-			Kind:   g.Target.Kind,
-			Fields: copyx.StringSliceMap(g.Target.Fields),
-		},
-		Attrs:     copyx.StringSliceMap(g.Attrs),
-		ExpiresAt: g.ExpiresAt,
-		UsesLeft:  g.MaxUses - g.UsedCount - g.ReservedCount,
-	}
-}
-
-func findGrant(grants []Grant, id string) (int, Grant, error) {
-	for index, grant := range grants {
-		if grant.ID == id {
-			return index, grant, nil
-		}
-	}
-	return -1, Grant{}, ErrNotFound
-}
-
-func findIdempotent(grants []Grant, req Request) (int, Grant, bool) {
-	if req.ClientRequestID == "" {
-		return -1, Grant{}, false
-	}
-	for index, grant := range grants {
-		if grant.Client == req.Client && grant.ClientRequestID == req.ClientRequestID && grant.Status != StatusCanceled {
-			return index, grant, true
-		}
-	}
-	return -1, Grant{}, false
-}
-
-func sameRequest(grant Grant, req Request) bool {
-	return grant.Operation == req.Operation &&
-		targetEqual(grant.Target, req.Target) &&
-		mapsEqual(grant.Attrs, req.Attrs) &&
-		stringMapsEqual(grant.Metadata, req.Metadata) &&
-		grant.Reason == req.Reason &&
-		grant.MaxUses == req.MaxUses &&
-		grant.Duration == req.Duration &&
-		grant.PendingTimeout == req.PendingTimeout
-}
-
-func targetEqual(left policy.Target, right policy.Target) bool {
-	return left.Kind == right.Kind && mapsEqual(left.Fields, right.Fields)
-}
-
-func mapsEqual(left, right map[string][]string) bool {
-	return copyx.StringSliceMapsEqual(left, right)
-}
-
-func randomID(bytesCount int) (string, error) {
-	data := make([]byte, bytesCount)
-	if _, err := rand.Read(data); err != nil {
-		return "", fmt.Errorf("generate id: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(data), nil
 }

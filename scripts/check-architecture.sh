@@ -27,6 +27,125 @@ if grep -R -n --include='*.ts' --include='*.tsx' -E "from [\"']openclaw/(src|dis
   exit 1
 fi
 
+if [ -d brokers/huggingface/internal/hfoperation ] ||
+  grep -R -n --include='*.go' 'brokers/huggingface/internal/hfoperation' . 2>/dev/null
+then
+  echo 'HF-local operation lifecycle survived the agentops cutover' >&2
+	exit 1
+fi
+
+if [ -d brokers/huggingface/internal/gitproxy/pktline ] ||
+  grep -R -n --include='*.go' 'brokers/huggingface/internal/gitproxy/pktline' . 2>/dev/null
+then
+  echo 'HF-local pkt-line implementation survived the gitx cutover' >&2
+	exit 1
+fi
+
+if [ -d brokers/huggingface/internal/audit ] ||
+  grep -R -n --include='*.go' 'brokers/huggingface/internal/audit' . 2>/dev/null
+then
+  echo 'HF-local audit implementation survived the shared recorder cutover' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' 'github.com/go-git/' brokers 2>/dev/null; then
+  echo 'providers must use go-git only through the shared gitx boundary' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' 'compress/zlib' brokers/huggingface/internal/gitproxy 2>/dev/null; then
+  echo 'HF-local packfile inflation survived the gitx cutover' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'operations\.json|store\.WriteJSONAtomic' agentops 2>/dev/null; then
+  echo 'agentops must persist only through the shared SQLite state layer' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' 'github.com/osolmaz/brokerkit/planstore' \
+  brokers/huggingface/internal/hfplan 2>/dev/null
+then
+  echo 'HF plans must persist only through the shared SQLite state layer' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' 'grants.New(' brokers/huggingface \
+  --exclude='*_test.go' 2>/dev/null
+then
+  echo 'HF grants must persist only through the shared SQLite state layer' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'grants\.New\(|brokerkit/planstore|planstore\.' \
+  brokers/github --exclude='*_test.go' 2>/dev/null
+then
+  echo 'GH lifecycle state must use the shared SQLite database' >&2
+  exit 1
+fi
+
+if ! grep -q 'agentAPI.Register' brokers/sudo/internal/routes/server.go ||
+	grep -R -n --include='*.go' -E 'api/v1/(requests|executions)|grants\.New\(|brokerkit/planstore|planstore\.' \
+		brokers/sudo --exclude='*_test.go' 2>/dev/null
+then
+	echo 'sudo operations and lifecycle state must use Agent V1 and shared SQLite' >&2
+	exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'plans\.Bind(At)?\(|store\.Request\(' \
+  brokers/huggingface/internal/hfgrant --exclude='*_test.go' 2>/dev/null
+then
+  echo 'HF request creation must use the atomic plan-plus-grant transaction' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'gorm\.io/|github\.com/jmoiron/sqlx|github\.com/mattn/go-sqlite3' \
+  . --exclude-dir=.git 2>/dev/null
+then
+  echo 'BrokerKit state must use database/sql with modernc SQLite and sqlc only' >&2
+  exit 1
+fi
+
+if grep -R -n -E '"\$ref"[[:space:]]*:[[:space:]]*"\.\.' protocol/openapi 2>/dev/null; then
+  echo 'canonical OpenAPI documents must own all payload schemas' >&2
+  exit 1
+fi
+
+if [ -e plugins/openclaw/scripts/generate-operator-v1.mjs ]; then
+  echo 'legacy standalone-schema TypeScript generator survived the OpenAPI cutover' >&2
+  exit 1
+fi
+
+if ! grep -q 'operatorwire.RegisterHandlers' operatorapi/api.go ||
+  grep -R -n --include='*.go' -E 'serveAuthorized|requestPath\(' operatorapi 2>/dev/null
+then
+  echo 'Operator V1 must use only generated Echo route registration' >&2
+  exit 1
+fi
+
+if ! grep -q 'agentwire.RegisterHandlers' agentapi/api.go ||
+	grep -R -n --include='*.go' 'agentwire.RegisterHandlers' brokers 2>/dev/null ||
+	grep -R -n --include='*.go' 'serveAgentAPI' brokers 2>/dev/null
+then
+	echo 'Agent V1 must use only shared generated Echo route registration' >&2
+  exit 1
+fi
+
+if ! grep -q 'agentAPI.Register' brokers/github/internal/httpapi/server.go ||
+	grep -R -n --include='*.go' -E 'POST\("/api/repos/:owner/:repo/pulls"|func .*createPullRequest\(' brokers/github 2>/dev/null
+then
+	echo 'GH discrete operations must use the shared Agent V1 boundary' >&2
+	exit 1
+fi
+
+if ! grep -q 'operatorwire.NewClient' operatorclient/client.go ||
+	! grep -q 'agentwire.NewClient' agentclient/client.go ||
+	grep -R -n --include='*.go' 'agentwire.NewClient' brokers 2>/dev/null
+then
+  echo 'Operator and Agent clients must use generated request builders' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.ts' --include='*.tsx' -E 'mlclaw\.|(telegram|discord|slack)' \
   plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
   --exclude='*.test.ts' 2>/dev/null; then

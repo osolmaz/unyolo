@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 type coreView uint8
@@ -38,6 +39,28 @@ type coreRule struct {
 	Attrs       map[string][]string     `json:"attrs,omitempty"`
 	GrantPolicy *corepolicy.GrantPolicy `json:"grant_policy,omitempty"`
 }
+
+// AuthorizationRegistry returns HF's provider-owned policy vocabulary.
+func AuthorizationRegistry() corepolicy.Registry { return hfRegistry() }
+
+// AuthorizationRequest projects an HF request into the shared policy model.
+func AuthorizationRequest(request Request) corepolicy.Request {
+	return coreRequestFromHF(request, coreViewNormal)
+}
+
+// DecideAuthorization evaluates a shared authorization request against HF's
+// normal policy view.
+func (p Policy) DecideAuthorization(request corepolicy.Request, options corepolicy.DecisionOptions) corepolicy.Decision {
+	return p.coreForView(coreViewNormal).Decide(request, options)
+}
+
+// AuthorizationDecision maps a shared decision back to HF's audit model.
+func (p Policy) AuthorizationDecision(decision corepolicy.Decision) Decision {
+	return p.decisionFromCore(decision)
+}
+
+// AuthorizationGrants projects active HF grant rules into shared policy grants.
+func AuthorizationGrants(rules []Rule) []corepolicy.Grant { return coreGrants(rules, coreViewNormal) }
 
 func (p *Policy) initializeCore() error {
 	ids := make(map[string]string)
@@ -232,7 +255,7 @@ func coreGrantPolicyForView(value *GrantPolicy, operation Operation, view coreVi
 		MaxMinutes:        MaxGrantMinutes,
 		RequestTTLMinutes: DefaultRequestTTL,
 		DefaultMaxUses:    1,
-		MaxUses:           maxUses,
+		MaxUses:           usebudget.Limit(maxUses),
 	}
 }
 
@@ -427,6 +450,7 @@ func coreGrants(rules []Rule, view coreView) []corepolicy.Grant {
 			Attrs:     coreAttrsFromConstraints(rule.Attrs, view),
 			ExpiresAt: rule.ExpiresAt,
 			UsesLeft:  rule.UsesLeft,
+			Unlimited: rule.Unlimited,
 		})
 	}
 	return out

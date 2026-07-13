@@ -21,11 +21,11 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/routes"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/secretfile"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 type serveOptions struct {
@@ -33,8 +33,7 @@ type serveOptions struct {
 	catalogPath     string
 	secretsPath     string
 	operatorSecrets string
-	grantsPath      string
-	plansDirectory  string
+	stateDirectory  string
 	helperSocket    string
 	bindAddress     string
 	operatorAddress string
@@ -63,8 +62,10 @@ func runServeWith(ctx context.Context, args []string, stdout io.Writer, stderr i
 		return err
 	}
 	if err := serverHelperReady(ctx, server); err != nil {
+		_ = server.Close()
 		return err
 	}
+	defer func() { _ = server.Close() }()
 	server.Start(ctx)
 	servers := []*http.Server{httpServer(opts.bindAddress, server.Handler(), false)}
 	if server.OperatorHandler() != nil {
@@ -83,8 +84,7 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	flags.StringVar(&opts.catalogPath, "catalog", "", "root-owned command catalog")
 	flags.StringVar(&opts.secretsPath, "secrets", "", "named client secret file")
 	flags.StringVar(&opts.operatorSecrets, "operator-secrets", "", "named operator secret file")
-	flags.StringVar(&opts.grantsPath, "grants", "", "grant state file")
-	flags.StringVar(&opts.plansDirectory, "plans", "", "immutable plan directory")
+	flags.StringVar(&opts.stateDirectory, "state", "", "BrokerKit state directory")
 	flags.StringVar(&opts.helperSocket, "helper-socket", "", "privileged helper Unix socket")
 	flags.StringVar(&opts.bindAddress, "bind", "127.0.0.1:8084", "agent listener")
 	flags.StringVar(&opts.operatorAddress, "operator-bind", "127.0.0.1:8085", "operator listener")
@@ -93,8 +93,8 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	if err := flags.Parse(args); err != nil {
 		return serveOptions{}, err
 	}
-	if flags.NArg() != 0 || opts.policyPath == "" || opts.catalogPath == "" || opts.secretsPath == "" || opts.grantsPath == "" || opts.plansDirectory == "" || opts.helperSocket == "" {
-		return serveOptions{}, errors.New("--policy, --catalog, --secrets, --grants, --plans, and --helper-socket are required")
+	if flags.NArg() != 0 || opts.policyPath == "" || opts.catalogPath == "" || opts.secretsPath == "" || opts.stateDirectory == "" || opts.helperSocket == "" {
+		return serveOptions{}, errors.New("--policy, --catalog, --secrets, --state, and --helper-socket are required")
 	}
 	if err := validateLoopbackAddress(opts.bindAddress); err != nil {
 		return serveOptions{}, fmt.Errorf("agent listener: %w", err)
@@ -153,7 +153,7 @@ func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootF
 			return nil, err
 		}
 	}
-	plans, err := plan.NewStore(opts.plansDirectory)
+	database, err := state.Open(context.Background(), opts.stateDirectory, state.Options{})
 	if err != nil {
 		return nil, err
 	}
@@ -177,11 +177,15 @@ func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootF
 		notifierService = notifier
 		poller = notifier
 	}
-	return routes.New(routes.Options{
-		Policy: policy, Catalog: snapshot, GrantStore: grants.New(opts.grantsPath, grants.Options{}), PlanStore: plans,
+	server, err := routes.New(routes.Options{
+		Policy: policy, Catalog: snapshot, Database: database,
 		Identities: plan.SystemIdentityResolver{}, Helper: helper, ClientSecrets: clients, OperatorSecrets: operators,
 		Notifier: notifierService, Poller: poller, Audit: audit.New(stderr), OperatorConfigured: len(operators) > 0,
 	})
+	if err != nil {
+		_ = database.Close()
+	}
+	return server, err
 }
 
 func serverHelperReady(ctx context.Context, server *routes.Server) error {
@@ -212,7 +216,7 @@ func (r *statusRecorder) Write(value []byte) (int, error) {
 func (r *statusRecorder) WriteHeader(status int) { r.status = status }
 
 func httpServer(address string, handler http.Handler, operator bool) *http.Server {
-	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
 	if operator {
 		server.WriteTimeout = 0
 	}

@@ -161,8 +161,8 @@ Open a pull request:
 ```sh
 curl -X POST -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."}' \
-  http://localhost:8080/api/repos/osolmaz/gh-broker/pulls
+  -d '{"idempotency_key":"open-agent-pr","operation":"pr.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"arguments":{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."},"reason":"Open the reviewed feature branch"}' \
+  http://localhost:8080/api/agent/v1/operations
 ```
 
 ## Policy
@@ -208,7 +208,11 @@ POST /api/grants
 GET  /api/grants
 GET  /api/grants/{id}
 GET  /api/repos/{owner}/{repo}/contents/{path}
-POST /api/repos/{owner}/{repo}/pulls
+
+GET  /.well-known/brokerkit-agent
+POST /api/agent/v1/operations
+GET  /api/agent/v1/operations/{id}
+GET  /api/agent/v1/operations/{id}/events
 
 GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
 POST /{owner}/{repo}.git/git-upload-pack

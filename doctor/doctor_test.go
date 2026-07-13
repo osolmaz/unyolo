@@ -52,6 +52,23 @@ func TestIdentityGroupsFailsWhenGroupNameIsUnknown(t *testing.T) {
 	}
 }
 
+func TestIdentityFromUserAllowsUnknownGroupNames(t *testing.T) {
+	oldLookup := lookupGroupByID
+	lookupGroupByID = func(string) (*user.Group, error) { return nil, errors.New("lookup unavailable") }
+	t.Cleanup(func() { lookupGroupByID = oldLookup })
+	current, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := IdentityFromUser(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.UID < 0 || identity.GID < 0 || len(identity.GroupIDs) == 0 || len(identity.GroupNames) != 0 {
+		t.Fatalf("identity = %+v", identity)
+	}
+}
+
 func TestSecretFileChecks(t *testing.T) {
 	path := filepath.Join(resolvedTempDir(t), "secret")
 	if err := os.WriteFile(path, []byte("do-not-print"), 0o600); err != nil {

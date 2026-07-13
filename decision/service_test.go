@@ -14,6 +14,7 @@ import (
 	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
@@ -32,7 +33,7 @@ func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
 	}
 	first := create(t, store, "first")
 	result, err := service.Decide(t.Context(), first.Grant.ID, operatorv1.ActionApprove, "operator:onur", operatorv1.Decision{
-		ExpectedRevision: first.Grant.Revision, IdempotencyKey: "decision-1", Constraints: &operatorv1.Constraints{DurationSeconds: 60, MaxUses: 1},
+		ExpectedRevision: first.Grant.Revision, IdempotencyKey: "decision-1", Constraints: &operatorv1.Constraints{DurationSeconds: 60, MaxUses: usebudget.Finite(1)},
 	})
 	if err != nil || result.Grant.Status != grants.StatusActive {
 		t.Fatalf("Decide() = %+v, %v", result, err)
@@ -55,7 +56,7 @@ func TestServiceAuditsRevisionAndTokenBindings(t *testing.T) {
 	first := create(t, store, "audit-revision")
 	if _, err := service.Decide(t.Context(), first.Grant.ID, operatorv1.ActionApprove, "operator:onur", operatorv1.Decision{
 		ExpectedRevision: first.Grant.Revision, IdempotencyKey: "audit-1", OnBehalfOf: "onur",
-		Constraints: &operatorv1.Constraints{DurationSeconds: 60, MaxUses: 1},
+		Constraints: &operatorv1.Constraints{DurationSeconds: 60, MaxUses: usebudget.Finite(1)},
 	}); err != nil {
 		t.Fatal(err)
 	}

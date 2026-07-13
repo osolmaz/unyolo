@@ -13,8 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	bkaudit "github.com/osolmaz/brokerkit/audit"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
@@ -68,7 +67,7 @@ func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr 
 	case "setup":
 		return runSetup(ctx, stdout, stderr, args[1:])
 	case "client":
-		return runAgentClient(ctx, getenv, stdout, stderr, args[1:])
+		return runClientCommand(ctx, getenv, stdout, stderr, args[1:])
 	case "mcp":
 		return runMCP(ctx, getenv, os.Stdin, stdout, stderr, args[1:])
 	case "__doctor-isolation-probe":
@@ -76,6 +75,13 @@ func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr 
 	default:
 		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|client|mcp]"}
 	}
+}
+
+func runClientCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
+	if len(args) >= 1 && args[0] == "grant" {
+		return runGrantClientFromEnv(ctx, getenv, stdout, stderr, args[1:])
+	}
+	return runAgentClient(ctx, getenv, stdout, stderr, args)
 }
 
 func runServer(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer) error {
@@ -87,18 +93,20 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
+	auditRecorder := audit.New(stdout)
 	handler, err := httpapi.New(httpapi.Options{
 		Config:                cfg,
 		Scope:                 pol,
-		Audit:                 audit.New(stdout),
+		Audit:                 auditRecorder,
 		Context:               ctx,
 		UpstreamBaseURL:       cfg.UpstreamHubURL,
 		UpstreamRouterBaseURL: cfg.UpstreamRouterURL,
-		OperatorAudit:         bkaudit.New(stdout),
+		OperatorAudit:         auditRecorder,
 	})
 	if err != nil {
 		return err
 	}
+	defer func() { _ = handler.Close() }()
 	servers := []*http.Server{{
 		Addr:              net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.Port)),
 		Handler:           handler,

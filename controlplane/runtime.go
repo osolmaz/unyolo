@@ -28,6 +28,7 @@ type Options struct {
 	Presenter           operatorinbox.Presenter
 	Audit               operatorapi.AuditRecorder
 	ActivationValidator decision.ActivationValidator
+	NewCorrelationID    func() (string, error)
 }
 
 // HandleDecision applies one approval-channel callback through the configured decider.
@@ -93,6 +94,7 @@ func operatorHandler(options Options, decisions *decision.Service) (http.Handler
 	}
 	return operatorapi.New(operatorapi.Options{
 		Inbox: inbox, Decisions: decisions, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: recorder,
+		NewCorrelationID: options.NewCorrelationID,
 	})
 }
 

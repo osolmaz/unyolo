@@ -312,8 +312,9 @@ POST /api/grants/{id}/deny
 POST /api/grants/{id}/revoke
 ```
 
-Brokers may add platform-specific routes, such as Git smart-HTTP routes,
-GitHub pull request routes, or sudo session routes.
+Brokers may add platform-specific streaming and read routes, such as Git
+smart-HTTP. Discrete approved operations use the common Agent V1 lifecycle
+rather than provider-specific execution routes.
 
 ## Audit
 

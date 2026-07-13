@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/audit"
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -117,7 +117,7 @@ func (s *Server) inferenceAllowed(w http.ResponseWriter, client string, operatio
 	if bodyBytes > 0 {
 		attrs["max_bytes"] = int64(bodyBytes)
 	}
-	decision := s.policy.Decide(policy.Request{Client: client, Operation: operation, Target: target, Attrs: attrs}, nil, time.Now(), false)
+	decision := s.policy.Decide(policy.Request{Client: client, Operation: operation, Target: target, Attrs: attrs}, nil, s.utcNow(), false)
 	targetName := target.Owner + "/" + target.Name
 	if decision.Effect != policy.EffectAllow {
 		writeInferenceError(w, http.StatusForbidden, "policy_denied")
@@ -138,12 +138,11 @@ func readInferenceRequest(w http.ResponseWriter, r *http.Request) ([]byte, int, 
 }
 
 func readInferenceRequestWithLimit(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, int, string) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+	body, err := httpx.ReadLimited(r.Body, limit)
 	if err == nil {
 		return body, 0, ""
 	}
-	var maxBytesError *http.MaxBytesError
-	if errors.As(err, &maxBytesError) {
+	if errors.Is(err, httpx.ErrBodyTooLarge) {
 		return nil, http.StatusRequestEntityTooLarge, "request_body_too_large"
 	}
 	return nil, http.StatusBadRequest, "invalid_request_body"
@@ -168,11 +167,8 @@ func inferenceRequestModel(body []byte) (string, bool) {
 }
 
 func decodeInferenceObject(body []byte) (map[string]json.RawMessage, bool) {
-	if len(body) == 0 || strictjson.RejectDuplicateKeys(body) != nil {
-		return nil, false
-	}
 	var request map[string]json.RawMessage
-	if json.Unmarshal(body, &request) != nil || len(request) == 0 {
+	if strictjson.Decode(body, &request, false) != nil || len(request) == 0 {
 		return nil, false
 	}
 	return request, true
@@ -209,11 +205,8 @@ func validInferenceMessages(raw json.RawMessage) bool {
 }
 
 func validInferenceMessage(raw json.RawMessage) bool {
-	if strictjson.RejectDuplicateKeys(raw) != nil {
-		return false
-	}
 	var message map[string]json.RawMessage
-	if json.Unmarshal(raw, &message) != nil || !knownInferenceFields(message, inferenceMessageFields) {
+	if strictjson.Decode(raw, &message, false) != nil || !knownInferenceFields(message, inferenceMessageFields) {
 		return false
 	}
 	var role string
@@ -352,14 +345,7 @@ func inferenceResponseStreams(response *http.Response) bool {
 }
 
 func readBoundedInferenceBody(body io.Reader, maximum int64) ([]byte, error) {
-	value, err := io.ReadAll(io.LimitReader(body, maximum+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(value)) > maximum {
-		return nil, fmt.Errorf("upstream response exceeds %d bytes", maximum)
-	}
-	return value, nil
+	return httpx.ReadLimited(body, maximum)
 }
 
 func copyInferenceBody(w http.ResponseWriter, response *http.Response) error {

@@ -2,12 +2,10 @@
 package hfplan
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
 	"time"
@@ -15,7 +13,9 @@ import (
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -38,30 +38,34 @@ type Plan struct {
 }
 
 type Constraints struct {
-	Attributes               map[string][]string `json:"attributes,omitempty"`
-	Mode                     string              `json:"mode"`
-	RequestedDurationSeconds int64               `json:"requested_duration_seconds"`
-	RequestedMaxUses         int                 `json:"requested_max_uses"`
+	Attributes                map[string][]string `json:"attributes,omitempty"`
+	Mode                      string              `json:"mode"`
+	RequestedDurationSeconds  int64               `json:"requested_duration_seconds"`
+	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
+	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted,omitempty"`
 }
 
 type Store struct {
-	shared *planstore.Store
-	now    func() time.Time
+	database *state.Database
+	now      func() time.Time
 }
 
-func NewStore(directory string) (*Store, error) {
-	return newStore(directory, time.Now)
+func NewStore(database *state.Database) (*Store, error) {
+	return newStore(database, time.Now)
 }
 
-func newStore(directory string, now func() time.Time) (*Store, error) {
-	shared, err := planstore.New(directory, "HF")
-	if err != nil {
-		return nil, err
+func NewStoreWithClock(database *state.Database, now func() time.Time) (*Store, error) {
+	return newStore(database, now)
+}
+
+func newStore(database *state.Database, now func() time.Time) (*Store, error) {
+	if database == nil {
+		return nil, errors.New("HF plan database is required")
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{shared: shared, now: now}, nil
+	return &Store{database: database, now: now}, nil
 }
 
 func FromRequest(request grants.Request, createdAt time.Time) Plan {
@@ -72,43 +76,39 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 	return Plan{SchemaVersion: SchemaV1, Kind: kind, ClientID: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, TargetKind: request.Target.Kind,
 		Target: cloneValues(request.Target.Fields), CredentialSelector: "primary", CreatedAt: createdAt.UTC(),
 		Constraints: Constraints{Attributes: cloneValues(request.Attrs), Mode: request.Metadata["hf_grant_mode"],
-			RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses}}
+			RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses,
+			RequestedMaxUsesDefaulted: request.MaxUsesDefaulted}}
 }
 
 func (s *Store) Put(plan Plan) (string, error) {
-	if s == nil || s.shared == nil {
+	if s == nil || s.database == nil {
 		return "", errors.New("HF plan store is unavailable")
 	}
 	encoded, err := encode(plan)
 	if err != nil {
 		return "", err
 	}
-	return s.shared.Put(encoded)
+	return s.database.PutPlan(context.Background(), SchemaV1, encoded, plan.CreatedAt)
 }
 
 func (s *Store) Get(value string) (Plan, error) {
-	if s == nil || s.shared == nil {
+	if s == nil || s.database == nil {
 		return Plan{}, errors.New("HF plan store is unavailable")
 	}
-	data, err := s.shared.Get(value)
+	record, err := s.database.Plan(context.Background(), value)
 	if err != nil {
 		return Plan{}, err
 	}
-	return decode(data)
+	if record.SchemaName != SchemaV1 {
+		return Plan{}, errors.New("HF plan schema is unsupported")
+	}
+	return decode(record.Canonical)
 }
 
 func decode(data []byte) (Plan, error) {
-	if err := strictjson.RejectDuplicateKeys(data); err != nil {
-		return Plan{}, fmt.Errorf("decode HF plan: %w", err)
-	}
 	var plan Plan
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&plan); err != nil {
+	if err := strictjson.Decode(data, &plan, true); err != nil {
 		return Plan{}, fmt.Errorf("decode HF plan: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return Plan{}, errors.New("decode HF plan: trailing data")
 	}
 	if err := validate(plan); err != nil {
 		return Plan{}, err
@@ -124,26 +124,38 @@ func (s *Store) Bind(request *grants.Request) error {
 }
 
 func (s *Store) BindAt(request *grants.Request, createdAt time.Time) error {
-	if s == nil || request == nil {
-		return errors.New("HF grant request is required")
-	}
-	digest, err := s.Put(FromRequest(*request, createdAt))
+	envelope, err := s.PrepareBindAt(request, createdAt)
 	if err != nil {
 		return err
 	}
+	_, err = s.database.PutPlan(context.Background(), envelope.SchemaName, envelope.Canonical, envelope.CreatedAt)
+	return err
+}
+
+// PrepareBind constructs and binds an immutable plan without persisting it.
+// The grant store uses the returned envelope for one plan-plus-grant SQL transaction.
+func (s *Store) PrepareBind(request *grants.Request) (grants.ImmutablePlan, error) {
+	if s == nil {
+		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
+	}
+	return s.PrepareBindAt(request, s.now().UTC())
+}
+
+func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (grants.ImmutablePlan, error) {
+	if s == nil || request == nil {
+		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
+	}
+	encoded, err := encode(FromRequest(*request, createdAt))
+	if err != nil {
+		return grants.ImmutablePlan{}, err
+	}
+	digest := plandigest.Digest(encoded)
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
 	request.Metadata[MetadataSchema] = SchemaV1
 	request.Metadata[MetadataDigest] = digest
-	return nil
-}
-
-func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) (int, error) {
-	if s == nil || s.shared == nil {
-		return 0, errors.New("HF plan store is unavailable")
-	}
-	return s.shared.CollectOrphans(referenced, olderThan)
+	return grants.ImmutablePlan{Digest: digest, SchemaName: SchemaV1, Canonical: encoded, CreatedAt: createdAt.UTC()}, nil
 }
 
 type Validator struct{ Store *Store }
@@ -171,28 +183,37 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("HF grant does not match its immutable plan")
 	}
-	if constraints.Duration > requestedDuration || constraints.MaxUses > requestedMaxUses {
+	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
 		return grants.ErrConstraintExceeded
 	}
 	return nil
 }
 
-func requestedGrantBounds(grant grants.Grant) (time.Duration, int) {
+func useConstraintExceeds(constraints grants.ApprovalConstraints, requested usebudget.Limit) bool {
+	if !constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite() {
+		return false
+	}
+	return requested.IsFinite() && (constraints.MaxUses.IsUnlimited() || constraints.MaxUses > requested)
+}
+
+func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 	duration := grant.RequestedDuration
 	if duration <= 0 {
 		duration = grant.Duration
 	}
 	maxUses := grant.RequestedMaxUses
-	if maxUses <= 0 {
+	if maxUses < 0 {
 		maxUses = grant.MaxUses
 	}
 	return duration, maxUses
 }
 
-func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses int) bool {
+func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
 	return planMatchesGrantIdentity(plan, grant) && planMatchesGrantValues(plan, grant) &&
 		plan.Constraints.Mode == grant.Metadata["hf_grant_mode"] &&
-		plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) && plan.Constraints.RequestedMaxUses == maxUses
+		plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) &&
+		plan.Constraints.RequestedMaxUses == maxUses &&
+		plan.Constraints.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
 
 func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
@@ -242,7 +263,7 @@ func validPlanKind(kind string) bool {
 
 func validPlanConstraints(plan Plan) bool {
 	return strings.TrimSpace(plan.Constraints.Mode) != "" && plan.Constraints.RequestedDurationSeconds > 0 &&
-		plan.Constraints.RequestedMaxUses > 0 && plan.CredentialSelector == "primary" && !plan.CreatedAt.IsZero()
+		plan.Constraints.RequestedMaxUses >= 0 && plan.CredentialSelector == "primary" && !plan.CreatedAt.IsZero()
 }
 
 func validatePlanValues(values map[string][]string) error {

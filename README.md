@@ -75,6 +75,10 @@ The main reusable packages are:
 - `policy`: generic rule evaluation with broker-owned operation registries
 - `grants`: durable short-lived grants, use reservations, crash recovery, and
   notification delivery state
+- `agentapi`, `agentclient`, `agentconformance`, `grantclient`, and `clienthttp`:
+  shared Agent V1 server, clients and black-box contract tests, temporary-grant
+  clients, and credential-safe HTTP defaults
+- `usebudget`: finite/default/unlimited approval use-budget values
 - `audit`: secret-safe structured audit helpers
 - `httpx`: proxy-safe header filtering and bounded body helpers
 - `clientconfig`: shared client env rendering for

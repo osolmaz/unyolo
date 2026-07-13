@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 const maxResponseBytes = 1 << 20
@@ -96,11 +98,11 @@ func decodeGitHubResponse(response *http.Response, out any) error {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return StatusError{Code: response.StatusCode}
 	}
-	payload, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if err != nil || len(payload) > maxResponseBytes {
+	payload, err := httpx.ReadLimited(response.Body, maxResponseBytes)
+	if err != nil {
 		return errors.New("GitHub API response was invalid")
 	}
-	if err := json.Unmarshal(payload, out); err != nil {
+	if err := strictjson.Decode(payload, out, false); err != nil {
 		return errors.New("GitHub API response was invalid")
 	}
 	return nil

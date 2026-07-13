@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestApplyOperatorDecisionIsAtomicAndReplaySafe(t *testing.T) {
@@ -26,8 +27,8 @@ func TestApplyOperatorDecisionIsAtomicAndReplaySafe(t *testing.T) {
 	command := OperatorDecision{
 		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
 		OnBehalfOf: "Onur", ExpectedRevision: created.Grant.Revision,
-		IdempotencyKey: "decision-1", Reason: "reviewed",
-		Constraints: ApprovalConstraints{Duration: 5 * time.Minute, MaxUses: 1},
+		IdempotencyKey: "decision-1",
+		Constraints:    ApprovalConstraints{Duration: 5 * time.Minute, MaxUses: 1},
 	}
 	result, err := store.ApplyOperatorDecision(t.Context(), command, func(_ context.Context, grant Grant, constraints ApprovalConstraints) error {
 		validatorCalls++
@@ -58,7 +59,7 @@ func TestApplyOperatorDecisionIsAtomicAndReplaySafe(t *testing.T) {
 	}
 
 	changed := command
-	changed.Reason = "different"
+	changed.OnBehalfOf = "different"
 	if _, err := restarted.ApplyOperatorDecision(t.Context(), changed, nil); !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("changed replay error = %v", err)
 	}
@@ -95,5 +96,46 @@ func TestApplyOperatorDecisionFailsClosed(t *testing.T) {
 	stale.ExpectedRevision++
 	if _, err := store.ApplyOperatorDecision(t.Context(), stale, nil); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("stale error = %v", err)
+	}
+}
+
+func TestApprovalMayNarrowUnlimitedUseBudget(t *testing.T) {
+	t.Parallel()
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	created, _, err := store.Request(Request{
+		Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "maintenance", Duration: time.Minute,
+		MaxUses: usebudget.Unlimited, MaxUsesSpecified: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "finite",
+		Constraints: ApprovalConstraints{MaxUses: 3, MaxUsesSpecified: true},
+	}, nil)
+	if err != nil || result.Grant.MaxUses != 3 || !result.Grant.RequestedMaxUses.IsUnlimited() {
+		t.Fatalf("ApplyOperatorDecision() = %+v, %v", result, err)
+	}
+}
+
+func TestApprovalCannotWidenFiniteUseBudgetToUnlimited(t *testing.T) {
+	t.Parallel()
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	created, _, err := store.Request(Request{
+		Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "maintenance", Duration: time.Minute, MaxUses: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "unlimited",
+		Constraints: ApprovalConstraints{MaxUses: usebudget.Unlimited, MaxUsesSpecified: true},
+	}, nil)
+	if !errors.Is(err, ErrConstraintExceeded) {
+		t.Fatalf("ApplyOperatorDecision() error = %v", err)
 	}
 }

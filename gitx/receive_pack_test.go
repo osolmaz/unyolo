@@ -154,6 +154,77 @@ func TestParseReceivePackPreservesPackStream(t *testing.T) {
 	}
 }
 
+func TestScannerPreservesTrailingBytes(t *testing.T) {
+	data := []byte(pkt("payload") + "0000PACK")
+	scanner := NewScanner(data)
+	payload, flush, err := scanner.Next()
+	if err != nil || flush || string(payload) != "payload" {
+		t.Fatalf("first Next() = %q, %v, %v", payload, flush, err)
+	}
+	if _, flush, err := scanner.Next(); err != nil || !flush {
+		t.Fatalf("flush Next() = %v, %v", flush, err)
+	}
+	if got := string(data[scanner.Offset():]); got != "PACK" {
+		t.Fatalf("trailing data = %q", got)
+	}
+}
+
+func TestScannerRejectsMalformedAndOversizedFrames(t *testing.T) {
+	for name, body := range map[string][]byte{
+		"truncated header":  []byte("00"),
+		"invalid header":    []byte("zzzz"),
+		"truncated payload": []byte("0008abc"),
+		"oversized":         []byte("ffff"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			scanner := NewScanner(body)
+			if _, _, err := scanner.Next(); err == nil {
+				t.Fatal("Next() accepted malformed framing")
+			}
+		})
+	}
+}
+
+func TestAppendPktLineRejectsOversizedPayload(t *testing.T) {
+	if _, err := AppendPktLine(nil, make([]byte, MaxPktLinePayload+1)); err == nil {
+		t.Fatal("AppendPktLine() accepted an oversized payload")
+	}
+}
+
+func TestPktLineEncodingHelpers(t *testing.T) {
+	encoded, err := AppendPktLineString(nil, "payload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded = AppendFlushPkt(encoded)
+	scanner := NewScanner(encoded)
+	if payload, flush, err := scanner.Next(); err != nil || flush || string(payload) != "payload" {
+		t.Fatalf("data packet = %q flush=%v err=%v", payload, flush, err)
+	}
+	if _, flush, err := scanner.Next(); err != nil || !flush {
+		t.Fatalf("flush packet flush=%v err=%v", flush, err)
+	}
+}
+
+func FuzzScanner(f *testing.F) {
+	f.Add([]byte("0000"))
+	f.Add([]byte(pkt("payload") + "0000PACK"))
+	f.Add([]byte("zzzz"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 128<<10 {
+			t.Skip()
+		}
+		scanner := NewScanner(data)
+		for range len(data)/4 + 1 {
+			_, _, err := scanner.Next()
+			if err != nil {
+				return
+			}
+		}
+		t.Fatal("scanner did not terminate within its input bound")
+	})
+}
+
 func pkt(payload string) string {
 	return fourHex(len(payload)+4) + payload
 }

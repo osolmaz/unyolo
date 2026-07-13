@@ -21,17 +21,17 @@ func TestParseProcStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseProcStatus() error = %v", err)
 	}
-	if status.uid != 1001 {
-		t.Fatalf("uid = %d, want 1001", status.uid)
+	if status.FilesystemUID != 1001 {
+		t.Fatalf("uid = %d, want 1001", status.FilesystemUID)
 	}
-	if status.capEff != 1<<21 {
-		t.Fatalf("capEff = %#x, want CAP_SYS_ADMIN bit", status.capEff)
+	if status.EffectiveCaps != 1<<21 {
+		t.Fatalf("capEff = %#x, want CAP_SYS_ADMIN bit", status.EffectiveCaps)
 	}
-	if status.capPrm != 1<<1 {
-		t.Fatalf("capPrm = %#x, want CAP_DAC_OVERRIDE bit", status.capPrm)
+	if status.PermittedCaps != 1<<1 {
+		t.Fatalf("capPrm = %#x, want CAP_DAC_OVERRIDE bit", status.PermittedCaps)
 	}
-	if status.gid != 1002 || len(status.gids) != 2 || status.gids[1] != 2000 {
-		t.Fatalf("groups = gid %d gids %+v, want gid 1002 groups [1002 2000]", status.gid, status.gids)
+	if status.FilesystemGID != 1002 || len(status.Groups) != 2 || status.Groups[1] != 2000 {
+		t.Fatalf("groups = gid %d gids %+v, want gid 1002 groups [1002 2000]", status.FilesystemGID, status.Groups)
 	}
 }
 
@@ -40,11 +40,11 @@ func TestParseProcStatusUsesFilesystemIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseProcStatus() error = %v", err)
 	}
-	if status.uid != 1004 || status.gid != 2004 {
-		t.Fatalf("ids = uid %d gid %d, want filesystem ids 1004/2004", status.uid, status.gid)
+	if status.FilesystemUID != 1004 || status.FilesystemGID != 2004 {
+		t.Fatalf("ids = uid %d gid %d, want filesystem ids 1004/2004", status.FilesystemUID, status.FilesystemGID)
 	}
-	if !status.hasUID(1002) || status.allUIDsMatch(1001) {
-		t.Fatalf("uid values = %+v, want full uid set preserved", status.uidValues)
+	if !status.HasUID(1002) || status.AllUIDsMatch(1001) {
+		t.Fatalf("uid values = %+v, want full uid set preserved", status.UIDs)
 	}
 }
 
@@ -53,8 +53,8 @@ func TestParseProcStatusAllowsEmptyGroups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseProcStatus() error = %v", err)
 	}
-	if len(status.gids) != 0 {
-		t.Fatalf("groups = %+v, want empty supplementary group list", status.gids)
+	if len(status.Groups) != 0 {
+		t.Fatalf("groups = %+v, want empty supplementary group list", status.Groups)
 	}
 }
 
@@ -762,22 +762,6 @@ func TestActiveProbeRunsForSocketOnlyChecks(t *testing.T) {
 	}
 }
 
-func TestActiveProbeScrubsEnvironment(t *testing.T) {
-	t.Setenv("HF_BROKER_HF_TOKEN", "hf_secret_value")
-	cmd, ok := activeProbeCommand(context.Background(), identity{uid: os.Getuid(), gid: os.Getgid()}, Options{
-		HelperPath: "/bin/echo",
-		TokenFile:  "/tmp/token",
-	})
-	if !ok {
-		t.Fatal("active probe command did not build")
-	}
-	for _, item := range cmd.Env {
-		if strings.Contains(item, "hf_secret_value") || strings.HasPrefix(item, "HF_BROKER_HF_TOKEN=") {
-			t.Fatalf("active probe env leaked secret: %q", item)
-		}
-	}
-}
-
 func TestActiveProbeCannotSwitchUserWithoutRoot(t *testing.T) {
 	_, ok, err := runActiveProbe(context.Background(), identity{uid: syntheticOtherUID()}, Options{
 		HelperPath: "/bin/echo",
@@ -788,20 +772,6 @@ func TestActiveProbeCannotSwitchUserWithoutRoot(t *testing.T) {
 	}
 	if ok && os.Geteuid() != 0 {
 		t.Fatalf("active probe unexpectedly ran as another user")
-	}
-}
-
-func TestCredentialHelpers(t *testing.T) {
-	cred := identity{uid: 42, gids: map[int]bool{9: true, 3: true}}.credential()
-	if cred.Uid != 42 || cred.Gid != 3 {
-		t.Fatalf("credential = %+v, want uid 42 gid 3", cred)
-	}
-	withPrimary := identity{uid: 42, gid: 9, gidSet: true, gids: map[int]bool{9: true, 3: true}}.credential()
-	if withPrimary.Gid != 9 {
-		t.Fatalf("credential with primary gid = %+v, want gid 9", withPrimary)
-	}
-	if firstCredentialGroup(nil) != 0 {
-		t.Fatalf("firstCredentialGroup(nil) != 0")
 	}
 }
 
@@ -836,10 +806,10 @@ func TestStickyDirectoryAllowsEntryOwnerReplacement(t *testing.T) {
 
 func TestIdentityWithProcessStatusUsesRuntimeGroups(t *testing.T) {
 	agent := identityWithProcessStatus(identity{user: "agent", uid: 1, gid: 1}, procStatus{
-		uid:       2,
-		gid:       3,
-		gidValues: []int{6, 7, 8, 3},
-		gids:      []int{4, 5},
+		FilesystemUID: 2,
+		FilesystemGID: 3,
+		GIDs:          []int{6, 7, 8, 3},
+		Groups:        []int{4, 5},
 	})
 	if agent.uid != 2 || agent.gid != 3 || !agent.gids[3] || !agent.gids[4] || !agent.gids[5] || !agent.gids[6] || !agent.gids[7] || !agent.gids[8] {
 		t.Fatalf("agent = %+v, want process uid/gid/groups", agent)

@@ -1,17 +1,36 @@
 {
+  "$comment": "Generated from protocol/openapi/agent-v1.yaml; do not edit.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://brokerkit.io/schema/agent/v1/error.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["error"],
+  "required": [
+    "error"
+  ],
   "properties": {
     "error": {
+      "$ref": "#/$defs/OperationError"
+    }
+  },
+  "$defs": {
+    "OperationError": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["code", "message"],
+      "required": [
+        "code",
+        "message"
+      ],
       "properties": {
-        "code": {"type": "string", "minLength": 1, "maxLength": 64},
-        "message": {"type": "string", "minLength": 1, "maxLength": 500}
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
       }
     }
   }

@@ -1,7 +1,11 @@
 // Package policy evaluates broker authorization rules.
 package policy
 
-import "time"
+import (
+	"time"
+
+	"github.com/osolmaz/brokerkit/usebudget"
+)
 
 // Effect is a rule or decision effect.
 type Effect string
@@ -47,12 +51,12 @@ type TargetMatcher struct {
 
 // GrantPolicy bounds requestable approval grants.
 type GrantPolicy struct {
-	Mode              string `json:"mode"`
-	DefaultMinutes    int    `json:"default_minutes"`
-	MaxMinutes        int    `json:"max_minutes"`
-	RequestTTLMinutes int    `json:"request_ttl_minutes"`
-	DefaultMaxUses    int    `json:"default_max_uses"`
-	MaxUses           int    `json:"max_uses"`
+	Mode              string          `json:"mode"`
+	DefaultMinutes    int             `json:"default_minutes"`
+	MaxMinutes        int             `json:"max_minutes"`
+	RequestTTLMinutes int             `json:"request_ttl_minutes"`
+	DefaultMaxUses    usebudget.Limit `json:"default_max_uses"`
+	MaxUses           usebudget.Limit `json:"max_uses"`
 }
 
 // Grant is an active generated allow rule.
@@ -64,6 +68,7 @@ type Grant struct {
 	Attrs     map[string][]string
 	ExpiresAt time.Time
 	UsesLeft  int
+	Unlimited bool
 }
 
 // Decision is the result of policy evaluation.

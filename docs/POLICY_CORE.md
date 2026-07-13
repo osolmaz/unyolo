@@ -252,6 +252,11 @@ Minimal example:
 ```
 
 The shared `window` grant mode is a short time window with a use budget.
+`default_max_uses` is always a positive finite default. `max_uses` is either
+a positive finite ceiling or `null`, which permits callers to request
+unlimited uses only until the required expiry. Omitting a requested
+`max_uses` selects the finite default; an explicit request `null` selects
+unlimited use. Execution grants remain exactly single-use.
 
 ## Validation
 

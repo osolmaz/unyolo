@@ -13,5 +13,9 @@ func grantUsesRemaining(grant grants.Grant) int {
 	if grant.Status != grants.StatusActive || grant.ReservationRetained {
 		return 0
 	}
-	return max(0, grant.MaxUses-grant.UsedCount-grant.ReservedCount)
+	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, grant.ReservedCount)
+	if !finite {
+		return 0
+	}
+	return remaining
 }

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -106,7 +105,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
 	} else {
 		removeFiles = []bkservice.ManagedFileRef{{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName}}
-		readyCheck = bkservice.HTTPReadyCheck(brokerBaseURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", localReadinessHTTPClient())
+		readyCheck = bkservice.HTTPReadyCheck(brokerBaseURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", bkservice.LocalHTTPClient())
 	}
 	return bkservice.SystemdInstallPlan{
 		User:         plan.opts.User,
@@ -149,12 +148,6 @@ func readSetupTokenFile(path string, label string) ([]byte, error) {
 		return nil, fmt.Errorf("%s is empty", label)
 	}
 	return data, nil
-}
-
-func localReadinessHTTPClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	return &http.Client{Transport: transport}
 }
 
 func renderScopeJSON(repo, repoType string) ([]byte, error) {

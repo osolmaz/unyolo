@@ -20,8 +20,10 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -31,26 +33,27 @@ const (
 )
 
 type Plan struct {
-	Schema                   string            `json:"schema"`
-	RequestID                string            `json:"request_id"`
-	ClientID                 string            `json:"client_id"`
-	Operation                string            `json:"operation"`
-	CommandID                string            `json:"command_id"`
-	TargetUser               string            `json:"target_user"`
-	TargetUID                uint32            `json:"target_uid"`
-	TargetGID                uint32            `json:"target_gid"`
-	SupplementaryGIDs        []uint32          `json:"supplementary_gids"`
-	Executable               string            `json:"executable"`
-	Arguments                []string          `json:"arguments"`
-	WorkingDirectory         string            `json:"working_directory"`
-	Environment              []string          `json:"environment"`
-	TimeoutSeconds           uint32            `json:"timeout_seconds"`
-	MaxOutputBytes           uint32            `json:"max_output_bytes"`
-	SlotValues               map[string]string `json:"slot_values,omitempty"`
-	CatalogDigest            string            `json:"catalog_digest"`
-	RequestedDurationSeconds int64             `json:"requested_duration_seconds"`
-	RequestedMaxUses         int               `json:"requested_max_uses"`
-	CreatedAt                time.Time         `json:"created_at"`
+	Schema                    string            `json:"schema"`
+	RequestID                 string            `json:"request_id"`
+	ClientID                  string            `json:"client_id"`
+	Operation                 string            `json:"operation"`
+	CommandID                 string            `json:"command_id"`
+	TargetUser                string            `json:"target_user"`
+	TargetUID                 uint32            `json:"target_uid"`
+	TargetGID                 uint32            `json:"target_gid"`
+	SupplementaryGIDs         []uint32          `json:"supplementary_gids"`
+	Executable                string            `json:"executable"`
+	Arguments                 []string          `json:"arguments"`
+	WorkingDirectory          string            `json:"working_directory"`
+	Environment               []string          `json:"environment"`
+	TimeoutSeconds            uint32            `json:"timeout_seconds"`
+	MaxOutputBytes            uint32            `json:"max_output_bytes"`
+	SlotValues                map[string]string `json:"slot_values,omitempty"`
+	CatalogDigest             string            `json:"catalog_digest"`
+	RequestedDurationSeconds  int64             `json:"requested_duration_seconds"`
+	RequestedMaxUses          usebudget.Limit   `json:"requested_max_uses"`
+	RequestedMaxUsesDefaulted bool              `json:"requested_max_uses_defaulted,omitempty"`
+	CreatedAt                 time.Time         `json:"created_at"`
 }
 
 type Identity struct {
@@ -105,14 +108,13 @@ func supplementaryGroups(account *user.User, primary uint32) ([]uint32, error) {
 	return result, nil
 }
 
-type Store struct{ content *planstore.Store }
+type Store struct{ database *state.Database }
 
-func NewStore(directory string) (*Store, error) {
-	content, err := planstore.New(directory, "sudo")
-	if err != nil {
-		return nil, err
+func NewStore(database *state.Database) (*Store, error) {
+	if database == nil {
+		return nil, errors.New("sudo plan database is required")
 	}
-	return &Store{content: content}, nil
+	return &Store{database: database}, nil
 }
 
 func Build(request grants.Request, resolved catalog.Resolved, identity Identity, now time.Time) (Plan, error) {
@@ -141,7 +143,8 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 		Arguments: append([]string(nil), arguments[1:]...), WorkingDirectory: resolved.WorkingDirectory, Environment: environment,
 		TimeoutSeconds: uint32(resolved.TimeoutSeconds), MaxOutputBytes: uint32(resolved.MaxOutputBytes), // #nosec G115 -- catalog validation bounds both nonnegative values before resolution.
 		SlotValues: cloneMap(resolved.SlotValues), CatalogDigest: resolved.CatalogDigest,
-		RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses, CreatedAt: now.UTC(),
+		RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses,
+		RequestedMaxUsesDefaulted: request.MaxUsesDefaulted, CreatedAt: now.UTC(),
 	}, nil
 }
 
@@ -170,48 +173,57 @@ func boundEnvironment(values map[string]string) []string {
 }
 
 func (s *Store) Bind(request *grants.Request, value Plan) error {
-	if s == nil || s.content == nil || request == nil {
-		return errors.New("sudo plan store and request are required")
+	plan, err := s.PrepareBind(request, value)
+	if err != nil {
+		return err
+	}
+	_, err = s.database.PutPlan(context.Background(), plan.SchemaName, plan.Canonical, plan.CreatedAt)
+	return err
+}
+
+func (s *Store) PrepareBind(request *grants.Request, value Plan) (grants.ImmutablePlan, error) {
+	if s == nil || s.database == nil || request == nil {
+		return grants.ImmutablePlan{}, errors.New("sudo plan store and request are required")
 	}
 	encoded, err := encode(value)
 	if err != nil {
-		return err
+		return grants.ImmutablePlan{}, err
 	}
-	digest, err := s.content.Put(encoded)
-	if err != nil {
-		return err
-	}
+	digest := plandigest.Digest(encoded)
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
 	request.Metadata[MetadataSchema] = SchemaV1
 	request.Metadata[MetadataDigest] = digest
-	return nil
+	return grants.ImmutablePlan{Digest: digest, SchemaName: SchemaV1, Canonical: encoded, CreatedAt: value.CreatedAt.UTC()}, nil
 }
 
 func (s *Store) Get(digest string) (Plan, error) {
-	if s == nil || s.content == nil {
+	if s == nil || s.database == nil {
 		return Plan{}, errors.New("sudo plan store is unavailable")
 	}
-	data, err := s.content.Get(digest)
+	record, err := s.database.Plan(context.Background(), digest)
 	if err != nil {
 		return Plan{}, err
 	}
-	return decode(data)
+	if record.SchemaName != SchemaV1 {
+		return Plan{}, errors.New("sudo plan schema is unsupported")
+	}
+	return decode(record.Canonical)
 }
 
 func (s *Store) Canonical(digest string) ([]byte, error) {
-	if s == nil || s.content == nil {
+	if s == nil || s.database == nil {
 		return nil, errors.New("sudo plan store is unavailable")
 	}
-	return s.content.Get(digest)
-}
-
-func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) (int, error) {
-	if s == nil || s.content == nil {
-		return 0, errors.New("sudo plan store is unavailable")
+	record, err := s.database.Plan(context.Background(), digest)
+	if err != nil {
+		return nil, err
 	}
-	return s.content.CollectOrphans(referenced, olderThan)
+	if record.SchemaName != SchemaV1 || plandigest.Digest(record.Canonical) != digest {
+		return nil, errors.New("sudo plan content is invalid")
+	}
+	return append([]byte(nil), record.Canonical...), nil
 }
 
 func EncodeCanonical(value Plan) ([]byte, error) { return encode(value) }
@@ -330,24 +342,26 @@ func validateCurrentIdentity(resolver IdentityResolver, value Plan) error {
 }
 
 func constraintsWithinGrant(constraints grants.ApprovalConstraints, duration time.Duration) bool {
-	return constraints.Duration <= duration && constraints.MaxUses <= 1
+	usesValid := (!constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite()) || constraints.MaxUses == 1
+	return constraints.Duration <= duration && usesValid
 }
 
-func requestedGrantBounds(grant grants.Grant) (time.Duration, int) {
+func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 	duration := grant.RequestedDuration
 	if duration <= 0 {
 		duration = grant.Duration
 	}
 	maxUses := grant.RequestedMaxUses
-	if maxUses <= 0 {
+	if maxUses < 0 {
 		maxUses = grant.MaxUses
 	}
 	return duration, maxUses
 }
 
-func planMatchesGrant(value Plan, grant grants.Grant, duration time.Duration, maxUses int) bool {
+func planMatchesGrant(value Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
 	return planMatchesGrantIdentity(value, grant) && planMatchesGrantShape(value, grant) &&
-		value.RequestedDurationSeconds == int64(duration.Seconds()) && value.RequestedMaxUses == maxUses && maxUses == 1
+		value.RequestedDurationSeconds == int64(duration.Seconds()) && value.RequestedMaxUses == maxUses &&
+		value.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted && maxUses == 1
 }
 
 func planMatchesGrantIdentity(value Plan, grant grants.Grant) bool {
@@ -440,7 +454,7 @@ func validate(value Plan) error {
 }
 
 func validPlanCollectionLimits(value Plan) bool {
-	return planstore.ValidDigest(value.CatalogDigest) && len(value.Arguments) <= 64 && len(value.Environment) <= 128 &&
+	return plandigest.Valid(value.CatalogDigest) && len(value.Arguments) <= 64 && len(value.Environment) <= 128 &&
 		len(value.SlotValues) <= 64 && len(value.SupplementaryGIDs) <= 256
 }
 

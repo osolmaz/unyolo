@@ -6,10 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-const (
-	maxApproverBytes       = 200
-	maxDecisionReasonBytes = 2_000
-)
+const maxApproverBytes = 200
 
 var (
 	ErrRevisionConflict = errors.New("grant revision conflict")
@@ -69,18 +66,6 @@ func safeOperatorIdentity(value string) bool {
 	}
 	for _, char := range value {
 		if unicode.IsControl(char) {
-			return false
-		}
-	}
-	return true
-}
-
-func safeOperatorText(value string, maxBytes int) bool {
-	if len(value) > maxBytes || !utf8.ValidString(value) {
-		return false
-	}
-	for _, char := range value {
-		if unicode.IsControl(char) && char != '\n' && char != '\t' {
 			return false
 		}
 	}

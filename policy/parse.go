@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
@@ -32,8 +34,17 @@ type rawRule struct {
 	Operations  []string               `json:"operations"`
 	Targets     []TargetMatcher        `json:"targets"`
 	Attrs       map[string]patternList `json:"attrs,omitempty"`
-	GrantPolicy *GrantPolicy           `json:"grant_policy,omitempty"`
+	GrantPolicy *rawGrantPolicy        `json:"grant_policy,omitempty"`
 	Description string                 `json:"description,omitempty"`
+}
+
+type rawGrantPolicy struct {
+	Mode              string             `json:"mode"`
+	DefaultMinutes    int                `json:"default_minutes"`
+	MaxMinutes        int                `json:"max_minutes"`
+	RequestTTLMinutes int                `json:"request_ttl_minutes"`
+	DefaultMaxUses    usebudget.Optional `json:"default_max_uses"`
+	MaxUses           usebudget.Optional `json:"max_uses"`
 }
 
 type patternList []string
@@ -267,7 +278,7 @@ func attrUnsupportedOperation(name string, operations []string, registry Registr
 	return "", false
 }
 
-func normalizeGrantPolicy(effect Effect, raw *GrantPolicy, operations []string, registry Registry) (*GrantPolicy, error) {
+func normalizeGrantPolicy(effect Effect, raw *rawGrantPolicy, operations []string, registry Registry) (*GrantPolicy, error) {
 	if err := validateGrantPolicyPresence(effect, raw); err != nil {
 		return nil, err
 	}
@@ -277,11 +288,15 @@ func normalizeGrantPolicy(effect Effect, raw *GrantPolicy, operations []string, 
 	if err := validateGrantableOperations(operations, registry); err != nil {
 		return nil, err
 	}
-	grantPolicy := *raw
+	grantPolicy := GrantPolicy{
+		Mode: raw.Mode, DefaultMinutes: raw.DefaultMinutes, MaxMinutes: raw.MaxMinutes,
+		RequestTTLMinutes: raw.RequestTTLMinutes, DefaultMaxUses: raw.DefaultMaxUses.Limit,
+		MaxUses: raw.MaxUses.Limit,
+	}
 	if err := normalizeGrantPolicyMode(&grantPolicy, operations, registry); err != nil {
 		return nil, err
 	}
-	defaultGrantPolicy(&grantPolicy)
+	defaultGrantPolicy(&grantPolicy, raw.DefaultMaxUses.Specified, raw.MaxUses.Specified)
 	if err := validateGrantPolicyValues(grantPolicy); err != nil {
 		return nil, err
 	}
@@ -326,7 +341,7 @@ func operationGrantMode(operations []string, registry Registry) (GrantMode, erro
 	return mode, nil
 }
 
-func validateGrantPolicyPresence(effect Effect, raw *GrantPolicy) error {
+func validateGrantPolicyPresence(effect Effect, raw *rawGrantPolicy) error {
 	if effect == EffectRequest && raw == nil {
 		return errors.New("request rules require grant_policy")
 	}
@@ -336,7 +351,7 @@ func validateGrantPolicyPresence(effect Effect, raw *GrantPolicy) error {
 	return nil
 }
 
-func defaultGrantPolicy(grantPolicy *GrantPolicy) {
+func defaultGrantPolicy(grantPolicy *GrantPolicy, defaultUsesSpecified, maxUsesSpecified bool) {
 	if grantPolicy.DefaultMinutes == 0 {
 		grantPolicy.DefaultMinutes = defaultGrantMinutes
 	}
@@ -346,10 +361,10 @@ func defaultGrantPolicy(grantPolicy *GrantPolicy) {
 	if grantPolicy.RequestTTLMinutes == 0 {
 		grantPolicy.RequestTTLMinutes = defaultRequestTTL
 	}
-	if grantPolicy.DefaultMaxUses == 0 {
+	if !defaultUsesSpecified {
 		grantPolicy.DefaultMaxUses = defaultGrantUses
 	}
-	if grantPolicy.MaxUses == 0 {
+	if !maxUsesSpecified {
 		if GrantMode(grantPolicy.Mode) == GrantModeExecution {
 			grantPolicy.MaxUses = defaultGrantUses
 		} else {
@@ -385,7 +400,16 @@ func validateGrantPolicyMinutes(grantPolicy GrantPolicy) error {
 }
 
 func validateGrantPolicyUses(grantPolicy GrantPolicy) error {
-	return validateDefaultWithinMax("default_max_uses", grantPolicy.DefaultMaxUses, "max_uses", grantPolicy.MaxUses, defaultMaxGrantUses)
+	if grantPolicy.MaxUses.IsUnlimited() {
+		if !grantPolicy.DefaultMaxUses.IsFinite() || grantPolicy.DefaultMaxUses > defaultMaxGrantUses {
+			return fmt.Errorf("default_max_uses must be between 1 and %d", defaultMaxGrantUses)
+		}
+		return nil
+	}
+	return validateDefaultWithinMax(
+		"default_max_uses", int(grantPolicy.DefaultMaxUses),
+		"max_uses", int(grantPolicy.MaxUses), defaultMaxGrantUses,
+	)
 }
 
 func validateDefaultWithinMax(defaultName string, defaultValue int, maxName string, maxValue int, maxLimit int) error {

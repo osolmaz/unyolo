@@ -15,18 +15,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/optional"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/operatorv1"
+	"github.com/osolmaz/brokerkit/operatorv1wire"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/protocol/operatorwire"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 const (
 	maxDecisionBodyBytes = 16 * 1024
 	eventHeartbeat       = 15 * time.Second
-	requestPrefix        = "/api/operator/v1/requests/"
 )
 
 type Authorizer func(*http.Request) (string, error)
@@ -36,11 +41,12 @@ type AuditRecorder interface {
 }
 
 type Options struct {
-	Inbox     *operatorinbox.Service
-	Decisions *decision.Service
-	Authorize Authorizer
-	Broker    string
-	Audit     AuditRecorder
+	Inbox            *operatorinbox.Service
+	Decisions        *decision.Service
+	Authorize        Authorizer
+	Broker           string
+	Audit            AuditRecorder
+	NewCorrelationID func() (string, error)
 }
 
 type handler struct {
@@ -49,26 +55,24 @@ type handler struct {
 	authorize Authorizer
 	broker    string
 	audit     AuditRecorder
-}
-
-type decisionInput struct {
-	ExpectedRevision int64                     `json:"expected_revision"`
-	IdempotencyKey   string                    `json:"idempotency_key"`
-	DecisionReason   string                    `json:"decision_reason,omitempty"`
-	OnBehalfOf       string                    `json:"on_behalf_of,omitempty"`
-	Constraints      *decisionConstraintsInput `json:"constraints,omitempty"`
-}
-
-type decisionConstraintsInput struct {
-	DurationSeconds *int64 `json:"duration_seconds,omitempty"`
-	MaxUses         *int   `json:"max_uses,omitempty"`
+	newID     func() (string, error)
 }
 
 func New(options Options) (http.Handler, error) {
 	if err := validateOptions(options); err != nil {
 		return nil, err
 	}
-	return &handler{options.Inbox, options.Decisions, options.Authorize, options.Broker, options.Audit}, nil
+	if options.NewCorrelationID == nil {
+		options.NewCorrelationID = secureCorrelationID
+	}
+	h := &handler{options.Inbox, options.Decisions, options.Authorize, options.Broker, options.Audit, options.NewCorrelationID}
+	router := echo.New()
+	router.HideBanner = true
+	router.HidePort = true
+	router.Use(h.requestMetadata)
+	router.HTTPErrorHandler = h.echoError
+	operatorwire.RegisterHandlers(router, h)
+	return router, nil
 }
 
 func validateOptions(options Options) error {
@@ -85,20 +89,97 @@ func validOperatorDependencies(options Options) bool {
 	return options.Authorize != nil && strings.TrimSpace(options.Broker) != "" && options.Audit != nil
 }
 
-func (h *handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.Header().Set("X-Content-Type-Options", "nosniff")
-	writer.Header().Set("X-Correlation-ID", correlationID())
-	path := strings.TrimSuffix(request.URL.Path, "/")
-	if path == "/healthz" || path == "/readyz" {
-		h.status(writer, request)
+var _ operatorwire.ServerInterface = (*handler)(nil)
+
+func (h *handler) requestMetadata(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		writer := c.Response()
+		writer.Header().Set("Cache-Control", "no-store")
+		writer.Header().Set("X-Content-Type-Options", "nosniff")
+		correlationID, err := h.newID()
+		if err != nil {
+			writer.Header().Set("X-Correlation-ID", "unavailable")
+			h.writeError(writer, http.StatusServiceUnavailable, "temporarily_unavailable", "secure request identifier unavailable", nil)
+			return nil //nolint:nilerr // The middleware already emitted the terminal response.
+		}
+		writer.Header().Set("X-Correlation-ID", correlationID)
+		return next(c)
+	}
+}
+
+func (h *handler) echoError(err error, c echo.Context) {
+	if c.Response().Committed {
 		return
 	}
-	actor, ok := h.authenticate(writer, request)
-	if !ok {
-		return
+	status, code, message := http.StatusInternalServerError, "internal_error", "operator request failed"
+	var httpError *echo.HTTPError
+	if errors.As(err, &httpError) {
+		status = httpError.Code
 	}
-	h.serveAuthorized(writer, request, path, actor)
+	switch status {
+	case http.StatusBadRequest:
+		code, message = "invalid_request", "request is invalid"
+	case http.StatusMethodNotAllowed:
+		code, message = "method_not_allowed", "method not allowed"
+	case http.StatusNotFound:
+		code, message = "not_found", "route not found"
+	}
+	h.writeError(c.Response(), status, code, message, nil)
+}
+
+func (h *handler) actor(c echo.Context) (string, bool) {
+	return h.authenticate(c.Response(), c.Request())
+}
+
+func (h *handler) DiscoverOperator(c echo.Context) error {
+	if _, ok := h.actor(c); !ok {
+		return nil
+	}
+	return c.JSON(http.StatusOK, operatorwire.Descriptor{ApiVersion: operatorwire.BrokerkitIooperatorv1})
+}
+
+func (h *handler) StreamOperatorEvents(c echo.Context, _ operatorwire.StreamOperatorEventsParams) error {
+	return h.authorizedRequest(c, h.events)
+}
+
+func (h *handler) ListOperatorRequests(c echo.Context, _ operatorwire.ListOperatorRequestsParams) error {
+	return h.authorizedRequest(c, h.list)
+}
+
+func (h *handler) GetOperatorRequest(c echo.Context, id operatorwire.RequestID) error {
+	return h.authorized(c, func(string) {
+		h.detail(c.Response(), c.Request(), id)
+	})
+}
+
+func (h *handler) DecideOperatorRequest(c echo.Context, id operatorwire.RequestID, action operatorwire.Action) error {
+	return h.authorized(c, func(actor string) {
+		h.decide(c.Response(), c.Request(), id, operatorv1.Action(action), actor)
+	})
+}
+
+func (h *handler) authorized(c echo.Context, handle func(string)) error {
+	if actor, ok := h.actor(c); ok {
+		handle(actor)
+	}
+	return nil
+}
+
+func (h *handler) authorizedRequest(c echo.Context, handle func(http.ResponseWriter, *http.Request)) error {
+	return h.authorized(c, func(string) { handle(c.Response(), c.Request()) })
+}
+
+func (h *handler) OperatorHealth(c echo.Context) error {
+	return h.operatorStatus(c)
+}
+
+func (h *handler) OperatorReady(c echo.Context) error {
+	return h.operatorStatus(c)
+}
+
+func (h *handler) operatorStatus(c echo.Context) error {
+	h.status(c.Response(), c.Request())
+	return nil
 }
 
 func (h *handler) authenticate(writer http.ResponseWriter, request *http.Request) (string, bool) {
@@ -112,38 +193,7 @@ func (h *handler) authenticate(writer http.ResponseWriter, request *http.Request
 	return actor, true
 }
 
-func (h *handler) serveAuthorized(writer http.ResponseWriter, request *http.Request, path string, actor string) {
-	switch path {
-	case "/.well-known/brokerkit-operator":
-		if h.requireMethod(writer, request, http.MethodGet) {
-			h.writeJSON(writer, http.StatusOK, operatorv1.Descriptor{APIVersion: operatorv1.APIVersion})
-		}
-	case "/api/operator/v1/requests":
-		if h.requireMethod(writer, request, http.MethodGet) {
-			h.list(writer, request)
-		}
-	case "/api/operator/v1/events":
-		if h.requireMethod(writer, request, http.MethodGet) {
-			h.events(writer, request)
-		}
-	default:
-		h.requestPath(writer, request, path, actor)
-	}
-}
-
-func (h *handler) requireMethod(writer http.ResponseWriter, request *http.Request, method string) bool {
-	if request.Method == method {
-		return true
-	}
-	h.methodNotAllowed(writer, method)
-	return false
-}
-
 func (h *handler) status(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet {
-		h.methodNotAllowed(writer, http.MethodGet)
-		return
-	}
 	if strings.TrimSuffix(request.URL.Path, "/") == "/readyz" {
 		if _, err := h.inbox.Store().QueryGrants(grants.Query{Limit: 1}); err != nil {
 			h.writeError(writer, http.StatusServiceUnavailable, "temporarily_unavailable", "operator source is not ready", nil)
@@ -151,27 +201,6 @@ func (h *handler) status(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 	h.writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (h *handler) requestPath(writer http.ResponseWriter, request *http.Request, path, actor string) {
-	id, action, ok := parseRequestPath(path)
-	if !ok {
-		h.writeError(writer, http.StatusNotFound, "not_found", "route not found", nil)
-		return
-	}
-	if action == "" {
-		if request.Method != http.MethodGet {
-			h.methodNotAllowed(writer, http.MethodGet)
-			return
-		}
-		h.detail(writer, request, id)
-		return
-	}
-	if request.Method != http.MethodPost {
-		h.methodNotAllowed(writer, http.MethodPost)
-		return
-	}
-	h.decide(writer, request, id, operatorv1.Action(action), actor)
 }
 
 func (h *handler) list(writer http.ResponseWriter, request *http.Request) {
@@ -185,7 +214,7 @@ func (h *handler) list(writer http.ResponseWriter, request *http.Request) {
 		h.writeMappedError(writer, request, err)
 		return
 	}
-	out := operatorv1.Page{Requests: make([]operatorv1.Request, 0, len(page.Items)), NextCursor: page.NextCursor, EventCursor: page.EventCursor}
+	out := operatorwire.RequestPage{Requests: make([]operatorwire.BrokerRequest, 0, len(page.Items)), NextCursor: optional.NonZero(page.NextCursor), EventCursor: optional.NonZero(page.EventCursor)}
 	for _, item := range page.Items {
 		out.Requests = append(out.Requests, project(item))
 	}
@@ -231,74 +260,76 @@ func (h *handler) decodeDecision(writer http.ResponseWriter, request *http.Reque
 		h.writeError(writer, http.StatusUnsupportedMediaType, "invalid_request", "content type must be application/json", nil)
 		return false
 	}
-	var input decisionInput
-	if err := decodeStrictJSON(writer, request, &input); err != nil || !validDecisionConstraints(input.Constraints) {
+	var input operatorwire.Decision
+	if err := decodeStrictJSON(request, &input); err != nil || !validDecisionConstraints(input.Constraints) {
 		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
 		return false
 	}
-	*command = input.decision()
+	*command = wireDecision(input)
 	return true
 }
 
-func validDecisionConstraints(value *decisionConstraintsInput) bool {
+func validDecisionConstraints(value *operatorwire.Constraints) bool {
 	return value == nil ||
 		((value.DurationSeconds == nil || *value.DurationSeconds > 0) &&
-			(value.MaxUses == nil || *value.MaxUses > 0))
+			(!value.MaxUses.IsSpecified() || value.MaxUses.IsNull() || value.MaxUses.MustGet() > 0))
 }
 
-func (input decisionInput) decision() operatorv1.Decision {
+func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 	result := operatorv1.Decision{
-		ExpectedRevision: input.ExpectedRevision, IdempotencyKey: input.IdempotencyKey,
-		DecisionReason: input.DecisionReason, OnBehalfOf: input.OnBehalfOf,
+		ExpectedRevision: int64(input.ExpectedRevision), IdempotencyKey: input.IdempotencyKey,
+	}
+	if input.OnBehalfOf != nil {
+		result.OnBehalfOf = *input.OnBehalfOf
 	}
 	if input.Constraints == nil {
 		return result
 	}
 	result.Constraints = &operatorv1.Constraints{}
 	if input.Constraints.DurationSeconds != nil {
-		result.Constraints.DurationSeconds = *input.Constraints.DurationSeconds
+		result.Constraints.DurationSeconds = int64(*input.Constraints.DurationSeconds)
 	}
-	if input.Constraints.MaxUses != nil {
-		result.Constraints.MaxUses = *input.Constraints.MaxUses
+	if input.Constraints.MaxUses.IsSpecified() {
+		result.Constraints.MaxUses = usebudget.Optional{Limit: operatorv1wire.UseLimitFromWire(input.Constraints.MaxUses), Specified: true}
 	}
 	return result
 }
 
-func project(item operatorinbox.Item) operatorv1.Request {
-	facts := make([]operatorv1.Fact, 0, len(item.Presentation.Fields))
+func project(item operatorinbox.Item) operatorwire.BrokerRequest {
+	facts := make([]operatorwire.Fact, 0, len(item.Presentation.Fields))
 	for _, fact := range item.Presentation.Fields {
-		facts = append(facts, operatorv1.Fact{Label: fact.Label, Value: fact.Value})
+		facts = append(facts, operatorwire.Fact{Label: fact.Label, Value: fact.Value})
 	}
-	request := operatorv1.Request{
-		ID: item.ID, Revision: item.Revision, Requester: item.Client, Operation: item.Operation, Status: item.Status,
-		RequestedAt: item.RequestedAt, RequestedDurationSeconds: item.RequestedDurationSeconds,
-		RequestedMaxUses: item.RequestedMaxUses, UsedCount: item.UsedCount, RequestReason: item.Reason,
-		DecidedAt: item.DecidedAt, DecidedBy: item.DecidedBy, DecidedOnBehalfOf: item.DecidedOnBehalfOf,
-		DecisionReason: item.DecisionReason, PresentationUnavailable: item.PresentationUnavailable,
-		Presentation:   operatorv1.Presentation{Risk: string(item.Presentation.Risk), Title: item.Presentation.Title, Summary: item.Presentation.Summary, Facts: facts},
+	request := operatorwire.BrokerRequest{
+		Id: item.ID, Revision: int(item.Revision), Requester: item.Client, Operation: item.Operation, Status: operatorwire.Status(item.Status),
+		RequestedAt: item.RequestedAt, RequestedDurationSeconds: int(item.RequestedDurationSeconds),
+		RequestedMaxUses: operatorv1wire.UseLimitToWire(item.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitToWire(item.MaxUses),
+		UsedCount: item.UsedCount, RequestReason: optional.NonZero(item.Reason),
+		DecidedAt: item.DecidedAt, DecidedBy: optional.NonZero(item.DecidedBy), DecidedOnBehalfOf: optional.NonZero(item.DecidedOnBehalfOf),
+		PresentationUnavailable: optional.NonZero(item.PresentationUnavailable),
+		Presentation: operatorwire.Presentation{Risk: operatorwire.PresentationRisk(item.Presentation.Risk), Title: item.Presentation.Title,
+			Summary: optional.NonZero(item.Presentation.Summary), Facts: &facts},
 		AllowedActions: allowedActions(item),
 	}
 	if item.Status == grants.StatusPending {
 		expires := item.PendingExpiresAt
 		request.PendingExpiresAt = &expires
-		request.ApprovalBounds = &operatorv1.ApprovalBounds{MaxDurationSeconds: item.RequestedDurationSeconds, MaxUses: item.RequestedMaxUses}
+		request.ApprovalBounds = &operatorwire.ApprovalBounds{MaxDurationSeconds: int(item.RequestedDurationSeconds), MaxUses: operatorv1wire.UseLimitToWire(item.RequestedMaxUses)}
 	}
 	if item.ActiveExpiresAt != nil {
 		request.ActiveExpiresAt = item.ActiveExpiresAt
-		granted := item.MaxUses
-		request.GrantedMaxUses = &granted
 	}
 	return request
 }
 
-func allowedActions(item operatorinbox.Item) []operatorv1.Action {
+func allowedActions(item operatorinbox.Item) []operatorwire.Action {
 	switch item.Status {
 	case grants.StatusPending:
-		return []operatorv1.Action{operatorv1.ActionApprove, operatorv1.ActionDeny, operatorv1.ActionCancel}
+		return []operatorwire.Action{operatorwire.Approve, operatorwire.Deny, operatorwire.Cancel}
 	case grants.StatusActive:
-		return []operatorv1.Action{operatorv1.ActionRevoke}
+		return []operatorwire.Action{operatorwire.Revoke}
 	default:
-		return []operatorv1.Action{}
+		return []operatorwire.Action{}
 	}
 }
 
@@ -366,13 +397,13 @@ func writeEventPage(writer io.Writer, page grants.EventPage, cursor string) (str
 	return cursor, nil
 }
 
-func publicEvent(event grants.Event) (operatorv1.Event, bool) {
+func publicEvent(event grants.Event) (operatorwire.BrokerEvent, bool) {
 	kind, visible := publicEventKind(event)
 	if !visible {
-		return operatorv1.Event{}, false
+		return operatorwire.BrokerEvent{}, false
 	}
-	return operatorv1.Event{Cursor: event.Cursor, Kind: kind, RequestID: event.GrantID,
-		Revision: event.Revision, Status: event.Status, OccurredAt: event.Time, UsedCount: event.UsedCount}, true
+	return operatorwire.BrokerEvent{Cursor: event.Cursor, Kind: operatorwire.BrokerEventKind(kind), RequestId: event.GrantID,
+		Revision: int(event.Revision), Status: operatorwire.Status(event.Status), OccurredAt: event.Time, UsedCount: event.UsedCount}, true
 }
 
 func publicEventKind(event grants.Event) (string, bool) {
@@ -466,46 +497,19 @@ func targetFilterFields(values map[string][]string) map[string][]string {
 	return fields
 }
 
-func parseRequestPath(path string) (string, string, bool) {
-	remainder, ok := strings.CutPrefix(path, requestPrefix)
-	if !ok || remainder == "" {
-		return "", "", false
-	}
-	parts := strings.Split(remainder, "/")
-	switch len(parts) {
-	case 1:
-		return parts[0], "", validPathPart(parts[0])
-	case 2:
-		return parts[0], parts[1], validPathPart(parts[0]) && validPathPart(parts[1])
-	default:
-		return "", "", false
-	}
-}
-
-func validPathPart(value string) bool { return value != "" }
-
 func validAction(action operatorv1.Action) bool {
 	return action == operatorv1.ActionApprove || action == operatorv1.ActionDeny || action == operatorv1.ActionCancel || action == operatorv1.ActionRevoke
 }
 
-func decodeStrictJSON(writer http.ResponseWriter, request *http.Request, target any) error {
-	request.Body = http.MaxBytesReader(writer, request.Body, maxDecisionBodyBytes)
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("trailing request data")
-	}
-	return nil
+func decodeStrictJSON(request *http.Request, target any) error {
+	return httpx.DecodeJSON(request.Body, maxDecisionBodyBytes, target, true)
 }
 
 func (h *handler) writeMappedError(writer http.ResponseWriter, request *http.Request, err error) {
 	var conflict *grants.RevisionConflictError
 	if errors.As(err, &conflict) {
 		item, getErr := h.inbox.Get(request.Context(), conflict.Current.ID)
-		var current *operatorv1.Request
+		var current *operatorwire.BrokerRequest
 		if getErr == nil {
 			projected := project(item)
 			current = &projected
@@ -549,13 +553,9 @@ func errorCode(err error) string {
 	return "internal_error"
 }
 
-func (h *handler) methodNotAllowed(writer http.ResponseWriter, allowed string) {
-	writer.Header().Set("Allow", allowed)
-	h.writeError(writer, http.StatusMethodNotAllowed, "invalid_request", "method not allowed", nil)
-}
-
-func (h *handler) writeError(writer http.ResponseWriter, status int, code, message string, current *operatorv1.Request) {
-	h.writeJSON(writer, status, operatorv1.ErrorEnvelope{Error: operatorv1.Error{Code: code, Message: message, CorrelationID: writer.Header().Get("X-Correlation-ID"), Current: current}})
+func (h *handler) writeError(writer http.ResponseWriter, status int, code, message string, current *operatorwire.BrokerRequest) {
+	h.writeJSON(writer, status, operatorwire.ErrorEnvelope{Error: operatorwire.Error{Code: operatorwire.ErrorCode(code), Message: message,
+		CorrelationId: writer.Header().Get("X-Correlation-ID"), Current: current}})
 }
 
 func (h *handler) writeJSON(writer http.ResponseWriter, status int, value any) {
@@ -564,10 +564,10 @@ func (h *handler) writeJSON(writer http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(writer).Encode(value)
 }
 
-func correlationID() string {
+func secureCorrelationID() (string, error) {
 	data := make([]byte, 16)
 	if _, err := rand.Read(data); err != nil {
-		return strconv.FormatInt(time.Now().UnixNano(), 36)
+		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(data)
+	return base64.RawURLEncoding.EncodeToString(data), nil
 }

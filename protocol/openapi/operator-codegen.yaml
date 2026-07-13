@@ -1,0 +1,8 @@
+package: operatorwire
+generate:
+  models: true
+  client: true
+  echo-server: true
+output-options:
+  skip-prune: true
+  nullable-type: true

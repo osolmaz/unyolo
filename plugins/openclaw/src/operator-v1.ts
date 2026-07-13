@@ -1,109 +1,101 @@
-import { z } from "zod";
-import { operatorV1 } from "./generated/operator-v1.js";
-import type { BrokerEvent, BrokerRequest, RequestPage } from "./types.js";
+import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
+import * as addFormatsModule from "ajv-formats";
+import {
+  BrokerEventSchema,
+  BrokerRequestSchema,
+  DescriptorSchema,
+  ErrorEnvelopeSchema,
+  HealthSchema,
+  RequestPageSchema,
+  UIRequestSchema,
+  UISnapshotEventSchema,
+  UISnapshotSchema,
+  UISummarySchema,
+} from "./generated/operator-schemas.js";
+import type {
+  BrokerEvent,
+  BrokerRequest,
+  RequestPage,
+  SafeRequest,
+  Snapshot,
+  SnapshotEvent,
+} from "./types.js";
 
-const timestamp = z.iso.datetime({ offset: true });
-const nonNegativeInteger = z.number().int().nonnegative().safe();
-const positiveInteger = z.number().int().positive().safe();
+const ajv = new Ajv2020({ strict: true, allErrors: false });
+const addFormats = (addFormatsModule.default ??
+  addFormatsModule) as unknown as (value: Ajv2020) => void;
+addFormats(ajv);
 
-const status = z.enum(operatorV1.statuses);
-const action = z.enum(operatorV1.actions);
-const fact = z.object({
-  label: z.string().min(1).max(operatorV1.limits.factLabel),
-  value: z.string().min(1).max(operatorV1.limits.factValue),
-});
-const presentation = z.object({
-  risk: z.enum(operatorV1.risks),
-  title: z.string().min(1).max(operatorV1.limits.title),
-  summary: z.string().max(operatorV1.limits.summary).optional(),
-  facts: z.array(fact).max(operatorV1.limits.facts).optional(),
-});
-
-export const brokerRequestSchema = z.object({
-  id: z.string().min(1).max(operatorV1.limits.id),
-  revision: positiveInteger,
-  requester: z.string().min(1).max(operatorV1.limits.requester),
-  operation: z.string().min(1).max(operatorV1.limits.operation),
-  status,
-  requested_at: timestamp,
-  pending_expires_at: timestamp.optional(),
-  active_expires_at: timestamp.optional(),
-  requested_duration_seconds: positiveInteger,
-  requested_max_uses: positiveInteger,
-  granted_max_uses: positiveInteger.nullable(),
-  used_count: nonNegativeInteger,
-  request_reason: z.string().max(operatorV1.limits.reason).optional(),
-  decided_at: timestamp.optional(),
-  decided_by: z.string().max(operatorV1.limits.actor).optional(),
-  decided_on_behalf_of: z.string().max(operatorV1.limits.actor).optional(),
-  decision_reason: z.string().max(operatorV1.limits.reason).optional(),
-  presentation,
-  presentation_unavailable: z.boolean().optional(),
-  allowed_actions: z
-    .array(action)
-    .max(operatorV1.actions.length)
-    .refine((value) => new Set(value).size === value.length),
-  approval_bounds: z
-    .object({
-      max_duration_seconds: nonNegativeInteger,
-      max_uses: positiveInteger,
-    })
-    .optional(),
-});
-
-const requestPageSchema = z.object({
-  requests: z.array(brokerRequestSchema).max(operatorV1.limits.page),
-  next_cursor: z.string().min(1).max(operatorV1.limits.cursor).optional(),
-  event_cursor: z.string().min(1).max(operatorV1.limits.cursor).optional(),
-});
-
-const brokerEventSchema = z.object({
-  cursor: z.string().min(1).max(operatorV1.limits.cursor),
-  kind: z.enum(operatorV1.eventKinds),
-  request_id: z.string().min(1).max(operatorV1.limits.id),
-  revision: positiveInteger,
-  status,
-  occurred_at: timestamp,
-  used_count: nonNegativeInteger,
-});
-
-const descriptorSchema = z.object({
-  api_version: z.literal(operatorV1.apiVersion),
-});
-
-const healthSchema = z.object({ status: z.string().min(1).max(128) });
-
-const errorEnvelopeSchema = z.object({
-  error: z.object({
-    code: z.enum(operatorV1.errorCodes),
-    message: z.string().min(1).max(operatorV1.limits.errorMessage),
-    correlation_id: z.string().min(1).max(operatorV1.limits.correlationId),
-  }),
-});
+const descriptor = compile(DescriptorSchema);
+const health = compile(HealthSchema);
+const brokerRequest = compile(BrokerRequestSchema);
+const requestPage = compile(RequestPageSchema);
+const brokerEvent = compile(BrokerEventSchema);
+const errorEnvelope = compile(ErrorEnvelopeSchema);
+const uiRequest = compile(UIRequestSchema);
+const uiSnapshot = compile(UISnapshotSchema);
+const uiSnapshotEvent = compile(UISnapshotEventSchema);
+const uiSummary = compile(UISummarySchema);
 
 export function parseDescriptor(value: unknown): { api_version: string } {
-  return descriptorSchema.parse(value);
+  return validated(descriptor, value) as { api_version: string };
 }
 
 export function parseHealth(value: unknown): { status: string } {
-  return healthSchema.parse(value);
+  return validated(health, value) as { status: string };
 }
 
 export function parseRequest(value: unknown): BrokerRequest {
-  return brokerRequestSchema.parse(value) as BrokerRequest;
+  return validated(brokerRequest, value) as BrokerRequest;
 }
 
 export function parseRequestPage(value: unknown): RequestPage {
-  return requestPageSchema.parse(value) as RequestPage;
+  return validated(requestPage, value) as RequestPage;
 }
 
 export function parseBrokerEvent(value: unknown): BrokerEvent {
-  return brokerEventSchema.parse(value) as BrokerEvent;
+  return validated(brokerEvent, value) as BrokerEvent;
+}
+
+export function parseUIRequest(value: unknown): SafeRequest {
+  return validated(uiRequest, value) as SafeRequest;
+}
+
+export function parseUISnapshot(value: unknown): Snapshot {
+  return validated(uiSnapshot, value) as Snapshot;
+}
+
+export function parseUISnapshotEvent(value: unknown): SnapshotEvent {
+  return validated(uiSnapshotEvent, value) as SnapshotEvent;
+}
+
+export function parseUISummary(value: unknown): {
+  api_version: "brokerkit.io/operator-ui/v1";
+  cursor: string;
+  pending: number;
+  healthy: boolean;
+} {
+  return validated(uiSummary, value) as {
+    api_version: "brokerkit.io/operator-ui/v1";
+    cursor: string;
+    pending: number;
+    healthy: boolean;
+  };
 }
 
 export function parseErrorEnvelope(
   value: unknown,
 ): { error: { code: string; message: string } } | undefined {
-  const result = errorEnvelopeSchema.safeParse(value);
-  return result.success ? result.data : undefined;
+  return errorEnvelope(value)
+    ? (value as { error: { code: string; message: string } })
+    : undefined;
+}
+
+function compile(schema: object): ValidateFunction {
+  return ajv.compile(schema);
+}
+
+function validated(validate: ValidateFunction, value: unknown): unknown {
+  if (!validate(value)) throw new Error("Operator V1 response is invalid");
+  return value;
 }

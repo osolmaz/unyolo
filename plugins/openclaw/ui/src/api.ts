@@ -1,4 +1,14 @@
-import type { Action, SafeRequest, Snapshot } from "../../src/types.js";
+import {
+  parseUIRequest,
+  parseUISnapshot,
+  parseUISnapshotEvent,
+} from "../../src/operator-v1.js";
+import type {
+  Action,
+  SafeRequest,
+  Snapshot,
+  SnapshotEvent,
+} from "../../src/types.js";
 
 type DirectBootstrap = {
   version: 1;
@@ -12,8 +22,7 @@ type DelegatedBootstrap = {
 };
 export type UiBootstrap = DirectBootstrap | DelegatedBootstrap;
 export type UiDecisionOptions = {
-  reason?: string;
-  constraints?: { durationSeconds: number; maxUses: number };
+  constraints?: { durationSeconds: number; maxUses: number | null };
 };
 
 type DelegatedSession = {
@@ -37,8 +46,17 @@ export class BrokerKitUiApi {
 
   constructor(private readonly bootstrap: UiBootstrap) {}
 
-  snapshot(): Promise<Snapshot> {
-    return this.request<Snapshot>("/snapshot");
+  snapshot(signal?: AbortSignal): Promise<Snapshot> {
+    return this.request("/snapshot", signal ? { signal } : {}).then(
+      parseUISnapshot,
+    );
+  }
+
+  events(cursor: string, signal: AbortSignal): Promise<SnapshotEvent> {
+    return this.request(
+      `/events?cursor=${encodeURIComponent(cursor)}&wait_seconds=25`,
+      { signal },
+    ).then(parseUISnapshotEvent);
   }
 
   canDecide(): boolean {
@@ -49,7 +67,9 @@ export class BrokerKitUiApi {
   }
 
   detail(handle: string): Promise<SafeRequest> {
-    return this.request<SafeRequest>(`/requests/${encodeURIComponent(handle)}`);
+    return this.request(`/requests/${encodeURIComponent(handle)}`).then(
+      parseUIRequest,
+    );
   }
 
   decide(
@@ -57,20 +77,23 @@ export class BrokerKitUiApi {
     action: Action,
     options: UiDecisionOptions = {},
   ): Promise<SafeRequest> {
-    return this.request<SafeRequest>(
+    return this.request(
       `/requests/${encodeURIComponent(request.handle)}/${action}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          expectedRevision: request.revision,
+          expectedRevision: request.request.revision,
           ...options,
         }),
       },
-    );
+    ).then(parseUIRequest);
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<unknown> {
     const auth = await this.authorization();
     const basePath =
       this.bootstrap.mode === "direct"
@@ -85,8 +108,10 @@ export class BrokerKitUiApi {
         authorization: `Bearer ${auth.token}`,
       },
     });
-    if (!response.ok) throw new Error(await safeError(response));
-    return (await response.json()) as T;
+    if (!response.ok) throw await safeError(response);
+    return JSON.parse(
+      await boundedResponseText(response, 2_000_000),
+    ) as unknown;
   }
 
   private async authorization(): Promise<DelegatedSession> {
@@ -162,8 +187,11 @@ async function delegatedSessionPayload(
       cache: "no-store",
       headers: { authorization: `Bearer ${current.token}` },
     });
-    if (!response.ok) throw new Error(await safeError(response));
-    return (await response.json()) as Record<string, unknown>;
+    if (!response.ok) throw await safeError(response);
+    return JSON.parse(await boundedResponseText(response, 16_384)) as Record<
+      string,
+      unknown
+    >;
   }
   if (current) return delegatedSessionFromParent();
   if (!framed()) {
@@ -173,8 +201,11 @@ async function delegatedSessionPayload(
       cache: "no-store",
       headers: { accept: "application/json" },
     });
-    if (!response.ok) throw new Error(await safeError(response));
-    return (await response.json()) as Record<string, unknown>;
+    if (!response.ok) throw await safeError(response);
+    return JSON.parse(await boundedResponseText(response, 16_384)) as Record<
+      string,
+      unknown
+    >;
   }
   return delegatedSessionFromParent();
 }
@@ -323,18 +354,26 @@ function hasControlCharacter(value: string): boolean {
   });
 }
 
-async function safeError(response: Response): Promise<string> {
+async function safeError(
+  response: Response,
+): Promise<Error & { code?: string }> {
   try {
-    const value = (await response.json()) as Record<string, unknown>;
+    const value = JSON.parse(
+      await boundedResponseText(response, 64_000),
+    ) as Record<string, unknown>;
     const error = record(value.error) ? value.error : undefined;
     if (error && typeof error.code === "string")
-      return messageForCode(error.code);
+      return Object.assign(new Error(messageForCode(error.code)), {
+        code: error.code,
+      });
   } catch {
     // Keep the public error independent from upstream response details.
   }
-  return response.status === 401 || response.status === 403
-    ? "Approval authorization expired"
-    : "Approvals are unavailable";
+  return new Error(
+    response.status === 401 || response.status === 403
+      ? "Approval authorization expired"
+      : "Approvals are unavailable",
+  );
 }
 
 function messageForCode(code: string): string {
@@ -344,5 +383,33 @@ function messageForCode(code: string): string {
   if (code === "not_authorized") return "Approval authorization expired";
   if (code === "source_unavailable")
     return "The approval source is unavailable";
+  if (code === "cursor_expired") return "Approval updates expired";
   return "The approval request could not be completed";
+}
+
+async function boundedResponseText(
+  response: Response,
+  limit: number,
+): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      throw new Error("Approvals are unavailable");
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(joined);
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
 )
 
 func TestServerExecutesAndReplaysExactlyOnce(t *testing.T) {
@@ -81,7 +81,7 @@ func TestServerRejectsExpiredDriftedAndInterruptedExecution(t *testing.T) {
 	_ = json.Unmarshal(changed.Plan, &value)
 	value["target_uid"] = float64(1)
 	changed.Plan, _ = json.Marshal(value)
-	changed.PlanDigest = planstore.Digest(changed.Plan)
+	changed.PlanDigest = plandigest.Digest(changed.Plan)
 	if response := server.execute(t.Context(), changed); response.ErrorCode != "plan_drift" {
 		t.Fatalf("drift response=%+v", response)
 	}
@@ -136,7 +136,7 @@ func TestServerRejectsMissingListenerAndRunnerPrestartFailure(t *testing.T) {
 	}
 	invalid := request
 	invalid.Plan = []byte(`{}`)
-	invalid.PlanDigest = planstore.Digest(invalid.Plan)
+	invalid.PlanDigest = plandigest.Digest(invalid.Plan)
 	if response := server.execute(t.Context(), invalid); response.ErrorCode != "invalid_plan" {
 		t.Fatalf("invalid plan response = %+v", response)
 	}
@@ -175,7 +175,7 @@ func testServerAndRequest(t *testing.T) (*Server, executorprotocol.Request, *fak
 		t.Fatal(err)
 	}
 	request := executorprotocol.Request{Version: executorprotocol.Version, Type: executorprotocol.TypeExecute, ExecutionID: "execution-1",
-		Plan: canonical, PlanDigest: planstore.Digest(canonical), GrantID: "grant-1", ReservationID: "reservation-1", ExpiresAt: now.Add(time.Minute)}
+		Plan: canonical, PlanDigest: plandigest.Digest(canonical), GrantID: "grant-1", ReservationID: "reservation-1", ExpiresAt: now.Add(time.Minute)}
 	return server, request, runner
 }
 

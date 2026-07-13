@@ -14,13 +14,15 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
 const (
@@ -209,17 +211,14 @@ func (s *Source) newAppRequest(ctx context.Context, method string, path []string
 }
 
 func decodeAppResponse(response *http.Response, out any) error {
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxGitHubBodyBytes+1))
+	data, err := httpx.ReadLimited(response.Body, maxGitHubBodyBytes)
 	if err != nil {
 		return fmt.Errorf("read github app response: %w", err)
-	}
-	if len(data) > maxGitHubBodyBytes {
-		return errors.New("github app response is too large")
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("github app request failed with status %d", response.StatusCode)
 	}
-	if err := json.Unmarshal(data, out); err != nil {
+	if err := strictjson.Decode(data, out, false); err != nil {
 		return fmt.Errorf("decode github app response: %w", err)
 	}
 	return nil
