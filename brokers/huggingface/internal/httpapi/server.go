@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
@@ -41,7 +42,6 @@ import (
 	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/plandigest"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/protocol/agentwire"
 	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
@@ -102,6 +102,7 @@ type Server struct {
 	grants              *grants.Store
 	plans               *hfplan.Store
 	operations          *agentops.Store
+	agentAPI            *agentapi.Handler
 	database            *state.Database
 	planValidator       hfplan.Validator
 	notifier            bknotify.Notifier
@@ -350,14 +351,23 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		now:                opts.Now,
 		newLFSActionID:     opts.NewLFSActionID,
 	}
-	server.authorization, err = bkauthorization.New(bkauthorization.Options{
+	authorization, authorizationErr := bkauthorization.New(bkauthorization.Options{
 		Registry: policy.AuthorizationRegistry(), Decide: server.policy.DecideAuthorization,
 		Grants: store, ActiveGrants: server.activeAuthorizationGrants, Now: opts.Now,
 	})
-	if err != nil {
+	agentAPI, agentAPIErr := agentapi.New(agentapi.Options{
+		Store: server.operations, Authenticate: runtime.Clients.AuthenticateHeader,
+		Submit: server.submitAgentOperation, Realm: "hf-broker",
+		AuthFailure: func() {
+			server.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
+		},
+	})
+	if err := errors.Join(authorizationErr, agentAPIErr); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
+	server.authorization = authorization
+	server.agentAPI = agentAPI
 	server.router = newRouter(server)
 	return server, nil
 }
@@ -374,7 +384,7 @@ func newRouter(server *Server) *echo.Echo {
 	router := echo.New()
 	router.HideBanner = true
 	router.HidePort = true
-	agentwire.RegisterHandlers(router, server)
+	server.agentAPI.Register(router)
 	router.GET("/healthz", func(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "application/json")
 		_, err := c.Response().Write([]byte(`{"ok": true}`))

@@ -21,6 +21,11 @@ import (
 	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
+const (
+	agentDiscoveryPath  = "/.well-known/brokerkit-agent"
+	agentOperationsPath = "/api/agent/v1/operations"
+)
+
 func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	var mu sync.Mutex
 	createHits := 0
@@ -144,11 +149,13 @@ func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
 	ctx, cancelRequest := context.WithCancel(context.Background())
 	cancelRequest()
 	body := `{"idempotency_key":"disconnect","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"survive disconnect"}`
-	request := httptest.NewRequest(http.MethodPost, agentOperationsPath, strings.NewReader(body)).WithContext(ctx)
-	recorder := httptest.NewRecorder()
-	handler.handleAgentOperationSubmit(recorder, request, "agent")
-	if recorder.Code != http.StatusAccepted || !notifier.sent {
-		t.Fatalf("submit = %d %s, sent = %v", recorder.Code, recorder.Body.String(), notifier.sent)
+	var request agentv1.SubmitRequest
+	if err := json.Unmarshal([]byte(body), &request); err != nil {
+		t.Fatal(err)
+	}
+	operation, created, err := handler.submitAgentOperation(ctx, "agent", request)
+	if err != nil || !created || operation.State != agentv1.StatePending || !notifier.sent {
+		t.Fatalf("submit = %#v, %v, created = %v, sent = %v", operation, err, created, notifier.sent)
 	}
 }
 

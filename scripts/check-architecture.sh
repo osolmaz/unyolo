@@ -108,10 +108,11 @@ then
   exit 1
 fi
 
-if ! grep -q 'agentwire.RegisterHandlers' brokers/huggingface/internal/httpapi/server.go ||
-  grep -R -n --include='*.go' 'serveAgentAPI' brokers/huggingface/internal/httpapi 2>/dev/null
+if ! grep -q 'agentwire.RegisterHandlers' agentapi/api.go ||
+	grep -R -n --include='*.go' 'agentwire.RegisterHandlers' brokers 2>/dev/null ||
+	grep -R -n --include='*.go' 'serveAgentAPI' brokers 2>/dev/null
 then
-  echo 'HF Agent V1 must use only generated Echo route registration' >&2
+	echo 'Agent V1 must use only shared generated Echo route registration' >&2
   exit 1
 fi
 

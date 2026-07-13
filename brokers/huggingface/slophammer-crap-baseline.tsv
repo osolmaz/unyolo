@@ -15,7 +15,6 @@ internal/httpapi/agent_operations.go	decodeRepoCreateArguments	crap	9.6
 internal/httpapi/agent_operations.go	Server.createUpstreamRepo	crap	9.6
 cmd/hf-broker/mcp.go	handleMCPRequest	crap	9.2
 cmd/hf-broker/agent_client.go	runAgentClient	crap	9.2
-internal/httpapi/agent_operations.go	Server.handleAgentOperationSubmit	crap	9.1
 cmd/hf-broker/mcp.go	mcpRepoCreateRequest	crap	9.0
 cmd/hf-broker/mcp.go	runMCP	crap	8.5
 internal/httpapi/inference.go	Server.serveChatCompletion	crap	8.3
