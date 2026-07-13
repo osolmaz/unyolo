@@ -73,7 +73,6 @@ internal/operations/bucket.go	operations:bucketAdapter.Reconcile	crap	11.5
 internal/operations/bucket.go	operations:bucketAdapter.Resolve	crap	12.0
 internal/operations/bucket.go	operations:bucketAdapter.checkPreconditions	crap	12.6
 internal/operations/bucket.go	operations:bucketAdapter.decodeArguments	crap	13.8
-internal/operations/credential_output.go	operations:NewCredentialOutputAdapters	crap	9.4
 internal/operations/refs.go	operations:refsAdapter.Decode	crap	14.2
 internal/operations/refs.go	operations:refsAdapter.Execute	crap	11.6
 internal/operations/repository.go	operations:repositoryAdapter.Decode	crap	9.6
@@ -109,7 +108,6 @@ internal/operations/sandbox_lifecycle.go	operations:sandboxAdapter.Reconcile	cra
 internal/operations/sandbox_lifecycle.go	operations:sandboxAdapter.Resolve	crap	48.0
 internal/operations/sandbox_lifecycle.go	operations:sandboxAdapter.checkSandboxResource	crap	17.2
 internal/operations/sandbox_lifecycle.go	operations:sandboxAdapter.resolveSandboxResource	crap	15.6
-internal/operations/sealed_bound.go	operations:NewSealedBoundAdapters	crap	9.2
 internal/operations/sealed_bound.go	operations:sealedBoundAdapter.Decode	crap	15.6
 internal/operations/sealed_bound.go	operations:sealedBoundAdapter.materialize	crap	9.8
 internal/operations/space.go	operations:spaceAdapter.Execute	crap	13.2

@@ -65,7 +65,7 @@ func TestSandboxCreateConsumesSealedSecretsWithoutLeakingThemIntoPlan(t *testing
 	}
 }
 
-func TestSandboxCreateRejectsOverlappingSealedSecretBeforeApproval(t *testing.T) {
+func TestSandboxCreateDefersSealedOverlapCheckUntilExecution(t *testing.T) {
 	store, err := sealedstore.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -93,11 +93,15 @@ func TestSandboxCreateRejectsOverlappingSealedSecretBeforeApproval(t *testing.T)
 	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "sandbox-overlap"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adapter.Resolve(t.Context(), input); err == nil || !strings.Contains(err.Error(), "overlaps") {
-		t.Fatalf("Resolve() error = %v", err)
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatalf("Resolve() decrypted the sealed payload: %v", err)
 	}
 	if _, err := store.Get(reference); err != nil {
-		t.Fatalf("sealed payload was consumed during validation: %v", err)
+		t.Fatalf("sealed payload was read during submission: %v", err)
+	}
+	if _, err := adapter.Execute(t.Context(), plan); err == nil || !strings.Contains(err.Error(), "overlaps") {
+		t.Fatalf("Execute() error = %v", err)
 	}
 }
 

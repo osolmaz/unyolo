@@ -75,6 +75,12 @@ type Binding struct {
 	resultValidator    *jsonschema.Schema
 }
 
+// ArgumentsValidator validates one operation's public argument fragment after
+// provider-defined sealed paths have been removed from the schema.
+type ArgumentsValidator struct {
+	validator *jsonschema.Schema
+}
+
 type operationDocument struct {
 	Parameters  []parameter                `json:"parameters"`
 	RequestBody *requestBody               `json:"requestBody"`
@@ -155,6 +161,139 @@ func (b Binding) ValidateResult(result json.RawMessage) error {
 		return errors.New("operation has no bounded result schema")
 	}
 	return validateRaw(result, b.resultValidator)
+}
+
+// PublicArgumentsValidator compiles the binding's argument schema without the
+// paths that are supplied through the sealed payload boundary. The resulting
+// validator never needs the sealed plaintext.
+func (b Binding) PublicArgumentsValidator(paths []string) (*ArgumentsValidator, error) {
+	if len(paths) == 0 {
+		return &ArgumentsValidator{validator: b.argumentsValidator}, nil
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(b.ArgumentsSchema, &schema); err != nil {
+		return nil, errors.New("decode operation argument schema")
+	}
+	for _, value := range paths {
+		path := strings.Split(value, ".")
+		found, err := removeSchemaPath(schema, schema, path)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("sealed argument path %q is absent from operation schema", value)
+		}
+	}
+	_, validator, err := compileSchema(b.Operation+"-public-arguments", schema, nil)
+	if err != nil {
+		return nil, fmt.Errorf("compile public argument schema: %w", err)
+	}
+	return &ArgumentsValidator{validator: validator}, nil
+}
+
+// Validate checks one public argument fragment.
+func (v *ArgumentsValidator) Validate(arguments json.RawMessage) error {
+	if v == nil || v.validator == nil {
+		return errors.New("operation argument validator is unavailable")
+	}
+	return validateRaw(arguments, v.validator)
+}
+
+func removeSchemaPath(root, current map[string]any, path []string) (bool, error) {
+	if len(path) == 0 {
+		return false, errors.New("sealed argument path is empty")
+	}
+	resolved, err := resolveLocalSchema(root, current)
+	if err != nil {
+		return false, err
+	}
+	propertyFound, err := removeSchemaPropertyPath(root, resolved, path)
+	if err != nil {
+		return false, err
+	}
+	branchFound, err := removeSchemaPathFromBranches(root, resolved, path)
+	if err != nil {
+		return false, err
+	}
+	return propertyFound || branchFound, nil
+}
+
+func removeSchemaPropertyPath(root, schema map[string]any, path []string) (bool, error) {
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	child, ok := properties[path[0]].(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	if len(path) > 1 {
+		return removeSchemaPath(root, child, path[1:])
+	}
+	delete(properties, path[0])
+	removeRequiredProperty(schema, path[0])
+	return true, nil
+}
+
+func removeSchemaPathFromBranches(root, schema map[string]any, path []string) (bool, error) {
+	found := false
+	for _, keyword := range []string{"anyOf", "oneOf", "allOf"} {
+		branches, _ := schema[keyword].([]any)
+		for _, value := range branches {
+			branch, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			branchFound, err := removeSchemaPath(root, branch, path)
+			if err != nil {
+				return false, err
+			}
+			found = found || branchFound
+		}
+	}
+	return found, nil
+}
+
+func resolveLocalSchema(root, schema map[string]any) (map[string]any, error) {
+	reference, _ := schema["$ref"].(string)
+	if !strings.HasPrefix(reference, "#/") {
+		return schema, nil
+	}
+	var current any = root
+	for _, token := range strings.Split(strings.TrimPrefix(reference, "#/"), "/") {
+		token = strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("operation schema reference %q is invalid", reference)
+		}
+		current, ok = object[token]
+		if !ok {
+			return nil, fmt.Errorf("operation schema reference %q is unresolved", reference)
+		}
+	}
+	resolved, ok := current.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("operation schema reference %q is not an object", reference)
+	}
+	return resolved, nil
+}
+
+func removeRequiredProperty(schema map[string]any, name string) {
+	values, ok := schema["required"].([]any)
+	if !ok {
+		return
+	}
+	filtered := values[:0]
+	for _, value := range values {
+		if value != name {
+			filtered = append(filtered, value)
+		}
+	}
+	if len(filtered) == 0 {
+		delete(schema, "required")
+		return
+	}
+	schema["required"] = filtered
 }
 
 func validateRaw(raw json.RawMessage, validator *jsonschema.Schema) error {

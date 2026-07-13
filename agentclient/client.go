@@ -16,7 +16,9 @@ import (
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
-const maxResponseBytes = 2 * 1024 * 1024
+// A stored operation may contain a 1 MiB argument object and a 2 MiB result,
+// plus its target and lifecycle metadata.
+const maxResponseBytes = 4 * 1024 * 1024
 
 // Options configures an Agent Operations V1 client.
 type Options struct {

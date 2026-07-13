@@ -25,12 +25,7 @@ func (a *sandboxAdapter) Resolve(ctx context.Context, input Input) (Plan, error)
 	preconditions := sandboxPreconditions{CredentialIdentity: identity.Name}
 	switch a.descriptor.Name {
 	case "sandbox.create":
-		var public sandboxCreatePublic
-		var secret sandboxCreateSecret
-		if public, secret, err = a.materializeSandboxCreate(input.Arguments, false); err != nil {
-			return Plan{}, err
-		}
-		if err = validateDistinctSandboxEnvironment(public.Environment, secret.Secrets); err != nil {
+		if _, err = decodeSandboxCreatePublic(input.Arguments); err != nil {
 			return Plan{}, err
 		}
 		preconditions.OperationID, err = newOperationMarker()
@@ -130,6 +125,16 @@ func (a *sandboxAdapter) Resolve(ctx context.Context, input Input) (Plan, error)
 	presentation, request := a.presentationAndPolicy(target, publicArguments)
 	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
 		Arguments: input.Arguments, Preconditions: encoded, Presentation: presentation, Policy: request}, nil
+}
+
+func decodeSandboxCreatePublic(raw json.RawMessage) (sandboxCreatePublic, error) {
+	arguments, err := decodeSealedArguments(raw)
+	if err != nil {
+		return sandboxCreatePublic{}, err
+	}
+	var public sandboxCreatePublic
+	err = decodeClosed(arguments.Public, &public, maxArgumentsBytes)
+	return public, err
 }
 
 func (a *sandboxAdapter) Authorize(plan Plan) hfpolicy.Request {

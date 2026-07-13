@@ -470,11 +470,16 @@ func TestAgentRepoCreateConcurrentIdempotentAllow(t *testing.T) {
 	defer cancel()
 	defer server.Close()
 	body := `{"idempotency_key":"concurrent","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"race"},"arguments":{"visibility":"private"},"reason":"concurrent retry"}`
+	paddedBody := strings.Replace(body, `"concurrent"`, `" concurrent "`, 1)
 	var wg sync.WaitGroup
 	errorsSeen := make(chan string, 12)
-	for range 12 {
+	for index := range 12 {
+		requestBody := body
+		if index%2 == 0 {
+			requestBody = paddedBody
+		}
 		wg.Add(1)
-		go func() {
+		go func(body string) {
 			defer wg.Done()
 			response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
 			if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusAccepted {
@@ -485,7 +490,7 @@ func TestAgentRepoCreateConcurrentIdempotentAllow(t *testing.T) {
 			if json.Unmarshal([]byte(text), &operation) != nil || operation.State == agentv1.StateFailed {
 				errorsSeen <- text
 			}
-		}()
+		}(requestBody)
 	}
 	wg.Wait()
 	close(errorsSeen)

@@ -121,6 +121,47 @@ func TestEndpointBindingsKeepSecretsInSealedModelField(t *testing.T) {
 	}
 }
 
+func TestPublicArgumentsValidatorOmitsSealedPaths(t *testing.T) {
+	binding, found := ByName("space.secret.set")
+	if !found {
+		t.Fatal("space.secret.set binding is missing")
+	}
+	validator, err := binding.PublicArgumentsValidator([]string{"value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validator.Validate(json.RawMessage(`{"key":"TOKEN"}`)); err != nil {
+		t.Fatalf("public arguments rejected: %v", err)
+	}
+	if err := validator.Validate(json.RawMessage(`{"key":"TOKEN","value":"leak"}`)); err == nil {
+		t.Fatal("sealed field was accepted in public arguments")
+	}
+	if _, err := binding.PublicArgumentsValidator([]string{"missing.secret"}); err == nil {
+		t.Fatal("missing sealed schema path was accepted")
+	}
+}
+
+func TestRemoveSchemaPathFollowsReferencesAndCompositions(t *testing.T) {
+	schema := map[string]any{
+		"$ref": "#/$defs/root",
+		"$defs": map[string]any{"root": map[string]any{
+			"oneOf": []any{
+				map[string]any{"type": "object", "properties": map[string]any{"public": map[string]any{"type": "string"}}},
+				map[string]any{"type": "object", "properties": map[string]any{"secret": map[string]any{"type": "string"}}, "required": []any{"secret"}},
+			},
+		}},
+	}
+	found, err := removeSchemaPath(schema, schema, []string{"secret"})
+	if err != nil || !found {
+		t.Fatalf("removeSchemaPath() = %v, %v", found, err)
+	}
+	root := schema["$defs"].(map[string]any)["root"].(map[string]any)
+	branch := root["oneOf"].([]any)[1].(map[string]any)
+	if branch["properties"].(map[string]any)["secret"] != nil || branch["required"] != nil {
+		t.Fatalf("sealed path remained in schema: %#v", branch)
+	}
+}
+
 func TestPinnedBindingsCloseNestedObjects(t *testing.T) {
 	binding, found := ByName("bucket.create")
 	if !found {

@@ -22,7 +22,7 @@ func (a *sandboxAdapter) executeSandboxCreate(ctx context.Context, target sandbo
 	} else if err := a.checkSandboxPool(ctx, target.poolRef(), expected.PoolDigest); err != nil {
 		return Outcome{}, err
 	}
-	public, secret, err := a.materializeSandboxCreate(raw, true)
+	public, secret, err := a.materializeValidatedSandboxCreate(raw)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -49,6 +49,17 @@ func (a *sandboxAdapter) executeSandboxCreate(ctx context.Context, target sandbo
 	}
 	result, _ := canonical(map[string]any{"sandbox_id": ref.ID(), "host_id": ref.JobID})
 	return Outcome{Proven: true, Result: result}, nil
+}
+
+func (a *sandboxAdapter) materializeValidatedSandboxCreate(raw json.RawMessage) (sandboxCreatePublic, sandboxCreateSecret, error) {
+	public, secret, err := a.materializeSandboxCreate(raw)
+	if err != nil {
+		return sandboxCreatePublic{}, sandboxCreateSecret{}, err
+	}
+	if err := validateDistinctSandboxEnvironment(public.Environment, secret.Secrets); err != nil {
+		return sandboxCreatePublic{}, sandboxCreateSecret{}, err
+	}
+	return public, secret, nil
 }
 
 func (a *sandboxAdapter) executeSandboxPoolCreate(ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
@@ -166,8 +177,7 @@ func (a *sandboxAdapter) executeSandboxAction(ctx context.Context, target sandbo
 	}
 }
 
-//nolint:cyclop // Secret materialization is explicit and tracked by the exact HF CRAP baseline.
-func (a *sandboxAdapter) materializeSandboxCreate(raw json.RawMessage, consume bool) (sandboxCreatePublic, sandboxCreateSecret, error) {
+func (a *sandboxAdapter) materializeSandboxCreate(raw json.RawMessage) (sandboxCreatePublic, sandboxCreateSecret, error) {
 	arguments, err := decodeSealedArguments(raw)
 	if err != nil {
 		return sandboxCreatePublic{}, sandboxCreateSecret{}, err
@@ -180,12 +190,7 @@ func (a *sandboxAdapter) materializeSandboxCreate(raw json.RawMessage, consume b
 	if arguments.SealedPayload == nil {
 		return public, secret, nil
 	}
-	var payload []byte
-	if consume {
-		payload, err = a.store.Consume(*arguments.SealedPayload)
-	} else {
-		payload, err = a.store.Get(*arguments.SealedPayload)
-	}
+	payload, err := a.store.Consume(*arguments.SealedPayload)
 	if err != nil {
 		return sandboxCreatePublic{}, sandboxCreateSecret{}, err
 	}

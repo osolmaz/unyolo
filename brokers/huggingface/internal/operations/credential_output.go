@@ -34,8 +34,12 @@ func NewCredentialOutputAdapters(client credentialOutputClient, payloads sealedP
 	if client == nil || payloads == nil || slots == nil {
 		return nil, errors.New("hugging face credential output dependencies are required")
 	}
+	return credentialOutputAdaptersForDescriptors(client, payloads, slots, opcatalog.MustAll())
+}
+
+func credentialOutputAdaptersForDescriptors(client credentialOutputClient, payloads sealedPayloadStore, slots credentialSlotStore, descriptors []opcatalog.Descriptor) ([]Adapter, error) {
 	var adapters []Adapter
-	for _, descriptor := range opcatalog.MustAll() {
+	for _, descriptor := range descriptors {
 		if descriptor.CredentialOutputKind == nil {
 			continue
 		}
@@ -43,7 +47,10 @@ func NewCredentialOutputAdapters(client credentialOutputClient, payloads sealedP
 		if !bound || !descriptor.Sealed || descriptor.AuthorizationMode != opcatalog.ModeExecution {
 			return nil, fmt.Errorf("credential output operation %q is not registered", descriptor.Name)
 		}
-		base := &sealedBoundAdapter{descriptor: descriptor, binding: binding, client: client, store: payloads}
+		base, err := newSealedBoundAdapter(descriptor, binding, client, payloads)
+		if err != nil {
+			return nil, err
+		}
 		adapters = append(adapters, &credentialOutputAdapter{sealedBoundAdapter: base, client: client, store: slots, kind: *descriptor.CredentialOutputKind})
 	}
 	return adapters, nil

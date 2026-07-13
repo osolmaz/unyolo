@@ -15,7 +15,7 @@ import (
 )
 
 type sealedPayloadStore interface {
-	Get(sealedstore.Reference) ([]byte, error)
+	Validate(sealedstore.Reference) error
 	Consume(sealedstore.Reference) ([]byte, error)
 	Delete(sealedstore.Reference) error
 }
@@ -26,6 +26,7 @@ type sealedBoundAdapter struct {
 	client     boundClient
 	store      sealedPayloadStore
 	paths      []string
+	public     *opbinding.ArgumentsValidator
 }
 
 type sealedBoundArguments struct {
@@ -73,6 +74,10 @@ func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Ada
 	if err != nil {
 		return nil, err
 	}
+	return sealedBoundAdaptersForBindings(client, store, bindings)
+}
+
+func sealedBoundAdaptersForBindings(client boundClient, store sealedPayloadStore, bindings []opbinding.Binding) ([]Adapter, error) {
 	var adapters []Adapter
 	for _, binding := range bindings {
 		descriptor, found := opcatalog.ByName(binding.Operation)
@@ -82,9 +87,22 @@ func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Ada
 		if descriptor.CredentialOutputKind != nil {
 			continue
 		}
-		adapters = append(adapters, &sealedBoundAdapter{descriptor: descriptor, binding: binding, client: client, store: store, paths: sealedInputPaths[binding.Operation]})
+		adapter, err := newSealedBoundAdapter(descriptor, binding, client, store)
+		if err != nil {
+			return nil, err
+		}
+		adapters = append(adapters, adapter)
 	}
 	return adapters, nil
+}
+
+func newSealedBoundAdapter(descriptor opcatalog.Descriptor, binding opbinding.Binding, client boundClient, store sealedPayloadStore) (*sealedBoundAdapter, error) {
+	paths := sealedInputPaths[binding.Operation]
+	validator, err := binding.PublicArgumentsValidator(paths)
+	if err != nil {
+		return nil, fmt.Errorf("compile %s public arguments: %w", binding.Operation, err)
+	}
+	return &sealedBoundAdapter{descriptor: descriptor, binding: binding, client: client, store: store, paths: paths, public: validator}, nil
 }
 
 func (a *sealedBoundAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
@@ -126,15 +144,13 @@ func (a *sealedBoundAdapter) ValidateClient(input Input, client, requestKey stri
 	if err := validateSealedReference(arguments.SealedPayload, client, a.descriptor.Name, requestKey); err != nil {
 		return err
 	}
-	payload, err := a.store.Get(*arguments.SealedPayload)
-	zero(payload)
-	return err
+	return a.store.Validate(*arguments.SealedPayload)
 }
 
 func (a *sealedBoundAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
-	merged, arguments, err := a.materialize(input.Arguments, false)
-	if err != nil || a.binding.Validate(input.Target, merged) != nil {
-		return Plan{}, errors.New("sealed operation payload does not complete the operation schema")
+	arguments, err := decodeSealedArguments(input.Arguments)
+	if err != nil || a.public.Validate(arguments.Public) != nil {
+		return Plan{}, errors.New("sealed operation public arguments do not match the operation schema")
 	}
 	preconditions, err := resolveBoundPreconditions(ctx, a.client, a.descriptor.Name, input.Target, a.binding.ObserveMethod != "")
 	if err != nil {
@@ -179,7 +195,7 @@ func (a *sealedBoundAdapter) prepareExecution(ctx context.Context, plan Plan) (j
 	if err := checkBoundPreconditions(ctx, a.client, a.descriptor.Name, plan.Target, expected, a.binding.ObserveMethod != ""); err != nil {
 		return nil, err
 	}
-	merged, _, err := a.materialize(plan.Arguments, true)
+	merged, _, err := a.materialize(plan.Arguments)
 	if err != nil || a.binding.Validate(plan.Target, merged) != nil {
 		return nil, errors.New("sealed operation payload is invalid")
 	}
@@ -227,7 +243,7 @@ func (a *sealedBoundAdapter) Cleanup(plan Plan) error {
 	return a.store.Delete(*arguments.SealedPayload)
 }
 
-func (a *sealedBoundAdapter) materialize(raw json.RawMessage, consume bool) (json.RawMessage, sealedBoundArguments, error) {
+func (a *sealedBoundAdapter) materialize(raw json.RawMessage) (json.RawMessage, sealedBoundArguments, error) {
 	arguments, err := decodeSealedArguments(raw)
 	if err != nil {
 		return nil, arguments, err
@@ -240,12 +256,7 @@ func (a *sealedBoundAdapter) materialize(raw json.RawMessage, consume bool) (jso
 		merged, encodeErr := canonical(public)
 		return merged, arguments, encodeErr
 	}
-	var payload []byte
-	if consume {
-		payload, err = a.store.Consume(*arguments.SealedPayload)
-	} else {
-		payload, err = a.store.Get(*arguments.SealedPayload)
-	}
+	payload, err := a.store.Consume(*arguments.SealedPayload)
 	if err != nil {
 		return nil, arguments, err
 	}

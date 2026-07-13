@@ -190,6 +190,8 @@ func readSubmit(request *http.Request) (agentv1.SubmitRequest, error) {
 		strings.TrimSpace(result.Reason) == "" || len(result.Reason) > 2000 {
 		return agentv1.SubmitRequest{}, errors.New("idempotency key and reason are required")
 	}
+	result.IdempotencyKey = strings.TrimSpace(result.IdempotencyKey)
+	result.Reason = strings.TrimSpace(result.Reason)
 	return result, nil
 }
 

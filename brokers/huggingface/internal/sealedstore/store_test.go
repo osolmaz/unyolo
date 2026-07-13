@@ -2,6 +2,7 @@ package sealedstore
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,12 +30,18 @@ func TestStoreEncryptsBindsAndConsumesOnce(t *testing.T) {
 	if err != nil || !bytes.Equal(got, secret) {
 		t.Fatalf("Get() = %q, %v", got, err)
 	}
+	if err := store.Validate(reference); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
 	consumed, err := store.Consume(reference)
 	if err != nil || !bytes.Equal(consumed, secret) {
 		t.Fatalf("Consume() = %q, %v", consumed, err)
 	}
 	if _, err := store.Get(reference); err == nil || strings.Contains(err.Error(), string(secret)) {
 		t.Fatalf("second read error = %v", err)
+	}
+	if err := store.Validate(reference); err == nil {
+		t.Fatal("consumed payload still validated")
 	}
 }
 
@@ -222,6 +229,28 @@ func TestStoreRejectsTamperingAndBadReferences(t *testing.T) {
 	bad.ID = "../../escape"
 	if _, err := store.Get(bad); err == nil {
 		t.Fatal("unsafe reference accepted")
+	}
+}
+
+func TestStoreValidationDoesNotDecryptPayload(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := Open(dir)
+	reference, _ := store.Put("bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour))
+	path := filepath.Join(dir, "sealed-payloads", reference.ID+".bin")
+	envelope, err := readDiskEnvelope(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope.Ciphertext[0] ^= 0xff
+	encoded, err := json.Marshal(envelope)
+	if err != nil || os.WriteFile(path, encoded, 0o600) != nil {
+		t.Fatal("could not corrupt sealed ciphertext")
+	}
+	if err := store.Validate(reference); err != nil {
+		t.Fatalf("metadata-only Validate() = %v", err)
+	}
+	if _, err := store.Consume(reference); err == nil {
+		t.Fatal("corrupted ciphertext was consumed")
 	}
 }
 

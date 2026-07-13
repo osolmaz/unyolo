@@ -214,6 +214,25 @@ func (s *Store) Get(reference Reference) ([]byte, error) {
 	return s.read(reference, s.path(reference.ID))
 }
 
+// Validate confirms that an unconsumed payload exists for the exact reference
+// without decrypting its plaintext. Full AEAD authentication occurs when the
+// approved executor consumes the payload.
+func (s *Store) Validate(reference Reference) error {
+	if err := validateReference(reference); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if time.Now().Unix() >= reference.ExpiresAt {
+		return errors.New("sealed payload is expired")
+	}
+	envelope, err := readDiskEnvelope(s.path(reference.ID))
+	if err != nil || envelope.Consumed || envelope.Reference != reference || !s.validStoredEnvelope(envelope, reference.ID+".bin") {
+		return errors.New("sealed payload is unavailable")
+	}
+	return nil
+}
+
 // Consume atomically decrypts one payload and replaces it with an authenticated
 // consumed marker. The marker preserves submission idempotency without
 // retaining plaintext, and a second caller cannot observe the secret.
@@ -396,7 +415,7 @@ func (s *Store) validStoredEnvelope(envelope diskEnvelope, name string) bool {
 		return false
 	}
 	if !envelope.Consumed {
-		return len(envelope.Nonce) == s.aead.NonceSize() && len(envelope.Ciphertext) >= s.aead.Overhead()
+		return len(envelope.Nonce) == s.aead.NonceSize() && len(envelope.Ciphertext) == envelope.Reference.Size+s.aead.Overhead()
 	}
 	plaintext, err := s.aead.Open(nil, envelope.Nonce, envelope.Ciphertext, consumedAssociatedData(envelope.Reference))
 	return err == nil && len(plaintext) == 0

@@ -88,6 +88,8 @@ func (s *Server) cancelGrantForClient(grant grants.Grant, client string) error {
 
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
 	ctx = s.agentLifecycleContext(ctx)
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+	request.Reason = strings.TrimSpace(request.Reason)
 	adapter, input, err := s.decodeAgentOperation(request)
 	if err != nil {
 		return agentv1.Operation{}, false, err

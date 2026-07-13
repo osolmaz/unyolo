@@ -170,9 +170,7 @@ func (a *sandboxAdapter) ValidateClient(input Input, client, requestKey string) 
 	if err := validateSealedReference(arguments.SealedPayload, client, a.descriptor.Name, requestKey); err != nil {
 		return err
 	}
-	payload, err := a.store.Get(*arguments.SealedPayload)
-	zero(payload)
-	return err
+	return a.store.Validate(*arguments.SealedPayload)
 }
 
 //nolint:cyclop // Resource-kind decoding is explicit and tracked by the exact HF CRAP baseline.
