@@ -3,7 +3,6 @@ package hubclient
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -124,17 +123,13 @@ type BucketRef struct {
 }
 
 func (b BucketRef) Validate() error {
-	if !ValidNamespaceSegment(b.Namespace) || !ValidNamespaceSegment(b.Name) {
-		return errors.New("hubclient: bucket namespace and name must be exact safe segments")
-	}
-	return nil
+	return validateNamedResource(b.Namespace, b.Name, "hubclient: bucket namespace and name must be exact safe segments")
 }
 
 func (b BucketRef) ID() string { return b.Namespace + "/" + b.Name }
 
 func (b BucketRef) apiPath(suffix ...string) string {
-	parts := append([]string{"/api/buckets", url.PathEscape(b.Namespace), url.PathEscape(b.Name)}, suffix...)
-	return strings.Join(parts, "/")
+	return namedResourcePath("/api/buckets", b.Namespace, b.Name, suffix)
 }
 
 // BucketInfo is the bounded bucket state used for operation preconditions.
@@ -204,18 +199,26 @@ type RepoPathInfo struct {
 
 // Validate rejects unsafe or ambiguous Space identities.
 func (s SpaceRef) Validate() error {
-	if !ValidNamespaceSegment(s.Owner) || !ValidNamespaceSegment(s.Name) {
-		return errors.New("hubclient: space owner and name must be exact safe segments")
-	}
-	return nil
+	return validateNamedResource(s.Owner, s.Name, "hubclient: space owner and name must be exact safe segments")
 }
 
 // ID returns the owner/name Space identifier.
 func (s SpaceRef) ID() string { return s.Owner + "/" + s.Name }
 
 func (s SpaceRef) apiPath(suffix ...string) string {
-	parts := append([]string{"/api/spaces", url.PathEscape(s.Owner), url.PathEscape(s.Name)}, suffix...)
-	return strings.Join(parts, "/")
+	return namedResourcePath("/api/spaces", s.Owner, s.Name, suffix)
+}
+
+func validateNamedResource(owner, name, message string) error {
+	if ValidNamespaceSegment(owner) && ValidNamespaceSegment(name) {
+		return nil
+	}
+	return errors.New(message)
+}
+
+func namedResourcePath(prefix, owner, name string, suffix []string) string {
+	parts := []string{prefix, url.PathEscape(owner), url.PathEscape(name)}
+	return strings.Join(append(parts, suffix...), "/")
 }
 
 // RepoInfo is the bounded projection of upstream repository metadata used by
@@ -379,8 +382,8 @@ func (input CreateRepoInput) validate() error {
 }
 
 func validateRefName(kind, value string) error {
-	if !ValidGitRefComponent(value) {
-		return fmt.Errorf("hubclient: %s name is not a safe git ref", kind)
+	if ValidGitRefComponent(value) {
+		return nil
 	}
-	return nil
+	return errors.New("hubclient: " + kind + " name is not a safe git ref")
 }

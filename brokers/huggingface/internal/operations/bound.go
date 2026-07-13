@@ -69,20 +69,9 @@ func (a *boundAdapter) Decode(target, arguments json.RawMessage) (Input, error) 
 }
 
 func (a *boundAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
-	identity, err := a.client.WhoAmI(ctx)
+	preconditions, err := resolveBoundPreconditions(ctx, a.client, a.descriptor.Name, input.Target, a.binding.ObserveMethod != "")
 	if err != nil {
 		return Plan{}, err
-	}
-	preconditions := boundPreconditions{CredentialIdentity: identity.Name}
-	if a.binding.ObserveMethod != "" {
-		observed, absent, observeErr := a.client.ObserveBound(ctx, a.descriptor.Name, input.Target)
-		if observeErr != nil {
-			return Plan{}, observeErr
-		}
-		preconditions.ObservedAbsent = absent
-		if !absent {
-			preconditions.ObservationDigest = digest(observed)
-		}
 	}
 	encoded, _ := canonical(preconditions)
 	presentation, request := a.presentationAndPolicy(input.Target, input.Arguments, preconditions)
@@ -92,25 +81,15 @@ func (a *boundAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
 }
 
 func (a *boundAdapter) Authorize(plan Plan) hfpolicy.Request {
-	if plan.Policy.Operation != "" {
-		return plan.Policy
-	}
-	var preconditions boundPreconditions
-	if decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes) != nil {
-		return hfpolicy.Request{}
-	}
-	_, request := a.presentationAndPolicy(plan.Target, plan.Arguments, preconditions)
-	return request
+	return authorizeReconstructed(plan, a.reconstruct(plan))
 }
 
 func (a *boundAdapter) Present(plan Plan) agentv1.Presentation {
-	if plan.Presentation.Title != "" {
-		return plan.Presentation
-	}
-	var preconditions boundPreconditions
-	_ = decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes)
-	presentation, _ := a.presentationAndPolicy(plan.Target, plan.Arguments, preconditions)
-	return presentation
+	return presentReconstructed(plan, a.reconstruct(plan))
+}
+
+func (a *boundAdapter) reconstruct(plan Plan) reconstructedPlan {
+	return reconstructBoundPlan(plan, plan.Arguments, a.presentationAndPolicy)
 }
 
 func (a *boundAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
@@ -118,27 +97,65 @@ func (a *boundAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) 
 	if err := decodeClosed(plan.Preconditions, &expected, maxTargetBytes); err != nil || expected.CredentialIdentity == "" {
 		return Outcome{}, errors.New("operation plan preconditions are invalid")
 	}
-	identity, err := a.client.WhoAmI(ctx)
-	if err != nil {
+	if err := checkBoundPreconditions(ctx, a.client, a.descriptor.Name, plan.Target, expected, a.binding.ObserveMethod != ""); err != nil {
 		return Outcome{}, err
-	}
-	if identity.Name != expected.CredentialIdentity {
-		return Outcome{}, errors.New("operation_precondition_failed")
-	}
-	if a.binding.ObserveMethod != "" {
-		observed, absent, observeErr := a.client.ObserveBound(ctx, a.descriptor.Name, plan.Target)
-		if observeErr != nil {
-			return Outcome{}, observeErr
-		}
-		if absent != expected.ObservedAbsent || !absent && digest(observed) != expected.ObservationDigest {
-			return Outcome{}, errors.New("operation_precondition_failed")
-		}
 	}
 	if err := a.client.ExecuteBound(ctx, a.descriptor.Name, plan.Target, plan.Arguments); err != nil {
 		return Outcome{}, err
 	}
 	result, _ := canonical(map[string]any{"accepted": true, "operation": a.descriptor.Name})
 	return Outcome{Proven: true, Result: result}, nil
+}
+
+func resolveBoundPreconditions(ctx context.Context, client boundClient, operation string, target json.RawMessage, observe bool) (boundPreconditions, error) {
+	identity, err := client.WhoAmI(ctx)
+	if err != nil {
+		return boundPreconditions{}, err
+	}
+	preconditions := boundPreconditions{CredentialIdentity: identity.Name}
+	if !observe {
+		return preconditions, nil
+	}
+	observed, absent, err := client.ObserveBound(ctx, operation, target)
+	if err != nil {
+		return boundPreconditions{}, err
+	}
+	preconditions.ObservedAbsent = absent
+	if !absent {
+		preconditions.ObservationDigest = digest(observed)
+	}
+	return preconditions, nil
+}
+
+func checkBoundPreconditions(ctx context.Context, client boundClient, operation string, target json.RawMessage, expected boundPreconditions, observe bool) error {
+	identity, err := client.WhoAmI(ctx)
+	if err != nil {
+		return err
+	}
+	if identity.Name != expected.CredentialIdentity {
+		return errors.New("operation_precondition_failed")
+	}
+	if !observe {
+		return nil
+	}
+	observed, absent, err := client.ObserveBound(ctx, operation, target)
+	if err != nil {
+		return err
+	}
+	if absent != expected.ObservedAbsent || !absent && digest(observed) != expected.ObservationDigest {
+		return errors.New("operation_precondition_failed")
+	}
+	return nil
+}
+
+func reconstructBoundPlan(plan Plan, arguments json.RawMessage,
+	present func(json.RawMessage, json.RawMessage, boundPreconditions) (agentv1.Presentation, hfpolicy.Request)) reconstructedPlan {
+	var preconditions boundPreconditions
+	if decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes) != nil {
+		return reconstructedPlan{}
+	}
+	presentation, request := present(plan.Target, arguments, preconditions)
+	return reconstructedPlan{presentation: presentation, request: request}
 }
 
 func (a *boundAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {

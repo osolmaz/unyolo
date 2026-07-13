@@ -161,8 +161,8 @@ func spaceImageID(image string) (string, bool) {
 }
 
 func nonNilMap(value map[string]string) map[string]string {
-	if value == nil {
-		return map[string]string{}
+	if len(value) != 0 {
+		return value
 	}
-	return value
+	return make(map[string]string)
 }

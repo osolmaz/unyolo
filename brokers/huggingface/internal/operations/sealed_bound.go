@@ -117,20 +117,9 @@ func (a *sealedBoundAdapter) Resolve(ctx context.Context, input Input) (Plan, er
 	if err != nil || a.binding.Validate(input.Target, merged) != nil {
 		return Plan{}, errors.New("sealed operation payload does not complete the operation schema")
 	}
-	identity, err := a.client.WhoAmI(ctx)
+	preconditions, err := resolveBoundPreconditions(ctx, a.client, a.descriptor.Name, input.Target, a.binding.ObserveMethod != "")
 	if err != nil {
 		return Plan{}, err
-	}
-	preconditions := boundPreconditions{CredentialIdentity: identity.Name}
-	if a.binding.ObserveMethod != "" {
-		observed, absent, observeErr := a.client.ObserveBound(ctx, a.descriptor.Name, input.Target)
-		if observeErr != nil {
-			return Plan{}, observeErr
-		}
-		preconditions.ObservedAbsent = absent
-		if !absent {
-			preconditions.ObservationDigest = digest(observed)
-		}
 	}
 	encoded, _ := canonical(preconditions)
 	presentation, request := a.presentationAndPolicy(input.Target, arguments.Public, preconditions)
@@ -139,27 +128,16 @@ func (a *sealedBoundAdapter) Resolve(ctx context.Context, input Input) (Plan, er
 }
 
 func (a *sealedBoundAdapter) Authorize(plan Plan) hfpolicy.Request {
-	if plan.Policy.Operation != "" {
-		return plan.Policy
-	}
-	arguments, err := decodeSealedArguments(plan.Arguments)
-	var preconditions boundPreconditions
-	if err != nil || decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes) != nil {
-		return hfpolicy.Request{}
-	}
-	_, request := a.presentationAndPolicy(plan.Target, arguments.Public, preconditions)
-	return request
+	return authorizeReconstructed(plan, a.reconstruct(plan))
 }
 
 func (a *sealedBoundAdapter) Present(plan Plan) agentv1.Presentation {
-	if plan.Presentation.Title != "" {
-		return plan.Presentation
-	}
+	return presentReconstructed(plan, a.reconstruct(plan))
+}
+
+func (a *sealedBoundAdapter) reconstruct(plan Plan) reconstructedPlan {
 	arguments, _ := decodeSealedArguments(plan.Arguments)
-	var preconditions boundPreconditions
-	_ = decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes)
-	presentation, _ := a.presentationAndPolicy(plan.Target, arguments.Public, preconditions)
-	return presentation
+	return reconstructBoundPlan(plan, arguments.Public, a.presentationAndPolicy)
 }
 
 func (a *sealedBoundAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
@@ -179,14 +157,7 @@ func (a *sealedBoundAdapter) prepareExecution(ctx context.Context, plan Plan) (j
 	if err := decodeClosed(plan.Preconditions, &expected, maxTargetBytes); err != nil || expected.CredentialIdentity == "" {
 		return nil, errors.New("operation plan preconditions are invalid")
 	}
-	identity, err := a.client.WhoAmI(ctx)
-	if err != nil || identity.Name != expected.CredentialIdentity {
-		if err != nil {
-			return nil, err
-		}
-		return nil, errors.New("operation_precondition_failed")
-	}
-	if err := a.checkObservation(ctx, plan.Target, expected); err != nil {
+	if err := checkBoundPreconditions(ctx, a.client, a.descriptor.Name, plan.Target, expected, a.binding.ObserveMethod != ""); err != nil {
 		return nil, err
 	}
 	merged, _, err := a.materialize(plan.Arguments, true)
@@ -214,20 +185,6 @@ func (a *sealedBoundAdapter) Cleanup(plan Plan) error {
 		return err
 	}
 	return a.store.Delete(*arguments.SealedPayload)
-}
-
-func (a *sealedBoundAdapter) checkObservation(ctx context.Context, target json.RawMessage, expected boundPreconditions) error {
-	if a.binding.ObserveMethod == "" {
-		return nil
-	}
-	observed, absent, err := a.client.ObserveBound(ctx, a.descriptor.Name, target)
-	if err != nil {
-		return err
-	}
-	if absent != expected.ObservedAbsent || !absent && digest(observed) != expected.ObservationDigest {
-		return errors.New("operation_precondition_failed")
-	}
-	return nil
 }
 
 func (a *sealedBoundAdapter) materialize(raw json.RawMessage, consume bool) (json.RawMessage, sealedBoundArguments, error) {

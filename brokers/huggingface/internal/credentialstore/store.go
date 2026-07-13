@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/securefile"
 )
 
 const (
@@ -162,7 +164,7 @@ func loadOrCreateKey(path string) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("create credential slot key")
 	}
-	if err := writeAndSync(file, key); err != nil {
+	if err := securefile.WriteAndSync(file, key, "credential slot"); err != nil {
 		_ = os.Remove(path)
 		return nil, err
 	}
@@ -180,28 +182,13 @@ func atomicWrite(path string, data []byte) error {
 		_ = os.Remove(temporary)
 		return errors.New("secure credential slot")
 	}
-	if err := writeAndSync(file, data); err != nil {
+	if err := securefile.WriteAndSync(file, data, "credential slot"); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}
 	if err := os.Rename(temporary, path); err != nil {
 		_ = os.Remove(temporary)
 		return errors.New("replace credential slot")
-	}
-	return nil
-}
-
-func writeAndSync(file *os.File, data []byte) error {
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		return errors.New("write credential slot")
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return errors.New("sync credential slot")
-	}
-	if err := file.Close(); err != nil {
-		return errors.New("close credential slot")
 	}
 	return nil
 }

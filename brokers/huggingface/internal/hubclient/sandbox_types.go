@@ -42,10 +42,7 @@ type SandboxPoolRef struct {
 }
 
 func (r SandboxPoolRef) Validate() error {
-	if !ValidNamespaceSegment(r.Namespace) || !ValidNamespaceSegment(r.Name) {
-		return errors.New("hubclient: sandbox pool reference is invalid")
-	}
-	return nil
+	return validateNamedResource(r.Namespace, r.Name, "hubclient: sandbox pool reference is invalid")
 }
 
 type SandboxVolume struct {

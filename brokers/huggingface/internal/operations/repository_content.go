@@ -317,15 +317,11 @@ func (a *repositoryContentAdapter) copyCommitRequest(ctx context.Context, reques
 }
 
 func (a *repositoryContentAdapter) decodePlan(plan Plan) (repositoryContentTarget, contentPreconditions, error) {
-	target, err := a.decodeTarget(plan.Target)
-	if err != nil {
-		return repositoryContentTarget{}, contentPreconditions{}, err
-	}
-	var preconditions contentPreconditions
-	if err := decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes); err != nil || preconditions.CredentialIdentity == "" || preconditions.TargetDigest == "" {
-		return repositoryContentTarget{}, contentPreconditions{}, errors.New("operation plan preconditions are invalid")
-	}
-	return target, preconditions, nil
+	return decodePlanState(plan, a.decodeTarget, maxTargetBytes,
+		func(value contentPreconditions) bool {
+			return value.CredentialIdentity != "" && value.TargetDigest != ""
+		},
+		"operation plan preconditions are invalid")
 }
 
 func (a *repositoryContentAdapter) checkPreconditions(ctx context.Context, target repositoryContentTarget, expected contentPreconditions) error {

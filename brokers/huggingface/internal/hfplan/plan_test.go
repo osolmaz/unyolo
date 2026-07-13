@@ -2,6 +2,7 @@ package hfplan
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -155,6 +156,147 @@ func TestStoreRejectsMissingAndCorruptPlans(t *testing.T) {
 	if err := (*Store)(nil).Bind(&request); err == nil {
 		t.Fatal("nil store accepted binding")
 	}
+}
+
+func TestStorePutGetAndBindingVariants(t *testing.T) {
+	t.Parallel()
+	fixedNow := time.Date(2026, 7, 13, 8, 0, 0, 0, time.UTC)
+	plans := newTestPlanStore(t, nil)
+	plan := validTestPlan(fixedNow)
+	digest, err := plans.Put(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := plans.Get(digest)
+	if err != nil || stored.Operation != plan.Operation || stored.ClientRequestID != plan.ClientRequestID {
+		t.Fatalf("Get() = %#v, %v", stored, err)
+	}
+
+	request := validTestRequest()
+	prepared, err := plans.PrepareBind(&request)
+	if err != nil || prepared.Digest == "" || request.Metadata[MetadataDigest] != prepared.Digest {
+		t.Fatalf("PrepareBind() = %#v, %v, metadata = %#v", prepared, err, request.Metadata)
+	}
+	request = validTestRequest()
+	if err := plans.BindAt(&request, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plans.Get(request.Metadata[MetadataDigest]); err != nil {
+		t.Fatalf("bound plan was not stored: %v", err)
+	}
+
+	if _, err := (*Store)(nil).Put(plan); err == nil {
+		t.Fatal("nil store accepted Put")
+	}
+	if _, err := (*Store)(nil).Get(digest); err == nil {
+		t.Fatal("nil store accepted Get")
+	}
+	if _, err := (*Store)(nil).PrepareBind(&request); err == nil {
+		t.Fatal("nil store accepted PrepareBind")
+	}
+	if _, err := plans.PrepareBindAt(nil, fixedNow); err == nil {
+		t.Fatal("PrepareBindAt accepted nil request")
+	}
+}
+
+func TestStoreRejectsUnsupportedSchema(t *testing.T) {
+	t.Parallel()
+	plans := newTestPlanStore(t, time.Now)
+	canonical := []byte(`{"value":true}`)
+	digest, err := plans.database.PutPlan(t.Context(), "other/v1", canonical, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plans.Get(digest); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("Get() error = %v, want unsupported schema", err)
+	}
+}
+
+func TestPrepareRejectsInvalidPlanVariants(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 13, 8, 0, 0, 0, time.UTC)
+	base := validTestPlan(now)
+	tests := []struct {
+		name   string
+		mutate func(*Plan)
+	}{
+		{"api version", func(plan *Plan) { plan.APIVersion = "other/v1" }},
+		{"revision", func(plan *Plan) { plan.OperationRevision = 2 }},
+		{"operation", func(plan *Plan) { plan.Operation = "unknown.operation" }},
+		{"client", func(plan *Plan) { plan.ClientID = " " }},
+		{"request", func(plan *Plan) { plan.ClientRequestID = "" }},
+		{"credential", func(plan *Plan) { plan.CredentialSelector.Name = "raw" }},
+		{"created", func(plan *Plan) { plan.CreatedAt = time.Time{} }},
+		{"expiry", func(plan *Plan) { plan.ExpiresAt = plan.CreatedAt }},
+		{"title empty", func(plan *Plan) { plan.Presentation.Title = "" }},
+		{"title long", func(plan *Plan) { plan.Presentation.Title = strings.Repeat("x", 161) }},
+		{"summary long", func(plan *Plan) { plan.Presentation.Summary = strings.Repeat("x", 501) }},
+		{"mode", func(plan *Plan) { plan.Authorization.Mode = "raw" }},
+		{"duration", func(plan *Plan) { plan.Authorization.RequestedDurationSeconds = 0 }},
+		{"uses negative", func(plan *Plan) { plan.Authorization.RequestedMaxUses = -1 }},
+		{"execution uses", func(plan *Plan) { plan.Authorization.RequestedMaxUses = 2 }},
+		{"target kind", func(plan *Plan) { plan.Authorization.Target.Kind = "" }},
+		{"target fields", func(plan *Plan) { plan.Authorization.Target.Fields = nil }},
+		{"empty target", func(plan *Plan) { plan.Target = nil }},
+		{"array arguments", func(plan *Plan) { plan.Arguments = json.RawMessage(`[]`) }},
+		{"empty preconditions", func(plan *Plan) { plan.Preconditions = json.RawMessage(`{`) }},
+		{"raw token", func(plan *Plan) { plan.Arguments = json.RawMessage(`{"nested":[{"api-token":"canary"}]}`) }},
+		{"raw password", func(plan *Plan) { plan.Target = json.RawMessage(`{"password":"canary"}`) }},
+		{"blank target field", func(plan *Plan) { plan.Authorization.Target.Fields = map[string][]string{"name": {""}} }},
+		{"blank attribute", func(plan *Plan) { plan.Authorization.Attributes = map[string][]string{"": {"value"}} }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := base
+			test.mutate(&plan)
+			if _, err := Prepare(plan); err == nil {
+				t.Fatal("Prepare() succeeded, want validation error")
+			}
+		})
+	}
+}
+
+func TestValidatorRejectsMissingMetadataAndWidenedUses(t *testing.T) {
+	t.Parallel()
+	plans := newTestPlanStore(t, time.Now)
+	validator := Validator{Store: plans}
+	if err := validator.ValidateExecution(grants.Grant{}); err == nil {
+		t.Fatal("validator accepted missing schema")
+	}
+	if err := (Validator{}).ValidateExecution(grants.Grant{}); err == nil {
+		t.Fatal("validator without store accepted grant")
+	}
+
+	request := validTestRequest()
+	if err := plans.Bind(&request); err != nil {
+		t.Fatal(err)
+	}
+	grant := grants.Grant{Client: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation,
+		Target: request.Target, Attrs: request.Attrs, Metadata: request.Metadata, Duration: request.Duration,
+		RequestedDuration: request.Duration, MaxUses: request.MaxUses, RequestedMaxUses: request.MaxUses}
+	if err := validator.ValidateActivation(t.Context(), grant, grants.ApprovalConstraints{MaxUses: 0, MaxUsesSpecified: false}); err != nil {
+		t.Fatalf("unspecified use constraint = %v", err)
+	}
+	if err := validator.ValidateActivation(t.Context(), grant, grants.ApprovalConstraints{MaxUses: 2, MaxUsesSpecified: true}); !errors.Is(err, grants.ErrConstraintExceeded) {
+		t.Fatalf("widened use constraint = %v", err)
+	}
+	grant.Operation = "repo.create"
+	if err := validator.ValidateExecution(grant); err == nil {
+		t.Fatal("validator accepted grant drift")
+	}
+}
+
+func validTestRequest() grants.Request {
+	return grants.Request{
+		Client: "bob", ClientRequestID: "request-1", Operation: "repo.delete",
+		Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
+		Attrs:  map[string][]string{"visibility": {`"private"`}}, Metadata: map[string]string{"hf_grant_mode": "execution"},
+		Reason: "remove obsolete test repository", Duration: 5 * time.Minute, MaxUses: 1,
+	}
+}
+
+func validTestPlan(now time.Time) Plan {
+	return FromRequest(validTestRequest(), now)
 }
 
 func newTestPlanStore(t *testing.T, now func() time.Time) *Store {

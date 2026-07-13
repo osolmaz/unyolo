@@ -133,11 +133,7 @@ func (a *repositorySettingsAdapter) Present(plan Plan) agentv1.Presentation {
 }
 
 func (a *repositorySettingsAdapter) reconstruct(plan Plan) reconstructedPlan {
-	return reconstructPlan(plan.Target, plan.Arguments, decodeRepositoryTarget,
-		func(target repositoryTarget, arguments json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
-			presentation, request, _ := a.presentationAndPolicy(target, arguments)
-			return presentation, request
-		})
+	return reconstructPlanWithError(plan, decodeRepositoryTarget, a.presentationAndPolicy)
 }
 
 func (a *repositorySettingsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
@@ -211,15 +207,11 @@ func (a *repositorySettingsAdapter) Reconcile(ctx context.Context, plan Plan) (O
 }
 
 func (a *repositorySettingsAdapter) decodePlan(plan Plan) (repositoryTarget, repositorySettingsPreconditions, error) {
-	target, err := decodeRepositoryTarget(plan.Target)
-	if err != nil {
-		return repositoryTarget{}, repositorySettingsPreconditions{}, err
-	}
-	var preconditions repositorySettingsPreconditions
-	if err := decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes); err != nil || preconditions.SourceDigest == "" {
-		return repositoryTarget{}, repositorySettingsPreconditions{}, errors.New("operation plan preconditions are invalid")
-	}
-	return target, preconditions, nil
+	return decodePlanState(plan, decodeRepositoryTarget, maxTargetBytes, validRepositorySettingsPreconditions, "operation plan preconditions are invalid")
+}
+
+func validRepositorySettingsPreconditions(value repositorySettingsPreconditions) bool {
+	return value.SourceDigest != ""
 }
 
 func (a *repositorySettingsAdapter) checkPreconditions(ctx context.Context, target repositoryTarget, raw json.RawMessage, expected repositorySettingsPreconditions) error {
@@ -275,11 +267,7 @@ func (a *repositorySettingsAdapter) presentationAndPolicy(target repositoryTarge
 }
 
 func decodeRepositoryTarget(raw json.RawMessage) (repositoryTarget, error) {
-	var target repositoryTarget
-	if err := decodeClosed(raw, &target, maxTargetBytes); err != nil || !validRepositoryTarget(target) {
-		return repositoryTarget{}, errors.New("repository target is invalid")
-	}
-	return target, nil
+	return decodeValidated(raw, maxTargetBytes, validRepositoryTarget, "repository target is invalid")
 }
 
 func validVisibility(repoType, visibility string) bool {
@@ -287,6 +275,5 @@ func validVisibility(repoType, visibility string) bool {
 }
 
 func repoInfoDigest(info hubclient.RepoInfo) string {
-	value, _ := canonical(info)
-	return digest(value)
+	return digestValue(info)
 }

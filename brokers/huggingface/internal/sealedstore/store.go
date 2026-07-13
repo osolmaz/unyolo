@@ -17,6 +17,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/securefile"
 )
 
 const (
@@ -101,7 +103,7 @@ func (s *Store) Put(owner, purpose string, plaintext []byte, expiresAt time.Time
 		if err != nil {
 			return Reference{}, errors.New("create sealed payload")
 		}
-		writeErr := writeAndSync(file, encoded)
+		writeErr := securefile.WriteAndSync(file, encoded, "sealed payload")
 		if writeErr != nil {
 			_ = os.Remove(path)
 			return Reference{}, writeErr
@@ -204,26 +206,11 @@ func loadOrCreateKey(path string) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("create sealed payload key")
 	}
-	if err := writeAndSync(file, []byte(base64.RawStdEncoding.EncodeToString(key))); err != nil {
+	if err := securefile.WriteAndSync(file, []byte(base64.RawStdEncoding.EncodeToString(key)), "sealed payload"); err != nil {
 		_ = os.Remove(path)
 		return nil, err
 	}
 	return key, nil
-}
-
-func writeAndSync(file *os.File, data []byte) error {
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		return errors.New("write sealed payload")
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return errors.New("sync sealed payload")
-	}
-	if err := file.Close(); err != nil {
-		return errors.New("close sealed payload")
-	}
-	return nil
 }
 
 func randomReference() (string, error) {

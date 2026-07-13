@@ -355,7 +355,7 @@ func validateSandboxCommandArguments(value sandboxCommandArguments) error {
 
 func validateSandboxFileWrite(value sandboxFileWriteArguments) error {
 	content, err := base64.StdEncoding.Strict().DecodeString(value.ContentBase64)
-	if err != nil || len(content) > 700*1024 || !validSandboxOperationPath(value.Path) || !validFileMode(value.Mode) {
+	if err != nil || len(content) > 700*1024 || !validSandboxOperationPath(value.Path) || !hubclient.ValidSandboxFileMode(value.Mode) {
 		return errors.New("sandbox file write is invalid")
 	}
 	return nil
@@ -363,21 +363,6 @@ func validateSandboxFileWrite(value sandboxFileWriteArguments) error {
 
 func validSandboxOperationPath(value string) bool {
 	return value != "" && len(value) <= 4096 && !strings.ContainsRune(value, 0)
-}
-
-func validFileMode(value string) bool {
-	if value == "" {
-		return true
-	}
-	if len(value) != 3 && len(value) != 4 {
-		return false
-	}
-	for _, character := range value {
-		if character < '0' || character > '7' {
-			return false
-		}
-	}
-	return true
 }
 
 func validEnvironmentEntry(key, value string) bool {

@@ -49,20 +49,16 @@ type refsPreconditions struct {
 	ExpectedCommit string `json:"expected_commit,omitempty"`
 }
 
+var refsAdapterNames = []string{"repo.branch.create", "repo.branch.delete", "repo.tag.create", "repo.tag.delete"}
+
 func NewRefsAdapters(client refsClient) ([]Adapter, error) {
-	if client == nil {
-		return nil, errors.New("Hugging Face refs client is required")
+	return adaptersForClient(client == nil, "Hugging Face refs client is required", refsAdapterNames, newRefsAdapter(client))
+}
+
+func newRefsAdapter(client refsClient) func(opcatalog.Descriptor) Adapter {
+	return func(descriptor opcatalog.Descriptor) Adapter {
+		return &refsAdapter{descriptor: descriptor, client: client}
 	}
-	names := []string{"repo.branch.create", "repo.branch.delete", "repo.tag.create", "repo.tag.delete"}
-	adapters := make([]Adapter, 0, len(names))
-	for _, name := range names {
-		descriptor, found := opcatalog.ByName(name)
-		if !found {
-			return nil, fmt.Errorf("operation %q is absent from the catalog", name)
-		}
-		adapters = append(adapters, &refsAdapter{descriptor: descriptor, client: client})
-	}
-	return adapters, nil
 }
 
 func (a *refsAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
@@ -192,16 +188,10 @@ func (a *refsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error)
 }
 
 func (a *refsAdapter) decodePlan(plan Plan) (refTarget, refsPreconditions, error) {
-	target, err := decodeRefTarget(plan.Target)
-	if err != nil {
-		return refTarget{}, refsPreconditions{}, err
-	}
-	var preconditions refsPreconditions
-	if err := decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes); err != nil || preconditions.ObservedDigest == "" {
-		return refTarget{}, refsPreconditions{}, errors.New("operation plan preconditions are invalid")
-	}
-	return target, preconditions, nil
+	return decodePlanState(plan, decodeRefTarget, maxTargetBytes, validRefsPreconditions, "operation plan preconditions are invalid")
 }
+
+func validRefsPreconditions(value refsPreconditions) bool { return value.ObservedDigest != "" }
 
 func (a *refsAdapter) find(refs hubclient.Refs, name string) (hubclient.GitRef, bool) {
 	if strings.Contains(a.descriptor.Name, ".branch.") {
@@ -231,11 +221,7 @@ func validRefTarget(target refTarget) bool {
 }
 
 func decodeRefTarget(raw json.RawMessage) (refTarget, error) {
-	var target refTarget
-	if err := decodeClosed(raw, &target, maxTargetBytes); err != nil || !validRefTarget(target) {
-		return refTarget{}, errors.New("repository ref target is invalid")
-	}
-	return target, nil
+	return decodeValidated(raw, maxTargetBytes, validRefTarget, "repository ref target is invalid")
 }
 
 func (target refTarget) repoRef() hubclient.RepoRef {
@@ -243,6 +229,5 @@ func (target refTarget) repoRef() hubclient.RepoRef {
 }
 
 func refsDigest(refs hubclient.Refs) string {
-	value, _ := canonical(refs)
-	return digest(value)
+	return digestValue(refs)
 }

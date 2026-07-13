@@ -10,14 +10,7 @@ import (
 //
 // Spec: GET /api/{type}s/{owner}/{name}/refs.
 func (c *Client) ListRefs(ctx context.Context, ref RepoRef) (Refs, error) {
-	if err := ref.Validate(); err != nil {
-		return Refs{}, err
-	}
-	var wire refsWire
-	if err := c.call(ctx, callSpec{method: http.MethodGet, path: ref.apiPath("refs"), out: &wire}); err != nil {
-		return Refs{}, err
-	}
-	return wire.toRefs(), nil
+	return readResource(ctx, c, ref.Validate, ref.apiPath("refs"), func(wire refsWire) Refs { return wire.toRefs() })
 }
 
 type createBranchBody struct {
@@ -49,13 +42,7 @@ func (c *Client) CreateBranch(ctx context.Context, ref RepoRef, branch, starting
 //
 // Spec: DELETE /api/{type}s/{owner}/{name}/branch/{branch}.
 func (c *Client) DeleteBranch(ctx context.Context, ref RepoRef, branch string) error {
-	if err := ref.Validate(); err != nil {
-		return err
-	}
-	if err := validateRefName("branch", branch); err != nil {
-		return err
-	}
-	return c.call(ctx, callSpec{method: http.MethodDelete, path: ref.apiPath("branch", url.PathEscape(branch))})
+	return c.deleteRef(ctx, ref, "branch", branch)
 }
 
 type createTagBody struct {
@@ -88,11 +75,28 @@ func (c *Client) CreateTag(ctx context.Context, ref RepoRef, tag, message, revis
 //
 // Spec: DELETE /api/{type}s/{owner}/{name}/tag/{tag}.
 func (c *Client) DeleteTag(ctx context.Context, ref RepoRef, tag string) error {
+	return c.deleteRef(ctx, ref, "tag", tag)
+}
+
+func (c *Client) deleteRef(ctx context.Context, ref RepoRef, kind, name string) error {
 	if err := ref.Validate(); err != nil {
 		return err
 	}
-	if err := validateRefName("tag", tag); err != nil {
+	if err := validateRefName(kind, name); err != nil {
 		return err
 	}
-	return c.call(ctx, callSpec{method: http.MethodDelete, path: ref.apiPath("tag", url.PathEscape(tag))})
+	return c.call(ctx, callSpec{method: http.MethodDelete, path: ref.apiPath(kind, url.PathEscape(name))})
+}
+
+func readResource[Wire, Result any](ctx context.Context, client *Client, validate func() error, path string, project func(Wire) Result) (Result, error) {
+	var wire Wire
+	if err := validate(); err != nil {
+		var zero Result
+		return zero, err
+	}
+	if err := client.call(ctx, callSpec{method: http.MethodGet, path: path, out: &wire}); err != nil {
+		var zero Result
+		return zero, err
+	}
+	return project(wire), nil
 }

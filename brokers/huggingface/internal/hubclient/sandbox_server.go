@@ -131,7 +131,7 @@ func (c *Client) SandboxFileStat(ctx context.Context, ref SandboxRef, path strin
 }
 
 func (c *Client) WriteSandboxFile(ctx context.Context, ref SandboxRef, path, mode string, content []byte) error {
-	if !validSandboxPath(path) || !validSandboxMode(mode) || len(content) > maxRequestBodyBytes {
+	if !validSandboxPath(path) || !ValidSandboxFileMode(mode) || len(content) > maxRequestBodyBytes {
 		return errors.New("hubclient: sandbox file write is invalid")
 	}
 	endpoint, basePath, err := c.resolveSandboxEndpoint(ctx, ref)
@@ -460,7 +460,9 @@ func validSandboxCommandValue(value any) bool {
 	}
 }
 
-func validSandboxMode(mode string) bool {
+// ValidSandboxFileMode reports whether mode is empty or a three/four-digit
+// octal file mode accepted by the pinned sandbox API.
+func ValidSandboxFileMode(mode string) bool {
 	if mode == "" {
 		return true
 	}

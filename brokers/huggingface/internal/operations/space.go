@@ -266,16 +266,10 @@ func (a *spaceAdapter) observe(ctx context.Context, target spaceTarget) (json.Ra
 }
 
 func (a *spaceAdapter) decodePlan(plan Plan) (spaceTarget, spacePreconditions, error) {
-	target, err := decodeSpaceTarget(plan.Target)
-	if err != nil {
-		return spaceTarget{}, spacePreconditions{}, err
-	}
-	var preconditions spacePreconditions
-	if err := decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes); err != nil || preconditions.ObservedDigest == "" {
-		return spaceTarget{}, spacePreconditions{}, errors.New("operation plan preconditions are invalid")
-	}
-	return target, preconditions, nil
+	return decodePlanState(plan, decodeSpaceTarget, maxTargetBytes, validSpacePreconditions, "operation plan preconditions are invalid")
 }
+
+func validSpacePreconditions(value spacePreconditions) bool { return value.ObservedDigest != "" }
 
 func (a *spaceAdapter) presentationAndPolicy(target spaceTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
 	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: hfpolicy.Target{Kind: hfpolicy.TargetKind("space"), Owner: target.Owner, Name: target.Name}, Attrs: map[string]any{}}

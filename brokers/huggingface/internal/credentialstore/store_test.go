@@ -2,10 +2,13 @@ package credentialstore
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStoreEncryptsAndReplacesCredentialSlots(t *testing.T) {
@@ -111,5 +114,68 @@ func TestStoreRejectsInvalidValuesAndMetadata(t *testing.T) {
 	var nilStore *Store
 	if _, err := nilStore.Put("slot", "token", []byte("secret")); err == nil {
 		t.Fatal("nil store accepted a value")
+	}
+	if _, _, err := nilStore.Get("slot", "token"); err == nil {
+		t.Fatal("nil store returned a value")
+	}
+	if _, _, err := store.Get("../escape", "token"); err == nil {
+		t.Fatal("invalid slot was read")
+	}
+}
+
+func TestStoreRejectsMalformedEncryptedRecords(t *testing.T) {
+	t.Parallel()
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRecord := func(t *testing.T, record []byte) {
+		t.Helper()
+		if err := os.WriteFile(store.path("slot"), record, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := store.Get("slot", "token"); err == nil {
+			t.Fatal("Get() accepted malformed record")
+		}
+	}
+	writeRecord(t, []byte(`not-json`))
+	writeRecord(t, []byte(`{"slot":"other","kind":"token","size":1}`))
+	writeRecord(t, []byte(`{"slot":"slot","kind":"token","size":0}`))
+	writeRecord(t, []byte(`{"slot":"slot","kind":"token","size":1,"nonce":"!","ciphertext":"!"}`))
+	writeRecord(t, []byte(`{"slot":"slot","kind":"token","size":1,"nonce":"AA","ciphertext":"AA"}`))
+
+	metadata := Metadata{Slot: "slot", Kind: "token", Digest: strings.Repeat("0", 64), Size: 6, UpdatedAt: time.Now().UTC()}
+	nonce := make([]byte, store.aead.NonceSize())
+	ciphertext := store.aead.Seal(nil, nonce, []byte("secret"), associatedData(metadata))
+	record, err := json.Marshal(encryptedRecord{Metadata: metadata,
+		Nonce: base64.RawStdEncoding.EncodeToString(nonce), Ciphertext: base64.RawStdEncoding.EncodeToString(ciphertext)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRecord(t, record)
+
+	oversized := make([]byte, 2*maxCredentialBytes+1)
+	writeRecord(t, oversized)
+}
+
+func TestCredentialStoreFilesystemFailures(t *testing.T) {
+	t.Parallel()
+	if _, err := Open(""); err == nil {
+		t.Fatal("Open accepted empty state directory")
+	}
+	state := t.TempDir()
+	if err := os.WriteFile(filepath.Join(state, "credential-slots.key"), []byte("short"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(state); err == nil {
+		t.Fatal("Open accepted a short key")
+	}
+	if err := atomicWrite(filepath.Join(state, "missing", "slot.json"), []byte("value")); err == nil {
+		t.Fatal("atomicWrite accepted a missing directory")
+	}
+	value := []byte("secret")
+	zero(value)
+	if !bytes.Equal(value, make([]byte, len(value))) {
+		t.Fatalf("zero() = %v", value)
 	}
 }

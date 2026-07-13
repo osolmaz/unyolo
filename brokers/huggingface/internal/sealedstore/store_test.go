@@ -136,6 +136,7 @@ func TestStoreDeleteAndInputValidation(t *testing.T) {
 		{"../bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour)},
 		{"bob", "invalid", []byte("secret"), time.Now().Add(time.Hour)},
 		{"bob", "space.secret.set", nil, time.Now().Add(time.Hour)},
+		{"bob", "space.secret.set", make([]byte, maxSecretBytes+1), time.Now().Add(time.Hour)},
 		{"bob", "space.secret.set", []byte("secret"), time.Now().Add(-time.Hour)},
 		{"bob", "space.secret.set", []byte("secret"), time.Now().Add(25 * time.Hour)},
 	} {
@@ -154,6 +155,16 @@ func TestStoreDeleteAndInputValidation(t *testing.T) {
 	bad.Digest = "not-hex"
 	if err := store.Delete(bad); err == nil {
 		t.Fatal("invalid reference deletion accepted")
+	}
+	if _, err := store.Consume(bad); err == nil {
+		t.Fatal("invalid reference consumption accepted")
+	}
+	if _, err := store.Consume(reference); err == nil {
+		t.Fatal("missing payload was consumed")
+	}
+	var nilStore *Store
+	if _, err := nilStore.Put("bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour)); err == nil {
+		t.Fatal("nil store accepted payload")
 	}
 }
 
@@ -174,5 +185,47 @@ func TestStoreRejectsUnsupportedFormatAndBindingDrift(t *testing.T) {
 	reference.Size++
 	if _, err := store.Get(reference); err == nil {
 		t.Fatal("sealed payload size drift accepted")
+	}
+}
+
+func TestSealedStoreFilesystemAndKeyFailures(t *testing.T) {
+	t.Parallel()
+	if _, err := Open(""); err == nil {
+		t.Fatal("Open accepted empty state directory")
+	}
+	state := t.TempDir()
+	if err := os.WriteFile(filepath.Join(state, "sealed-payload.key"), []byte("not-base64"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(state); err == nil {
+		t.Fatal("Open accepted invalid key")
+	}
+}
+
+func TestReferenceValidationVariants(t *testing.T) {
+	t.Parallel()
+	reference, err := randomReference()
+	if err != nil || !referencePattern.MatchString(reference) {
+		t.Fatalf("randomReference() = %q, %v", reference, err)
+	}
+	valid := Reference{ID: reference, Owner: "bob", Purpose: "space.secret.set", Digest: strings.Repeat("a", 64), Size: 1, ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	for _, mutate := range []func(*Reference){
+		func(value *Reference) { value.ID = "bad" },
+		func(value *Reference) { value.Owner = "../bob" },
+		func(value *Reference) { value.Purpose = "bad" },
+		func(value *Reference) { value.Digest = "short" },
+		func(value *Reference) { value.Digest = strings.Repeat("z", 64) },
+		func(value *Reference) { value.Size = 0 },
+		func(value *Reference) { value.Size = maxSecretBytes + 1 },
+		func(value *Reference) { value.ExpiresAt = 0 },
+	} {
+		candidate := valid
+		mutate(&candidate)
+		if err := validateReference(candidate); err == nil {
+			t.Fatalf("validateReference(%+v) succeeded", candidate)
+		}
+	}
+	if err := validateReference(valid); err != nil {
+		t.Fatalf("validateReference(valid) = %v", err)
 	}
 }

@@ -233,10 +233,12 @@ func grantModeFromStore(grant grants.Grant) policy.GrantMode {
 }
 
 func attrsOrEmpty(attrs map[string]any) map[string]any {
-	if attrs == nil {
-		return map[string]any{}
+	switch attrs {
+	case nil:
+		return make(map[string]any)
+	default:
+		return attrs
 	}
-	return attrs
 }
 
 func grantUsesRemaining(grant grants.Grant) int {

@@ -236,7 +236,7 @@ func (a *sandboxAdapter) resolveSandboxResource(ctx context.Context, target sand
 		if err != nil {
 			return err
 		}
-		preconditions.ResourceDigest = sandboxResourceDigest(info)
+		preconditions.ResourceDigest = digestValue(info)
 	case "sandbox.file.mkdir":
 		var arguments sandboxFileMkdirArguments
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
@@ -256,7 +256,7 @@ func (a *sandboxAdapter) resolveSandboxResource(ctx context.Context, target sand
 		if err != nil {
 			return err
 		}
-		preconditions.ResourceDigest = sandboxResourceDigest(info)
+		preconditions.ResourceDigest = digestValue(info)
 	case "sandbox.process.kill":
 		var arguments sandboxProcessKillArguments
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
@@ -268,21 +268,15 @@ func (a *sandboxAdapter) resolveSandboxResource(ctx context.Context, target sand
 		if index < 0 {
 			return errors.New("sandbox process is not running")
 		}
-		preconditions.ResourceDigest = sandboxResourceDigest(processes[index])
+		preconditions.ResourceDigest = digestValue(processes[index])
 	}
 	return nil
 }
 
 func (a *sandboxAdapter) decodeSandboxPlan(plan Plan) (sandboxTarget, sandboxPreconditions, error) {
-	target, err := a.decodeTarget(plan.Target)
-	if err != nil {
-		return sandboxTarget{}, sandboxPreconditions{}, err
-	}
-	var preconditions sandboxPreconditions
-	if err := decodeClosed(plan.Preconditions, &preconditions, maxArgumentsBytes); err != nil || preconditions.CredentialIdentity == "" {
-		return sandboxTarget{}, sandboxPreconditions{}, errors.New("sandbox operation preconditions are invalid")
-	}
-	return target, preconditions, nil
+	return decodePlanState(plan, a.decodeTarget, maxArgumentsBytes,
+		func(value sandboxPreconditions) bool { return value.CredentialIdentity != "" },
+		"sandbox operation preconditions are invalid")
 }
 
 func (a *sandboxAdapter) checkSandboxIdentity(ctx context.Context, expected sandboxPreconditions) error {
@@ -332,7 +326,7 @@ func (a *sandboxAdapter) checkSandboxResource(ctx context.Context, target sandbo
 		index := slices.IndexFunc(processes, func(process hubclient.SandboxProcess) bool {
 			return process.PID == arguments.PID && process.Running
 		})
-		if index < 0 || sandboxResourceDigest(processes[index]) != expected.ResourceDigest {
+		if index < 0 || digestValue(processes[index]) != expected.ResourceDigest {
 			return errors.New("operation_precondition_failed")
 		}
 		return nil
@@ -343,7 +337,7 @@ func (a *sandboxAdapter) checkSandboxResource(ctx context.Context, target sandbo
 	if expected.ResourceAbsent && hubclient.IsNotFound(err) {
 		return nil
 	}
-	if err != nil || expected.ResourceAbsent || sandboxResourceDigest(info) != expected.ResourceDigest {
+	if err != nil || expected.ResourceAbsent || digestValue(info) != expected.ResourceDigest {
 		if err != nil {
 			return err
 		}
@@ -363,15 +357,10 @@ func (a *sandboxAdapter) publicArguments(raw json.RawMessage) json.RawMessage {
 	return arguments.Public
 }
 
-func sandboxStateDigest(state hubclient.SandboxState) string { return sandboxResourceDigest(state) }
+func sandboxStateDigest(state hubclient.SandboxState) string { return digestValue(state) }
 
 func sandboxStatesDigest(states []hubclient.SandboxState) string {
-	return sandboxResourceDigest(states)
-}
-
-func sandboxResourceDigest(value any) string {
-	encoded, _ := canonical(value)
-	return digest(encoded)
+	return digestValue(states)
 }
 
 func firstRunningSandboxHost(states []hubclient.SandboxState) *hubclient.SandboxState {
@@ -395,7 +384,7 @@ func sandboxConfigFromStates(states []hubclient.SandboxState) (sandboxPoolConfig
 	for _, state := range states[1:] {
 		candidate := sandboxPoolConfig{Image: state.Image, Flavor: state.Flavor, SandboxesPerHost: state.Capacity,
 			MaxHosts: state.MaxHosts, IdleTimeoutSeconds: state.IdleTimeoutSeconds}
-		if sandboxResourceDigest(candidate) != sandboxResourceDigest(config) {
+		if digestValue(candidate) != digestValue(config) {
 			return sandboxPoolConfig{}, errors.New("sandbox pool hosts have inconsistent configuration")
 		}
 	}

@@ -20,14 +20,7 @@ func ValidVariableKey(key string) bool { return variableKeyPattern.MatchString(k
 //
 // Spec: GET /api/spaces/{owner}/{name}/runtime.
 func (c *Client) SpaceRuntime(ctx context.Context, space SpaceRef) (SpaceRuntime, error) {
-	if err := space.Validate(); err != nil {
-		return SpaceRuntime{}, err
-	}
-	var wire spaceRuntimeWire
-	if err := c.call(ctx, callSpec{method: http.MethodGet, path: space.apiPath("runtime"), out: &wire}); err != nil {
-		return SpaceRuntime{}, err
-	}
-	return wire.toRuntime(), nil
+	return readResource(ctx, c, space.Validate, space.apiPath("runtime"), func(wire spaceRuntimeWire) SpaceRuntime { return wire.toRuntime() })
 }
 
 // RestartSpace restarts one exact Space.

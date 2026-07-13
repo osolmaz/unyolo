@@ -50,18 +50,73 @@ func reconstructPlan[T any](target, arguments json.RawMessage, decode func(json.
 	return reconstructedPlan{presentation: presentation, request: request}
 }
 
+func reconstructPlanWithError[T any](plan Plan, decode func(json.RawMessage) (T, error),
+	present func(T, json.RawMessage) (agentv1.Presentation, hfpolicy.Request, error)) reconstructedPlan {
+	return reconstructPlan(plan.Target, plan.Arguments, decode,
+		func(target T, arguments json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
+			presentation, request, _ := present(target, arguments)
+			return presentation, request
+		})
+}
+
 func authorizeReconstructed(plan Plan, rebuilt reconstructedPlan) hfpolicy.Request {
-	if plan.Policy.Operation != "" {
-		return plan.Policy
-	}
-	return rebuilt.request
+	return preferCached(plan.Policy, plan.Policy.Operation != "", rebuilt.request)
 }
 
 func presentReconstructed(plan Plan, rebuilt reconstructedPlan) agentv1.Presentation {
-	if plan.Presentation.Title != "" {
-		return plan.Presentation
+	return preferCached(plan.Presentation, plan.Presentation.Title != "", rebuilt.presentation)
+}
+
+func preferCached[T any](cached T, available bool, rebuilt T) T {
+	if available {
+		return cached
 	}
-	return rebuilt.presentation
+	return rebuilt
+}
+
+func adaptersForNames(names []string, build func(opcatalog.Descriptor) Adapter) ([]Adapter, error) {
+	adapters := make([]Adapter, 0, len(names))
+	for _, name := range names {
+		descriptor, found := opcatalog.ByName(name)
+		if !found {
+			return nil, fmt.Errorf("operation %q is absent from the catalog", name)
+		}
+		adapters = append(adapters, build(descriptor))
+	}
+	return adapters, nil
+}
+
+func adaptersForClient(invalid bool, message string, names []string, build func(opcatalog.Descriptor) Adapter) ([]Adapter, error) {
+	if invalid {
+		return nil, errors.New(message)
+	}
+	return adaptersForNames(names, build)
+}
+
+func decodeValidated[T any](raw json.RawMessage, maximum int, valid func(T) bool, message string) (T, error) {
+	var value T
+	if err := decodeClosed(raw, &value, maximum); err != nil || !valid(value) {
+		return value, errors.New(message)
+	}
+	return value, nil
+}
+
+func decodePlanState[T, P any](plan Plan, decodeTarget func(json.RawMessage) (T, error), maximum int,
+	valid func(P) bool, message string) (T, P, error) {
+	target, err := decodeTarget(plan.Target)
+	var preconditions P
+	if err != nil {
+		return target, preconditions, err
+	}
+	if err := decodeClosed(plan.Preconditions, &preconditions, maximum); err != nil || !valid(preconditions) {
+		return target, preconditions, errors.New(message)
+	}
+	return target, preconditions, nil
+}
+
+func digestValue[T any](value T) string {
+	encoded, _ := canonical(value)
+	return digest(encoded)
 }
 
 type Adapter interface {

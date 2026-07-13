@@ -104,10 +104,10 @@ func All() ([]Binding, error) {
 
 func MustAll() []Binding {
 	values, err := All()
-	if err != nil {
-		panic(err)
+	if err == nil {
+		return values
 	}
-	return values
+	panic(fmt.Errorf("load Hugging Face operation bindings: %w", err))
 }
 
 func ByName(name string) (Binding, bool) {
@@ -115,13 +115,12 @@ func ByName(name string) (Binding, bool) {
 	if err != nil {
 		return Binding{}, false
 	}
-	index, found := slices.BinarySearchFunc(values, name, func(value Binding, target string) int {
-		return strings.Compare(value.Operation, target)
-	})
-	if !found {
-		return Binding{}, false
+	for _, value := range values {
+		if value.Operation == name {
+			return value, true
+		}
 	}
-	return values[index], true
+	return Binding{}, false
 }
 
 func (b Binding) Validate(target, arguments json.RawMessage) error {

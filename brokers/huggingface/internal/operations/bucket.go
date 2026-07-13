@@ -49,20 +49,12 @@ type bucketPreconditions struct {
 	DestinationAbsent  bool   `json:"destination_absent,omitempty"`
 }
 
+var bucketAdapterNames = []string{"bucket.batch.apply", "bucket.move", "bucket.object.delete", "bucket.sync.apply"}
+
 func NewBucketAdapters(client bucketClient) ([]Adapter, error) {
-	if client == nil {
-		return nil, errors.New("Hugging Face bucket client is required")
-	}
-	names := []string{"bucket.batch.apply", "bucket.move", "bucket.object.delete", "bucket.sync.apply"}
-	adapters := make([]Adapter, 0, len(names))
-	for _, name := range names {
-		descriptor, found := opcatalog.ByName(name)
-		if !found {
-			return nil, fmt.Errorf("operation %q is absent from the catalog", name)
-		}
-		adapters = append(adapters, &bucketAdapter{descriptor: descriptor, client: client})
-	}
-	return adapters, nil
+	return adaptersForClient(client == nil, "Hugging Face bucket client is required", bucketAdapterNames, func(descriptor opcatalog.Descriptor) Adapter {
+		return &bucketAdapter{descriptor: descriptor, client: client}
+	})
 }
 
 func (a *bucketAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
@@ -204,15 +196,11 @@ func (a *bucketAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, erro
 }
 
 func (a *bucketAdapter) decodePlan(plan Plan) (bucketTarget, bucketPreconditions, error) {
-	target, err := decodeBucketTarget(plan.Target)
-	if err != nil {
-		return bucketTarget{}, bucketPreconditions{}, err
-	}
-	var preconditions bucketPreconditions
-	if err := decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes); err != nil || preconditions.CredentialIdentity == "" || preconditions.SourceDigest == "" {
-		return bucketTarget{}, bucketPreconditions{}, errors.New("operation plan preconditions are invalid")
-	}
-	return target, preconditions, nil
+	return decodePlanState(plan, decodeBucketTarget, maxTargetBytes,
+		func(value bucketPreconditions) bool {
+			return value.CredentialIdentity != "" && value.SourceDigest != ""
+		},
+		"operation plan preconditions are invalid")
 }
 
 func (a *bucketAdapter) checkPreconditions(ctx context.Context, target bucketTarget, raw json.RawMessage, expected bucketPreconditions) error {
@@ -261,11 +249,7 @@ func validBucketTarget(target bucketTarget) bool {
 }
 
 func decodeBucketTarget(raw json.RawMessage) (bucketTarget, error) {
-	var target bucketTarget
-	if err := decodeClosed(raw, &target, maxTargetBytes); err != nil || !validBucketTarget(target) {
-		return bucketTarget{}, errors.New("bucket target is invalid")
-	}
-	return target, nil
+	return decodeValidated(raw, maxTargetBytes, validBucketTarget, "bucket target is invalid")
 }
 
 func decodeBucketMove(raw json.RawMessage) (bucketMoveArguments, error) {
@@ -285,8 +269,7 @@ func (destination bucketMoveArguments) ref() hubclient.BucketRef {
 }
 
 func bucketInfoDigest(info hubclient.BucketInfo) string {
-	encoded, _ := canonical(info)
-	return digest(encoded)
+	return digestValue(info)
 }
 
 func deleteBucketOperation(path string) []hubclient.BucketBatchOperation {

@@ -75,7 +75,7 @@ func TestSandboxInternalValidationAndDecoding(t *testing.T) {
 			t.Fatalf("invalid command value accepted: %#v", value)
 		}
 	}
-	if !validSandboxMode("") || !validSandboxMode("0644") || validSandboxMode("0999") || validSandboxMode("12") {
+	if !ValidSandboxFileMode("") || !ValidSandboxFileMode("0644") || ValidSandboxFileMode("0999") || ValidSandboxFileMode("12") {
 		t.Fatal("sandbox mode validation mismatch")
 	}
 	if !isHex("0123456789abcdef", 16) || isHex("not-hex-not-hex!", 16) {

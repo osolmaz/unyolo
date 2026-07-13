@@ -120,11 +120,7 @@ func (a *repositoryAdapter) Present(plan Plan) agentv1.Presentation {
 }
 
 func (a *repositoryAdapter) reconstruct(plan Plan) reconstructedPlan {
-	return reconstructPlan(plan.Target, plan.Arguments, decodeRepositoryOperationTarget,
-		func(target repositoryTarget, arguments json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
-			presentation, request, _ := a.presentationAndPolicy(target, arguments)
-			return presentation, request
-		})
+	return reconstructPlanWithError(plan, decodeRepositoryOperationTarget, a.presentationAndPolicy)
 }
 
 func decodeRepositoryOperationTarget(raw json.RawMessage) (repositoryTarget, error) {
