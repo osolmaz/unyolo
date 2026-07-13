@@ -101,6 +101,7 @@ func mcpTools() []map[string]any {
 	return append(tools,
 		map[string]any{"name": "hf_operation_get", "description": "Get a resumable HF Broker operation by ID.", "inputSchema": mcpIDSchema("operation_id", false)},
 		map[string]any{"name": "hf_operation_wait", "description": "Wait for a resumable HF Broker operation without requesting a Hugging Face token.", "inputSchema": mcpIDSchema("operation_id", true)},
+		map[string]any{"name": "hf_operation_cancel", "description": "Cancel a pending or approved HF Broker operation.", "inputSchema": mcpIDSchema("operation_id", false)},
 		map[string]any{"name": "hf_grant_request", "description": "Request temporary, policy-bounded Hugging Face access. Never ask for a Hugging Face token.", "inputSchema": mcpGrantRequestSchema()},
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_wait", "description": "Wait for a temporary HF Broker grant decision.", "inputSchema": mcpIDSchema("grant_id", true)},
@@ -141,7 +142,7 @@ func callMCPTool(ctx context.Context, client *agentClient, call mcpToolCall) (an
 		return callMCPCatalogOperation(ctx, client, descriptor, call.Arguments)
 	}
 	switch call.Name {
-	case "hf_operation_get", "hf_operation_wait":
+	case "hf_operation_get", "hf_operation_wait", "hf_operation_cancel":
 		return callMCPOperation(ctx, client, call.Name, call.Arguments)
 	case "hf_grant_request":
 		return callMCPGrantRequest(ctx, client.grantClient, call.Arguments)
@@ -277,6 +278,12 @@ func callMCPOperation(ctx context.Context, client *agentClient, name string, raw
 		return agentv1.Operation{}, errors.New("operation_id is required")
 	}
 	operation, err := client.get(ctx, input.OperationID)
+	if name == "hf_operation_cancel" {
+		if input.WaitSeconds != 0 {
+			return agentv1.Operation{}, errors.New("wait_seconds is not valid for hf_operation_cancel")
+		}
+		return client.cancel(ctx, input.OperationID)
+	}
 	if err != nil || name == "hf_operation_get" || operation.State.Terminal() {
 		return operation, err
 	}

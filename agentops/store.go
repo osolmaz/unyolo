@@ -32,7 +32,9 @@ var (
 	ErrNotFound            = errors.New("operation not found")
 	ErrIdempotencyConflict = errors.New("operation idempotency conflict")
 	ErrInvalidTransition   = errors.New("invalid operation state transition")
+	ErrNotCancelable       = errors.New("operation is not cancelable")
 	ErrCapacity            = errors.New("operation store capacity reached")
+	errNoOperationChange   = errors.New("operation does not need an update")
 )
 
 type Submit struct {
@@ -185,6 +187,25 @@ func (s *Store) GetByIdempotency(clientID, key string) (agentv1.Operation, error
 	return storedOperation(record, err)
 }
 
+// Cancel atomically cancels a requester-owned pending or approved operation.
+// Terminal operations are returned unchanged; executing work is not cancelable.
+func (s *Store) Cancel(clientID, id string) (agentv1.Operation, error) {
+	return s.update(id, func(operation *agentv1.Operation) error {
+		if operation.ClientID != clientID {
+			return ErrNotFound
+		}
+		if operation.State.Terminal() {
+			return errNoOperationChange
+		}
+		if operation.State != agentv1.StatePending && operation.State != agentv1.StateApproved {
+			return ErrNotCancelable
+		}
+		operation.State = agentv1.StateCanceled
+		operation.Error = &agentv1.OperationError{Code: "operation_canceled", Message: "Request was canceled"}
+		return nil
+	})
+}
+
 func (s *Store) getLocked(clientID, id string) (agentv1.Operation, error) {
 	record, err := s.db.OperationForClient(context.Background(), id, clientID)
 	return storedOperation(record, err)
@@ -300,6 +321,9 @@ func (s *Store) update(id string, change func(*agentv1.Operation) error) (agentv
 		return agentv1.Operation{}, err
 	}
 	if err := change(&operation); err != nil {
+		if errors.Is(err, errNoOperationChange) {
+			return clone(operation), nil
+		}
 		return agentv1.Operation{}, err
 	}
 	expectedRevision := operation.Revision

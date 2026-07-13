@@ -24,10 +24,14 @@ const maxSubmitBytes = 2 * 1024 * 1024
 type Store interface {
 	Get(clientID, id string) (agentv1.Operation, error)
 	Wait(context.Context, string, string, int64) (agentv1.Operation, error)
+	Cancel(clientID, id string) (agentv1.Operation, error)
 }
 
 // SubmitFunc validates, classifies, and starts one provider operation.
 type SubmitFunc func(context.Context, string, agentv1.SubmitRequest) (agentv1.Operation, bool, error)
+
+// CancelFunc performs provider cleanup while canceling requester-owned work.
+type CancelFunc func(context.Context, string, string) (agentv1.Operation, error)
 
 // AuthenticateFunc resolves one bearer header to a provider client identity.
 type AuthenticateFunc func(string) (string, error)
@@ -40,6 +44,7 @@ type Options struct {
 	Store        Store
 	Authenticate AuthenticateFunc
 	Submit       SubmitFunc
+	Cancel       CancelFunc
 	AuthFailure  AuthFailureFunc
 	Realm        string
 }
@@ -49,6 +54,7 @@ type Handler struct {
 	store        Store
 	authenticate AuthenticateFunc
 	submit       SubmitFunc
+	cancel       CancelFunc
 	authFailure  AuthFailureFunc
 	realm        string
 }
@@ -72,9 +78,15 @@ func New(options Options) (*Handler, error) {
 	if strings.TrimSpace(options.Realm) == "" {
 		options.Realm = "brokerkit-agent"
 	}
+	cancel := options.Cancel
+	if cancel == nil {
+		cancel = func(_ context.Context, client, id string) (agentv1.Operation, error) {
+			return options.Store.Cancel(client, id)
+		}
+	}
 	return &Handler{
 		store: options.Store, authenticate: options.Authenticate, submit: options.Submit,
-		authFailure: options.AuthFailure, realm: options.Realm,
+		cancel: cancel, authFailure: options.AuthFailure, realm: options.Realm,
 	}, nil
 }
 
@@ -111,6 +123,21 @@ func (h *Handler) GetAgentOperation(c echo.Context, id agentwire.OperationID) er
 	operation, err := h.store.Get(client, id)
 	if err != nil {
 		return writeStoreError(c, err, "read")
+	}
+	return writeOperation(c, operation, false)
+}
+
+func (h *Handler) CancelAgentOperation(c echo.Context, id agentwire.OperationID) error {
+	client, ok := h.authenticateRequest(c)
+	if !ok {
+		return nil
+	}
+	operation, err := h.cancel(c.Request().Context(), client, id)
+	if err != nil {
+		if errors.Is(err, agentops.ErrNotCancelable) {
+			return writeError(c, &Error{Status: http.StatusConflict, Code: "operation_not_cancelable", Message: "Operation is already executing"})
+		}
+		return writeStoreError(c, err, "cancel")
 	}
 	return writeOperation(c, operation, false)
 }

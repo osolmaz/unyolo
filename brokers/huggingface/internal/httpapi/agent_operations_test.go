@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorv1"
 )
@@ -195,6 +196,33 @@ func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 	grant, err := handler.grants.Get(operation.ApprovalID)
 	if err != nil || grant.Notification == nil {
 		t.Fatalf("grant notification = %#v, %v", grant.Notification, err)
+	}
+}
+
+func TestAgentRequesterCancelsPendingOperationAndApproval(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
+	defer upstream.Close()
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, &bknotify.Memory{})
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"cancel-pending","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"cancel this request"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	var submitted agentv1.Operation
+	if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &submitted) != nil {
+		t.Fatalf("submit = %d %s", response.StatusCode, text)
+	}
+	response, text = doRequest(t, http.MethodPost, server.URL+agentOperationsPath+"/"+submitted.ID+"/cancel", "Bearer "+testSecret, nil)
+	var canceled agentv1.Operation
+	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &canceled) != nil || canceled.State != agentv1.StateCanceled {
+		t.Fatalf("cancel = %d %#v", response.StatusCode, canceled)
+	}
+	grant, err := handler.grants.Get(submitted.ApprovalID)
+	if err != nil || grant.Status != grants.StatusCanceled {
+		t.Fatalf("approval = %#v, %v", grant, err)
+	}
+	response, _ = doRequest(t, http.MethodPost, server.URL+agentOperationsPath+"/"+submitted.ID+"/cancel", "Bearer "+testSecret, nil)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("cancel replay = %d", response.StatusCode)
 	}
 }
 

@@ -31,6 +31,16 @@ func (s *conformanceStore) Wait(_ context.Context, clientID, id string, _ int64)
 	return s.Get(clientID, id)
 }
 
+func (s *conformanceStore) Cancel(clientID, id string) (agentv1.Operation, error) {
+	operation, err := s.Get(clientID, id)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	operation.State = agentv1.StateCanceled
+	s.operation = operation
+	return operation, nil
+}
+
 func TestRunAgentV1(t *testing.T) {
 	store := &conformanceStore{}
 	start := func() (Endpoint, error) {

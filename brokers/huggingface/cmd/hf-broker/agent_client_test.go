@@ -334,7 +334,7 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"hf_operation_get", "hf_operation_wait"} {
+	for _, name := range []string{"hf_operation_get", "hf_operation_wait", "hf_operation_cancel"} {
 		value, err := callMCPTool(context.Background(), client, mcpToolCall{Name: name, Arguments: json.RawMessage(`{"operation_id":"op_test"}`)})
 		operation, ok := value.(agentv1.Operation)
 		if err != nil || !ok || operation.ID != "op_test" {

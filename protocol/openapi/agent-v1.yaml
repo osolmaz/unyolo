@@ -21,6 +21,13 @@
         "parameters": [{"$ref": "#/components/parameters/OperationID"}, {"name": "after_revision", "in": "query", "schema": {"type": "integer", "minimum": 0}}, {"name": "wait_seconds", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 30}}],
         "responses": {"200": {"description": "Current operation after a revision change or timeout", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
       }
+    },
+    "/api/agent/v1/operations/{id}/cancel": {
+      "post": {
+        "operationId": "cancelAgentOperation", "security": [{"agentBearer": []}],
+        "parameters": [{"$ref": "#/components/parameters/OperationID"}],
+        "responses": {"200": {"description": "Canceled or already terminal operation", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      }
     }
   },
   "components": {

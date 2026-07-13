@@ -92,6 +92,34 @@ func TestStoreWaitAndStrictFile(t *testing.T) {
 	}
 }
 
+func TestStoreCancelIsOwnedIdempotentAndStopsAtExecution(t *testing.T) {
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_cancel", nil })
+	operation, _, err := store.Submit(validSubmit("cancel"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Cancel("other", operation.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-client cancel = %v", err)
+	}
+	canceled, err := store.Cancel("agent", operation.ID)
+	if err != nil || canceled.State != agentv1.StateCanceled || canceled.Error == nil {
+		t.Fatalf("cancel = %#v, %v", canceled, err)
+	}
+	revision := canceled.Revision
+	replayed, err := store.Cancel("agent", operation.ID)
+	if err != nil || replayed.Revision != revision {
+		t.Fatalf("cancel replay = %#v, %v", replayed, err)
+	}
+	executingInput := validSubmit("executing")
+	executingInput.ID = "op_executing"
+	executing, _, _ := store.Submit(executingInput)
+	_, _ = store.Transition(executing.ID, agentv1.StateApproved)
+	_, _ = store.Transition(executing.ID, agentv1.StateExecuting)
+	if _, err := store.Cancel("agent", executing.ID); !errors.Is(err, ErrNotCancelable) {
+		t.Fatalf("executing cancel = %v", err)
+	}
+}
+
 func TestStoreAcceptsBoundedCommandResult(t *testing.T) {
 	store := newTestStore(t, time.Now, func() (string, error) { return "op_output", nil })
 	operation, _, err := store.Submit(validSubmit("output"))

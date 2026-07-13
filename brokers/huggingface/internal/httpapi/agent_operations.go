@@ -29,6 +29,32 @@ import (
 
 var errApprovalNotificationClaimed = errors.New("approval notification is already claimed")
 
+func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (agentv1.Operation, error) {
+	lock := s.operationAuthorizationLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	operation, err := s.operations.Get(client, id)
+	if err != nil || operation.State.Terminal() {
+		return operation, err
+	}
+	if operation.State == agentv1.StateExecuting {
+		return agentv1.Operation{}, agentops.ErrNotCancelable
+	}
+	if operation.ApprovalID != "" {
+		grant, grantErr := s.grants.Get(operation.ApprovalID)
+		if grantErr == nil {
+			switch grant.Status {
+			case grants.StatusPending:
+				_, _ = s.grants.CancelForClient(grant.ID, client)
+			case grants.StatusActive:
+				_, _ = s.grants.RevokeForClient(grant.ID, client)
+			}
+		}
+	}
+	operation = s.failOperation(operation.ID, agentv1.StateCanceled, "operation_canceled", "Request was canceled")
+	return operation, nil
+}
+
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
 	ctx = s.agentLifecycleContext(ctx)
 	adapter, found := s.operationRegistry.Lookup(request.Operation)

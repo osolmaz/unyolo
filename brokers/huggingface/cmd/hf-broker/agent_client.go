@@ -33,7 +33,7 @@ func runAgentClient(ctx context.Context, getenv func(string) string, stdout, std
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	if len(args) >= 2 && args[0] == "operation" && (args[1] == "get" || args[1] == "wait") {
+	if len(args) >= 2 && args[0] == "operation" && (args[1] == "get" || args[1] == "wait" || args[1] == "cancel") {
 		return runClientOperation(ctx, client, stdout, args[1], args[2:])
 	}
 	if descriptor, consumed, found := matchCLICommand(args); found {
@@ -50,7 +50,13 @@ func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writ
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		return exitError{code: 64, message: "operation ID is required"}
 	}
-	operation, err := client.get(ctx, flags.Arg(0))
+	var operation agentv1.Operation
+	var err error
+	if action == "cancel" {
+		operation, err = client.cancel(ctx, flags.Arg(0))
+	} else {
+		operation, err = client.get(ctx, flags.Arg(0))
+	}
 	if err != nil {
 		return err
 	}
@@ -114,6 +120,10 @@ func (client *agentClient) submit(ctx context.Context, request agentv1.SubmitReq
 
 func (client *agentClient) get(ctx context.Context, id string) (agentv1.Operation, error) {
 	return client.operations.Get(ctx, id)
+}
+
+func (client *agentClient) cancel(ctx context.Context, id string) (agentv1.Operation, error) {
+	return client.operations.Cancel(ctx, id)
 }
 
 func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {

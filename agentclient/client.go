@@ -76,6 +76,13 @@ func (c *Client) Get(ctx context.Context, id string) (agentv1.Operation, error) 
 	return decodeHTTPResponse(response, err)
 }
 
+// Cancel cancels requester-owned work that has not started executing.
+func (c *Client) Cancel(ctx context.Context, id string) (agentv1.Operation, error) {
+	//nolint:bodyclose // decodeHTTPResponse owns and closes generated responses.
+	response, err := c.api.CancelAgentOperation(ctx, id)
+	return decodeHTTPResponse(response, err)
+}
+
 // Wait follows revision-bounded long polls until operation terminates or ctx ends.
 func (c *Client) Wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
 	for !operation.State.Terminal() {

@@ -440,7 +440,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	})
 	agentAPI, agentAPIErr := agentapi.New(agentapi.Options{
 		Store: server.operations, Authenticate: runtime.Clients.AuthenticateHeader,
-		Submit: server.submitAgentOperation, Realm: "hf-broker",
+		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "hf-broker",
 		AuthFailure: func() {
 			server.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
 		},
