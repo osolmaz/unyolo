@@ -149,6 +149,9 @@ function serveUi(
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'self'",
   );
   securityHeaders(res);
+  if (!file.endsWith("index.html")) {
+    res.setHeader("cross-origin-resource-policy", "cross-origin");
+  }
   createReadStream(file).pipe(res);
   return true;
 }

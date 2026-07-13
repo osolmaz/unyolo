@@ -109,6 +109,11 @@ The host injects the short-lived delegated session into the sandboxed response:
 <meta name="brokerkit-delegated-session" content="BASE64URL_SESSION_JSON" />
 ```
 
+Token-bearing HTML responses must enforce `sandbox allow-scripts` in their CSP.
+Serve immutable UI assets without a same-origin CORP restriction, or set
+`Cross-Origin-Resource-Policy: cross-origin`, so the opaque document can load
+the packaged classic entrypoint without CORS mode.
+
 With `access: "read"`, each actionable request renders a **Review securely**
 button instead of decision controls. The button posts this navigation-only
 message:

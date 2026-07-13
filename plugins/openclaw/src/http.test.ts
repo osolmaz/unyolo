@@ -177,6 +177,11 @@ describe("OpenClaw HTTP boundary", () => {
       path.join(ui, "index.html"),
       "<!doctype html><title>Approvals</title>",
     );
+    mkdirSync(path.join(ui, "assets"));
+    writeFileSync(
+      path.join(ui, "assets", "app.js"),
+      "globalThis.brokerKit = true;",
+    );
     const base = await serve({ snapshot: vi.fn(), decide: vi.fn() }, root);
     const response = await fetch(`${base}/plugins/brokerkit/ui/`);
     expect(response.status).toBe(200);
@@ -185,6 +190,14 @@ describe("OpenClaw HTTP boundary", () => {
       "frame-ancestors 'self'",
     );
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("cross-origin-resource-policy")).toBe(
+      "same-origin",
+    );
+    const asset = await fetch(`${base}/plugins/brokerkit/ui/assets/app.js`);
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get("cross-origin-resource-policy")).toBe(
+      "cross-origin",
+    );
     expect((await fetch(`${base}/plugins/brokerkit/unrelated`)).status).toBe(
       404,
     );

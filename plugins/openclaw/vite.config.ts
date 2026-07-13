@@ -8,9 +8,30 @@ const cspHeaders = {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: "brokerkit-classic-sandbox-entry",
+      apply: "build",
+      enforce: "post",
+      transformIndexHtml: {
+        order: "post",
+        handler(html) {
+          return html
+            .replace('<script type="module"', "<script defer")
+            .replaceAll(" crossorigin", "");
+        },
+      },
+    },
+  ],
   root: "ui",
   base: "/plugins/brokerkit/ui/",
   preview: { headers: cspHeaders },
-  build: { outDir: "../dist/ui", emptyOutDir: false, sourcemap: false },
+  build: {
+    outDir: "../dist/ui",
+    emptyOutDir: false,
+    sourcemap: false,
+    rollupOptions: { output: { format: "iife" } },
+  },
 });
