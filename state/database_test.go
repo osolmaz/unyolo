@@ -36,6 +36,38 @@ func TestOpenConfiguresAndMigratesDatabase(t *testing.T) {
 	}
 }
 
+func TestOpenTightensStateFilePermissions(t *testing.T) {
+	directory := t.TempDir()
+	databasePath := filepath.Join(directory, databaseFile)
+	leasePath := filepath.Join(directory, leaseFile)
+	if err := os.WriteFile(databasePath, nil, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(leasePath, nil, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(databasePath, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(leasePath, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(t.Context(), directory, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	for _, path := range []string{databasePath, leasePath, databasePath + "-wal", databasePath + "-shm"} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("%s mode = %o, want 600", filepath.Base(path), got)
+		}
+	}
+}
+
 func TestStateLeasePreventsASecondProcessOwner(t *testing.T) {
 	directory := t.TempDir()
 	first, err := Open(t.Context(), directory, Options{})

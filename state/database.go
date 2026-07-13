@@ -57,7 +57,12 @@ func Open(ctx context.Context, directory string, options Options) (*Database, er
 }
 
 func openLeasedDatabase(ctx context.Context, directory string, options Options, lock *lease) (*Database, error) {
-	db, err := openSQL(filepath.Join(directory, databaseFile), options)
+	path := filepath.Join(directory, databaseFile)
+	if err := ensurePrivateFile(path); err != nil {
+		_ = lock.close()
+		return nil, fmt.Errorf("secure state database: %w", err)
+	}
+	db, err := openSQL(path, options)
 	if err != nil {
 		_ = lock.close()
 		return nil, err
@@ -72,6 +77,14 @@ func openLeasedDatabase(ctx context.Context, directory string, options Options, 
 		return nil, fmt.Errorf("check state database: %w", err)
 	}
 	return result, nil
+}
+
+func ensurePrivateFile(path string) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304 -- path is rooted in the operator-selected state directory.
+	if err != nil {
+		return err
+	}
+	return errors.Join(file.Chmod(0o600), file.Close())
 }
 
 func openSQL(path string, options Options) (*sql.DB, error) {
