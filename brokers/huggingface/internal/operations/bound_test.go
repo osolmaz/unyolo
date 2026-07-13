@@ -16,6 +16,13 @@ type boundFake struct {
 	absent    bool
 	executed  string
 	arguments json.RawMessage
+	response  json.RawMessage
+}
+
+func (f *boundFake) ExecuteBoundResult(_ context.Context, operation string, _ json.RawMessage, arguments json.RawMessage) (json.RawMessage, error) {
+	f.executed = operation
+	f.arguments = arguments
+	return f.response, nil
 }
 
 func (f *boundFake) WhoAmI(context.Context) (hubclient.Identity, error) {
@@ -105,6 +112,36 @@ func TestBoundAdapterObservedLifecycle(t *testing.T) {
 	outcome, err := adapter.Reconcile(context.Background(), plan)
 	if err != nil || !outcome.Proven {
 		t.Fatalf("Reconcile() = %+v, %v", outcome, err)
+	}
+}
+
+func TestCollectionCreateReturnsValidatedGeneratedIdentity(t *testing.T) {
+	result := json.RawMessage(`{"slug":"demo","title":"Demo","lastUpdated":"2026-07-13T00:00:00Z","gating":false,"owner":{"_id":"0123456789abcdef01234567","avatarUrl":"","fullname":"Alice","name":"alice","isHf":false,"isHfAdmin":false,"isMod":false,"type":"user","isPro":false},"position":0,"theme":"orange","private":false,"upvotes":0,"shareUrl":"https://huggingface.co/collections/alice/demo","isUpvotedByUser":false,"items":[]}`)
+	client := &boundFake{identity: "alice", response: result}
+	adapters, err := NewBoundAdapters(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := NewRegistry(adapters...)
+	adapter, found := registry.Lookup("collection.create")
+	if !found {
+		t.Fatal("collection.create is not registered")
+	}
+	input, err := adapter.Decode(json.RawMessage(`{}`), json.RawMessage(`{"title":"Demo","namespace":"alice"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := adapter.Execute(t.Context(), plan)
+	if err != nil || !outcome.Proven || !strings.Contains(string(outcome.Result), `"slug":"demo"`) {
+		t.Fatalf("Execute() = %s, %v", outcome.Result, err)
+	}
+	client.response = json.RawMessage(`{"slug":"demo","unexpected":true}`)
+	if _, err := adapter.Execute(t.Context(), plan); !IsPossiblePartial(err) {
+		t.Fatalf("invalid generated result error = %v", err)
 	}
 }
 

@@ -150,8 +150,7 @@ func (s *Server) authorizeInference(w http.ResponseWriter, client string, operat
 
 func (s *Server) reserveInferenceGrant(id, client string, operation policy.Operation, target string, attrs map[string]any) (grants.Grant, error) {
 	grant, err := s.grants.Get(id)
-	if err != nil || grant.Client != client || grant.Operation != string(operation) || hfgrant.Target(grant) != target || hfgrant.Ref(grant) != "" ||
-		!grantEligibleForRule(grant) || s.planValidator.ValidateExecution(grant) != nil {
+	if err != nil || !s.inferenceGrantMatches(grant, client, operation, target) {
 		return grants.Grant{}, errors.New("inference grant is not usable")
 	}
 	values, err := hfgrant.Attrs(grant)
@@ -159,6 +158,11 @@ func (s *Server) reserveInferenceGrant(id, client string, operation policy.Opera
 		return grants.Grant{}, errors.New("inference grant does not match the request")
 	}
 	return s.grants.ReserveUse(grant.ID)
+}
+
+func (s *Server) inferenceGrantMatches(grant grants.Grant, client string, operation policy.Operation, target string) bool {
+	return grant.Client == client && grant.Operation == string(operation) && hfgrant.Target(grant) == target && hfgrant.Ref(grant) == "" &&
+		grantEligibleForRule(grant) && s.planValidator.ValidateExecution(grant) == nil
 }
 
 func jsonContentType(value string) bool {

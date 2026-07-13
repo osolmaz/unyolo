@@ -26,6 +26,20 @@ func TestPinnedBindingsLoadAndValidateClosedSchemas(t *testing.T) {
 	}
 }
 
+func TestCapturedResultUsesPinnedSuccessSchema(t *testing.T) {
+	binding, found := ByName("collection.create")
+	if !found || !binding.CaptureResult || len(binding.ResultSchema) == 0 {
+		t.Fatalf("collection.create result binding = %+v, %v", binding, found)
+	}
+	valid := json.RawMessage(`{"slug":"demo","title":"Demo","lastUpdated":"2026-07-13T00:00:00Z","gating":false,"owner":{"_id":"0123456789abcdef01234567","avatarUrl":"","fullname":"Alice","name":"alice","isHf":false,"isHfAdmin":false,"isMod":false,"type":"user","isPro":false},"position":0,"theme":"orange","private":false,"upvotes":0,"shareUrl":"https://huggingface.co/collections/alice/demo","isUpvotedByUser":false,"items":[]}`)
+	if err := binding.ValidateResult(valid); err != nil {
+		t.Fatal(err)
+	}
+	if err := binding.ValidateResult(json.RawMessage(`{"slug":"demo","unexpected":true}`)); err == nil {
+		t.Fatal("invalid captured result was accepted")
+	}
+}
+
 func TestBindingConstructionRejectsUnpinnedAndInvalidRoutes(t *testing.T) {
 	closed := map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}
 	for _, source := range []routeSource{

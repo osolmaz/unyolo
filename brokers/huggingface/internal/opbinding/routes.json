@@ -5,7 +5,7 @@
   {"operation":"bucket.resource_group.set","method":"POST","path":"/api/buckets/{namespace}/{repo}/resource-group","observe_method":"GET","observe_path":"/api/buckets/{namespace}/{repo}/resource-group","reconcile":"present"},
   {"operation":"bucket.visibility.update","method":"PUT","path":"/api/buckets/{namespace}/{repo}/settings","observe_method":"GET","observe_path":"/api/buckets/{namespace}/{repo}","reconcile":"present"},
 
-  {"operation":"collection.create","method":"POST","path":"/api/collections","observe_method":"GET","observe_path":"/api/collections/{namespace}/{slug}-{id}","reconcile":"present"},
+  {"operation":"collection.create","method":"POST","path":"/api/collections","capture_result":true},
   {"operation":"collection.delete","method":"DELETE","path":"/api/collections/{namespace}/{slug}-{id}","observe_method":"GET","observe_path":"/api/collections/{namespace}/{slug}-{id}","reconcile":"absent"},
   {"operation":"collection.item.add","method":"POST","path":"/api/collections/{namespace}/{slug}-{id}/items","observe_method":"GET","observe_path":"/api/collections/{namespace}/{slug}-{id}","reconcile":"present"},
   {"operation":"collection.item.batch","method":"POST","path":"/api/collections/{namespace}/{slug}-{id}/items/batch","argument_projection":"items","observe_method":"GET","observe_path":"/api/collections/{namespace}/{slug}-{id}","reconcile":"present"},

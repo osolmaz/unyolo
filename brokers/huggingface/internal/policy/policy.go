@@ -1021,55 +1021,67 @@ func AttrConstraintsFromValues(attrs map[string]any) (map[string]AttrConstraint,
 	return out, nil
 }
 
-//nolint:cyclop // Attribute constraint combinations are explicit and tracked by the exact HF CRAP baseline.
 func validateAttrConstraint(key string, constraint AttrConstraint) error {
-	switch key {
-	case "max_bytes", "max_hosts", "num_hosts", "warm_up":
-		return validateMaximumConstraint(constraint)
-	case "ref_change":
-		return validateNamedConstraint(constraint, "a ref change value", validRefChangeAttrs, "unsupported ref change")
-	case "private":
-		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
-	case "sdk":
-		return validateNamedConstraint(constraint, "a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK")
-	case "visibility":
-		return validateNamedConstraint(constraint, "a visibility", map[string]bool{"public": true, "private": true, "protected": true, "*": true}, "unsupported visibility")
-	case "gating":
-		return validateNamedConstraint(constraint, "a gating mode", map[string]bool{"auto": true, "manual": true, "disabled": true, "*": true}, "unsupported gating mode")
-	case "destination":
-		if constraint.Number != nil || len(constraint.Values) == 0 {
-			return errors.New("must be an OWNER/NAME glob")
-		}
-		for _, value := range constraint.Values {
-			if value != "*" && (!strings.Contains(value, "/") || len(value) > MaxGlobBytes) {
-				return errors.New("must be an OWNER/NAME glob")
-			}
-		}
+	validator, found := attrConstraintValidators[key]
+	if !found {
 		return nil
-	case "source":
-		if constraint.Number != nil || len(constraint.Values) == 0 {
-			return errors.New("must be a TYPE/OWNER/NAME glob")
+	}
+	return validator(constraint)
+}
+
+var attrConstraintValidators = buildAttrConstraintValidators()
+
+func buildAttrConstraintValidators() map[string]func(AttrConstraint) error {
+	values := map[string]func(AttrConstraint) error{
+		"ref_change":  namedConstraint("a ref change value", validRefChangeAttrs, "unsupported ref change"),
+		"private":     namedConstraint("true or false", boolConstraintValues, "must be true or false"),
+		"sdk":         namedConstraint("a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK"),
+		"visibility":  namedConstraint("a visibility", map[string]bool{"public": true, "private": true, "protected": true, "*": true}, "unsupported visibility"),
+		"gating":      namedConstraint("a gating mode", map[string]bool{"auto": true, "manual": true, "disabled": true, "*": true}, "unsupported gating mode"),
+		"destination": ownerNameConstraint,
+		"source":      sourceConstraint,
+	}
+	for _, key := range []string{"max_bytes", "max_hosts", "num_hosts", "warm_up", "sleep_time_seconds"} {
+		values[key] = validateMaximumConstraint
+	}
+	for _, key := range []string{"source_path", "source_ref", "hardware", "key"} {
+		values[key] = boundedValuesConstraint
+	}
+	values["factory_reboot"] = namedConstraint("true or false", boolConstraintValues, "must be true or false")
+	return values
+}
+
+var boolConstraintValues = map[string]bool{"true": true, "false": true, "*": true}
+
+func namedConstraint(required string, allowed map[string]bool, invalid string) func(AttrConstraint) error {
+	return func(constraint AttrConstraint) error {
+		return validateNamedConstraint(constraint, required, allowed, invalid)
+	}
+}
+
+func ownerNameConstraint(constraint AttrConstraint) error {
+	return validateGlobConstraint(constraint, "must be an OWNER/NAME glob", func(value string) bool { return strings.Contains(value, "/") })
+}
+
+func sourceConstraint(constraint AttrConstraint) error {
+	return validateGlobConstraint(constraint, "must be a TYPE/OWNER/NAME glob", func(value string) bool { return strings.Count(value, "/") == 2 })
+}
+
+func validateGlobConstraint(constraint AttrConstraint, message string, valid func(string) bool) error {
+	if constraint.Number != nil || len(constraint.Values) == 0 {
+		return errors.New(message)
+	}
+	for _, value := range constraint.Values {
+		if value != "*" && (!valid(value) || len(value) > MaxGlobBytes) {
+			return errors.New(message)
 		}
-		for _, value := range constraint.Values {
-			if value != "*" && (strings.Count(value, "/") != 2 || len(value) > MaxGlobBytes) {
-				return errors.New("must be a TYPE/OWNER/NAME glob")
-			}
-		}
-		return nil
-	case "source_path", "source_ref":
-		if constraint.Number != nil || len(constraint.Values) == 0 {
-			return errors.New("must be one or more bounded values")
-		}
-		return nil
-	case "factory_reboot":
-		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
-	case "hardware", "key":
-		if constraint.Number != nil || len(constraint.Values) == 0 {
-			return errors.New("must be one or more bounded values")
-		}
-		return nil
-	case "sleep_time_seconds":
-		return validateMaximumConstraint(constraint)
+	}
+	return nil
+}
+
+func boundedValuesConstraint(constraint AttrConstraint) error {
+	if constraint.Number != nil || len(constraint.Values) == 0 {
+		return errors.New("must be one or more bounded values")
 	}
 	return nil
 }

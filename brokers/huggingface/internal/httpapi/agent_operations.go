@@ -115,6 +115,11 @@ func (s *Server) submitResolvedAgentOperation(ctx context.Context, client string
 	if direct {
 		return s.submitDirectAgentOperation(submission, prepared, adapter, resolved)
 	}
+	return s.submitPendingAgentOperation(ctx, submission, adapter, resolved, operationID, request.Reason)
+}
+
+func (s *Server) submitPendingAgentOperation(ctx context.Context, submission agentops.Submit, adapter operations.Adapter,
+	resolved operations.Plan, operationID, reason string) (agentv1.Operation, bool, error) {
 	operationLock := s.operationAuthorizationLock(operationID)
 	operationLock.Lock()
 	operation, created, err := s.operations.Submit(submission)
@@ -127,7 +132,7 @@ func (s *Server) submitResolvedAgentOperation(ctx context.Context, client string
 		operationLock.Unlock()
 		return operation, created, err
 	}
-	operation, grant, err := s.authorizeAndSubmitOperation(adapter, resolved, operation, request.Reason)
+	operation, grant, err := s.authorizeAndSubmitOperation(adapter, resolved, operation, reason)
 	operationLock.Unlock()
 	if err != nil || grant.ID == "" {
 		return operation, true, err
@@ -539,31 +544,62 @@ func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operati
 		return
 	}
 	execution, executionErr := adapter.Execute(ctx, plan)
-	if reserved {
-		if _, err := s.grants.CommitUse(operation.ApprovalID); err != nil {
-			s.failOperation(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
-			return
-		}
-	}
 	if executionErr == nil && execution.Proven {
-		_, _ = s.operations.Succeed(operation.ID, execution.Result)
-		s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, "", http.StatusOK)
+		s.succeedExecutedOperation(operation, plan, execution.Result, reserved, "")
 		return
 	}
 	if definitiveExecutionFailure(executionErr) {
-		s.failOperationExecution(operation, executionErr, nil)
+		s.failDefinitiveOperation(operation, executionErr, reserved)
 		return
 	}
+	s.reconcileAmbiguousOperation(ctx, adapter, operation, plan, execution, executionErr, reserved)
+}
+
+func (s *Server) reconcileAmbiguousOperation(ctx context.Context, adapter operations.Adapter, operation agentv1.Operation, plan operations.Plan,
+	execution operations.Outcome, executionErr error, reserved bool) {
 	outcome, reconcileErr := adapter.Reconcile(ctx, plan)
 	if reconcileErr == nil && outcome.Proven {
 		if len(outcome.Result) == 0 {
 			outcome.Result = execution.Result
 		}
-		_, _ = s.operations.Succeed(operation.ID, outcome.Result)
-		s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, "", http.StatusOK)
+		s.succeedExecutedOperation(operation, plan, outcome.Result, reserved, "")
+		return
+	}
+	if !s.settleOperationApproval(operation, reserved, true) {
 		return
 	}
 	s.failOperationExecution(operation, executionErr, reconcileErr)
+}
+
+func (s *Server) succeedExecutedOperation(operation agentv1.Operation, plan operations.Plan, result json.RawMessage, reserved bool, detail string) {
+	if !s.settleOperationApproval(operation, reserved, false) {
+		return
+	}
+	_, _ = s.operations.Succeed(operation.ID, result)
+	s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, detail, http.StatusOK)
+}
+
+func (s *Server) failDefinitiveOperation(operation agentv1.Operation, executionErr error, reserved bool) {
+	if s.settleOperationApproval(operation, reserved, false) {
+		s.failOperationExecution(operation, executionErr, nil)
+	}
+}
+
+func (s *Server) settleOperationApproval(operation agentv1.Operation, reserved, retain bool) bool {
+	if !reserved {
+		return true
+	}
+	var err error
+	if retain {
+		_, err = s.grants.RetainUse(operation.ApprovalID)
+	} else {
+		_, err = s.grants.CommitUse(operation.ApprovalID)
+	}
+	if err == nil {
+		return true
+	}
+	s.failOperation(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
+	return false
 }
 
 func (s *Server) reconcileInterruptedOperation(ctx context.Context, operation agentv1.Operation) {

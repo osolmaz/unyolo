@@ -23,6 +23,10 @@ type boundClient interface {
 	ObserveBound(context.Context, string, json.RawMessage) (json.RawMessage, bool, error)
 }
 
+type boundResultClient interface {
+	ExecuteBoundResult(context.Context, string, json.RawMessage, json.RawMessage) (json.RawMessage, error)
+}
+
 type boundAdapter struct {
 	descriptor opcatalog.Descriptor
 	binding    opbinding.Binding
@@ -103,11 +107,30 @@ func (a *boundAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) 
 	if err := checkBoundPreconditions(ctx, a.client, a.descriptor.Name, plan.Target, expected, a.binding.ObserveMethod != ""); err != nil {
 		return Outcome{}, err
 	}
+	if a.binding.CaptureResult {
+		return a.executeCaptured(ctx, plan)
+	}
 	if err := a.client.ExecuteBound(ctx, a.descriptor.Name, plan.Target, plan.Arguments); err != nil {
 		return Outcome{}, err
 	}
 	result, _ := canonical(map[string]any{"accepted": true, "operation": a.descriptor.Name})
 	return Outcome{Proven: true, Result: result}, nil
+}
+
+func (a *boundAdapter) executeCaptured(ctx context.Context, plan Plan) (Outcome, error) {
+	client, ok := a.client.(boundResultClient)
+	if !ok {
+		return Outcome{}, errors.New("operation result client is unavailable")
+	}
+	result, err := client.ExecuteBoundResult(ctx, a.descriptor.Name, plan.Target, plan.Arguments)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if a.binding.ValidateResult(result) != nil {
+		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
+	}
+	canonicalResult, err := canonicalJSON(result)
+	return Outcome{Proven: err == nil, Result: canonicalResult}, err
 }
 
 func resolveBoundPreconditions(ctx context.Context, client boundClient, operation string, target json.RawMessage, observe bool) (boundPreconditions, error) {

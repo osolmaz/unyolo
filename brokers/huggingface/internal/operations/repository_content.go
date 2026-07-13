@@ -87,6 +87,10 @@ type fileCopyArguments struct {
 	CreatePR       bool   `json:"create_pr,omitempty"`
 }
 
+func (a fileUploadArguments) repositoryPath() string { return a.Path }
+func (a fileDeleteArguments) repositoryPath() string { return a.Path }
+func (a fileCopyArguments) repositoryPath() string   { return a.Path }
+
 type contentPreconditions struct {
 	CredentialIdentity string                  `json:"credential_identity"`
 	TargetDigest       string                  `json:"target_digest"`
@@ -369,33 +373,39 @@ func (a *repositoryContentAdapter) presentationAndPolicy(target repositoryConten
 }
 
 func repositoryContentPaths(operation string, raw json.RawMessage) []string {
-	switch operation {
-	case "repo.commit.create", "space.hot_reload.apply":
-		var arguments commitCreateArguments
-		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
-			paths := make([]string, len(arguments.Operations))
-			for index := range arguments.Operations {
-				paths[index] = arguments.Operations[index].Path
-			}
-			return paths
-		}
-	case "repo.file.upload":
-		var arguments fileUploadArguments
-		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
-			return []string{arguments.Path}
-		}
-	case "repo.file.delete":
-		var arguments fileDeleteArguments
-		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
-			return []string{arguments.Path}
-		}
-	case "repo.file.copy":
-		var arguments fileCopyArguments
-		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
-			return []string{arguments.Path}
-		}
+	extract, found := repositoryPathExtractors[operation]
+	if !found {
+		return nil
 	}
-	return nil
+	return extract(raw)
+}
+
+var repositoryPathExtractors = map[string]func(json.RawMessage) []string{
+	"repo.commit.create":     commitOperationPaths,
+	"space.hot_reload.apply": commitOperationPaths,
+	"repo.file.upload":       oneRepositoryPath[fileUploadArguments],
+	"repo.file.delete":       oneRepositoryPath[fileDeleteArguments],
+	"repo.file.copy":         oneRepositoryPath[fileCopyArguments],
+}
+
+func commitOperationPaths(raw json.RawMessage) []string {
+	var arguments commitCreateArguments
+	if decodeClosed(raw, &arguments, maxArgumentsBytes) != nil {
+		return nil
+	}
+	paths := make([]string, len(arguments.Operations))
+	for index := range arguments.Operations {
+		paths[index] = arguments.Operations[index].Path
+	}
+	return paths
+}
+
+func oneRepositoryPath[T interface{ repositoryPath() string }](raw json.RawMessage) []string {
+	var arguments T
+	if decodeClosed(raw, &arguments, maxArgumentsBytes) != nil {
+		return nil
+	}
+	return []string{arguments.repositoryPath()}
 }
 
 func (a *repositoryContentAdapter) decodeTarget(raw json.RawMessage) (repositoryContentTarget, error) {

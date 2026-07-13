@@ -48,6 +48,7 @@ type routeSource struct {
 	BodyFromTarget     map[string]string `json:"body_from_target,omitempty"`
 	UpstreamReference  string            `json:"upstream_reference,omitempty"`
 	Transform          string            `json:"transform,omitempty"`
+	CaptureResult      bool              `json:"capture_result,omitempty"`
 }
 
 type Binding struct {
@@ -64,10 +65,13 @@ type Binding struct {
 	BodyFromTarget     map[string]string
 	UpstreamReference  string
 	Transform          string
+	CaptureResult      bool
 	TargetSchema       json.RawMessage
 	ArgumentsSchema    json.RawMessage
+	ResultSchema       json.RawMessage
 	targetValidator    *jsonschema.Schema
 	argumentsValidator *jsonschema.Schema
+	resultValidator    *jsonschema.Schema
 }
 
 type operationDocument struct {
@@ -89,6 +93,10 @@ type requestBody struct {
 
 type mediaType struct {
 	Schema map[string]any `json:"schema"`
+}
+
+type responseBody struct {
+	Content map[string]mediaType `json:"content"`
 }
 
 var (
@@ -139,6 +147,13 @@ func (b Binding) ValidateTarget(target json.RawMessage) error {
 
 func (b Binding) ValidateArguments(arguments json.RawMessage) error {
 	return validateRaw(arguments, b.argumentsValidator)
+}
+
+func (b Binding) ValidateResult(result json.RawMessage) error {
+	if b.resultValidator == nil {
+		return errors.New("operation has no bounded result schema")
+	}
+	return validateRaw(result, b.resultValidator)
 }
 
 func validateRaw(raw json.RawMessage, validator *jsonschema.Schema) error {
@@ -196,33 +211,13 @@ func load() ([]Binding, error) {
 	return values, nil
 }
 
-//nolint:cyclop // OpenAPI binding invariants are explicit and tracked by the exact HF CRAP baseline.
 func bindingFromSource(paths map[string]map[string]json.RawMessage, components map[string]any, source routeSource) (Binding, error) {
-	if source.Operation == "" || !validMethod(source.Method) || !strings.HasPrefix(source.Path, "/") {
-		return Binding{}, errors.New("operation, method, or path is invalid")
+	if err := validateBindingSource(source); err != nil {
+		return Binding{}, err
 	}
-	targetSchema, argumentsSchema := source.TargetSchema, source.ArgumentsSchema
-	if targetSchema == nil || argumentsSchema == nil {
-		pathItem, found := paths[source.Path]
-		if !found {
-			return Binding{}, fmt.Errorf("path %q is absent from the pinned OpenAPI", source.Path)
-		}
-		raw, found := pathItem[strings.ToLower(source.Method)]
-		if !found {
-			return Binding{}, fmt.Errorf("method %s is absent from %s", source.Method, source.Path)
-		}
-		var operation operationDocument
-		if err := json.Unmarshal(raw, &operation); err != nil {
-			return Binding{}, err
-		}
-		targetSchema = schemaForParameters(operation.Parameters, "path", source.FixedPath)
-		var err error
-		argumentsSchema, err = schemaForArguments(operation, source.FixedBody, source.ArgumentProjection)
-		if err != nil {
-			return Binding{}, err
-		}
-	} else if source.UpstreamReference == "" {
-		return Binding{}, errors.New("manual binding has no pinned upstream reference")
+	targetSchema, argumentsSchema, err := bindingSchemas(paths, source)
+	if err != nil {
+		return Binding{}, err
 	}
 	targetRaw, targetValidator, err := compileSchema(source.Operation+"-target", targetSchema, components)
 	if err != nil {
@@ -232,22 +227,114 @@ func bindingFromSource(paths map[string]map[string]json.RawMessage, components m
 	if err != nil {
 		return Binding{}, err
 	}
-	if source.ObserveMethod != "" {
-		if !validMethod(source.ObserveMethod) || !strings.HasPrefix(source.ObservePath, "/") ||
-			(source.Reconcile != "present" && source.Reconcile != "absent") {
-			return Binding{}, errors.New("observation binding is invalid")
-		}
-	}
-	if source.Transform != "" && source.Transform != "uv_job" && source.Transform != "uv_scheduled_job" {
-		return Binding{}, errors.New("operation transform is invalid")
+	resultRaw, resultValidator, err := compileBindingResult(paths, components, source)
+	if err != nil {
+		return Binding{}, err
 	}
 	return Binding{Operation: source.Operation, Method: source.Method, Path: source.Path,
 		FixedPath: source.FixedPath, FixedBody: source.FixedBody, ArgumentProjection: source.ArgumentProjection,
 		ObserveMethod: source.ObserveMethod, ObservePath: source.ObservePath, Reconcile: source.Reconcile,
 		Origin: source.Origin, BodyFromTarget: source.BodyFromTarget, UpstreamReference: source.UpstreamReference,
-		Transform:    source.Transform,
+		Transform: source.Transform, CaptureResult: source.CaptureResult,
 		TargetSchema: targetRaw, ArgumentsSchema: argumentsRaw, targetValidator: targetValidator,
-		argumentsValidator: argumentsValidator}, nil
+		ResultSchema: resultRaw, argumentsValidator: argumentsValidator, resultValidator: resultValidator}, nil
+}
+
+func validateBindingSource(source routeSource) error {
+	if source.Operation == "" || !validMethod(source.Method) || !strings.HasPrefix(source.Path, "/") {
+		return errors.New("operation, method, or path is invalid")
+	}
+	if err := validateManualSource(source); err != nil {
+		return err
+	}
+	if err := validateObservationSource(source); err != nil {
+		return err
+	}
+	return validateTransformSource(source)
+}
+
+func validateManualSource(source routeSource) error {
+	if source.TargetSchema != nil && source.ArgumentsSchema != nil && source.UpstreamReference == "" {
+		return errors.New("manual binding has no pinned upstream reference")
+	}
+	return nil
+}
+
+func validateObservationSource(source routeSource) error {
+	if source.ObserveMethod != "" && (!validMethod(source.ObserveMethod) || !strings.HasPrefix(source.ObservePath, "/") ||
+		(source.Reconcile != "present" && source.Reconcile != "absent")) {
+		return errors.New("observation binding is invalid")
+	}
+	return nil
+}
+
+func validateTransformSource(source routeSource) error {
+	if source.Transform != "" && source.Transform != "uv_job" && source.Transform != "uv_scheduled_job" {
+		return errors.New("operation transform is invalid")
+	}
+	return nil
+}
+
+func bindingSchemas(paths map[string]map[string]json.RawMessage, source routeSource) (map[string]any, map[string]any, error) {
+	if source.TargetSchema != nil && source.ArgumentsSchema != nil {
+		return source.TargetSchema, source.ArgumentsSchema, nil
+	}
+	operation, err := operationAt(paths, source)
+	if err != nil {
+		return nil, nil, err
+	}
+	arguments, err := schemaForArguments(operation, source.FixedBody, source.ArgumentProjection)
+	return schemaForParameters(operation.Parameters, "path", source.FixedPath), arguments, err
+}
+
+func compileBindingResult(paths map[string]map[string]json.RawMessage, components map[string]any, source routeSource) (json.RawMessage, *jsonschema.Schema, error) {
+	if !source.CaptureResult {
+		return nil, nil, nil
+	}
+	resultSchema, err := successResponseSchema(paths, source)
+	if err != nil {
+		return nil, nil, err
+	}
+	return compileSchema(source.Operation+"-result", resultSchema, components)
+}
+
+func successResponseSchema(paths map[string]map[string]json.RawMessage, source routeSource) (map[string]any, error) {
+	operation, err := operationAt(paths, source)
+	if err != nil {
+		return nil, err
+	}
+	for _, status := range []string{"200", "201", "202"} {
+		if schema, found, err := responseSchema(operation.Responses[status]); err != nil || found {
+			return schema, err
+		}
+	}
+	return nil, errors.New("captured operation has no JSON success response schema")
+}
+
+func operationAt(paths map[string]map[string]json.RawMessage, source routeSource) (operationDocument, error) {
+	pathItem, found := paths[source.Path]
+	if !found {
+		return operationDocument{}, fmt.Errorf("path %q is absent from the pinned OpenAPI", source.Path)
+	}
+	operationRaw, found := pathItem[strings.ToLower(source.Method)]
+	if !found {
+		return operationDocument{}, fmt.Errorf("method %s is absent from %s", source.Method, source.Path)
+	}
+	var operation operationDocument
+	err := json.Unmarshal(operationRaw, &operation)
+	return operation, err
+}
+
+func responseSchema(raw json.RawMessage) (map[string]any, bool, error) {
+	if len(raw) == 0 {
+		return nil, false, nil
+	}
+	var response responseBody
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return nil, false, err
+	}
+	media, found := response.Content["application/json"]
+	return media.Schema, found && media.Schema != nil, nil
 }
 
 func schemaForParameters(parameters []parameter, location string, fixed map[string]any) map[string]any {

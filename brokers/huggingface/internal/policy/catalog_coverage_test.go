@@ -118,6 +118,42 @@ func TestAdministrativeAttributeVocabulary(t *testing.T) {
 	}
 }
 
+func TestValidateRequestCoversClosedRequestBoundary(t *testing.T) {
+	valid := Request{Operation: OpRepoCreate, Target: Target{Kind: KindRepo, Type: TypeDataset, Owner: "acme", Name: "demo"}, Attrs: map[string]any{"visibility": "private"}}
+	if err := ValidateRequest(valid); err != nil {
+		t.Fatalf("ValidateRequest(valid) = %v", err)
+	}
+	tests := []Request{
+		{Operation: "unknown", Target: valid.Target},
+		{Operation: OpRepoCreate, Target: Target{Kind: KindBucket, Owner: "acme", Name: "demo"}},
+		{Operation: OpRepoCreate, Target: Target{Kind: KindRepo, Type: TypeDataset, Owner: "bad/name", Name: "demo"}},
+		{Operation: OpRepoCreate, Target: valid.Target, Attrs: map[string]any{"unknown": true}},
+		{Operation: OpRepoCreate, Target: Target{Kind: KindRepo, Type: TypeDataset, Owner: "acme", Name: "demo", Refs: []string{"refs/*"}}},
+	}
+	for _, request := range tests {
+		if err := ValidateRequest(request); err == nil {
+			t.Fatalf("ValidateRequest(%+v) succeeded", request)
+		}
+	}
+}
+
+func TestExactTargetConstraintsRejectEveryUnsafeShape(t *testing.T) {
+	valid := Target{Refs: []string{"refs/heads/main"}, Paths: []string{"README.md"}, Keys: []string{"objects/item"}, Visibility: []string{"private"}}
+	if err := validateExactTargetConstraints(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []Target{
+		{Refs: []string{""}},
+		{Paths: []string{strings.Repeat("x", MaxGlobBytes+1)}},
+		{Keys: []string{"objects/*"}},
+		{Visibility: []string{"priv?te"}},
+	} {
+		if err := validateExactTargetConstraints(target); err == nil {
+			t.Fatalf("unsafe target constraints accepted: %+v", target)
+		}
+	}
+}
+
 func TestPolicyParserBoundaryBranches(t *testing.T) {
 	t.Parallel()
 	var target TargetMatcher

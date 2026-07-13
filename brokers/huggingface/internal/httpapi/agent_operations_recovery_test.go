@@ -147,6 +147,41 @@ func TestInterruptedOperationCommitsReservedApproval(t *testing.T) {
 	}
 }
 
+func TestAmbiguousExecutionRetainsApprovalReservation(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/whoami-v2":
+			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+		case "/api/datasets/alice/ambiguous":
+			http.NotFound(w, r)
+		case "/api/repos/create":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`not-json`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
+	defer func() { _ = handler.Close() }()
+	operation, requested := seedPendingRepoCreateGrant(t, handler, "op_ambiguous", "ambiguous")
+	operation = handler.recoverOperationApproval(operation)
+	if _, err := handler.grants.Approve(requested.Grant.ID, requested.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateApproved)
+	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateExecuting)
+	handler.executeOperation(t.Context(), operation)
+	stored, err := handler.operations.GetByID(operation.ID)
+	grant, grantErr := handler.grants.Get(requested.Grant.ID)
+	if err != nil || grantErr != nil || stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "upstream_result_unknown" {
+		t.Fatalf("operation = %+v, %v; grant error = %v", stored, err, grantErr)
+	}
+	if grant.UsedCount != 0 || grant.ReservedCount != 1 || !grant.ReservationRetained {
+		t.Fatalf("ambiguous approval was not retained: %+v", grant)
+	}
+}
+
 func TestFreshUnboundOperationWaitsForAuthorization(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "unbound")
 	defer upstream.Close()

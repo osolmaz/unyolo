@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
 )
 
@@ -100,5 +102,22 @@ func TestSealedBoundAdapterLeavesCredentialOutputsToDedicatedAdapter(t *testing.
 	registry, _ := NewRegistry(adapters...)
 	if _, found := registry.Lookup("service_account.token.create"); found {
 		t.Fatal("credential output operation used generic sealed adapter")
+	}
+}
+
+func TestSecretBearingAdministrativeOperationsUseSealedInput(t *testing.T) {
+	tests := map[string][]string{
+		"organization.member.token.revoke": {"token"},
+		"provisioning.account.request":     {"confirmation_secret"},
+		"repo.duplicate":                   {"secrets"},
+	}
+	for operation, paths := range tests {
+		descriptor, found := opcatalog.ByName(operation)
+		if !found || !descriptor.Sealed || descriptor.AuthorizationMode != opcatalog.ModeExecution {
+			t.Fatalf("%s descriptor = %+v, %v", operation, descriptor, found)
+		}
+		if got := SealedInputPaths(operation); !reflect.DeepEqual(got, paths) {
+			t.Fatalf("SealedInputPaths(%s) = %v, want %v", operation, got, paths)
+		}
 	}
 }

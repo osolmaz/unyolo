@@ -156,22 +156,28 @@ func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 		}
 		return Outcome{}, errors.New("operation_precondition_failed")
 	}
-	switch a.descriptor.Name {
-	case "repo.branch.create":
-		err = a.client.CreateBranch(ctx, target.repoRef(), target.Ref, preconditions.ExpectedCommit)
-	case "repo.branch.delete":
-		err = a.client.DeleteBranch(ctx, target.repoRef(), target.Ref)
-	case "repo.tag.create":
-		var arguments tagCreateArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.CreateTag(ctx, target.repoRef(), target.Ref, arguments.Message, preconditions.ExpectedCommit)
-	case "repo.tag.delete":
-		err = a.client.DeleteTag(ctx, target.repoRef(), target.Ref)
-	}
+	err = a.executeMutation(ctx, target, preconditions, plan.Arguments)
 	if err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
+}
+
+func (a *refsAdapter) executeMutation(ctx context.Context, target refTarget, preconditions refsPreconditions, raw json.RawMessage) error {
+	switch a.descriptor.Name {
+	case "repo.branch.create":
+		return a.client.CreateBranch(ctx, target.repoRef(), target.Ref, preconditions.ExpectedCommit)
+	case "repo.branch.delete":
+		return a.client.DeleteBranch(ctx, target.repoRef(), target.Ref)
+	case "repo.tag.create":
+		var arguments tagCreateArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		return a.client.CreateTag(ctx, target.repoRef(), target.Ref, arguments.Message, preconditions.ExpectedCommit)
+	case "repo.tag.delete":
+		return a.client.DeleteTag(ctx, target.repoRef(), target.Ref)
+	default:
+		return errors.New("repository ref operation is not implemented")
+	}
 }
 
 func (a *refsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {

@@ -116,3 +116,33 @@ func TestCredentialOutputAdapterFailsClosed(t *testing.T) {
 		t.Fatalf("slot failure = %v", err)
 	}
 }
+
+func TestDeepLinkOutputIsStoredAsCredential(t *testing.T) {
+	payloads, _ := sealedstore.Open(t.TempDir())
+	client := &credentialOutputFake{identity: "operator", response: json.RawMessage(`{"purpose":"dashboard","url":"https://huggingface.co/deep-link/secret","expires_at":"2026-07-13T01:00:00Z"}`)}
+	slots := &credentialSlotFake{}
+	adapters, err := NewCredentialOutputAdapters(client, payloads, slots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := NewRegistry(adapters...)
+	adapter, found := registry.Lookup("provisioning.deep_link.create")
+	if !found {
+		t.Fatal("deep-link credential adapter missing")
+	}
+	input, err := adapter.Decode(json.RawMessage(`{}`), json.RawMessage(`{"public":{"purpose":"dashboard"},"credential_slot":"dashboard-link"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := adapter.Execute(t.Context(), plan)
+	if err != nil || !outcome.Proven || slots.kind != "hf-provisioning-deep-link" || !bytes.Contains(slots.secret, []byte("deep-link/secret")) {
+		t.Fatalf("outcome=%s slot=%+v err=%v", outcome.Result, slots, err)
+	}
+	if bytes.Contains(outcome.Result, []byte("deep-link/secret")) {
+		t.Fatalf("deep link leaked in operation result: %s", outcome.Result)
+	}
+}

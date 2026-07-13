@@ -22,7 +22,6 @@ internal/hfplan/plan.go	hfplan:planMatchesGrant	crap	10.0
 internal/hfplan/plan.go	hfplan:rawSecretKey	crap	12.9
 internal/hfplan/plan.go	hfplan:validate	crap	24.2
 internal/httpapi/agent_operations.go	httpapi:Server.cleanupOperationPlan	crap	8.1
-internal/httpapi/agent_operations.go	httpapi:Server.executeOperation	crap	15.5
 internal/httpapi/agent_operations.go	httpapi:Server.settleRecoveredOperationApproval	crap	11.1
 internal/httpapi/agent_operations.go	httpapi:Server.failOperationExecution	crap	10.9
 internal/httpapi/agent_operations.go	httpapi:Server.loadOperationPlan	crap	19.8
@@ -65,7 +64,6 @@ internal/hubclient/types.go	hubclient:CreateRepoInput.validate	crap	10.1
 internal/hubclient/types.go	hubclient:ValidGitRefComponent	crap	15.4
 internal/hubclient/uv.go	hubclient:transformBoundBody	crap	16.2
 internal/hubclient/uv.go	hubclient:uvJobSpec	crap	12.0
-internal/opbinding/binding.go	opbinding:bindingFromSource	crap	21.9
 internal/opbinding/binding.go	opbinding:load	crap	9.9
 internal/opbinding/binding.go	opbinding:schemaForArguments	crap	12.0
 internal/opcatalog/catalog.go	opcatalog:Validate	crap	10.1
@@ -76,7 +74,6 @@ internal/operations/bucket.go	operations:bucketAdapter.Resolve	crap	12.0
 internal/operations/bucket.go	operations:bucketAdapter.checkPreconditions	crap	12.6
 internal/operations/bucket.go	operations:bucketAdapter.decodeArguments	crap	13.8
 internal/operations/credential_output.go	operations:NewCredentialOutputAdapters	crap	9.4
-internal/operations/credential_output.go	operations:extractCredentialOutput	crap	12.5
 internal/operations/refs.go	operations:refsAdapter.Decode	crap	14.2
 internal/operations/refs.go	operations:refsAdapter.Execute	crap	11.6
 internal/operations/repository.go	operations:repositoryAdapter.Decode	crap	9.6
@@ -118,7 +115,6 @@ internal/operations/sealed_bound.go	operations:sealedBoundAdapter.materialize	cr
 internal/operations/space.go	operations:spaceAdapter.Execute	crap	13.2
 internal/operations/space.go	operations:spaceAdapter.Reconcile	crap	20.0
 internal/operations/space.go	operations:spaceAdapter.decodeArguments	crap	27.9
-internal/policy/policy.go	policy:validateAttrConstraint	crap	19.1
 internal/sealedstore/store.go	sealedstore:Open	crap	9.2
 internal/sealedstore/store.go	sealedstore:Store.read	crap	9.0
 internal/sealedstore/store.go	sealedstore:loadOrCreateKey	crap	12.6

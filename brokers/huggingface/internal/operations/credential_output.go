@@ -136,7 +136,7 @@ func (a *credentialOutputAdapter) Execute(ctx context.Context, plan Plan) (Outco
 	defer zero(secret)
 	stored, err := a.store.Put(slot, a.kind, secret)
 	if err != nil {
-		return Outcome{}, errors.New("upstream_result_unknown")
+		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
 	}
 	result, _ := canonical(map[string]any{"stored": true, "slot": stored.Slot, "kind": stored.Kind})
 	return Outcome{Proven: true, Result: result}, nil
@@ -166,20 +166,44 @@ func withoutCredentialSlot(raw json.RawMessage) json.RawMessage {
 
 //nolint:cyclop // Credential extraction is explicit and tracked by the exact HF CRAP baseline.
 func extractCredentialOutput(operation string, raw json.RawMessage) ([]byte, map[string]any, error) {
-	if operation == "provisioning.resource.credentials.rotate" {
-		var response struct {
-			Status   string `json:"status"`
-			ID       string `json:"id"`
-			Complete struct {
-				AccessConfiguration map[string]any `json:"access_configuration"`
-			} `json:"complete"`
-		}
-		if strictjson.Decode(raw, &response, true) != nil || response.Status != "complete" || response.ID == "" || response.Complete.AccessConfiguration == nil {
-			return nil, nil, errors.New("upstream credential result is invalid")
-		}
-		secret, err := canonical(response.Complete.AccessConfiguration)
-		return secret, map[string]any{"resource_id": response.ID}, err
+	if operation == "provisioning.deep_link.create" {
+		return extractDeepLink(raw)
 	}
+	if operation == "provisioning.resource.credentials.rotate" {
+		return extractProvisioningCredentials(raw)
+	}
+	return extractServiceAccountToken(raw)
+}
+
+func extractDeepLink(raw json.RawMessage) ([]byte, map[string]any, error) {
+	var response struct {
+		Purpose   string `json:"purpose"`
+		URL       string `json:"url"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if strictjson.Decode(raw, &response, true) != nil || response.Purpose == "" || response.URL == "" || response.ExpiresAt == "" {
+		return nil, nil, errors.New("upstream credential result is invalid")
+	}
+	secret, err := canonical(response)
+	return secret, map[string]any{"purpose": response.Purpose, "expires_at": response.ExpiresAt}, err
+}
+
+func extractProvisioningCredentials(raw json.RawMessage) ([]byte, map[string]any, error) {
+	var response struct {
+		Status   string `json:"status"`
+		ID       string `json:"id"`
+		Complete struct {
+			AccessConfiguration map[string]any `json:"access_configuration"`
+		} `json:"complete"`
+	}
+	if strictjson.Decode(raw, &response, true) != nil || response.Status != "complete" || response.ID == "" || response.Complete.AccessConfiguration == nil {
+		return nil, nil, errors.New("upstream credential result is invalid")
+	}
+	secret, err := canonical(response.Complete.AccessConfiguration)
+	return secret, map[string]any{"resource_id": response.ID}, err
+}
+
+func extractServiceAccountToken(raw json.RawMessage) ([]byte, map[string]any, error) {
 	var response struct {
 		Token     string `json:"token"`
 		TokenInfo struct {
