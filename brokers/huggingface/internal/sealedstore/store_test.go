@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestStoreEncryptsBindsAndConsumesOnce(t *testing.T) {
@@ -16,7 +17,7 @@ func TestStoreEncryptsBindsAndConsumesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := []byte("canary-super-secret-value")
-	reference, err := store.Put(secret)
+	reference, err := store.Put("bob", "space.secret.set", secret, time.Now().Add(time.Hour))
 	if err != nil || strings.Contains(reference.ID, string(secret)) {
 		t.Fatalf("Put() = %+v, %v", reference, err)
 	}
@@ -39,7 +40,7 @@ func TestStoreEncryptsBindsAndConsumesOnce(t *testing.T) {
 
 func TestStoreAllowsOnlyOneConcurrentConsumer(t *testing.T) {
 	store, _ := Open(t.TempDir())
-	reference, _ := store.Put([]byte("one-use"))
+	reference, _ := store.Put("bob", "space.secret.set", []byte("one-use"), time.Now().Add(time.Hour))
 	var wait sync.WaitGroup
 	results := make(chan bool, 12)
 	for range 12 {
@@ -69,7 +70,7 @@ func TestStorePersistsKeyAndRejectsUnsafePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reference, _ := first.Put([]byte("survives restart"))
+	reference, _ := first.Put("bob", "space.secret.set", []byte("survives restart"), time.Now().Add(time.Hour))
 	second, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +89,7 @@ func TestStorePersistsKeyAndRejectsUnsafePermissions(t *testing.T) {
 func TestStoreRejectsTamperingAndBadReferences(t *testing.T) {
 	dir := t.TempDir()
 	store, _ := Open(dir)
-	reference, _ := store.Put([]byte("secret"))
+	reference, _ := store.Put("bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour))
 	path := filepath.Join(dir, "sealed-payloads", reference.ID+".bin")
 	data, _ := os.ReadFile(path)
 	data[len(data)-1] ^= 0xff
@@ -102,5 +103,25 @@ func TestStoreRejectsTamperingAndBadReferences(t *testing.T) {
 	bad.ID = "../../escape"
 	if _, err := store.Get(bad); err == nil {
 		t.Fatal("unsafe reference accepted")
+	}
+}
+
+func TestStoreBindsOwnerPurposeAndExpiry(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	reference, _ := store.Put("bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour))
+	wrongOwner := reference
+	wrongOwner.Owner = "alice"
+	if _, err := store.Get(wrongOwner); err == nil {
+		t.Fatal("owner substitution accepted")
+	}
+	wrongPurpose := reference
+	wrongPurpose.Purpose = "webhook.create"
+	if _, err := store.Get(wrongPurpose); err == nil {
+		t.Fatal("purpose substitution accepted")
+	}
+	expired, _ := store.Put("bob", "space.secret.set", []byte("old"), time.Now().Add(time.Millisecond))
+	time.Sleep(2 * time.Millisecond)
+	if _, err := store.Get(expired); err == nil {
+		t.Fatal("expired payload accepted")
 	}
 }

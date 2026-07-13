@@ -27,6 +27,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	bknotify "github.com/osolmaz/brokerkit/notify"
@@ -94,6 +95,7 @@ type Server struct {
 	operations          *agentops.Store
 	operationRegistry   *operations.Registry
 	hubClient           *hubclient.Client
+	sealedStore         *sealedstore.Store
 	agentAPI            *agentapi.Handler
 	database            *state.Database
 	planValidator       hfplan.Validator
@@ -295,6 +297,11 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	if err != nil {
 		return nil, err
 	}
+	sealedPayloads, err := sealedstore.Open(opts.Config.StateDir)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	store := grants.NewDatabase(database, grants.Options{
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
@@ -346,12 +353,18 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	sealedAdapters, err := operations.NewSealedBoundAdapters(hub, sealedPayloads)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	providerAdapters = append(providerAdapters, settingsAdapters...)
 	providerAdapters = append(providerAdapters, refsAdapters...)
 	providerAdapters = append(providerAdapters, spaceAdapters...)
 	providerAdapters = append(providerAdapters, boundAdapters...)
 	providerAdapters = append(providerAdapters, bucketAdapters...)
 	providerAdapters = append(providerAdapters, contentAdapters...)
+	providerAdapters = append(providerAdapters, sealedAdapters...)
 	operationRegistry, err := operations.NewRegistry(providerAdapters...)
 	if err != nil {
 		_ = database.Close()
@@ -388,6 +401,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		operations:         agentops.New(database),
 		operationRegistry:  operationRegistry,
 		hubClient:          hub,
+		sealedStore:        sealedPayloads,
 		database:           database,
 		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,
@@ -430,6 +444,7 @@ func newRouter(server *Server) *echo.Echo {
 	router.HideBanner = true
 	router.HidePort = true
 	server.agentAPI.Register(router)
+	router.POST("/api/agent/v1/sealed-payloads", server.uploadSealedPayload)
 	router.GET("/healthz", func(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "application/json")
 		_, err := c.Response().Write([]byte(`{"ok": true}`))

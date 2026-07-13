@@ -1,0 +1,361 @@
+package operations
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
+)
+
+type sealedPayloadStore interface {
+	Get(sealedstore.Reference) ([]byte, error)
+	Consume(sealedstore.Reference) ([]byte, error)
+	Delete(sealedstore.Reference) error
+}
+
+type sealedBoundAdapter struct {
+	descriptor opcatalog.Descriptor
+	binding    opbinding.Binding
+	client     boundClient
+	store      sealedPayloadStore
+	paths      []string
+}
+
+type sealedBoundArguments struct {
+	Public        json.RawMessage        `json:"public"`
+	SealedPayload *sealedstore.Reference `json:"sealed_payload,omitempty"`
+}
+
+var sealedInputPaths = map[string][]string{
+	"job.run":                              {"secrets"},
+	"job.uv.run":                           {"secrets"},
+	"provisioning.resource.create":         {"payment_credentials"},
+	"provisioning.resource.service.update": {"payment_credentials"},
+	"scheduled_job.create":                 {"jobSpec.secrets"},
+	"scheduled_job.uv.create":              {"jobSpec.secrets"},
+	"space.secret.set":                     {"value"},
+	"webhook.create":                       {"secret", "job.secrets"},
+	"webhook.update":                       {"secret", "job.secrets"},
+}
+
+func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Adapter, error) {
+	if client == nil || store == nil {
+		return nil, errors.New("Hugging Face sealed operation dependencies are required")
+	}
+	bindings, err := opbinding.All()
+	if err != nil {
+		return nil, err
+	}
+	var adapters []Adapter
+	for _, binding := range bindings {
+		descriptor, found := opcatalog.ByName(binding.Operation)
+		if !found || descriptor.AuthorizationMode != opcatalog.ModeExecution || !descriptor.Sealed {
+			continue
+		}
+		adapters = append(adapters, &sealedBoundAdapter{descriptor: descriptor, binding: binding, client: client, store: store, paths: sealedInputPaths[binding.Operation]})
+	}
+	return adapters, nil
+}
+
+func (a *sealedBoundAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
+
+func (a *sealedBoundAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
+	if len(targetRaw) > maxTargetBytes || len(argumentsRaw) > maxArgumentsBytes || a.binding.ValidateTarget(targetRaw) != nil {
+		return Input{}, errors.New("operation target does not match its closed schema")
+	}
+	var arguments sealedBoundArguments
+	if err := decodeClosed(argumentsRaw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 {
+		return Input{}, errors.New("sealed operation arguments are invalid")
+	}
+	public, err := decodeObject(arguments.Public)
+	if err != nil || containsSecretPath(public, a.paths) || len(a.paths) == 0 && arguments.SealedPayload != nil {
+		return Input{}, errors.New("sealed operation public arguments contain protected fields")
+	}
+	canonicalTarget, err := canonicalJSON(targetRaw)
+	if err != nil {
+		return Input{}, err
+	}
+	arguments.Public, err = canonical(public)
+	if err != nil {
+		return Input{}, err
+	}
+	canonicalArguments, err := canonical(arguments)
+	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, err
+}
+
+func (a *sealedBoundAdapter) ValidateClient(input Input, client string) error {
+	arguments, err := decodeSealedArguments(input.Arguments)
+	if err != nil {
+		return err
+	}
+	if arguments.SealedPayload == nil {
+		return nil
+	}
+	if arguments.SealedPayload.Owner != client || arguments.SealedPayload.Purpose != a.descriptor.Name {
+		return errors.New("sealed payload does not belong to this client and operation")
+	}
+	payload, err := a.store.Get(*arguments.SealedPayload)
+	zero(payload)
+	return err
+}
+
+func (a *sealedBoundAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
+	merged, arguments, err := a.materialize(input.Arguments, false)
+	if err != nil || a.binding.Validate(input.Target, merged) != nil {
+		return Plan{}, errors.New("sealed operation payload does not complete the operation schema")
+	}
+	identity, err := a.client.WhoAmI(ctx)
+	if err != nil {
+		return Plan{}, err
+	}
+	preconditions := boundPreconditions{CredentialIdentity: identity.Name}
+	if a.binding.ObserveMethod != "" {
+		observed, absent, observeErr := a.client.ObserveBound(ctx, a.descriptor.Name, input.Target)
+		if observeErr != nil {
+			return Plan{}, observeErr
+		}
+		preconditions.ObservedAbsent = absent
+		if !absent {
+			preconditions.ObservationDigest = digest(observed)
+		}
+	}
+	encoded, _ := canonical(preconditions)
+	presentation, request := a.presentationAndPolicy(input.Target, arguments.Public, preconditions)
+	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
+		Arguments: input.Arguments, Preconditions: encoded, Presentation: presentation, Policy: request}, nil
+}
+
+func (a *sealedBoundAdapter) Authorize(plan Plan) hfpolicy.Request {
+	if plan.Policy.Operation != "" {
+		return plan.Policy
+	}
+	arguments, err := decodeSealedArguments(plan.Arguments)
+	var preconditions boundPreconditions
+	if err != nil || decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes) != nil {
+		return hfpolicy.Request{}
+	}
+	_, request := a.presentationAndPolicy(plan.Target, arguments.Public, preconditions)
+	return request
+}
+
+func (a *sealedBoundAdapter) Present(plan Plan) agentv1.Presentation {
+	if plan.Presentation.Title != "" {
+		return plan.Presentation
+	}
+	arguments, _ := decodeSealedArguments(plan.Arguments)
+	var preconditions boundPreconditions
+	_ = decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes)
+	presentation, _ := a.presentationAndPolicy(plan.Target, arguments.Public, preconditions)
+	return presentation
+}
+
+func (a *sealedBoundAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
+	var expected boundPreconditions
+	if err := decodeClosed(plan.Preconditions, &expected, maxTargetBytes); err != nil || expected.CredentialIdentity == "" {
+		return Outcome{}, errors.New("operation plan preconditions are invalid")
+	}
+	identity, err := a.client.WhoAmI(ctx)
+	if err != nil || identity.Name != expected.CredentialIdentity {
+		if err != nil {
+			return Outcome{}, err
+		}
+		return Outcome{}, errors.New("operation_precondition_failed")
+	}
+	if err := a.checkObservation(ctx, plan.Target, expected); err != nil {
+		return Outcome{}, err
+	}
+	merged, _, err := a.materialize(plan.Arguments, true)
+	if err != nil || a.binding.Validate(plan.Target, merged) != nil {
+		return Outcome{}, errors.New("sealed operation payload is invalid")
+	}
+	if err := a.client.ExecuteBound(ctx, a.descriptor.Name, plan.Target, merged); err != nil {
+		return Outcome{}, err
+	}
+	result, _ := canonical(map[string]any{"accepted": true, "operation": a.descriptor.Name})
+	return Outcome{Proven: true, Result: result}, nil
+}
+
+func (a *sealedBoundAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
+	if a.binding.ObserveMethod == "" {
+		return Outcome{Proven: false}, nil
+	}
+	_, absent, err := a.client.ObserveBound(ctx, a.descriptor.Name, plan.Target)
+	if err != nil {
+		return Outcome{}, err
+	}
+	proven := a.binding.Reconcile == "absent" && absent || a.binding.Reconcile == "present" && !absent
+	return Outcome{Proven: proven}, nil
+}
+
+func (a *sealedBoundAdapter) Cleanup(plan Plan) error {
+	arguments, err := decodeSealedArguments(plan.Arguments)
+	if err != nil || arguments.SealedPayload == nil {
+		return err
+	}
+	return a.store.Delete(*arguments.SealedPayload)
+}
+
+func (a *sealedBoundAdapter) checkObservation(ctx context.Context, target json.RawMessage, expected boundPreconditions) error {
+	if a.binding.ObserveMethod == "" {
+		return nil
+	}
+	observed, absent, err := a.client.ObserveBound(ctx, a.descriptor.Name, target)
+	if err != nil {
+		return err
+	}
+	if absent != expected.ObservedAbsent || !absent && digest(observed) != expected.ObservationDigest {
+		return errors.New("operation_precondition_failed")
+	}
+	return nil
+}
+
+func (a *sealedBoundAdapter) materialize(raw json.RawMessage, consume bool) (json.RawMessage, sealedBoundArguments, error) {
+	arguments, err := decodeSealedArguments(raw)
+	if err != nil {
+		return nil, arguments, err
+	}
+	public, err := decodeObject(arguments.Public)
+	if err != nil {
+		return nil, arguments, err
+	}
+	if arguments.SealedPayload == nil {
+		merged, encodeErr := canonical(public)
+		return merged, arguments, encodeErr
+	}
+	var payload []byte
+	if consume {
+		payload, err = a.store.Consume(*arguments.SealedPayload)
+	} else {
+		payload, err = a.store.Get(*arguments.SealedPayload)
+	}
+	if err != nil {
+		return nil, arguments, err
+	}
+	defer zero(payload)
+	secret, err := decodeObject(payload)
+	if err != nil || !onlySecretPaths(secret, a.paths, "") {
+		return nil, arguments, errors.New("sealed payload contains unsupported fields")
+	}
+	if err := mergeObjects(public, secret); err != nil {
+		return nil, arguments, err
+	}
+	merged, err := canonical(public)
+	return merged, arguments, err
+}
+
+func (a *sealedBoundAdapter) presentationAndPolicy(targetRaw, publicRaw json.RawMessage, preconditions boundPreconditions) (agentv1.Presentation, hfpolicy.Request) {
+	var target map[string]any
+	var public map[string]any
+	_ = json.Unmarshal(targetRaw, &target)
+	_ = json.Unmarshal(publicRaw, &public)
+	owner, name := policyIdentity(target, preconditions.CredentialIdentity, a.descriptor.TargetKind)
+	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: hfpolicy.Target{Kind: hfpolicy.TargetKind(a.descriptor.TargetKind), Owner: owner, Name: name}, Attrs: policyAttributes(target, public)}
+	if request.Target.Kind == hfpolicy.KindRepo {
+		request.Target.Type = policyRepoType(target)
+	}
+	title := strings.ReplaceAll(a.descriptor.Name, ".", " ")
+	return agentv1.Presentation{Title: title, Summary: fmt.Sprintf("%s on %s/%s", title, owner, name)}, request
+}
+
+func decodeSealedArguments(raw json.RawMessage) (sealedBoundArguments, error) {
+	var arguments sealedBoundArguments
+	if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 {
+		return sealedBoundArguments{}, errors.New("sealed operation arguments are invalid")
+	}
+	return arguments, nil
+}
+
+func decodeObject(raw []byte) (map[string]any, error) {
+	var value map[string]any
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || value == nil {
+		return nil, errors.New("sealed operation fragment must be a JSON object")
+	}
+	return value, nil
+}
+
+func containsSecretPath(value map[string]any, paths []string) bool {
+	for _, path := range paths {
+		current := any(value)
+		parts := strings.Split(path, ".")
+		for index, part := range parts {
+			object, ok := current.(map[string]any)
+			if !ok {
+				break
+			}
+			current, ok = object[part]
+			if !ok {
+				break
+			}
+			if index == len(parts)-1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func onlySecretPaths(value map[string]any, paths []string, prefix string) bool {
+	for key, child := range value {
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		if slicesContains(paths, path) {
+			continue
+		}
+		object, ok := child.(map[string]any)
+		if !ok || !hasPathPrefix(paths, path+".") || !onlySecretPaths(object, paths, path) {
+			return false
+		}
+	}
+	return len(value) > 0
+}
+
+func hasPathPrefix(paths []string, prefix string) bool {
+	for _, path := range paths {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func slicesContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeObjects(destination, source map[string]any) error {
+	for key, value := range source {
+		if existing, found := destination[key]; found {
+			destinationObject, destinationOK := existing.(map[string]any)
+			sourceObject, sourceOK := value.(map[string]any)
+			if !destinationOK || !sourceOK {
+				return errors.New("sealed payload overlaps public arguments")
+			}
+			if err := mergeObjects(destinationObject, sourceObject); err != nil {
+				return err
+			}
+			continue
+		}
+		destination[key] = value
+	}
+	return nil
+}
+
+func zero(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
+}

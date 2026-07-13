@@ -45,6 +45,11 @@ func (s *Server) submitAgentOperation(ctx context.Context, client string, reques
 	if existing, found, err := s.replayedOperation(client, request, input); err != nil || found {
 		return existing, false, err
 	}
+	if bound, ok := adapter.(operations.ClientBoundAdapter); ok {
+		if err := bound.ValidateClient(input, client); err != nil {
+			return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
+		}
+	}
 	resolved, err := adapter.Resolve(ctx, input)
 	if err != nil {
 		return agentv1.Operation{}, false, mapOperationSubmissionError(err)
@@ -249,7 +254,22 @@ func (s *Server) failOperation(id string, state agentv1.State, code, message str
 	if err != nil {
 		operation, _ = s.operations.GetByID(id)
 	}
+	s.cleanupOperationPlan(operation)
 	return operation
+}
+
+func (s *Server) cleanupOperationPlan(operation agentv1.Operation) {
+	adapter, found := s.operationRegistry.Lookup(operation.Operation)
+	cleaner, cleanable := adapter.(operations.PlanCleaner)
+	if !found || !cleanable || operation.PlanDigest == "" {
+		return
+	}
+	envelope, err := s.plans.Get(operation.PlanDigest)
+	if err != nil {
+		return
+	}
+	_ = cleaner.Cleanup(operations.Plan{Operation: envelope.Operation, OperationRevision: envelope.OperationRevision,
+		Target: envelope.Target, Arguments: envelope.Arguments, Preconditions: envelope.Preconditions})
 }
 
 func (s *Server) startOperationWorker(ctx context.Context) {
@@ -397,6 +417,11 @@ func (s *Server) loadOperationPlan(operation agentv1.Operation) (operations.Adap
 	input, err := adapter.Decode(plan.Target, plan.Arguments)
 	if err != nil || !equalJSONObject(input.Target, plan.Target) || !equalJSONObject(input.Arguments, plan.Arguments) {
 		return nil, operations.Plan{}, errors.New("operation plan payload is invalid")
+	}
+	if bound, ok := adapter.(operations.ClientBoundAdapter); ok {
+		if err := bound.ValidateClient(input, operation.ClientID); err != nil {
+			return nil, operations.Plan{}, errors.New("operation client binding is invalid")
+		}
 	}
 	plan.Policy = adapter.Authorize(plan)
 	plan.Policy.Client = operation.ClientID

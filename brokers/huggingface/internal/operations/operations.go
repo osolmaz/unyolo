@@ -45,6 +45,18 @@ type Adapter interface {
 	Reconcile(context.Context, Plan) (Outcome, error)
 }
 
+// ClientBoundAdapter binds requester-owned external references after the
+// authenticated client is known and before provider resolution begins.
+type ClientBoundAdapter interface {
+	ValidateClient(Input, string) error
+}
+
+// PlanCleaner removes transient provider material when an operation reaches a
+// terminal state without consuming it.
+type PlanCleaner interface {
+	Cleanup(Plan) error
+}
+
 type Registry struct {
 	byName map[string]Adapter
 	names  []string

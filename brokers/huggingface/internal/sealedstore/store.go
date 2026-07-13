@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"time"
 )
 
 const (
@@ -25,11 +26,16 @@ const (
 )
 
 var referencePattern = regexp.MustCompile(`^sealed_[A-Za-z0-9_-]{24}$`)
+var ownerPattern = regexp.MustCompile(`^[A-Za-z0-9._@:-]{1,128}$`)
+var purposePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`)
 
 type Reference struct {
-	ID     string `json:"id"`
-	Digest string `json:"digest"`
-	Size   int    `json:"size"`
+	ID        string `json:"id"`
+	Owner     string `json:"owner"`
+	Purpose   string `json:"purpose"`
+	Digest    string `json:"digest"`
+	Size      int    `json:"size"`
+	ExpiresAt int64  `json:"expires_at"`
 }
 
 type Store struct {
@@ -67,8 +73,9 @@ func Open(stateDir string) (*Store, error) {
 	return &Store{dir: dir, aead: aead}, nil
 }
 
-func (s *Store) Put(plaintext []byte) (Reference, error) {
-	if s == nil || s.aead == nil || len(plaintext) == 0 || len(plaintext) > maxSecretBytes {
+func (s *Store) Put(owner, purpose string, plaintext []byte, expiresAt time.Time) (Reference, error) {
+	if s == nil || s.aead == nil || len(plaintext) == 0 || len(plaintext) > maxSecretBytes || !ownerPattern.MatchString(owner) ||
+		!purposePattern.MatchString(purpose) || expiresAt.Before(time.Now()) || expiresAt.After(time.Now().Add(24*time.Hour)) {
 		return Reference{}, errors.New("sealed payload is invalid")
 	}
 	s.mu.Lock()
@@ -82,7 +89,8 @@ func (s *Store) Put(plaintext []byte) (Reference, error) {
 		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 			return Reference{}, errors.New("generate sealed payload nonce")
 		}
-		ciphertext := s.aead.Seal(nil, nonce, plaintext, []byte(reference))
+		bound := Reference{ID: reference, Owner: owner, Purpose: purpose, Size: len(plaintext), ExpiresAt: expiresAt.Unix()}
+		ciphertext := s.aead.Seal(nil, nonce, plaintext, associatedData(bound))
 		encoded := append([]byte{formatVersion}, nonce...)
 		encoded = append(encoded, ciphertext...)
 		path := s.path(reference)
@@ -99,7 +107,8 @@ func (s *Store) Put(plaintext []byte) (Reference, error) {
 			return Reference{}, writeErr
 		}
 		digest := sha256.Sum256(plaintext)
-		return Reference{ID: reference, Digest: hex.EncodeToString(digest[:]), Size: len(plaintext)}, nil
+		bound.Digest = hex.EncodeToString(digest[:])
+		return bound, nil
 	}
 	return Reference{}, errors.New("allocate sealed payload reference")
 }
@@ -147,6 +156,9 @@ func (s *Store) Delete(reference Reference) error {
 }
 
 func (s *Store) read(reference Reference, path string) ([]byte, error) {
+	if time.Now().Unix() >= reference.ExpiresAt {
+		return nil, errors.New("sealed payload is expired")
+	}
 	data, err := os.ReadFile(path) // #nosec G304 -- path is derived from a validated random reference.
 	if err != nil || len(data) < 1+s.aead.NonceSize()+s.aead.Overhead() || len(data) > maxSecretBytes+s.aead.Overhead()+s.aead.NonceSize()+1 {
 		return nil, errors.New("sealed payload is unavailable")
@@ -155,7 +167,7 @@ func (s *Store) read(reference Reference, path string) ([]byte, error) {
 		return nil, errors.New("sealed payload format is unsupported")
 	}
 	nonceEnd := 1 + s.aead.NonceSize()
-	plaintext, err := s.aead.Open(nil, data[1:nonceEnd], data[nonceEnd:], []byte(reference.ID))
+	plaintext, err := s.aead.Open(nil, data[1:nonceEnd], data[nonceEnd:], associatedData(reference))
 	if err != nil {
 		return nil, errors.New("sealed payload authentication failed")
 	}
@@ -223,11 +235,16 @@ func randomReference() (string, error) {
 }
 
 func validateReference(reference Reference) error {
-	if !referencePattern.MatchString(reference.ID) || len(reference.Digest) != sha256.Size*2 || reference.Size <= 0 || reference.Size > maxSecretBytes {
+	if !referencePattern.MatchString(reference.ID) || !ownerPattern.MatchString(reference.Owner) || !purposePattern.MatchString(reference.Purpose) ||
+		len(reference.Digest) != sha256.Size*2 || reference.Size <= 0 || reference.Size > maxSecretBytes || reference.ExpiresAt <= 0 {
 		return errors.New("sealed payload reference is invalid")
 	}
 	if _, err := hex.DecodeString(reference.Digest); err != nil {
 		return fmt.Errorf("sealed payload reference is invalid")
 	}
 	return nil
+}
+
+func associatedData(reference Reference) []byte {
+	return []byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d\x00%d", reference.ID, reference.Owner, reference.Purpose, reference.Size, reference.ExpiresAt))
 }

@@ -117,13 +117,21 @@ func ByName(name string) (Binding, bool) {
 }
 
 func (b Binding) Validate(target, arguments json.RawMessage) error {
-	if err := validateRaw(target, b.targetValidator); err != nil {
+	if err := b.ValidateTarget(target); err != nil {
 		return fmt.Errorf("target: %w", err)
 	}
-	if err := validateRaw(arguments, b.argumentsValidator); err != nil {
+	if err := b.ValidateArguments(arguments); err != nil {
 		return fmt.Errorf("arguments: %w", err)
 	}
 	return nil
+}
+
+func (b Binding) ValidateTarget(target json.RawMessage) error {
+	return validateRaw(target, b.targetValidator)
+}
+
+func (b Binding) ValidateArguments(arguments json.RawMessage) error {
+	return validateRaw(arguments, b.argumentsValidator)
 }
 
 func validateRaw(raw json.RawMessage, validator *jsonschema.Schema) error {
