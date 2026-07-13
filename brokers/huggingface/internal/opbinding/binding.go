@@ -14,6 +14,7 @@ import (
 	"github.com/dlclark/regexp2"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/schemautil"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -231,7 +232,7 @@ func removeSchemaPropertyPath(root, schema map[string]any, path []string) (bool,
 		return removeSchemaPath(root, child, path[1:])
 	}
 	delete(properties, path[0])
-	removeRequiredProperty(schema, path[0])
+	schemautil.RemoveRequiredProperty(schema, path[0])
 	decrementMinimumProperties(schema)
 	return true, nil
 }
@@ -289,24 +290,6 @@ func resolveLocalSchema(root, schema map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("operation schema reference %q is not an object", reference)
 	}
 	return resolved, nil
-}
-
-func removeRequiredProperty(schema map[string]any, name string) {
-	values, ok := schema["required"].([]any)
-	if !ok {
-		return
-	}
-	filtered := values[:0]
-	for _, value := range values {
-		if value != name {
-			filtered = append(filtered, value)
-		}
-	}
-	if len(filtered) == 0 {
-		delete(schema, "required")
-		return
-	}
-	schema["required"] = filtered
 }
 
 func validateRaw(raw json.RawMessage, validator *jsonschema.Schema) error {

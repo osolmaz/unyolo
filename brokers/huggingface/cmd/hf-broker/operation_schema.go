@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/schemautil"
 )
 
 func splitSealedArgumentsSchema(schema map[string]any, paths []string) (map[string]any, map[string]any) {
@@ -274,7 +276,7 @@ func removeSchemaPath(root, current map[string]any, path []string) {
 	}
 	if len(path) == 1 {
 		delete(properties, path[0])
-		removeRequiredProperty(current, path[0])
+		schemautil.RemoveRequiredProperty(current, path[0])
 		return
 	}
 	next, _ := properties[path[0]].(map[string]any)
@@ -292,22 +294,4 @@ func schemaBranches(value any) []map[string]any {
 		}
 	}
 	return result
-}
-
-func removeRequiredProperty(schema map[string]any, name string) {
-	required, ok := schema["required"].([]any)
-	if !ok {
-		return
-	}
-	filtered := required[:0]
-	for _, value := range required {
-		if value != name {
-			filtered = append(filtered, value)
-		}
-	}
-	if len(filtered) == 0 {
-		delete(schema, "required")
-		return
-	}
-	schema["required"] = filtered
 }
