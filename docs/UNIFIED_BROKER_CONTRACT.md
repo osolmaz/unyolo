@@ -235,12 +235,14 @@ That command should write a client-owned config file under:
 The file should contain only:
 
 ```text
-<PREFIX>_URL=<url>
-<PREFIX>_SHARED_SECRET=<client-secret>
+export <PREFIX>_URL=<url>
+export <PREFIX>_SHARED_SECRET=<client-secret>
 ```
 
 It may also write Git credential helper snippets when the broker speaks Git.
 The client setup must not write upstream provider credentials.
+The client can source this protected file directly; both values must be
+exported to broker client processes.
 
 ## Policy
 
