@@ -24,48 +24,66 @@ verify_report() {
 		printf 'HF CRAP command failed without parseable findings.\n' >&2
 		return 1
 	fi
-	while IFS=$'\t' read -r path symbol metric maximum; do
+	while IFS=$'\t' read -r path qualified metric maximum; do
 		[[ -z "$path" || "$path" == \#* ]] && continue
 		if [[ ! -f "$source_root/$path" ]]; then
 			printf 'HF CRAP baseline source is missing: %s\n' "$path" >&2
 			return 1
 		fi
 		if [[ "$metric" != "crap" ]]; then
-			printf 'HF CRAP baseline metric is invalid for %s: %s\n' "$symbol" "$metric" >&2
+			printf 'HF CRAP baseline metric is invalid for %s: %s\n' "$qualified" "$metric" >&2
+			return 1
+		fi
+		local package="${qualified%%:*}"
+		local symbol="${qualified#*:}"
+		if [[ "$package" == "$qualified" ]] || ! grep -Eq "^package[[:space:]]+${package}$" "$source_root/$path"; then
+			printf 'HF CRAP baseline package %s does not own %s.\n' "$package" "$path" >&2
 			return 1
 		fi
 		local name="${symbol##*.}"
-		if ! grep -Eq "func .*${name}\\(" "$source_root/$path"; then
-			printf 'HF CRAP baseline function %s is not in %s.\n' "$symbol" "$path" >&2
+		local pattern="func[[:space:]]+${name}\\("
+		if [[ "$symbol" == *.* ]]; then
+			local receiver="${symbol%%.*}"
+			pattern="func[[:space:]]+\\([^)]*${receiver}\\)[[:space:]]+${name}\\("
+		fi
+		if ! grep -Eq "$pattern" "$source_root/$path"; then
+			printf 'HF CRAP baseline function %s is not in %s.\n' "$qualified" "$path" >&2
 			return 1
 		fi
 	done < "$allowed"
 	awk -F '\t' '
 		FNR == NR {
 			if ($0 !~ /^#/ && NF == 4 && $3 == "crap") {
+				if ($2 in limit) {
+					printf "duplicate HF CRAP baseline entry: %s\n", $2 > "/dev/stderr"
+					failed = 1
+				}
 				limit[$2] = $4 + 0
 				remaining[$2] = 1
 			}
 			next
 		}
-		/^CRAP score [0-9.]+ exceeds maximum [0-9.]+ for / {
-			count = split($0, fields, " ")
-			score = fields[3] + 0
-			symbol = fields[count]
-			if (!(symbol in limit)) {
-				printf "unapproved HF CRAP finding: %s (%s)\n", symbol, score > "/dev/stderr"
+		{
+			count = split($0, fields, /[[:space:]]+/)
+			if (count != 5 || fields[3] !~ /^[0-9]+$/ || fields[5] + 0 <= 8) {
+				next
+			}
+			qualified = fields[2] ":" fields[1]
+			score = fields[5] + 0
+			if (!(qualified in limit)) {
+				printf "unapproved HF CRAP finding: %s (%s)\n", qualified, score > "/dev/stderr"
 				failed = 1
 				next
 			}
-			if (score > limit[symbol]) {
-				printf "HF CRAP score regressed: %s is %s, allowed %s\n", symbol, score, limit[symbol] > "/dev/stderr"
+			if (score > limit[qualified]) {
+				printf "HF CRAP score regressed: %s is %s, allowed %s\n", qualified, score, limit[qualified] > "/dev/stderr"
 				failed = 1
 			}
-			delete remaining[symbol]
+			delete remaining[qualified]
 		}
 		END {
-			for (symbol in remaining) {
-				printf "stale HF CRAP baseline entry: %s\n", symbol > "/dev/stderr"
+			for (qualified in remaining) {
+				printf "stale HF CRAP baseline entry: %s\n", qualified > "/dev/stderr"
 				failed = 1
 			}
 			exit failed
