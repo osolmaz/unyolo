@@ -23,16 +23,24 @@ var openAPIRaw []byte
 //go:embed routes.json
 var routesRaw []byte
 
+//go:embed manual-routes.json
+var manualRoutesRaw []byte
+
 type routeSource struct {
-	Operation          string         `json:"operation"`
-	Method             string         `json:"method"`
-	Path               string         `json:"path"`
-	FixedPath          map[string]any `json:"fixed_path,omitempty"`
-	FixedBody          map[string]any `json:"fixed_body,omitempty"`
-	ArgumentProjection string         `json:"argument_projection,omitempty"`
-	ObserveMethod      string         `json:"observe_method,omitempty"`
-	ObservePath        string         `json:"observe_path,omitempty"`
-	Reconcile          string         `json:"reconcile,omitempty"`
+	Operation          string            `json:"operation"`
+	Method             string            `json:"method"`
+	Path               string            `json:"path"`
+	FixedPath          map[string]any    `json:"fixed_path,omitempty"`
+	FixedBody          map[string]any    `json:"fixed_body,omitempty"`
+	ArgumentProjection string            `json:"argument_projection,omitempty"`
+	ObserveMethod      string            `json:"observe_method,omitempty"`
+	ObservePath        string            `json:"observe_path,omitempty"`
+	Reconcile          string            `json:"reconcile,omitempty"`
+	Origin             string            `json:"origin,omitempty"`
+	TargetSchema       map[string]any    `json:"target_schema,omitempty"`
+	ArgumentsSchema    map[string]any    `json:"arguments_schema,omitempty"`
+	BodyFromTarget     map[string]string `json:"body_from_target,omitempty"`
+	UpstreamReference  string            `json:"upstream_reference,omitempty"`
 }
 
 type Binding struct {
@@ -45,6 +53,9 @@ type Binding struct {
 	ObserveMethod      string
 	ObservePath        string
 	Reconcile          string
+	Origin             string
+	BodyFromTarget     map[string]string
+	UpstreamReference  string
 	TargetSchema       json.RawMessage
 	ArgumentsSchema    json.RawMessage
 	targetValidator    *jsonschema.Schema
@@ -138,6 +149,11 @@ func load() ([]Binding, error) {
 	if err := strictjson.Decode(routesRaw, &sources, true); err != nil {
 		return nil, fmt.Errorf("decode HF route bindings: %w", err)
 	}
+	var manual []routeSource
+	if err := strictjson.Decode(manualRoutesRaw, &manual, true); err != nil {
+		return nil, fmt.Errorf("decode manual HF route bindings: %w", err)
+	}
+	sources = append(sources, manual...)
 	values := make([]Binding, 0, len(sources))
 	seen := make(map[string]bool, len(sources))
 	for _, source := range sources {
@@ -159,22 +175,28 @@ func bindingFromSource(paths map[string]map[string]json.RawMessage, components m
 	if source.Operation == "" || !validMethod(source.Method) || !strings.HasPrefix(source.Path, "/") {
 		return Binding{}, errors.New("operation, method, or path is invalid")
 	}
-	pathItem, found := paths[source.Path]
-	if !found {
-		return Binding{}, fmt.Errorf("path %q is absent from the pinned OpenAPI", source.Path)
-	}
-	raw, found := pathItem[strings.ToLower(source.Method)]
-	if !found {
-		return Binding{}, fmt.Errorf("method %s is absent from %s", source.Method, source.Path)
-	}
-	var operation operationDocument
-	if err := json.Unmarshal(raw, &operation); err != nil {
-		return Binding{}, err
-	}
-	targetSchema := schemaForParameters(operation.Parameters, "path", source.FixedPath)
-	argumentsSchema, err := schemaForArguments(operation, source.FixedBody, source.ArgumentProjection)
-	if err != nil {
-		return Binding{}, err
+	targetSchema, argumentsSchema := source.TargetSchema, source.ArgumentsSchema
+	if targetSchema == nil || argumentsSchema == nil {
+		pathItem, found := paths[source.Path]
+		if !found {
+			return Binding{}, fmt.Errorf("path %q is absent from the pinned OpenAPI", source.Path)
+		}
+		raw, found := pathItem[strings.ToLower(source.Method)]
+		if !found {
+			return Binding{}, fmt.Errorf("method %s is absent from %s", source.Method, source.Path)
+		}
+		var operation operationDocument
+		if err := json.Unmarshal(raw, &operation); err != nil {
+			return Binding{}, err
+		}
+		targetSchema = schemaForParameters(operation.Parameters, "path", source.FixedPath)
+		var err error
+		argumentsSchema, err = schemaForArguments(operation, source.FixedBody, source.ArgumentProjection)
+		if err != nil {
+			return Binding{}, err
+		}
+	} else if source.UpstreamReference == "" {
+		return Binding{}, errors.New("manual binding has no pinned upstream reference")
 	}
 	targetRaw, targetValidator, err := compileSchema(source.Operation+"-target", targetSchema, components)
 	if err != nil {
@@ -193,6 +215,7 @@ func bindingFromSource(paths map[string]map[string]json.RawMessage, components m
 	return Binding{Operation: source.Operation, Method: source.Method, Path: source.Path,
 		FixedPath: source.FixedPath, FixedBody: source.FixedBody, ArgumentProjection: source.ArgumentProjection,
 		ObserveMethod: source.ObserveMethod, ObservePath: source.ObservePath, Reconcile: source.Reconcile,
+		Origin: source.Origin, BodyFromTarget: source.BodyFromTarget, UpstreamReference: source.UpstreamReference,
 		TargetSchema: targetRaw, ArgumentsSchema: argumentsRaw, targetValidator: targetValidator,
 		argumentsValidator: argumentsValidator}, nil
 }

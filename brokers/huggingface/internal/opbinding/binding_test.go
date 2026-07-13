@@ -10,8 +10,8 @@ func TestPinnedBindingsLoadAndValidateClosedSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bindings) != 96 {
-		t.Fatalf("binding count = %d, want 96", len(bindings))
+	if len(bindings) != 105 {
+		t.Fatalf("binding count = %d, want 105", len(bindings))
 	}
 	binding, found := ByName("webhook.enable")
 	if !found || binding.Method != "POST" || binding.FixedPath["action"] != "enable" {

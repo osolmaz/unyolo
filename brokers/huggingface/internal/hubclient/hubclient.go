@@ -34,6 +34,7 @@ const (
 // its errors exposes it.
 type Client struct {
 	base             string
+	origins          map[string]string
 	token            string
 	httpClient       *http.Client
 	timeout          time.Duration
@@ -83,7 +84,11 @@ func New(baseURL, token string, options ...Option) (*Client, error) {
 		return nil, errors.New("hubclient: upstream token is required")
 	}
 	client := &Client{
-		base:             strings.TrimRight(parsed.String(), "/"),
+		base: strings.TrimRight(parsed.String(), "/"),
+		origins: map[string]string{
+			"inference_endpoints": "https://api.endpoints.huggingface.cloud/v2",
+			"inference_catalog":   "https://endpoints.huggingface.co/api/catalog",
+		},
 		token:            token,
 		timeout:          defaultTimeout,
 		maxResponseBytes: defaultMaxResponseBytes,
@@ -103,6 +108,7 @@ func New(baseURL, token string, options ...Option) (*Client, error) {
 type callSpec struct {
 	method string
 	path   string
+	origin string
 	query  url.Values
 	body   any
 	out    any
@@ -151,7 +157,15 @@ func (c *Client) newRequest(ctx context.Context, spec callSpec) (*http.Request, 
 		}
 		reader = bytes.NewReader(encoded)
 	}
-	endpoint := c.base + spec.path
+	base := c.base
+	if spec.origin != "" {
+		var found bool
+		base, found = c.origins[spec.origin]
+		if !found {
+			return nil, errors.New("hubclient: fixed upstream origin is unavailable")
+		}
+	}
+	endpoint := base + spec.path
 	if len(spec.query) > 0 {
 		endpoint += "?" + spec.query.Encode()
 	}

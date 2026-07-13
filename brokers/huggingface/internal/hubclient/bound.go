@@ -26,11 +26,11 @@ func (c *Client) ExecuteBound(ctx context.Context, operation string, target, arg
 	if err != nil {
 		return err
 	}
-	body, err := boundBody(binding, arguments)
+	body, err := boundBody(binding, target, arguments)
 	if err != nil {
 		return err
 	}
-	return c.call(ctx, callSpec{method: binding.Method, path: path, body: body})
+	return c.call(ctx, callSpec{method: binding.Method, path: path, origin: binding.Origin, body: body})
 }
 
 // ObserveBound returns a canonical bounded observation for a registered
@@ -46,7 +46,7 @@ func (c *Client) ObserveBound(ctx context.Context, operation string, target json
 		return nil, false, err
 	}
 	var observed json.RawMessage
-	err = c.call(ctx, callSpec{method: binding.ObserveMethod, path: path, out: &observed})
+	err = c.call(ctx, callSpec{method: binding.ObserveMethod, path: path, origin: binding.Origin, out: &observed})
 	if IsNotFound(err) {
 		return nil, true, nil
 	}
@@ -97,7 +97,7 @@ func scalarPathValue(value any) (string, bool) {
 	}
 }
 
-func boundBody(binding opbinding.Binding, raw json.RawMessage) (any, error) {
+func boundBody(binding opbinding.Binding, targetRaw, raw json.RawMessage) (any, error) {
 	var arguments map[string]any
 	if err := strictjson.Decode(raw, &arguments, true); err != nil {
 		return nil, errors.New("hubclient: bound arguments are invalid")
@@ -111,6 +111,19 @@ func boundBody(binding opbinding.Binding, raw json.RawMessage) (any, error) {
 	}
 	for key, value := range binding.FixedBody {
 		arguments[key] = value
+	}
+	if len(binding.BodyFromTarget) > 0 {
+		var target map[string]any
+		if err := strictjson.Decode(targetRaw, &target, true); err != nil {
+			return nil, errors.New("hubclient: bound target is invalid")
+		}
+		for bodyKey, targetKey := range binding.BodyFromTarget {
+			value, found := target[targetKey]
+			if !found {
+				return nil, errors.New("hubclient: bound body target field is missing")
+			}
+			arguments[bodyKey] = value
+		}
 	}
 	if len(arguments) == 0 && len(binding.FixedBody) == 0 {
 		return nil, nil
