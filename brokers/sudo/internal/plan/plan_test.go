@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/user"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 func TestPlanBindsGrantAndValidatesActivationAndExecution(t *testing.T) {
@@ -29,11 +28,11 @@ func TestPlanBindsGrantAndValidatesActivationAndExecution(t *testing.T) {
 	if len(value.SupplementaryGIDs) != 2 || value.SupplementaryGIDs[0] != 10 {
 		t.Fatalf("groups = %v", value.SupplementaryGIDs)
 	}
-	plans, _ := NewStore(filepath.Join(t.TempDir(), "plans"))
+	plans, database := newTestPlanStore(t)
 	if err := plans.Bind(&request, value); err != nil {
 		t.Fatal(err)
 	}
-	grantStore := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	grantStore := grants.NewDatabase(database, grants.Options{})
 	created, _, err := grantStore.Request(request)
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +74,7 @@ func TestPlanCanonicalHelpersAndIndependentHelperValidation(t *testing.T) {
 	if err := ValidateForHelper(decoded, nil, fakeIdentities{}); err == nil {
 		t.Fatal("nil helper catalog was accepted")
 	}
-	plans, _ := NewStore(filepath.Join(t.TempDir(), "plans"))
+	plans, _ := newTestPlanStore(t)
 	if err := plans.Bind(&request, value); err != nil {
 		t.Fatal(err)
 	}
@@ -97,11 +96,11 @@ func TestPlanRejectsGrantPlanCatalogIdentityAndHelperDrift(t *testing.T) {
 	request := testGrantRequest(resolved)
 	identity := Identity{Name: "root", UID: 0, GID: 0}
 	value, _ := Build(request, resolved, identity, time.Unix(1_700_000_000, 0))
-	plans, _ := NewStore(filepath.Join(t.TempDir(), "plans"))
+	plans, database := newTestPlanStore(t)
 	if err := plans.Bind(&request, value); err != nil {
 		t.Fatal(err)
 	}
-	grantStore := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	grantStore := grants.NewDatabase(database, grants.Options{})
 	created, _, _ := grantStore.Request(request)
 	base := Validator{Store: plans, Catalog: snapshot, Identities: fakeIdentities{identity: identity}, Helper: &fakeReadiness{}}
 
@@ -119,13 +118,6 @@ func TestPlanRejectsGrantPlanCatalogIdentityAndHelperDrift(t *testing.T) {
 	unready.Helper = &fakeReadiness{err: errors.New("offline")}
 	if _, err := unready.ValidateExecution(t.Context(), created.Grant); err == nil {
 		t.Fatal("unready helper was accepted")
-	}
-	corruptDigest := request.Metadata[MetadataDigest]
-	if err := os.WriteFile(plans.content.Path(corruptDigest), []byte(`{"schema":"sudo-broker.io/plan/v1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := base.ValidateExecution(t.Context(), created.Grant); err == nil {
-		t.Fatal("corrupt plan was accepted")
 	}
 }
 
@@ -171,35 +163,6 @@ func TestPlanEncodingIsDeterministicAndClosed(t *testing.T) {
 	}
 }
 
-func TestPlanStoreCollectsOnlyOldOrphans(t *testing.T) {
-	t.Parallel()
-	_, resolved := testResolved(t)
-	request := testGrantRequest(resolved)
-	value, _ := Build(request, resolved, Identity{Name: "root"}, time.Unix(1_700_000_000, 0))
-	plans, _ := NewStore(filepath.Join(t.TempDir(), "plans"))
-	if err := plans.Bind(&request, value); err != nil {
-		t.Fatal(err)
-	}
-	referenced := request.Metadata[MetadataDigest]
-	orphan := value
-	orphan.RequestID = "orphan"
-	orphanDigest, err := plans.content.Put(mustEncode(t, orphan))
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-48 * time.Hour)
-	if err := os.Chtimes(plans.content.Path(orphanDigest), old, old); err != nil {
-		t.Fatal(err)
-	}
-	removed, err := plans.CollectOrphans(map[string]bool{referenced: true}, time.Now().Add(-24*time.Hour))
-	if err != nil || removed != 1 {
-		t.Fatalf("CollectOrphans() = %d, %v", removed, err)
-	}
-	if _, err := plans.Get(referenced); err != nil {
-		t.Fatalf("referenced plan removed: %v", err)
-	}
-}
-
 func TestPlanFailsClosedForInvalidInputsAndUnavailableStores(t *testing.T) {
 	t.Parallel()
 	_, resolved := testResolved(t)
@@ -227,9 +190,6 @@ func TestPlanFailsClosedForInvalidInputsAndUnavailableStores(t *testing.T) {
 	if _, err := plans.Canonical(strings.Repeat("a", 64)); err == nil {
 		t.Fatal("nil plan store returned canonical bytes")
 	}
-	if _, err := plans.CollectOrphans(nil, time.Now()); err == nil {
-		t.Fatal("nil plan store collected plans")
-	}
 	if _, err := (SystemIdentityResolver{}).Lookup("definitely-missing-sudo-broker-user"); err == nil {
 		t.Fatal("missing system identity was resolved")
 	}
@@ -238,13 +198,18 @@ func TestPlanFailsClosedForInvalidInputsAndUnavailableStores(t *testing.T) {
 	}
 }
 
-func mustEncode(t *testing.T, value Plan) []byte {
+func newTestPlanStore(t *testing.T) (*Store, *state.Database) {
 	t.Helper()
-	data, err := encode(value)
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return data
+	t.Cleanup(func() { _ = database.Close() })
+	plans, err := NewStore(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plans, database
 }
 
 func testResolved(t *testing.T) (*catalog.Snapshot, catalog.Resolved) {

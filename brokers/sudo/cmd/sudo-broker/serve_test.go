@@ -20,7 +20,7 @@ import (
 func TestParseServeOptionsAndHTTPServerHardening(t *testing.T) {
 	t.Parallel()
 	args := []string{"--policy", "/etc/sudo/policy", "--catalog", "/etc/sudo/catalog", "--secrets", "/etc/sudo/secrets",
-		"--operator-secrets", "/etc/sudo/operators", "--grants", "/var/lib/sudo/grants", "--plans", "/var/lib/sudo/plans",
+		"--operator-secrets", "/etc/sudo/operators", "--state", "/var/lib/sudo",
 		"--helper-socket", "/run/sudo/helper.sock", "--bind", "127.0.0.1:9000", "--operator-bind", "127.0.0.1:9001"}
 	opts, err := parseServeOptions(args)
 	if err != nil || opts.bindAddress != "127.0.0.1:9000" {
@@ -44,7 +44,7 @@ func TestRunServeOrchestrationFailsBeforeListening(t *testing.T) {
 		t.Fatal("root frontend was accepted")
 	}
 	args := []string{"--policy", "/p", "--catalog", "/c", "--secrets", "/s", "--operator-secrets", "/o",
-		"--grants", "/g", "--plans", "/plans", "--helper-socket", "/run/helper.sock"}
+		"--state", "/state", "--helper-socket", "/run/helper.sock"}
 	want := errors.New("build failed")
 	err := runServeWith(t.Context(), args, io.Discard, io.Discard, func() int { return 1000 },
 		func(serveOptions, io.Writer) (*routes.Server, error) { return nil, want }, serveHTTP)
@@ -70,7 +70,7 @@ func TestBuildServerAssemblesBrokerkitRuntime(t *testing.T) {
 	secretsPath := write("secrets", "bob = "+strings.Repeat("s", 32)+"\n")
 	operatorsPath := write("operators", "onur = "+strings.Repeat("o", 32)+"\n")
 	opts := serveOptions{policyPath: policyPath, catalogPath: catalogPath, secretsPath: secretsPath, operatorSecrets: operatorsPath,
-		grantsPath: filepath.Join(directory, "grants.json"), plansDirectory: filepath.Join(directory, "plans"), helperSocket: filepath.Join(directory, "helper.sock")}
+		stateDirectory: filepath.Join(directory, "state"), helperSocket: filepath.Join(directory, "helper.sock")}
 	server, err := buildServerWithValidator(opts, &bytes.Buffer{}, func(string) error { return nil })
 	if err != nil || server.Handler() == nil || server.OperatorHandler() == nil {
 		t.Fatalf("buildServerWithValidator() = %+v, %v", server, err)
@@ -99,7 +99,7 @@ func TestBuildServerAssemblesBrokerkitRuntime(t *testing.T) {
 		_ = executorprotocol.WriteResponse(connection, executorprotocol.Response{Version: executorprotocol.Version, Status: executorprotocol.StatusReady})
 	}()
 	args := []string{"--policy", policyPath, "--catalog", catalogPath, "--secrets", secretsPath, "--operator-secrets", operatorsPath,
-		"--grants", opts.grantsPath, "--plans", opts.plansDirectory, "--helper-socket", opts.helperSocket}
+		"--state", opts.stateDirectory, "--helper-socket", opts.helperSocket}
 	var output bytes.Buffer
 	err = runServeWith(t.Context(), args, &output, &bytes.Buffer{}, func() int { return 1000 },
 		func(serveOptions, io.Writer) (*routes.Server, error) { return server, nil },
@@ -116,7 +116,7 @@ func TestBuildServerAssemblesBrokerkitRuntime(t *testing.T) {
 
 func TestParseServeOptionsRejectsUnsafeCombinations(t *testing.T) {
 	t.Parallel()
-	base := []string{"--policy", "/p", "--catalog", "/c", "--secrets", "/s", "--grants", "/g", "--plans", "/plans", "--helper-socket", "/run/helper.sock"}
+	base := []string{"--policy", "/p", "--catalog", "/c", "--secrets", "/s", "--state", "/state", "--helper-socket", "/run/helper.sock"}
 	for _, extra := range [][]string{
 		nil,
 		{"--operator-secrets", "/o", "--bind", "127.0.0.1:8084", "--operator-bind", "127.0.0.1:8084"},

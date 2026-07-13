@@ -21,8 +21,8 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/plandigest"
-	"github.com/osolmaz/brokerkit/planstore"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
 
@@ -108,14 +108,13 @@ func supplementaryGroups(account *user.User, primary uint32) ([]uint32, error) {
 	return result, nil
 }
 
-type Store struct{ content *planstore.Store }
+type Store struct{ database *state.Database }
 
-func NewStore(directory string) (*Store, error) {
-	content, err := planstore.New(directory, "sudo")
-	if err != nil {
-		return nil, err
+func NewStore(database *state.Database) (*Store, error) {
+	if database == nil {
+		return nil, errors.New("sudo plan database is required")
 	}
-	return &Store{content: content}, nil
+	return &Store{database: database}, nil
 }
 
 func Build(request grants.Request, resolved catalog.Resolved, identity Identity, now time.Time) (Plan, error) {
@@ -174,48 +173,57 @@ func boundEnvironment(values map[string]string) []string {
 }
 
 func (s *Store) Bind(request *grants.Request, value Plan) error {
-	if s == nil || s.content == nil || request == nil {
-		return errors.New("sudo plan store and request are required")
+	plan, err := s.PrepareBind(request, value)
+	if err != nil {
+		return err
+	}
+	_, err = s.database.PutPlan(context.Background(), plan.SchemaName, plan.Canonical, plan.CreatedAt)
+	return err
+}
+
+func (s *Store) PrepareBind(request *grants.Request, value Plan) (grants.ImmutablePlan, error) {
+	if s == nil || s.database == nil || request == nil {
+		return grants.ImmutablePlan{}, errors.New("sudo plan store and request are required")
 	}
 	encoded, err := encode(value)
 	if err != nil {
-		return err
+		return grants.ImmutablePlan{}, err
 	}
-	digest, err := s.content.Put(encoded)
-	if err != nil {
-		return err
-	}
+	digest := plandigest.Digest(encoded)
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
 	request.Metadata[MetadataSchema] = SchemaV1
 	request.Metadata[MetadataDigest] = digest
-	return nil
+	return grants.ImmutablePlan{Digest: digest, SchemaName: SchemaV1, Canonical: encoded, CreatedAt: value.CreatedAt.UTC()}, nil
 }
 
 func (s *Store) Get(digest string) (Plan, error) {
-	if s == nil || s.content == nil {
+	if s == nil || s.database == nil {
 		return Plan{}, errors.New("sudo plan store is unavailable")
 	}
-	data, err := s.content.Get(digest)
+	record, err := s.database.Plan(context.Background(), digest)
 	if err != nil {
 		return Plan{}, err
 	}
-	return decode(data)
+	if record.SchemaName != SchemaV1 {
+		return Plan{}, errors.New("sudo plan schema is unsupported")
+	}
+	return decode(record.Canonical)
 }
 
 func (s *Store) Canonical(digest string) ([]byte, error) {
-	if s == nil || s.content == nil {
+	if s == nil || s.database == nil {
 		return nil, errors.New("sudo plan store is unavailable")
 	}
-	return s.content.Get(digest)
-}
-
-func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) (int, error) {
-	if s == nil || s.content == nil {
-		return 0, errors.New("sudo plan store is unavailable")
+	record, err := s.database.Plan(context.Background(), digest)
+	if err != nil {
+		return nil, err
 	}
-	return s.content.CollectOrphans(referenced, olderThan)
+	if record.SchemaName != SchemaV1 || plandigest.Digest(record.Canonical) != digest {
+		return nil, errors.New("sudo plan content is invalid")
+	}
+	return append([]byte(nil), record.Canonical...), nil
 }
 
 func EncodeCanonical(value Plan) ([]byte, error) { return encode(value) }

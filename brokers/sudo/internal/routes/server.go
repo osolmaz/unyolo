@@ -8,15 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/osolmaz/brokerkit/agentapi"
+	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
@@ -29,11 +29,10 @@ import (
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 const maxBodyBytes int64 = 32 * 1024
-
-const sudoPlanOrphanGrace = 24 * time.Hour
 
 type DecisionPoller interface {
 	Poll(context.Context, func(context.Context, notify.Decision) notify.DecisionResult)
@@ -42,8 +41,7 @@ type DecisionPoller interface {
 type Options struct {
 	Policy             *corepolicy.Policy
 	Catalog            *catalog.Snapshot
-	GrantStore         *grants.Store
-	PlanStore          *plan.Store
+	Database           *state.Database
 	Identities         plan.IdentityResolver
 	Helper             *executorclient.Client
 	ClientSecrets      map[string]string
@@ -71,23 +69,37 @@ type Server struct {
 	now                func() time.Time
 	operatorConfigured bool
 	requestMu          sync.Mutex
+	database           *state.Database
+	operations         *agentops.Store
+	agentAPI           *agentapi.Handler
+	lifecycleContext   context.Context
+	lifecycleCancel    context.CancelFunc
+	backgroundWorkers  sync.WaitGroup
+	workerOnce         sync.Once
+	closeOnce          sync.Once
+	closeErr           error
 }
 
 func New(opts Options) (*Server, error) {
-	if opts.Policy == nil || opts.Catalog == nil || opts.GrantStore == nil || opts.PlanStore == nil || opts.Identities == nil || opts.Helper == nil {
+	if opts.Policy == nil || opts.Catalog == nil || opts.Database == nil || opts.Identities == nil || opts.Helper == nil {
 		return nil, errors.New("sudo broker dependencies are required")
 	}
-	validator := plan.Validator{Store: opts.PlanStore, Catalog: opts.Catalog, Identities: opts.Identities, Helper: opts.Helper}
-	control, err := controlplane.New(controlplane.Options{
-		Broker: "sudo-broker", Store: opts.GrantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
-		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit,
-	})
+	plans, err := plan.NewStore(opts.Database)
 	if err != nil {
 		return nil, err
 	}
 	now := opts.Now
 	if now == nil {
 		now = time.Now
+	}
+	grantStore := grants.NewDatabase(opts.Database, grants.Options{Now: now})
+	validator := plan.Validator{Store: plans, Catalog: opts.Catalog, Identities: opts.Identities, Helper: opts.Helper}
+	control, err := controlplane.New(controlplane.Options{
+		Broker: "sudo-broker", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
+		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit,
+	})
+	if err != nil {
+		return nil, err
 	}
 	auditWriter := opts.Audit
 	if auditWriter == nil {
@@ -97,11 +109,14 @@ func New(opts Options) (*Server, error) {
 	e.HideBanner = true
 	e.HidePort = true
 	e.Use(middleware.Recover(), noStore)
-	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: opts.GrantStore, plans: opts.PlanStore,
+	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: grantStore, plans: plans,
 		identities: opts.Identities, helper: opts.Helper, validator: validator, notifier: opts.Notifier, poller: opts.Poller,
-		audit: auditWriter, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0}
-	if err := collectPlanOrphans(opts.GrantStore, opts.PlanStore, now().UTC()); err != nil {
-		slog.Default().Warn("collect orphan sudo plans", "error", err)
+		audit: auditWriter, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
+		database: opts.Database, operations: agentops.New(opts.Database)}
+	server.agentAPI, err = agentapi.New(agentapi.Options{Store: server.operations, Authenticate: control.Clients.AuthenticateHeader,
+		Submit: server.submitAgentOperation, Realm: "sudo-broker"})
+	if err != nil {
+		return nil, err
 	}
 	server.registerRoutes()
 	return server, nil
@@ -111,31 +126,31 @@ func (s *Server) Handler() http.Handler { return s.echo }
 
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
 
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.closeOnce.Do(func() {
+		if s.lifecycleCancel != nil {
+			s.lifecycleCancel()
+		}
+		s.backgroundWorkers.Wait()
+		s.closeErr = s.database.Close()
+	})
+	return s.closeErr
+}
+
 func (s *Server) Start(ctx context.Context) {
+	s.startOperationWorker(ctx)
 	if s.poller != nil {
 		go s.poller.Poll(ctx, s.control.HandleDecision)
 	}
 }
 
 func (s *Server) registerRoutes() {
+	s.agentAPI.Register(s.echo)
 	s.echo.GET("/healthz", func(c echo.Context) error { return c.JSON(http.StatusOK, map[string]bool{"ok": true}) })
 	s.echo.GET("/readyz", s.readiness)
-	protected := s.echo.Group("")
-	protected.Use(s.authenticate)
-	protected.POST("/api/v1/requests", s.createRequest)
-	protected.GET("/api/v1/requests/:id", s.getRequest)
-	protected.POST("/api/v1/executions", s.execute)
-}
-
-func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		client, err := s.control.Clients.AuthenticateRequest(c.Request())
-		if err != nil {
-			return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
-		}
-		c.Set("sudo_client", client)
-		return next(c)
-	}
 }
 
 func noStore(next echo.HandlerFunc) echo.HandlerFunc {
@@ -156,215 +171,6 @@ type commandInput struct {
 	CommandID  string                     `json:"command_id"`
 	TargetUser string                     `json:"target_user"`
 	Arguments  map[string]json.RawMessage `json:"arguments"`
-}
-
-type requestInput struct {
-	commandInput
-	ClientRequestID string `json:"client_request_id"`
-	Reason          string `json:"reason"`
-	Minutes         int    `json:"minutes,omitempty"`
-}
-
-type executionInput struct {
-	commandInput
-	ExecutionID string `json:"execution_id"`
-}
-
-type requestView struct {
-	ID              string        `json:"id"`
-	Status          grants.Status `json:"status"`
-	Revision        int64         `json:"revision"`
-	CommandID       string        `json:"command_id"`
-	TargetUser      string        `json:"target_user"`
-	RequestedAt     time.Time     `json:"requested_at"`
-	PendingUntil    time.Time     `json:"pending_until"`
-	ActiveUntil     *time.Time    `json:"active_until,omitempty"`
-	UsesRemaining   int           `json:"uses_remaining"`
-	ClientRequestID string        `json:"client_request_id"`
-}
-
-func (s *Server) createRequest(c echo.Context) error {
-	if s.notifier == nil && !s.operatorConfigured {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "approval channel is not configured")
-	}
-	var input requestInput
-	if err := decodeBody(c, &input); err != nil {
-		return err
-	}
-	if err := validateRequestInput(input); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	client := clientFromContext(c)
-	resolved, policyRequest, err := s.classify(client, input.commandInput)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	decision := s.policy.Decide(policyRequest, corepolicy.DecisionOptions{ForGrantRequest: true, Now: s.now().UTC()})
-	if decision.Effect != corepolicy.EffectRequest || decision.GrantPolicy == nil {
-		s.record(policyRequest, "denied", decision.Reason, "", decision.MatchedDenyRuleIDs)
-		return echo.NewHTTPError(http.StatusForbidden, "command is not requestable")
-	}
-	duration, pending, err := grantBounds(decision.GrantPolicy, input.Minutes)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	request := grants.Request{Client: client, ClientRequestID: input.ClientRequestID, Operation: policyRequest.Operation,
-		Target: policyRequest.Target, Attrs: policyRequest.Attrs, Reason: strings.TrimSpace(input.Reason), Duration: duration, PendingTimeout: pending, MaxUses: 1}
-	identity, err := s.identities.Lookup(resolved.TargetUser)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "target user cannot be resolved")
-	}
-	s.requestMu.Lock()
-	createdAt, exists, err := existingPlanCreatedAt(s.grants, s.plans, request.Client, request.ClientRequestID)
-	if err != nil {
-		s.requestMu.Unlock()
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "grant state is unavailable")
-	}
-	if !exists {
-		createdAt = s.now().UTC()
-	}
-	value, err := plan.Build(request, resolved, identity, createdAt)
-	if err != nil {
-		s.requestMu.Unlock()
-		return echo.NewHTTPError(http.StatusBadRequest, "command plan is invalid")
-	}
-	if err := s.plans.Bind(&request, value); err != nil {
-		s.requestMu.Unlock()
-		return echo.NewHTTPError(http.StatusInternalServerError, "command plan could not be stored")
-	}
-	result, created, err := s.grants.Request(request)
-	s.requestMu.Unlock()
-	if err != nil {
-		return grantError(err)
-	}
-	stored, err := s.notifyRequest(c.Request().Context(), result)
-	if err != nil {
-		return err
-	}
-	s.record(policyRequest, "requires_approval", "requestable", stored.ID, decision.MatchedRequestRuleIDs)
-	status := http.StatusOK
-	if created {
-		status = http.StatusCreated
-	}
-	return c.JSON(status, map[string]any{"request": view(stored)})
-}
-
-func existingPlanCreatedAt(store *grants.Store, plans *plan.Store, client string, clientRequestID string) (time.Time, bool, error) {
-	items, err := store.ListForClient(client)
-	if err != nil {
-		return time.Time{}, false, err
-	}
-	for _, grant := range items {
-		if grant.ClientRequestID != clientRequestID || grant.Status == grants.StatusCanceled {
-			continue
-		}
-		value, err := plans.Get(grant.Metadata[plan.MetadataDigest])
-		if err != nil {
-			return time.Time{}, false, err
-		}
-		return value.CreatedAt, true, nil
-	}
-	return time.Time{}, false, nil
-}
-
-func collectPlanOrphans(store *grants.Store, plans *plan.Store, now time.Time) error {
-	items, err := store.List()
-	if err != nil {
-		return err
-	}
-	referenced := make(map[string]bool, len(items))
-	for _, grant := range items {
-		if grant.Metadata[plan.MetadataSchema] == plan.SchemaV1 {
-			referenced[grant.Metadata[plan.MetadataDigest]] = true
-		}
-	}
-	_, err = plans.CollectOrphans(referenced, now.Add(-sudoPlanOrphanGrace))
-	return err
-}
-
-func (s *Server) getRequest(c echo.Context) error {
-	grant, err := s.grants.Get(c.Param("id"))
-	if err != nil || grant.Client != clientFromContext(c) {
-		return echo.NewHTTPError(http.StatusNotFound, "request not found")
-	}
-	return c.JSON(http.StatusOK, map[string]any{"request": view(grant)})
-}
-
-func (s *Server) execute(c echo.Context) error {
-	var input executionInput
-	if err := decodeBody(c, &input); err != nil {
-		return err
-	}
-	if err := validateExecutionInput(input); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	client := clientFromContext(c)
-	_, policyRequest, err := s.classify(client, input.commandInput)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	active, err := s.grants.ActivePolicyGrants()
-	if err != nil {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "grant state is unavailable")
-	}
-	decision := s.policy.Decide(policyRequest, corepolicy.DecisionOptions{ActiveGrants: active, Now: s.now().UTC()})
-	if !decision.Allowed || decision.GrantID == "" {
-		s.record(policyRequest, "denied", decision.Reason, "", append(decision.MatchedDenyRuleIDs, decision.MatchedRequestRuleIDs...))
-		return echo.NewHTTPError(http.StatusForbidden, "an active one-shot approval is required")
-	}
-	reserved, err := s.grants.ReserveUse(decision.GrantID)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusConflict, "approval is no longer usable")
-	}
-	value, err := s.validator.ValidateExecution(c.Request().Context(), reserved)
-	if err != nil {
-		_, _ = s.grants.ReleaseUse(reserved.ID)
-		return echo.NewHTTPError(http.StatusForbidden, "approved command plan is invalid")
-	}
-	reservationID := fmt.Sprintf("%s:r%d", reserved.ID, reserved.Revision)
-	response, callErr := s.helper.Execute(c.Request().Context(), input.ExecutionID, value, reserved.ID, reservationID, reserved.ExpiresAt)
-	return s.settleExecution(c, policyRequest, reserved, response, callErr)
-}
-
-func (s *Server) settleExecution(c echo.Context, request corepolicy.Request, reserved grants.Grant, response executorprotocol.Response, callErr error) error {
-	if callErr != nil {
-		if !executorclient.WasDispatched(callErr) {
-			_, _ = s.grants.ReleaseUse(reserved.ID)
-			s.record(request, "rejected", "helper unavailable before dispatch", reserved.ID, nil)
-			return echo.NewHTTPError(http.StatusServiceUnavailable, "privileged helper is unavailable")
-		}
-		_, _ = s.grants.RetainUse(reserved.ID)
-		s.record(request, "ambiguous", "helper response unavailable", reserved.ID, nil)
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "execution result is ambiguous; approval is closed")
-	}
-	switch response.Status {
-	case executorprotocol.StatusRejected:
-		_, _ = s.grants.ReleaseUse(reserved.ID)
-		s.record(request, "rejected", response.ErrorCode, reserved.ID, nil)
-		return echo.NewHTTPError(http.StatusConflict, "helper rejected execution before start")
-	case executorprotocol.StatusAmbiguous:
-		_, _ = s.grants.RetainUse(reserved.ID)
-		s.record(request, "ambiguous", response.ErrorCode, reserved.ID, nil)
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "execution result is ambiguous; approval is closed")
-	case executorprotocol.StatusCompleted:
-		if response.Outcome == nil {
-			_, _ = s.grants.RetainUse(reserved.ID)
-			return echo.NewHTTPError(http.StatusServiceUnavailable, "execution result is ambiguous; approval is closed")
-		}
-		if !response.Outcome.Started {
-			_, _ = s.grants.ReleaseUse(reserved.ID)
-			return echo.NewHTTPError(http.StatusConflict, "command did not start")
-		}
-		if _, err := s.grants.CommitUse(reserved.ID); err != nil {
-			_, _ = s.grants.RetainUse(reserved.ID)
-			return echo.NewHTTPError(http.StatusInternalServerError, "execution use could not be settled")
-		}
-		s.record(request, "executed", "", reserved.ID, nil)
-		return c.JSON(http.StatusOK, map[string]any{"execution": executionView(response)})
-	default:
-		_, _ = s.grants.RetainUse(reserved.ID)
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "execution result is ambiguous; approval is closed")
-	}
 }
 
 func (s *Server) classify(client string, input commandInput) (catalog.Resolved, corepolicy.Request, error) {
@@ -396,7 +202,7 @@ func (s *Server) notifyRequest(ctx context.Context, result grants.RequestResult)
 		RequestedMinutes: int(grant.Duration / time.Minute), MaxUses: 1,
 		Fields: []notify.Field{{Name: "command", Value: commandID}, {Name: "target user", Value: target}},
 	})
-	if err != nil {
+	if err != nil || ref.MessageID <= 0 {
 		if s.operatorConfigured {
 			stored, _, retainErr := s.grants.RetainNotificationClaim(grant.ID, claim.Grant.NotificationClaimedAt)
 			if retainErr == nil {
@@ -413,54 +219,6 @@ func (s *Server) notifyRequest(ctx context.Context, result grants.RequestResult)
 	return stored, nil
 }
 
-func decodeBody(c echo.Context, out any) error {
-	if err := httpx.DecodeJSON(c.Request().Body, maxBodyBytes, out, true); err != nil {
-		if errors.Is(err, httpx.ErrBodyTooLarge) {
-			return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "request body is too large")
-		}
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request JSON")
-	}
-	return nil
-}
-
-func validateRequestInput(input requestInput) error {
-	if err := validateCommandInput(input.commandInput); err != nil {
-		return err
-	}
-	if !boundedID(input.ClientRequestID) {
-		return errors.New("client_request_id is required and must be a bounded identifier")
-	}
-	reason := strings.TrimSpace(input.Reason)
-	if reason == "" || len(reason) > 1000 || strings.IndexFunc(reason, unicode.IsControl) >= 0 {
-		return errors.New("reason is required and must be bounded plain text")
-	}
-	if input.Minutes < 0 {
-		return errors.New("minutes must not be negative")
-	}
-	return nil
-}
-
-func validateExecutionInput(input executionInput) error {
-	if err := validateCommandInput(input.commandInput); err != nil {
-		return err
-	}
-	if !boundedID(input.ExecutionID) {
-		return errors.New("execution_id is required and must be a bounded identifier")
-	}
-	return nil
-}
-
-func validateCommandInput(input commandInput) error {
-	if strings.TrimSpace(input.CommandID) == "" || strings.TrimSpace(input.TargetUser) == "" {
-		return errors.New("command_id and target_user are required")
-	}
-	return nil
-}
-
-func boundedID(value string) bool {
-	return len(value) >= 1 && len(value) <= 128 && strings.TrimSpace(value) == value && !strings.ContainsAny(value, " \t\r\n")
-}
-
 func grantBounds(policy *corepolicy.GrantPolicy, minutes int) (time.Duration, time.Duration, error) {
 	if policy.Mode != string(corepolicy.GrantModeExecution) || policy.DefaultMaxUses != 1 || policy.MaxUses != 1 {
 		return 0, 0, errors.New("sudo command policy must use one-shot execution grants")
@@ -474,29 +232,6 @@ func grantBounds(policy *corepolicy.GrantPolicy, minutes int) (time.Duration, ti
 	return time.Duration(minutes) * time.Minute, time.Duration(policy.RequestTTLMinutes) * time.Minute, nil
 }
 
-func grantError(err error) error {
-	if errors.Is(err, grants.ErrIdempotencyConflict) {
-		return echo.NewHTTPError(http.StatusConflict, "client_request_id conflicts with another request")
-	}
-	return echo.NewHTTPError(http.StatusBadRequest, "grant request is invalid")
-}
-
-func view(grant grants.Grant) requestView {
-	var activeUntil *time.Time
-	if !grant.ExpiresAt.IsZero() {
-		value := grant.ExpiresAt.UTC()
-		activeUntil = &value
-	}
-	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, grant.ReservedCount)
-	if !finite || grant.ReservationRetained {
-		remaining = 0
-	}
-	return requestView{ID: grant.ID, Status: grant.Status, Revision: grant.Revision,
-		CommandID: corepolicy.FirstValue(grant.Attrs[sudopolicy.AttrCommandID]), TargetUser: corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName]),
-		RequestedAt: grant.CreatedAt, PendingUntil: grant.PendingExpiresAt, ActiveUntil: activeUntil,
-		UsesRemaining: remaining, ClientRequestID: grant.ClientRequestID}
-}
-
 func executionView(response executorprotocol.Response) map[string]any {
 	outcome := response.Outcome
 	return map[string]any{
@@ -504,11 +239,6 @@ func executionView(response executorprotocol.Response) map[string]any {
 		"timed_out": outcome.TimedOut, "truncated": outcome.Truncated, "duration_ns": outcome.Duration.Nanoseconds(),
 		"stdout_base64": base64.StdEncoding.EncodeToString(outcome.Stdout), "stderr_base64": base64.StdEncoding.EncodeToString(outcome.Stderr),
 	}
-}
-
-func clientFromContext(c echo.Context) string {
-	client, _ := c.Get("sudo_client").(string)
-	return client
 }
 
 func (s *Server) record(request corepolicy.Request, decision string, reason string, grantID string, rules []string) {

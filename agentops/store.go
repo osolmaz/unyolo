@@ -21,6 +21,7 @@ import (
 
 const (
 	maxJSONBytes      = 4096
+	maxResultBytes    = 2 * 1024 * 1024
 	maxOperations     = 2048
 	terminalRetention = 30 * 24 * time.Hour
 )
@@ -183,7 +184,7 @@ func (s *Store) Transition(id string, state agentv1.State) (agentv1.Operation, e
 }
 
 func (s *Store) Succeed(id string, result json.RawMessage) (agentv1.Operation, error) {
-	result, err := normalizeObject(result)
+	result, err := normalizeObjectLimit(result, maxResultBytes)
 	if err != nil {
 		return agentv1.Operation{}, fmt.Errorf("result: %w", err)
 	}
@@ -369,7 +370,11 @@ func validSubmitPresentation(input Submit) bool {
 }
 
 func normalizeObject(value json.RawMessage) (json.RawMessage, error) {
-	if len(value) == 0 || len(value) > maxJSONBytes {
+	return normalizeObjectLimit(value, maxJSONBytes)
+}
+
+func normalizeObjectLimit(value json.RawMessage, maximum int) (json.RawMessage, error) {
+	if len(value) == 0 || len(value) > maximum {
 		return nil, errors.New("JSON object size is invalid")
 	}
 	if err := strictjson.RejectDuplicateKeys(value); err != nil {
@@ -423,7 +428,7 @@ func validateStored(operation agentv1.Operation) error {
 		return err
 	}
 	if len(operation.Result) > 0 {
-		if _, err := normalizeObject(operation.Result); err != nil {
+		if _, err := normalizeObjectLimit(operation.Result, maxResultBytes); err != nil {
 			return fmt.Errorf("operation result: %w", err)
 		}
 	}

@@ -92,7 +92,7 @@ func TestClientRejectsMismatchedExecutionResponse(t *testing.T) {
 	_, err := value.exchange(t.Context(), executorprotocol.Request{
 		Version: executorprotocol.Version, Type: executorprotocol.TypeExecute, ExecutionID: "execution-1",
 		Plan: []byte(`{}`), PlanDigest: "digest", GrantID: "grant-1", ReservationID: "reservation-1", ExpiresAt: time.Now().Add(time.Minute),
-	})
+	}, 0)
 	if err == nil || !WasDispatched(err) {
 		t.Fatalf("mismatched response error = %v", err)
 	}

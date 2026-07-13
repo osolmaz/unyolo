@@ -6,7 +6,7 @@ The supported Linux installation has two units:
 
 | Unit | Identity | State | Purpose |
 | --- | --- | --- | --- |
-| `sudo-broker.service` | `sudo-broker` | `/var/lib/sudo-broker/frontend` | Authentication, policy, requests, approvals, plans, and audit. |
+| `sudo-broker.service` | `sudo-broker` | `/var/lib/sudo-broker/frontend` | Agent V1 operations, policy, approvals, plans, and audit. |
 | `sudo-broker-exec.service` | `root` | `/var/lib/sudo-broker/helper` | Peer-authenticated exact-command execution and replay state. |
 
 The helper creates `/run/sudo-broker/helper.sock` through a private systemd
@@ -48,20 +48,18 @@ The helper accepts UID 0 only for its bounded readiness ping so root-run host
 diagnostics work; execution frames remain restricted to the frontend UID.
 
 The live acceptance probe must use a disposable harmless catalog command. Test
-request, approval, one execution, replay with the same execution id, denial,
+submission, approval, one execution, replay with the same operation id, denial,
 expiry, and an ambiguous helper disconnect. Never use a production mutation or
 package-management command as the first probe.
 
 ## Recovery
 
-- Repeating a request with the same client request id and identical fields is
-  idempotent across frontend restarts.
-- Repeating an execution with the same execution id returns its terminal result
-  or an ambiguous status; it never starts a second process.
+- Repeating an operation with the same idempotency key and identical fields is
+  idempotent across frontend restarts and returns its terminal result.
 - A lost helper response after dispatch closes the grant use. Do not retry with
   a new execution id.
 - Incomplete helper records are retained indefinitely. Completed records may be
-  removed after 30 days, so execution ids should remain globally unique.
+  removed after 30 days, so operation ids should remain globally unique.
 - Corrupt or unsupported grant, plan, helper protocol, or execution state fails
   closed.
 

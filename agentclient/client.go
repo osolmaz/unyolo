@@ -16,7 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
-const maxResponseBytes = 64 * 1024
+const maxResponseBytes = 2 * 1024 * 1024
 
 // Options configures an Agent Operations V1 client.
 type Options struct {

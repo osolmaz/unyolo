@@ -251,7 +251,7 @@ func frontendSecretFile(name string, data []byte) bkservice.ManagedFile {
 
 func frontendExec(opts sudoSystemdOptions, paths sudoInstallPaths) string {
 	values := []string{opts.BinaryPath, "serve", "--policy", paths.policy, "--catalog", paths.catalog, "--secrets", paths.secrets,
-		"--operator-secrets", paths.operators, "--grants", filepath.Join(opts.StateDir, "grants.json"), "--plans", filepath.Join(opts.StateDir, "plans"),
+		"--operator-secrets", paths.operators, "--state", opts.StateDir,
 		"--helper-socket", opts.HelperSocket, "--bind", net.JoinHostPort(opts.BindAddr, strconv.Itoa(opts.Port)),
 		"--operator-bind", net.JoinHostPort(opts.OperatorBindAddr, strconv.Itoa(opts.OperatorPort))}
 	if opts.TelegramBotTokenFile != "" {

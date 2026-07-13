@@ -33,7 +33,7 @@ func WasDispatched(err error) bool {
 }
 
 func (c *Client) Ready(ctx context.Context) error {
-	response, err := c.exchange(ctx, executorprotocol.Ping())
+	response, err := c.exchange(ctx, executorprotocol.Ping(), 0)
 	if err != nil {
 		return err
 	}
@@ -52,16 +52,19 @@ func (c *Client) Execute(ctx context.Context, executionID string, value plan.Pla
 		Version: executorprotocol.Version, Type: executorprotocol.TypeExecute, ExecutionID: executionID,
 		Plan: canonical, PlanDigest: plandigest.Digest(canonical), GrantID: grantID, ReservationID: reservationID, ExpiresAt: expiresAt.UTC(),
 	}
-	return c.exchange(ctx, request)
+	return c.exchange(ctx, request, time.Duration(value.TimeoutSeconds)*time.Second+5*time.Second)
 }
 
-func (c *Client) exchange(ctx context.Context, request executorprotocol.Request) (executorprotocol.Response, error) {
+func (c *Client) exchange(ctx context.Context, request executorprotocol.Request, minimumTimeout time.Duration) (executorprotocol.Response, error) {
 	if c == nil || c.SocketPath == "" {
 		return executorprotocol.Response{}, errors.New("sudo helper socket is not configured")
 	}
 	timeout := c.Timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Second
+	}
+	if timeout < minimumTimeout {
+		timeout = minimumTimeout
 	}
 	dial := c.Dial
 	if dial == nil {
@@ -85,7 +88,7 @@ func (c *Client) exchange(ctx context.Context, request executorprotocol.Request)
 	if err != nil {
 		return executorprotocol.Response{}, &CallError{Dispatched: true, cause: err}
 	}
-	if request.Type == executorprotocol.TypeExecute && response.ExecutionID != request.ExecutionID {
+	if request.Type == executorprotocol.TypeExecute && response.ExecutionID != "" && response.ExecutionID != request.ExecutionID {
 		return executorprotocol.Response{}, &CallError{Dispatched: true, cause: errors.New("sudo helper returned a mismatched execution id")}
 	}
 	return response, nil

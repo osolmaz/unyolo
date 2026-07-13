@@ -68,7 +68,7 @@ CREATE TABLE operations (
     terminal_at TEXT,
     approval_id TEXT NOT NULL DEFAULT '' CHECK(length(approval_id) <= 128),
     presentation_json TEXT NOT NULL CHECK(length(presentation_json) BETWEEN 2 AND 4096 AND json_valid(presentation_json)),
-    result_json TEXT CHECK(result_json IS NULL OR (length(result_json) BETWEEN 2 AND 4096 AND json_valid(result_json))),
+    result_json TEXT CHECK(result_json IS NULL OR (length(result_json) BETWEEN 2 AND 2097152 AND json_valid(result_json))),
     error_json TEXT CHECK(error_json IS NULL OR (length(error_json) BETWEEN 2 AND 4096 AND json_valid(error_json))),
     plan_digest TEXT REFERENCES plans(digest),
     UNIQUE(client_id, idempotency_key)

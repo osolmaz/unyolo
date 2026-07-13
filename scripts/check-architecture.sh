@@ -84,6 +84,14 @@ then
   exit 1
 fi
 
+if ! grep -q 'agentAPI.Register' brokers/sudo/internal/routes/server.go ||
+	grep -R -n --include='*.go' -E 'api/v1/(requests|executions)|grants\.New\(|brokerkit/planstore|planstore\.' \
+		brokers/sudo --exclude='*_test.go' 2>/dev/null
+then
+	echo 'sudo operations and lifecycle state must use Agent V1 and shared SQLite' >&2
+	exit 1
+fi
+
 if grep -R -n --include='*.go' -E 'plans\.Bind(At)?\(|store\.Request\(' \
   brokers/huggingface/internal/hfgrant --exclude='*_test.go' 2>/dev/null
 then

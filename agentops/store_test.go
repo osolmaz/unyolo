@@ -71,6 +71,24 @@ func TestStoreWaitAndStrictFile(t *testing.T) {
 	}
 }
 
+func TestStoreAcceptsBoundedCommandResult(t *testing.T) {
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_output", nil })
+	operation, _, err := store.Submit(validSubmit("output"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Transition(operation.ID, agentv1.StateApproved); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Transition(operation.ID, agentv1.StateExecuting); err != nil {
+		t.Fatal(err)
+	}
+	result := json.RawMessage(`{"stdout_base64":"` + strings.Repeat("a", 1024*1024) + `"}`)
+	if completed, err := store.Succeed(operation.ID, result); err != nil || completed.State != agentv1.StateSucceeded {
+		t.Fatalf("large result = %#v, %v", completed, err)
+	}
+}
+
 func TestStoreFailureListAndWaitSignal(t *testing.T) {
 	store := newTestStore(t, time.Now, func() (string, error) { return "op_signal", nil })
 	op, _, err := store.Submit(validSubmit("signal"))
