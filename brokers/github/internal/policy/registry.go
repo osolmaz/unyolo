@@ -2,59 +2,63 @@ package policy
 
 import (
 	"slices"
+	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
+type operationInfo struct {
+	spec              corepolicy.OperationSpec
+	familyGlobAllowed bool
+}
+
 func registry() corepolicy.Registry {
-	specs := operationSpecs()
-	operations := make(map[string]corepolicy.OperationSpec, len(specs))
-	for op, spec := range specs {
-		operations[string(op)] = spec
+	value, err := CatalogRegistry()
+	if err != nil {
+		panic(err)
 	}
-	return corepolicy.Registry{
-		Operations: operations,
-		Targets: map[string]corepolicy.TargetSpec{
-			"repo": {
-				Fields: map[string]corepolicy.FieldSpec{
-					"owner": {Required: true},
-					"name":  {Required: true},
-				},
-			},
-			"installation": {},
-		},
-		Attrs: map[string]corepolicy.AttrSpec{
-			"ref":      {},
-			"base_ref": {},
-			"head_ref": {},
-			"path":     {},
-		},
-	}
+	return value
 }
 
 func operationSpecs() map[Operation]corepolicy.OperationSpec {
-	return map[Operation]corepolicy.OperationSpec{
-		OperationGitFetch:              {TargetKinds: []string{"repo"}},
-		OperationGitPushAdvertise:      {TargetKinds: []string{"repo"}},
-		OperationGitPushBranchCreate:   {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true},
-		OperationGitPushFastForward:    {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true},
-		OperationGitPushForce:          {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true},
-		OperationGitRefDelete:          {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true},
-		OperationGitTagUpdate:          {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true},
-		OperationPullRequestCreate:     {TargetKinds: []string{"repo"}, Attrs: []string{"ref", "base_ref", "head_ref"}, Grantable: true, GrantMode: corepolicy.GrantModeExecution},
-		OperationPullRequestUpdate:     {TargetKinds: []string{"repo"}, Attrs: []string{"ref", "base_ref", "head_ref"}, Grantable: true, GrantMode: corepolicy.GrantModeExecution},
-		OperationPullRequestMerge:      {TargetKinds: []string{"repo"}, Attrs: []string{"ref", "base_ref", "head_ref"}, Grantable: true, GrantMode: corepolicy.GrantModeExecution},
-		OperationChecksRead:            {TargetKinds: []string{"repo"}},
-		OperationRepoMetadataRead:      {TargetKinds: []string{"repo"}},
-		OperationContentsRead:          {TargetKinds: []string{"repo"}, Attrs: []string{"ref", "path"}},
-		OperationInstallationReposList: {TargetKinds: []string{"installation"}},
-		OperationWebhookGitHubReceive:  {TargetKinds: []string{"repo"}},
+	result := make(map[Operation]corepolicy.OperationSpec, len(opcatalog.MustAll()))
+	for op, info := range operationInfos() {
+		result[op] = info.spec
 	}
+	return result
+}
+
+func operationInfos() map[Operation]operationInfo {
+	descriptors := opcatalog.MustAll()
+	result := make(map[Operation]operationInfo, len(descriptors))
+	for _, descriptor := range descriptors {
+		if !descriptor.AgentFacing {
+			continue
+		}
+		mode := corepolicy.GrantModeWindow
+		if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+			mode = corepolicy.GrantModeExecution
+		}
+		result[Operation(descriptor.Name)] = operationInfo{
+			spec: corepolicy.OperationSpec{
+				TargetKinds: []string{descriptor.TargetKind},
+				Attrs:       CatalogAttributeNames(),
+				Grantable:   true,
+				GrantMode:   mode,
+			},
+			familyGlobAllowed: descriptor.FamilyGlobAllowed,
+		}
+	}
+	for operation, spec := range protocolOperationSpecs() {
+		result[operation] = operationInfo{spec: spec, familyGlobAllowed: true}
+	}
+	return result
 }
 
 func allOperations() []Operation {
-	ops := make([]Operation, 0, len(operationSpecs()))
-	for op := range operationSpecs() {
+	ops := make([]Operation, 0, len(operationInfos()))
+	for op := range operationInfos() {
 		ops = append(ops, op)
 	}
 	slices.Sort(ops)
@@ -62,14 +66,35 @@ func allOperations() []Operation {
 }
 
 func operationAttrs(op Operation) []string {
-	return operationSpecs()[op].Attrs
+	return slices.Clone(operationInfos()[canonicalOperation(op)].spec.Attrs)
 }
 
 func targetKindForOperation(op Operation) string {
-	if slices.Contains(operationSpecs()[op].TargetKinds, "installation") {
-		return "installation"
+	spec := operationInfos()[canonicalOperation(op)].spec
+	if len(spec.TargetKinds) == 0 {
+		return ""
 	}
-	return "repo"
+	return spec.TargetKinds[0]
+}
+
+func expandFamilyOperation(op Operation) ([]Operation, bool) {
+	text := string(canonicalOperation(op))
+	if !strings.HasSuffix(text, ".*") {
+		return nil, false
+	}
+	prefix := strings.TrimSuffix(text, "*")
+	out := []Operation{}
+	for name, info := range operationInfos() {
+		if info.familyGlobAllowed && strings.HasPrefix(string(name), prefix) {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out, len(out) > 0
+}
+
+func canonicalOperation(op Operation) Operation {
+	return Operation(strings.TrimSpace(string(op)))
 }
 
 // mutate4go-manifest-begin

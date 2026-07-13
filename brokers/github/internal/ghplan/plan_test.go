@@ -2,13 +2,14 @@ package ghplan
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
 )
@@ -27,7 +28,7 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := request.Metadata[MetadataDigest]
-	if digest == "" || request.Metadata[MetadataSchema] != SchemaV1 || request.Metadata[MetadataMode] != KindCapabilityWindow {
+	if digest == "" || request.Metadata[MetadataSchema] != SchemaV1 || request.Metadata["github_grant_mode"] != "window" {
 		t.Fatalf("metadata = %+v", request.Metadata)
 	}
 	second := testRequest()
@@ -62,24 +63,34 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 	}
 }
 
-func TestCanonicalPlanDigest(t *testing.T) {
-	encoded, err := encode(FromRequest(testRequest(), "installation", fixtureTime))
+func TestCanonicalPlanDigestChangesOnlyWithPlanContent(t *testing.T) {
+	first, err := Prepare(testAdapterPlan())
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = "c7ab8edcd7da93dd297f9d4e100aba09dcdae48cf66bde63e72f1db161cf3818"
-	if got := plandigest.Digest(encoded); got != expected {
-		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
+	second, err := Prepare(testAdapterPlan())
+	if err != nil || second.Digest != first.Digest || string(second.Canonical) != string(first.Canonical) {
+		t.Fatalf("deterministic plans = %q/%q, %v", first.Digest, second.Digest, err)
+	}
+	changed := testAdapterPlan()
+	changed.Arguments = json.RawMessage(`{"input":{"title":"changed","head":"work","base":"main"}}`)
+	third, err := Prepare(changed)
+	if err != nil || third.Digest == first.Digest {
+		t.Fatalf("changed digest = %q, original %q, %v", third.Digest, first.Digest, err)
 	}
 }
 
-func TestDecodeRejectsUnknownDuplicateSensitiveAndTrailingFields(t *testing.T) {
-	valid := `{"schema_version":"gh-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"repo","target":{"name":["gh-broker"],"owner":["osolmaz"]},"constraints":{"attributes":{"ref":["refs/heads/main"]},"requested_duration_seconds":300,"requested_max_uses":2},"credential_selector":"installation","created_at":"2026-07-12T00:00:00Z"}`
+func TestDecodeRejectsUnknownDuplicateSecretAndTrailingFields(t *testing.T) {
+	prepared, err := Prepare(testAdapterPlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := string(prepared.Canonical)
 	for _, value := range []string{
-		strings.Replace(valid, `"kind":`, `"unknown":true,"kind":`, 1),
-		strings.Replace(valid, `"kind":"capability_window"`, `"kind":"capability_window","kind":"single_execution"`, 1),
-		strings.Replace(valid, `"name":["gh-broker"]`, `"name":["gh-broker"],"access_token":["canary"]`, 1),
-		strings.Replace(valid, `"operation":"git.push.force"`, `"operation":"unknown.operation"`, 1),
+		strings.Replace(valid, `"api_version":`, `"unknown":true,"api_version":`, 1),
+		strings.Replace(valid, `"operation":`, `"operation":"pull_request.create","operation":`, 1),
+		strings.Replace(valid, `"input":{`, `"input":{"token":"canary",`, 1),
+		strings.Replace(valid, `"pull_request.create"`, `"github.raw.request"`, 1),
 		valid + `{}`,
 	} {
 		if _, err := decode([]byte(value)); err == nil {
@@ -92,8 +103,12 @@ func TestDecodeRejectsUnknownDuplicateSensitiveAndTrailingFields(t *testing.T) {
 }
 
 func FuzzDecodePlan(f *testing.F) {
-	f.Add([]byte(`{"schema_version":"gh-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"repo","target":{"name":["gh-broker"],"owner":["osolmaz"]},"constraints":{"attributes":{"ref":["refs/heads/main"]},"requested_duration_seconds":300,"requested_max_uses":2},"credential_selector":"installation","created_at":"2026-07-12T00:00:00Z"}`))
-	f.Add([]byte(`{"schema_version":"unknown"}`))
+	prepared, err := Prepare(testAdapterPlan())
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(prepared.Canonical)
+	f.Add([]byte(`{"api_version":"unknown"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		plan, err := decode(data)
 		if err != nil {
@@ -109,20 +124,20 @@ func FuzzDecodePlan(f *testing.F) {
 	})
 }
 
-func TestStoreRejectsMissingCorruptAndCrossCredentialPlans(t *testing.T) {
+func TestStoreRejectsMissingCorruptAndInvalidCredentials(t *testing.T) {
 	t.Parallel()
 	database := testDatabase(t)
 	plans, _ := newStore(database, "installation", func() time.Time { return fixtureTime })
 	request := testRequest()
-	encoded, err := encode(FromRequest(request, "installation", fixtureTime))
+	prepared, err := Prepare(testAdapterPlan())
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := database.PutPlan(t.Context(), "unsupported.github.plan", encoded, fixtureTime)
+	digest, err := database.PutPlan(t.Context(), "unsupported.github.plan", prepared.Canonical, fixtureTime)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.Metadata = map[string]string{MetadataSchema: SchemaV1, MetadataDigest: digest, MetadataMode: KindCapabilityWindow}
+	request.Metadata = map[string]string{MetadataSchema: SchemaV1, MetadataDigest: digest, "github_grant_mode": "window"}
 	grant := grants.Grant{Client: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, Target: request.Target, Attrs: request.Attrs, Metadata: request.Metadata,
 		Duration: request.Duration, RequestedDuration: request.Duration, MaxUses: request.MaxUses, RequestedMaxUses: request.MaxUses}
 	if err := (Validator{Store: plans}).ValidateExecution(grant); err == nil {
@@ -143,23 +158,19 @@ func TestStoreRejectsMissingCorruptAndCrossCredentialPlans(t *testing.T) {
 	}
 }
 
-func TestKindForOperationAndValidation(t *testing.T) {
-	t.Parallel()
-	if got, ok := kindForOperation("pr.merge"); !ok || got != KindSingleExecution {
-		t.Fatalf("PR kind = %q", got)
-	}
-	if _, ok := kindForOperation("contents.read"); ok {
-		t.Fatal("read operation is grantable")
-	}
-	plans, _ := newStore(testDatabase(t), "installation", func() time.Time { return fixtureTime })
-	tests := []grants.Request{testRequest(), testRequest(), testRequest()}
-	tests[0].Operation = "repo.delete"
-	tests[1].Target.Fields["installation"] = []string{"42"}
-	tests[2].Attrs["path"] = []string{"README.md"}
-	for index := range tests {
-		if err := plans.Bind(&tests[index]); err == nil {
-			t.Fatalf("case %d was accepted", index)
-		}
+func testAdapterPlan() Plan {
+	return Plan{
+		APIVersion: SchemaV1, Operation: "pull_request.create", OperationRevision: 1,
+		ClientID: "bob", ClientRequestID: "request-1",
+		Target:             json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),
+		Arguments:          json.RawMessage(`{"input":{"title":"work","head":"work","base":"main"}}`),
+		Preconditions:      json.RawMessage(`{"kind":"installation","installation_id":42,"permissions":{"pull_requests":"write"},"api_host":"api.github.com"}`),
+		CredentialSelector: CredentialSelector{Name: "primary", Kind: "installation"},
+		Presentation:       agentv1.Presentation{Title: "Create a pull request", Summary: "pull_request.create on osolmaz/brokerkit"},
+		Authorization: Authorization{Mode: "execution", RequestedDurationSeconds: 300, RequestedMaxUses: 1,
+			Target:       GrantTarget{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"brokerkit"}}},
+			PolicyEffect: "request", PolicyRuleIDs: []string{"request-pr"}},
+		CreatedAt: fixtureTime, ExpiresAt: fixtureTime.Add(10 * time.Minute),
 	}
 }
 
@@ -177,6 +188,7 @@ func testRequest() grants.Request {
 	return grants.Request{
 		Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force",
 		Target: policy.Target{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"gh-broker"}}},
-		Attrs:  map[string][]string{"ref": {"refs/heads/main"}}, Reason: "repair", Duration: 5 * time.Minute, MaxUses: 2,
+		Attrs:  map[string][]string{"ref": {"refs/heads/main"}}, Reason: "repair",
+		Duration: 5 * time.Minute, PendingTimeout: time.Minute, MaxUses: 2, MaxUsesSpecified: true,
 	}
 }

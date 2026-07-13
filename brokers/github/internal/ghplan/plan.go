@@ -2,14 +2,19 @@
 package ghplan
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
+	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/plandigest"
@@ -18,35 +23,59 @@ import (
 )
 
 const (
-	SchemaV1       = "gh-broker.io/plan/v1"
-	MetadataSchema = "github_plan_schema"
-	MetadataDigest = "github_plan_digest"
-	MetadataMode   = "github_plan_mode"
+	SchemaV1        = "gh-broker.io/plan/v1"
+	MetadataSchema  = "github_plan_schema"
+	MetadataDigest  = "github_plan_digest"
+	MetadataTitle   = "github_plan_title"
+	MetadataSummary = "github_plan_summary"
+
+	maxTargetBytes        = 16 * 1024
+	maxArgumentsBytes     = 1024 * 1024
+	maxPreconditionsBytes = 64 * 1024
 )
 
-const (
-	KindCapabilityWindow = "capability_window"
-	KindSingleExecution  = "single_execution"
-)
-
+// Plan binds every execution-relevant provider value approved by policy and
+// the operator. Mutable lifecycle state and notification metadata stay out of
+// the digest.
 type Plan struct {
-	SchemaVersion      string              `json:"schema_version"`
-	Kind               string              `json:"kind"`
-	ClientID           string              `json:"client_id"`
-	ClientRequestID    string              `json:"client_request_id"`
-	Operation          string              `json:"operation"`
-	TargetKind         string              `json:"target_kind"`
-	Target             map[string][]string `json:"target"`
-	Constraints        Constraints         `json:"constraints"`
-	CredentialSelector string              `json:"credential_selector"`
-	CreatedAt          time.Time           `json:"created_at"`
+	APIVersion         string               `json:"api_version"`
+	Operation          string               `json:"operation"`
+	OperationRevision  int                  `json:"operation_revision"`
+	ClientID           string               `json:"client_id"`
+	ClientRequestID    string               `json:"client_request_id"`
+	Target             json.RawMessage      `json:"target"`
+	Arguments          json.RawMessage      `json:"arguments"`
+	Preconditions      json.RawMessage      `json:"preconditions"`
+	CredentialSelector CredentialSelector   `json:"credential_selector"`
+	Presentation       agentv1.Presentation `json:"presentation"`
+	Authorization      Authorization        `json:"authorization"`
+	CreatedAt          time.Time            `json:"created_at"`
+	ExpiresAt          time.Time            `json:"expires_at"`
 }
 
-type Constraints struct {
-	Attributes                map[string][]string `json:"attributes,omitempty"`
+type CredentialSelector struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+}
+
+type Authorization struct {
+	Mode                      string              `json:"mode"`
 	RequestedDurationSeconds  int64               `json:"requested_duration_seconds"`
 	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
 	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted,omitempty"`
+	Target                    GrantTarget         `json:"target"`
+	Attributes                map[string][]string `json:"attributes,omitempty"`
+	PolicyEffect              string              `json:"policy_effect,omitempty"`
+	PolicyRuleIDs             []string            `json:"policy_rule_ids,omitempty"`
+}
+
+type GrantTarget struct {
+	Kind   string              `json:"kind"`
+	Fields map[string][]string `json:"fields"`
+}
+
+type grantArguments struct {
+	Attributes map[string][]string `json:"attributes,omitempty"`
 }
 
 type Store struct {
@@ -67,7 +96,7 @@ func newStore(database *state.Database, credentialSelector string, now func() ti
 	if database == nil {
 		return nil, errors.New("GitHub plan database is required")
 	}
-	if credentialSelector != "installation" && credentialSelector != "development-token" { // #nosec G101 -- these are credential kind identifiers, not credentials.
+	if credentialSelector != "installation" && credentialSelector != "development-token" && credentialSelector != "user" {
 		return nil, errors.New("GitHub credential selector is invalid")
 	}
 	if now == nil {
@@ -76,36 +105,63 @@ func newStore(database *state.Database, credentialSelector string, now func() ti
 	return &Store{database: database, credentialSelector: credentialSelector, now: now}, nil
 }
 
-func FromRequest(request grants.Request, credentialSelector string, createdAt time.Time) Plan {
-	kind := request.Metadata[MetadataMode]
-	if kind == "" {
-		kind, _ = kindForOperation(request.Operation)
+// FromRequest creates the immutable plan for a bounded protocol grant.
+func FromRequest(request grants.Request, createdAt time.Time) Plan {
+	target, _ := json.Marshal(GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)})
+	arguments, _ := json.Marshal(grantArguments{Attributes: cloneValues(request.Attrs)})
+	expiresAt := createdAt.Add(request.PendingTimeout + request.Duration)
+	if !expiresAt.After(createdAt) {
+		expiresAt = createdAt.Add(request.Duration)
 	}
 	return Plan{
-		SchemaVersion: SchemaV1, Kind: kind, ClientID: request.Client, ClientRequestID: request.ClientRequestID,
-		Operation: request.Operation, TargetKind: request.Target.Kind, Target: cloneValues(request.Target.Fields),
-		Constraints: Constraints{Attributes: cloneValues(request.Attrs), RequestedDurationSeconds: int64(request.Duration.Seconds()),
-			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted},
-		CredentialSelector: credentialSelector, CreatedAt: createdAt.UTC(),
+		APIVersion: SchemaV1, Operation: request.Operation, OperationRevision: 1,
+		ClientID: request.Client, ClientRequestID: request.ClientRequestID,
+		Target: target, Arguments: arguments, Preconditions: json.RawMessage(`{}`),
+		CredentialSelector: CredentialSelector{Name: "primary", Kind: modeCredentialKind(request.Operation, "")},
+		Presentation:       agentv1.Presentation{Title: request.Operation, Summary: truncateUTF8(request.Reason, 500)},
+		Authorization: Authorization{Mode: modeForOperation(request.Operation, request.Metadata["github_grant_mode"]), RequestedDurationSeconds: int64(request.Duration.Seconds()),
+			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
+			Target: GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)}, Attributes: cloneValues(request.Attrs)},
+		CreatedAt: createdAt.UTC(), ExpiresAt: expiresAt.UTC(),
 	}
 }
 
-func kindForOperation(operation string) (string, bool) {
-	switch operation {
-	case "git.push.branch_create", "git.push.fast_forward", "git.push.force", "git.ref.delete", "git.tag.update":
-		return KindCapabilityWindow, true
-	case "pr.create", "pr.update", "pr.merge":
-		return KindSingleExecution, true
-	default:
-		return "", false
+func truncateUTF8(value string, limit int) string {
+	if len(value) <= limit {
+		return value
 	}
+	value = value[:limit]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
-func (s *Store) Get(digest string) (Plan, error) {
+// Prepare canonicalizes and validates a plan without persisting it.
+func Prepare(plan Plan) (grants.ImmutablePlan, error) {
+	encoded, err := encode(plan)
+	if err != nil {
+		return grants.ImmutablePlan{}, err
+	}
+	return grants.ImmutablePlan{Digest: plandigest.Digest(encoded), SchemaName: SchemaV1, Canonical: encoded, CreatedAt: plan.CreatedAt.UTC()}, nil
+}
+
+func (s *Store) Put(plan Plan) (string, error) {
+	if s == nil || s.database == nil {
+		return "", errors.New("GitHub plan store is unavailable")
+	}
+	prepared, err := Prepare(plan)
+	if err != nil {
+		return "", err
+	}
+	return s.database.PutPlan(context.Background(), prepared.SchemaName, prepared.Canonical, prepared.CreatedAt)
+}
+
+func (s *Store) Get(value string) (Plan, error) {
 	if s == nil || s.database == nil {
 		return Plan{}, errors.New("GitHub plan store is unavailable")
 	}
-	record, err := s.database.Plan(context.Background(), digest)
+	record, err := s.database.Plan(context.Background(), value)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -134,15 +190,14 @@ func (s *Store) Bind(request *grants.Request) error {
 }
 
 func (s *Store) BindAt(request *grants.Request, createdAt time.Time) error {
-	envelope, err := s.PrepareBindAt(request, createdAt)
+	prepared, err := s.PrepareBindAt(request, createdAt)
 	if err != nil {
 		return err
 	}
-	_, err = s.database.PutPlan(context.Background(), envelope.SchemaName, envelope.Canonical, envelope.CreatedAt)
+	_, err = s.database.PutPlan(context.Background(), prepared.SchemaName, prepared.Canonical, prepared.CreatedAt)
 	return err
 }
 
-// PrepareBind constructs and binds an immutable plan without persisting it.
 func (s *Store) PrepareBind(request *grants.Request) (grants.ImmutablePlan, error) {
 	if s == nil {
 		return grants.ImmutablePlan{}, errors.New("GitHub grant request is required")
@@ -154,22 +209,38 @@ func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (gra
 	if s == nil || request == nil {
 		return grants.ImmutablePlan{}, errors.New("GitHub grant request is required")
 	}
-	kind, ok := kindForOperation(request.Operation)
-	if !ok {
-		return grants.ImmutablePlan{}, fmt.Errorf("GitHub operation %q is not grantable", request.Operation)
-	}
-	encoded, err := encode(FromRequest(*request, s.credentialSelector, createdAt))
-	if err != nil {
-		return grants.ImmutablePlan{}, err
-	}
-	digest := plandigest.Digest(encoded)
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
-	request.Metadata[MetadataMode] = kind
-	request.Metadata[MetadataSchema] = SchemaV1
-	request.Metadata[MetadataDigest] = digest
-	return grants.ImmutablePlan{Digest: digest, SchemaName: SchemaV1, Canonical: encoded, CreatedAt: createdAt.UTC()}, nil
+	request.Metadata["github_grant_mode"] = modeForOperation(request.Operation, request.Metadata["github_grant_mode"])
+	plan := FromRequest(*request, createdAt)
+	plan.CredentialSelector.Kind = modeCredentialKind(request.Operation, s.credentialSelector)
+	prepared, err := Prepare(plan)
+	if err != nil {
+		return grants.ImmutablePlan{}, err
+	}
+	BindPrepared(request, prepared)
+	BindPresentation(request, plan.Presentation)
+	return prepared, nil
+}
+
+// BindPresentation copies the bounded, redacted plan projection into grant
+// metadata consumed by transports that intentionally cannot read plan bodies.
+func BindPresentation(request *grants.Request, presentation agentv1.Presentation) {
+	if request.Metadata == nil {
+		request.Metadata = map[string]string{}
+	}
+	request.Metadata[MetadataTitle] = truncateUTF8(strings.TrimSpace(presentation.Title), 160)
+	request.Metadata[MetadataSummary] = truncateUTF8(strings.TrimSpace(presentation.Summary), 500)
+}
+
+// BindPrepared links a canonical immutable plan to one grant request.
+func BindPrepared(request *grants.Request, prepared grants.ImmutablePlan) {
+	if request.Metadata == nil {
+		request.Metadata = map[string]string{}
+	}
+	request.Metadata[MetadataSchema] = prepared.SchemaName
+	request.Metadata[MetadataDigest] = prepared.Digest
 }
 
 type Validator struct{ Store *Store }
@@ -194,7 +265,7 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 		return err
 	}
 	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
-	if !planMatchesGrant(plan, grant, v.Store.credentialSelector, requestedDuration, requestedMaxUses) {
+	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("GitHub grant does not match its immutable plan")
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
@@ -222,111 +293,149 @@ func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 	return duration, maxUses
 }
 
-func planMatchesGrant(plan Plan, grant grants.Grant, selector string, duration time.Duration, maxUses usebudget.Limit) bool {
-	return planMatchesGrantIdentity(plan, grant) && planMatchesGrantValues(plan, grant) &&
-		plan.CredentialSelector == selector && plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) &&
-		plan.Constraints.RequestedMaxUses == maxUses &&
-		plan.Constraints.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
-}
-
-func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
-	return plan.Kind == grant.Metadata[MetadataMode] && plan.ClientID == grant.Client &&
-		plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation && plan.TargetKind == grant.Target.Kind
-}
-
-func planMatchesGrantValues(plan Plan, grant grants.Grant) bool {
-	return equalValues(plan.Target, grant.Target.Fields) && equalValues(plan.Constraints.Attributes, grant.Attrs)
+func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
+	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation &&
+		plan.Authorization.Target.Kind == grant.Target.Kind && reflect.DeepEqual(plan.Authorization.Target.Fields, grant.Target.Fields) && reflect.DeepEqual(plan.Authorization.Attributes, grant.Attrs) &&
+		plan.Authorization.Mode == grant.Metadata["github_grant_mode"] && plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
+		plan.Authorization.RequestedMaxUses == maxUses && plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
 
 func encode(plan Plan) ([]byte, error) {
-	if err := validate(plan); err != nil {
+	canonical, err := canonicalize(plan)
+	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(plan)
+	return json.Marshal(canonical)
 }
 
-func validate(plan Plan) error {
-	kind, grantable := kindForOperation(plan.Operation)
-	if !validPlanIdentity(plan, kind, grantable) || !validPlanConstraints(plan) {
-		return errors.New("GitHub plan is invalid")
+func canonicalize(plan Plan) (Plan, error) {
+	var err error
+	if plan.Target, err = canonicalObject(plan.Target, maxTargetBytes); err != nil {
+		return Plan{}, fmt.Errorf("target: %w", err)
 	}
-	if err := validatePlanValues(plan.Target); err != nil {
+	if plan.Arguments, err = canonicalObject(plan.Arguments, maxArgumentsBytes); err != nil {
+		return Plan{}, fmt.Errorf("arguments: %w", err)
+	}
+	if plan.Preconditions, err = canonicalObject(plan.Preconditions, maxPreconditionsBytes); err != nil {
+		return Plan{}, fmt.Errorf("preconditions: %w", err)
+	}
+	if err := validate(plan); err != nil {
+		return Plan{}, err
+	}
+	return plan, nil
+}
+
+//nolint:cyclop // Plan invariants are explicit and tracked by the exact HF CRAP baseline.
+func validate(plan Plan) error {
+	if plan.APIVersion != SchemaV1 || plan.OperationRevision != 1 || !ghpolicy.IsOperation(plan.Operation) ||
+		strings.TrimSpace(plan.ClientID) == "" || strings.TrimSpace(plan.ClientRequestID) == "" ||
+		plan.CredentialSelector.Name != "primary" || !validCredentialKind(plan.CredentialSelector.Kind) || plan.CreatedAt.IsZero() || !plan.ExpiresAt.After(plan.CreatedAt) {
+		return errors.New("GitHub plan identity is invalid")
+	}
+	if plan.Presentation.Title == "" || len(plan.Presentation.Title) > 160 || len(plan.Presentation.Summary) > 500 {
+		return errors.New("GitHub plan presentation is invalid")
+	}
+	if plan.Authorization.Mode != "window" && plan.Authorization.Mode != "execution" ||
+		plan.Authorization.RequestedDurationSeconds <= 0 || plan.Authorization.RequestedMaxUses < 0 ||
+		plan.Authorization.Mode == "execution" && plan.Authorization.RequestedMaxUses != 1 ||
+		strings.TrimSpace(plan.Authorization.Target.Kind) == "" || len(plan.Authorization.Target.Fields) == 0 {
+		return errors.New("GitHub plan authorization is invalid")
+	}
+	for _, value := range []json.RawMessage{plan.Target, plan.Arguments, plan.Preconditions} {
+		if len(value) == 0 {
+			return errors.New("GitHub plan contains an empty object")
+		}
+		if containsRawSecret(value) {
+			return errors.New("GitHub plan contains a raw secret field")
+		}
+	}
+	if err := validateValues(plan.Authorization.Target.Fields); err != nil {
 		return err
 	}
-	return validatePlanValues(plan.Constraints.Attributes)
+	return validateValues(plan.Authorization.Attributes)
 }
 
-func validPlanIdentity(plan Plan, kind string, grantable bool) bool {
-	return plan.SchemaVersion == SchemaV1 && grantable && plan.Kind == kind && strings.TrimSpace(plan.ClientID) != "" &&
-		strings.TrimSpace(plan.ClientRequestID) != "" && plan.TargetKind == "repo" && validTarget(plan.Target) &&
-		validAttrs(plan.Operation, plan.Constraints.Attributes)
-}
-
-func validPlanConstraints(plan Plan) bool {
-	return validCredentialSelector(plan.CredentialSelector) && plan.Constraints.RequestedDurationSeconds > 0 &&
-		plan.Constraints.RequestedMaxUses >= 0 && !plan.CreatedAt.IsZero()
-}
-
-func validCredentialSelector(value string) bool {
-	return value == "installation" || value == "development-token"
-}
-
-func validTarget(target map[string][]string) bool {
-	return len(target) == 2 && oneNonEmpty(target["owner"]) && oneNonEmpty(target["name"])
-}
-
-func validAttrs(operation string, attrs map[string][]string) bool {
-	allowed := map[string]bool{}
-	switch operation {
-	case "git.push.branch_create", "git.push.fast_forward", "git.push.force", "git.ref.delete", "git.tag.update":
-		allowed["ref"] = true
-	case "pr.create", "pr.update", "pr.merge":
-		allowed["ref"], allowed["base_ref"], allowed["head_ref"] = true, true, true
+func modeForOperation(operation, value string) string {
+	if value == "window" || value == "execution" {
+		return value
 	}
-	for key, values := range attrs {
-		if !allowed[key] || !oneNonEmpty(values) {
-			return false
+	if descriptor, found := opcatalog.ByName(operation); found && descriptor.AuthorizationMode == opcatalog.ModeExecution {
+		return "execution"
+	}
+	return "window"
+}
+
+func modeCredentialKind(operation, fallback string) string {
+	if descriptor, found := opcatalog.ByName(operation); found {
+		return descriptor.CredentialKind
+	}
+	return fallback
+}
+
+func validCredentialKind(value string) bool {
+	return value == "installation" || value == "user" || value == "app-jwt" || value == "development-token"
+}
+
+func canonicalObject(value json.RawMessage, maximum int) (json.RawMessage, error) {
+	if len(value) < 2 || len(value) > maximum {
+		return nil, errors.New("JSON object size is invalid")
+	}
+	var object map[string]json.RawMessage
+	if err := strictjson.Decode(value, &object, true); err != nil || object == nil {
+		return nil, errors.New("value must be a closed JSON object")
+	}
+	return json.Marshal(object)
+}
+
+func containsRawSecret(value json.RawMessage) bool {
+	var decoded any
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return true
+	}
+	return hasRawSecret(decoded)
+}
+
+func hasRawSecret(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			if rawSecretKey(key) || hasRawSecret(nested) {
+				return true
+			}
 		}
-	}
-	return true
-}
-
-func validatePlanValues(values map[string][]string) error {
-	for key, list := range values {
-		if sensitivePlanKey(key) {
-			return errors.New("GitHub plan contains a sensitive field")
-		}
-		if !validPlanValueEntry(key, list) {
-			return errors.New("GitHub plan contains an invalid value map")
-		}
-	}
-	return nil
-}
-
-func validPlanValueEntry(key string, values []string) bool {
-	if strings.TrimSpace(key) == "" || len(values) == 0 {
-		return false
-	}
-	for _, value := range values {
-		if strings.TrimSpace(value) == "" {
-			return false
-		}
-	}
-	return true
-}
-
-func sensitivePlanKey(key string) bool {
-	normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
-	for _, marker := range []string{"authorization", "credential", "password", "privatekey", "secret", "token", "cookie"} {
-		if strings.Contains(normalized, marker) {
-			return true
+	case []any:
+		for _, nested := range typed {
+			if hasRawSecret(nested) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-func oneNonEmpty(values []string) bool {
-	return len(values) == 1 && strings.TrimSpace(values[0]) != ""
+//nolint:cyclop // The closed secret-key vocabulary is tracked by the exact HF CRAP baseline.
+func rawSecretKey(key string) bool {
+	normalized := strings.ToLower(strings.NewReplacer("-", "_", ".", "_").Replace(key))
+	if strings.HasSuffix(normalized, "_id") || strings.HasSuffix(normalized, "_ref") || strings.HasSuffix(normalized, "_digest") || strings.HasSuffix(normalized, "_name") {
+		return false
+	}
+	return normalized == "authorization" || normalized == "cookie" || normalized == "password" || normalized == "private_key" || normalized == "secret" || normalized == "token" || strings.HasSuffix(normalized, "_token")
+}
+
+func validateValues(values map[string][]string) error {
+	for key, list := range values {
+		if strings.TrimSpace(key) == "" || len(list) == 0 {
+			return errors.New("GitHub plan contains invalid authorization attributes")
+		}
+		for _, value := range list {
+			if strings.TrimSpace(value) == "" {
+				return errors.New("GitHub plan contains invalid authorization attributes")
+			}
+		}
+	}
+	return nil
 }
 
 func cloneValues(values map[string][]string) map[string][]string {
@@ -335,16 +444,4 @@ func cloneValues(values map[string][]string) map[string][]string {
 		out[key] = append([]string(nil), list...)
 	}
 	return out
-}
-
-func equalValues(left, right map[string][]string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for key, values := range left {
-		if !slices.Equal(values, right[key]) {
-			return false
-		}
-	}
-	return true
 }

@@ -1253,7 +1253,7 @@ func TestGetGrantDirect(t *testing.T) {
 func createGrant(t *testing.T, server *Server, requestID string, reason string) *httptest.ResponseRecorder {
 	t.Helper()
 	body := fmt.Sprintf(
-		`{"client_request_id":%q,"operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":%q,"minutes":5}`,
+		`{"client_request_id":%q,"operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":%q,"minutes":5}`,
 		requestID,
 		reason,
 	)
@@ -1303,9 +1303,9 @@ func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 		want int
 	}{
 		"bad json":        {body: `{`, want: http.StatusBadRequest},
-		"missing reason":  {body: `{"client_request_id":"bad","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"}}`, want: http.StatusBadRequest},
+		"missing reason":  {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"}}`, want: http.StatusBadRequest},
 		"not requestable": {body: `{"client_request_id":"bad","operation":"git.fetch","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"reason":"fetch"}`, want: http.StatusForbidden},
-		"too long":        {body: `{"client_request_id":"bad","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"too long","minutes":99}`, want: http.StatusBadRequest},
+		"too long":        {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"too long","minutes":99}`, want: http.StatusBadRequest},
 	}
 	for name, tc := range cases {
 		response := doWithBody(t, server, http.MethodPost, "/api/grants", bearerAuth(), []byte(tc.body))
@@ -1318,7 +1318,7 @@ func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 func TestDecodeGrantCreateDirect(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	valid := newBodyContext(t, server, `{"client_request_id":"request-1","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"open PR"}`)
+	valid := newBodyContext(t, server, `{"client_request_id":"request-1","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"open PR"}`)
 	payload, err := decodeGrantCreate(valid)
 	if err != nil {
 		t.Fatalf("decodeGrantCreate(valid) error = %v", err)
@@ -1367,7 +1367,7 @@ func TestPlanGrantCreateDirect(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
-	body := `{"client_request_id":"request-1","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"open PR","minutes":5}`
+	body := `{"client_request_id":"request-1","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"open PR","minutes":5}`
 	noNotifier := newBodyContext(t, server, body)
 	if _, err := server.planGrantCreate(noNotifier); err == nil {
 		t.Fatal("planGrantCreate(no notifier) error = nil, want service unavailable")

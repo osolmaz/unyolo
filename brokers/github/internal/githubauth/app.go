@@ -20,6 +20,7 @@ const (
 type appProvider struct {
 	client *github.Client
 	apiURL *url.URL
+	round  http.RoundTripper
 }
 
 func newAppProvider(appID string, privateKey []byte, apiURL *url.URL, client *http.Client) (*appProvider, error) {
@@ -35,7 +36,7 @@ func newAppProvider(appID string, privateKey []byte, apiURL *url.URL, client *ht
 	if err != nil {
 		return nil, errors.New("initialize GitHub App client")
 	}
-	return &appProvider{client: sdk, apiURL: apiURL}, nil
+	return &appProvider{client: sdk, apiURL: apiURL, round: appTransport}, nil
 }
 
 func (p *appProvider) check(ctx context.Context) error {
@@ -82,4 +83,21 @@ func (p *appProvider) installations(ctx context.Context) ([]*github.Installation
 		opts.Page = response.NextPage
 	}
 	return nil, errors.New("GitHub installation listing exceeded its page limit")
+}
+
+func (p *appProvider) installationForAccount(ctx context.Context, account string) (*github.Installation, error) {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return nil, errors.New("GitHub installation account is required")
+	}
+	installations, err := p.installations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, installation := range installations {
+		if strings.EqualFold(installation.GetAccount().GetLogin(), account) && installation.GetID() > 0 && installation.GetSuspendedAt().IsZero() {
+			return installation, nil
+		}
+	}
+	return nil, errors.New("GitHub installation is unavailable")
 }

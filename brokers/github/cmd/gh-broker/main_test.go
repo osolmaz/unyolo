@@ -288,7 +288,7 @@ func configForBuildTest(t *testing.T) config.Config {
 func writeScopeFile(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "scope.json")
-	body := []byte(`{"rules":[{"id":"bob-read","effect":"allow","clients":["bob"],"operations":["git.fetch","repo.metadata.read","contents.read","installation.repos.list"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"},{"kind":"installation"}]}]}`)
+	body := []byte(`{"rules":[{"id":"bob-read","effect":"allow","clients":["bob"],"operations":["git.fetch","repo.metadata.read","repo.contents.read","installation.repo.list"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"},{"kind":"installation"}]}]}`)
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}

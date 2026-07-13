@@ -178,6 +178,20 @@ func ValidateSubmission(name string, targetRaw, argumentsRaw json.RawMessage) er
 	return nil
 }
 
+func ValidateResult(name string, resultRaw json.RawMessage) error {
+	if len(resultRaw) > 1<<20 {
+		return errors.New("GitHub operation result is too large")
+	}
+	operation, found := ForOperation(name)
+	if !found {
+		return errors.New("unknown GitHub operation")
+	}
+	if err := validateRaw(resultRaw, operation.Result); err != nil {
+		return fmt.Errorf("result %w", err)
+	}
+	return nil
+}
+
 func targetSchemaForID(id string) (map[string]any, bool) {
 	const prefix = "target."
 	const suffix = ".v1"

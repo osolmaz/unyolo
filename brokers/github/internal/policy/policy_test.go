@@ -254,8 +254,8 @@ func TestRegistryHelpers(t *testing.T) {
 	if !slices.IsSorted(ops) {
 		t.Fatalf("allOperations() = %v, want sorted operations", ops)
 	}
-	if attrs := operationAttrs(OperationPullRequestCreate); !slices.Equal(attrs, []string{"ref", "base_ref", "head_ref"}) {
-		t.Fatalf("operationAttrs(pr.create) = %v, want PR refs", attrs)
+	if attrs := operationAttrs(OperationPullRequestCreate); !slices.Contains(attrs, "ref") || !slices.Contains(attrs, "base_ref") || !slices.Contains(attrs, "head_ref") {
+		t.Fatalf("operationAttrs(pull_request.create) = %v, want generated policy attrs", attrs)
 	}
 	if got := targetKindForOperation(OperationInstallationReposList); got != "installation" {
 		t.Fatalf("targetKindForOperation(installation.repos.list) = %q, want installation", got)
@@ -502,23 +502,27 @@ func TestRegistryDeclaresGitHubPolicyCapabilities(t *testing.T) {
 		t.Fatal("repo name field is not required")
 	}
 
-	grantable := []Operation{
+	repoGrantable := []Operation{
 		OperationGitPushBranchCreate,
 		OperationGitPushFastForward,
 		OperationGitPushForce,
 		OperationGitRefDelete,
 		OperationGitTagUpdate,
 		OperationPullRequestCreate,
-		OperationPullRequestUpdate,
-		OperationPullRequestMerge,
 	}
-	for _, operation := range grantable {
+	for _, operation := range repoGrantable {
 		spec := registry.Operations[string(operation)]
 		if !spec.Grantable {
 			t.Fatalf("%s Grantable = false, want true", operation)
 		}
 		if !slices.Contains(spec.TargetKinds, "repo") {
 			t.Fatalf("%s target kinds = %v, want repo", operation, spec.TargetKinds)
+		}
+	}
+	for _, operation := range []Operation{OperationPullRequestUpdate, OperationPullRequestMerge} {
+		spec := registry.Operations[string(operation)]
+		if !spec.Grantable || !slices.Contains(spec.TargetKinds, "pull_request") {
+			t.Fatalf("%s spec = %+v, want grantable pull_request", operation, spec)
 		}
 	}
 	if registry.Operations[string(OperationGitFetch)].Grantable {
@@ -531,9 +535,9 @@ func TestLoadFileRejectsUnsafeOrUnknownScope(t *testing.T) {
 	cases := map[string]string{
 		"missing rules":     `{}`,
 		"null rules":        `{"rules":null}`,
-		"unknown operation": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["repo.delete"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}]}]}`,
+		"unknown operation": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["github.raw.request"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}]}]}`,
 		"unknown attr":      `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"attrs":{"unknown":["x"]}}]}`,
-		"incompatible attr": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["contents.read"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"attrs":{"base_refs":["refs/heads/main"]}}]}`,
+		"incompatible attr": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"attrs":{"base_refs":["refs/heads/main"]}}]}`,
 		"unknown field":     `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"extra":true}]}`,
 		"deep glob":         `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"**","name":"*"}]}]}`,
 		"trailing json":     `{"rules":[{"id":"ok","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}]}]}{"rules":[]}`,
@@ -658,13 +662,13 @@ func writeScopeFile(t *testing.T, body string) string {
 func TestPolicyRequestEffectAndAllowsHelper(t *testing.T) {
 	t.Parallel()
 	p, err := New(Scope{Rules: []Rule{
-		{ID: "request-merge", Effect: EffectRequest, Clients: []string{"bob"}, Operations: []Operation{OperationPullRequestMerge}, Targets: []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}}},
+		{ID: "request-merge", Effect: EffectRequest, Clients: []string{"bob"}, Operations: []Operation{OperationPullRequestMerge}, Targets: []Target{{Kind: "pull_request", Owner: "dutifuldev", Name: "gh-broker", Number: 7}}},
 		{ID: "wildcard-read", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{"*"}, Targets: []Target{{Kind: "repo", Owner: "openclaw", Name: "*"}}},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	requestDecision := p.Evaluate(repoRequest(OperationPullRequestMerge, "dutifuldev", "gh-broker", nil))
+	requestDecision := p.Evaluate(Request{Client: "bob", Operation: OperationPullRequestMerge, Target: Target{Kind: "pull_request", Owner: "dutifuldev", Name: "gh-broker", Number: 7}})
 	if requestDecision.Allowed || requestDecision.Effect != EffectRequest {
 		t.Fatalf("request decision = %+v, want request effect", requestDecision)
 	}
@@ -704,19 +708,23 @@ func TestAllGitHubGrantableOperationsCanRequest(t *testing.T) {
 		OperationPullRequestMerge,
 	}
 	for _, operation := range operations {
+		target := Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}
+		if targetKindForOperation(operation) == "pull_request" {
+			target = Target{Kind: "pull_request", Owner: "dutifuldev", Name: "gh-broker", Number: 7}
+		}
 		p, err := New(Scope{Rules: []Rule{
 			{
 				ID:         "request-" + string(operation),
 				Effect:     EffectRequest,
 				Clients:    []string{"bob"},
 				Operations: []Operation{operation},
-				Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+				Targets:    []Target{target},
 			},
 		}})
 		if err != nil {
 			t.Fatalf("%s New() error = %v", operation, err)
 		}
-		decision := p.Evaluate(repoRequest(operation, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/main"}))
+		decision := p.Evaluate(Request{Client: "bob", Operation: operation, Target: target, Attrs: map[string]string{"ref": "refs/heads/main"}})
 		if decision.Allowed || decision.Effect != EffectRequest {
 			t.Fatalf("%s decision = %+v, want request effect", operation, decision)
 		}

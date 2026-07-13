@@ -238,7 +238,7 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 	return opcatalog.Descriptor{Descriptor: capability.Descriptor{
 		Name: name, OperationRevision: 1, Summary: operation.Summary, Disposition: dispositionFlags,
 		AuthorizationMode: mode, ExplicitOnly: explicit, Sealed: sealed, Internal: internal,
-		Implementation: capability.StatusCataloged, Risk: risk, TargetKind: target, MaxUses: maxUses,
+		Implementation: implementationStatus(disposition, "rest-binding", agentFacing), Risk: risk, TargetKind: target, MaxUses: maxUses,
 		RequestTTLSeconds: 300, ApprovalTTLSeconds: 600, FamilyGlobAllowed: !explicit,
 		AgentFacing: agentFacing, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
@@ -246,6 +246,32 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		SealedInputPaths: sealedPaths(operation, sealed), UpstreamBindingIDs: []string{"rest:" + operation.OperationID},
 		ExecutorKind: executorKind(disposition), ReconcilerKind: reconcilerKind(method, disposition),
 	}, RequiredGitHubPermissions: permissions, RequiredRepositorySelection: strings.Contains(path, "/repos/{owner}/{repo}")}
+}
+
+func implementationStatus(disposition, executor string, agentFacing bool) capability.ImplementationStatus {
+	switch disposition {
+	case "internal":
+		return capability.StatusInternal
+	case "operator-only":
+		return capability.StatusOperatorOnly
+	case "local":
+		return capability.StatusLocal
+	case "duplicate":
+		return capability.StatusDuplicate
+	case "blocked-credential":
+		return capability.StatusBlockedCredential
+	case "blocked-upstream":
+		return capability.StatusBlockedUpstream
+	case "protocol":
+		return capability.StatusProtocol
+	}
+	if agentFacing && executor == "persisted-graphql" {
+		return capability.StatusGraphQL
+	}
+	if agentFacing && executor == "rest-binding" {
+		return capability.StatusImplemented
+	}
+	return capability.StatusCataloged
 }
 
 func operationRisk(name string, classes []string, method string) capability.Risk {
@@ -387,6 +413,9 @@ func targetKindFromPath(path string) string {
 	}
 	if strings.Contains(path, "/repos/{owner}/{repo}") {
 		return "repo"
+	}
+	if strings.HasPrefix(path, "/installation") {
+		return "installation"
 	}
 	if strings.Contains(path, "/orgs/") {
 		return "organization"

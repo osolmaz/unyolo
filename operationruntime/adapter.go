@@ -64,14 +64,16 @@ type PlanCleaner[P any] interface {
 // RegistryOptions supplies provider catalog ownership without teaching the
 // shared registry provider vocabulary.
 type RegistryOptions struct {
-	Provider   string
-	Descriptor func(string) (capability.Descriptor, bool)
+	Provider        string
+	Descriptor      func(string) (capability.Descriptor, bool)
+	RequiresAdapter func(capability.Descriptor) bool
 }
 
 // Registry is an immutable adapter registry keyed by catalog operation name.
 type Registry[I, P, A any] struct {
-	byName map[string]Adapter[I, P, A]
-	names  []string
+	byName          map[string]Adapter[I, P, A]
+	names           []string
+	requiresAdapter func(capability.Descriptor) bool
 }
 
 // NewRegistry validates adapters against their provider-owned catalog.
@@ -79,14 +81,20 @@ func NewRegistry[I, P, A any](options RegistryOptions, adapters ...Adapter[I, P,
 	if strings.TrimSpace(options.Provider) == "" || options.Descriptor == nil {
 		return nil, errors.New("operation registry options are incomplete")
 	}
-	registry := &Registry[I, P, A]{byName: make(map[string]Adapter[I, P, A], len(adapters))}
+	requiresAdapter := options.RequiresAdapter
+	if requiresAdapter == nil {
+		requiresAdapter = func(descriptor capability.Descriptor) bool {
+			return descriptor.AuthorizationMode == capability.ModeExecution && descriptor.Implementation == capability.StatusImplemented
+		}
+	}
+	registry := &Registry[I, P, A]{byName: make(map[string]Adapter[I, P, A], len(adapters)), requiresAdapter: requiresAdapter}
 	for _, adapter := range adapters {
 		if adapter == nil {
 			return nil, fmt.Errorf("nil %s operation adapter", options.Provider)
 		}
 		descriptor := adapter.Descriptor()
 		canonical, found := options.Descriptor(descriptor.Name)
-		if !found || !reflect.DeepEqual(canonical, descriptor) || canonical.AuthorizationMode != capability.ModeExecution {
+		if !found || !reflect.DeepEqual(canonical, descriptor) {
 			return nil, fmt.Errorf("adapter %q does not match the capability catalog", descriptor.Name)
 		}
 		if _, exists := registry.byName[descriptor.Name]; exists {
@@ -121,7 +129,7 @@ func (r *Registry[I, P, A]) Names() []string {
 func (r *Registry[I, P, A]) ValidateCoverage(provider string, descriptors []capability.Descriptor) error {
 	var missing []string
 	for _, descriptor := range descriptors {
-		if descriptor.AuthorizationMode != capability.ModeExecution || descriptor.Implementation != capability.StatusImplemented {
+		if r == nil || !r.requiresAdapter(descriptor) {
 			continue
 		}
 		if _, found := r.Lookup(descriptor.Name); !found {

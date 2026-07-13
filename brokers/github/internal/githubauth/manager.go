@@ -148,6 +148,17 @@ func (m *Manager) InstallationCredential(ctx context.Context, installationID int
 	return m.installation.credential(ctx, installationID, repositoryIDs, permissions)
 }
 
+func (m *Manager) InstallationForAccount(ctx context.Context, account string) (Metadata, error) {
+	if m == nil || m.app == nil {
+		return Metadata{}, errors.New("GitHub App credential is unavailable")
+	}
+	installation, err := m.app.installationForAccount(ctx, account)
+	if err != nil {
+		return Metadata{}, err
+	}
+	return Metadata{Kind: KindInstallation, InstallationID: installation.GetID(), APIHost: m.apiURL.Host}, nil
+}
+
 func (m *Manager) InvalidateInstallation(installationID int64, disabled bool) {
 	if m != nil && m.installation != nil {
 		m.installation.invalidate(installationID, disabled)

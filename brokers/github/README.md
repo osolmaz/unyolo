@@ -243,7 +243,7 @@ Open a pull request:
 ```sh
 curl -X POST -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"idempotency_key":"open-agent-pr","operation":"pr.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"arguments":{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."},"reason":"Open the reviewed feature branch"}' \
+  -d '{"idempotency_key":"open-agent-pr","operation":"pull_request.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"arguments":{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."},"reason":"Open the reviewed feature branch"}' \
   http://localhost:8080/api/agent/v1/operations
 ```
 

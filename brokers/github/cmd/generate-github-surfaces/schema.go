@@ -42,10 +42,7 @@ func nameSchema() map[string]any {
 func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 	result := make([]targetDescriptor, 0, len(schemas))
 	for kind := range schemas {
-		fields := []string{"id", "node_id", "name"}
-		if kind == "repo" {
-			fields = []string{"id", "node_id", "owner", "name"}
-		}
+		fields := []string{"id", "node_id", "owner", "name", "number"}
 		result = append(result, targetDescriptor{Kind: kind, Schema: "target." + kind + ".v1", PolicyFields: fields})
 	}
 	slices.SortFunc(result, func(a, b targetDescriptor) int { return strings.Compare(a.Kind, b.Kind) })
@@ -60,7 +57,10 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 		parameter = resolveOpenAPIObject(parameter, components, map[string]bool{})
 		location, _ := parameter["in"].(string)
 		parameterName, _ := parameter["name"].(string)
-		if location == "path" || location == "header" || parameterName == "per_page" || parameterName == "page" {
+		if location == "header" || parameterName == "per_page" || parameterName == "page" {
+			continue
+		}
+		if location == "path" && pathParameterComesFromTarget(parameterName, targetKind) {
 			continue
 		}
 		schema, _ := parameter["schema"].(map[string]any)
@@ -83,8 +83,40 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 	if len(required) > 0 {
 		arguments["required"] = required
 	}
-	result := responseSchema(operation, components)
+	result := projectedResponseSchema(responseSchema(operation, components), responseProjection(operation))
 	return operationSchemas{Target: "target." + targetKind + ".v1", Arguments: arguments, Result: result}
+}
+
+func projectedResponseSchema(schema map[string]any, projection []string) map[string]any {
+	if len(projection) == 0 {
+		return schema
+	}
+	if schema["type"] == "array" {
+		if items, ok := schema["items"].(map[string]any); ok {
+			copy := cloneSchema(schema)
+			copy["items"] = projectedResponseSchema(items, projection)
+			return copy
+		}
+		return schema
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return schema
+	}
+	selected := map[string]any{}
+	for _, name := range projection {
+		if value, found := properties[name]; found {
+			selected[name] = value
+		}
+	}
+	return map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": selected, "additionalProperties": false}
+}
+
+func cloneSchema(value map[string]any) map[string]any {
+	encoded, _ := json.Marshal(value)
+	var result map[string]any
+	_ = json.Unmarshal(encoded, &result)
+	return result
 }
 
 func mediaSchema(container map[string]any, components map[string]any) map[string]any {
@@ -237,7 +269,7 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		parameter = resolveOpenAPIObject(parameter, components, map[string]bool{})
 		location, _ := parameter["in"].(string)
 		parameterName, _ := parameter["name"].(string)
-		if location == "path" || location == "header" {
+		if location != "query" {
 			continue
 		}
 		if parameterName == "page" || parameterName == "per_page" {
@@ -253,14 +285,44 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 	if descriptor.ExecutorKind == "bounded-stream" {
 		responseLimit = 256 << 20
 	}
+	projection := responseProjection(operation)
+	projection = filterResponseProjection(responseSchema(operation, components), projection)
 	return restBinding{
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
 		MediaType: "application/vnd.github+json", TargetPathParameters: pathParameters, ArgumentParameters: arguments,
-		RequestSchema: descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: responseProjection(operation),
+		RequestSchema: descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
 		RequestBytesLimit: 2 << 20, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
 		RedirectPolicy: redirectPolicy(descriptor.ExecutorKind), Reconciliation: descriptor.ReconcilerKind,
 	}
+}
+
+func filterResponseProjection(schema map[string]any, projection []string) []string {
+	if schema["type"] == "array" {
+		schema, _ = schema["items"].(map[string]any)
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	result := make([]string, 0, len(projection))
+	for _, name := range projection {
+		if _, found := properties[name]; found {
+			result = append(result, name)
+		}
+	}
+	return result
+}
+
+func pathParameterComesFromTarget(name, targetKind string) bool {
+	if targetKind == "repo" && (name == "owner" || name == "repo") {
+		return true
+	}
+	if (targetKind == "organization" && name == "org") || (targetKind == "enterprise" && name == "enterprise") ||
+		(targetKind == "user" && (name == "username" || name == "user")) {
+		return true
+	}
+	if strings.HasSuffix(name, "_number") || name == "number" {
+		return true
+	}
+	return name == targetKind+"_id" || (name == targetKind+"_name" && targetKind != "repo")
 }
 
 func pathParameterNames(path string) []string {

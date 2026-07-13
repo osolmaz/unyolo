@@ -21,10 +21,12 @@ import (
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
+	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 	"github.com/osolmaz/brokerkit/controlplane"
@@ -39,6 +41,7 @@ import (
 
 type Server struct {
 	echo                *echo.Echo
+	authorization       *bkauthorization.Coordinator
 	policy              *policy.Policy
 	grants              *grants.Store
 	plans               *ghplan.Store
@@ -46,6 +49,8 @@ type Server struct {
 	control             *controlplane.Runtime
 	database            *state.Database
 	operations          *agentops.Store
+	operationRegistry   *operations.Registry
+	operationRuntime    *operations.Runtime
 	agentAPI            *agentapi.Handler
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
@@ -63,8 +68,6 @@ type Server struct {
 	lifecycleContext    context.Context
 	lifecycleCancel     context.CancelFunc
 	backgroundWorkers   sync.WaitGroup
-	operationWorkerOnce sync.Once
-	operationAuthLocks  [64]sync.Mutex
 }
 
 func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
@@ -93,6 +96,35 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		githubClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
+	}
+	adapters, err := operations.NewGeneratedAdapters(appSource, operations.Options{RequestingUserID: cfg.GitHubUserID})
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	server.operationRegistry, err = operations.NewRegistry(adapters...)
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	if err = server.operationRegistry.ValidateCoverage(); err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	registry, registryErr := policy.AuthorizationRegistry()
+	if registryErr == nil {
+		server.authorization, registryErr = bkauthorization.New(bkauthorization.Options{
+			Registry: registry, Decide: brokerPolicy.DecideAuthorization, Grants: core.grants,
+		})
+	}
+	if registryErr != nil {
+		_ = core.database.Close()
+		return nil, registryErr
+	}
+	server.operationRuntime, err = server.newOperationRuntime()
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
 	}
 	server.agentAPI, err = agentapi.New(agentapi.Options{
 		Store: server.operations, Authenticate: core.control.Clients.AuthenticateHeader,
@@ -271,6 +303,9 @@ func (s *Server) Close() error {
 	s.closeOnce.Do(func() {
 		if s.lifecycleCancel != nil {
 			s.lifecycleCancel()
+		}
+		if s.operationRuntime != nil {
+			s.operationRuntime.Wait()
 		}
 		s.backgroundWorkers.Wait()
 		s.closeErr = s.database.Close()

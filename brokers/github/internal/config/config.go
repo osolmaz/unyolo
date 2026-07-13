@@ -28,6 +28,7 @@ type Config struct {
 	OperatorPort              string
 	GitHubToken               string
 	GitHubTokenFile           string
+	GitHubUserID              int64
 	GitHubAppID               string
 	GitHubAppIDFile           string
 	GitHubAppPrivateKey       []byte
@@ -73,6 +74,7 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 		OperatorPort:              getEnvFrom(getenv, "8082", "GH_BROKER_OPERATOR_PORT"),
 		GitHubToken:               getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN"),
 		GitHubTokenFile:           getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN_FILE"),
+		GitHubUserID:              int64EnvFrom(getenv, 0, "GH_BROKER_GITHUB_USER_ID"),
 		GitHubAppID:               getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID"),
 		GitHubAppIDFile:           getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID_FILE"),
 		GitHubAppPrivateKeyFile:   getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"),

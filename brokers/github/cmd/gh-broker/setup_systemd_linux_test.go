@@ -352,7 +352,7 @@ func writeFixture(t *testing.T, dir string, name string, body string) string {
 }
 
 func minimalScopeJSON() string {
-	return `{"rules":[{"id":"bob-list","effect":"allow","clients":["bob"],"operations":["installation.repos.list"],"targets":[{"kind":"installation"}]}]}`
+	return `{"rules":[{"id":"bob-list","effect":"allow","clients":["bob"],"operations":["installation.repo.list"],"targets":[{"kind":"installation"}]}]}`
 }
 
 type recordingRunner struct {

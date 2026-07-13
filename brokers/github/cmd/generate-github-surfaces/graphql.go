@@ -37,7 +37,7 @@ func generateGraphQL(state *generatedState, response graphqlResponse, fingerprin
 				activeMutations++
 			}
 			operation := canonicalGraphQLOperation(root.name, field.Name)
-			document, variables, projection := persistedGraphQLDocument(root.name, field, types)
+			document, variables, projection, resultSchema := persistedGraphQLDocument(root.name, field, types)
 			digest := sha256.Sum256([]byte(document))
 			digestString := hex.EncodeToString(digest[:])
 			credential := "user"
@@ -50,8 +50,7 @@ func generateGraphQL(state *generatedState, response graphqlResponse, fingerprin
 				Disposition: disposition, CatalogOperation: operation, RequiredCredential: credential, PersistedDigest: digestString, Reviewed: true})
 			descriptor := descriptorForGraphQL(operation, root.name, field, digestString, disposition)
 			state.descriptors = append(state.descriptors, descriptor)
-			state.schemas.Operations[operation] = operationSchemas{Target: descriptor.TargetSchema, Arguments: variables,
-				Result: map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": map[string]any{}, "additionalProperties": false, "maxProperties": 64}}
+			state.schemas.Operations[operation] = operationSchemas{Target: descriptor.TargetSchema, Arguments: variables, Result: resultSchema}
 		}
 	}
 	if activeQueries != activeQueryRoots || activeMutations != activeMutationRoots {
@@ -89,7 +88,7 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	target := graphqlTargetKind(field.Name)
 	return opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: name, OperationRevision: 1, Summary: nonEmpty(field.Description, "GitHub GraphQL "+field.Name),
 		Disposition: flags, AuthorizationMode: mode, ExplicitOnly: explicit, Sealed: sealed,
-		Implementation: capability.StatusCataloged, Risk: riskFor(classes, map[bool]string{true: "POST", false: "GET"}[mutation]),
+		Implementation: implementationStatus(disposition, "persisted-graphql", !internal), Risk: riskFor(classes, map[bool]string{true: "POST", false: "GET"}[mutation]),
 		TargetKind: target, MaxUses: maxUses, RequestTTLSeconds: 300, ApprovalTTLSeconds: 600,
 		Internal: internal, FamilyGlobAllowed: !explicit, AgentFacing: !internal, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
@@ -132,7 +131,7 @@ func graphqlTargetKind(field string) string {
 	return "repo"
 }
 
-func persistedGraphQLDocument(root string, field introspectionField, types map[string]introspectionType) (string, map[string]any, []string) {
+func persistedGraphQLDocument(root string, field introspectionField, types map[string]introspectionType) (string, map[string]any, []string, map[string]any) {
 	definitions := []string{}
 	arguments := []string{}
 	properties := map[string]any{}
@@ -169,7 +168,16 @@ func persistedGraphQLDocument(root string, field introspectionField, types map[s
 		variableSchema["required"] = required
 	}
 	projection := []string{field.Name}
-	return document, variableSchema, projection
+	resultSchema := map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type":    "object",
+		"properties": map[string]any{
+			field.Name: graphqlResultSchema(field.Type, types),
+		},
+		"required":             []string{field.Name},
+		"additionalProperties": false,
+	}
+	return document, variableSchema, projection, resultSchema
 }
 
 func graphqlSelection(ref typeRef, types map[string]introspectionType) string {
@@ -186,6 +194,51 @@ func graphqlSelection(ref typeRef, types map[string]introspectionType) string {
 		}
 	}
 	return " { __typename }"
+}
+
+func graphqlResultSchema(ref typeRef, types map[string]introspectionType) map[string]any {
+	base := ref
+	nullable := true
+	if base.Kind == "NON_NULL" && base.OfType != nil {
+		base = *base.OfType
+		nullable = false
+	}
+	var result map[string]any
+	switch base.Kind {
+	case "LIST":
+		result = map[string]any{"type": "array", "items": graphqlResultSchema(*base.OfType, types), "maxItems": 100}
+	case "SCALAR":
+		result = map[string]any{"type": "string", "maxLength": 1 << 20}
+		switch base.Name {
+		case "Boolean":
+			result = map[string]any{"type": "boolean"}
+		case "Float":
+			result = map[string]any{"type": "number"}
+		case "Int":
+			result = map[string]any{"type": "integer"}
+		}
+	case "ENUM":
+		result = schemaForGraphQLInput(base, types, map[string]bool{})
+	default:
+		properties := map[string]any{}
+		required := []string{}
+		for _, field := range types[base.Name].Fields {
+			switch field.Name {
+			case "clientMutationId":
+				properties["clientMutationId"] = map[string]any{"type": "string", "maxLength": 1 << 20}
+			}
+		}
+		properties["__typename"] = map[string]any{"type": "string", "maxLength": 255}
+		required = append(required, "__typename")
+		result = map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
+		if len(required) > 0 {
+			result["required"] = required
+		}
+	}
+	if nullable {
+		result["type"] = []any{result["type"], "null"}
+	}
+	return result
 }
 
 func graphqlType(ref typeRef) string {

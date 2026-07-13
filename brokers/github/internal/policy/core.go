@@ -94,8 +94,12 @@ func expandOperations(ops []Operation) ([]Operation, error) {
 }
 
 func expandOperation(op Operation) ([]Operation, error) {
+	op = canonicalOperation(op)
 	if op == "*" {
 		return allOperations(), nil
+	}
+	if expanded, ok := expandFamilyOperation(op); ok {
+		return expanded, nil
 	}
 	if _, ok := operationSpecs()[op]; !ok {
 		return nil, fmt.Errorf("unsupported operation %q", op)
@@ -122,14 +126,26 @@ func coreTargetsForOperation(targets []Target, op Operation) ([]map[string]strin
 }
 
 func coreTarget(target Target, kind string) map[string]string {
-	if kind == "installation" {
-		return map[string]string{"kind": "installation"}
+	result := map[string]string{"kind": kind}
+	if kind == "installation" && target.ID == 0 && strings.TrimSpace(target.NodeID) == "" {
+		return result
 	}
-	return map[string]string{
-		"kind":  "repo",
-		"owner": target.Owner,
-		"name":  target.Name,
+	if target.ID > 0 {
+		result["id"] = fmt.Sprintf("%d", target.ID)
 	}
+	if target.Number > 0 {
+		result["number"] = fmt.Sprintf("%d", target.Number)
+	}
+	if strings.TrimSpace(target.NodeID) != "" {
+		result["node_id"] = target.NodeID
+	}
+	if strings.TrimSpace(target.Owner) != "" {
+		result["owner"] = target.Owner
+	}
+	if strings.TrimSpace(target.Name) != "" {
+		result["name"] = target.Name
+	}
+	return result
 }
 
 func attrsForOperation(attrs map[string][]string, op Operation) (map[string][]string, error) {
@@ -164,6 +180,9 @@ func canonicalAttr(key string) (string, bool) {
 		return "head_ref", true
 	case "path", "paths":
 		return "path", true
+	case "actor_id", "actor_login", "arguments_digest", "content_digest", "credential_kind", "environment", "label", "merge_method",
+		"permission", "ref_change", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref":
+		return strings.TrimSpace(key), true
 	default:
 		return "", false
 	}
@@ -185,7 +204,7 @@ func grantPolicyForEffect(effect Effect, operation Operation) *corepolicy.GrantP
 		return nil
 	}
 	mode := corepolicy.GrantModeWindow
-	if operationSpecs()[operation].GrantMode == corepolicy.GrantModeExecution {
+	if operationSpecs()[canonicalOperation(operation)].GrantMode == corepolicy.GrantModeExecution {
 		mode = corepolicy.GrantModeExecution
 	}
 	return &corepolicy.GrantPolicy{
@@ -201,11 +220,14 @@ func grantPolicyForEffect(effect Effect, operation Operation) *corepolicy.GrantP
 func normalizeRequest(request Request) Request {
 	return Request{
 		Client:    strings.TrimSpace(request.Client),
-		Operation: request.Operation,
+		Operation: canonicalOperation(request.Operation),
 		Target: Target{
-			Kind:  strings.TrimSpace(request.Target.Kind),
-			Owner: strings.TrimSpace(request.Target.Owner),
-			Name:  strings.TrimSpace(request.Target.Name),
+			Kind:   strings.TrimSpace(request.Target.Kind),
+			ID:     request.Target.ID,
+			NodeID: strings.TrimSpace(request.Target.NodeID),
+			Owner:  strings.TrimSpace(request.Target.Owner),
+			Name:   strings.TrimSpace(request.Target.Name),
+			Number: request.Target.Number,
 		},
 		Attrs: normalizeRequestAttrs(request.Attrs),
 	}
@@ -235,10 +257,26 @@ func coreRequest(request Request) corepolicy.Request {
 }
 
 func targetFields(target Target) map[string][]string {
-	if target.Kind != "repo" {
+	fields := map[string][]string{}
+	if target.ID > 0 {
+		fields["id"] = []string{fmt.Sprintf("%d", target.ID)}
+	}
+	if target.Number > 0 {
+		fields["number"] = []string{fmt.Sprintf("%d", target.Number)}
+	}
+	if strings.TrimSpace(target.NodeID) != "" {
+		fields["node_id"] = []string{target.NodeID}
+	}
+	if strings.TrimSpace(target.Owner) != "" {
+		fields["owner"] = []string{target.Owner}
+	}
+	if strings.TrimSpace(target.Name) != "" {
+		fields["name"] = []string{target.Name}
+	}
+	if len(fields) == 0 {
 		return nil
 	}
-	return map[string][]string{"owner": {target.Owner}, "name": {target.Name}}
+	return fields
 }
 
 func fromCoreDecision(decision corepolicy.Decision) Decision {

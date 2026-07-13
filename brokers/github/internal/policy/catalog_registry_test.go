@@ -23,7 +23,7 @@ func TestGeneratedPolicyRegistryCoversAgentCatalog(t *testing.T) {
 			t.Fatalf("non-agent operation %q registered", descriptor.Name)
 		}
 	}
-	if len(registry.Operations) != agentCount || len(registry.Operations) > 1420 {
+	if len(registry.Operations) != agentCount+len(protocolOperationSpecs()) || len(registry.Operations) > 1420 {
 		t.Fatalf("registry=%d agent=%d", len(registry.Operations), agentCount)
 	}
 	for _, forbidden := range []string{"method", "url", "body", "graphql", "caller", "headers", "credential"} {

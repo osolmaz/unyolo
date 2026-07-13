@@ -21,7 +21,7 @@
       "id": "bob-list-repos",
       "effect": "allow",
       "clients": ["bob"],
-      "operations": ["installation.repos.list"],
+      "operations": ["installation.repo.list"],
       "targets": [{"kind": "installation"}]
     },
     {
@@ -35,7 +35,7 @@
       "id": "bob-contents-read-osolmaz",
       "effect": "allow",
       "clients": ["bob"],
-      "operations": ["contents.read"],
+      "operations": ["repo.contents.read"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
       "attrs": {
         "paths": ["*", "docs/*", "."]
@@ -62,7 +62,7 @@
       "id": "bob-pr-create-main",
       "effect": "allow",
       "clients": ["bob"],
-      "operations": ["pr.create"],
+      "operations": ["pull_request.create"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
       "attrs": {
         "refs": ["refs/heads/bob/*", "refs/heads/agent/*"],

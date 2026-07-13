@@ -65,8 +65,8 @@ func newInstallationProvider(app *appProvider, apiURL *url.URL, client *http.Cli
 
 func (p *installationProvider) credential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (*Credential, error) {
 	repositoryIDs = canonicalRepositoryIDs(repositoryIDs)
-	if installationID <= 0 || len(repositoryIDs) == 0 {
-		return nil, errors.New("exact GitHub installation and repository ids are required")
+	if installationID <= 0 {
+		return nil, errors.New("exact GitHub installation id is required")
 	}
 	permissionObject, err := installationPermissions(permissions)
 	if err != nil {
@@ -99,10 +99,11 @@ func (p *installationProvider) mintCredential(ctx context.Context, key string, i
 		return entry.credential, nil
 	}
 	p.mu.Unlock()
-	token, _, err := p.app.client.Apps.CreateInstallationToken(ctx, installationID, &github.InstallationTokenOptions{
-		RepositoryIDs: repositoryIDs,
-		Permissions:   permissionObject,
-	})
+	options := &github.InstallationTokenOptions{Permissions: permissionObject}
+	if len(repositoryIDs) > 0 {
+		options.RepositoryIDs = repositoryIDs
+	}
+	token, _, err := p.app.client.Apps.CreateInstallationToken(ctx, installationID, options)
 	if err != nil {
 		return nil, classifyAPIError(err)
 	}
@@ -350,13 +351,7 @@ func installationPermissionMap(value *github.InstallationPermissions) map[string
 }
 
 func permissionsForOperation(operation string) (map[string]string, error) {
-	canonical := map[string]string{
-		"contents.read": "repo.contents.read", "pr.create": "pull_request.create",
-	}[operation]
-	if canonical == "" {
-		canonical = operation
-	}
-	if descriptor, ok := opcatalog.ByName(canonical); ok {
+	if descriptor, ok := opcatalog.ByName(operation); ok {
 		if descriptor.CredentialKind != string(KindInstallation) {
 			return nil, fmt.Errorf("GitHub operation %q does not use an installation credential", operation)
 		}

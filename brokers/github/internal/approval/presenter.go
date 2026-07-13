@@ -46,21 +46,21 @@ func targetSummary(grant grants.Grant) string {
 
 func risk(operation string) operatorinbox.Risk {
 	risks := map[string]operatorinbox.Risk{
-		"git.fetch":               operatorinbox.RiskLow,
-		"git.push.advertise":      operatorinbox.RiskMedium,
-		"git.push.branch_create":  operatorinbox.RiskHigh,
-		"git.push.fast_forward":   operatorinbox.RiskHigh,
-		"git.push.force":          operatorinbox.RiskCritical,
-		"git.ref.delete":          operatorinbox.RiskCritical,
-		"git.tag.update":          operatorinbox.RiskHigh,
-		"pr.create":               operatorinbox.RiskHigh,
-		"pr.update":               operatorinbox.RiskHigh,
-		"pr.merge":                operatorinbox.RiskCritical,
-		"checks.read":             operatorinbox.RiskLow,
-		"repo.metadata.read":      operatorinbox.RiskLow,
-		"contents.read":           operatorinbox.RiskLow,
-		"installation.repos.list": operatorinbox.RiskLow,
-		"webhook.github.receive":  operatorinbox.RiskMedium,
+		"git.fetch":              operatorinbox.RiskLow,
+		"git.push.advertise":     operatorinbox.RiskMedium,
+		"git.push.branch_create": operatorinbox.RiskHigh,
+		"git.push.fast_forward":  operatorinbox.RiskHigh,
+		"git.push.force":         operatorinbox.RiskCritical,
+		"git.ref.delete":         operatorinbox.RiskCritical,
+		"git.tag.update":         operatorinbox.RiskHigh,
+		"pull_request.create":    operatorinbox.RiskHigh,
+		"pr.update":              operatorinbox.RiskHigh,
+		"pr.merge":               operatorinbox.RiskCritical,
+		"checks.read":            operatorinbox.RiskLow,
+		"repo.metadata.read":     operatorinbox.RiskLow,
+		"repo.contents.read":     operatorinbox.RiskLow,
+		"installation.repo.list": operatorinbox.RiskLow,
+		"webhook.github.receive": operatorinbox.RiskMedium,
 	}
 	if value, ok := risks[operation]; ok {
 		return value

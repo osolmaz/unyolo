@@ -7,9 +7,24 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
+
+func IsOperation(value string) bool {
+	if descriptor, found := opcatalog.ByName(value); found && descriptor.AgentFacing {
+		return true
+	}
+	switch Operation(value) {
+	case OperationGitFetch, OperationGitPushAdvertise, OperationGitPushBranchCreate, OperationGitPushFastForward,
+		OperationGitPushForce, OperationGitRefDelete, OperationGitTagUpdate, OperationWebhookGitHubReceive:
+		return true
+	default:
+		return false
+	}
+}
 
 type Effect string
 
@@ -30,20 +45,23 @@ const (
 	OperationGitPushForce          Operation = "git.push.force"
 	OperationGitRefDelete          Operation = "git.ref.delete"
 	OperationGitTagUpdate          Operation = "git.tag.update"
-	OperationPullRequestCreate     Operation = "pr.create"
-	OperationPullRequestUpdate     Operation = "pr.update"
-	OperationPullRequestMerge      Operation = "pr.merge"
+	OperationPullRequestCreate     Operation = "pull_request.create"
+	OperationPullRequestUpdate     Operation = "pull_request.update"
+	OperationPullRequestMerge      Operation = "pull_request.merge"
 	OperationChecksRead            Operation = "checks.read"
 	OperationRepoMetadataRead      Operation = "repo.metadata.read"
-	OperationContentsRead          Operation = "contents.read"
-	OperationInstallationReposList Operation = "installation.repos.list"
+	OperationContentsRead          Operation = "repo.contents.read"
+	OperationInstallationReposList Operation = "installation.repo.list"
 	OperationWebhookGitHubReceive  Operation = "webhook.github.receive"
 )
 
 type Target struct {
-	Kind  string `json:"kind"`
-	Owner string `json:"owner,omitempty"`
-	Name  string `json:"name,omitempty"`
+	Kind   string `json:"kind"`
+	ID     int64  `json:"id,omitempty"`
+	NodeID string `json:"node_id,omitempty"`
+	Owner  string `json:"owner,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Number int64  `json:"number,omitempty"`
 }
 
 type Rule struct {
@@ -112,7 +130,11 @@ func New(scope Scope) (*Policy, error) {
 	if err != nil {
 		return nil, err
 	}
-	core, err := corepolicy.Parse(data, registry())
+	registry, err := CatalogRegistry()
+	if err != nil {
+		return nil, err
+	}
+	core, err := corepolicy.Parse(data, registry)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +162,33 @@ func (p *Policy) Allows(request Request) bool {
 	return p.Evaluate(request).Allowed
 }
 
+func AuthorizationRegistry() (corepolicy.Registry, error) { return CatalogRegistry() }
+
+// AuthorizationRequest projects generated GitHub adapter metadata into the
+// shared policy model.
+func AuthorizationRequest(client, operation, targetKind string, targetFields, attrs map[string]string) corepolicy.Request {
+	return corepolicy.Request{
+		Client:    strings.TrimSpace(client),
+		Operation: strings.TrimSpace(operation),
+		Target: corepolicy.Target{
+			Kind:   strings.TrimSpace(targetKind),
+			Fields: corepolicy.SingletonValues(targetFields),
+		},
+		Attrs: corepolicy.SingletonValues(attrs),
+	}
+}
+
+func (p *Policy) DecideAuthorization(request corepolicy.Request, options corepolicy.DecisionOptions) corepolicy.Decision {
+	if p == nil || p.core == nil {
+		return corepolicy.Decision{Effect: corepolicy.EffectNoMatch, Reason: "policy is unavailable"}
+	}
+	return p.core.Decide(request, options)
+}
+
+func (p *Policy) AuthorizationDecision(decision corepolicy.Decision) Decision {
+	return fromCoreDecision(decision)
+}
+
 func CoreTarget(target Target) corepolicy.Target {
 	return corepolicy.Target{
 		Kind:   target.Kind,
@@ -151,7 +200,20 @@ func incompleteRequest(request Request) bool {
 	if request.Client == "" || request.Operation == "" || request.Target.Kind == "" {
 		return true
 	}
-	return request.Target.Kind == "repo" && (request.Target.Owner == "" || request.Target.Name == "")
+	if request.Target.Kind == "repo" {
+		return request.Target.Owner == "" || request.Target.Name == ""
+	}
+	if request.Target.Kind == "installation" {
+		return false
+	}
+	return !targetHasIdentity(request.Target)
+}
+
+func targetHasIdentity(target Target) bool {
+	if target.ID > 0 || strings.TrimSpace(target.NodeID) != "" {
+		return true
+	}
+	return strings.TrimSpace(target.Name) != "" || strings.TrimSpace(target.Owner) != "" || target.Number > 0
 }
 
 // mutate4go-manifest-begin
