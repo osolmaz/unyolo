@@ -5,7 +5,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -38,14 +37,6 @@ func TestBrokerBaseURLUsesMatchingLoopbackForWildcard(t *testing.T) {
 		if got := brokerBaseURL(bindAddr, 8080); got != want {
 			t.Fatalf("brokerBaseURL(%q) = %q, want %q", bindAddr, got, want)
 		}
-	}
-}
-
-func TestLocalReadinessHTTPClientDisablesProxy(t *testing.T) {
-	client := localReadinessHTTPClient()
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok || transport.Proxy != nil {
-		t.Fatalf("readiness transport = %#v, want proxy disabled", client.Transport)
 	}
 }
 

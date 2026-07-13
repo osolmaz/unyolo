@@ -10,6 +10,21 @@ import (
 	"testing"
 )
 
+func TestLocalHTTPClientDisablesProxy(t *testing.T) {
+	client := LocalHTTPClient()
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport type = %T, want *http.Transport", client.Transport)
+	}
+	if transport.Proxy != nil {
+		t.Fatal("local HTTP client retained a proxy callback")
+	}
+	defaultTransport := http.DefaultTransport.(*http.Transport)
+	if transport == defaultTransport {
+		t.Fatal("local HTTP client mutated the default transport")
+	}
+}
+
 func TestHTTPReadyCheck(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusNoContent)

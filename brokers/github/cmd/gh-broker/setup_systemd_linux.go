@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -103,7 +102,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	var readyCheck bkservice.ReadinessCheck
 	if plan.opts.TelegramBotTokenFile == "" {
 		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName})
-		readyCheck = bkservice.HTTPReadyCheck(brokerURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", localReadinessHTTPClient())
+		readyCheck = bkservice.HTTPReadyCheck(brokerURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", bkservice.LocalHTTPClient())
 	}
 	return bkservice.SystemdInstallPlan{
 		User:         plan.opts.User,
@@ -120,12 +119,6 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		AllowNonRoot: plan.opts.AllowNonRoot,
 		Runner:       plan.opts.CommandRunner,
 	}, nil
-}
-
-func localReadinessHTTPClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	return &http.Client{Transport: transport}
 }
 
 func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {

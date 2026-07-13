@@ -9,6 +9,14 @@ import (
 	"net/http"
 )
 
+// LocalHTTPClient returns a client for broker-local readiness checks without
+// inheriting proxy settings from the service environment.
+func LocalHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return &http.Client{Transport: transport}
+}
+
 // HTTPReadyCheck returns a readiness check that accepts any successful HTTP
 // status. The request body is never read or included in errors.
 func HTTPReadyCheck(rawURL string, client *http.Client) ReadinessCheck {
