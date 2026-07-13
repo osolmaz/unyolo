@@ -83,8 +83,12 @@ Hugging Face token.
 ```sh
 export HF_BROKER_URL=http://127.0.0.1:8080
 export HF_BROKER_SHARED_SECRET_FILE=/run/user/1000/hf-broker-agent-secret
-hf-broker client repo create osolmaz/test-data --type dataset
-hf-broker client repo delete osolmaz/test-data --type dataset
+hf-broker client repo create \
+  --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
+  --arguments-json '{"visibility":"private"}'
+hf-broker client repo delete \
+  --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
+  --arguments-json '{}'
 ```
 
 If policy requires approval, the command prints the durable operation ID and

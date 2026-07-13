@@ -2,7 +2,29 @@
 
 Date: 2026-07-13
 
-Status: ready for implementation
+Status: implemented and verified
+
+## Implementation Record
+
+The cutover shipped as one branch with 258 cataloged capabilities, of which 257
+are agent-facing. Catalog descriptors now generate the CLI, MCP, policy, and
+documentation surfaces. Administrative operations use immutable Agent V1
+plans, explicit policy, one-use execution authority, reconciliation, and sealed
+payload handling where required.
+
+Local verification passed the full race suite, 85.1% aggregate Go coverage,
+lint, architecture, SQL, DRY, CRAP, and complete Slophammer gates. The
+OpenClaw plugin suite and both GitHub Actions jobs also passed.
+
+A live test submitted `repo.delete` as the `bob` client for one exact private,
+disposable dataset. Telegram accepted and delivered each approval
+notification. No phone decision arrived during the test windows, so the final
+request was approved through Operator V1 with a five-minute, one-use
+constraint. The broker deleted the repository, Hugging Face authenticated
+lookup confirmed it was absent, and an idempotent replay returned the original
+successful operation without a second execution. The temporary policy rule was
+then removed. Telegram callback decisions remain covered by the real protocol
+integration suite with a scripted Bot API.
 
 ## Objective
 
