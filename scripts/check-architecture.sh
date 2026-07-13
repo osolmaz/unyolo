@@ -116,7 +116,8 @@ then
 fi
 
 if ! grep -q 'operatorwire.NewClient' operatorclient/client.go ||
-  ! grep -q 'agentwire.NewClient' brokers/huggingface/cmd/hf-broker/agent_client.go
+	! grep -q 'agentwire.NewClient' agentclient/client.go ||
+	grep -R -n --include='*.go' 'agentwire.NewClient' brokers 2>/dev/null
 then
   echo 'Operator and Agent clients must use generated request builders' >&2
   exit 1

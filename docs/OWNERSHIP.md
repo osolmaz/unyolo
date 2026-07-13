@@ -75,7 +75,7 @@ The registry mechanism is shared. The registered vocabulary is broker-local.
 
 Providers register operation names and own target and argument validation,
 approval presentation, immutable plans, credentials, execution, and safe result
-formatting. Shared `agentops` code must not import a provider.
+formatting. Shared `agentops` and `agentclient` code must not import a provider.
 
 ### Grants
 

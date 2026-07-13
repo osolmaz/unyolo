@@ -260,11 +260,19 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 			return ""
 		}
 	})
-	if err != nil || client.secret != agentClientTestSecret {
+	if err != nil || client.secret != agentClientTestSecret || client.operations == nil {
 		t.Fatalf("file client = %#v, %v", client, err)
 	}
 	for _, value := range []string{"", "ftp://example.test", "http://user@example.test", "http://example.test?q=1"} {
-		if _, err := parseAgentBaseURL(value); err == nil {
+		if _, err := loadAgentClient(func(name string) string {
+			if name == "HF_BROKER_URL" {
+				return value
+			}
+			if name == "HF_BROKER_SHARED_SECRET" {
+				return agentClientTestSecret
+			}
+			return ""
+		}); err == nil {
 			t.Fatalf("URL %q accepted", value)
 		}
 	}
@@ -275,15 +283,6 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 		return ""
 	}); err == nil {
 		t.Fatal("missing secret file accepted")
-	}
-	if _, err := decodeAgentResponse(http.StatusForbidden, []byte(`{"error":{"code":"denied","message":"no"}}`)); err == nil || err.Error() != "no" {
-		t.Fatalf("structured error = %v", err)
-	}
-	if _, err := decodeAgentResponse(http.StatusBadGateway, []byte(`bad`)); err == nil {
-		t.Fatal("HTTP error accepted")
-	}
-	if _, err := decodeAgentResponse(http.StatusOK, []byte(`{}`)); err == nil {
-		t.Fatal("invalid operation accepted")
 	}
 }
 

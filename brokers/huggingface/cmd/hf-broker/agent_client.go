@@ -9,23 +9,18 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentclient"
 	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/agentv1wire"
-	"github.com/osolmaz/brokerkit/httpx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
 const defaultClientWait = 15 * time.Minute
 
 type agentClient struct {
-	api         agentwire.ClientInterface
+	operations  *agentclient.Client
 	secret      string
 	grantClient *hfGrantClient
 }
@@ -196,44 +191,19 @@ func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writ
 
 func loadAgentClient(getenv func(string) string) (*agentClient, error) {
 	baseURL := firstEnvironment(getenv, "HF_BROKER_URL", "MLCLAW_HF_BROKER_URL")
-	parsed, err := parseAgentBaseURL(baseURL)
-	if err != nil {
-		return nil, err
-	}
 	secret, err := loadAgentSecret(getenv)
 	if err != nil {
 		return nil, err
 	}
-	if len(secret) < 32 {
-		return nil, errors.New("HF Broker agent credential is invalid")
-	}
-	httpClient := &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
-	api, err := agentwire.NewClient(strings.TrimRight(parsed.String(), "/"), agentwire.WithHTTPClient(httpClient),
-		agentwire.WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
-			request.Header.Set("Authorization", "Bearer "+secret)
-			return nil
-		}))
-	if err != nil {
-		return nil, errors.New("HF Broker URL is invalid")
-	}
-	grantClient, err := newHFGrantClient(parsed.String(), secret)
+	operations, err := agentclient.New(agentclient.Options{BaseURL: baseURL, Credential: secret})
 	if err != nil {
 		return nil, err
 	}
-	return &agentClient{api: api, secret: secret, grantClient: grantClient}, nil
-}
-
-func parseAgentBaseURL(value string) (*url.URL, error) {
-	if value == "" {
-		return nil, errors.New("HF Broker URL is not configured")
+	grantClient, err := newHFGrantClient(baseURL, secret)
+	if err != nil {
+		return nil, err
 	}
-	parsed, err := url.Parse(value)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return nil, errors.New("HF Broker URL is invalid")
-	}
-	return parsed, nil
+	return &agentClient{operations: operations, secret: secret, grantClient: grantClient}, nil
 }
 
 func loadAgentSecret(getenv func(string) string) (string, error) {
@@ -261,70 +231,19 @@ func firstEnvironment(getenv func(string) string, names ...string) string {
 }
 
 func (client *agentClient) submit(ctx context.Context, request agentv1.SubmitRequest) (agentv1.Operation, error) {
-	wire, err := agentv1wire.SubmitToWire(request)
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	//nolint:bodyclose // decodeAgentHTTPResponse owns and closes generated responses.
-	response, err := client.api.SubmitAgentOperation(ctx, wire)
-	return decodeAgentHTTPResponse(response, err)
+	return client.operations.Submit(ctx, request)
 }
 
 func (client *agentClient) get(ctx context.Context, id string) (agentv1.Operation, error) {
-	//nolint:bodyclose // decodeAgentHTTPResponse owns and closes generated responses.
-	response, err := client.api.GetAgentOperation(ctx, id)
-	return decodeAgentHTTPResponse(response, err)
+	return client.operations.Get(ctx, id)
 }
 
 func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
-	for !operation.State.Terminal() {
-		after, wait := int(operation.Revision), 30
-		//nolint:bodyclose // decodeAgentHTTPResponse owns and closes generated responses.
-		response, requestErr := client.api.WaitForAgentOperation(ctx, operation.ID, &agentwire.WaitForAgentOperationParams{AfterRevision: &after, WaitSeconds: &wait})
-		next, err := decodeAgentHTTPResponse(response, requestErr)
-		if err != nil {
-			if ctx.Err() != nil {
-				return operation, fmt.Errorf("operation %s is still pending; resume it with hf-broker client operation wait %s", operation.ID, operation.ID)
-			}
-			return operation, err
-		}
-		operation = next
+	updated, err := client.operations.Wait(ctx, operation)
+	if err != nil && ctx.Err() != nil {
+		return updated, fmt.Errorf("operation %s is still pending; resume it with hf-broker client operation wait %s", operation.ID, operation.ID)
 	}
-	return operation, nil
-}
-
-func decodeAgentHTTPResponse(response *http.Response, err error) (agentv1.Operation, error) {
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	if response == nil {
-		return agentv1.Operation{}, errors.New("HF Broker returned no response")
-	}
-	defer func() { _ = response.Body.Close() }()
-	data, err := httpx.ReadLimited(response.Body, 64*1024)
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	return decodeAgentResponse(response.StatusCode, data)
-}
-
-func decodeAgentResponse(status int, data []byte) (agentv1.Operation, error) {
-	if status < 200 || status >= 300 {
-		var envelope agentwire.ErrorEnvelope
-		if strictjson.Decode(data, &envelope, false) == nil && envelope.Error.Message != "" {
-			return agentv1.Operation{}, errors.New(envelope.Error.Message)
-		}
-		return agentv1.Operation{}, fmt.Errorf("HF Broker request failed with HTTP %d", status)
-	}
-	var wire agentwire.Operation
-	if err := strictjson.Decode(data, &wire, false); err != nil {
-		return agentv1.Operation{}, errors.New("HF Broker returned an invalid operation")
-	}
-	operation, err := agentv1wire.OperationFromWire(wire)
-	if err != nil || operation.APIVersion != agentv1.APIVersion {
-		return agentv1.Operation{}, errors.New("HF Broker returned an invalid operation")
-	}
-	return operation, nil
+	return updated, err
 }
 
 func printClientOperation(stdout io.Writer, operation agentv1.Operation, jsonOutput bool) error {

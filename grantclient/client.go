@@ -14,6 +14,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/osolmaz/brokerkit/clienthttp"
 )
 
 const maxResponseBytes = 2 * 1024 * 1024
@@ -50,14 +52,14 @@ func (e *Error) Error() string {
 
 // New validates and constructs a grant client.
 func New[T any](options Options[T]) (*Client[T], error) {
-	base, err := parseBaseURL(options.BaseURL)
+	base, err := clienthttp.ParseBaseURL(options.BaseURL)
 	if err != nil {
 		return nil, err
 	}
 	if len(options.Credential) < 32 || options.Decode == nil || options.Terminal == nil {
 		return nil, errors.New("grant client credential, decoder, and terminal predicate are required")
 	}
-	options.HTTPClient = secureHTTPClient(options.HTTPClient)
+	options.HTTPClient = clienthttp.Secure(options.HTTPClient)
 	if options.PollInterval <= 0 {
 		options.PollInterval = time.Second
 	}
@@ -170,24 +172,4 @@ func (c *Client[T]) decodeResponse(response *http.Response) (T, error) {
 
 func grantPath(id string) string {
 	return "/api/grants/" + url.PathEscape(strings.TrimSpace(id))
-}
-
-func parseBaseURL(value string) (*url.URL, error) {
-	parsed, err := url.Parse(value)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return nil, errors.New("grant client base URL is invalid")
-	}
-	return parsed, nil
-}
-
-func rejectRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-
-func secureHTTPClient(client *http.Client) *http.Client {
-	if client == nil {
-		return &http.Client{Timeout: 35 * time.Second, CheckRedirect: rejectRedirect}
-	}
-	secure := *client
-	secure.CheckRedirect = rejectRedirect
-	return &secure
 }
