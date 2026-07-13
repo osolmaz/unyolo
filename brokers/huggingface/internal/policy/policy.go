@@ -1270,7 +1270,10 @@ func validateRequestTarget(target Target) error {
 	case KindInference:
 		return validateNamedRequestTarget(target, "inference")
 	default:
-		return fmt.Errorf("invalid target kind")
+		if !knownTargetKind(target.Kind) {
+			return fmt.Errorf("invalid target kind")
+		}
+		return validateNamedRequestTarget(target, string(target.Kind))
 	}
 }
 
