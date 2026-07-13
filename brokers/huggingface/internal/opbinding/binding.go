@@ -320,21 +320,21 @@ func schemaForArguments(operation operationDocument, fixed map[string]any, proje
 }
 
 func compileSchema(name string, schema, components map[string]any) (json.RawMessage, *jsonschema.Schema, error) {
-	schema = cloneMap(schema)
-	definitions := map[string]any{}
-	if local, ok := schema["$defs"].(map[string]any); ok {
-		for key, value := range local {
-			definitions[key] = value
-		}
-		delete(schema, "$defs")
+	wireSchema := standaloneSchema(schema, components)
+	raw, err := json.Marshal(wireSchema)
+	if err != nil {
+		return nil, nil, err
 	}
+
+	schema = cloneMap(wireSchema)
+	definitions := takeDefinitions(schema)
 	schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
-	raw, err := json.Marshal(schema)
+	rootRaw, err := json.Marshal(schema)
 	if err != nil {
 		return nil, nil, err
 	}
 	var root any
-	if err := json.Unmarshal(raw, &root); err != nil {
+	if err := json.Unmarshal(rootRaw, &root); err != nil {
 		return nil, nil, err
 	}
 	definitions["root"] = root
@@ -351,6 +351,43 @@ func compileSchema(name string, schema, components map[string]any) (json.RawMess
 	}
 	validator, err := compiler.Compile(location)
 	return raw, validator, err
+}
+
+func standaloneSchema(schema, components map[string]any) map[string]any {
+	result := cloneMap(schema)
+	closeObjectSchemas(result)
+	result["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+	if components != nil {
+		result["components"] = cloneMap(components)
+	}
+	return result
+}
+
+func takeDefinitions(schema map[string]any) map[string]any {
+	result := map[string]any{}
+	local, _ := schema["$defs"].(map[string]any)
+	for key, value := range local {
+		result[key] = value
+	}
+	delete(schema, "$defs")
+	return result
+}
+
+func closeObjectSchemas(value any) {
+	switch typed := value.(type) {
+	case map[string]any:
+		_, hasProperties := typed["properties"]
+		if (typed["type"] == "object" || hasProperties) && typed["additionalProperties"] == nil {
+			typed["additionalProperties"] = false
+		}
+		for _, child := range typed {
+			closeObjectSchemas(child)
+		}
+	case []any:
+		for _, child := range typed {
+			closeObjectSchemas(child)
+		}
+	}
 }
 
 type ecmaRegexp regexp2.Regexp

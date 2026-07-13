@@ -208,15 +208,8 @@ func (a *sandboxAdapter) materializeSandboxCreate(raw json.RawMessage, consume b
 }
 
 func (a *sandboxAdapter) materializeSandboxPoolCreate(raw json.RawMessage) (sandboxPoolCreatePublic, error) {
-	arguments, err := decodeSealedArguments(raw)
-	if err != nil {
-		return sandboxPoolCreatePublic{}, err
-	}
-	if arguments.SealedPayload != nil {
-		return sandboxPoolCreatePublic{}, errors.New("sandbox pool create does not accept requester secret input")
-	}
 	var public sandboxPoolCreatePublic
-	if err := decodeClosed(arguments.Public, &public, maxArgumentsBytes); err != nil {
+	if err := decodeClosed(raw, &public, maxArgumentsBytes); err != nil {
 		return sandboxPoolCreatePublic{}, err
 	}
 	return public, nil

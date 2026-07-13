@@ -222,13 +222,11 @@ func (a *sandboxAdapter) decodeArguments(target sandboxTarget, raw json.RawMessa
 			return value, nil
 		})
 	case "sandbox.pool.create":
-		return a.decodeSealedPublic(raw, func(public json.RawMessage) (any, error) {
-			var value sandboxPoolCreatePublic
-			if err := decodeClosed(public, &value, maxArgumentsBytes); err != nil || validateSandboxPoolCreatePublic(value) != nil {
-				return nil, errors.New("sandbox pool create arguments are invalid")
-			}
-			return value, nil
-		})
+		var value sandboxPoolCreatePublic
+		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateSandboxPoolCreatePublic(value) != nil {
+			return nil, errors.New("sandbox pool create arguments are invalid")
+		}
+		return value, nil
 	case "sandbox.command.run":
 		var value sandboxCommandArguments
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateSandboxCommandArguments(value) != nil {
@@ -280,9 +278,6 @@ func (a *sandboxAdapter) decodeSealedPublic(raw json.RawMessage, decode func(jso
 	arguments, err := decodeSealedArguments(raw)
 	if err != nil {
 		return sealedBoundArguments{}, err
-	}
-	if a.descriptor.Name == "sandbox.pool.create" && arguments.SealedPayload != nil {
-		return sealedBoundArguments{}, errors.New("sandbox pool create does not accept requester secret input")
 	}
 	value, err := decode(arguments.Public)
 	if err != nil {

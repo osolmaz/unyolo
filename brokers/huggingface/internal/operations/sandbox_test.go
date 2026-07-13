@@ -104,7 +104,7 @@ func TestSandboxAdaptersUseClosedOperationSpecificInputs(t *testing.T) {
 		{"sandbox.file.delete", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/result","recursive":false}`)},
 		{"sandbox.file.mkdir", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/output"}`)},
 		{"sandbox.file.write", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/result","content_base64":"aGk=","mode":"0644"}`)},
-		{"sandbox.pool.create", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"public":{"image":"python:3.12","flavor":"cpu-basic","sandboxes_per_host":10,"warm_up":1,"max_hosts":2,"idle_timeout_seconds":600}}`)},
+		{"sandbox.pool.create", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"image":"python:3.12","flavor":"cpu-basic","sandboxes_per_host":10,"warm_up":1,"max_hosts":2,"idle_timeout_seconds":600}`)},
 		{"sandbox.pool.delete", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{}`)},
 		{"sandbox.pool.warm", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"num_hosts":2}`)},
 		{"sandbox.process.kill", existingSandboxTarget(), json.RawMessage(`{"pid":12}`)},
@@ -151,7 +151,7 @@ func TestSandboxAdaptersExecuteEveryOperationLifecycle(t *testing.T) {
 		{"sandbox.process.kill", existingSandboxTarget(), json.RawMessage(`{"pid":12}`), func(fake *sandboxFake) {
 			fake.processes = []hubclient.SandboxProcess{{PID: 12, Command: []string{"sleep", "60"}, Running: true}}
 		}},
-		{"sandbox.pool.create", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"public":{"image":"python:3.12","flavor":"cpu-basic","sandboxes_per_host":10,"warm_up":1,"max_hosts":3}}`), nil},
+		{"sandbox.pool.create", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"image":"python:3.12","flavor":"cpu-basic","sandboxes_per_host":10,"warm_up":1,"max_hosts":3}`), nil},
 		{"sandbox.pool.warm", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"num_hosts":2}`), func(fake *sandboxFake) {
 			fake.pool = []hubclient.SandboxState{poolHost}
 		}},

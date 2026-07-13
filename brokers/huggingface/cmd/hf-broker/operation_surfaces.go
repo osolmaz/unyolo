@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialstore"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
 	"github.com/osolmaz/brokerkit/clienthttp"
@@ -357,12 +358,7 @@ func catalogMCPTools() []map[string]any {
 }
 
 func catalogMCPToolSchema(descriptor opcatalog.Descriptor) map[string]any {
-	targetSchema := genericObjectSchema()
-	argumentsSchema := genericObjectSchema()
-	if binding, found := opbinding.ByName(descriptor.Name); found {
-		_ = json.Unmarshal(binding.TargetSchema, &targetSchema)
-		_ = json.Unmarshal(binding.ArgumentsSchema, &argumentsSchema)
-	}
+	targetSchema, argumentsSchema, sealedSchema := catalogOperationInputSchemas(descriptor)
 	properties := map[string]any{
 		"target":          targetSchema,
 		"reason":          map[string]any{"type": "string", "minLength": 1, "maxLength": 2000},
@@ -377,20 +373,63 @@ func catalogMCPToolSchema(descriptor opcatalog.Descriptor) map[string]any {
 			if descriptor.CredentialOutputKind != nil {
 				properties["credential_slot"] = map[string]any{"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"}
 				required = append(required, "credential_slot")
-			} else {
-				properties["sealed_arguments"] = genericObjectSchema()
+			} else if sealedSchema != nil {
+				properties["sealed_arguments"] = sealedSchema
 			}
 		}
 	} else {
-		properties["attrs"] = genericObjectSchema()
+		properties["attrs"] = catalogAttributeSchema()
 		properties["minutes"] = map[string]any{"type": "integer", "minimum": 0}
 		properties["max_uses"] = map[string]any{"type": []string{"integer", "null"}, "minimum": 1}
 	}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
 }
 
-func genericObjectSchema() map[string]any {
-	return map[string]any{"type": "object"}
+func catalogOperationInputSchemas(descriptor opcatalog.Descriptor) (map[string]any, map[string]any, map[string]any) {
+	if binding, found := opbinding.ByName(descriptor.Name); found {
+		var target, arguments map[string]any
+		if json.Unmarshal(binding.TargetSchema, &target) != nil || json.Unmarshal(binding.ArgumentsSchema, &arguments) != nil {
+			panic("invalid pinned operation schema: " + descriptor.Name)
+		}
+		var sealed map[string]any
+		if paths := operations.SealedInputPaths(descriptor.Name); len(paths) > 0 {
+			arguments, sealed = splitSealedArgumentsSchema(arguments, paths)
+		}
+		setTargetKind(target, descriptor.TargetKind)
+		return embeddedOperationSchema(target), embeddedOperationSchema(arguments), embeddedOperationSchema(sealed)
+	}
+	if custom, found := operations.CustomInputSchemas(descriptor.Name); found {
+		setTargetKind(custom.Target, descriptor.TargetKind)
+		return custom.Target, custom.Arguments, custom.Sealed
+	}
+	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
+		target := operations.WindowTargetSchema()
+		setTargetKind(target, descriptor.TargetKind)
+		return target, nil, nil
+	}
+	panic("missing operation input schema: " + descriptor.Name)
+}
+
+func setTargetKind(schema map[string]any, kind string) {
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return
+	}
+	if kindSchema, ok := properties["kind"].(map[string]any); ok {
+		kindSchema["const"] = kind
+	}
+}
+
+func catalogAttributeSchema() map[string]any {
+	properties := make(map[string]any)
+	for _, name := range policy.KnownAttributeNames() {
+		properties[name] = map[string]any{"oneOf": []any{
+			map[string]any{"type": "integer", "minimum": 0},
+			map[string]any{"type": "string"},
+			map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		}}
+	}
+	return map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
 }
 
 func descriptorByMCPTool(name string) (opcatalog.Descriptor, bool) {

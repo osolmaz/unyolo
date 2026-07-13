@@ -280,6 +280,12 @@ var knownAttrs = map[string]bool{
 	"sleep_time_seconds": true,
 }
 
+// KnownAttributeNames returns the closed request-attribute vocabulary used by
+// generated agent surfaces.
+func KnownAttributeNames() []string {
+	return sortedMapKeys(knownAttrs)
+}
+
 var validRefChangeAttrs = map[string]bool{
 	"create":           true,
 	"fast_forward":     true,
@@ -461,12 +467,16 @@ func IsOperation(value string) bool {
 
 // Operations returns the complete registered HF operation set.
 func Operations() []Operation {
-	out := make([]Operation, 0, len(operations))
-	for operation := range operations {
-		out = append(out, operation)
+	return sortedMapKeys(operations)
+}
+
+func sortedMapKeys[K ~string, V any](values map[K]V) []K {
+	result := make([]K, 0, len(values))
+	for value := range values {
+		result = append(result, value)
 	}
-	slices.Sort(out)
-	return out
+	slices.Sort(result)
+	return result
 }
 
 func parseRuleID(rule *Rule, prefix string, raw rawRule) error {

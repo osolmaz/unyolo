@@ -3575,10 +3575,10 @@
   {
     "name": "sandbox.pool.create",
     "operation_revision": 1,
-    "disposition": "E/X/S",
+    "disposition": "E/X",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": true,
+    "sealed": false,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "critical",

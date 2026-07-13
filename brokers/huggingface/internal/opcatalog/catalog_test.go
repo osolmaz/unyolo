@@ -1,7 +1,9 @@
 package opcatalog
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -72,6 +74,16 @@ func TestEmbeddedCatalogUsesClosedDescriptorShape(t *testing.T) {
 	var values []Descriptor
 	if err := decoder.Decode(&values); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGeneratedCapabilityReferenceMatchesCatalog(t *testing.T) {
+	generated, err := os.ReadFile("../../docs/generated/capabilities.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(generated), bytes.TrimSpace(catalogJSON)) {
+		t.Fatal("generated capability reference is stale")
 	}
 }
 

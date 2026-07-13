@@ -48,6 +48,12 @@ var sealedInputPaths = map[string][]string{
 	"webhook.update":                       {"secret", "job.secrets"},
 }
 
+// SealedInputPaths returns the argument paths that must be supplied through
+// the encrypted payload boundary for a bound operation.
+func SealedInputPaths(operation string) []string {
+	return append([]string(nil), sealedInputPaths[operation]...)
+}
+
 func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Adapter, error) {
 	if client == nil || store == nil {
 		return nil, errors.New("Hugging Face sealed operation dependencies are required")

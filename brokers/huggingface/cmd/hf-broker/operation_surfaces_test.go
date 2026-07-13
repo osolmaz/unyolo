@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,8 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dlclark/regexp2"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
@@ -33,6 +36,86 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 		schema, ok := tools[index]["inputSchema"].(map[string]any)
 		if !ok || schema["additionalProperties"] != false {
 			t.Fatalf("MCP schema %q is not closed", descriptor.Name)
+		}
+		compiler := jsonschema.NewCompiler()
+		compiler.UseRegexpEngine(compileMCPTestRegexp)
+		location := "https://brokerkit.local/mcp/" + descriptor.Name + ".json"
+		encoded, _ := json.Marshal(schema)
+		var normalized any
+		_ = json.Unmarshal(encoded, &normalized)
+		if err := compiler.AddResource(location, normalized); err != nil {
+			t.Fatalf("MCP schema %q could not be loaded: %v", descriptor.Name, err)
+		}
+		if _, err := compiler.Compile(location); err != nil {
+			t.Fatalf("MCP schema %q could not be compiled: %v", descriptor.Name, err)
+		}
+		properties := schema["properties"].(map[string]any)
+		assertClosedSchema(t, descriptor.Name+" target", properties["target"])
+		if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+			assertClosedSchema(t, descriptor.Name+" arguments", properties["arguments"])
+		} else {
+			assertClosedSchema(t, descriptor.Name+" attrs", properties["attrs"])
+		}
+		if sealed, found := properties["sealed_arguments"]; found {
+			assertClosedSchema(t, descriptor.Name+" sealed arguments", sealed)
+		}
+	}
+}
+
+type mcpTestRegexp regexp2.Regexp
+
+func (regexp *mcpTestRegexp) MatchString(value string) bool {
+	matched, err := (*regexp2.Regexp)(regexp).MatchString(value)
+	return err == nil && matched
+}
+
+func (regexp *mcpTestRegexp) String() string { return (*regexp2.Regexp)(regexp).String() }
+
+func compileMCPTestRegexp(pattern string) (jsonschema.Regexp, error) {
+	compiled, err := regexp2.Compile(pattern, regexp2.ECMAScript)
+	return (*mcpTestRegexp)(compiled), err
+}
+
+func TestCatalogSchemasSeparateProtectedArguments(t *testing.T) {
+	for _, operation := range []string{"space.secret.set", "endpoint.create", "sandbox.create"} {
+		descriptor, _ := opcatalog.ByName(operation)
+		properties := catalogMCPToolSchema(descriptor)["properties"].(map[string]any)
+		if properties["sealed_arguments"] == nil {
+			t.Fatalf("%s has no sealed argument schema", operation)
+		}
+	}
+
+	space, _ := opcatalog.ByName("space.secret.set")
+	spaceProperties := catalogMCPToolSchema(space)["properties"].(map[string]any)
+	public := spaceProperties["arguments"].(map[string]any)["properties"].(map[string]any)
+	sealed := spaceProperties["sealed_arguments"].(map[string]any)["properties"].(map[string]any)
+	if public["value"] != nil || sealed["value"] == nil {
+		t.Fatalf("space.secret.set schemas expose the protected value: public=%#v sealed=%#v", public, sealed)
+	}
+
+	pool, _ := opcatalog.ByName("sandbox.pool.create")
+	poolProperties := catalogMCPToolSchema(pool)["properties"].(map[string]any)
+	if pool.Sealed || poolProperties["sealed_arguments"] != nil {
+		t.Fatalf("sandbox.pool.create advertises unsupported secret input: %#v", poolProperties)
+	}
+}
+
+func assertClosedSchema(t *testing.T, name string, value any) {
+	t.Helper()
+	switch schema := value.(type) {
+	case map[string]any:
+		if schema["type"] == "object" {
+			_, bounded := schema["additionalProperties"]
+			if !bounded && schema["maxProperties"] != float64(0) && schema["maxProperties"] != 0 {
+				t.Fatalf("%s contains an open object schema: %#v", name, schema)
+			}
+		}
+		for key, nested := range schema {
+			assertClosedSchema(t, name+"."+key, nested)
+		}
+	case []any:
+		for index, nested := range schema {
+			assertClosedSchema(t, fmt.Sprintf("%s[%d]", name, index), nested)
 		}
 	}
 }

@@ -91,6 +91,17 @@ func TestEndpointBindingsKeepSecretsInSealedModelField(t *testing.T) {
 	}
 }
 
+func TestPinnedBindingsCloseNestedObjects(t *testing.T) {
+	binding, found := ByName("bucket.create")
+	if !found {
+		t.Fatal("bucket.create binding is missing")
+	}
+	target := json.RawMessage(`{"namespace":"alice","repo":"artifacts"}`)
+	if err := binding.Validate(target, json.RawMessage(`{"cdn":[{"provider":"aws","region":"us","unexpected":true}]}`)); err == nil {
+		t.Fatal("unknown nested field was accepted")
+	}
+}
+
 func TestBindingValidationRejectsDuplicateAndUnknownFields(t *testing.T) {
 	binding, found := ByName("bucket.create")
 	if !found {
