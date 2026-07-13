@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,7 +35,32 @@ type OperationRecord struct {
 }
 
 func (d *Database) InsertOperation(ctx context.Context, record OperationRecord) error {
-	return d.queries.InsertOperation(ctx, dbsql.InsertOperationParams{
+	return insertOperation(ctx, d.queries, record)
+}
+
+// InsertOperationWithPlan commits an immutable plan and its operation in one
+// transaction so execution can never observe an unbound operation.
+func (d *Database) InsertOperationWithPlan(ctx context.Context, record OperationRecord, plan PlanRecord) error {
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	queries := d.queries.WithTx(tx)
+	if err := putPlanWithQueries(ctx, queries, plan); err != nil {
+		return err
+	}
+	if record.PlanDigest != plan.Digest {
+		return errors.New("operation plan digest does not match immutable plan")
+	}
+	if err := insertOperation(ctx, queries, record); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func insertOperation(ctx context.Context, queries *dbsql.Queries, record OperationRecord) error {
+	return queries.InsertOperation(ctx, dbsql.InsertOperationParams{
 		ID: record.ID, ApiVersion: record.APIVersion, Broker: record.Broker,
 		ClientID: record.ClientID, IdempotencyKey: record.IdempotencyKey,
 		Operation: record.Operation, TargetJson: string(record.TargetJSON),

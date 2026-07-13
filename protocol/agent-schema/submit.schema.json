@@ -28,12 +28,12 @@
     },
     "arguments": {
       "type": "object",
-      "maxProperties": 32
+      "maxProperties": 128
     },
     "reason": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 512
+      "maxLength": 2000
     }
   },
   "$defs": {}

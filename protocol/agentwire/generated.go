@@ -113,6 +113,7 @@ type Operation struct {
 	Id             string                  `json:"id"`
 	IdempotencyKey string                  `json:"idempotency_key"`
 	Operation      string                  `json:"operation"`
+	PlanDigest     *string                 `json:"plan_digest,omitempty"`
 	Presentation   Presentation            `json:"presentation"`
 	Reason         string                  `json:"reason"`
 	Result         *map[string]interface{} `json:"result,omitempty"`

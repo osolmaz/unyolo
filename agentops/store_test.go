@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -86,6 +87,53 @@ func TestStoreAcceptsBoundedCommandResult(t *testing.T) {
 	result := json.RawMessage(`{"stdout_base64":"` + strings.Repeat("a", 1024*1024) + `"}`)
 	if completed, err := store.Succeed(operation.ID, result); err != nil || completed.State != agentv1.StateSucceeded {
 		t.Fatalf("large result = %#v, %v", completed, err)
+	}
+}
+
+func TestStorePersistsOperationAndImmutablePlanAtomically(t *testing.T) {
+	now := time.Date(2026, 7, 13, 8, 0, 0, 0, time.UTC)
+	store := newTestStore(t, func() time.Time { return now }, func() (string, error) { return "op_plan", nil })
+	canonical := []byte(`{"api_version":"provider.io/plan/v1","operation":"repo.delete"}`)
+	plan := state.PlanRecord{Digest: plandigest.Digest(canonical), SchemaName: "provider.io/plan/v1", Canonical: canonical, CreatedAt: now}
+	created, fresh, err := store.SubmitWithPlan(validSubmit("planned"), plan)
+	if err != nil || !fresh || created.PlanDigest != plan.Digest {
+		t.Fatalf("SubmitWithPlan() = %+v, %v, %v", created, fresh, err)
+	}
+	replayed, fresh, err := store.SubmitWithPlan(validSubmit("planned"), plan)
+	if err != nil || fresh || replayed.PlanDigest != plan.Digest {
+		t.Fatalf("planned replay = %+v, %v, %v", replayed, fresh, err)
+	}
+
+	otherCanonical := []byte(`{"api_version":"provider.io/plan/v1","operation":"repo.move"}`)
+	other := state.PlanRecord{Digest: plandigest.Digest(otherCanonical), SchemaName: plan.SchemaName, Canonical: otherCanonical, CreatedAt: now}
+	if _, _, err := store.SubmitWithPlan(validSubmit("planned"), other); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("plan replay conflict = %v", err)
+	}
+	if _, _, err := store.SubmitWithPlan(validSubmit("invalid-plan"), state.PlanRecord{}); err == nil {
+		t.Fatal("invalid immutable plan accepted")
+	}
+	if count, err := store.db.CountOperations(t.Context()); err != nil || count != 1 {
+		t.Fatalf("operations after plan rollback = %d, %v", count, err)
+	}
+}
+
+func TestStoreAcceptsManifestAndCanonicalReasonBounds(t *testing.T) {
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_manifest", nil })
+	input := validSubmit("manifest")
+	input.Arguments = json.RawMessage(`{"manifest":"` + strings.Repeat("a", 64*1024) + `"}`)
+	input.Reason = strings.Repeat("r", 2000)
+	if _, _, err := store.Submit(input); err != nil {
+		t.Fatalf("bounded manifest rejected: %v", err)
+	}
+	tooLong := validSubmit("reason-too-long")
+	tooLong.Reason = strings.Repeat("r", 2001)
+	if _, _, err := store.Submit(tooLong); err == nil {
+		t.Fatal("overlong reason accepted")
+	}
+	largeTarget := validSubmit("target-too-large")
+	largeTarget.Target = json.RawMessage(`{"value":"` + strings.Repeat("a", maxTargetBytes) + `"}`)
+	if _, _, err := store.Submit(largeTarget); err == nil {
+		t.Fatal("oversized target accepted")
 	}
 }
 

@@ -122,6 +122,7 @@ export interface components {
       /** Format: date-time */
       terminal_at?: string;
       presentation: components["schemas"]["Presentation"];
+      plan_digest?: string;
       result?: Record<string, never>;
       error?: components["schemas"]["OperationError"];
     };

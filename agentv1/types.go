@@ -52,6 +52,7 @@ type Operation struct {
 	UpdatedAt      time.Time       `json:"updated_at"`
 	TerminalAt     *time.Time      `json:"terminal_at,omitempty"`
 	Presentation   Presentation    `json:"presentation"`
+	PlanDigest     string          `json:"plan_digest,omitempty"`
 	Result         json.RawMessage `json:"result,omitempty"`
 	Error          *OperationError `json:"error,omitempty"`
 }

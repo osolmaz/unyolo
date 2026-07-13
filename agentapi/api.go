@@ -18,7 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
-const maxSubmitBytes = 16 * 1024
+const maxSubmitBytes = 2 * 1024 * 1024
 
 // Store is the durable operation lifecycle required by the HTTP boundary.
 type Store interface {
@@ -166,7 +166,7 @@ func readSubmit(request *http.Request) (agentv1.SubmitRequest, error) {
 	}
 	result, err := agentv1wire.SubmitFromWire(wire)
 	if err != nil || strings.TrimSpace(result.IdempotencyKey) == "" || len(result.IdempotencyKey) > 128 ||
-		strings.TrimSpace(result.Reason) == "" || len(result.Reason) > 512 {
+		strings.TrimSpace(result.Reason) == "" || len(result.Reason) > 2000 {
 		return agentv1.SubmitRequest{}, errors.New("idempotency key and reason are required")
 	}
 	return result, nil

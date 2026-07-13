@@ -16,11 +16,13 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/state"
 )
 
 const (
-	maxJSONBytes      = 4096
+	maxTargetBytes    = 16 * 1024
+	maxArgumentsBytes = 1024 * 1024
 	maxResultBytes    = 2 * 1024 * 1024
 	maxOperations     = 2048
 	terminalRetention = 30 * 24 * time.Hour
@@ -42,6 +44,7 @@ type Submit struct {
 	Arguments      json.RawMessage
 	Reason         string
 	Presentation   agentv1.Presentation
+	PlanDigest     string
 }
 
 type Store struct {
@@ -61,16 +64,27 @@ func newStore(database *state.Database, now func() time.Time, newID func() (stri
 }
 
 func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
+	return s.submit(input, nil)
+}
+
+// SubmitWithPlan atomically persists an immutable execution plan and its
+// operation. Replays must provide the same plan digest.
+func (s *Store) SubmitWithPlan(input Submit, plan state.PlanRecord) (agentv1.Operation, bool, error) {
+	input.PlanDigest = plan.Digest
+	return s.submit(input, &plan)
+}
+
+func (s *Store) submit(input Submit, plan *state.PlanRecord) (agentv1.Operation, bool, error) {
 	normalized, err := normalizeSubmit(input)
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.submitLocked(normalized)
+	return s.submitLocked(normalized, plan)
 }
 
-func (s *Store) submitLocked(input Submit) (agentv1.Operation, bool, error) {
+func (s *Store) submitLocked(input Submit, plan *state.PlanRecord) (agentv1.Operation, bool, error) {
 	ctx := context.Background()
 	now := s.now().UTC()
 	if _, err := s.db.DeleteTerminalOperationsBefore(ctx, now.Add(-terminalRetention)); err != nil {
@@ -79,7 +93,7 @@ func (s *Store) submitLocked(input Submit) (agentv1.Operation, bool, error) {
 	if existing, found, err := s.findSubmission(ctx, input); err != nil || found {
 		return existing, false, err
 	}
-	return s.createOperation(ctx, input, now)
+	return s.createOperation(ctx, input, now, plan)
 }
 
 func (s *Store) findSubmission(ctx context.Context, input Submit) (agentv1.Operation, bool, error) {
@@ -100,7 +114,7 @@ func (s *Store) findSubmission(ctx context.Context, input Submit) (agentv1.Opera
 	return agentv1.Operation{}, false, err
 }
 
-func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time) (agentv1.Operation, bool, error) {
+func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time, plan *state.PlanRecord) (agentv1.Operation, bool, error) {
 	count, err := s.db.CountOperations(ctx)
 	if err != nil {
 		return agentv1.Operation{}, false, err
@@ -116,10 +130,16 @@ func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time
 		APIVersion: agentv1.APIVersion, ID: id, Broker: input.Broker, ClientID: input.ClientID,
 		IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: input.Target,
 		Arguments: input.Arguments, Reason: input.Reason, State: agentv1.StatePending, Revision: 1,
-		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation,
+		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation, PlanDigest: input.PlanDigest,
 	}
-	if err := s.db.InsertOperation(ctx, operationRecord(op)); err != nil {
-		return agentv1.Operation{}, false, err
+	var insertErr error
+	if plan == nil {
+		insertErr = s.db.InsertOperation(ctx, operationRecord(op))
+	} else {
+		insertErr = s.db.InsertOperationWithPlan(ctx, operationRecord(op), *plan)
+	}
+	if insertErr != nil {
+		return agentv1.Operation{}, false, insertErr
 	}
 	s.notify()
 	return clone(op), true, nil
@@ -306,7 +326,7 @@ func operationRecord(operation agentv1.Operation) state.OperationRecord {
 		Reason: operation.Reason, State: string(operation.State), Revision: operation.Revision,
 		CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt, TerminalAt: operation.TerminalAt,
 		ApprovalID: operation.ApprovalID, PresentationJSON: presentation, ResultJSON: operation.Result,
-		ErrorJSON: operationError,
+		ErrorJSON: operationError, PlanDigest: operation.PlanDigest,
 	}
 }
 
@@ -316,7 +336,7 @@ func operationFromRecord(record state.OperationRecord) (agentv1.Operation, error
 		IdempotencyKey: record.IdempotencyKey, Operation: record.Operation, Target: record.TargetJSON,
 		Arguments: record.ArgumentsJSON, Reason: record.Reason, State: agentv1.State(record.State),
 		Revision: record.Revision, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
-		TerminalAt: record.TerminalAt, ApprovalID: record.ApprovalID, Result: record.ResultJSON,
+		TerminalAt: record.TerminalAt, ApprovalID: record.ApprovalID, PlanDigest: record.PlanDigest, Result: record.ResultJSON,
 	}
 	if err := strictjson.Decode(record.PresentationJSON, &operation.Presentation, true); err != nil {
 		return agentv1.Operation{}, fmt.Errorf("decode operation presentation: %w", err)
@@ -342,6 +362,7 @@ func normalizeSubmit(input Submit) (Submit, error) {
 	input.Reason = strings.TrimSpace(input.Reason)
 	input.Presentation.Title = strings.TrimSpace(input.Presentation.Title)
 	input.Presentation.Summary = strings.TrimSpace(input.Presentation.Summary)
+	input.PlanDigest = strings.TrimSpace(input.PlanDigest)
 	if !validSubmitIdentity(input) {
 		return Submit{}, errors.New("operation identity is invalid")
 	}
@@ -349,11 +370,11 @@ func normalizeSubmit(input Submit) (Submit, error) {
 		return Submit{}, errors.New("operation presentation is invalid")
 	}
 	var err error
-	input.Target, err = normalizeObject(input.Target)
+	input.Target, err = normalizeObjectLimit(input.Target, maxTargetBytes)
 	if err != nil {
 		return Submit{}, fmt.Errorf("target: %w", err)
 	}
-	input.Arguments, err = normalizeObject(input.Arguments)
+	input.Arguments, err = normalizeObjectLimit(input.Arguments, maxArgumentsBytes)
 	if err != nil {
 		return Submit{}, fmt.Errorf("arguments: %w", err)
 	}
@@ -366,11 +387,8 @@ func validSubmitIdentity(input Submit) bool {
 }
 
 func validSubmitPresentation(input Submit) bool {
-	return len(input.Reason) <= 512 && input.Presentation.Title != "" && len(input.Presentation.Title) <= 160 && len(input.Presentation.Summary) <= 500
-}
-
-func normalizeObject(value json.RawMessage) (json.RawMessage, error) {
-	return normalizeObjectLimit(value, maxJSONBytes)
+	return len(input.Reason) <= 2000 && input.Presentation.Title != "" && len(input.Presentation.Title) <= 160 && len(input.Presentation.Summary) <= 500 &&
+		(input.PlanDigest == "" || plandigest.Valid(input.PlanDigest))
 }
 
 func normalizeObjectLimit(value json.RawMessage, maximum int) (json.RawMessage, error) {
@@ -394,7 +412,8 @@ func normalizeObjectLimit(value json.RawMessage, maximum int) (json.RawMessage, 
 
 func sameSubmission(existing agentv1.Operation, input Submit) bool {
 	return existing.Broker == input.Broker && existing.Operation == input.Operation && existing.Reason == input.Reason &&
-		existing.Presentation == input.Presentation && equalJSON(existing.Target, input.Target) && equalJSON(existing.Arguments, input.Arguments)
+		existing.Presentation == input.Presentation && existing.PlanDigest == input.PlanDigest &&
+		equalJSON(existing.Target, input.Target) && equalJSON(existing.Arguments, input.Arguments)
 }
 
 func equalJSON(left, right []byte) bool {
