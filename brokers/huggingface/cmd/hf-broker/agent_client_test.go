@@ -392,15 +392,6 @@ func TestMCPWaitDeadlineReturnsResumableOperation(t *testing.T) {
 	}
 }
 
-func mustJSON(t *testing.T, value any) json.RawMessage {
-	t.Helper()
-	data, err := json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
-}
-
 func agentClientTestEnv(serverURL string) func(string) string {
 	return func(name string) string {
 		if name == "HF_BROKER_URL" {

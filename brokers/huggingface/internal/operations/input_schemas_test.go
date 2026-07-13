@@ -25,15 +25,15 @@ func TestStructuralSchemaCoversJSONFieldShapes(t *testing.T) {
 		Enabled bool `json:"enabled"`
 	}
 	type example struct {
-		Name       string            `json:"name"`
-		Optional   *int              `json:"optional,omitempty"`
-		Items      []nested          `json:"items"`
-		Aliases    [2]string         `json:"aliases"`
-		Metadata   map[string]string `json:"metadata"`
-		Ratio      float64           `json:"ratio"`
-		Default    uint              `json:""`
-		Ignored    string            `json:"-"`
-		unexported string
+		Name     string            `json:"name"`
+		Optional *int              `json:"optional,omitempty"`
+		Items    []nested          `json:"items"`
+		Aliases  [2]string         `json:"aliases"`
+		Metadata map[string]string `json:"metadata"`
+		Ratio    float64           `json:"ratio"`
+		Default  uint              `json:""`
+		Ignored  string            `json:"-"`
+		_        string
 	}
 
 	schema := structuralSchema(example{})

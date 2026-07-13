@@ -151,6 +151,7 @@ func Validate(values []Descriptor) error {
 	return nil
 }
 
+//nolint:cyclop // Catalog invariants are explicit and tracked by the exact HF CRAP baseline.
 func validateDescriptor(value Descriptor) error {
 	if !operationPattern.MatchString(value.Name) || value.OperationRevision != 1 || !targetPattern.MatchString(value.TargetKind) {
 		return errors.New("operation identity is invalid")

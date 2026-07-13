@@ -65,7 +65,7 @@ type spacePreconditions struct {
 
 func NewSpaceAdapters(client spaceClient) ([]Adapter, error) {
 	if client == nil {
-		return nil, errors.New("Hugging Face Space client is required")
+		return nil, errors.New("hugging face space client is required")
 	}
 	names := []string{"space.dev_mode.disable", "space.dev_mode.enable", "space.hardware.update", "space.pause", "space.restart", "space.sleep_time.update", "space.variable.delete", "space.variable.set"}
 	adapters := make([]Adapter, 0, len(names))
@@ -84,7 +84,7 @@ func (a *spaceAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 func (a *spaceAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
 	var target spaceTarget
 	if err := decodeClosed(targetRaw, &target, maxTargetBytes); err != nil || target.Kind != "space" || !hubclient.ValidNamespaceSegment(target.Owner) || !hubclient.ValidNamespaceSegment(target.Name) {
-		return Input{}, errors.New("Space target is invalid")
+		return Input{}, errors.New("space target is invalid")
 	}
 	canonicalTarget, _ := canonical(target)
 	arguments, err := a.decodeArguments(argumentsRaw)
@@ -95,46 +95,47 @@ func (a *spaceAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, e
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
+//nolint:cyclop // Space operation dispatch is explicit and tracked by the exact HF CRAP baseline.
 func (a *spaceAdapter) decodeArguments(raw json.RawMessage) (any, error) {
 	switch a.descriptor.Name {
 	case "space.restart":
 		var value restartArguments
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil {
-			return nil, errors.New("Space restart arguments are invalid")
+			return nil, errors.New("space restart arguments are invalid")
 		}
 		return value, nil
 	case "space.hardware.update":
 		var value hardwareArguments
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidHardwareFlavor(value.Flavor) || value.SleepTimeSeconds != nil && *value.SleepTimeSeconds < -1 {
-			return nil, errors.New("Space hardware arguments are invalid")
+			return nil, errors.New("space hardware arguments are invalid")
 		}
 		return value, nil
 	case "space.sleep_time.update":
 		var value sleepTimeArguments
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || value.Seconds < -1 {
-			return nil, errors.New("Space sleep-time arguments are invalid")
+			return nil, errors.New("space sleep-time arguments are invalid")
 		}
 		return value, nil
 	case "space.variable.set":
 		var value variableSetArguments
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidVariableKey(value.Key) || len(value.Value) > 16*1024 || len(value.Description) > 1000 {
-			return nil, errors.New("Space variable arguments are invalid")
+			return nil, errors.New("space variable arguments are invalid")
 		}
 		return value, nil
 	case "space.variable.delete":
 		var value variableDeleteArguments
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidVariableKey(value.Key) {
-			return nil, errors.New("Space variable arguments are invalid")
+			return nil, errors.New("space variable arguments are invalid")
 		}
 		return value, nil
 	case "space.pause", "space.dev_mode.enable", "space.dev_mode.disable":
 		var value emptyArguments
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil {
-			return nil, errors.New("Space operation arguments must be empty")
+			return nil, errors.New("space operation arguments must be empty")
 		}
 		return value, nil
 	default:
-		return nil, errors.New("Space operation is not implemented")
+		return nil, errors.New("space operation is not implemented")
 	}
 }
 
@@ -161,6 +162,7 @@ func (a *spaceAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentReconstructed(plan, reconstructPlan(plan.Target, plan.Arguments, decodeSpaceTarget, a.presentationAndPolicy))
 }
 
+//nolint:cyclop // Space execution dispatch is explicit and tracked by the exact HF CRAP baseline.
 func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	target, expected, err := a.decodePlan(plan)
 	if err != nil {
@@ -206,6 +208,7 @@ func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) 
 	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
+//nolint:cyclop // Space reconciliation is explicit and tracked by the exact HF CRAP baseline.
 func (a *spaceAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
 	target, _, err := a.decodePlan(plan)
 	if err != nil {
@@ -304,7 +307,7 @@ func (a *spaceAdapter) presentationAndPolicy(target spaceTarget, raw json.RawMes
 func decodeSpaceTarget(raw json.RawMessage) (spaceTarget, error) {
 	var target spaceTarget
 	if err := decodeClosed(raw, &target, maxTargetBytes); err != nil || target.Kind != "space" || !hubclient.ValidNamespaceSegment(target.Owner) || !hubclient.ValidNamespaceSegment(target.Name) {
-		return spaceTarget{}, errors.New("Space target is invalid")
+		return spaceTarget{}, errors.New("space target is invalid")
 	}
 	return target, nil
 }

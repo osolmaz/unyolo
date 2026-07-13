@@ -44,7 +44,7 @@ type repositorySettingsPreconditions struct {
 
 func NewRepositorySettingsAdapters(client repositorySettingsClient) ([]Adapter, error) {
 	if client == nil {
-		return nil, errors.New("Hugging Face repository settings client is required")
+		return nil, errors.New("hugging face repository settings client is required")
 	}
 	names := []string{"repo.gating.update", "repo.move", "repo.visibility.update"}
 	adapters := make([]Adapter, 0, len(names))
@@ -60,6 +60,7 @@ func NewRepositorySettingsAdapters(client repositorySettingsClient) ([]Adapter, 
 
 func (a *repositorySettingsAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
+//nolint:cyclop // Settings-operation decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *repositorySettingsAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
 	var target repositoryTarget
 	if err := decodeClosed(targetRaw, &target, maxTargetBytes); err != nil || !validRepositoryTarget(target) || target.Type == "kernel" {
@@ -168,6 +169,7 @@ func (a *repositorySettingsAdapter) Execute(ctx context.Context, plan Plan) (Out
 	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
+//nolint:cyclop // Settings reconciliation is explicit and tracked by the exact HF CRAP baseline.
 func (a *repositorySettingsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
 	target, _, err := a.decodePlan(plan)
 	if err != nil {

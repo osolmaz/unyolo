@@ -39,6 +39,7 @@ type uvVolume struct {
 	Path      string `json:"path,omitempty"`
 }
 
+//nolint:cyclop // Fixed transform dispatch is explicit and tracked by the exact HF CRAP baseline.
 func transformBoundBody(transform string, raw json.RawMessage) (any, error) {
 	var arguments uvJobArguments
 	if err := strictjson.Decode(raw, &arguments, true); err != nil || arguments.Script == "" {
@@ -76,6 +77,7 @@ func transformBoundBody(transform string, raw json.RawMessage) (any, error) {
 	}
 }
 
+//nolint:cyclop // Optional SDK fields are explicit and tracked by the exact HF CRAP baseline.
 func uvJobSpec(arguments uvJobArguments) map[string]any {
 	command := []string{"uv", "run"}
 	for _, dependency := range arguments.Dependencies {

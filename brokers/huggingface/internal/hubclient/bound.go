@@ -116,6 +116,7 @@ func scalarPathValue(value any) (string, bool) {
 	}
 }
 
+//nolint:cyclop // Binding projections are explicit and tracked by the exact HF CRAP baseline.
 func boundBody(binding opbinding.Binding, targetRaw, raw json.RawMessage) (any, error) {
 	if binding.Transform != "" {
 		return transformBoundBody(binding.Transform, raw)

@@ -196,6 +196,7 @@ func load() ([]Binding, error) {
 	return values, nil
 }
 
+//nolint:cyclop // OpenAPI binding invariants are explicit and tracked by the exact HF CRAP baseline.
 func bindingFromSource(paths map[string]map[string]json.RawMessage, components map[string]any, source routeSource) (Binding, error) {
 	if source.Operation == "" || !validMethod(source.Method) || !strings.HasPrefix(source.Path, "/") {
 		return Binding{}, errors.New("operation, method, or path is invalid")
@@ -272,6 +273,7 @@ func schemaForParameters(parameters []parameter, location string, fixed map[stri
 	return schema
 }
 
+//nolint:cyclop // Projection rules are explicit and tracked by the exact HF CRAP baseline.
 func schemaForArguments(operation operationDocument, fixed map[string]any, projection string) (map[string]any, error) {
 	schema := map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}
 	if operation.RequestBody != nil {

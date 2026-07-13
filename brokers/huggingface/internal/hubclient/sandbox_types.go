@@ -54,6 +54,7 @@ type SandboxVolume struct {
 	Path      string `json:"path,omitempty"`
 }
 
+//nolint:cyclop // Volume constraints are explicit and tracked by the exact HF CRAP baseline.
 func (v SandboxVolume) validate() error {
 	parts := strings.Split(v.Source, "/")
 	if (v.Type != "bucket" && v.Type != "model" && v.Type != "dataset" && v.Type != "space") ||

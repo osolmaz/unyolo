@@ -53,7 +53,7 @@ type repoPreconditions struct {
 
 func NewRepositoryAdapters(hub repositoryClient, endpoint string) ([]Adapter, error) {
 	if hub == nil {
-		return nil, errors.New("Hugging Face Hub client is required")
+		return nil, errors.New("hugging face hub client is required")
 	}
 	adapters := make([]Adapter, 0, 2)
 	for _, name := range []string{"repo.create", "repo.delete"} {
@@ -207,6 +207,7 @@ func (a *repositoryAdapter) resolvePreconditions(ctx context.Context, target rep
 	return repoPreconditions{ObservedDigest: digest(body)}, nil
 }
 
+//nolint:cyclop // Repository preconditions are explicit and tracked by the exact HF CRAP baseline.
 func (a *repositoryAdapter) checkPreconditions(ctx context.Context, target repositoryTarget, expected repoPreconditions) error {
 	body, err := a.readRepository(ctx, target)
 	var upstream *hubclient.Error
@@ -268,7 +269,7 @@ func validRepositoryTarget(target repositoryTarget) bool {
 }
 
 func validRepoCreateArguments(target repositoryTarget, arguments repoCreateArguments) bool {
-	if arguments.Visibility != "public" && arguments.Visibility != "private" && !(target.Type == "space" && arguments.Visibility == "protected") {
+	if arguments.Visibility != "public" && arguments.Visibility != "private" && (target.Type != "space" || arguments.Visibility != "protected") {
 		return false
 	}
 	if target.Type == "space" {

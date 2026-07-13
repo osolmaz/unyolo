@@ -32,7 +32,7 @@ type credentialOutputAdapter struct {
 
 func NewCredentialOutputAdapters(client credentialOutputClient, payloads sealedPayloadStore, slots credentialSlotStore) ([]Adapter, error) {
 	if client == nil || payloads == nil || slots == nil {
-		return nil, errors.New("Hugging Face credential output dependencies are required")
+		return nil, errors.New("hugging face credential output dependencies are required")
 	}
 	var adapters []Adapter
 	for _, descriptor := range opcatalog.MustAll() {
@@ -164,6 +164,7 @@ func withoutCredentialSlot(raw json.RawMessage) json.RawMessage {
 	return encoded
 }
 
+//nolint:cyclop // Credential extraction is explicit and tracked by the exact HF CRAP baseline.
 func extractCredentialOutput(operation string, raw json.RawMessage) ([]byte, map[string]any, error) {
 	if operation == "provisioning.resource.credentials.rotate" {
 		var response struct {

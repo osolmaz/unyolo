@@ -63,6 +63,8 @@ func ValidNamespaceSegment(value string) bool { return namespaceSegmentPattern.M
 // ValidGitRefComponent reports whether value is a safe single git ref name
 // (branch or tag). It follows git check-ref-format restrictions for one
 // component; slashes are allowed and are always path-escaped on the wire.
+//
+//nolint:cyclop // Git ref constraints are explicit and tracked by the exact HF CRAP baseline.
 func ValidGitRefComponent(value string) bool {
 	if value == "" || len(value) > 200 || strings.HasPrefix(value, "-") ||
 		strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") ||
@@ -305,7 +307,7 @@ func (w refsWire) toRefs() Refs {
 func refsFromWire(values []gitRefWire) []GitRef {
 	out := make([]GitRef, 0, len(values))
 	for _, value := range values {
-		out = append(out, GitRef{Name: value.Name, Ref: value.Ref, TargetCommit: value.TargetCommit})
+		out = append(out, GitRef(value))
 	}
 	return out
 }

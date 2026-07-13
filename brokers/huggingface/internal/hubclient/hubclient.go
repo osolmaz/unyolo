@@ -150,6 +150,7 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 	return decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode)
 }
 
+//nolint:cyclop // Request constraints are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) newRequest(ctx context.Context, spec callSpec) (*http.Request, error) {
 	var reader io.Reader
 	if spec.body != nil && len(spec.rawBody) > 0 {

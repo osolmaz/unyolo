@@ -21,7 +21,6 @@ internal/credentialstore/store.go	credentialstore:loadOrCreateKey	crap	12.1
 internal/hfplan/plan.go	hfplan:planMatchesGrant	crap	10.0
 internal/hfplan/plan.go	hfplan:rawSecretKey	crap	12.9
 internal/hfplan/plan.go	hfplan:validate	crap	24.2
-internal/httpapi/agent_operations.go	httpapi:Server.cancelAgentOperation	crap	8.1
 internal/httpapi/agent_operations.go	httpapi:Server.cleanupOperationPlan	crap	8.1
 internal/httpapi/agent_operations.go	httpapi:Server.executeOperation	crap	15.3
 internal/httpapi/agent_operations.go	httpapi:Server.failOperationExecution	crap	10.9

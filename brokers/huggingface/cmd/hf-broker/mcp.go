@@ -269,6 +269,7 @@ func waitForMCPGrant(ctx context.Context, client *hfGrantClient, id string, time
 	return grant, err
 }
 
+//nolint:cyclop // Dispatch validation is explicit and tracked by the exact HF CRAP baseline.
 func callMCPOperation(ctx context.Context, client *agentClient, name string, raw json.RawMessage) (agentv1.Operation, error) {
 	var input struct {
 		OperationID string `json:"operation_id"`

@@ -165,6 +165,7 @@ func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string)
 	return options, nil
 }
 
+//nolint:cyclop // Input-source validation is explicit and tracked by the exact HF CRAP baseline.
 func readJSONOption(inline, path string, required bool) (json.RawMessage, error) {
 	if inline != "" && path != "" {
 		return nil, errors.New("inline JSON and JSON file are mutually exclusive")
@@ -195,6 +196,7 @@ func readJSONOption(inline, path string, required bool) (json.RawMessage, error)
 	return json.RawMessage(data), nil
 }
 
+//nolint:cyclop // Descriptor-specific validation is explicit and tracked by the exact HF CRAP baseline.
 func validateOperationClientOptions(descriptor opcatalog.Descriptor, options operationClientOptions) error {
 	if strings.TrimSpace(options.reason) == "" || len(options.reason) > 2000 || options.waitTimeout <= 0 {
 		return errors.New("reason must contain at most 2000 characters and wait timeout must be positive")
@@ -441,6 +443,7 @@ func descriptorByMCPTool(name string) (opcatalog.Descriptor, bool) {
 	return opcatalog.Descriptor{}, false
 }
 
+//nolint:cyclop // Catalog dispatch is explicit and tracked by the exact HF CRAP baseline.
 func callMCPCatalogOperation(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, raw json.RawMessage) (any, error) {
 	var input mcpCatalogOperationInput
 	if err := decodeMCPArguments(raw, &input); err != nil {

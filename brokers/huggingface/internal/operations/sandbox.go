@@ -142,7 +142,7 @@ var sandboxOperations = []string{
 
 func NewSandboxAdapters(client sandboxClient, store sealedPayloadStore) ([]Adapter, error) {
 	if client == nil || store == nil {
-		return nil, errors.New("Hugging Face sandbox operation dependencies are required")
+		return nil, errors.New("hugging face sandbox operation dependencies are required")
 	}
 	adapters := make([]Adapter, 0, len(sandboxOperations))
 	for _, name := range sandboxOperations {
@@ -187,6 +187,7 @@ func (a *sandboxAdapter) ValidateClient(input Input, client string) error {
 	return err
 }
 
+//nolint:cyclop // Resource-kind decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) decodeTarget(raw json.RawMessage) (sandboxTarget, error) {
 	var target sandboxTarget
 	if err := decodeClosed(raw, &target, maxTargetBytes); err != nil || !hubclient.ValidNamespaceSegment(target.Namespace) {
@@ -211,6 +212,7 @@ func (a *sandboxAdapter) decodeTarget(raw json.RawMessage) (sandboxTarget, error
 	return target, nil
 }
 
+//nolint:cyclop // Sandbox operation dispatch is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) decodeArguments(target sandboxTarget, raw json.RawMessage) (any, error) {
 	switch a.descriptor.Name {
 	case "sandbox.create":
@@ -287,6 +289,7 @@ func (a *sandboxAdapter) decodeSealedPublic(raw json.RawMessage, decode func(jso
 	return arguments, err
 }
 
+//nolint:cyclop // Sandbox creation bounds are explicit and tracked by the exact HF CRAP baseline.
 func validateSandboxCreatePublic(target sandboxTarget, value sandboxCreatePublic) error {
 	if value.IdleTimeoutSeconds != nil && (*value.IdleTimeoutSeconds < 30 || *value.IdleTimeoutSeconds > hubclient.SandboxMaxLifetimeSecs) ||
 		len(value.Environment) > 128 || len(value.Volumes) > 32 {
@@ -314,6 +317,7 @@ func validateSandboxCreatePublic(target sandboxTarget, value sandboxCreatePublic
 	return nil
 }
 
+//nolint:cyclop // Pool creation bounds are explicit and tracked by the exact HF CRAP baseline.
 func validateSandboxPoolCreatePublic(value sandboxPoolCreatePublic) error {
 	if !hubclient.ValidSandboxImage(value.Image) || !hubclient.ValidJobHardware(value.Flavor) || value.SandboxesPerHost < 1 || value.SandboxesPerHost > 500 ||
 		value.WarmUp < 1 || value.MaxHosts < value.WarmUp || value.MaxHosts > 32 ||
@@ -323,6 +327,7 @@ func validateSandboxPoolCreatePublic(value sandboxPoolCreatePublic) error {
 	return nil
 }
 
+//nolint:cyclop // Command argument bounds are explicit and tracked by the exact HF CRAP baseline.
 func validateSandboxCommandArguments(value sandboxCommandArguments) error {
 	command := value.command()
 	if (len(value.Argv) == 0) == (value.ShellCommand == "") || command.MaxOutputBytes < 1 || command.MaxOutputBytes > hubclient.SandboxMaxCommandOutput ||
@@ -360,13 +365,15 @@ func validSandboxOperationPath(value string) bool {
 	return value != "" && len(value) <= 4096 && !strings.ContainsRune(value, 0)
 }
 
+//nolint:cyclop // Environment syntax checks are explicit and tracked by the exact HF CRAP baseline.
 func validEnvironmentEntry(key, value string) bool {
 	if key == "" || len(key) > 128 || strings.HasPrefix(key, "SBX_") || len(value) > 64*1024 || strings.ContainsRune(value, 0) {
 		return false
 	}
 	for index, character := range key {
-		if index == 0 && character >= '0' && character <= '9' ||
-			!(character == '_' || character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z' || index > 0 && character >= '0' && character <= '9') {
+		letter := character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z'
+		digit := character >= '0' && character <= '9'
+		if index == 0 && digit || character != '_' && !letter && !digit {
 			return false
 		}
 	}
@@ -412,6 +419,7 @@ func newOperationMarker() (string, error) {
 	return hex.EncodeToString(value), nil
 }
 
+//nolint:cyclop // Operation presentation dispatch is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) presentationAndPolicy(target sandboxTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
 	name := target.Name
 	if name == "" {

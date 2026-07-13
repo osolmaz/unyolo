@@ -69,12 +69,13 @@ func Open(stateDir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, errors.New("create sealed payload directory")
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- directories require execute permission and remain owner-only.
 		return nil, errors.New("secure sealed payload directory")
 	}
 	return &Store{dir: dir, aead: aead}, nil
 }
 
+//nolint:cyclop // Encryption and collision checks are explicit and tracked by the exact HF CRAP baseline.
 func (s *Store) Put(owner, purpose string, plaintext []byte, expiresAt time.Time) (Reference, error) {
 	if s == nil || s.aead == nil || len(plaintext) == 0 || len(plaintext) > maxSecretBytes || !ownerPattern.MatchString(owner) ||
 		!purposePattern.MatchString(purpose) || expiresAt.Before(time.Now()) || expiresAt.After(time.Now().Add(24*time.Hour)) {
@@ -96,7 +97,7 @@ func (s *Store) Put(owner, purpose string, plaintext []byte, expiresAt time.Time
 		encoded := append([]byte{formatVersion}, nonce...)
 		encoded = append(encoded, ciphertext...)
 		path := s.path(reference)
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- random filename under the fixed store directory.
 		if os.IsExist(err) {
 			continue
 		}
@@ -182,6 +183,7 @@ func (s *Store) read(reference Reference, path string) ([]byte, error) {
 
 func (s *Store) path(reference string) string { return filepath.Join(s.dir, reference+".bin") }
 
+//nolint:cyclop // Key integrity checks are explicit and tracked by the exact HF CRAP baseline.
 func loadOrCreateKey(path string) ([]byte, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- installation-owned fixed path.
 	if err == nil {
@@ -202,7 +204,7 @@ func loadOrCreateKey(path string) ([]byte, error) {
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, errors.New("generate sealed payload key")
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- fixed installation-owned key path.
 	if err != nil {
 		return nil, errors.New("create sealed payload key")
 	}

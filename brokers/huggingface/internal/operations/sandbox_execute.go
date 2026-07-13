@@ -9,6 +9,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 )
 
+//nolint:cyclop // Creation outcomes are explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) executeSandboxCreate(ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
 	if target.Pool == "" {
 		existing, err := a.client.ListSandboxesByOperation(ctx, target.Namespace, expected.OperationID)
@@ -120,6 +121,7 @@ func (a *sandboxAdapter) executeSandboxPoolDelete(ctx context.Context, target sa
 	return Outcome{Proven: true, Result: result}, nil
 }
 
+//nolint:cyclop // Action outcomes are explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) executeSandboxAction(ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
 	ref := target.ref()
 	switch a.descriptor.Name {
@@ -173,6 +175,7 @@ func (a *sandboxAdapter) executeSandboxAction(ctx context.Context, target sandbo
 	}
 }
 
+//nolint:cyclop // Secret materialization is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) materializeSandboxCreate(raw json.RawMessage, consume bool) (sandboxCreatePublic, sandboxCreateSecret, error) {
 	arguments, err := decodeSealedArguments(raw)
 	if err != nil {

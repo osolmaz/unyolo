@@ -12,6 +12,7 @@ import (
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
+//nolint:cyclop // Resource resolution is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
 	target, err := a.decodeTarget(input.Target)
 	if err != nil {
@@ -159,6 +160,7 @@ func (a *sandboxAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error
 	}
 }
 
+//nolint:cyclop // Resource reconciliation is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
 	target, preconditions, err := a.decodeSandboxPlan(plan)
 	if err != nil {
@@ -223,6 +225,7 @@ func (a *sandboxAdapter) Cleanup(plan Plan) error {
 	return a.store.Delete(*arguments.SealedPayload)
 }
 
+//nolint:cyclop // Resource-kind resolution is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) resolveSandboxResource(ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
 	switch a.descriptor.Name {
 	case "sandbox.file.write":
@@ -301,6 +304,7 @@ func (a *sandboxAdapter) checkSandboxState(ctx context.Context, target sandboxTa
 	return a.checkSandboxResource(ctx, target, raw, expected)
 }
 
+//nolint:cyclop // Resource preconditions are explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) checkSandboxResource(ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) error {
 	var path string
 	switch a.descriptor.Name {

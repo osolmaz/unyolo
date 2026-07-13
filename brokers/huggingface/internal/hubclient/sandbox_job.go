@@ -221,6 +221,7 @@ func (c *Client) inspectSandboxJob(ctx context.Context, namespace, jobID string)
 	return job, nil
 }
 
+//nolint:cyclop // Sandbox job bounds are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) sandboxJobBody(image, flavor string, idle *int, environment, secrets map[string]string, volumes []SandboxVolume, labels map[string]string, capacity, maxHosts int) (sandboxJobBody, error) {
 	if !validSandboxImage(image) || !jobHardware[flavor] || validateSandboxEnvironment(environment, false) != nil ||
 		validateSandboxEnvironment(secrets, true) != nil || len(volumes) > 32 {
@@ -323,6 +324,7 @@ func validateSandboxEnvironment(values map[string]string, secret bool) error {
 	return nil
 }
 
+//nolint:cyclop // Provider-state decoding is explicit and tracked by the exact HF CRAP baseline.
 func sandboxStateFromJob(job sandboxJobWire, namespace, localID string) (SandboxState, error) {
 	mode := job.Labels[sandboxModeLabel]
 	ref := SandboxRef{Namespace: namespace, JobID: job.ID, LocalID: localID}

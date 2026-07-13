@@ -26,6 +26,7 @@ func (c *Client) BucketInfo(ctx context.Context, ref BucketRef) (BucketInfo, err
 	return info, nil
 }
 
+//nolint:cyclop // Batch result checks are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) ApplyBucketBatch(ctx context.Context, ref BucketRef, operations []BucketBatchOperation) error {
 	if err := ref.Validate(); err != nil {
 		return err
@@ -85,6 +86,7 @@ func (c *Client) MoveBucket(ctx context.Context, from, to BucketRef) error {
 	return c.call(ctx, callSpec{method: http.MethodPost, path: "/api/repos/move", body: body})
 }
 
+//nolint:cyclop // Operation-kind validation is explicit and tracked by the exact HF CRAP baseline.
 func validateBucketBatchOperation(operation BucketBatchOperation) error {
 	if !validObjectPath(operation.Path) {
 		return errors.New("hubclient: bucket object path is invalid")
@@ -111,6 +113,7 @@ func validateBucketBatchOperation(operation BucketBatchOperation) error {
 	return nil
 }
 
+//nolint:cyclop // Path constraints are explicit and tracked by the exact HF CRAP baseline.
 func validObjectPath(value string) bool {
 	if value == "" || len(value) > 1024 || strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") || strings.Contains(value, "\\") || strings.ContainsRune(value, 0) {
 		return false

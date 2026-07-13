@@ -104,6 +104,7 @@ func (s *Store) Put(slot, kind string, plaintext []byte) (Metadata, error) {
 	return metadata, nil
 }
 
+//nolint:cyclop // Credential integrity checks are explicit and tracked by the exact HF CRAP baseline.
 func (s *Store) Get(slot, kind string) ([]byte, Metadata, error) {
 	if s == nil || s.aead == nil || !slotPattern.MatchString(slot) || !kindPattern.MatchString(kind) {
 		return nil, Metadata{}, errors.New("credential slot is invalid")
@@ -160,7 +161,7 @@ func loadOrCreateKey(path string) ([]byte, error) {
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, errors.New("generate credential slot key")
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, credentialFileMode)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, credentialFileMode) // #nosec G304 -- fixed installation-owned key path.
 	if err != nil {
 		return nil, errors.New("create credential slot key")
 	}

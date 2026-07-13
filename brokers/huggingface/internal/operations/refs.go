@@ -63,6 +63,7 @@ func newRefsAdapter(client refsClient) func(opcatalog.Descriptor) Adapter {
 
 func (a *refsAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
+//nolint:cyclop // Ref-operation decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *refsAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
 	var target refTarget
 	if err := decodeClosed(targetRaw, &target, maxTargetBytes); err != nil || !validRefTarget(target) {

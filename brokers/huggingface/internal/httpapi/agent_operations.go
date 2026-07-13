@@ -43,16 +43,21 @@ func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (age
 	if operation.ApprovalID != "" {
 		grant, grantErr := s.grants.Get(operation.ApprovalID)
 		if grantErr == nil {
-			switch grant.Status {
-			case grants.StatusPending:
-				_, _ = s.grants.CancelForClient(grant.ID, client)
-			case grants.StatusActive:
-				_, _ = s.grants.RevokeForClient(grant.ID, client)
-			}
+			s.cancelGrantForClient(grant, client)
 		}
 	}
 	operation = s.failOperation(operation.ID, agentv1.StateCanceled, "operation_canceled", "Request was canceled")
 	return operation, nil
+}
+
+func (s *Server) cancelGrantForClient(grant grants.Grant, client string) {
+	switch grant.Status {
+	case grants.StatusPending:
+		_, _ = s.grants.CancelForClient(grant.ID, client)
+	case grants.StatusActive:
+		_, _ = s.grants.RevokeForClient(grant.ID, client)
+	default:
+	}
 }
 
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
@@ -428,6 +433,7 @@ func (s *Server) reconcileInterruptedOperation(ctx context.Context, operation ag
 	s.failOperation(operation.ID, agentv1.StateFailed, "upstream_result_unknown", "Operation result could not be proven after restart")
 }
 
+//nolint:cyclop // Plan binding checks are explicit and tracked by the exact HF CRAP baseline.
 func (s *Server) loadOperationPlan(operation agentv1.Operation) (operations.Adapter, operations.Plan, error) {
 	adapter, found := s.operationRegistry.Lookup(operation.Operation)
 	if !found || operation.PlanDigest == "" {

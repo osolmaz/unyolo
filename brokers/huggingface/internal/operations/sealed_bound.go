@@ -56,7 +56,7 @@ func SealedInputPaths(operation string) []string {
 
 func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Adapter, error) {
 	if client == nil || store == nil {
-		return nil, errors.New("Hugging Face sealed operation dependencies are required")
+		return nil, errors.New("hugging face sealed operation dependencies are required")
 	}
 	bindings, err := opbinding.All()
 	if err != nil {
@@ -78,6 +78,7 @@ func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Ada
 
 func (a *sealedBoundAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
+//nolint:cyclop // Sealed binding checks are explicit and tracked by the exact HF CRAP baseline.
 func (a *sealedBoundAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
 	if len(targetRaw) > maxTargetBytes || len(argumentsRaw) > maxArgumentsBytes || a.binding.ValidateTarget(targetRaw) != nil {
 		return Input{}, errors.New("operation target does not match its closed schema")

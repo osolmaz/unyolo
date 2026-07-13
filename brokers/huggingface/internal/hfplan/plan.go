@@ -296,6 +296,7 @@ func canonicalize(plan Plan) (Plan, error) {
 	return plan, nil
 }
 
+//nolint:cyclop // Plan invariants are explicit and tracked by the exact HF CRAP baseline.
 func validate(plan Plan) error {
 	if plan.APIVersion != SchemaV1 || plan.OperationRevision != 1 || !hfpolicy.IsOperation(plan.Operation) ||
 		strings.TrimSpace(plan.ClientID) == "" || strings.TrimSpace(plan.ClientRequestID) == "" ||
@@ -364,6 +365,7 @@ func hasRawSecret(value any) bool {
 	return false
 }
 
+//nolint:cyclop // The closed secret-key vocabulary is tracked by the exact HF CRAP baseline.
 func rawSecretKey(key string) bool {
 	normalized := strings.ToLower(strings.NewReplacer("-", "_", ".", "_").Replace(key))
 	if strings.HasSuffix(normalized, "_id") || strings.HasSuffix(normalized, "_ref") || strings.HasSuffix(normalized, "_digest") || strings.HasSuffix(normalized, "_name") {

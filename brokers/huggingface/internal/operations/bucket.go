@@ -73,6 +73,7 @@ func (a *bucketAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, 
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
+//nolint:cyclop // Operation-kind decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *bucketAdapter) decodeArguments(raw json.RawMessage) (any, error) {
 	switch a.descriptor.Name {
 	case "bucket.batch.apply", "bucket.sync.apply":

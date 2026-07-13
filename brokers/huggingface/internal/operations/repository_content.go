@@ -104,7 +104,7 @@ type contentSourceCondition struct {
 
 func NewRepositoryContentAdapters(client repositoryContentClient) ([]Adapter, error) {
 	if client == nil {
-		return nil, errors.New("Hugging Face repository content client is required")
+		return nil, errors.New("hugging face repository content client is required")
 	}
 	names := []string{"repo.commit.create", "repo.file.copy", "repo.file.delete", "repo.file.upload", "space.hot_reload.apply"}
 	adapters := make([]Adapter, 0, len(names))
@@ -134,6 +134,7 @@ func (a *repositoryContentAdapter) Decode(targetRaw, argumentsRaw json.RawMessag
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
+//nolint:cyclop // Content-operation decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *repositoryContentAdapter) decodeArguments(raw json.RawMessage) (any, error) {
 	switch a.descriptor.Name {
 	case "repo.commit.create", "space.hot_reload.apply":
@@ -411,16 +412,20 @@ func normalizeCommitOperations(values []normalizedCommitOperation) ([]normalized
 	if err != nil || hubclient.ValidateCommitOperations(operations) != nil {
 		return nil, errors.New("commit operations are invalid")
 	}
-	for index, operation := range operations {
-		values[index].Kind = string(operation.Kind)
+	normalized := values
+	for len(operations) > 0 && len(values) > 0 {
+		operation, value := operations[0], &values[0]
+		value.Kind = string(operation.Kind)
 		if operation.Kind == hubclient.CommitFile {
 			encoded := base64.StdEncoding.EncodeToString(operation.Content)
-			values[index].ContentBase64 = &encoded
+			value.ContentBase64 = &encoded
 		}
+		operations, values = operations[1:], values[1:]
 	}
-	return values, nil
+	return normalized, nil
 }
 
+//nolint:cyclop // Commit-kind conversion is explicit and tracked by the exact HF CRAP baseline.
 func toCommitOperations(values []normalizedCommitOperation) ([]hubclient.CommitOperation, error) {
 	operations := make([]hubclient.CommitOperation, 0, len(values))
 	for _, value := range values {

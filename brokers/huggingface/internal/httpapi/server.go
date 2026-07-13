@@ -283,6 +283,7 @@ func validUpstreamOrigin(upstream *url.URL) bool {
 	return upstream.Path == "" || upstream.Path == "/"
 }
 
+//nolint:cyclop // Dependency validation is explicit and tracked by the exact HF CRAP baseline.
 func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger audit.Recorder) (*Server, error) {
 	inferenceTimeout := opts.Config.HFTimeout
 	if inferenceTimeout <= 0 {

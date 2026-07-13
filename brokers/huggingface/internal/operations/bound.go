@@ -34,7 +34,7 @@ type boundPreconditions struct {
 
 func NewBoundAdapters(client boundClient) ([]Adapter, error) {
 	if client == nil {
-		return nil, errors.New("Hugging Face bound operation client is required")
+		return nil, errors.New("hugging face bound operation client is required")
 	}
 	bindings, err := opbinding.All()
 	if err != nil {

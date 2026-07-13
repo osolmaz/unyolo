@@ -963,6 +963,7 @@ func AttrConstraintsFromValues(attrs map[string]any) (map[string]AttrConstraint,
 	return out, nil
 }
 
+//nolint:cyclop // Attribute constraint combinations are explicit and tracked by the exact HF CRAP baseline.
 func validateAttrConstraint(key string, constraint AttrConstraint) error {
 	switch key {
 	case "max_bytes":

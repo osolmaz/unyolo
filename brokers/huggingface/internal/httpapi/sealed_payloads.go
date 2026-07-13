@@ -14,6 +14,7 @@ import (
 
 const maxSealedPayloadBytes = 1 << 20
 
+//nolint:cyclop // Sealed-payload boundary checks are explicit and tracked by the exact HF CRAP baseline.
 func (s *Server) uploadSealedPayload(c echo.Context) error {
 	request := c.Request()
 	client, ok := s.authenticateAPI(c.Response(), request)
@@ -33,7 +34,7 @@ func (s *Server) uploadSealedPayload(c echo.Context) error {
 	payload, err := io.ReadAll(io.LimitReader(request.Body, maxSealedPayloadBytes+1))
 	if err != nil || len(payload) == 0 || len(payload) > maxSealedPayloadBytes {
 		writeJSendFail(c.Response(), http.StatusBadRequest, "sealed_payload_invalid", "Sealed payload must be bounded binary content")
-		return nil
+		return nil //nolint:nilerr // The bounded failure response is already committed.
 	}
 	expires := time.Now().Add(time.Duration(descriptor.RequestTTLSeconds+descriptor.ApprovalTTLSeconds+300) * time.Second)
 	reference, err := s.sealedStore.Put(client, operation, payload, expires)
@@ -42,7 +43,7 @@ func (s *Server) uploadSealedPayload(c echo.Context) error {
 	}
 	if err != nil {
 		writeJSendFail(c.Response(), http.StatusInternalServerError, "sealed_payload_unavailable", "Could not seal operation payload")
-		return nil
+		return nil //nolint:nilerr // The redacted failure response is already committed.
 	}
 	c.Response().Header().Set("Content-Type", "application/json")
 	c.Response().WriteHeader(http.StatusCreated)
