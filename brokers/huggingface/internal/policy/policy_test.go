@@ -977,7 +977,7 @@ func TestRepoVisibilityAndOperationFamilies(t *testing.T) {
 			"targets": [{"kind": "repo", "type": "dataset", "owner": "acme", "name": "repo", "visibility": ["private"]}]
 		}]
 	}`)
-	req := repoReq("agent", OpGitPushForce, "dataset", "acme", "repo", "refs/heads/main")
+	req := repoReq("agent", OpGitPushAppend, "dataset", "acme", "repo", "refs/heads/main")
 	req.Target.Visibility = []string{"private"}
 	if got := pol.Decide(req, nil, time.Now(), false); got.Effect != EffectAllow {
 		t.Fatalf("private git force decision = %+v", got)
@@ -1070,13 +1070,13 @@ func TestGrantPolicyDefaultsAndGrantability(t *testing.T) {
 			}]
 		}`,
 	} {
-		if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), "not grantable") {
-			t.Fatalf("Parse() error = %v, want not grantable", err)
+		if _, err := Parse([]byte(body)); err != nil {
+			t.Fatalf("Parse() error = %v, want grantable window operations", err)
 		}
 	}
 }
 
-func TestGrantPolicyAllowsExplicitUnlimitedUseBudget(t *testing.T) {
+func TestProtocolWindowAllowsExplicitUnlimitedUseBudget(t *testing.T) {
 	t.Parallel()
 	pol := mustParse(t, `{"rules":[{
 		"id":"unlimited","effect":"request","clients":["bob"],

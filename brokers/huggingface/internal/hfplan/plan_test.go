@@ -70,18 +70,35 @@ func TestCanonicalPlanDigestFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = "b81f9373519474f5d95ecbebe58f04c86bc651c9b3c810c4e948f07c05107a36"
+	const expected = "2b1fd2788689c05d8306df7b6537251ccc281f0b2733421b6e3cdc0fa1444551"
 	if got := plandigest.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}
 }
 
+func TestFromRequestBoundsLongReasonPresentation(t *testing.T) {
+	reason := strings.Repeat("a", 499) + "é" + strings.Repeat("b", 1500)
+	request := grants.Request{
+		Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force",
+		Target:   policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
+		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: reason,
+		Duration: time.Minute, MaxUses: 1,
+	}
+	plan := FromRequest(request, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC))
+	if len(plan.Presentation.Summary) > 500 || !strings.HasSuffix(plan.Presentation.Summary, "a") {
+		t.Fatalf("summary was not bounded on a UTF-8 boundary: %q", plan.Presentation.Summary)
+	}
+	if _, err := Prepare(plan); err != nil {
+		t.Fatalf("Prepare() rejected a valid 2,000-character reason: %v", err)
+	}
+}
+
 func TestDecodeRejectsUnknownDuplicateAndSensitiveFields(t *testing.T) {
-	valid := `{"schema_version":"hf-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"hf","target":{"name":["dataset/acme/demo"]},"constraints":{"mode":"window","requested_duration_seconds":300,"requested_max_uses":1},"credential_selector":"primary","created_at":"2026-07-11T12:00:00Z"}`
+	valid := `{"api_version":"hf-broker.io/plan/v1","operation":"git.push.force","operation_revision":1,"client_id":"bob","client_request_id":"request-1","target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}},"arguments":{},"preconditions":{},"credential_selector":{"name":"primary"},"presentation":{"title":"Force push"},"authorization":{"mode":"execution","requested_duration_seconds":300,"requested_max_uses":1},"created_at":"2026-07-11T12:00:00Z","expires_at":"2026-07-11T12:05:00Z"}`
 	for _, value := range []string{
-		strings.Replace(valid, `"kind":`, `"unknown":true,"kind":`, 1),
-		strings.Replace(valid, `"kind":"capability_window"`, `"kind":"capability_window","kind":"single_execution"`, 1),
-		strings.Replace(valid, `"target":{"name":["dataset/acme/demo"]}`, `"target":{"name":["dataset/acme/demo"],"access_token":["canary"]}`, 1),
+		strings.Replace(valid, `"operation":`, `"unknown":true,"operation":`, 1),
+		strings.Replace(valid, `"operation":"git.push.force"`, `"operation":"git.push.force","operation":"repo.delete"`, 1),
+		strings.Replace(valid, `"arguments":{}`, `"arguments":{"access_token":"canary"}`, 1),
 		strings.Replace(valid, `"operation":"git.push.force"`, `"operation":"unknown.operation"`, 1),
 	} {
 		if _, err := decode([]byte(value)); err == nil {
@@ -94,8 +111,8 @@ func TestDecodeRejectsUnknownDuplicateAndSensitiveFields(t *testing.T) {
 }
 
 func FuzzDecodePlan(f *testing.F) {
-	f.Add([]byte(`{"schema_version":"hf-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"hf","target":{"name":["dataset/acme/demo"]},"constraints":{"mode":"window","requested_duration_seconds":300,"requested_max_uses":1},"credential_selector":"primary","created_at":"2026-07-11T12:00:00Z"}`))
-	f.Add([]byte(`{"schema_version":"unknown"}`))
+	f.Add([]byte(`{"api_version":"hf-broker.io/plan/v1","operation":"git.push.force","operation_revision":1,"client_id":"bob","client_request_id":"request-1","target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}},"arguments":{},"preconditions":{},"credential_selector":{"name":"primary"},"presentation":{"title":"Force push"},"authorization":{"mode":"execution","requested_duration_seconds":300,"requested_max_uses":1},"created_at":"2026-07-11T12:00:00Z","expires_at":"2026-07-11T12:05:00Z"}`))
+	f.Add([]byte(`{"api_version":"unknown"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		plan, err := decode(data)
 		if err != nil {
@@ -122,7 +139,7 @@ func TestStoreRejectsMissingAndCorruptPlans(t *testing.T) {
 	grant := grants.Grant{Client: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, Target: request.Target, Metadata: request.Metadata, Duration: request.Duration,
 		RequestedDuration: request.Duration, MaxUses: request.MaxUses, RequestedMaxUses: request.MaxUses}
 	digest := request.Metadata[MetadataDigest]
-	if _, err := plans.database.SQL().ExecContext(t.Context(), "UPDATE plans SET canonical = ? WHERE digest = ?", []byte(`{"schema_version":"hf-broker.io/plan/v1"}`), digest); err != nil {
+	if _, err := plans.database.SQL().ExecContext(t.Context(), "UPDATE plans SET canonical = ? WHERE digest = ?", []byte(`{"api_version":"hf-broker.io/plan/v1"}`), digest); err != nil {
 		t.Fatal(err)
 	}
 	if err := (Validator{Store: plans}).ValidateExecution(grant); err == nil {

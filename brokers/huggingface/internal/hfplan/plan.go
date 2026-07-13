@@ -2,14 +2,17 @@
 package hfplan
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
+	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/osolmaz/brokerkit/agentv1"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
@@ -22,27 +25,50 @@ const (
 	SchemaV1       = "hf-broker.io/plan/v1"
 	MetadataSchema = "hf_plan_schema"
 	MetadataDigest = "hf_plan_digest"
+
+	maxTargetBytes        = 16 * 1024
+	maxArgumentsBytes     = 1024 * 1024
+	maxPreconditionsBytes = 64 * 1024
 )
 
+// Plan binds every execution-relevant provider value approved by policy and
+// the operator. Mutable lifecycle state and notification metadata stay out of
+// the digest.
 type Plan struct {
-	SchemaVersion      string              `json:"schema_version"`
-	Kind               string              `json:"kind"`
-	ClientID           string              `json:"client_id"`
-	ClientRequestID    string              `json:"client_request_id"`
-	Operation          string              `json:"operation"`
-	TargetKind         string              `json:"target_kind"`
-	Target             map[string][]string `json:"target"`
-	Constraints        Constraints         `json:"constraints"`
-	CredentialSelector string              `json:"credential_selector"`
-	CreatedAt          time.Time           `json:"created_at"`
+	APIVersion         string               `json:"api_version"`
+	Operation          string               `json:"operation"`
+	OperationRevision  int                  `json:"operation_revision"`
+	ClientID           string               `json:"client_id"`
+	ClientRequestID    string               `json:"client_request_id"`
+	Target             json.RawMessage      `json:"target"`
+	Arguments          json.RawMessage      `json:"arguments"`
+	Preconditions      json.RawMessage      `json:"preconditions"`
+	CredentialSelector CredentialSelector   `json:"credential_selector"`
+	Presentation       agentv1.Presentation `json:"presentation"`
+	Authorization      Authorization        `json:"authorization"`
+	CreatedAt          time.Time            `json:"created_at"`
+	ExpiresAt          time.Time            `json:"expires_at"`
 }
 
-type Constraints struct {
-	Attributes                map[string][]string `json:"attributes,omitempty"`
+type CredentialSelector struct {
+	Name string `json:"name"`
+}
+
+type Authorization struct {
 	Mode                      string              `json:"mode"`
 	RequestedDurationSeconds  int64               `json:"requested_duration_seconds"`
 	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
 	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted,omitempty"`
+	Attributes                map[string][]string `json:"attributes,omitempty"`
+}
+
+type grantTarget struct {
+	Kind   string              `json:"kind"`
+	Fields map[string][]string `json:"fields"`
+}
+
+type grantArguments struct {
+	Attributes map[string][]string `json:"attributes,omitempty"`
 }
 
 type Store struct {
@@ -50,9 +76,7 @@ type Store struct {
 	now      func() time.Time
 }
 
-func NewStore(database *state.Database) (*Store, error) {
-	return newStore(database, time.Now)
-}
+func NewStore(database *state.Database) (*Store, error) { return newStore(database, time.Now) }
 
 func NewStoreWithClock(database *state.Database, now func() time.Time) (*Store, error) {
 	return newStore(database, now)
@@ -68,27 +92,55 @@ func newStore(database *state.Database, now func() time.Time) (*Store, error) {
 	return &Store{database: database, now: now}, nil
 }
 
+// FromRequest creates the immutable plan for a bounded protocol grant.
 func FromRequest(request grants.Request, createdAt time.Time) Plan {
-	kind := "capability_window"
-	if request.Metadata["hf_grant_mode"] == "execution" {
-		kind = "single_execution"
+	target, _ := json.Marshal(grantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)})
+	arguments, _ := json.Marshal(grantArguments{Attributes: cloneValues(request.Attrs)})
+	expiresAt := createdAt.Add(request.PendingTimeout + request.Duration)
+	if !expiresAt.After(createdAt) {
+		expiresAt = createdAt.Add(request.Duration)
 	}
-	return Plan{SchemaVersion: SchemaV1, Kind: kind, ClientID: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, TargetKind: request.Target.Kind,
-		Target: cloneValues(request.Target.Fields), CredentialSelector: "primary", CreatedAt: createdAt.UTC(),
-		Constraints: Constraints{Attributes: cloneValues(request.Attrs), Mode: request.Metadata["hf_grant_mode"],
-			RequestedDurationSeconds: int64(request.Duration.Seconds()), RequestedMaxUses: request.MaxUses,
-			RequestedMaxUsesDefaulted: request.MaxUsesDefaulted}}
+	return Plan{
+		APIVersion: SchemaV1, Operation: request.Operation, OperationRevision: 1,
+		ClientID: request.Client, ClientRequestID: request.ClientRequestID,
+		Target: target, Arguments: arguments, Preconditions: json.RawMessage(`{}`),
+		CredentialSelector: CredentialSelector{Name: "primary"},
+		Presentation:       agentv1.Presentation{Title: request.Operation, Summary: truncateUTF8(request.Reason, 500)},
+		Authorization: Authorization{Mode: request.Metadata["hf_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
+			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted, Attributes: cloneValues(request.Attrs)},
+		CreatedAt: createdAt.UTC(), ExpiresAt: expiresAt.UTC(),
+	}
+}
+
+func truncateUTF8(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	value = value[:limit]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
+}
+
+// Prepare canonicalizes and validates a plan without persisting it.
+func Prepare(plan Plan) (grants.ImmutablePlan, error) {
+	encoded, err := encode(plan)
+	if err != nil {
+		return grants.ImmutablePlan{}, err
+	}
+	return grants.ImmutablePlan{Digest: plandigest.Digest(encoded), SchemaName: SchemaV1, Canonical: encoded, CreatedAt: plan.CreatedAt.UTC()}, nil
 }
 
 func (s *Store) Put(plan Plan) (string, error) {
 	if s == nil || s.database == nil {
 		return "", errors.New("HF plan store is unavailable")
 	}
-	encoded, err := encode(plan)
+	prepared, err := Prepare(plan)
 	if err != nil {
 		return "", err
 	}
-	return s.database.PutPlan(context.Background(), SchemaV1, encoded, plan.CreatedAt)
+	return s.database.PutPlan(context.Background(), prepared.SchemaName, prepared.Canonical, prepared.CreatedAt)
 }
 
 func (s *Store) Get(value string) (Plan, error) {
@@ -124,16 +176,14 @@ func (s *Store) Bind(request *grants.Request) error {
 }
 
 func (s *Store) BindAt(request *grants.Request, createdAt time.Time) error {
-	envelope, err := s.PrepareBindAt(request, createdAt)
+	prepared, err := s.PrepareBindAt(request, createdAt)
 	if err != nil {
 		return err
 	}
-	_, err = s.database.PutPlan(context.Background(), envelope.SchemaName, envelope.Canonical, envelope.CreatedAt)
+	_, err = s.database.PutPlan(context.Background(), prepared.SchemaName, prepared.Canonical, prepared.CreatedAt)
 	return err
 }
 
-// PrepareBind constructs and binds an immutable plan without persisting it.
-// The grant store uses the returned envelope for one plan-plus-grant SQL transaction.
 func (s *Store) PrepareBind(request *grants.Request) (grants.ImmutablePlan, error) {
 	if s == nil {
 		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
@@ -145,17 +195,21 @@ func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (gra
 	if s == nil || request == nil {
 		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
 	}
-	encoded, err := encode(FromRequest(*request, createdAt))
+	prepared, err := Prepare(FromRequest(*request, createdAt))
 	if err != nil {
 		return grants.ImmutablePlan{}, err
 	}
-	digest := plandigest.Digest(encoded)
+	BindPrepared(request, prepared)
+	return prepared, nil
+}
+
+// BindPrepared links a canonical immutable plan to one grant request.
+func BindPrepared(request *grants.Request, prepared grants.ImmutablePlan) {
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
-	request.Metadata[MetadataSchema] = SchemaV1
-	request.Metadata[MetadataDigest] = digest
-	return grants.ImmutablePlan{Digest: digest, SchemaName: SchemaV1, Canonical: encoded, CreatedAt: createdAt.UTC()}, nil
+	request.Metadata[MetadataSchema] = prepared.SchemaName
+	request.Metadata[MetadataDigest] = prepared.Digest
 }
 
 type Validator struct{ Store *Store }
@@ -209,88 +263,126 @@ func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 }
 
 func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
-	return planMatchesGrantIdentity(plan, grant) && planMatchesGrantValues(plan, grant) &&
-		plan.Constraints.Mode == grant.Metadata["hf_grant_mode"] &&
-		plan.Constraints.RequestedDurationSeconds == int64(duration.Seconds()) &&
-		plan.Constraints.RequestedMaxUses == maxUses &&
-		plan.Constraints.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
-}
-
-func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
-	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID &&
-		plan.Operation == grant.Operation && plan.TargetKind == grant.Target.Kind
-}
-
-func planMatchesGrantValues(plan Plan, grant grants.Grant) bool {
-	return equalValues(plan.Target, grant.Target.Fields) && equalValues(plan.Constraints.Attributes, grant.Attrs)
+	var target grantTarget
+	var arguments grantArguments
+	if strictjson.Decode(plan.Target, &target, true) != nil || strictjson.Decode(plan.Arguments, &arguments, true) != nil {
+		return false
+	}
+	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation &&
+		target.Kind == grant.Target.Kind && reflect.DeepEqual(target.Fields, grant.Target.Fields) && reflect.DeepEqual(arguments.Attributes, grant.Attrs) &&
+		plan.Authorization.Mode == grant.Metadata["hf_grant_mode"] && plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
+		plan.Authorization.RequestedMaxUses == maxUses && plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
 
 func encode(plan Plan) ([]byte, error) {
-	if err := validate(plan); err != nil {
+	canonical, err := canonicalize(plan)
+	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(plan)
+	return json.Marshal(canonical)
+}
+
+func canonicalize(plan Plan) (Plan, error) {
+	var err error
+	if plan.Target, err = canonicalObject(plan.Target, maxTargetBytes); err != nil {
+		return Plan{}, fmt.Errorf("target: %w", err)
+	}
+	if plan.Arguments, err = canonicalObject(plan.Arguments, maxArgumentsBytes); err != nil {
+		return Plan{}, fmt.Errorf("arguments: %w", err)
+	}
+	if plan.Preconditions, err = canonicalObject(plan.Preconditions, maxPreconditionsBytes); err != nil {
+		return Plan{}, fmt.Errorf("preconditions: %w", err)
+	}
+	if err := validate(plan); err != nil {
+		return Plan{}, err
+	}
+	return plan, nil
 }
 
 func validate(plan Plan) error {
-	if !validPlanIdentity(plan) || !validPlanConstraints(plan) {
-		return errors.New("HF plan is invalid")
+	if plan.APIVersion != SchemaV1 || plan.OperationRevision != 1 || !hfpolicy.IsOperation(plan.Operation) ||
+		strings.TrimSpace(plan.ClientID) == "" || strings.TrimSpace(plan.ClientRequestID) == "" ||
+		plan.CredentialSelector.Name != "primary" || plan.CreatedAt.IsZero() || !plan.ExpiresAt.After(plan.CreatedAt) {
+		return errors.New("HF plan identity is invalid")
 	}
-	if !planKindMatchesMode(plan.Kind, plan.Constraints.Mode) {
-		return errors.New("HF plan kind and mode do not match")
+	if plan.Presentation.Title == "" || len(plan.Presentation.Title) > 160 || len(plan.Presentation.Summary) > 500 {
+		return errors.New("HF plan presentation is invalid")
 	}
-	if err := validatePlanValues(plan.Target); err != nil {
-		return err
+	if plan.Authorization.Mode != "window" && plan.Authorization.Mode != "execution" ||
+		plan.Authorization.RequestedDurationSeconds <= 0 || plan.Authorization.RequestedMaxUses < 0 ||
+		plan.Authorization.Mode == "execution" && plan.Authorization.RequestedMaxUses != 1 {
+		return errors.New("HF plan authorization is invalid")
 	}
-	if err := validatePlanValues(plan.Constraints.Attributes); err != nil {
-		return err
-	}
-	return nil
-}
-
-func planKindMatchesMode(kind string, mode string) bool {
-	return kind == "single_execution" && mode == "execution" || kind == "capability_window" && mode == "window"
-}
-
-func validPlanIdentity(plan Plan) bool {
-	return plan.SchemaVersion == SchemaV1 && validPlanKind(plan.Kind) && strings.TrimSpace(plan.ClientID) != "" &&
-		strings.TrimSpace(plan.ClientRequestID) != "" && hfpolicy.IsOperation(plan.Operation) && plan.TargetKind == "hf" && len(plan.Target) > 0
-}
-
-func validPlanKind(kind string) bool {
-	return kind == "capability_window" || kind == "single_execution"
-}
-
-func validPlanConstraints(plan Plan) bool {
-	return strings.TrimSpace(plan.Constraints.Mode) != "" && plan.Constraints.RequestedDurationSeconds > 0 &&
-		plan.Constraints.RequestedMaxUses >= 0 && plan.CredentialSelector == "primary" && !plan.CreatedAt.IsZero()
-}
-
-func validatePlanValues(values map[string][]string) error {
-	for key, list := range values {
-		if sensitivePlanKey(key) {
-			return errors.New("HF plan contains a sensitive field")
+	for _, value := range []json.RawMessage{plan.Target, plan.Arguments, plan.Preconditions} {
+		if len(value) == 0 {
+			return errors.New("HF plan contains an empty object")
 		}
+		if containsRawSecret(value) {
+			return errors.New("HF plan contains a raw secret field")
+		}
+	}
+	return validateValues(plan.Authorization.Attributes)
+}
+
+func canonicalObject(value json.RawMessage, maximum int) (json.RawMessage, error) {
+	if len(value) < 2 || len(value) > maximum {
+		return nil, errors.New("JSON object size is invalid")
+	}
+	var object map[string]json.RawMessage
+	if err := strictjson.Decode(value, &object, true); err != nil || object == nil {
+		return nil, errors.New("value must be a closed JSON object")
+	}
+	return json.Marshal(object)
+}
+
+func containsRawSecret(value json.RawMessage) bool {
+	var decoded any
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return true
+	}
+	return hasRawSecret(decoded)
+}
+
+func hasRawSecret(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			if rawSecretKey(key) || hasRawSecret(nested) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if hasRawSecret(nested) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func rawSecretKey(key string) bool {
+	normalized := strings.ToLower(strings.NewReplacer("-", "_", ".", "_").Replace(key))
+	if strings.HasSuffix(normalized, "_id") || strings.HasSuffix(normalized, "_ref") || strings.HasSuffix(normalized, "_digest") || strings.HasSuffix(normalized, "_name") {
+		return false
+	}
+	return normalized == "authorization" || normalized == "cookie" || normalized == "password" || normalized == "private_key" || normalized == "secret" || normalized == "token" || strings.HasSuffix(normalized, "_token")
+}
+
+func validateValues(values map[string][]string) error {
+	for key, list := range values {
 		if strings.TrimSpace(key) == "" || len(list) == 0 {
-			return errors.New("HF plan contains an invalid value map")
+			return errors.New("HF plan contains invalid authorization attributes")
 		}
 		for _, value := range list {
 			if strings.TrimSpace(value) == "" {
-				return errors.New("HF plan contains an invalid value map")
+				return errors.New("HF plan contains invalid authorization attributes")
 			}
 		}
 	}
 	return nil
-}
-
-func sensitivePlanKey(key string) bool {
-	normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
-	for _, marker := range []string{"authorization", "credential", "password", "privatekey", "secret", "token", "cookie"} {
-		if strings.Contains(normalized, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 func cloneValues(values map[string][]string) map[string][]string {
@@ -299,16 +391,4 @@ func cloneValues(values map[string][]string) map[string][]string {
 		out[key] = append([]string(nil), list...)
 	}
 	return out
-}
-
-func equalValues(left, right map[string][]string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for key, values := range left {
-		if !slices.Equal(values, right[key]) {
-			return false
-		}
-	}
-	return true
 }

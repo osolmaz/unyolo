@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/usebudget"
 
 	corepolicy "github.com/osolmaz/brokerkit/policy"
@@ -214,34 +215,43 @@ type targetMatcherJSON struct {
 type operationInfo struct {
 	mode         GrantMode
 	explicitOnly bool
+	targetKind   TargetKind
 }
 
 type ruleFieldParser func(*Rule, string, rawRule) error
 
-var operations = map[Operation]operationInfo{
-	OpRepoList:          {mode: GrantModeNone},
-	OpRepoCreate:        {mode: GrantModeExecution, explicitOnly: true},
-	OpRepoMetadataRead:  {mode: GrantModeNone},
-	OpRepoContentsRead:  {mode: GrantModeWindow},
-	OpGitFetch:          {mode: GrantModeWindow},
-	OpGitPushAppend:     {mode: GrantModeWindow},
-	OpGitPushForce:      {mode: GrantModeWindow},
-	OpGitRefDelete:      {mode: GrantModeWindow},
-	OpGitTagUpdate:      {mode: GrantModeWindow},
-	OpBucketObjectList:  {mode: GrantModeNone},
-	OpBucketObjectRead:  {mode: GrantModeWindow},
-	OpBucketObjectWrite: {mode: GrantModeWindow},
-	OpBucketObjectDel:   {mode: GrantModeExecution},
-	OpInferenceModels:   {mode: GrantModeNone},
-	OpInferenceChat:     {mode: GrantModeNone},
+func catalogOperations() map[Operation]operationInfo {
+	values := opcatalog.MustAll()
+	result := make(map[Operation]operationInfo, len(values))
+	for _, descriptor := range values {
+		mode := GrantModeWindow
+		if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+			mode = GrantModeExecution
+		}
+		result[Operation(descriptor.Name)] = operationInfo{
+			mode: mode, explicitOnly: descriptor.ExplicitOnly, targetKind: TargetKind(descriptor.TargetKind),
+		}
+	}
+	return result
 }
 
-var operationFamilyPrefixes = map[string]string{
-	"repo.*":      "repo.",
-	"git.*":       "git.",
-	"bucket.*":    "bucket.",
-	"inference.*": "inference.",
+func catalogOperationFamilies() map[string]string {
+	result := make(map[string]string)
+	for _, descriptor := range opcatalog.MustAll() {
+		if !descriptor.FamilyGlobAllowed {
+			continue
+		}
+		family, _, ok := strings.Cut(descriptor.Name, ".")
+		if ok {
+			result[family+".*"] = family + "."
+		}
+	}
+	return result
 }
+
+var operations = catalogOperations()
+
+var operationFamilyPrefixes = catalogOperationFamilies()
 
 var refScopedOperations = map[Operation]bool{
 	OpGitPushAppend: true,
@@ -433,13 +443,7 @@ func validateRuleOperationTargets(prefix string, ops []Operation, targets []Targ
 }
 
 func operationTargetKind(op Operation) TargetKind {
-	if strings.HasPrefix(string(op), "bucket.") {
-		return KindBucket
-	}
-	if strings.HasPrefix(string(op), "inference.") {
-		return KindInference
-	}
-	return KindRepo
+	return operations[op].targetKind
 }
 
 // IsOperation reports whether value is in the closed HF operation registry.
@@ -652,8 +656,28 @@ func validateTarget(pathName string, target *TargetMatcher) error {
 	case KindInference:
 		return validateInferenceTarget(pathName, target)
 	default:
-		return fmt.Errorf("%s.kind: must be repo, bucket, or inference", pathName)
+		if !knownTargetKind(target.Kind) {
+			return fmt.Errorf("%s.kind: unknown target kind %q", pathName, target.Kind)
+		}
+		return validateGenericTarget(pathName, target)
 	}
+}
+
+func validateGenericTarget(pathName string, target *TargetMatcher) error {
+	unsupported := []bool{target.typeSet, target.refsSet, target.pathsSet, target.visibilitySet, target.keysSet, target.snapshotPrefixSet}
+	if slices.Contains(unsupported, true) {
+		return fmt.Errorf("%s: %s targets accept only owner and name", pathName, target.Kind)
+	}
+	return validateOwnerNameGlobs(pathName, target.Owner, target.Name)
+}
+
+func knownTargetKind(kind TargetKind) bool {
+	for _, info := range operations {
+		if info.targetKind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func validateInferenceTarget(pathName string, target *TargetMatcher) error {

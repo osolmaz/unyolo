@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	bkgrants "github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/policy"
@@ -43,28 +43,22 @@ func (Presenter) Present(_ context.Context, grant bkgrants.Grant) (operatorinbox
 }
 
 func riskForOperation(operation string) operatorinbox.Risk {
-	if risk, ok := operationRisks[hfpolicy.Operation(operation)]; ok {
-		return risk
+	descriptor, ok := opcatalog.ByName(operation)
+	if !ok {
+		return operatorinbox.RiskUnknown
 	}
-	return operatorinbox.RiskUnknown
-}
-
-var operationRisks = map[hfpolicy.Operation]operatorinbox.Risk{
-	hfpolicy.OpRepoList:          operatorinbox.RiskLow,
-	hfpolicy.OpRepoCreate:        operatorinbox.RiskHigh,
-	hfpolicy.OpRepoMetadataRead:  operatorinbox.RiskLow,
-	hfpolicy.OpRepoContentsRead:  operatorinbox.RiskLow,
-	hfpolicy.OpGitFetch:          operatorinbox.RiskLow,
-	hfpolicy.OpGitPushAppend:     operatorinbox.RiskHigh,
-	hfpolicy.OpGitPushForce:      operatorinbox.RiskCritical,
-	hfpolicy.OpGitRefDelete:      operatorinbox.RiskCritical,
-	hfpolicy.OpGitTagUpdate:      operatorinbox.RiskHigh,
-	hfpolicy.OpBucketObjectList:  operatorinbox.RiskLow,
-	hfpolicy.OpBucketObjectRead:  operatorinbox.RiskLow,
-	hfpolicy.OpBucketObjectWrite: operatorinbox.RiskHigh,
-	hfpolicy.OpBucketObjectDel:   operatorinbox.RiskCritical,
-	hfpolicy.OpInferenceModels:   operatorinbox.RiskLow,
-	hfpolicy.OpInferenceChat:     operatorinbox.RiskMedium,
+	switch descriptor.Risk {
+	case opcatalog.RiskLow:
+		return operatorinbox.RiskLow
+	case opcatalog.RiskMedium:
+		return operatorinbox.RiskMedium
+	case opcatalog.RiskHigh:
+		return operatorinbox.RiskHigh
+	case opcatalog.RiskCritical:
+		return operatorinbox.RiskCritical
+	default:
+		return operatorinbox.RiskUnknown
+	}
 }
 
 func titleForOperation(operation string) string {

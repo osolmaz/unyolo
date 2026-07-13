@@ -105,9 +105,9 @@ later.
 | --------------------------- | ----------- | ---------------------------------------------------------------------- |
 | `git.fetch`                 | `W`         | Git upload-pack.                                                       |
 | `git.push.append`           | `W`         | Classified fast-forward or append-only receive-pack.                   |
-| `git.push.force`            | `E/X`       | Exact non-fast-forward receive-pack plan.                              |
-| `git.ref.delete`            | `E/X`       | Exact receive-pack ref deletion.                                       |
-| `git.tag.update`            | `E/X`       | Exact receive-pack tag rewrite.                                        |
+| `git.push.force`            | `W/X`       | Exact non-fast-forward receive-pack protocol window.                   |
+| `git.ref.delete`            | `W/X`       | Exact receive-pack ref-deletion protocol window.                       |
+| `git.tag.update`            | `W/X`       | Exact receive-pack tag-rewrite protocol window.                        |
 | `repo.commit.create`        | `E`         | HTTP commit with an exact file operation manifest and content digests. |
 | `repo.file.upload`          | `E`         | Upload file/folder/large folder as a canonical commit plan.            |
 | `repo.file.copy`            | `E`         | Server-side copy within or across repositories/buckets.                |
@@ -126,7 +126,7 @@ transport calls are internal steps of the approved plan, not separate tools.
 
 | Broker operation          | Disposition | Official capability                                                                                                |
 | ------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ |
-| `repo.create`             | `E`         | Create model, dataset, Space, or kernel with exact visibility, region, resource group, and kind-specific settings. |
+| `repo.create`             | `E/X`       | Create model, dataset, Space, or kernel with exact visibility, region, resource group, and kind-specific settings. |
 | `repo.duplicate`          | `E`         | Duplicate a repository to an exact destination and configuration.                                                  |
 | `repo.delete`             | `E/X`       | Irreversibly delete an exact repository.                                                                           |
 | `repo.move`               | `E/X`       | Rename or transfer an exact repository.                                                                            |
@@ -343,7 +343,7 @@ untyped `inference.invoke` body.
 | Image                   | `W`         | `inference.image.classify`, `inference.image.segment`, `inference.image.transform`, `inference.image.caption`, `inference.document_question_answer`, `inference.text_to_image`, `inference.object.detect`, `inference.visual_question_answer`, `inference.zero_shot.image_classify`                                                                      |
 | Video                   | `W`         | `inference.image_to_video`, `inference.text_to_video`                                                                                                                                                                                                                                                                                                    |
 | Tabular                 | `W`         | `inference.tabular.classify`, `inference.tabular.regress`                                                                                                                                                                                                                                                                                                |
-| Endpoint health         | `W`         | `inference.endpoint.info`, `inference.endpoint.health`                                                                                                                                                                                                                                                                                                   |
+| Endpoint metadata       | `W`         | `inference.models.list`, `inference.endpoint.info`, `inference.endpoint.health`                                                                                                                                                                                                                                                                           |
 
 `InferenceClient.chat` is a facade and `chat_completion` is the canonical call;
 both map to `inference.chat.complete`. Client `close` is a local helper.
