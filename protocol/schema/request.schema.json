@@ -114,7 +114,6 @@
       "enum": [
         "approve",
         "deny",
-        "cancel",
         "revoke"
       ]
     },

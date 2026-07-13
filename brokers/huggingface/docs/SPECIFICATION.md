@@ -400,8 +400,9 @@ Two operator surfaces are supported:
 1. **Operator API.** The shared BrokerKit operator API runs on a separate
    listener and accepts only credentials from the operator secret file. Trusted
    hosts use this API for bounded lists, durable event streams, and
-   revision-checked approve, deny, cancel, and revoke decisions. Agent client
-   credentials cannot use this listener.
+   revision-checked approve, deny, and revoke decisions. Requesters cancel their
+   own pending requests through the authenticated Agent API. Agent client
+   credentials cannot use the operator listener.
 
 2. **Telegram.** The grant
    request is sent as a Telegram message to the operator's chat,

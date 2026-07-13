@@ -116,7 +116,8 @@ Generated grants must never use wildcard clients.
 - approver matching hooks
 - decision tokens
 - callback verification
-- approve, deny, cancel, revoke handling
+- operator approve, deny, and revoke handling
+- requester-owned cancellation of pending requests
 - status update model
 - grant-to-notification correlation
 - fail-closed behavior for ambiguous approval state
@@ -126,7 +127,7 @@ Generated grants must never use wildcard clients.
 
 - bounded pending, active, history, and all-state queries
 - opaque deterministic pagination and durable lifecycle event cursors
-- revision-checked approve, deny, cancel, and revoke commands
+- revision-checked operator approve, deny, and revoke commands
 - safe broker-owned presentation validation with generic fallback
 - dedicated operator authentication separate from broker clients
 - operator-only JSON and SSE handlers with atomic durable audit metadata and a

@@ -55,9 +55,13 @@ GET  /api/operator/v1/requests/{id}
 GET  /api/operator/v1/events
 POST /api/operator/v1/requests/{id}/approve
 POST /api/operator/v1/requests/{id}/deny
-POST /api/operator/v1/requests/{id}/cancel
 POST /api/operator/v1/requests/{id}/revoke
 ```
+
+Operators approve or deny pending requests and may revoke active grants. Only
+the authenticated requester may cancel its own pending request, through the
+broker's client/Agent operation API. A canceled request remains a distinct
+terminal state so audit records show that it was withdrawn rather than refused.
 
 List filters are `status`, `requester`, `operation`, `target_kind`, repeated
 `target.<field>`, `cursor`, and `limit`. Limits default to 50 and cannot exceed

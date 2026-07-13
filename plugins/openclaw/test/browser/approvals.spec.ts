@@ -35,7 +35,7 @@ const snapshot = {
             { label: "Ref", value: "refs/heads/main" },
           ],
         },
-        allowed_actions: ["approve", "deny", "cancel"],
+        allowed_actions: ["approve", "deny"],
         approval_bounds: { max_duration_seconds: 300, max_uses: 1 },
       },
     },
@@ -114,7 +114,6 @@ test("renders a bounded capability-protected approval surface", async ({
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
   await page.getByRole("button", { name: "Deny" }).click();
   await expect(

@@ -129,7 +129,7 @@ export interface components {
       status: string;
     };
     /** @enum {string} */
-    Action: "approve" | "deny" | "cancel" | "revoke";
+    Action: "approve" | "deny" | "revoke";
     /** @enum {string} */
     Status:
       | "pending"

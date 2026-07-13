@@ -171,17 +171,6 @@ export function App() {
                 </button>
               )}
               {canDecide &&
-                request.request.allowed_actions.includes("cancel") && (
-                  <button
-                    className="secondary"
-                    disabled={busy === request.handle}
-                    onClick={() => setDecision({ request, action: "cancel" })}
-                  >
-                    <CircleX size={16} />
-                    Cancel
-                  </button>
-                )}
-              {canDecide &&
                 request.request.allowed_actions.includes("revoke") && (
                   <button
                     className="secondary"

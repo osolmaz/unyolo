@@ -2,7 +2,7 @@
 import type { components } from "./openapi-operator-v1.js";
 
 export const OPERATOR_V1_SCHEMA_SHA256 =
-  "c5d61111c6fe6241b8ec51a679979f153e02f70ac34357b120fa12b5ee18d851";
+  "505ec7544ff20516193a6fff5b8110d213e98c2330a4666bbe3b8ffb36bae729";
 export const operatorV1 = {
   apiVersion: "brokerkit.io/operator/v1",
   statuses: [
@@ -14,7 +14,7 @@ export const operatorV1 = {
     "consumed",
     "revoked",
   ],
-  actions: ["approve", "deny", "cancel", "revoke"],
+  actions: ["approve", "deny", "revoke"],
   risks: ["unknown", "low", "medium", "high", "critical"],
   eventKinds: [
     "request.created",
