@@ -5,7 +5,6 @@ package isolation
 import (
 	"context"
 	"strconv"
-	"time"
 
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
@@ -31,10 +30,4 @@ func activeProbeArgs(opts Options) []string {
 		args = append(args, "--socket", opts.Socket)
 	}
 	return args
-}
-
-func dialUnixWithTimeout(socket string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	return bkdoctor.DialUnix(ctx, socket)
 }

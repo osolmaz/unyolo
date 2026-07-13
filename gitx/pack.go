@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -145,7 +146,8 @@ func inspectPackObject(scanner *packfile.Scanner, limits PackLimits) (plumbing.H
 }
 
 func inflatePackObject(scanner *packfile.Scanner, header *packfile.ObjectHeader) ([]byte, error) {
-	writer := io.Writer(io.Discard)
+	var writer io.Writer
+	writer = io.Discard
 	var delta bytes.Buffer
 	if header.Type.IsDelta() {
 		writer = &delta
@@ -222,11 +224,15 @@ func deltaSize(data []byte, offset int, maximum int64) (int64, int, error) {
 		current := data[offset]
 		offset++
 		value |= uint64(current&0x7f) << shift
-		if value > uint64(maximum) {
+		if value > math.MaxInt64 {
+			return 0, 0, errors.New("packfile: delta size overflows int64")
+		}
+		converted := int64(value) // #nosec G115 -- value is bounded by math.MaxInt64 above.
+		if converted > maximum {
 			return 0, 0, fmt.Errorf("packfile: delta object exceeds %d bytes", maximum)
 		}
 		if current&0x80 == 0 {
-			return int64(value), offset, nil
+			return converted, offset, nil
 		}
 	}
 }

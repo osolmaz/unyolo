@@ -19,6 +19,12 @@ import (
 
 type aclPathKind int
 
+func dialUnixWithTimeout(socket string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return bkdoctor.DialUnix(ctx, socket)
+}
+
 const (
 	aclTokenEntry aclPathKind = iota
 	aclSocketEntry

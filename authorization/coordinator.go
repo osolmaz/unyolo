@@ -90,7 +90,7 @@ func New(options Options) (*Coordinator, error) {
 // Authorize allows, refuses, or durably creates an approval request.
 func (c *Coordinator) Authorize(request policy.Request, build IntentBuilder) (Result, error) {
 	if err := c.registry.ValidateRequest(request); err != nil {
-		return Result{Decision: policy.Decision{Effect: policy.EffectNoMatch, Reason: err.Error()}}, fmt.Errorf("%w: %v", ErrNoMatch, err)
+		return Result{Decision: policy.Decision{Effect: policy.EffectNoMatch, Reason: err.Error()}}, fmt.Errorf("%w: %w", ErrNoMatch, err)
 	}
 	active, err := c.activeGrants(request)
 	if err != nil {
@@ -112,7 +112,7 @@ func (c *Coordinator) Authorize(request policy.Request, build IntentBuilder) (Re
 // grant could currently authorize the same capability.
 func (c *Coordinator) RequestApproval(request policy.Request, build IntentBuilder) (Result, error) {
 	if err := c.registry.ValidateRequest(request); err != nil {
-		return Result{Decision: policy.Decision{Effect: policy.EffectNoMatch, Reason: err.Error()}}, fmt.Errorf("%w: %v", ErrNoMatch, err)
+		return Result{Decision: policy.Decision{Effect: policy.EffectNoMatch, Reason: err.Error()}}, fmt.Errorf("%w: %w", ErrNoMatch, err)
 	}
 	decision := c.decide(request, policy.DecisionOptions{Now: c.now().UTC(), ForGrantRequest: true})
 	if decision.Effect != policy.EffectRequest {
@@ -142,7 +142,7 @@ func buildIntent(build IntentBuilder, decision policy.Decision) (GrantIntent, er
 	}
 	intent, err := build(decision)
 	if err != nil {
-		return GrantIntent{}, fmt.Errorf("%w: %v", ErrInvalidGrantIntent, err)
+		return GrantIntent{}, fmt.Errorf("%w: %w", ErrInvalidGrantIntent, err)
 	}
 	return intent, nil
 }
@@ -163,7 +163,7 @@ func (c *Coordinator) validateIntent(request policy.Request, decision policy.Dec
 		return ErrApprovalUnsupported
 	}
 	if err := validateGrantBounds(intent, decision.GrantPolicy); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidGrantIntent, err)
+		return fmt.Errorf("%w: %w", ErrInvalidGrantIntent, err)
 	}
 	return nil
 }

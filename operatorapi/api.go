@@ -100,7 +100,7 @@ func (h *handler) requestMetadata(next echo.HandlerFunc) echo.HandlerFunc {
 		if err != nil {
 			writer.Header().Set("X-Correlation-ID", "unavailable")
 			h.writeError(writer, http.StatusServiceUnavailable, "temporarily_unavailable", "secure request identifier unavailable", nil)
-			return nil
+			return nil //nolint:nilerr // The middleware already emitted the terminal response.
 		}
 		writer.Header().Set("X-Correlation-ID", correlationID)
 		return next(c)

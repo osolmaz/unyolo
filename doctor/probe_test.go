@@ -24,7 +24,7 @@ func TestProbeUnixSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	if !DialUnix(context.Background(), path) || DialUnix(context.Background(), path+"-missing") {
 		t.Fatal("Unix socket probe result mismatch")
 	}

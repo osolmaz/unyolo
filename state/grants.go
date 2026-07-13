@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"time"
 
@@ -380,15 +381,27 @@ func pruneGrantEvents(ctx context.Context, queries *dbsql.Queries, before, after
 	if len(after) == 0 || (len(before) > 0 && after[0].Sequence <= before[0].Sequence) {
 		return nil
 	}
-	return queries.DeleteGrantLifecycleEventsBefore(ctx, int64(after[0].Sequence))
+	sequence, err := lifecycleSequenceInt64(after[0].Sequence)
+	if err != nil {
+		return err
+	}
+	return queries.DeleteGrantLifecycleEventsBefore(ctx, sequence)
 }
 
 func insertGrantEvent(ctx context.Context, queries *dbsql.Queries, record GrantLifecycleRecord) error {
-	if record.Sequence > uint64(^uint64(0)>>1) {
-		return errors.New("grant lifecycle sequence overflow")
+	sequence, err := lifecycleSequenceInt64(record.Sequence)
+	if err != nil {
+		return err
 	}
-	return queries.InsertGrantLifecycleEvent(ctx, dbsql.InsertGrantLifecycleEventParams{Sequence: int64(record.Sequence), Cursor: record.Cursor,
+	return queries.InsertGrantLifecycleEvent(ctx, dbsql.InsertGrantLifecycleEventParams{Sequence: sequence, Cursor: record.Cursor,
 		SubjectID: record.GrantID, Kind: record.Kind, Revision: record.Revision, OccurredAt: formatTime(record.OccurredAt), PayloadJson: string(record.PayloadJSON)})
+}
+
+func lifecycleSequenceInt64(sequence uint64) (int64, error) {
+	if sequence > math.MaxInt64 {
+		return 0, errors.New("grant lifecycle sequence overflow")
+	}
+	return int64(sequence), nil // #nosec G115 -- sequence is bounded by math.MaxInt64.
 }
 
 func persistGrantDecisions(ctx context.Context, queries *dbsql.Queries, before, after []GrantDecisionRecord) error {

@@ -76,6 +76,7 @@ func (c *Client) Discover(ctx context.Context) (operatorv1.Descriptor, error) {
 		return operatorv1.Descriptor{}, err
 	}
 	var wire operatorwire.Descriptor
+	//nolint:bodyclose // decodeClientResponse owns and closes generated responses.
 	response, requestErr := api.DiscoverOperator(ctx)
 	err = decodeClientResponse(response, requestErr, &wire)
 	if err == nil && string(wire.ApiVersion) != operatorv1.APIVersion {
@@ -90,6 +91,7 @@ func (c *Client) Health(ctx context.Context) error {
 		return err
 	}
 	var status operatorwire.Health
+	//nolint:bodyclose // decodeClientResponse owns and closes generated responses.
 	response, requestErr := api.OperatorHealth(ctx)
 	if err := decodeClientResponse(response, requestErr, &status); err != nil {
 		return err
@@ -122,6 +124,7 @@ func (c *Client) List(ctx context.Context, query operatorv1.Query) (operatorv1.P
 		editors = append(editors, targetQueryEditor(query.Target.Fields))
 	}
 	var wire operatorwire.RequestPage
+	//nolint:bodyclose // decodeClientResponse owns and closes generated responses.
 	response, requestErr := api.ListOperatorRequests(ctx, &params, editors...)
 	err = decodeClientResponse(response, requestErr, &wire)
 	return pageFromWire(wire), err
@@ -133,6 +136,7 @@ func (c *Client) Get(ctx context.Context, id string) (operatorv1.Request, error)
 		return operatorv1.Request{}, err
 	}
 	var wire operatorwire.BrokerRequest
+	//nolint:bodyclose // decodeClientResponse owns and closes generated responses.
 	response, requestErr := api.GetOperatorRequest(ctx, id)
 	err = decodeClientResponse(response, requestErr, &wire)
 	return requestFromWire(wire), err
@@ -145,6 +149,7 @@ func (c *Client) Decide(ctx context.Context, id string, action operatorv1.Action
 	}
 	wireDecision := decisionToWire(decision)
 	var wire operatorwire.BrokerRequest
+	//nolint:bodyclose // decodeClientResponse owns and closes generated responses.
 	response, requestErr := api.DecideOperatorRequest(ctx, id, operatorwire.Action(action), wireDecision)
 	err = decodeClientResponse(response, requestErr, &wire)
 	return requestFromWire(wire), err

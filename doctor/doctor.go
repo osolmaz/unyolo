@@ -184,6 +184,7 @@ func optionalGroupName(value string, required bool) (string, bool, error) {
 		return "", false, fmt.Errorf("lookup agent group %s: %w", value, err)
 	}
 	if err != nil {
+		//nolint:nilerr // Optional group absence is represented by found=false.
 		return "", false, nil
 	}
 	return group.Name, true, nil
