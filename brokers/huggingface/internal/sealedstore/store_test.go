@@ -155,6 +155,34 @@ func TestStoreSweepsExpiredAndIncompletePayloads(t *testing.T) {
 	}
 }
 
+func TestStoreRetainsConsumedMarkerForIdempotencyWindow(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference, err := store.PutForRequest("bob", "space.secret.set", "retained", []byte("secret"), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Consume(reference); err != nil {
+		t.Fatal(err)
+	}
+	afterExpiry := time.Unix(reference.ExpiresAt, 0).Add(time.Second)
+	if removed, err := store.SweepExpired(afterExpiry); err != nil || removed != 0 {
+		t.Fatalf("early SweepExpired() = %d, %v", removed, err)
+	}
+	store.mu.Lock()
+	replayed, found, err := store.findRequestLocked(reference.Owner, reference.Purpose, reference.RequestKey, reference.Digest, reference.Size)
+	store.mu.Unlock()
+	if err != nil || !found || replayed != reference {
+		t.Fatalf("retained request = %+v, %v, %v", replayed, found, err)
+	}
+	afterRetention := time.Unix(reference.ExpiresAt, 0).Add(consumedMarkerRetention + time.Second)
+	if removed, err := store.SweepExpired(afterRetention); err != nil || removed != 1 {
+		t.Fatalf("final SweepExpired() = %d, %v", removed, err)
+	}
+}
+
 func TestStorePersistsKeyAndRejectsUnsafePermissions(t *testing.T) {
 	dir := t.TempDir()
 	first, err := Open(dir)

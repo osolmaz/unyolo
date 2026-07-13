@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
@@ -46,7 +47,11 @@ func (c *Client) executeBound(ctx context.Context, operation string, target, arg
 	if capture {
 		out = &result
 	}
-	if err := c.call(ctx, callSpec{method: binding.Method, path: path, origin: binding.Origin, body: body, out: out}); err != nil {
+	query, err := renderBoundQuery(binding.QueryParameters, target)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.call(ctx, callSpec{method: binding.Method, path: path, origin: binding.Origin, query: query, body: body, out: out}); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -65,7 +70,11 @@ func (c *Client) ObserveBound(ctx context.Context, operation string, target json
 		return nil, false, err
 	}
 	var observed json.RawMessage
-	err = c.call(ctx, callSpec{method: binding.ObserveMethod, path: path, origin: binding.Origin, out: &observed})
+	query, err := renderBoundQuery(binding.QueryParameters, target)
+	if err != nil {
+		return nil, false, err
+	}
+	err = c.call(ctx, callSpec{method: binding.ObserveMethod, path: path, origin: binding.Origin, query: query, out: &observed})
 	if IsNotFound(err) {
 		return nil, true, nil
 	}
@@ -73,6 +82,60 @@ func (c *Client) ObserveBound(ctx context.Context, operation string, target json
 		return nil, false, err
 	}
 	return observed, false, nil
+}
+
+func renderBoundQuery(names []string, raw json.RawMessage) (url.Values, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var target map[string]any
+	if err := strictjson.Decode(raw, &target, true); err != nil {
+		return nil, errors.New("hubclient: bound target is invalid")
+	}
+	query := make(url.Values)
+	for _, name := range names {
+		value, found := target[name]
+		if found && !appendBoundQueryValue(query, name, value) {
+			return nil, errors.New("hubclient: bound query fields are invalid")
+		}
+	}
+	return query, nil
+}
+
+func appendBoundQueryValue(query url.Values, name string, value any) bool {
+	if values, ok := value.([]any); ok {
+		for _, item := range values {
+			text, valid := scalarQueryValue(item)
+			if !valid {
+				return false
+			}
+			query.Add(name, text)
+		}
+		return true
+	}
+	text, valid := scalarQueryValue(value)
+	if valid {
+		query.Add(name, text)
+	}
+	return valid
+}
+
+func scalarQueryValue(value any) (string, bool) {
+	switch value := value.(type) {
+	case string:
+		return value, true
+	case bool:
+		return strconv.FormatBool(value), true
+	case float64:
+		return strconv.FormatFloat(value, 'f', -1, 64), true
+	case json.Number:
+		if _, err := strconv.ParseFloat(value.String(), 64); err != nil {
+			return "", false
+		}
+		return value.String(), true
+	default:
+		return "", false
+	}
 }
 
 func renderBoundPath(template string, fixed map[string]any, raw json.RawMessage) (string, error) {

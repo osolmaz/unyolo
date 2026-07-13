@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -382,6 +383,9 @@ func catalogMCPToolSchema(descriptor opcatalog.Descriptor) map[string]any {
 				required = append(required, "credential_slot")
 			} else if sealedSchema != nil {
 				properties["sealed_arguments"] = sealedSchema
+				if len(requiredPropertyNames(sealedSchema)) > 0 {
+					required = append(required, "sealed_arguments")
+				}
 			}
 		}
 	} else {
@@ -392,16 +396,29 @@ func catalogMCPToolSchema(descriptor opcatalog.Descriptor) map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
 }
 
+func requiredPropertyNames(schema map[string]any) []string {
+	switch values := schema["required"].(type) {
+	case []any:
+		result := make([]string, 0, len(values))
+		for _, value := range values {
+			if name, ok := value.(string); ok {
+				result = append(result, name)
+			}
+		}
+		return result
+	case []string:
+		return slices.Clone(values)
+	}
+	return nil
+}
+
 func catalogOperationInputSchemas(descriptor opcatalog.Descriptor) (map[string]any, map[string]any, map[string]any) {
 	if binding, found := opbinding.ByName(descriptor.Name); found {
 		var target, arguments map[string]any
 		if json.Unmarshal(binding.TargetSchema, &target) != nil || json.Unmarshal(binding.ArgumentsSchema, &arguments) != nil {
 			panic("invalid pinned operation schema: " + descriptor.Name)
 		}
-		var sealed map[string]any
-		if paths := operations.SealedInputPaths(descriptor.Name); len(paths) > 0 {
-			arguments, sealed = splitSealedArgumentsSchema(arguments, paths)
-		}
+		arguments, sealed := catalogSealedArguments(descriptor.Name, arguments)
 		setTargetKind(target, descriptor.TargetKind)
 		return embeddedOperationSchema(target), embeddedOperationSchema(arguments), embeddedOperationSchema(sealed)
 	}
@@ -415,6 +432,18 @@ func catalogOperationInputSchemas(descriptor opcatalog.Descriptor) (map[string]a
 		return target, nil, nil
 	}
 	panic("missing operation input schema: " + descriptor.Name)
+}
+
+func catalogSealedArguments(operation string, arguments map[string]any) (map[string]any, map[string]any) {
+	paths := operations.SealedInputPaths(operation)
+	if len(paths) == 0 {
+		return arguments, nil
+	}
+	public, sealed := splitSealedArgumentsSchema(arguments, paths)
+	if operations.RequiresSealedInput(operation) {
+		requireSchemaPaths(sealed, paths)
+	}
+	return public, sealed
 }
 
 func setTargetKind(schema map[string]any, kind string) {

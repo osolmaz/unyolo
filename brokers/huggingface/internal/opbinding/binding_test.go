@@ -3,6 +3,7 @@ package opbinding
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 )
 
@@ -23,6 +24,21 @@ func TestPinnedBindingsLoadAndValidateClosedSchemas(t *testing.T) {
 	}
 	if err := binding.Validate(json.RawMessage(`{"webhookId":"0123456789abcdef01234567","action":"disable"}`), json.RawMessage(`{}`)); err == nil {
 		t.Fatal("fixed action was accepted from the requester")
+	}
+}
+
+func TestNotificationBindingsExposeOpenAPIQueryParameters(t *testing.T) {
+	binding, found := ByName("notification.delete")
+	if !found {
+		t.Fatal("notification.delete binding missing")
+	}
+	want := []string{"applyToAll", "articleId", "lastUpdate", "mention", "p", "paperId", "postAuthor", "readStatus", "repoName", "repoType"}
+	if !slices.Equal(binding.QueryParameters, want) {
+		t.Fatalf("query parameters = %v, want %v", binding.QueryParameters, want)
+	}
+	target := json.RawMessage(`{"repoType":"dataset","repoName":"acme/demo","readStatus":"unread","applyToAll":true}`)
+	if err := binding.Validate(target, json.RawMessage(`{"discussionIds":["0123456789abcdef01234567"]}`)); err != nil {
+		t.Fatal(err)
 	}
 }
 

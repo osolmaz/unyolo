@@ -78,11 +78,18 @@ func TestSealedBoundAdapterRejectsOwnershipLeaksAndSecretSmuggling(t *testing.T)
 	registry, _ := NewRegistry(adapters...)
 	adapter, _ := registry.Lookup("space.secret.set")
 	target := json.RawMessage(`{"namespace":"acme","repo":"demo"}`)
+	missingSecret, _ := json.Marshal(sealedBoundArguments{Public: json.RawMessage(`{"key":"TOKEN"}`)})
+	if _, err := adapter.Decode(target, missingSecret); err == nil {
+		t.Fatal("mandatory sealed payload was omitted")
+	}
 	publicSecret, _ := json.Marshal(sealedBoundArguments{Public: json.RawMessage(`{"key":"TOKEN","value":"leak"}`), SealedPayload: &reference})
 	if _, err := adapter.Decode(target, publicSecret); err == nil {
 		t.Fatal("secret in public arguments accepted")
 	}
 	arguments, _ := json.Marshal(sealedBoundArguments{Public: json.RawMessage(`{"key":"TOKEN"}`), SealedPayload: &reference})
+	if _, err := adapter.Decode(json.RawMessage(`{}`), arguments); err == nil {
+		t.Fatal("invalid sealed operation target was accepted")
+	}
 	input, _ := adapter.Decode(target, arguments)
 	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "alice", "secret-request"); err == nil {
 		t.Fatal("cross-client sealed reference accepted")

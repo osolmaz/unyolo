@@ -557,7 +557,7 @@ func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operati
 		return
 	}
 	if definitiveExecutionFailure(executionErr) {
-		s.failDefinitiveOperation(operation, executionErr, reserved)
+		s.failDefinitiveOperation(operation, plan, executionErr, reserved)
 		return
 	}
 	s.reconcileAmbiguousOperation(ctx, adapter, operation, plan, execution, executionErr, reserved)
@@ -576,7 +576,7 @@ func (s *Server) reconcileAmbiguousOperation(ctx context.Context, adapter operat
 	if !s.settleOperationApproval(operation, reserved, true) {
 		return
 	}
-	s.failOperationExecution(operation, executionErr, reconcileErr)
+	s.failOperationExecution(operation, plan, executionErr, reconcileErr)
 }
 
 func (s *Server) succeedExecutedOperation(operation agentv1.Operation, plan operations.Plan, result json.RawMessage, reserved bool, detail string) {
@@ -599,9 +599,9 @@ func normalizedOperationResult(operation string, result json.RawMessage) json.Ra
 	return encoded
 }
 
-func (s *Server) failDefinitiveOperation(operation agentv1.Operation, executionErr error, reserved bool) {
+func (s *Server) failDefinitiveOperation(operation agentv1.Operation, plan operations.Plan, executionErr error, reserved bool) {
 	if s.settleOperationApproval(operation, reserved, false) {
-		s.failOperationExecution(operation, executionErr, nil)
+		s.failOperationExecution(operation, plan, executionErr, nil)
 	}
 }
 
@@ -733,7 +733,7 @@ func (s *Server) reserveOperationApproval(operation agentv1.Operation) (bool, bo
 	return true, true
 }
 
-func (s *Server) failOperationExecution(operation agentv1.Operation, executionErr, reconcileErr error) {
+func (s *Server) failOperationExecution(operation agentv1.Operation, plan operations.Plan, executionErr, reconcileErr error) {
 	code := "upstream_result_unknown"
 	message := "Operation result is unknown and was not retried"
 	var upstream *hubclient.Error
@@ -748,7 +748,7 @@ func (s *Server) failOperationExecution(operation agentv1.Operation, executionEr
 		message = "Operation completed but reconciliation failed"
 	}
 	s.failOperation(operation.ID, agentv1.StateFailed, code, message)
-	s.record(operation.ClientID, operation.Operation, "", audit.DecisionRefused, code, 0)
+	s.recordOperationOutcome(operation, plan, audit.DecisionRefused, code, 0)
 }
 
 func operationPolicyTarget(request policy.Request) string {

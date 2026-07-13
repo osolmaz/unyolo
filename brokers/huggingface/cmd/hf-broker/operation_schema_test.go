@@ -16,8 +16,34 @@ func TestSplitSealedArgumentsSchemaHandlesComposedObjects(t *testing.T) {
 	branches := schemaBranches(public["anyOf"])
 	secondProperties := branches[1]["properties"].(map[string]any)
 	sealedProperties := sealed["properties"].(map[string]any)
-	if secondProperties["secret"] != nil || sealedProperties["secret"] == nil {
+	if secondProperties["secret"] != nil || sealedProperties["secret"] == nil || !schemaRequiresProperty(sealed, "secret") {
 		t.Fatalf("split schemas = public %#v, sealed %#v", public, sealed)
+	}
+}
+
+func TestSplitSealedArgumentsSchemaKeepsNestedRequirements(t *testing.T) {
+	schema := map[string]any{"type": "object", "properties": map[string]any{
+		"config": map[string]any{"type": "object", "properties": map[string]any{
+			"token": map[string]any{"type": "string"},
+		}, "required": []any{"token"}},
+	}, "required": []any{"config"}}
+	_, sealed := splitSealedArgumentsSchema(schema, []string{"config.token"})
+	config := sealed["properties"].(map[string]any)["config"].(map[string]any)
+	if !schemaRequiresProperty(sealed, "config") || !schemaRequiresProperty(config, "token") {
+		t.Fatalf("sealed requirements = %#v", sealed)
+	}
+}
+
+func TestSchemaRequirementLookupRejectsMissingPaths(t *testing.T) {
+	schema := map[string]any{"type": "object"}
+	if _, found := schemaPathRequirements(schema, schema, nil); found {
+		t.Fatal("empty schema path was found")
+	}
+	if _, found := schemaPathRequirements(schema, schema, []string{"missing"}); found {
+		t.Fatal("missing schema path was found")
+	}
+	if !schemaRequiresProperty(map[string]any{"required": []string{"value"}}, "value") {
+		t.Fatal("string requirements were ignored")
 	}
 }
 

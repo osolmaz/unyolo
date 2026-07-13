@@ -10,6 +10,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
@@ -42,5 +43,28 @@ func TestOperationOutcomeAuditBindsPlanPolicyAndApproval(t *testing.T) {
 		len(event.MatchedRequestRuleIDs) != 1 || event.MatchedRequestRuleIDs[0] != "request-delete" ||
 		len(event.MatchedGrantRuleIDs) != 1 || event.MatchedGrantRuleIDs[0] != approved.ID {
 		t.Fatalf("audit event = %+v", event)
+	}
+}
+
+func TestFailedOperationAuditKeepsPlanContext(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "recovery")
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
+	defer func() { _ = handler.Close() }()
+	operation := seedExecutingRepoCreate(t, handler, "op_audit_failure")
+	_, plan, err := handler.loadOperationPlan(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	handler.audit = audit.New(&output)
+	handler.failOperationExecution(operation, plan, &hubclient.Error{Code: hubclient.CodeConflict}, nil)
+	var event audit.Event
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Target != "dataset/alice/recovery" || event.PlanDigest != operation.PlanDigest ||
+		len(event.MatchedRequestRuleIDs) != 1 || event.MatchedRequestRuleIDs[0] != "request-rule" {
+		t.Fatalf("failure audit event = %+v", event)
 	}
 }

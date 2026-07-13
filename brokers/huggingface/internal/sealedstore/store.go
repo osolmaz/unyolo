@@ -24,12 +24,13 @@ import (
 )
 
 const (
-	keyBytes       = 32
-	maxSecretBytes = 1 << 20
-	formatVersion  = 2
-	maxStoredFiles = 256
-	maxStoredBytes = 64 << 20
-	maxFileBytes   = 2 << 20
+	keyBytes                = 32
+	maxSecretBytes          = 1 << 20
+	formatVersion           = 2
+	maxStoredFiles          = 256
+	maxStoredBytes          = 64 << 20
+	maxFileBytes            = 2 << 20
+	consumedMarkerRetention = 30 * 24 * time.Hour
 )
 
 var referencePattern = regexp.MustCompile(`^sealed_[A-Za-z0-9_-]{24}$`)
@@ -193,7 +194,8 @@ func (s *Store) encodePayload(owner, purpose, requestKey string, plaintext []byt
 	return reference, encoded, nil
 }
 
-// SweepExpired removes expired payloads and incomplete consume claims.
+// SweepExpired removes expired payloads and incomplete consume claims. An
+// authenticated consumed marker remains for the operation idempotency window.
 func (s *Store) SweepExpired(now time.Time) (int, error) {
 	if s == nil || s.aead == nil {
 		return 0, errors.New("sealed payload store is unavailable")
@@ -379,7 +381,14 @@ func (s *Store) sweepCandidate(entry os.DirEntry, now time.Time) (string, bool) 
 		return "", false
 	}
 	envelope, err := readDiskEnvelope(path)
-	return path, err != nil || !s.validStoredEnvelope(envelope, name) || now.Unix() >= envelope.Reference.ExpiresAt
+	if err != nil || !s.validStoredEnvelope(envelope, name) {
+		return path, true
+	}
+	expiresAt := time.Unix(envelope.Reference.ExpiresAt, 0)
+	if envelope.Consumed {
+		return path, !now.Before(expiresAt.Add(consumedMarkerRetention))
+	}
+	return path, !now.Before(expiresAt)
 }
 
 func (s *Store) validStoredEnvelope(envelope diskEnvelope, name string) bool {

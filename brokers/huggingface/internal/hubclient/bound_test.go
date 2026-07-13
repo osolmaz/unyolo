@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -35,6 +36,50 @@ func TestExecuteBoundUsesOnlyRegisteredMethodPathAndFixedFields(t *testing.T) {
 	request = <-requests
 	if request.Method != http.MethodPost || request.URL.Path != "/api/settings/webhooks/0123456789abcdef01234567/enable" {
 		t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+	}
+}
+
+func TestExecuteBoundEmitsRegisteredQueryParameters(t *testing.T) {
+	requests := make(chan *http.Request, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests <- request.Clone(request.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "hf_test_token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := json.RawMessage(`{"repoType":"dataset","repoName":"acme/demo","readStatus":"unread","applyToAll":true,"p":2}`)
+	if err := client.ExecuteBound(t.Context(), "notification.delete", target, json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	request := <-requests
+	if request.URL.Path != "/api/notifications" || request.URL.Query().Get("repoName") != "acme/demo" ||
+		request.URL.Query().Get("applyToAll") != "true" || request.URL.Query().Get("p") != "2" {
+		t.Fatalf("request URL = %s", request.URL.String())
+	}
+}
+
+func TestBoundQueryValueEncoding(t *testing.T) {
+	query := make(url.Values)
+	if !appendBoundQueryValue(query, "tag", []any{"one", json.Number("2")}) || len(query["tag"]) != 2 {
+		t.Fatalf("array query = %v", query)
+	}
+	if appendBoundQueryValue(query, "bad", []any{map[string]any{"nested": true}}) {
+		t.Fatal("object query item was accepted")
+	}
+	if value, valid := scalarQueryValue(1.5); !valid || value != "1.5" {
+		t.Fatalf("float query = %q, %v", value, valid)
+	}
+	if _, valid := scalarQueryValue(json.Number("bad")); valid {
+		t.Fatal("invalid JSON number was accepted")
+	}
+	if _, valid := scalarQueryValue(map[string]any{}); valid {
+		t.Fatal("object query was accepted")
+	}
+	if _, err := renderBoundQuery([]string{"filter"}, json.RawMessage(`{"filter":{"nested":true}}`)); err == nil {
+		t.Fatal("nested bound query was accepted")
 	}
 }
 

@@ -51,11 +51,19 @@ var sealedInputPaths = map[string][]string{
 	"webhook.update":                       {"secret", "job.secrets"},
 }
 
+var mandatorySealedInputs = map[string]bool{
+	"space.secret.set": true,
+}
+
 // SealedInputPaths returns the argument paths that must be supplied through
 // the encrypted payload boundary for a bound operation.
 func SealedInputPaths(operation string) []string {
 	return append([]string(nil), sealedInputPaths[operation]...)
 }
+
+// RequiresSealedInput reports operations whose provider schema is looser than
+// the operation semantics and must still receive protected input.
+func RequiresSealedInput(operation string) bool { return mandatorySealedInputs[operation] }
 
 func NewSealedBoundAdapters(client boundClient, store sealedPayloadStore) ([]Adapter, error) {
 	if client == nil || store == nil {
@@ -87,7 +95,8 @@ func (a *sealedBoundAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (In
 		return Input{}, errors.New("operation target does not match its closed schema")
 	}
 	var arguments sealedBoundArguments
-	if err := decodeClosed(argumentsRaw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 || arguments.CredentialSlot != "" {
+	if err := decodeClosed(argumentsRaw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 || arguments.CredentialSlot != "" ||
+		RequiresSealedInput(a.descriptor.Name) && arguments.SealedPayload == nil {
 		return Input{}, errors.New("sealed operation arguments are invalid")
 	}
 	public, err := decodeObject(arguments.Public)

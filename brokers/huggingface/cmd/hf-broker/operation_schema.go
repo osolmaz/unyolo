@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -17,10 +18,56 @@ func splitSealedArgumentsSchema(schema map[string]any, paths []string) (map[stri
 		if !found {
 			panic("sealed argument path is absent from operation schema: " + value)
 		}
-		insertSchemaPath(sealed, path, leaf)
+		required, found := schemaPathRequirements(schema, schema, path)
+		if !found {
+			panic("sealed argument requirements are absent from operation schema: " + value)
+		}
+		insertSchemaPath(sealed, path, leaf, required)
 		removeSchemaPath(public, public, path)
 	}
 	return public, sealed
+}
+
+func schemaPathRequirements(root, current map[string]any, path []string) ([]bool, bool) {
+	if len(path) == 0 {
+		return nil, false
+	}
+	current = resolveLocalSchemaReference(root, current)
+	properties, ok := current["properties"].(map[string]any)
+	if !ok {
+		for _, keyword := range []string{"anyOf", "oneOf", "allOf"} {
+			for _, branch := range schemaBranches(current[keyword]) {
+				if required, found := schemaPathRequirements(root, branch, path); found {
+					return required, true
+				}
+			}
+		}
+		return nil, false
+	}
+	next, ok := properties[path[0]].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	required := []bool{schemaRequiresProperty(current, path[0])}
+	if len(path) == 1 {
+		return required, true
+	}
+	nested, found := schemaPathRequirements(root, next, path[1:])
+	return append(required, nested...), found
+}
+
+func schemaRequiresProperty(schema map[string]any, name string) bool {
+	switch required := schema["required"].(type) {
+	case []any:
+		for _, value := range required {
+			if value == name {
+				return true
+			}
+		}
+	case []string:
+		return slices.Contains(required, name)
+	}
+	return false
 }
 
 func cloneSchema(schema map[string]any) map[string]any {
@@ -172,10 +219,13 @@ func resolveSchemaPointer(root map[string]any, reference string) (map[string]any
 	return resolved, ok
 }
 
-func insertSchemaPath(root map[string]any, path []string, leaf map[string]any) {
+func insertSchemaPath(root map[string]any, path []string, leaf map[string]any, required []bool) {
 	current := root
 	for index, name := range path {
 		properties := current["properties"].(map[string]any)
+		if required[index] {
+			addRequiredProperty(current, name)
+		}
 		if index == len(path)-1 {
 			properties[name] = leaf
 			return
@@ -187,6 +237,25 @@ func insertSchemaPath(root map[string]any, path []string, leaf map[string]any) {
 		}
 		current = next
 	}
+}
+
+func requireSchemaPaths(schema map[string]any, paths []string) {
+	for _, value := range paths {
+		current := schema
+		for _, name := range strings.Split(value, ".") {
+			addRequiredProperty(current, name)
+			properties := current["properties"].(map[string]any)
+			current, _ = properties[name].(map[string]any)
+		}
+	}
+}
+
+func addRequiredProperty(schema map[string]any, name string) {
+	if schemaRequiresProperty(schema, name) {
+		return
+	}
+	required, _ := schema["required"].([]any)
+	schema["required"] = append(required, name)
 }
 
 func removeSchemaPath(root, current map[string]any, path []string) {

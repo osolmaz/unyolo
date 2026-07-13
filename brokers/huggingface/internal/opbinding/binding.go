@@ -66,6 +66,7 @@ type Binding struct {
 	UpstreamReference  string
 	Transform          string
 	CaptureResult      bool
+	QueryParameters    []string
 	TargetSchema       json.RawMessage
 	ArgumentsSchema    json.RawMessage
 	ResultSchema       json.RawMessage
@@ -215,7 +216,7 @@ func bindingFromSource(paths map[string]map[string]json.RawMessage, components m
 	if err := validateBindingSource(source); err != nil {
 		return Binding{}, err
 	}
-	targetSchema, argumentsSchema, err := bindingSchemas(paths, source)
+	targetSchema, argumentsSchema, queryParameters, err := bindingSchemas(paths, source)
 	if err != nil {
 		return Binding{}, err
 	}
@@ -235,7 +236,7 @@ func bindingFromSource(paths map[string]map[string]json.RawMessage, components m
 		FixedPath: source.FixedPath, FixedBody: source.FixedBody, ArgumentProjection: source.ArgumentProjection,
 		ObserveMethod: source.ObserveMethod, ObservePath: source.ObservePath, Reconcile: source.Reconcile,
 		Origin: source.Origin, BodyFromTarget: source.BodyFromTarget, UpstreamReference: source.UpstreamReference,
-		Transform: source.Transform, CaptureResult: source.CaptureResult,
+		Transform: source.Transform, CaptureResult: source.CaptureResult, QueryParameters: queryParameters,
 		TargetSchema: targetRaw, ArgumentsSchema: argumentsRaw, targetValidator: targetValidator,
 		ResultSchema: resultRaw, argumentsValidator: argumentsValidator, resultValidator: resultValidator}, nil
 }
@@ -275,16 +276,48 @@ func validateTransformSource(source routeSource) error {
 	return nil
 }
 
-func bindingSchemas(paths map[string]map[string]json.RawMessage, source routeSource) (map[string]any, map[string]any, error) {
+func bindingSchemas(paths map[string]map[string]json.RawMessage, source routeSource) (map[string]any, map[string]any, []string, error) {
 	if source.TargetSchema != nil && source.ArgumentsSchema != nil {
-		return source.TargetSchema, source.ArgumentsSchema, nil
+		return source.TargetSchema, source.ArgumentsSchema, nil, nil
 	}
 	operation, err := operationAt(paths, source)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	arguments, err := schemaForArguments(operation, source.FixedBody, source.ArgumentProjection)
-	return schemaForParameters(operation.Parameters, "path", source.FixedPath), arguments, err
+	return schemaForTarget(operation.Parameters, source.FixedPath), arguments, queryParameterNames(operation.Parameters), err
+}
+
+func schemaForTarget(parameters []parameter, fixed map[string]any) map[string]any {
+	pathSchema := schemaForParameters(parameters, "path", fixed)
+	querySchema := schemaForParameters(parameters, "query", nil)
+	properties := pathSchema["properties"].(map[string]any)
+	for name, schema := range querySchema["properties"].(map[string]any) {
+		properties[name] = schema
+	}
+	required, _ := pathSchema["required"].([]string)
+	required = append(required, requiredStrings(querySchema)...)
+	if len(required) > 0 {
+		slices.Sort(required)
+		pathSchema["required"] = required
+	}
+	return pathSchema
+}
+
+func requiredStrings(schema map[string]any) []string {
+	values, _ := schema["required"].([]string)
+	return values
+}
+
+func queryParameterNames(parameters []parameter) []string {
+	names := make([]string, 0)
+	for _, parameter := range parameters {
+		if parameter.In == "query" {
+			names = append(names, parameter.Name)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 func compileBindingResult(paths map[string]map[string]json.RawMessage, components map[string]any, source routeSource) (json.RawMessage, *jsonschema.Schema, error) {

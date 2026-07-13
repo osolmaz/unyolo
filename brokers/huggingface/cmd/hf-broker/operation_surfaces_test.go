@@ -257,6 +257,13 @@ func TestCatalogSchemaUsesPinnedBindingWhenAvailable(t *testing.T) {
 	if arguments["type"] != "object" || properties["sealed_arguments"] == nil {
 		t.Fatalf("schema = %#v", schema)
 	}
+	if !slices.Contains(schema["required"].([]string), "sealed_arguments") {
+		t.Fatalf("mandatory sealed arguments are optional: %#v", schema)
+	}
+	sealed := properties["sealed_arguments"].(map[string]any)
+	if !slices.Contains(requiredPropertyNames(sealed), "value") {
+		t.Fatalf("sealed value is optional: %#v", sealed)
+	}
 }
 
 func TestCredentialOutputToolRequiresSlotAndHidesSealedInput(t *testing.T) {

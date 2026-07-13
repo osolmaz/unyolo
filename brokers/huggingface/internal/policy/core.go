@@ -441,18 +441,21 @@ func coreAttrsFromHF(attrs map[string]any, view coreView) map[string][]string {
 
 func canonicalCoreAttr(key string, value any) string {
 	switch key {
-	case "max_bytes", "sleep_time_seconds":
+	case "max_bytes", "max_hosts", "num_hosts", "sleep_time_seconds", "warm_up":
 		number, ok := int64Value(value)
 		if !ok {
 			return "invalid"
 		}
 		return strconv.FormatInt(number, 10)
-	case "destination", "factory_reboot", "gating", "hardware", "key", "private", "ref_change", "sdk", "source", "source_path", "source_ref", "visibility":
-		text, _ := value.(string)
-		return text
-	default:
+	}
+	if !knownAttrs[key] {
 		return ""
 	}
+	text, ok := value.(string)
+	if !ok || text == "" {
+		return "invalid"
+	}
+	return text
 }
 
 func coreGrants(rules []Rule, view coreView) []corepolicy.Grant {
