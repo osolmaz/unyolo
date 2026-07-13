@@ -105,6 +105,26 @@ func TestSealedBoundAdapterRejectsOwnershipLeaksAndSecretSmuggling(t *testing.T)
 	}
 }
 
+func TestSealedBoundAdapterRejectsMissingRequiredSealedInput(t *testing.T) {
+	store, _ := sealedstore.Open(t.TempDir())
+	adapters, err := NewSealedBoundAdapters(&sealedBoundFake{identity: "operator"}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := NewRegistry(adapters...)
+	adapter, found := registry.Lookup("organization.member.token.revoke")
+	if !found {
+		t.Fatal("organization.member.token.revoke adapter is missing")
+	}
+	input, err := adapter.Decode(json.RawMessage(`{"name":"acme"}`), json.RawMessage(`{"public":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Resolve(t.Context(), input); err == nil {
+		t.Fatal("required sealed token was omitted")
+	}
+}
+
 func TestSealedBoundAdapterDoesNotReconcileSecretStateFromPublicArguments(t *testing.T) {
 	store, _ := sealedstore.Open(t.TempDir())
 	reference, _ := store.PutForRequest("bob", "space.secret.set", "secret-request", []byte(`{"value":"secret"}`), time.Now().Add(time.Hour))

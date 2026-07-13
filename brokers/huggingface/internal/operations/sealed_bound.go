@@ -149,7 +149,7 @@ func (a *sealedBoundAdapter) ValidateClient(input Input, client, requestKey stri
 
 func (a *sealedBoundAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
 	arguments, err := decodeSealedArguments(input.Arguments)
-	if err != nil || a.public.Validate(arguments.Public) != nil {
+	if err != nil || a.validatePublicArguments(arguments) != nil {
 		return Plan{}, errors.New("sealed operation public arguments do not match the operation schema")
 	}
 	preconditions, err := resolveBoundPreconditions(ctx, a.client, a.descriptor.Name, input.Target, a.binding.ObserveMethod != "")
@@ -160,6 +160,13 @@ func (a *sealedBoundAdapter) Resolve(ctx context.Context, input Input) (Plan, er
 	presentation, request := a.presentationAndPolicy(input.Target, arguments.Public, preconditions)
 	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
 		Arguments: input.Arguments, Preconditions: encoded, Presentation: presentation, Policy: request}, nil
+}
+
+func (a *sealedBoundAdapter) validatePublicArguments(arguments sealedBoundArguments) error {
+	if arguments.SealedPayload == nil {
+		return a.binding.ValidateArguments(arguments.Public)
+	}
+	return a.public.Validate(arguments.Public)
 }
 
 func (a *sealedBoundAdapter) Authorize(plan Plan) hfpolicy.Request {

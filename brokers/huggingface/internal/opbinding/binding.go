@@ -232,7 +232,20 @@ func removeSchemaPropertyPath(root, schema map[string]any, path []string) (bool,
 	}
 	delete(properties, path[0])
 	removeRequiredProperty(schema, path[0])
+	decrementMinimumProperties(schema)
 	return true, nil
+}
+
+func decrementMinimumProperties(schema map[string]any) {
+	minimum, ok := schema["minProperties"].(float64)
+	if !ok || minimum <= 0 {
+		return
+	}
+	if minimum == 1 {
+		delete(schema, "minProperties")
+		return
+	}
+	schema["minProperties"] = minimum - 1
 }
 
 func removeSchemaPathFromBranches(root, schema map[string]any, path []string) (bool, error) {

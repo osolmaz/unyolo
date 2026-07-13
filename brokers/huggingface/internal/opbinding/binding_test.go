@@ -139,6 +139,17 @@ func TestPublicArgumentsValidatorOmitsSealedPaths(t *testing.T) {
 	if _, err := binding.PublicArgumentsValidator([]string{"missing.secret"}); err == nil {
 		t.Fatal("missing sealed schema path was accepted")
 	}
+	endpoint, found := ByName("endpoint.update")
+	if !found {
+		t.Fatal("endpoint.update binding is missing")
+	}
+	endpointValidator, err := endpoint.PublicArgumentsValidator([]string{"model.secrets"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := endpointValidator.Validate(json.RawMessage(`{"model":{}}`)); err != nil {
+		t.Fatalf("secrets-only endpoint update was rejected: %v", err)
+	}
 }
 
 func TestRemoveSchemaPathFollowsReferencesAndCompositions(t *testing.T) {
@@ -160,6 +171,19 @@ func TestRemoveSchemaPathFollowsReferencesAndCompositions(t *testing.T) {
 	if branch["properties"].(map[string]any)["secret"] != nil || branch["required"] != nil {
 		t.Fatalf("sealed path remained in schema: %#v", branch)
 	}
+}
+
+func TestDecrementMinimumProperties(t *testing.T) {
+	schema := map[string]any{"minProperties": float64(2)}
+	decrementMinimumProperties(schema)
+	if schema["minProperties"] != float64(1) {
+		t.Fatalf("minProperties = %#v", schema["minProperties"])
+	}
+	decrementMinimumProperties(schema)
+	if schema["minProperties"] != nil {
+		t.Fatalf("minimum was not removed: %#v", schema)
+	}
+	decrementMinimumProperties(schema)
 }
 
 func TestPinnedBindingsCloseNestedObjects(t *testing.T) {
