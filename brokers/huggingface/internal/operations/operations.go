@@ -41,7 +41,7 @@ type Adapter interface {
 	Resolve(context.Context, Input) (Plan, error)
 	Authorize(Plan) hfpolicy.Request
 	Present(Plan) agentv1.Presentation
-	Execute(context.Context, Plan) (json.RawMessage, error)
+	Execute(context.Context, Plan) (Outcome, error)
 	Reconcile(context.Context, Plan) (Outcome, error)
 }
 

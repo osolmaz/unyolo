@@ -97,11 +97,11 @@ func (f *settingsFake) MoveRepo(_ context.Context, from hubclient.RepoRef, owner
 	return nil
 }
 
-func (f *settingsFake) UpdateRepoVisibility(_ context.Context, ref hubclient.RepoRef, visibility hubclient.Visibility) error {
+func (f *settingsFake) UpdateRepoVisibility(_ context.Context, ref hubclient.RepoRef, visibility hubclient.Visibility) (hubclient.RepoSettings, error) {
 	value := f.repos[repoKey(ref)]
 	value.Private = visibility == hubclient.VisibilityPrivate
 	f.repos[repoKey(ref)] = value
-	return nil
+	return hubclient.RepoSettings{Visibility: visibility}, nil
 }
 
 func (f *settingsFake) UpdateRepoGating(_ context.Context, ref hubclient.RepoRef, mode hubclient.GatedMode) error {

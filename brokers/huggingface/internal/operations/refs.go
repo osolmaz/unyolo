@@ -152,17 +152,17 @@ func (a *refsAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentation
 }
 
-func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (json.RawMessage, error) {
+func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	target, preconditions, err := a.decodePlan(plan)
 	if err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
 	refs, err := a.client.ListRefs(ctx, target.repoRef())
 	if err != nil || refsDigest(refs) != preconditions.ObservedDigest {
 		if err != nil {
-			return nil, err
+			return Outcome{}, err
 		}
-		return nil, errors.New("operation_precondition_failed")
+		return Outcome{}, errors.New("operation_precondition_failed")
 	}
 	switch a.descriptor.Name {
 	case "repo.branch.create":
@@ -179,13 +179,13 @@ func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (json.RawMessage, 
 		err = a.client.DeleteTag(ctx, target.repoRef(), target.Ref)
 	}
 	if err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
-	return json.RawMessage(`{"updated":true}`), nil
+	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
 func (a *refsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
-	target, preconditions, err := a.decodePlan(plan)
+	target, _, err := a.decodePlan(plan)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -193,11 +193,11 @@ func (a *refsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error)
 	if err != nil {
 		return Outcome{}, err
 	}
-	value, found := a.find(refs, target.Ref)
+	_, found := a.find(refs, target.Ref)
 	if strings.HasSuffix(a.descriptor.Name, ".create") {
 		return Outcome{Proven: found, Result: json.RawMessage(`{"updated":true}`)}, nil
 	}
-	return Outcome{Proven: !found && preconditions.ExpectedCommit != value.TargetCommit, Result: json.RawMessage(`{"updated":true}`)}, nil
+	return Outcome{Proven: !found, Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
 func (a *refsAdapter) decodePlan(plan Plan) (refTarget, refsPreconditions, error) {

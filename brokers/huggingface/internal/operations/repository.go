@@ -135,32 +135,33 @@ func (a *repositoryAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentation
 }
 
-func (a *repositoryAdapter) Execute(ctx context.Context, plan Plan) (json.RawMessage, error) {
+func (a *repositoryAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	var target repositoryTarget
 	var preconditions repoPreconditions
 	if decodeClosed(plan.Target, &target, maxTargetBytes) != nil || decodeClosed(plan.Preconditions, &preconditions, maxTargetBytes) != nil {
-		return nil, errors.New("operation plan is invalid")
+		return Outcome{}, errors.New("operation plan is invalid")
 	}
 	if err := a.checkPreconditions(ctx, target, preconditions); err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
 	switch a.descriptor.Name {
 	case "repo.create":
 		var arguments repoCreateArguments
 		if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
-			return nil, errors.New("operation plan arguments are invalid")
+			return Outcome{}, errors.New("operation plan arguments are invalid")
 		}
 		if _, err := a.client.CreateRepo(ctx, hubclient.CreateRepoInput{Ref: target.repoRef(), Visibility: hubclient.Visibility(arguments.Visibility), SpaceSDK: arguments.SDK, PersonalNamespace: preconditions.CredentialIdentity == target.Owner}); err != nil {
-			return nil, err
+			return Outcome{}, err
 		}
-		return canonical(map[string]any{"repo_id": target.Owner + "/" + target.Name, "url": a.repoURL(target)})
+		result, err := canonical(map[string]any{"repo_id": target.Owner + "/" + target.Name, "url": a.repoURL(target)})
+		return Outcome{Result: result}, err
 	case "repo.delete":
 		if err := a.client.DeleteRepo(ctx, target.repoRef()); err != nil {
-			return nil, err
+			return Outcome{}, err
 		}
-		return json.RawMessage(`{"deleted":true}`), nil
+		return Outcome{Result: json.RawMessage(`{"deleted":true}`)}, nil
 	default:
-		return nil, errors.New("repository operation is not implemented")
+		return Outcome{}, errors.New("repository operation is not implemented")
 	}
 }
 

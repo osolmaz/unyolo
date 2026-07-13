@@ -177,17 +177,17 @@ func (a *spaceAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentation
 }
 
-func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (json.RawMessage, error) {
+func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	target, expected, err := a.decodePlan(plan)
 	if err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
 	observed, err := a.observe(ctx, target)
 	if err != nil || digest(observed) != expected.ObservedDigest {
 		if err != nil {
-			return nil, err
+			return Outcome{}, err
 		}
-		return nil, errors.New("operation_precondition_failed")
+		return Outcome{}, errors.New("operation_precondition_failed")
 	}
 	space := target.ref()
 	switch a.descriptor.Name {
@@ -217,9 +217,9 @@ func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (json.RawMessage,
 		err = a.client.DeleteSpaceVariable(ctx, space, arguments.Key)
 	}
 	if err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
-	return json.RawMessage(`{"updated":true}`), nil
+	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
 func (a *spaceAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {

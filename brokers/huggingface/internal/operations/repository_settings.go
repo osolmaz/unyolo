@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
@@ -16,7 +15,7 @@ import (
 type repositorySettingsClient interface {
 	RepoInfo(context.Context, hubclient.RepoRef) (hubclient.RepoInfo, error)
 	MoveRepo(context.Context, hubclient.RepoRef, string, string) error
-	UpdateRepoVisibility(context.Context, hubclient.RepoRef, hubclient.Visibility) error
+	UpdateRepoVisibility(context.Context, hubclient.RepoRef, hubclient.Visibility) (hubclient.RepoSettings, error)
 	UpdateRepoGating(context.Context, hubclient.RepoRef, hubclient.GatedMode) error
 }
 
@@ -149,13 +148,13 @@ func (a *repositorySettingsAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentation
 }
 
-func (a *repositorySettingsAdapter) Execute(ctx context.Context, plan Plan) (json.RawMessage, error) {
+func (a *repositorySettingsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	target, preconditions, err := a.decodePlan(plan)
 	if err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
 	if err := a.checkPreconditions(ctx, target, plan.Arguments, preconditions); err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
 	switch a.descriptor.Name {
 	case "repo.move":
@@ -165,16 +164,20 @@ func (a *repositorySettingsAdapter) Execute(ctx context.Context, plan Plan) (jso
 	case "repo.visibility.update":
 		var arguments visibilityArguments
 		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.UpdateRepoVisibility(ctx, target.repoRef(), hubclient.Visibility(arguments.Visibility))
+		var settings hubclient.RepoSettings
+		settings, err = a.client.UpdateRepoVisibility(ctx, target.repoRef(), hubclient.Visibility(arguments.Visibility))
+		if err == nil && settings.Visibility == hubclient.Visibility(arguments.Visibility) {
+			return Outcome{Proven: true, Result: json.RawMessage(`{"updated":true}`)}, nil
+		}
 	case "repo.gating.update":
 		var arguments gatingArguments
 		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
 		err = a.client.UpdateRepoGating(ctx, target.repoRef(), hubclient.GatedMode(arguments.Mode))
 	}
 	if err != nil {
-		return nil, err
+		return Outcome{}, err
 	}
-	return json.RawMessage(`{"updated":true}`), nil
+	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
 func (a *repositorySettingsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
@@ -295,5 +298,3 @@ func repoInfoDigest(info hubclient.RepoInfo) string {
 	value, _ := canonical(info)
 	return digest(value)
 }
-
-func policyText(value string) string { return strings.TrimSpace(value) }

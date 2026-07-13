@@ -344,17 +344,22 @@ func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operati
 	if !ok {
 		return
 	}
-	result, executionErr := adapter.Execute(ctx, plan)
+	execution, executionErr := adapter.Execute(ctx, plan)
 	if reserved {
 		if _, err := s.grants.CommitUse(operation.ApprovalID); err != nil {
 			s.failOperation(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
 			return
 		}
 	}
+	if executionErr == nil && execution.Proven {
+		_, _ = s.operations.Succeed(operation.ID, execution.Result)
+		s.record(operation.ClientID, operation.Operation, operationPolicyTarget(plan.Policy), audit.DecisionAllowed, "", http.StatusOK)
+		return
+	}
 	outcome, reconcileErr := adapter.Reconcile(ctx, plan)
 	if reconcileErr == nil && outcome.Proven {
 		if len(outcome.Result) == 0 {
-			outcome.Result = result
+			outcome.Result = execution.Result
 		}
 		_, _ = s.operations.Succeed(operation.ID, outcome.Result)
 		s.record(operation.ClientID, operation.Operation, operationPolicyTarget(plan.Policy), audit.DecisionAllowed, "", http.StatusOK)

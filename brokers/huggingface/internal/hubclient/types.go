@@ -142,6 +142,11 @@ type RepoInfo struct {
 	Gated   GatedMode
 }
 
+// RepoSettings is the bounded response from an exact settings mutation.
+type RepoSettings struct {
+	Visibility Visibility `json:"visibility"`
+}
+
 type repoInfoWire struct {
 	ID      string          `json:"id"`
 	SHA     string          `json:"sha"`

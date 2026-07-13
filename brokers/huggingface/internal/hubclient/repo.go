@@ -108,21 +108,23 @@ type visibilitySettingsBody struct {
 // visibility is valid for Spaces only.
 //
 // Spec: PUT /api/{type}s/{owner}/{name}/settings.
-func (c *Client) UpdateRepoVisibility(ctx context.Context, ref RepoRef, visibility Visibility) error {
+func (c *Client) UpdateRepoVisibility(ctx context.Context, ref RepoRef, visibility Visibility) (RepoSettings, error) {
 	if err := ref.Validate(); err != nil {
-		return err
+		return RepoSettings{}, err
 	}
 	switch visibility {
 	case VisibilityPublic, VisibilityPrivate:
 	case VisibilityProtected:
 		if ref.Type != RepoTypeSpace {
-			return errors.New("hubclient: protected visibility applies only to spaces")
+			return RepoSettings{}, errors.New("hubclient: protected visibility applies only to spaces")
 		}
 	default:
-		return errors.New("hubclient: visibility must be public, private, or protected")
+		return RepoSettings{}, errors.New("hubclient: visibility must be public, private, or protected")
 	}
 	body := visibilitySettingsBody{Visibility: string(visibility)}
-	return c.call(ctx, callSpec{method: http.MethodPut, path: ref.apiPath("settings"), body: body})
+	var settings RepoSettings
+	err := c.call(ctx, callSpec{method: http.MethodPut, path: ref.apiPath("settings"), body: body, out: &settings})
+	return settings, err
 }
 
 type gatedSettingsBody struct {
