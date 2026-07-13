@@ -4,7 +4,8 @@ export default defineConfig({
   testDir: "test/browser",
   use: { baseURL: "http://127.0.0.1:4179", screenshot: "only-on-failure" },
   webServer: {
-    command: "pnpm exec vite --host 127.0.0.1 --port 4179",
+    command:
+      "pnpm run build && pnpm exec vite preview --host 127.0.0.1 --port 4179",
     port: 4179,
     reuseExistingServer: false,
   },
