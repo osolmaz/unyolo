@@ -35,7 +35,7 @@ verify_report() {
 			return 1
 		fi
 		local name="${symbol##*.}"
-		if ! rg -q "func .*${name}\\(" "$source_root/$path"; then
+		if ! grep -Eq "func .*${name}\\(" "$source_root/$path"; then
 			printf 'HF CRAP baseline function %s is not in %s.\n' "$symbol" "$path" >&2
 			return 1
 		fi
