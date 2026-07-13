@@ -26,7 +26,6 @@ const (
 // Defines values for Action.
 const (
 	Approve Action = "approve"
-	Cancel  Action = "cancel"
 	Deny    Action = "deny"
 	Revoke  Action = "revoke"
 )
@@ -35,8 +34,6 @@ const (
 func (e Action) Valid() bool {
 	switch e {
 	case Approve:
-		return true
-	case Cancel:
 		return true
 	case Deny:
 		return true

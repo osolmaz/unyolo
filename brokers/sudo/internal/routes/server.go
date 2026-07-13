@@ -114,7 +114,7 @@ func New(opts Options) (*Server, error) {
 		audit: auditWriter, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
 		database: opts.Database, operations: agentops.New(opts.Database)}
 	server.agentAPI, err = agentapi.New(agentapi.Options{Store: server.operations, Authenticate: control.Clients.AuthenticateHeader,
-		Submit: server.submitAgentOperation, Realm: "sudo-broker"})
+		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "sudo-broker"})
 	if err != nil {
 		return nil, err
 	}

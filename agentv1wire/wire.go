@@ -47,6 +47,7 @@ func OperationToWire(input agentv1.Operation) (agentwire.Operation, error) {
 		ClientId: input.ClientID, IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: target, Arguments: arguments,
 		Reason: input.Reason, State: agentwire.State(input.State), Revision: int(input.Revision), ApprovalId: optional.NonZero(input.ApprovalID),
 		CreatedAt: input.CreatedAt, UpdatedAt: input.UpdatedAt, TerminalAt: input.TerminalAt,
+		PlanDigest:   optional.NonZero(input.PlanDigest),
 		Presentation: agentwire.Presentation{Title: input.Presentation.Title, Summary: optional.NonZero(input.Presentation.Summary)}}
 	if len(input.Result) > 0 {
 		value, err := decodeObject(input.Result)
@@ -73,7 +74,7 @@ func OperationFromWire(input agentwire.Operation) (agentv1.Operation, error) {
 	result := agentv1.Operation{APIVersion: string(input.ApiVersion), ID: input.Id, Broker: input.Broker, ClientID: input.ClientId,
 		IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: target, Arguments: arguments, Reason: input.Reason,
 		State: agentv1.State(input.State), Revision: int64(input.Revision), ApprovalID: optional.Value(input.ApprovalId), CreatedAt: input.CreatedAt,
-		UpdatedAt: input.UpdatedAt, TerminalAt: input.TerminalAt,
+		UpdatedAt: input.UpdatedAt, TerminalAt: input.TerminalAt, PlanDigest: optional.Value(input.PlanDigest),
 		Presentation: agentv1.Presentation{Title: input.Presentation.Title, Summary: optional.Value(input.Presentation.Summary)}}
 	if input.Result != nil {
 		result.Result, err = json.Marshal(*input.Result)

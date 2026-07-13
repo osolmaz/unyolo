@@ -13,7 +13,10 @@ import (
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorv1"
+	"github.com/osolmaz/brokerkit/operatorv1wire"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/protocol/operatorwire"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestClientImplementsOperatorV1Source(t *testing.T) {
@@ -161,6 +164,67 @@ func TestClientDropsUnknownResponseFieldsAndRejectsTrailingData(t *testing.T) {
 	}
 	if _, err := NewUnix("relative.sock", "token"); err == nil {
 		t.Fatal("NewUnix() accepted a relative socket path")
+	}
+}
+
+func TestWireConversionsPreserveOptionalOperatorFields(t *testing.T) {
+	t.Parallel()
+	summary := "destructive repository operation"
+	reason := "remove obsolete test data"
+	decidedBy := "onur"
+	onBehalfOf := "operator"
+	unavailable := true
+	next := "next"
+	events := "events"
+	facts := []operatorwire.Fact{{Label: "Repository", Value: "acme/demo"}}
+	wire := operatorwire.BrokerRequest{
+		Id: "request-1", Revision: 7, Requester: "bob", Operation: "repo.delete", Status: operatorwire.Status(grants.StatusPending),
+		RequestedAt: time.Now().UTC(), RequestedDurationSeconds: 300,
+		RequestedMaxUses: operatorv1wire.UseLimitToWire(1), GrantedMaxUses: operatorv1wire.UseLimitToWire(usebudget.Unlimited),
+		RequestReason: &reason, DecidedBy: &decidedBy, DecidedOnBehalfOf: &onBehalfOf, PresentationUnavailable: &unavailable,
+		Presentation:   operatorwire.Presentation{Risk: "high", Title: "Delete repository", Summary: &summary, Facts: &facts},
+		AllowedActions: []operatorwire.Action{operatorwire.Action(operatorv1.ActionApprove), operatorwire.Action(operatorv1.ActionDeny)},
+		ApprovalBounds: &operatorwire.ApprovalBounds{MaxDurationSeconds: 600, MaxUses: operatorv1wire.UseLimitToWire(2)},
+	}
+	request := requestFromWire(wire)
+	if request.RequestReason != reason || request.DecidedBy != decidedBy || request.DecidedOnBehalfOf != onBehalfOf ||
+		!request.PresentationUnavailable || request.Presentation.Summary != summary || len(request.Presentation.Facts) != 1 ||
+		request.ApprovalBounds == nil || request.ApprovalBounds.MaxUses != 2 || len(request.AllowedActions) != 2 {
+		t.Fatalf("requestFromWire() = %#v", request)
+	}
+	page := pageFromWire(operatorwire.RequestPage{Requests: []operatorwire.BrokerRequest{wire}, NextCursor: &next, EventCursor: &events})
+	if page.NextCursor != next || page.EventCursor != events || len(page.Requests) != 1 {
+		t.Fatalf("pageFromWire() = %#v", page)
+	}
+	decision := decisionToWire(operatorv1.Decision{ExpectedRevision: 7, IdempotencyKey: "decision-1", OnBehalfOf: "onur",
+		Constraints: &operatorv1.Constraints{DurationSeconds: 120, MaxUses: usebudget.Optional{Limit: 1, Specified: true}}})
+	if decision.OnBehalfOf == nil || decision.Constraints == nil || decision.Constraints.DurationSeconds == nil ||
+		*decision.Constraints.DurationSeconds != 120 || operatorv1wire.UseLimitFromWire(decision.Constraints.MaxUses) != 1 {
+		t.Fatalf("decisionToWire() = %#v", decision)
+	}
+}
+
+func TestClientConstructionAndResponseErrors(t *testing.T) {
+	t.Parallel()
+	client, err := NewUnix("/tmp/brokerkit-operator.sock", "token")
+	if err != nil || client.BaseURL != "http://brokerkit" || client.HTTPClient == nil {
+		t.Fatalf("NewUnix() = %#v, %v", client, err)
+	}
+	for _, path := range []string{"", "/tmp/../tmp/socket", "/tmp/bad\x00socket"} {
+		if _, err := NewUnix(path, "token"); err == nil {
+			t.Fatalf("NewUnix(%q) succeeded", path)
+		}
+	}
+	apiErr := &Error{Status: http.StatusConflict, Code: "revision_conflict", Message: "stale revision"}
+	if text := apiErr.Error(); !strings.Contains(text, "revision_conflict") || !strings.Contains(text, "409") {
+		t.Fatalf("Error() = %q", text)
+	}
+	sentinel := errors.New("transport failed")
+	if err := decodeClientResponse(nil, sentinel, &struct{}{}); !errors.Is(err, sentinel) {
+		t.Fatalf("decodeClientResponse(error) = %v", err)
+	}
+	if err := decodeClientResponse(nil, nil, &struct{}{}); err == nil {
+		t.Fatal("decodeClientResponse accepted nil response")
 	}
 }
 

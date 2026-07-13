@@ -2,8 +2,10 @@ package approval
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	bkgrants "github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorinbox"
@@ -13,7 +15,7 @@ import (
 func TestPresenterRendersSafeHFDetails(t *testing.T) {
 	presentation, err := (Presenter{}).Present(context.Background(), bkgrants.Grant{
 		ID: "grant-1", Operation: "git.push.force",
-		Target:   bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
+		Target:   bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "refs": {"refs/heads/main"}}},
 		Metadata: map[string]string{"hf_grant_mode": "window"},
 	})
 	if err != nil {
@@ -24,6 +26,17 @@ func TestPresenterRendersSafeHFDetails(t *testing.T) {
 	}
 	if _, err := (Presenter{}).Present(context.Background(), bkgrants.Grant{ID: "missing"}); err == nil {
 		t.Fatal("Present() accepted a grant without target")
+	}
+}
+
+func TestPresenterUsesExactPlanProjection(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	presentation, err := (Presenter{}).Present(t.Context(), bkgrants.Grant{ID: "grant-1", Operation: "repo.delete",
+		Target:   bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"kind": {"repo"}, "type": {"dataset"}, "owner": {"acme"}, "name": {"demo"}}},
+		Metadata: map[string]string{hfplan.MetadataTitle: "Delete Hugging Face repository", hfplan.MetadataSummary: "Permanently delete dataset acme/demo", hfplan.MetadataDigest: digest}})
+	if err != nil || presentation.Target != "dataset/acme/demo" || presentation.Title != "Delete Hugging Face repository" ||
+		presentation.Summary != "Permanently delete dataset acme/demo" || presentation.PlanHash != digest {
+		t.Fatalf("presentation = %+v, %v", presentation, err)
 	}
 }
 

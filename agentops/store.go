@@ -16,11 +16,13 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/state"
 )
 
 const (
-	maxJSONBytes      = 4096
+	maxTargetBytes    = 16 * 1024
+	maxArgumentsBytes = 1024 * 1024
 	maxResultBytes    = 2 * 1024 * 1024
 	maxOperations     = 2048
 	terminalRetention = 30 * 24 * time.Hour
@@ -30,10 +32,13 @@ var (
 	ErrNotFound            = errors.New("operation not found")
 	ErrIdempotencyConflict = errors.New("operation idempotency conflict")
 	ErrInvalidTransition   = errors.New("invalid operation state transition")
+	ErrNotCancelable       = errors.New("operation is not cancelable")
 	ErrCapacity            = errors.New("operation store capacity reached")
+	errNoOperationChange   = errors.New("operation does not need an update")
 )
 
 type Submit struct {
+	ID             string
 	Broker         string
 	ClientID       string
 	IdempotencyKey string
@@ -42,6 +47,16 @@ type Submit struct {
 	Arguments      json.RawMessage
 	Reason         string
 	Presentation   agentv1.Presentation
+	PlanDigest     string
+}
+
+// NewID allocates an operation identifier for callers that bind an approval
+// and immutable plan before inserting the operation row.
+func (s *Store) NewID() (string, error) {
+	if s == nil || s.newID == nil {
+		return "", errors.New("operation ID generator is unavailable")
+	}
+	return s.newID()
 }
 
 type Store struct {
@@ -61,16 +76,37 @@ func newStore(database *state.Database, now func() time.Time, newID func() (stri
 }
 
 func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
+	return s.submit(input, nil, agentv1.StatePending)
+}
+
+// SubmitWithPlan atomically persists an immutable execution plan and its
+// operation. Replays must provide the same plan digest.
+func (s *Store) SubmitWithPlan(input Submit, plan state.PlanRecord) (agentv1.Operation, bool, error) {
+	return s.submitWithPlan(input, plan, agentv1.StatePending)
+}
+
+// SubmitApprovedWithPlan atomically persists a direct operation in its approved
+// state so restart recovery never has to infer whether approval was required.
+func (s *Store) SubmitApprovedWithPlan(input Submit, plan state.PlanRecord) (agentv1.Operation, bool, error) {
+	return s.submitWithPlan(input, plan, agentv1.StateApproved)
+}
+
+func (s *Store) submitWithPlan(input Submit, plan state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
+	input.PlanDigest = plan.Digest
+	return s.submit(input, &plan, initialState)
+}
+
+func (s *Store) submit(input Submit, plan *state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
 	normalized, err := normalizeSubmit(input)
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.submitLocked(normalized)
+	return s.submitLocked(normalized, plan, initialState)
 }
 
-func (s *Store) submitLocked(input Submit) (agentv1.Operation, bool, error) {
+func (s *Store) submitLocked(input Submit, plan *state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
 	ctx := context.Background()
 	now := s.now().UTC()
 	if _, err := s.db.DeleteTerminalOperationsBefore(ctx, now.Add(-terminalRetention)); err != nil {
@@ -79,7 +115,7 @@ func (s *Store) submitLocked(input Submit) (agentv1.Operation, bool, error) {
 	if existing, found, err := s.findSubmission(ctx, input); err != nil || found {
 		return existing, false, err
 	}
-	return s.createOperation(ctx, input, now)
+	return s.createOperation(ctx, input, now, plan, initialState)
 }
 
 func (s *Store) findSubmission(ctx context.Context, input Submit) (agentv1.Operation, bool, error) {
@@ -100,7 +136,7 @@ func (s *Store) findSubmission(ctx context.Context, input Submit) (agentv1.Opera
 	return agentv1.Operation{}, false, err
 }
 
-func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time) (agentv1.Operation, bool, error) {
+func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time, plan *state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
 	count, err := s.db.CountOperations(ctx)
 	if err != nil {
 		return agentv1.Operation{}, false, err
@@ -108,18 +144,28 @@ func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time
 	if count >= maxOperations {
 		return agentv1.Operation{}, false, ErrCapacity
 	}
-	id, err := s.newID()
-	if err != nil {
-		return agentv1.Operation{}, false, err
+	id := input.ID
+	if id == "" {
+		var err error
+		id, err = s.NewID()
+		if err != nil {
+			return agentv1.Operation{}, false, err
+		}
 	}
 	op := agentv1.Operation{
 		APIVersion: agentv1.APIVersion, ID: id, Broker: input.Broker, ClientID: input.ClientID,
 		IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: input.Target,
-		Arguments: input.Arguments, Reason: input.Reason, State: agentv1.StatePending, Revision: 1,
-		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation,
+		Arguments: input.Arguments, Reason: input.Reason, State: initialState, Revision: 1,
+		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation, PlanDigest: input.PlanDigest,
 	}
-	if err := s.db.InsertOperation(ctx, operationRecord(op)); err != nil {
-		return agentv1.Operation{}, false, err
+	var insertErr error
+	if plan == nil {
+		insertErr = s.db.InsertOperation(ctx, operationRecord(op))
+	} else {
+		insertErr = s.db.InsertOperationWithPlan(ctx, operationRecord(op), *plan)
+	}
+	if insertErr != nil {
+		return agentv1.Operation{}, false, insertErr
 	}
 	s.notify()
 	return clone(op), true, nil
@@ -137,6 +183,38 @@ func (s *Store) GetByID(id string) (agentv1.Operation, error) {
 	defer s.mu.Unlock()
 	record, err := s.db.OperationByID(context.Background(), id)
 	return storedOperation(record, err)
+}
+
+// GetByIdempotency returns an existing submission for provider lifecycle
+// services that must avoid re-resolving mutable upstream state on replay.
+func (s *Store) GetByIdempotency(clientID, key string) (agentv1.Operation, error) {
+	clientID, key = strings.TrimSpace(clientID), strings.TrimSpace(key)
+	if clientID == "" || key == "" {
+		return agentv1.Operation{}, ErrNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.db.OperationByIdempotency(context.Background(), clientID, key)
+	return storedOperation(record, err)
+}
+
+// Cancel atomically cancels a requester-owned pending or approved operation.
+// Terminal operations are returned unchanged; executing work is not cancelable.
+func (s *Store) Cancel(clientID, id string) (agentv1.Operation, error) {
+	return s.update(id, func(operation *agentv1.Operation) error {
+		if operation.ClientID != clientID {
+			return ErrNotFound
+		}
+		if operation.State.Terminal() {
+			return errNoOperationChange
+		}
+		if operation.State != agentv1.StatePending && operation.State != agentv1.StateApproved {
+			return ErrNotCancelable
+		}
+		operation.State = agentv1.StateCanceled
+		operation.Error = &agentv1.OperationError{Code: "operation_canceled", Message: "Request was canceled"}
+		return nil
+	})
 }
 
 func (s *Store) getLocked(clientID, id string) (agentv1.Operation, error) {
@@ -171,6 +249,42 @@ func (s *Store) SetApproval(id, approvalID string) (agentv1.Operation, error) {
 		operation.ApprovalID = approvalID
 		return nil
 	})
+}
+
+// BindPlan atomically stores the immutable plan and binds a pending operation
+// to either an approval request or direct execution.
+func (s *Store) BindPlan(id string, plan state.PlanRecord, approvalID string, direct bool) (agentv1.Operation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	operation, err := storedOperation(s.db.OperationByID(context.Background(), id))
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	if !validPlanBinding(operation, plan, approvalID, direct) {
+		return agentv1.Operation{}, ErrInvalidTransition
+	}
+	expectedRevision := operation.Revision
+	operation.PlanDigest = plan.Digest
+	operation.ApprovalID = approvalID
+	if direct {
+		operation.State = agentv1.StateApproved
+	}
+	prepareOperationUpdate(&operation, s.now())
+	updated, err := s.db.UpdateOperationWithPlan(context.Background(), operationRecord(operation), expectedRevision, plan)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	if !updated {
+		return agentv1.Operation{}, ErrInvalidTransition
+	}
+	s.notify()
+	return clone(operation), nil
+}
+
+func validPlanBinding(operation agentv1.Operation, plan state.PlanRecord, approvalID string, direct bool) bool {
+	return operation.State == agentv1.StatePending && operation.PlanDigest == "" && direct != (approvalID != "") &&
+		plandigest.Valid(plan.Digest)
 }
 
 func (s *Store) Transition(id string, state agentv1.State) (agentv1.Operation, error) {
@@ -253,16 +367,15 @@ func (s *Store) update(id string, change func(*agentv1.Operation) error) (agentv
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	if err := change(&operation); err != nil {
+	changed, err := applyOperationChange(&operation, change)
+	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	expectedRevision := operation.Revision
-	operation.Revision++
-	operation.UpdatedAt = s.now().UTC()
-	if operation.State.Terminal() {
-		terminal := operation.UpdatedAt
-		operation.TerminalAt = &terminal
+	if !changed {
+		return clone(operation), nil
 	}
+	expectedRevision := operation.Revision
+	prepareOperationUpdate(&operation, s.now())
 	updated, err := s.db.UpdateOperation(context.Background(), operationRecord(operation), expectedRevision)
 	if err != nil {
 		return agentv1.Operation{}, err
@@ -272,6 +385,26 @@ func (s *Store) update(id string, change func(*agentv1.Operation) error) (agentv
 	}
 	s.notify()
 	return clone(operation), nil
+}
+
+func applyOperationChange(operation *agentv1.Operation, change func(*agentv1.Operation) error) (bool, error) {
+	err := change(operation)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, errNoOperationChange) {
+		return false, nil
+	}
+	return false, err
+}
+
+func prepareOperationUpdate(operation *agentv1.Operation, now time.Time) {
+	operation.Revision++
+	operation.UpdatedAt = now.UTC()
+	if operation.State.Terminal() {
+		terminal := operation.UpdatedAt
+		operation.TerminalAt = &terminal
+	}
 }
 
 func (s *Store) notify() {
@@ -306,7 +439,7 @@ func operationRecord(operation agentv1.Operation) state.OperationRecord {
 		Reason: operation.Reason, State: string(operation.State), Revision: operation.Revision,
 		CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt, TerminalAt: operation.TerminalAt,
 		ApprovalID: operation.ApprovalID, PresentationJSON: presentation, ResultJSON: operation.Result,
-		ErrorJSON: operationError,
+		ErrorJSON: operationError, PlanDigest: operation.PlanDigest,
 	}
 }
 
@@ -316,7 +449,7 @@ func operationFromRecord(record state.OperationRecord) (agentv1.Operation, error
 		IdempotencyKey: record.IdempotencyKey, Operation: record.Operation, Target: record.TargetJSON,
 		Arguments: record.ArgumentsJSON, Reason: record.Reason, State: agentv1.State(record.State),
 		Revision: record.Revision, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
-		TerminalAt: record.TerminalAt, ApprovalID: record.ApprovalID, Result: record.ResultJSON,
+		TerminalAt: record.TerminalAt, ApprovalID: record.ApprovalID, PlanDigest: record.PlanDigest, Result: record.ResultJSON,
 	}
 	if err := strictjson.Decode(record.PresentationJSON, &operation.Presentation, true); err != nil {
 		return agentv1.Operation{}, fmt.Errorf("decode operation presentation: %w", err)
@@ -335,6 +468,7 @@ func operationFromRecord(record state.OperationRecord) (agentv1.Operation, error
 }
 
 func normalizeSubmit(input Submit) (Submit, error) {
+	input.ID = strings.TrimSpace(input.ID)
 	input.Broker = strings.TrimSpace(input.Broker)
 	input.ClientID = strings.TrimSpace(input.ClientID)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
@@ -342,6 +476,7 @@ func normalizeSubmit(input Submit) (Submit, error) {
 	input.Reason = strings.TrimSpace(input.Reason)
 	input.Presentation.Title = strings.TrimSpace(input.Presentation.Title)
 	input.Presentation.Summary = strings.TrimSpace(input.Presentation.Summary)
+	input.PlanDigest = strings.TrimSpace(input.PlanDigest)
 	if !validSubmitIdentity(input) {
 		return Submit{}, errors.New("operation identity is invalid")
 	}
@@ -349,11 +484,11 @@ func normalizeSubmit(input Submit) (Submit, error) {
 		return Submit{}, errors.New("operation presentation is invalid")
 	}
 	var err error
-	input.Target, err = normalizeObject(input.Target)
+	input.Target, err = normalizeObjectLimit(input.Target, maxTargetBytes)
 	if err != nil {
 		return Submit{}, fmt.Errorf("target: %w", err)
 	}
-	input.Arguments, err = normalizeObject(input.Arguments)
+	input.Arguments, err = normalizeObjectLimit(input.Arguments, maxArgumentsBytes)
 	if err != nil {
 		return Submit{}, fmt.Errorf("arguments: %w", err)
 	}
@@ -361,16 +496,24 @@ func normalizeSubmit(input Submit) (Submit, error) {
 }
 
 func validSubmitIdentity(input Submit) bool {
-	return input.Broker != "" && len(input.Broker) <= 64 && input.ClientID != "" && len(input.ClientID) <= 128 &&
-		input.IdempotencyKey != "" && len(input.IdempotencyKey) <= 128 && input.Operation != "" && len(input.Operation) <= 128
+	return (input.ID == "" || validOperationID(input.ID)) &&
+		validRequiredValue(input.Broker, 64) &&
+		validRequiredValue(input.ClientID, 128) &&
+		validRequiredValue(input.IdempotencyKey, 128) &&
+		validRequiredValue(input.Operation, 128)
+}
+
+func validRequiredValue(value string, maximum int) bool {
+	return value != "" && len(value) <= maximum
+}
+
+func validOperationID(value string) bool {
+	return strings.HasPrefix(value, "op_") && len(value) >= 8 && len(value) <= 128 && !strings.ContainsAny(value, " \t\r\n")
 }
 
 func validSubmitPresentation(input Submit) bool {
-	return len(input.Reason) <= 512 && input.Presentation.Title != "" && len(input.Presentation.Title) <= 160 && len(input.Presentation.Summary) <= 500
-}
-
-func normalizeObject(value json.RawMessage) (json.RawMessage, error) {
-	return normalizeObjectLimit(value, maxJSONBytes)
+	return len(input.Reason) <= 2000 && input.Presentation.Title != "" && len(input.Presentation.Title) <= 160 && len(input.Presentation.Summary) <= 500 &&
+		(input.PlanDigest == "" || plandigest.Valid(input.PlanDigest))
 }
 
 func normalizeObjectLimit(value json.RawMessage, maximum int) (json.RawMessage, error) {
@@ -394,7 +537,8 @@ func normalizeObjectLimit(value json.RawMessage, maximum int) (json.RawMessage, 
 
 func sameSubmission(existing agentv1.Operation, input Submit) bool {
 	return existing.Broker == input.Broker && existing.Operation == input.Operation && existing.Reason == input.Reason &&
-		existing.Presentation == input.Presentation && equalJSON(existing.Target, input.Target) && equalJSON(existing.Arguments, input.Arguments)
+		existing.Presentation == input.Presentation && existing.PlanDigest == input.PlanDigest &&
+		equalJSON(existing.Target, input.Target) && equalJSON(existing.Arguments, input.Arguments)
 }
 
 func equalJSON(left, right []byte) bool {

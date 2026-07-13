@@ -56,12 +56,12 @@
     },
     "arguments": {
       "type": "object",
-      "maxProperties": 32
+      "maxProperties": 128
     },
     "reason": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 512
+      "maxLength": 2000
     },
     "state": {
       "$ref": "#/$defs/State"
@@ -90,9 +90,13 @@
     "presentation": {
       "$ref": "#/$defs/Presentation"
     },
+    "plan_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "result": {
       "type": "object",
-      "maxProperties": 32
+      "maxProperties": 128
     },
     "error": {
       "$ref": "#/$defs/OperationError"

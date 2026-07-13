@@ -233,10 +233,12 @@ func grantModeFromStore(grant grants.Grant) policy.GrantMode {
 }
 
 func attrsOrEmpty(attrs map[string]any) map[string]any {
-	if attrs == nil {
-		return map[string]any{}
+	switch attrs {
+	case nil:
+		return make(map[string]any)
+	default:
+		return attrs
 	}
-	return attrs
 }
 
 func grantUsesRemaining(grant grants.Grant) int {
@@ -267,22 +269,15 @@ func timeStringPtr(value time.Time) *string {
 }
 
 func targetFromGrant(grant grants.Grant) policy.Target {
-	rt, ok := parseGrantTarget(hfgrant.Target(grant))
-	if !ok {
-		return policy.Target{}
-	}
-	target := routeTarget(rt, nil)
-	if ref := hfgrant.Ref(grant); ref != "" {
-		target.Refs = []string{ref}
-	}
+	target, _ := hfgrant.PolicyTarget(grant)
 	return target
 }
 
 func targetNameFromPolicy(target policy.Target) string {
-	if target.Kind != policy.KindRepo {
-		return ""
+	if target.Kind == policy.KindRepo {
+		return string(target.Type) + "/" + target.Owner + "/" + target.Name
 	}
-	return string(target.Type) + "/" + target.Owner + "/" + target.Name
+	return string(target.Kind) + "/" + target.Owner + "/" + target.Name
 }
 
 func writeJSendSuccess(w http.ResponseWriter, status int, data any) {

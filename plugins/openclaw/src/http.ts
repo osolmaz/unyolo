@@ -95,7 +95,7 @@ async function handleApi(
         : json(res, 404, { error: { code: "request_not_found" } });
     }
     const decision = url.pathname.match(
-      /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)\/(approve|deny|cancel|revoke)$/,
+      /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)\/(approve|deny|revoke)$/,
     );
     if (req.method === "POST" && decision) {
       if (!isJSON(req.headers["content-type"]))

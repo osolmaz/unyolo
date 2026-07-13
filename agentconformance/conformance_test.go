@@ -31,11 +31,22 @@ func (s *conformanceStore) Wait(_ context.Context, clientID, id string, _ int64)
 	return s.Get(clientID, id)
 }
 
+func (s *conformanceStore) Cancel(clientID, id string) (agentv1.Operation, error) {
+	operation, err := s.Get(clientID, id)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	operation.State = agentv1.StateCanceled
+	s.operation = operation
+	return operation, nil
+}
+
 func TestRunAgentV1(t *testing.T) {
 	store := &conformanceStore{}
 	start := func() (Endpoint, error) {
 		handler, err := agentapi.New(agentapi.Options{
 			Store: store, Realm: "conformance",
+			Cancel: func(_ context.Context, client, id string) (agentv1.Operation, error) { return store.Cancel(client, id) },
 			Authenticate: func(header string) (string, error) {
 				if header != "Bearer agent-secret-abcdefghijklmnopqrstuvwxyz" {
 					return "", errors.New("authentication failed")

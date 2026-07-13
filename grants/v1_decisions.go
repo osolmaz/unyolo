@@ -20,7 +20,6 @@ type DecisionAction string
 const (
 	ActionApprove DecisionAction = "approve"
 	ActionDeny    DecisionAction = "deny"
-	ActionCancel  DecisionAction = "cancel"
 	ActionRevoke  DecisionAction = "revoke"
 )
 
@@ -153,8 +152,6 @@ func terminalDecisionTransition(action DecisionAction) (Status, Status, bool) {
 	switch action {
 	case ActionDeny:
 		return StatusDenied, StatusPending, true
-	case ActionCancel:
-		return StatusCanceled, StatusPending, true
 	case ActionRevoke:
 		return StatusRevoked, StatusActive, true
 	default:
@@ -247,7 +244,7 @@ func validOperatorDecisionText(command OperatorDecision) bool {
 }
 
 func validOperatorAction(action DecisionAction) bool {
-	return slices.Contains([]DecisionAction{ActionApprove, ActionDeny, ActionCancel, ActionRevoke}, action)
+	return slices.Contains([]DecisionAction{ActionApprove, ActionDeny, ActionRevoke}, action)
 }
 
 func hashOperatorDecision(command OperatorDecision) string {

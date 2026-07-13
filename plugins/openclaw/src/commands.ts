@@ -57,7 +57,7 @@ export async function handleCommand(
     .requests.find((item) => item.handle === handle);
   if (command === "show")
     return { text: request ? formatRequest(request) : "Request not found." };
-  if (["approve", "deny", "cancel", "revoke"].includes(command)) {
+  if (["approve", "deny", "revoke"].includes(command)) {
     if (!request) return { text: "Request not found." };
     try {
       const updated = await runtime.decide(

@@ -47,6 +47,17 @@ func (s *fakeStore) Wait(_ context.Context, clientID, id string, after int64) (a
 	return s.Get(clientID, id)
 }
 
+func (s *fakeStore) Cancel(clientID, id string) (agentv1.Operation, error) {
+	if s.getErr != nil {
+		return agentv1.Operation{}, s.getErr
+	}
+	if clientID != "agent" || id != s.operation.ID {
+		return agentv1.Operation{}, agentops.ErrNotFound
+	}
+	s.operation.State = agentv1.StateCanceled
+	return s.operation, nil
+}
+
 func TestNewRequiresDependencies(t *testing.T) {
 	for _, options := range []Options{
 		{},
@@ -187,6 +198,23 @@ func TestGetWaitAndStoreErrors(t *testing.T) {
 	}
 }
 
+func TestCancelOperation(t *testing.T) {
+	store := &fakeStore{operation: validOperation("op", agentv1.StatePending)}
+	server := newTestServer(t, store, allowAuth, func(context.Context, string, agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
+		return agentv1.Operation{}, false, nil
+	}, nil)
+	defer server.Close()
+	response, body := request(t, server, http.MethodPost, operationsPath+"/op/cancel", "Bearer good", nil)
+	if response.StatusCode != http.StatusOK || !strings.Contains(body, `"state":"canceled"`) {
+		t.Fatalf("cancel = %d %s", response.StatusCode, body)
+	}
+	store.getErr = agentops.ErrNotCancelable
+	response, body = request(t, server, http.MethodPost, operationsPath+"/op/cancel", "Bearer good", nil)
+	if response.StatusCode != http.StatusConflict || !strings.Contains(body, "operation_not_cancelable") {
+		t.Fatalf("not cancelable = %d %s", response.StatusCode, body)
+	}
+}
+
 func TestInvalidStoredOperationFailsClosed(t *testing.T) {
 	store := &fakeStore{operation: validOperation("op", agentv1.StatePending)}
 	store.operation.Target = json.RawMessage(`[]`)
@@ -202,7 +230,10 @@ func TestInvalidStoredOperationFailsClosed(t *testing.T) {
 
 func newTestServer(t *testing.T, store Store, authenticate AuthenticateFunc, submit SubmitFunc, authFailure AuthFailureFunc) *httptest.Server {
 	t.Helper()
-	handler, err := New(Options{Store: store, Authenticate: authenticate, Submit: submit, AuthFailure: authFailure, Realm: "test-broker"})
+	handler, err := New(Options{Store: store, Authenticate: authenticate, Submit: submit,
+		Cancel: func(ctx context.Context, client, id string) (agentv1.Operation, error) {
+			return store.Cancel(client, id)
+		}, AuthFailure: authFailure, Realm: "test-broker"})
 	if err != nil {
 		t.Fatal(err)
 	}

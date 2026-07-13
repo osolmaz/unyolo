@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,7 +35,32 @@ type OperationRecord struct {
 }
 
 func (d *Database) InsertOperation(ctx context.Context, record OperationRecord) error {
-	return d.queries.InsertOperation(ctx, dbsql.InsertOperationParams{
+	return insertOperation(ctx, d.queries, record)
+}
+
+// InsertOperationWithPlan commits an immutable plan and its operation in one
+// transaction so execution can never observe an unbound operation.
+func (d *Database) InsertOperationWithPlan(ctx context.Context, record OperationRecord, plan PlanRecord) error {
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	queries := d.queries.WithTx(tx)
+	if err := putPlanWithQueries(ctx, queries, plan); err != nil {
+		return err
+	}
+	if record.PlanDigest != plan.Digest {
+		return errors.New("operation plan digest does not match immutable plan")
+	}
+	if err := insertOperation(ctx, queries, record); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func insertOperation(ctx context.Context, queries *dbsql.Queries, record OperationRecord) error {
+	return queries.InsertOperation(ctx, dbsql.InsertOperationParams{
 		ID: record.ID, ApiVersion: record.APIVersion, Broker: record.Broker,
 		ClientID: record.ClientID, IdempotencyKey: record.IdempotencyKey,
 		Operation: record.Operation, TargetJson: string(record.TargetJSON),
@@ -94,7 +120,33 @@ func (d *Database) DeleteTerminalOperationsBefore(ctx context.Context, cutoff ti
 }
 
 func (d *Database) UpdateOperation(ctx context.Context, record OperationRecord, expectedRevision int64) (bool, error) {
-	count, err := d.queries.UpdateOperation(ctx, dbsql.UpdateOperationParams{
+	return updateOperation(ctx, d.queries, record, expectedRevision)
+}
+
+// UpdateOperationWithPlan commits an immutable plan and its operation binding
+// in one transaction.
+func (d *Database) UpdateOperationWithPlan(ctx context.Context, record OperationRecord, expectedRevision int64, plan PlanRecord) (bool, error) {
+	if record.PlanDigest != plan.Digest {
+		return false, errors.New("operation plan digest does not match immutable plan")
+	}
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	queries := d.queries.WithTx(tx)
+	if err := putPlanWithQueries(ctx, queries, plan); err != nil {
+		return false, err
+	}
+	updated, err := updateOperation(ctx, queries, record, expectedRevision)
+	if err != nil || !updated {
+		return updated, err
+	}
+	return true, tx.Commit()
+}
+
+func updateOperation(ctx context.Context, queries *dbsql.Queries, record OperationRecord, expectedRevision int64) (bool, error) {
+	count, err := queries.UpdateOperation(ctx, dbsql.UpdateOperationParams{
 		State: record.State, Revision: record.Revision, UpdatedAt: formatTime(record.UpdatedAt),
 		TerminalAt: nullableTime(record.TerminalAt), ApprovalID: record.ApprovalID,
 		ResultJson: nullableBytes(record.ResultJSON), ErrorJson: nullableBytes(record.ErrorJSON),

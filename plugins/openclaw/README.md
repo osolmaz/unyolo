@@ -124,8 +124,8 @@ message:
 
 The host verifies the exact opaque-origin frame source and navigates the whole
 browser tab to the trusted UI URL. The top-level response is unframeable and
-contains a server-enforced decision session, so approval, denial, cancellation,
-and revocation require a second explicit action in the trusted document.
+contains a server-enforced decision session, so approval, denial, and revocation
+require a second explicit action in the trusted document.
 
 A host that does not provide a framed inbox can inject this marker so the UI
 renders only the secure-navigation launcher:
@@ -177,12 +177,12 @@ host-product namespace or host-specific payload.
 /brokerkit show <handle>
 /brokerkit approve <handle>
 /brokerkit deny <handle>
-/brokerkit cancel <handle>
 /brokerkit revoke <handle>
 ```
 
 Commands are registered only in direct mode. They require an authorized sender
-and the `operator.approvals` scope.
+and the `operator.approvals` scope. Requesters cancel their own pending requests
+through the authenticated broker client API, not through this operator surface.
 Subscriptions use OpenClaw's generic outbound adapter, so this package contains
 no Telegram, Discord, Slack, or other channel-specific implementation.
 

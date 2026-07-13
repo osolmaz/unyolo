@@ -168,7 +168,9 @@ func coreTargetMatcher(target TargetMatcher, operation Operation, view coreView)
 	if target.Kind == KindInference {
 		return out
 	}
-	addCoreBucketMatcherFields(out, target, operation)
+	if target.Kind == KindBucket {
+		addCoreBucketMatcherFields(out, target, operation)
+	}
 	return out
 }
 
@@ -267,16 +269,44 @@ func operationUsesRefs(operation Operation) bool {
 	return refScopedOperations[operation]
 }
 
+// OperationUsesRefs reports whether ref constraints participate in policy
+// matching for an operation.
+func OperationUsesRefs(operation Operation) bool {
+	return operationUsesRefs(operation)
+}
+
 func bucketOperationMutatesObjects(operation Operation) bool {
-	return operation == OpBucketObjectWrite || operation == OpBucketObjectDel
+	return operation == OpBucketObjectWrite || operation == OpBucketObjectDel ||
+		operation == "bucket.batch.apply" || operation == "bucket.sync.apply" || operation == "bucket.object.delete"
 }
 
 func hfRegistry() corepolicy.Registry {
 	coreOperations := make(map[string]corepolicy.OperationSpec, len(operations))
+	targets := map[string]corepolicy.TargetSpec{
+		string(KindRepo): {Fields: map[string]corepolicy.FieldSpec{
+			"type":       {Required: true},
+			"owner":      {Required: true},
+			"name":       {Required: true},
+			"refs":       {Match: corepolicy.MatchPathGlob},
+			"paths":      {Match: corepolicy.MatchRecursivePathGlob},
+			"visibility": {Match: corepolicy.MatchAnyGlob},
+		}},
+		string(KindBucket): {Fields: map[string]corepolicy.FieldSpec{
+			"owner":        {Required: true},
+			"name":         {Required: true},
+			"keys":         {Match: corepolicy.MatchRecursivePathGlob},
+			"mutable_keys": {Match: corepolicy.MatchPathOutsidePrefix},
+		}},
+		string(KindInference): {Fields: ownerNameTargetFields()},
+	}
 	for operation, info := range operations {
+		kind := string(operationTargetKind(operation))
+		if _, ok := targets[kind]; !ok {
+			targets[kind] = corepolicy.TargetSpec{Fields: ownerNameTargetFields()}
+		}
 		spec := corepolicy.OperationSpec{
-			TargetKinds: []string{string(operationTargetKind(operation))},
-			Attrs:       []string{"max_bytes", "private", "ref_change", "sdk"},
+			TargetKinds: []string{kind},
+			Attrs:       KnownAttributeNames(),
 			Grantable:   info.mode != GrantModeNone,
 		}
 		if spec.Grantable {
@@ -289,35 +319,25 @@ func hfRegistry() corepolicy.Registry {
 	}
 	return corepolicy.Registry{
 		Operations: coreOperations,
-		Targets: map[string]corepolicy.TargetSpec{
-			string(KindRepo): {Fields: map[string]corepolicy.FieldSpec{
-				"type":       {Required: true},
-				"owner":      {Required: true},
-				"name":       {Required: true},
-				"refs":       {Match: corepolicy.MatchPathGlob},
-				"paths":      {Match: corepolicy.MatchRecursivePathGlob},
-				"visibility": {Match: corepolicy.MatchAnyGlob},
-			}},
-			string(KindBucket): {Fields: map[string]corepolicy.FieldSpec{
-				"owner":        {Required: true},
-				"name":         {Required: true},
-				"keys":         {Match: corepolicy.MatchRecursivePathGlob},
-				"mutable_keys": {Match: corepolicy.MatchPathOutsidePrefix},
-			}},
-			string(KindInference): {Fields: map[string]corepolicy.FieldSpec{
-				"owner": {Required: true},
-				"name":  {Required: true},
-			}},
-		},
-		Attrs: map[string]corepolicy.AttrSpec{
-			"max_bytes": {
-				Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true,
-			},
-			"ref_change": {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"private":    {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"sdk":        {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-		},
+		Targets:    targets,
+		Attrs:      hfAttributeSpecs(),
 	}
+}
+
+func hfAttributeSpecs() map[string]corepolicy.AttrSpec {
+	specs := make(map[string]corepolicy.AttrSpec, len(knownAttrs))
+	for name := range knownAttrs {
+		specs[name] = corepolicy.AttrSpec{GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true}
+	}
+	maximum := corepolicy.AttrSpec{Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true}
+	for _, name := range []string{"max_bytes", "max_hosts", "num_hosts", "sleep_time_seconds", "warm_up"} {
+		specs[name] = maximum
+	}
+	return specs
+}
+
+func ownerNameTargetFields() map[string]corepolicy.FieldSpec {
+	return map[string]corepolicy.FieldSpec{"owner": {Required: true}, "name": {Required: true}}
 }
 
 func (p Policy) decideCore(req Request, grants []Rule, now time.Time, grantRequest bool, view coreView) Decision {
@@ -421,18 +441,21 @@ func coreAttrsFromHF(attrs map[string]any, view coreView) map[string][]string {
 
 func canonicalCoreAttr(key string, value any) string {
 	switch key {
-	case "max_bytes":
+	case "max_bytes", "max_hosts", "num_hosts", "sleep_time_seconds", "warm_up":
 		number, ok := int64Value(value)
 		if !ok {
 			return "invalid"
 		}
 		return strconv.FormatInt(number, 10)
-	case "private", "ref_change", "sdk":
-		text, _ := value.(string)
-		return text
-	default:
+	}
+	if !knownAttrs[key] {
 		return ""
 	}
+	text, ok := value.(string)
+	if !ok || text == "" {
+		return "invalid"
+	}
+	return text
 }
 
 func coreGrants(rules []Rule, view coreView) []corepolicy.Grant {

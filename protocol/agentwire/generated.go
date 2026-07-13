@@ -113,6 +113,7 @@ type Operation struct {
 	Id             string                  `json:"id"`
 	IdempotencyKey string                  `json:"idempotency_key"`
 	Operation      string                  `json:"operation"`
+	PlanDigest     *string                 `json:"plan_digest,omitempty"`
 	Presentation   Presentation            `json:"presentation"`
 	Reason         string                  `json:"reason"`
 	Result         *map[string]interface{} `json:"result,omitempty"`
@@ -256,6 +257,9 @@ type ClientInterface interface {
 	// GetAgentOperation performs a GET /api/agent/v1/operations/{id} (the `GetAgentOperation` operationId) request.
 	GetAgentOperation(ctx context.Context, id OperationID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CancelAgentOperation performs a POST /api/agent/v1/operations/{id}/cancel (the `CancelAgentOperation` operationId) request.
+	CancelAgentOperation(ctx context.Context, id OperationID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// WaitForAgentOperation performs a GET /api/agent/v1/operations/{id}/events (the `WaitForAgentOperation` operationId) request.
 	WaitForAgentOperation(ctx context.Context, id OperationID, params *WaitForAgentOperationParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
@@ -304,6 +308,19 @@ func (c *Client) SubmitAgentOperation(ctx context.Context, body SubmitAgentOpera
 // GetAgentOperation performs a GET /api/agent/v1/operations/{id} (the `GetAgentOperation` operationId) request.
 func (c *Client) GetAgentOperation(ctx context.Context, id OperationID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAgentOperationRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CancelAgentOperation performs a POST /api/agent/v1/operations/{id}/cancel (the `CancelAgentOperation` operationId) request.
+func (c *Client) CancelAgentOperation(ctx context.Context, id OperationID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelAgentOperationRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -421,6 +438,40 @@ func NewGetAgentOperationRequest(server string, id OperationID) (*http.Request, 
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCancelAgentOperationRequest constructs an http.Request for the CancelAgentOperation method
+func NewCancelAgentOperationRequest(server string, id OperationID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/agent/v1/operations/%s/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -564,6 +615,11 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetAgentOperationWithResponse(ctx context.Context, id OperationID, reqEditors ...RequestEditorFn) (*GetAgentOperationResponse, error)
+
+	// CancelAgentOperationWithResponse performs a POST /api/agent/v1/operations/{id}/cancel (the `CancelAgentOperation` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	CancelAgentOperationWithResponse(ctx context.Context, id OperationID, reqEditors ...RequestEditorFn) (*CancelAgentOperationResponse, error)
 
 	// WaitForAgentOperationWithResponse performs a GET /api/agent/v1/operations/{id}/events (the `WaitForAgentOperation` operationId) request.
 	//
@@ -722,6 +778,54 @@ func (r GetAgentOperationResponse) ContentType() string {
 	return ""
 }
 
+type CancelAgentOperationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Operation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CancelAgentOperationResponse) GetJSON200() *Operation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CancelAgentOperationResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelAgentOperationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelAgentOperationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelAgentOperationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelAgentOperationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type WaitForAgentOperationResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -812,6 +916,17 @@ func (c *ClientWithResponses) GetAgentOperationWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseGetAgentOperationResponse(rsp)
+}
+
+// CancelAgentOperationWithResponse performs a POST /api/agent/v1/operations/{id}/cancel (the `CancelAgentOperation` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) CancelAgentOperationWithResponse(ctx context.Context, id OperationID, reqEditors ...RequestEditorFn) (*CancelAgentOperationResponse, error) {
+	rsp, err := c.CancelAgentOperation(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelAgentOperationResponse(rsp)
 }
 
 // WaitForAgentOperationWithResponse performs a GET /api/agent/v1/operations/{id}/events (the `WaitForAgentOperation` operationId) request.
@@ -931,6 +1046,39 @@ func ParseGetAgentOperationResponse(rsp *http.Response) (*GetAgentOperationRespo
 	return response, nil
 }
 
+// ParseCancelAgentOperationResponse parses an HTTP response from a CancelAgentOperationWithResponse call
+func ParseCancelAgentOperationResponse(rsp *http.Response) (*CancelAgentOperationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelAgentOperationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Operation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseWaitForAgentOperationResponse parses an HTTP response from a WaitForAgentOperationWithResponse call
 func ParseWaitForAgentOperationResponse(rsp *http.Response) (*WaitForAgentOperationResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -975,6 +1123,9 @@ type ServerInterface interface {
 
 	// (GET /api/agent/v1/operations/{id})
 	GetAgentOperation(ctx echo.Context, id OperationID) error
+
+	// (POST /api/agent/v1/operations/{id}/cancel)
+	CancelAgentOperation(ctx echo.Context, id OperationID) error
 
 	// (GET /api/agent/v1/operations/{id}/events)
 	WaitForAgentOperation(ctx echo.Context, id OperationID, params WaitForAgentOperationParams) error
@@ -1022,6 +1173,24 @@ func (w *ServerInterfaceWrapper) GetAgentOperation(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetAgentOperation(ctx, id)
+	return err
+}
+
+// CancelAgentOperation converts echo context to params.
+func (w *ServerInterfaceWrapper) CancelAgentOperation(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id OperationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(string(AgentBearerScopes), []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CancelAgentOperation(ctx, id)
 	return err
 }
 
@@ -1109,6 +1278,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/.well-known/brokerkit-agent", wrapper.DiscoverAgent, options.OperationMiddlewares["discoverAgent"]...)
 	router.POST(options.BaseURL+"/api/agent/v1/operations", wrapper.SubmitAgentOperation, options.OperationMiddlewares["submitAgentOperation"]...)
 	router.GET(options.BaseURL+"/api/agent/v1/operations/:id", wrapper.GetAgentOperation, options.OperationMiddlewares["getAgentOperation"]...)
+	router.POST(options.BaseURL+"/api/agent/v1/operations/:id/cancel", wrapper.CancelAgentOperation, options.OperationMiddlewares["cancelAgentOperation"]...)
 	router.GET(options.BaseURL+"/api/agent/v1/operations/:id/events", wrapper.WaitForAgentOperation, options.OperationMiddlewares["waitForAgentOperation"]...)
 
 }

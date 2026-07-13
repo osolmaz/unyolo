@@ -18,7 +18,6 @@ type Action string
 const (
 	ActionApprove Action = "approve"
 	ActionDeny    Action = "deny"
-	ActionCancel  Action = "cancel"
 	ActionRevoke  Action = "revoke"
 )
 

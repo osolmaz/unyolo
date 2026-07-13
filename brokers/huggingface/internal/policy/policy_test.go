@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +60,23 @@ func TestDecideAllowDenyAndNoMatch(t *testing.T) {
 	noMatch := pol.Decide(repoReq("other", OpGitPushAppend, "dataset", "acme", "public", ""), nil, time.Now(), false)
 	if noMatch.Effect != EffectNoMatch || noMatch.Reason != "no_matching_rule" {
 		t.Fatalf("no match decision = %+v", noMatch)
+	}
+}
+
+func TestKernelRepositoryRulesAreSupported(t *testing.T) {
+	pol := mustParse(t, `{"rules":[{
+		"id":"deny-kernel-delete",
+		"effect":"deny",
+		"clients":["agent"],
+		"operations":["repo.delete"],
+		"targets":[{"kind":"repo","type":"kernel","owner":"acme","name":"demo"}]
+	}]}`)
+	request := repoReq("agent", Operation("repo.delete"), "kernel", "acme", "demo", "")
+	if err := ValidateRequest(request); err != nil {
+		t.Fatalf("kernel request validation error = %v", err)
+	}
+	if decision := pol.Decide(request, nil, time.Now(), false); decision.Effect != EffectDeny {
+		t.Fatalf("kernel decision = %+v", decision)
 	}
 }
 
@@ -667,6 +685,41 @@ func TestAttrs(t *testing.T) {
 	}
 }
 
+func TestCoreAttributeProjectionKeepsRegisteredAttributes(t *testing.T) {
+	attrs := make(map[string]any, len(knownAttrs))
+	for _, name := range KnownAttributeNames() {
+		attrs[name] = "value"
+	}
+	for _, name := range []string{"max_bytes", "max_hosts", "num_hosts", "sleep_time_seconds", "warm_up"} {
+		attrs[name] = int64(2)
+	}
+	projected := coreAttrsFromHF(attrs, coreViewNormal)
+	for _, name := range KnownAttributeNames() {
+		if len(projected[name]) != 1 || projected[name][0] == "" {
+			t.Fatalf("registered attribute %q was dropped: %#v", name, projected)
+		}
+	}
+	if got := canonicalCoreAttr("recursive", true); got != "invalid" {
+		t.Fatalf("invalid recursive projection = %q", got)
+	}
+	if got := canonicalCoreAttr("unknown", "value"); got != "" {
+		t.Fatalf("unknown attribute projection = %q", got)
+	}
+}
+
+func TestSpecificSandboxAttributeDenyOverridesBroadAllow(t *testing.T) {
+	pol := mustParse(t, `{"rules":[
+		{"id":"deny-recursive","effect":"deny","clients":["agent"],"operations":["sandbox.file.delete"],"targets":[{"kind":"sandbox","owner":"acme","name":"worker"}],"attrs":{"recursive":"true"}},
+		{"id":"allow-delete","effect":"allow","clients":["agent"],"operations":["sandbox.file.delete"],"targets":[{"kind":"sandbox","owner":"acme","name":"worker"}]}
+	]}`)
+	request := Request{Client: "agent", Operation: "sandbox.file.delete",
+		Target: Target{Kind: "sandbox", Owner: "acme", Name: "worker"}, Attrs: map[string]any{"recursive": "true"}}
+	decision := pol.Decide(request, nil, time.Now(), false)
+	if decision.Effect != EffectDeny || !slices.Contains(decision.MatchedDenyRuleIDs, "deny-recursive") {
+		t.Fatalf("recursive delete decision = %+v", decision)
+	}
+}
+
 func TestRefLessSupportTrafficIgnoresRefSpecificPolicy(t *testing.T) {
 	pol := mustParse(t, `{
 		"rules": [
@@ -977,7 +1030,7 @@ func TestRepoVisibilityAndOperationFamilies(t *testing.T) {
 			"targets": [{"kind": "repo", "type": "dataset", "owner": "acme", "name": "repo", "visibility": ["private"]}]
 		}]
 	}`)
-	req := repoReq("agent", OpGitPushForce, "dataset", "acme", "repo", "refs/heads/main")
+	req := repoReq("agent", OpGitPushAppend, "dataset", "acme", "repo", "refs/heads/main")
 	req.Target.Visibility = []string{"private"}
 	if got := pol.Decide(req, nil, time.Now(), false); got.Effect != EffectAllow {
 		t.Fatalf("private git force decision = %+v", got)
@@ -1070,13 +1123,13 @@ func TestGrantPolicyDefaultsAndGrantability(t *testing.T) {
 			}]
 		}`,
 	} {
-		if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), "not grantable") {
-			t.Fatalf("Parse() error = %v, want not grantable", err)
+		if _, err := Parse([]byte(body)); err != nil {
+			t.Fatalf("Parse() error = %v, want grantable window operations", err)
 		}
 	}
 }
 
-func TestGrantPolicyAllowsExplicitUnlimitedUseBudget(t *testing.T) {
+func TestProtocolWindowAllowsExplicitUnlimitedUseBudget(t *testing.T) {
 	t.Parallel()
 	pol := mustParse(t, `{"rules":[{
 		"id":"unlimited","effect":"request","clients":["bob"],

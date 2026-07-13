@@ -35,6 +35,9 @@ type Message struct {
 	RequestedMinutes int
 	MaxUses          usebudget.Limit
 	PendingExpiresAt time.Time
+	PlanTitle        string
+	PlanSummary      string
+	PlanDigest       string
 }
 
 // Text renders an HF-specific approval summary for a shared notifier.
@@ -49,6 +52,15 @@ func Text(msg Message) string {
 
 func detailLines(msg Message) []string {
 	lines := []string{fmt.Sprintf("📍 Target: %s", msg.Target)}
+	if msg.PlanTitle != "" {
+		lines = append(lines, fmt.Sprintf("📋 Action: %s", msg.PlanTitle))
+	}
+	if msg.PlanSummary != "" {
+		lines = append(lines, fmt.Sprintf("📄 Details: %s", msg.PlanSummary))
+	}
+	if msg.PlanDigest != "" {
+		lines = append(lines, fmt.Sprintf("🔎 Plan: %s", msg.PlanDigest))
+	}
 	if msg.Ref != "" {
 		lines = append(lines, fmt.Sprintf("🌿 Ref: %s", msg.Ref))
 	}

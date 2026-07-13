@@ -31,8 +31,7 @@ describe("BrokerRuntime", () => {
       granted_max_uses: status === "pending" ? null : 1,
       used_count: 0,
       presentation: { risk: "high", title: "Protected write", facts: [] },
-      allowed_actions:
-        status === "pending" ? ["approve", "deny", "cancel"] : ["revoke"],
+      allowed_actions: status === "pending" ? ["approve", "deny"] : ["revoke"],
       approval_bounds: { max_duration_seconds: 300, max_uses: null },
     });
     const server = createServer(async (req, res) => {

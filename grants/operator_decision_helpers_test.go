@@ -31,10 +31,6 @@ func (s *Store) OperatorDeny(command DecisionCommand) (Grant, error) {
 	return s.applyTestOperatorDecision(command, ActionDeny, ApprovalConstraints{})
 }
 
-func (s *Store) OperatorCancel(command DecisionCommand) (Grant, error) {
-	return s.applyTestOperatorDecision(command, ActionCancel, ApprovalConstraints{})
-}
-
 func (s *Store) OperatorRevoke(command DecisionCommand) (Grant, error) {
 	return s.applyTestOperatorDecision(command, ActionRevoke, ApprovalConstraints{})
 }

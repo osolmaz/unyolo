@@ -19,7 +19,7 @@
         "summary": "Updates a protected provider resource.",
         "facts": [{"label": "Branch", "value": "main"}]
       },
-      "allowed_actions": ["approve", "deny", "cancel"],
+      "allowed_actions": ["approve", "deny"],
       "approval_bounds": {"max_duration_seconds": 300, "max_uses": 1}
     }
   ],

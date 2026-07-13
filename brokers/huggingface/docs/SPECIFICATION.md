@@ -87,8 +87,9 @@ annoying."
   metadata.
 - Scope configuration is a manually edited file; there is no endpoint to
   read or change it.
-- The broker exposes no generic Hub API proxy, arbitrary command execution, or
-  repository administration operations.
+- The broker exposes no generic Hub API proxy or arbitrary command execution.
+  Hub administration is available only through fixed, typed catalog
+  operations with closed targets and arguments.
 - Every broker endpoint requires authentication; binding is localhost by
   default, exposure is Tailnet-or-equivalent only.
 - Audit log lines never contain secrets, request bodies, or pack
@@ -400,8 +401,9 @@ Two operator surfaces are supported:
 1. **Operator API.** The shared BrokerKit operator API runs on a separate
    listener and accepts only credentials from the operator secret file. Trusted
    hosts use this API for bounded lists, durable event streams, and
-   revision-checked approve, deny, cancel, and revoke decisions. Agent client
-   credentials cannot use this listener.
+   revision-checked approve, deny, and revoke decisions. Requesters cancel their
+   own pending requests through the authenticated Agent API. Agent client
+   credentials cannot use the operator listener.
 
 2. **Telegram.** The grant
    request is sent as a Telegram message to the operator's chat,
@@ -611,11 +613,13 @@ upstream contact. Inference audit entries contain the operation, model, status,
 and decision, never prompts, completions, tools, images, or credentials.
 
 The authenticated Agent Operations V1 surface is fixed to discovery, submit,
-status, and bounded long-poll routes under `/api/agent/v1/operations`. The
-Hugging Face adapter accepts only `repo.create`. Approval binds the exact
-repository type, owner, name, privacy, Space SDK, client, and idempotency key.
-hf-broker executes the stored request with the upstream credential and returns
-only the repository ID and URL.
+status, cancellation, and bounded long-poll routes under
+`/api/agent/v1/operations`. Every execution-scoped Hugging Face capability has
+a registered typed adapter. Approval binds the operation revision, canonical
+target, closed arguments, observed preconditions, credential selector, client,
+expiry, use limit, and immutable plan digest. hf-broker executes only that
+stored plan with the upstream credential and returns a bounded, redacted
+result. Read and protocol operations use separately bounded window grants.
 
 Hub and Git paths map by repo type:
 

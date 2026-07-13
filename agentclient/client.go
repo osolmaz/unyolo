@@ -16,7 +16,9 @@ import (
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
-const maxResponseBytes = 2 * 1024 * 1024
+// A stored operation may contain a 1 MiB argument object and a 2 MiB result,
+// plus its target and lifecycle metadata.
+const maxResponseBytes = 4 * 1024 * 1024
 
 // Options configures an Agent Operations V1 client.
 type Options struct {
@@ -71,8 +73,17 @@ func (c *Client) Submit(ctx context.Context, request agentv1.SubmitRequest) (age
 
 // Get retrieves one operation owned by the authenticated client.
 func (c *Client) Get(ctx context.Context, id string) (agentv1.Operation, error) {
+	return c.operationByID(ctx, id, c.api.GetAgentOperation)
+}
+
+// Cancel cancels requester-owned work that has not started executing.
+func (c *Client) Cancel(ctx context.Context, id string) (agentv1.Operation, error) {
+	return c.operationByID(ctx, id, c.api.CancelAgentOperation)
+}
+
+func (c *Client) operationByID(ctx context.Context, id string, call func(context.Context, agentwire.OperationID, ...agentwire.RequestEditorFn) (*http.Response, error)) (agentv1.Operation, error) {
 	//nolint:bodyclose // decodeHTTPResponse owns and closes generated responses.
-	response, err := c.api.GetAgentOperation(ctx, id)
+	response, err := call(ctx, id)
 	return decodeHTTPResponse(response, err)
 }
 

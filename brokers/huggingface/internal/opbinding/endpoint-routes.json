@@ -1,0 +1,220 @@
+[
+  {
+    "operation": "endpoint.create",
+    "origin": "inference_endpoints",
+    "method": "POST",
+    "path": "/endpoint/{namespace}",
+    "target_schema": {
+      "type": "object",
+      "properties": {
+        "namespace": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "^[A-Za-z0-9._-]+$"}
+      },
+      "required": ["namespace"],
+      "additionalProperties": false
+    },
+    "arguments_schema": {
+      "$defs": {
+        "scaling": {
+          "type": "object",
+          "properties": {
+            "maxReplica": {"type": "integer", "minimum": 0, "maximum": 1000},
+            "minReplica": {"type": "integer", "minimum": 0, "maximum": 1000},
+            "scaleToZeroTimeout": {"type": ["integer", "null"], "minimum": 0, "maximum": 10080},
+            "measure": {
+              "type": "object",
+              "properties": {
+                "pendingRequests": {"type": ["number", "null"], "minimum": 0},
+                "hardwareUsage": {"type": ["number", "null"], "minimum": 0}
+              },
+              "maxProperties": 1,
+              "additionalProperties": false
+            }
+          },
+          "required": ["maxReplica", "minReplica"],
+          "additionalProperties": false
+        },
+        "compute": {
+          "type": "object",
+          "properties": {
+            "accelerator": {"type": "string", "minLength": 1, "maxLength": 64},
+            "instanceSize": {"type": "string", "minLength": 1, "maxLength": 64},
+            "instanceType": {"type": "string", "minLength": 1, "maxLength": 128},
+            "scaling": {"$ref": "#/$defs/scaling"}
+          },
+          "required": ["accelerator", "instanceSize", "instanceType", "scaling"],
+          "additionalProperties": false
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "huggingface": {"type": "object", "maxProperties": 0},
+            "custom": {
+              "type": "object",
+              "properties": {
+                "url": {"type": "string", "minLength": 1, "maxLength": 2048},
+                "healthRoute": {"type": "string", "minLength": 1, "maxLength": 512},
+                "env": {"type": "object", "maxProperties": 128, "additionalProperties": {"type": "string", "maxLength": 8192}}
+              },
+              "required": ["url"],
+              "additionalProperties": false
+            }
+          },
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "framework": {"type": "string", "minLength": 1, "maxLength": 128},
+            "repository": {"type": "string", "minLength": 1, "maxLength": 256},
+            "revision": {"type": ["string", "null"], "maxLength": 256},
+            "task": {"type": ["string", "null"], "maxLength": 128},
+            "image": {"$ref": "#/$defs/image"},
+            "command": {"type": "array", "maxItems": 128, "items": {"type": "string", "maxLength": 8192}},
+            "args": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 8192}},
+            "env": {"type": "object", "maxProperties": 256, "additionalProperties": {"type": "string", "maxLength": 65536}},
+            "secrets": {"type": "object", "maxProperties": 256, "additionalProperties": {"type": "string", "maxLength": 65536}}
+          },
+          "required": ["framework", "repository", "image"],
+          "additionalProperties": false
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "region": {"type": "string", "minLength": 1, "maxLength": 128},
+            "vendor": {"type": "string", "minLength": 1, "maxLength": 128}
+          },
+          "required": ["region", "vendor"],
+          "additionalProperties": false
+        },
+        "route": {
+          "type": "object",
+          "properties": {
+            "domain": {"type": "string", "minLength": 1, "maxLength": 253},
+            "path": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^/"}
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        }
+      },
+      "type": "object",
+      "properties": {
+        "accountId": {"type": ["string", "null"], "maxLength": 256},
+        "compute": {"$ref": "#/$defs/compute"},
+        "model": {"$ref": "#/$defs/model"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "provider": {"$ref": "#/$defs/provider"},
+        "type": {"enum": ["authenticated", "public", "private", "protected"]},
+        "route": {"$ref": "#/$defs/route"},
+        "cacheHttpResponses": {"type": "boolean"},
+        "tags": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 128}}
+      },
+      "required": ["compute", "model", "name", "provider", "type"],
+      "additionalProperties": false
+    },
+    "upstream_reference": "huggingface_hub/hf_api.py:create_inference_endpoint@1.23.0"
+  },
+  {
+    "operation": "endpoint.update",
+    "origin": "inference_endpoints",
+    "method": "PUT",
+    "path": "/endpoint/{namespace}/{name}",
+    "target_schema": {
+      "type": "object",
+      "properties": {
+        "namespace": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "^[A-Za-z0-9._-]+$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 96, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"}
+      },
+      "required": ["namespace", "name"],
+      "additionalProperties": false
+    },
+    "arguments_schema": {
+      "$defs": {
+        "scaling": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "maxReplica": {"type": "integer", "minimum": 0, "maximum": 1000},
+            "minReplica": {"type": "integer", "minimum": 0, "maximum": 1000},
+            "scaleToZeroTimeout": {"type": ["integer", "null"], "minimum": 0, "maximum": 10080},
+            "measure": {
+              "type": "object",
+              "properties": {
+                "pendingRequests": {"type": ["number", "null"], "minimum": 0},
+                "hardwareUsage": {"type": ["number", "null"], "minimum": 0}
+              },
+              "maxProperties": 1,
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "compute": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "accelerator": {"type": "string", "minLength": 1, "maxLength": 64},
+            "instanceSize": {"type": "string", "minLength": 1, "maxLength": 64},
+            "instanceType": {"type": "string", "minLength": 1, "maxLength": 128},
+            "scaling": {"$ref": "#/$defs/scaling"}
+          },
+          "additionalProperties": false
+        },
+        "model": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "framework": {"type": "string", "minLength": 1, "maxLength": 128},
+            "repository": {"type": "string", "minLength": 1, "maxLength": 256},
+            "revision": {"type": "string", "maxLength": 256},
+            "task": {"type": "string", "maxLength": 128},
+            "image": {
+              "type": "object",
+              "properties": {
+                "custom": {
+                  "type": "object",
+                  "properties": {
+                    "url": {"type": "string", "minLength": 1, "maxLength": 2048},
+                    "healthRoute": {"type": "string", "minLength": 1, "maxLength": 512},
+                    "env": {"type": "object", "maxProperties": 128, "additionalProperties": {"type": "string", "maxLength": 8192}}
+                  },
+                  "required": ["url"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["custom"],
+              "additionalProperties": false
+            },
+            "env": {"type": "object", "maxProperties": 256, "additionalProperties": {"type": "string", "maxLength": 65536}},
+            "secrets": {"type": "object", "maxProperties": 256, "additionalProperties": {"type": "string", "maxLength": 65536}}
+          },
+          "additionalProperties": false
+        },
+        "route": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "domain": {"type": "string", "minLength": 1, "maxLength": 253},
+            "path": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^/"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "compute": {"$ref": "#/$defs/compute"},
+        "model": {"$ref": "#/$defs/model"},
+        "route": {"$ref": "#/$defs/route"},
+        "cacheHttpResponses": {"type": "boolean"},
+        "tags": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 128}}
+      },
+      "additionalProperties": false
+    },
+    "observe_method": "GET",
+    "observe_path": "/endpoint/{namespace}/{name}",
+    "reconcile": "present",
+    "upstream_reference": "huggingface_hub/hf_api.py:update_inference_endpoint@1.23.0"
+  }
+]

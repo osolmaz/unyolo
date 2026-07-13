@@ -293,7 +293,9 @@ brokerkit owns:
 - use budgets and reservations
 - generated temporary allow rules
 - approval tokens
-- approve, deny, cancel, revoke, and status update flows
+- operator approve, deny, and revoke flows
+- requester-owned cancellation of pending requests
+- status update flows
 - atomic approve/deny plus callback-notification recovery
 - Telegram callback parsing and verification
 - unacknowledged, offset-preserving callback retry after transient durable

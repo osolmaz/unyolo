@@ -185,11 +185,8 @@ func readAPIGrantRequest(w http.ResponseWriter, r *http.Request) (apiGrantReques
 }
 
 func validateGrantTargetForOperation(operation policy.Operation, target policy.Target) error {
-	if err := validateGrantTargetIdentity(target); err != nil {
+	if err := policy.ValidateRequest(policy.Request{Operation: operation, Target: target}); err != nil {
 		return err
-	}
-	if grantTargetHasUnsupportedConstraints(target) {
-		return errors.New("grant target path, key, and visibility constraints are not supported")
 	}
 	return validateGrantTargetRefForOperation(operation, target)
 }
@@ -206,26 +203,10 @@ func validateGrantTargetRefForOperation(operation policy.Operation, target polic
 		if !gitproxy.ValidRefName(ref) || !grantRefMatchesOperation(operation, ref) {
 			return errors.New("grant target ref is invalid for operation")
 		}
-	} else if ref != "" {
-		return errors.New("grant target ref is not supported for operation")
+	} else if ref != "" && !policy.OperationUsesRefs(operation) {
+		return errors.New("grant target refs are not supported for operation")
 	}
 	return nil
-}
-
-func validateGrantTargetIdentity(target policy.Target) error {
-	if target.Kind != policy.KindRepo {
-		return errors.New("grant target must be an exact repo")
-	}
-	if _, ok := parseGrantTarget(targetNameFromPolicy(target)); !ok {
-		return errors.New("grant target must be an exact repo")
-	}
-	return nil
-}
-
-func grantTargetHasUnsupportedConstraints(target policy.Target) bool {
-	return len(target.Paths) > 0 ||
-		len(target.Keys) > 0 ||
-		len(target.Visibility) > 0
 }
 
 func operationNeedsRef(operation policy.Operation) bool {
@@ -264,14 +245,12 @@ func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, a
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
-	ref, _ := grantRefFromTarget(req.Target)
 	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
 		Client:            client,
 		ClientRequestID:   req.ClientRequestID,
 		Operation:         string(req.Operation),
 		Mode:              bounds.Mode,
-		Target:            targetNameFromPolicy(req.Target),
-		Ref:               ref,
+		PolicyTarget:      &req.Target,
 		Attrs:             req.Attrs,
 		Reason:            req.Reason,
 		RequestedDuration: time.Duration(minutes) * time.Minute,

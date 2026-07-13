@@ -425,10 +425,10 @@ overlap is obvious.
 Operation names are stable strings. New operations require an explicit
 registry entry, default grant mode, and tests.
 
-Operation-family globs are allowed only as full first-segment families:
-`repo.*`, `git.*`, and `inference.*`. A family glob matches all registered
-operations whose name starts with that family prefix, except explicit-only
-high-risk operations. `repo.create` is explicit-only and must always be named
+Operation-family globs are allowed only as full first-segment families. A
+family glob matches registered operations whose names start with that family
+prefix, except explicit-only high-risk operations. Every explicit-only
+operation, including repository deletion and credential changes, must be named
 directly. Arbitrary partial operation globs such as `repo.*.read` or
 `git.push.*` are invalid.
 
@@ -436,6 +436,7 @@ directly. Arbitrary partial operation globs such as `repo.*.read` or
 |-----------|--------------------|---------|
 | `repo.list` | none | List repositories explicitly disclosed by exact policy targets. |
 | `repo.create` | execution | Create one exact model, dataset, or Space repository through the typed Agent Operations API. |
+| `repo.delete` | execution | Delete one exact repository after a one-use approval and absence reconciliation. |
 | `repo.metadata.read` | none | Read broker-exposed repository metadata: type, owner, and name only. |
 | `repo.contents.read` | window | Read repo files, file listings, README/card text, branches, tags, commits, or raw blobs. |
 | `git.fetch` | window | Git clone/fetch. This is content read. |
@@ -444,20 +445,16 @@ directly. Arbitrary partial operation globs such as `repo.*.read` or
 | `git.ref.delete` | window | Branch or non-tag ref deletion. |
 | `git.tag.update` | window | Tag move or tag deletion. |
 
-Operations with default grant mode `none` are not grantable. They must be
-allowed by static policy or refused.
+The complete operation list, authorization mode, risk, explicit-only flag, and
+implementation disposition are generated in `docs/generated/capabilities.json`.
+Registration makes an operation understandable; policy no-match still denies
+it. Execution operations are one-use. Secret-bearing operations use sealed
+payload references, and generated credentials are written to an approved
+broker credential slot rather than returned to the requester.
 
-Never grantable through hf-broker, even with this policy format:
-
-- generic Hugging Face API proxying
-- arbitrary HTTP requests
-- upstream token, secret, webhook, or credential changes
-- repo administration other than the fixed typed `repo.create` operation;
-  settings, members, deletion, transfer, namespace move, and ownership changes
-  remain unsupported
-- org roles or resource groups
-- billing, paid hardware, storage tier, or quota changes
-- Space secrets or variables that may expose credentials
+The broker never grants generic Hugging Face HTTP proxying, arbitrary URLs or
+methods, arbitrary request bodies, raw upstream credentials, or unregistered
+operations.
 
 ## Repo Listing And Content Reads
 
@@ -538,7 +535,7 @@ Fields:
 | Field | Required | Type | Meaning |
 |-------|----------|------|---------|
 | `kind` | yes | string | Must be `repo`. |
-| `type` | yes | string | `model`, `dataset`, `space`, or `*`. |
+| `type` | yes | string | `model`, `dataset`, `space`, `kernel`, or `*`. |
 | `owner` | yes | string | Exact owner or segment glob. |
 | `name` | yes | string | Exact repo name or segment glob. |
 | `refs` | no | array | Exact ref names or ref globs. Applies only to push/ref-update operations whose refs the broker classifies. LFS upload support traffic does not carry a ref, so it is authorized at the repo target level and the following `git-receive-pack` request enforces ref scope. |

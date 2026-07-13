@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/usebudget"
 
 	corepolicy "github.com/osolmaz/brokerkit/policy"
@@ -77,6 +78,7 @@ const (
 	TypeModel   RepoType = "model"
 	TypeDataset RepoType = "dataset"
 	TypeSpace   RepoType = "space"
+	TypeKernel  RepoType = "kernel"
 	TypeAny     RepoType = "*"
 )
 
@@ -214,40 +216,58 @@ type targetMatcherJSON struct {
 type operationInfo struct {
 	mode         GrantMode
 	explicitOnly bool
+	targetKind   TargetKind
 }
 
 type ruleFieldParser func(*Rule, string, rawRule) error
 
-var operations = map[Operation]operationInfo{
-	OpRepoList:          {mode: GrantModeNone},
-	OpRepoCreate:        {mode: GrantModeExecution, explicitOnly: true},
-	OpRepoMetadataRead:  {mode: GrantModeNone},
-	OpRepoContentsRead:  {mode: GrantModeWindow},
-	OpGitFetch:          {mode: GrantModeWindow},
-	OpGitPushAppend:     {mode: GrantModeWindow},
-	OpGitPushForce:      {mode: GrantModeWindow},
-	OpGitRefDelete:      {mode: GrantModeWindow},
-	OpGitTagUpdate:      {mode: GrantModeWindow},
-	OpBucketObjectList:  {mode: GrantModeNone},
-	OpBucketObjectRead:  {mode: GrantModeWindow},
-	OpBucketObjectWrite: {mode: GrantModeWindow},
-	OpBucketObjectDel:   {mode: GrantModeExecution},
-	OpInferenceModels:   {mode: GrantModeNone},
-	OpInferenceChat:     {mode: GrantModeNone},
+func catalogOperations() map[Operation]operationInfo {
+	values := opcatalog.MustAll()
+	result := make(map[Operation]operationInfo, len(values))
+	for _, descriptor := range values {
+		mode := GrantModeWindow
+		if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+			mode = GrantModeExecution
+		}
+		result[Operation(descriptor.Name)] = operationInfo{
+			mode: mode, explicitOnly: descriptor.ExplicitOnly, targetKind: TargetKind(descriptor.TargetKind),
+		}
+	}
+	return result
 }
 
-var operationFamilyPrefixes = map[string]string{
-	"repo.*":      "repo.",
-	"git.*":       "git.",
-	"bucket.*":    "bucket.",
-	"inference.*": "inference.",
+func catalogOperationFamilies() map[string]string {
+	result := make(map[string]string)
+	for _, descriptor := range opcatalog.MustAll() {
+		if !descriptor.FamilyGlobAllowed {
+			continue
+		}
+		family, _, ok := strings.Cut(descriptor.Name, ".")
+		if ok {
+			result[family+".*"] = family + "."
+		}
+	}
+	return result
 }
+
+var operations = catalogOperations()
+
+var operationFamilyPrefixes = catalogOperationFamilies()
 
 var refScopedOperations = map[Operation]bool{
-	OpGitPushAppend: true,
-	OpGitPushForce:  true,
-	OpGitRefDelete:  true,
-	OpGitTagUpdate:  true,
+	OpGitPushAppend:          true,
+	OpGitPushForce:           true,
+	OpGitRefDelete:           true,
+	OpGitTagUpdate:           true,
+	"repo.branch.create":     true,
+	"repo.branch.delete":     true,
+	"repo.commit.create":     true,
+	"repo.file.copy":         true,
+	"repo.file.delete":       true,
+	"repo.file.upload":       true,
+	"repo.tag.create":        true,
+	"repo.tag.delete":        true,
+	"space.hot_reload.apply": true,
 }
 
 var validRepoVisibilities = map[string]bool{
@@ -257,10 +277,39 @@ var validRepoVisibilities = map[string]bool{
 }
 
 var knownAttrs = map[string]bool{
-	"max_bytes":  true,
-	"private":    true,
-	"ref_change": true,
-	"sdk":        true,
+	"arguments_digest":   true,
+	"content_digest":     true,
+	"credential_kind":    true,
+	"credential_slot":    true,
+	"destination":        true,
+	"factory_reboot":     true,
+	"flavor":             true,
+	"gating":             true,
+	"hardware":           true,
+	"key":                true,
+	"max_bytes":          true,
+	"max_hosts":          true,
+	"num_hosts":          true,
+	"path":               true,
+	"pid":                true,
+	"pool":               true,
+	"private":            true,
+	"recursive":          true,
+	"ref_change":         true,
+	"sdk":                true,
+	"sleep_time_seconds": true,
+	"source":             true,
+	"source_path":        true,
+	"source_ref":         true,
+	"target_digest":      true,
+	"visibility":         true,
+	"warm_up":            true,
+}
+
+// KnownAttributeNames returns the closed request-attribute vocabulary used by
+// generated agent surfaces.
+func KnownAttributeNames() []string {
+	return sortedMapKeys(knownAttrs)
 }
 
 var validRefChangeAttrs = map[string]bool{
@@ -433,13 +482,7 @@ func validateRuleOperationTargets(prefix string, ops []Operation, targets []Targ
 }
 
 func operationTargetKind(op Operation) TargetKind {
-	if strings.HasPrefix(string(op), "bucket.") {
-		return KindBucket
-	}
-	if strings.HasPrefix(string(op), "inference.") {
-		return KindInference
-	}
-	return KindRepo
+	return operations[op].targetKind
 }
 
 // IsOperation reports whether value is in the closed HF operation registry.
@@ -448,14 +491,51 @@ func IsOperation(value string) bool {
 	return ok
 }
 
+// ValidateRequest checks one exact provider request against the closed
+// operation, target, and attribute vocabulary without making a policy decision.
+func ValidateRequest(req Request) error {
+	info, ok := operations[req.Operation]
+	if !ok {
+		return errors.New("invalid operation")
+	}
+	if req.Target.Kind != info.targetKind {
+		return fmt.Errorf("operation %s requires %s target", req.Operation, info.targetKind)
+	}
+	if err := validateRequestTarget(req.Target); err != nil {
+		return err
+	}
+	if _, err := AttrConstraintsFromValues(req.Attrs); err != nil {
+		return err
+	}
+	if err := validateExactTargetConstraints(req.Target); err != nil {
+		return err
+	}
+	return hfRegistry().ValidateRequest(AuthorizationRequest(req))
+}
+
+func validateExactTargetConstraints(target Target) error {
+	for _, values := range [][]string{target.Refs, target.Paths, target.Keys, target.Visibility} {
+		for _, value := range values {
+			if value == "" || len(value) > MaxGlobBytes || strings.ContainsAny(value, "\x00*?") {
+				return errors.New("target constraints must be exact bounded values")
+			}
+		}
+	}
+	return nil
+}
+
 // Operations returns the complete registered HF operation set.
 func Operations() []Operation {
-	out := make([]Operation, 0, len(operations))
-	for operation := range operations {
-		out = append(out, operation)
+	return sortedMapKeys(operations)
+}
+
+func sortedMapKeys[K ~string, V any](values map[K]V) []K {
+	result := make([]K, 0, len(values))
+	for value := range values {
+		result = append(result, value)
 	}
-	slices.Sort(out)
-	return out
+	slices.Sort(result)
+	return result
 }
 
 func parseRuleID(rule *Rule, prefix string, raw rawRule) error {
@@ -652,8 +732,28 @@ func validateTarget(pathName string, target *TargetMatcher) error {
 	case KindInference:
 		return validateInferenceTarget(pathName, target)
 	default:
-		return fmt.Errorf("%s.kind: must be repo, bucket, or inference", pathName)
+		if !knownTargetKind(target.Kind) {
+			return fmt.Errorf("%s.kind: unknown target kind %q", pathName, target.Kind)
+		}
+		return validateGenericTarget(pathName, target)
 	}
+}
+
+func validateGenericTarget(pathName string, target *TargetMatcher) error {
+	unsupported := []bool{target.typeSet, target.refsSet, target.pathsSet, target.visibilitySet, target.keysSet, target.snapshotPrefixSet}
+	if slices.Contains(unsupported, true) {
+		return fmt.Errorf("%s: %s targets accept only owner and name", pathName, target.Kind)
+	}
+	return validateOwnerNameGlobs(pathName, target.Owner, target.Name)
+}
+
+func knownTargetKind(kind TargetKind) bool {
+	for _, info := range operations {
+		if info.targetKind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func validateInferenceTarget(pathName string, target *TargetMatcher) error {
@@ -715,7 +815,7 @@ func validateNoRepoTargetFields(pathName string, target *TargetMatcher) error {
 
 func validateRepoTargetType(pathName string, repoType RepoType) error {
 	if !validRepoType(repoType) {
-		return fmt.Errorf("%s.type: must be model, dataset, space, or *", pathName)
+		return fmt.Errorf("%s.type: must be model, dataset, space, kernel, or *", pathName)
 	}
 	return nil
 }
@@ -814,7 +914,7 @@ func validatePathGlobSyntax(pathName, value string) error {
 
 func validRepoType(value RepoType) bool {
 	switch value {
-	case TypeModel, TypeDataset, TypeSpace, TypeAny:
+	case TypeModel, TypeDataset, TypeSpace, TypeKernel, TypeAny:
 		return true
 	default:
 		return false
@@ -923,15 +1023,66 @@ func AttrConstraintsFromValues(attrs map[string]any) (map[string]AttrConstraint,
 }
 
 func validateAttrConstraint(key string, constraint AttrConstraint) error {
-	switch key {
-	case "max_bytes":
-		return validateMaximumConstraint(constraint)
-	case "ref_change":
-		return validateNamedConstraint(constraint, "a ref change value", validRefChangeAttrs, "unsupported ref change")
-	case "private":
-		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
-	case "sdk":
-		return validateNamedConstraint(constraint, "a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK")
+	validator, found := attrConstraintValidators[key]
+	if !found {
+		return nil
+	}
+	return validator(constraint)
+}
+
+var attrConstraintValidators = buildAttrConstraintValidators()
+
+func buildAttrConstraintValidators() map[string]func(AttrConstraint) error {
+	values := map[string]func(AttrConstraint) error{
+		"ref_change":  namedConstraint("a ref change value", validRefChangeAttrs, "unsupported ref change"),
+		"private":     namedConstraint("true or false", boolConstraintValues, "must be true or false"),
+		"sdk":         namedConstraint("a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK"),
+		"visibility":  namedConstraint("a visibility", map[string]bool{"public": true, "private": true, "protected": true, "*": true}, "unsupported visibility"),
+		"gating":      namedConstraint("a gating mode", map[string]bool{"auto": true, "manual": true, "disabled": true, "*": true}, "unsupported gating mode"),
+		"destination": ownerNameConstraint,
+		"source":      sourceConstraint,
+	}
+	for _, key := range []string{"max_bytes", "max_hosts", "num_hosts", "warm_up", "sleep_time_seconds"} {
+		values[key] = validateMaximumConstraint
+	}
+	for _, key := range []string{"source_path", "source_ref", "hardware", "key"} {
+		values[key] = boundedValuesConstraint
+	}
+	values["factory_reboot"] = namedConstraint("true or false", boolConstraintValues, "must be true or false")
+	return values
+}
+
+var boolConstraintValues = map[string]bool{"true": true, "false": true, "*": true}
+
+func namedConstraint(required string, allowed map[string]bool, invalid string) func(AttrConstraint) error {
+	return func(constraint AttrConstraint) error {
+		return validateNamedConstraint(constraint, required, allowed, invalid)
+	}
+}
+
+func ownerNameConstraint(constraint AttrConstraint) error {
+	return validateGlobConstraint(constraint, "must be an OWNER/NAME glob", func(value string) bool { return strings.Contains(value, "/") })
+}
+
+func sourceConstraint(constraint AttrConstraint) error {
+	return validateGlobConstraint(constraint, "must be a TYPE/OWNER/NAME glob", func(value string) bool { return strings.Count(value, "/") == 2 })
+}
+
+func validateGlobConstraint(constraint AttrConstraint, message string, valid func(string) bool) error {
+	if constraint.Number != nil || len(constraint.Values) == 0 {
+		return errors.New(message)
+	}
+	for _, value := range constraint.Values {
+		if value != "*" && (!valid(value) || len(value) > MaxGlobBytes) {
+			return errors.New(message)
+		}
+	}
+	return nil
+}
+
+func boundedValuesConstraint(constraint AttrConstraint) error {
+	if constraint.Number != nil || len(constraint.Values) == 0 {
+		return errors.New("must be one or more bounded values")
 	}
 	return nil
 }
@@ -1216,7 +1367,10 @@ func validateRequestTarget(target Target) error {
 	case KindInference:
 		return validateNamedRequestTarget(target, "inference")
 	default:
-		return fmt.Errorf("invalid target kind")
+		if !knownTargetKind(target.Kind) {
+			return fmt.Errorf("invalid target kind")
+		}
+		return validateNamedRequestTarget(target, string(target.Kind))
 	}
 }
 
@@ -1237,8 +1391,7 @@ func validateRepoRequestTarget(target Target) error {
 func validRequestSegment(value string) bool {
 	return value != "" &&
 		value != ".." &&
-		!strings.Contains(value, "/") &&
-		!strings.Contains(value, "\x00")
+		!strings.ContainsAny(value, " \t\r\n/\x00*?")
 }
 
 func validConcreteRepoType(value RepoType) bool {

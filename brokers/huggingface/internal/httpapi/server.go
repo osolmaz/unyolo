@@ -21,10 +21,14 @@ import (
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialstore"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	bknotify "github.com/osolmaz/brokerkit/notify"
@@ -76,33 +80,38 @@ type Options struct {
 type Server struct {
 	router *echo.Echo
 
-	control             *controlplane.Runtime
-	authorization       *bkauthorization.Coordinator
-	policy              policy.Policy
-	audit               audit.Recorder
-	mirrors             *mirror.Manager
-	upstream            *url.URL
-	routerUpstream      *url.URL
-	httpClient          *http.Client
-	inferenceHTTPClient *http.Client
-	hfToken             string
-	maxBody             int64
-	grants              *grants.Store
-	plans               *hfplan.Store
-	operations          *agentops.Store
-	agentAPI            *agentapi.Handler
-	database            *state.Database
-	planValidator       hfplan.Validator
-	notifier            bknotify.Notifier
-	operatorConfigured  bool
-	lifecycleContext    context.Context
-	lifecycleCancel     context.CancelFunc
-	backgroundWorkers   sync.WaitGroup
-	closeOnce           sync.Once
-	closeErr            error
-	operationAuthLocks  [64]sync.Mutex
-	now                 func() time.Time
-	newLFSActionID      func() (string, error)
+	control                  *controlplane.Runtime
+	authorization            *bkauthorization.Coordinator
+	policy                   policy.Policy
+	audit                    audit.Recorder
+	mirrors                  *mirror.Manager
+	upstream                 *url.URL
+	routerUpstream           *url.URL
+	httpClient               *http.Client
+	inferenceHTTPClient      *http.Client
+	hfToken                  string
+	maxBody                  int64
+	grants                   *grants.Store
+	plans                    *hfplan.Store
+	operations               *agentops.Store
+	operationRegistry        *operations.Registry
+	hubClient                *hubclient.Client
+	sealedStore              *sealedstore.Store
+	credentialStore          *credentialstore.Store
+	agentAPI                 *agentapi.Handler
+	database                 *state.Database
+	planValidator            hfplan.Validator
+	notifier                 bknotify.Notifier
+	operatorConfigured       bool
+	lifecycleContext         context.Context
+	lifecycleCancel          context.CancelFunc
+	backgroundWorkers        sync.WaitGroup
+	closeOnce                sync.Once
+	closeErr                 error
+	operationAuthLocks       [64]sync.Mutex
+	operationSubmissionLocks [64]sync.Mutex
+	now                      func() time.Time
+	newLFSActionID           func() (string, error)
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
@@ -194,6 +203,7 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 		return nil, err
 	}
 	server.startGrantNotificationSweeper(lifecycleContext)
+	server.startSealedPayloadSweeper(lifecycleContext)
 	server.startOperationWorker(lifecycleContext)
 	go func() {
 		<-lifecycleContext.Done()
@@ -275,6 +285,7 @@ func validUpstreamOrigin(upstream *url.URL) bool {
 	return upstream.Path == "" || upstream.Path == "/"
 }
 
+//nolint:cyclop // Dependency validation is explicit and tracked by the exact HF CRAP baseline.
 func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger audit.Recorder) (*Server, error) {
 	inferenceTimeout := opts.Config.HFTimeout
 	if inferenceTimeout <= 0 {
@@ -291,6 +302,16 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	if err != nil {
 		return nil, err
 	}
+	sealedPayloads, err := sealedstore.Open(opts.Config.StateDir)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	credentialSlots, err := credentialstore.Open(opts.Config.StateDir)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	store := grants.NewDatabase(database, grants.Options{
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
@@ -302,6 +323,79 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		return nil, err
 	}
 	planValidator := hfplan.Validator{Store: plans}
+	hub, err := hubclient.New(upstream.String(), opts.Config.HFToken, hubclient.WithTimeout(opts.Config.HFTimeout))
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	providerAdapters, err := operations.NewRepositoryAdapters(hub, upstream.String())
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	settingsAdapters, err := operations.NewRepositorySettingsAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	refsAdapters, err := operations.NewRefsAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	spaceAdapters, err := operations.NewSpaceAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	boundAdapters, err := operations.NewBoundAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	bucketAdapters, err := operations.NewBucketAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	contentAdapters, err := operations.NewRepositoryContentAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	sealedAdapters, err := operations.NewSealedBoundAdapters(hub, sealedPayloads)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	credentialAdapters, err := operations.NewCredentialOutputAdapters(hub, sealedPayloads, credentialSlots)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	sandboxAdapters, err := operations.NewSandboxAdapters(hub, sealedPayloads)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	providerAdapters = append(providerAdapters, settingsAdapters...)
+	providerAdapters = append(providerAdapters, refsAdapters...)
+	providerAdapters = append(providerAdapters, spaceAdapters...)
+	providerAdapters = append(providerAdapters, boundAdapters...)
+	providerAdapters = append(providerAdapters, bucketAdapters...)
+	providerAdapters = append(providerAdapters, contentAdapters...)
+	providerAdapters = append(providerAdapters, sealedAdapters...)
+	providerAdapters = append(providerAdapters, credentialAdapters...)
+	providerAdapters = append(providerAdapters, sandboxAdapters...)
+	operationRegistry, err := operations.NewRegistry(providerAdapters...)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	if err := operationRegistry.ValidateCoverage(); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	runtime, err := controlplane.New(controlplane.Options{
 		Broker: "hf-broker", Store: store, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
@@ -331,6 +425,10 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		grants:             store,
 		plans:              plans,
 		operations:         agentops.New(database),
+		operationRegistry:  operationRegistry,
+		hubClient:          hub,
+		sealedStore:        sealedPayloads,
+		credentialStore:    credentialSlots,
 		database:           database,
 		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,
@@ -345,7 +443,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	})
 	agentAPI, agentAPIErr := agentapi.New(agentapi.Options{
 		Store: server.operations, Authenticate: runtime.Clients.AuthenticateHeader,
-		Submit: server.submitAgentOperation, Realm: "hf-broker",
+		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "hf-broker",
 		AuthFailure: func() {
 			server.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
 		},
@@ -373,6 +471,7 @@ func newRouter(server *Server) *echo.Echo {
 	router.HideBanner = true
 	router.HidePort = true
 	server.agentAPI.Register(router)
+	router.POST("/api/agent/v1/sealed-payloads", server.uploadSealedPayload)
 	router.GET("/healthz", func(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "application/json")
 		_, err := c.Response().Write([]byte(`{"ok": true}`))

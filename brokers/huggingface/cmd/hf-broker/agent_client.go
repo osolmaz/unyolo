@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -21,20 +22,10 @@ const defaultClientWait = 15 * time.Minute
 
 type agentClient struct {
 	operations  *agentclient.Client
+	baseURL     string
 	secret      string
+	httpClient  *http.Client
 	grantClient *hfGrantClient
-}
-
-type repoCreateClientOptions struct {
-	repoID         string
-	repoType       string
-	private        bool
-	sdk            string
-	reason         string
-	idempotencyKey string
-	wait           bool
-	waitTimeout    time.Duration
-	jsonOutput     bool
 }
 
 func runAgentClient(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
@@ -42,128 +33,13 @@ func runAgentClient(ctx context.Context, getenv func(string) string, stdout, std
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	if len(args) >= 2 && args[0] == "repo" && args[1] == "create" {
-		return runClientRepoCreate(ctx, client, stdout, stderr, args[2:])
-	}
-	if len(args) >= 2 && args[0] == "operation" && (args[1] == "get" || args[1] == "wait") {
+	if len(args) >= 2 && args[0] == "operation" && (args[1] == "get" || args[1] == "wait" || args[1] == "cancel") {
 		return runClientOperation(ctx, client, stdout, args[1], args[2:])
 	}
-	return exitError{code: 64, message: "usage: hf-broker client repo create OWNER/NAME [options] | hf-broker client operation <get|wait> ID | hf-broker client grant ..."}
-}
-
-func runClientRepoCreate(ctx context.Context, client *agentClient, stdout, stderr io.Writer, args []string) error {
-	opts, err := parseRepoCreateClientOptions(args)
-	if err != nil {
-		return exitError{code: 64, message: err.Error()}
+	if descriptor, consumed, found := matchCLICommand(args); found {
+		return runCatalogOperation(ctx, client, stdout, stderr, descriptor, args[consumed:])
 	}
-	request, err := repoCreateSubmitRequest(&opts)
-	if err != nil {
-		return err
-	}
-	operation, err := client.submit(ctx, request)
-	if err != nil {
-		return err
-	}
-	if !opts.jsonOutput {
-		_, _ = fmt.Fprintf(stderr, "HF Broker operation %s: %s\n", operation.ID, operation.State)
-		if operation.State == agentv1.StatePending {
-			_, _ = fmt.Fprintln(stderr, "Approval requested. Approve it in MLClaw; no Hugging Face token is needed.")
-		}
-	}
-	if opts.wait && !operation.State.Terminal() {
-		waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
-		defer cancel()
-		operation, err = client.wait(waitCtx, operation)
-		if err != nil {
-			return err
-		}
-	}
-	return printClientOperation(stdout, operation, opts.jsonOutput)
-}
-
-func repoCreateSubmitRequest(options *repoCreateClientOptions) (agentv1.SubmitRequest, error) {
-	owner, name, ok := strings.Cut(options.repoID, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return agentv1.SubmitRequest{}, exitError{code: 64, message: "repository must be OWNER/NAME"}
-	}
-	if options.idempotencyKey == "" {
-		value, err := randomClientID()
-		if err != nil {
-			return agentv1.SubmitRequest{}, err
-		}
-		options.idempotencyKey = value
-	}
-	target, _ := json.Marshal(map[string]any{"kind": "repo", "type": options.repoType, "owner": owner, "name": name})
-	arguments := map[string]any{"private": options.private}
-	if options.sdk != "" {
-		arguments["sdk"] = options.sdk
-	}
-	argumentJSON, _ := json.Marshal(arguments)
-	return agentv1.SubmitRequest{IdempotencyKey: options.idempotencyKey, Operation: "repo.create", Target: target, Arguments: argumentJSON, Reason: options.reason}, nil
-}
-
-func parseRepoCreateClientOptions(args []string) (repoCreateClientOptions, error) {
-	options := repoCreateClientOptions{repoType: "dataset", private: true, reason: "Create a Hugging Face repository through HF Broker", wait: true, waitTimeout: defaultClientWait}
-	args = takeLeadingRepoID(args, &options)
-	flags := flag.NewFlagSet("repo create", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	flags.StringVar(&options.repoType, "type", options.repoType, "model, dataset, or space")
-	flags.BoolVar(&options.private, "private", options.private, "create a private repository")
-	public := flags.Bool("public", false, "create a public repository")
-	flags.StringVar(&options.sdk, "sdk", "", "Space SDK")
-	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
-	flags.StringVar(&options.idempotencyKey, "idempotency-key", "", "stable retry key")
-	flags.BoolVar(&options.wait, "wait", options.wait, "wait for approval and completion")
-	flags.DurationVar(&options.waitTimeout, "wait-timeout", options.waitTimeout, "maximum wait")
-	flags.BoolVar(&options.jsonOutput, "json", false, "emit JSON")
-	if err := flags.Parse(args); err != nil {
-		return options, err
-	}
-	if err := takeTrailingRepoID(flags.Args(), &options); err != nil {
-		return options, err
-	}
-	if *public {
-		options.private = false
-	}
-	return validateRepoCreateClientOptions(options)
-}
-
-func takeLeadingRepoID(args []string, options *repoCreateClientOptions) []string {
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		options.repoID = args[0]
-		return args[1:]
-	}
-	return args
-}
-
-func takeTrailingRepoID(args []string, options *repoCreateClientOptions) error {
-	if options.repoID == "" && len(args) == 1 {
-		options.repoID = args[0]
-		return nil
-	}
-	if len(args) != 0 {
-		return errors.New("repository OWNER/NAME must be provided once")
-	}
-	if options.repoID == "" {
-		return errors.New("repository OWNER/NAME is required")
-	}
-	return nil
-}
-
-func validateRepoCreateClientOptions(options repoCreateClientOptions) (repoCreateClientOptions, error) {
-	if options.repoType != "model" && options.repoType != "dataset" && options.repoType != "space" {
-		return options, errors.New("repository type must be model, dataset, or space")
-	}
-	if options.repoType == "space" && options.sdk == "" {
-		options.sdk = "docker"
-	}
-	if options.repoType != "space" && options.sdk != "" {
-		return options, errors.New("--sdk is supported only for Spaces")
-	}
-	if strings.TrimSpace(options.reason) == "" || options.waitTimeout <= 0 {
-		return options, errors.New("reason and a positive wait timeout are required")
-	}
-	return options, nil
+	return exitError{code: 64, message: "usage: hf-broker client <catalog operation> --target-json JSON [options] | hf-broker client operation <get|wait> ID | hf-broker client grant ..."}
 }
 
 func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writer, action string, args []string) error {
@@ -174,7 +50,13 @@ func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writ
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		return exitError{code: 64, message: "operation ID is required"}
 	}
-	operation, err := client.get(ctx, flags.Arg(0))
+	var operation agentv1.Operation
+	var err error
+	if action == "cancel" {
+		operation, err = client.cancel(ctx, flags.Arg(0))
+	} else {
+		operation, err = client.get(ctx, flags.Arg(0))
+	}
 	if err != nil {
 		return err
 	}
@@ -203,7 +85,9 @@ func loadAgentClient(getenv func(string) string) (*agentClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &agentClient{operations: operations, secret: secret, grantClient: grantClient}, nil
+	return &agentClient{operations: operations, baseURL: baseURL, secret: secret,
+		httpClient:  &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		grantClient: grantClient}, nil
 }
 
 func loadAgentSecret(getenv func(string) string) (string, error) {
@@ -236,6 +120,10 @@ func (client *agentClient) submit(ctx context.Context, request agentv1.SubmitReq
 
 func (client *agentClient) get(ctx context.Context, id string) (agentv1.Operation, error) {
 	return client.operations.Get(ctx, id)
+}
+
+func (client *agentClient) cancel(ctx context.Context, id string) (agentv1.Operation, error) {
+	return client.operations.Cancel(ctx, id)
 }
 
 func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {

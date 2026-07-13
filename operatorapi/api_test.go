@@ -78,7 +78,7 @@ func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 		t.Fatalf("List() = %+v, %v", page, err)
 	}
 	request := page.Requests[0]
-	if request.ApprovalBounds == nil || request.ApprovalBounds.MaxUses != 2 || len(request.AllowedActions) != 3 {
+	if request.ApprovalBounds == nil || request.ApprovalBounds.MaxUses != 2 || len(request.AllowedActions) != 2 {
 		t.Fatalf("request = %+v", request)
 	}
 	command := operatorv1.Decision{ExpectedRevision: grant.Revision, IdempotencyKey: "decision-1", OnBehalfOf: "Onur",
@@ -105,6 +105,11 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 		`{"expected_revision":1,"idempotency_key":"one","operation":"replacement"}`)
 	if unknown.status != http.StatusBadRequest || !strings.Contains(unknown.body, "invalid_request") {
 		t.Fatalf("unknown input = %+v", unknown)
+	}
+	cancel := rawRequest(t, client.HTTPClient, http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/cancel", testOperatorSecret,
+		`{"expected_revision":1,"idempotency_key":"cancel"}`)
+	if cancel.status != http.StatusNotFound || !strings.Contains(cancel.body, "not_found") {
+		t.Fatalf("operator cancel = %+v", cancel)
 	}
 	for name, body := range map[string]string{
 		"removed decision reason": `{"expected_revision":1,"idempotency_key":"reason","decision_reason":"removed"}`,

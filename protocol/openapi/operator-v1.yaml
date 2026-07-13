@@ -64,7 +64,7 @@
     "schemas": {
       "Descriptor": {"type": "object", "additionalProperties": false, "required": ["api_version"], "properties": {"api_version": {"type": "string", "const": "brokerkit.io/operator/v1"}}},
       "Health": {"type": "object", "additionalProperties": false, "required": ["status"], "properties": {"status": {"type": "string", "minLength": 1, "maxLength": 128}}},
-      "Action": {"type": "string", "enum": ["approve", "deny", "cancel", "revoke"]},
+      "Action": {"type": "string", "enum": ["approve", "deny", "revoke"]},
       "Status": {"type": "string", "enum": ["pending", "active", "denied", "canceled", "expired", "consumed", "revoked"]},
       "StatusGroup": {"type": "string", "enum": ["pending", "active", "history", "all"]},
       "Fact": {"type": "object", "additionalProperties": false, "required": ["label", "value"], "properties": {"label": {"type": "string", "minLength": 1, "maxLength": 80}, "value": {"type": "string", "minLength": 1, "maxLength": 500}}},

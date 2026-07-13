@@ -21,6 +21,13 @@
         "parameters": [{"$ref": "#/components/parameters/OperationID"}, {"name": "after_revision", "in": "query", "schema": {"type": "integer", "minimum": 0}}, {"name": "wait_seconds", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 30}}],
         "responses": {"200": {"description": "Current operation after a revision change or timeout", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
       }
+    },
+    "/api/agent/v1/operations/{id}/cancel": {
+      "post": {
+        "operationId": "cancelAgentOperation", "security": [{"agentBearer": []}],
+        "parameters": [{"$ref": "#/components/parameters/OperationID"}],
+        "responses": {"200": {"description": "Canceled or already terminal operation", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      }
     }
   },
   "components": {
@@ -32,15 +39,15 @@
       "State": {"type": "string", "enum": ["pending", "approved", "executing", "succeeded", "failed", "denied", "expired", "canceled"]},
       "Presentation": {"type": "object", "additionalProperties": false, "required": ["title"], "properties": {"title": {"type": "string", "minLength": 1, "maxLength": 160}, "summary": {"type": "string", "maxLength": 500}}},
       "OperationError": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {"code": {"type": "string", "minLength": 1, "maxLength": 64}, "message": {"type": "string", "minLength": 1, "maxLength": 500}}},
-      "SubmitRequest": {"type": "object", "additionalProperties": false, "required": ["idempotency_key", "operation", "target", "arguments", "reason"], "properties": {"idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "target": {"type": "object", "maxProperties": 32}, "arguments": {"type": "object", "maxProperties": 32}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}},
+      "SubmitRequest": {"type": "object", "additionalProperties": false, "required": ["idempotency_key", "operation", "target", "arguments", "reason"], "properties": {"idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "target": {"type": "object", "maxProperties": 32}, "arguments": {"type": "object", "maxProperties": 128}, "reason": {"type": "string", "minLength": 1, "maxLength": 2000}}},
       "Operation": {
         "type": "object", "additionalProperties": false,
         "required": ["api_version", "id", "broker", "client_id", "idempotency_key", "operation", "target", "arguments", "reason", "state", "revision", "created_at", "updated_at", "presentation"],
         "properties": {
           "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"}, "id": {"type": "string", "minLength": 1, "maxLength": 128}, "broker": {"type": "string", "minLength": 1, "maxLength": 64}, "client_id": {"type": "string", "minLength": 1, "maxLength": 128},
-          "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "target": {"type": "object", "maxProperties": 32}, "arguments": {"type": "object", "maxProperties": 32}, "reason": {"type": "string", "minLength": 1, "maxLength": 512},
+          "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "target": {"type": "object", "maxProperties": 32}, "arguments": {"type": "object", "maxProperties": 128}, "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
           "state": {"$ref": "#/components/schemas/State"}, "revision": {"type": "integer", "minimum": 1}, "approval_id": {"type": "string", "minLength": 1, "maxLength": 128}, "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}, "terminal_at": {"type": "string", "format": "date-time"},
-          "presentation": {"$ref": "#/components/schemas/Presentation"}, "result": {"type": "object", "maxProperties": 32}, "error": {"$ref": "#/components/schemas/OperationError"}
+          "presentation": {"$ref": "#/components/schemas/Presentation"}, "plan_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "result": {"type": "object", "maxProperties": 128}, "error": {"$ref": "#/components/schemas/OperationError"}
         }
       },
       "ErrorEnvelope": {"type": "object", "additionalProperties": false, "required": ["error"], "properties": {"error": {"$ref": "#/components/schemas/OperationError"}}}

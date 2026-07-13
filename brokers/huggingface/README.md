@@ -83,7 +83,12 @@ Hugging Face token.
 ```sh
 export HF_BROKER_URL=http://127.0.0.1:8080
 export HF_BROKER_SHARED_SECRET_FILE=/run/user/1000/hf-broker-agent-secret
-hf-broker client repo create osolmaz/test-data --type dataset
+hf-broker client repo create \
+  --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
+  --arguments-json '{"visibility":"private"}'
+hf-broker client repo delete \
+  --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
+  --arguments-json '{}'
 ```
 
 If policy requires approval, the command prints the durable operation ID and
@@ -93,9 +98,11 @@ waits. Resume it after a disconnect with:
 hf-broker client operation wait <operation-id>
 ```
 
-Run `hf-broker mcp` as a stdio MCP server to expose the repository operation
-tools and the `hf_grant_request|get|wait|cancel|revoke` tools. The tool
-descriptions explicitly tell agents not to request a Hugging Face token.
+Run `hf-broker mcp` as a stdio MCP server to expose one explicit tool for every
+agent-facing operation in the capability catalog, plus operation and grant
+lifecycle tools. The same catalog generates the CLI command tree and policy
+vocabulary, so these surfaces cannot drift. Tool descriptions explicitly tell
+agents not to request a Hugging Face token.
 
 ## Temporary grants
 
@@ -333,7 +340,6 @@ GET  /api/grants/{id}
 GET  /api/grants/events
 POST /api/grants/{id}/approve
 POST /api/grants/{id}/deny
-POST /api/grants/{id}/cancel
 POST /api/grants/{id}/revoke
 ```
 
@@ -344,6 +350,10 @@ canonical stored request. Lifecycle events use durable SSE cursors, so a
 trusted host can reconnect after a restart without depending on Telegram. The
 browser must authenticate to the trusted host; the host keeps
 the broker operator credential server-side.
+
+Cancellation is requester-owned and remains on the authenticated agent
+surface. Operators deny pending requests or revoke active grants; they do not
+cancel on behalf of a requester.
 
 ## Telegram Grants
 

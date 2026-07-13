@@ -32,6 +32,40 @@ type commandArguments struct {
 	Arguments map[string]json.RawMessage `json:"arguments"`
 }
 
+func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (agentv1.Operation, error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	operation, err := s.operations.Get(client, id)
+	if err != nil || operation.State.Terminal() {
+		return operation, err
+	}
+	if operation.State == agentv1.StateExecuting {
+		return agentv1.Operation{}, agentops.ErrNotCancelable
+	}
+	if err := s.cancelAgentApproval(operation, client); err != nil {
+		return agentv1.Operation{}, err
+	}
+	return s.operations.Cancel(client, id)
+}
+
+func (s *Server) cancelAgentApproval(operation agentv1.Operation, client string) error {
+	if operation.ApprovalID == "" {
+		return nil
+	}
+	grant, err := s.grants.Get(operation.ApprovalID)
+	if err != nil {
+		return err
+	}
+	switch grant.Status {
+	case grants.StatusPending:
+		_, err = s.grants.CancelForClient(grant.ID, client)
+	case grants.StatusActive:
+		_, err = s.grants.RevokeForClient(grant.ID, client)
+	case grants.StatusDenied, grants.StatusExpired, grants.StatusConsumed, grants.StatusRevoked, grants.StatusCanceled:
+	}
+	return err
+}
+
 func (s *Server) submitAgentOperation(_ context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
 	if request.Operation != sudopolicy.OperationExecCommand {
 		return agentv1.Operation{}, false, &agentapi.Error{Status: http.StatusBadRequest, Code: "unsupported_operation", Message: "Unsupported agent operation"}

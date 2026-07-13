@@ -142,21 +142,18 @@ func assertTokenLifecycle(t *testing.T, fixture Fixture) {
 func assertTerminalTransitions(t *testing.T, fixture Fixture, server *httptest.Server) {
 	t.Helper()
 	client := &operatorclient.Client{BaseURL: server.URL, Token: fixture.OperatorToken, HTTPClient: server.Client()}
-	for _, test := range []struct {
-		suffix string
-		action operatorv1.Action
-		status grants.Status
-	}{
-		{"deny", operatorv1.ActionDeny, grants.StatusDenied},
-		{"cancel", operatorv1.ActionCancel, grants.StatusCanceled},
-	} {
-		created := requestGrantWithSuffix(t, fixture, test.suffix)
-		result, err := client.Decide(t.Context(), created.Grant.ID, test.action, operatorv1.Decision{
-			ExpectedRevision: created.Grant.Revision, IdempotencyKey: "conformance-" + test.suffix,
-		})
-		if err != nil || result.Status != test.status {
-			t.Fatalf("operator %s = %+v, %v", test.action, result, err)
-		}
+	denied := requestGrantWithSuffix(t, fixture, "deny")
+	result, err := client.Decide(t.Context(), denied.Grant.ID, operatorv1.ActionDeny, operatorv1.Decision{
+		ExpectedRevision: denied.Grant.Revision, IdempotencyKey: "conformance-deny",
+	})
+	if err != nil || result.Status != grants.StatusDenied {
+		t.Fatalf("operator deny = %+v, %v", result, err)
+	}
+
+	canceled := requestGrantWithSuffix(t, fixture, "cancel")
+	resultGrant, err := fixture.Runtime.Store.CancelForClient(canceled.Grant.ID, canceled.Grant.Client)
+	if err != nil || resultGrant.Status != grants.StatusCanceled {
+		t.Fatalf("requester cancel = %+v, %v", resultGrant, err)
 	}
 }
 

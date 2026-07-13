@@ -325,7 +325,7 @@ func project(item operatorinbox.Item) operatorwire.BrokerRequest {
 func allowedActions(item operatorinbox.Item) []operatorwire.Action {
 	switch item.Status {
 	case grants.StatusPending:
-		return []operatorwire.Action{operatorwire.Approve, operatorwire.Deny, operatorwire.Cancel}
+		return []operatorwire.Action{operatorwire.Approve, operatorwire.Deny}
 	case grants.StatusActive:
 		return []operatorwire.Action{operatorwire.Revoke}
 	default:
@@ -498,7 +498,7 @@ func targetFilterFields(values map[string][]string) map[string][]string {
 }
 
 func validAction(action operatorv1.Action) bool {
-	return action == operatorv1.ActionApprove || action == operatorv1.ActionDeny || action == operatorv1.ActionCancel || action == operatorv1.ActionRevoke
+	return action == operatorv1.ActionApprove || action == operatorv1.ActionDeny || action == operatorv1.ActionRevoke
 }
 
 func decodeStrictJSON(request *http.Request, target any) error {

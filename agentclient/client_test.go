@@ -92,6 +92,25 @@ func TestClientRejectsInvalidConfigurationRedirectsAndResponses(t *testing.T) {
 	}
 }
 
+func TestClientReadsLargestValidStoredOperation(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		operation := testOperation(agentv1.StateSucceeded)
+		operation["arguments"] = map[string]any{"payload": strings.Repeat("a", 1024*1024-64)}
+		operation["result"] = map[string]any{"payload": strings.Repeat("r", 2*1024*1024-64)}
+		now := time.Now().UTC()
+		operation["terminal_at"] = now
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(operation)
+	}))
+	defer server.Close()
+	client := newTestClient(t, server.URL, nil)
+	operation, err := client.Get(t.Context(), "op")
+	if err != nil || operation.State != agentv1.StateSucceeded || len(operation.Result) < 2*1024*1024-128 {
+		t.Fatalf("Get() = state %s, result bytes %d, %v", operation.State, len(operation.Result), err)
+	}
+}
+
 func newTestClient(t *testing.T, baseURL string, httpClient *http.Client) *Client {
 	t.Helper()
 	client, err := New(Options{BaseURL: baseURL, Credential: testCredential, HTTPClient: httpClient})

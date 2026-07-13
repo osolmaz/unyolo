@@ -18,16 +18,20 @@ import (
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
-const maxSubmitBytes = 16 * 1024
+const maxSubmitBytes = 2 * 1024 * 1024
 
 // Store is the durable operation lifecycle required by the HTTP boundary.
 type Store interface {
 	Get(clientID, id string) (agentv1.Operation, error)
 	Wait(context.Context, string, string, int64) (agentv1.Operation, error)
+	Cancel(clientID, id string) (agentv1.Operation, error)
 }
 
 // SubmitFunc validates, classifies, and starts one provider operation.
 type SubmitFunc func(context.Context, string, agentv1.SubmitRequest) (agentv1.Operation, bool, error)
+
+// CancelFunc performs provider cleanup while canceling requester-owned work.
+type CancelFunc func(context.Context, string, string) (agentv1.Operation, error)
 
 // AuthenticateFunc resolves one bearer header to a provider client identity.
 type AuthenticateFunc func(string) (string, error)
@@ -40,6 +44,7 @@ type Options struct {
 	Store        Store
 	Authenticate AuthenticateFunc
 	Submit       SubmitFunc
+	Cancel       CancelFunc
 	AuthFailure  AuthFailureFunc
 	Realm        string
 }
@@ -49,6 +54,7 @@ type Handler struct {
 	store        Store
 	authenticate AuthenticateFunc
 	submit       SubmitFunc
+	cancel       CancelFunc
 	authFailure  AuthFailureFunc
 	realm        string
 }
@@ -66,15 +72,15 @@ func (e *Error) Error() string { return e.Message }
 
 // New validates and constructs an Agent V1 HTTP handler.
 func New(options Options) (*Handler, error) {
-	if options.Store == nil || options.Authenticate == nil || options.Submit == nil {
-		return nil, errors.New("agent store, authenticator, and submitter are required")
+	if options.Store == nil || options.Authenticate == nil || options.Submit == nil || options.Cancel == nil {
+		return nil, errors.New("agent store, authenticator, submitter, and canceler are required")
 	}
 	if strings.TrimSpace(options.Realm) == "" {
 		options.Realm = "brokerkit-agent"
 	}
 	return &Handler{
 		store: options.Store, authenticate: options.Authenticate, submit: options.Submit,
-		authFailure: options.AuthFailure, realm: options.Realm,
+		cancel: options.Cancel, authFailure: options.AuthFailure, realm: options.Realm,
 	}, nil
 }
 
@@ -111,6 +117,21 @@ func (h *Handler) GetAgentOperation(c echo.Context, id agentwire.OperationID) er
 	operation, err := h.store.Get(client, id)
 	if err != nil {
 		return writeStoreError(c, err, "read")
+	}
+	return writeOperation(c, operation, false)
+}
+
+func (h *Handler) CancelAgentOperation(c echo.Context, id agentwire.OperationID) error {
+	client, ok := h.authenticateRequest(c)
+	if !ok {
+		return nil
+	}
+	operation, err := h.cancel(c.Request().Context(), client, id)
+	if err != nil {
+		if errors.Is(err, agentops.ErrNotCancelable) {
+			return writeError(c, &Error{Status: http.StatusConflict, Code: "operation_not_cancelable", Message: "Operation is already executing"})
+		}
+		return writeStoreError(c, err, "cancel")
 	}
 	return writeOperation(c, operation, false)
 }
@@ -166,9 +187,11 @@ func readSubmit(request *http.Request) (agentv1.SubmitRequest, error) {
 	}
 	result, err := agentv1wire.SubmitFromWire(wire)
 	if err != nil || strings.TrimSpace(result.IdempotencyKey) == "" || len(result.IdempotencyKey) > 128 ||
-		strings.TrimSpace(result.Reason) == "" || len(result.Reason) > 512 {
+		strings.TrimSpace(result.Reason) == "" || len(result.Reason) > 2000 {
 		return agentv1.SubmitRequest{}, errors.New("idempotency key and reason are required")
 	}
+	result.IdempotencyKey = strings.TrimSpace(result.IdempotencyKey)
+	result.Reason = strings.TrimSpace(result.Reason)
 	return result, nil
 }
 

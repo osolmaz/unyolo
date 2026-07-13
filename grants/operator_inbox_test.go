@@ -231,15 +231,13 @@ type grantsQueryAlias Query
 
 func TestOperatorTerminalCommandsAndValidation(t *testing.T) {
 	store := New(t.TempDir()+"/grants.json", Options{})
-	for index, action := range []func(DecisionCommand) (Grant, error){store.OperatorDeny, store.OperatorCancel} {
-		result, _, err := store.Request(testOperatorRequest("terminal-" + string(rune('a'+index))))
-		if err != nil {
-			t.Fatal(err)
-		}
-		grant, err := action(DecisionCommand{ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision})
-		if err != nil || grant.Revision != result.Grant.Revision+1 {
-			t.Fatalf("terminal command = %+v, %v", grant, err)
-		}
+	result, _, err := store.Request(testOperatorRequest("terminal-deny"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	denied, err := store.OperatorDeny(DecisionCommand{ID: result.Grant.ID, Approver: "onur", ExpectedRevision: result.Grant.Revision})
+	if err != nil || denied.Revision != result.Grant.Revision+1 {
+		t.Fatalf("terminal command = %+v, %v", denied, err)
 	}
 	activeResult, _, _ := store.Request(testOperatorRequest("revoke"))
 	active, err := store.OperatorApprove(ApproveCommand{DecisionCommand: DecisionCommand{ID: activeResult.Grant.ID, Approver: "onur", ExpectedRevision: activeResult.Grant.Revision}})
