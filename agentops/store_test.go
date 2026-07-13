@@ -59,6 +59,10 @@ func TestStoreLifecycleAndIdempotency(t *testing.T) {
 	if err != nil || byKey.ID != created.ID {
 		t.Fatalf("get by idempotency = %#v, %v", byKey, err)
 	}
+	byTrimmedKey, err := reloaded.GetByIdempotency(" agent ", " create-one ")
+	if err != nil || byTrimmedKey.ID != created.ID {
+		t.Fatalf("get by normalized idempotency = %#v, %v", byTrimmedKey, err)
+	}
 }
 
 func TestStoreAcceptsPreallocatedOperationID(t *testing.T) {
@@ -162,6 +166,20 @@ func TestStorePersistsOperationAndImmutablePlanAtomically(t *testing.T) {
 	}
 	if count, err := store.db.CountOperations(t.Context()); err != nil || count != 1 {
 		t.Fatalf("operations after plan rollback = %d, %v", count, err)
+	}
+}
+
+func TestStorePersistsDirectOperationAsApproved(t *testing.T) {
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_direct", nil })
+	canonical := []byte(`{"api_version":"provider.io/plan/v1","operation":"repo.create"}`)
+	plan := state.PlanRecord{Digest: plandigest.Digest(canonical), SchemaName: "provider.io/plan/v1", Canonical: canonical, CreatedAt: time.Now().UTC()}
+	created, fresh, err := store.SubmitApprovedWithPlan(validSubmit("direct"), plan)
+	if err != nil || !fresh || created.State != agentv1.StateApproved || created.Revision != 1 {
+		t.Fatalf("SubmitApprovedWithPlan() = %+v, %v, %v", created, fresh, err)
+	}
+	replayed, fresh, err := store.SubmitApprovedWithPlan(validSubmit("direct"), plan)
+	if err != nil || fresh || replayed.ID != created.ID || replayed.State != agentv1.StateApproved {
+		t.Fatalf("approved replay = %+v, %v, %v", replayed, fresh, err)
 	}
 }
 

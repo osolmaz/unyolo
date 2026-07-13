@@ -129,19 +129,24 @@ func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operat
 	if prepared.Digest == "" {
 		return agentv1.Operation{}, false, errors.New("could not prepare immutable operation plan")
 	}
-	operation, created, err := s.operations.SubmitWithPlan(agentops.Submit{
+	submit := s.operations.SubmitWithPlan
+	if authorizationErr == nil && result.Request.Grant.ID == "" {
+		submit = s.operations.SubmitApprovedWithPlan
+	}
+	operation, created, err := submit(agentops.Submit{
 		ID: operationID, Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey,
 		Operation: request.Operation, Target: plan.Target, Arguments: plan.Arguments, Reason: request.Reason,
 		Presentation: adapter.Present(plan), PlanDigest: prepared.Digest,
 	}, planRecord(prepared))
 	if err != nil {
+		s.abandonOperationApproval(result.Request.Grant.ID, client)
 		return agentv1.Operation{}, false, err
 	}
 	if authorizationErr != nil {
 		return s.finishRefusedOperation(operation, plan, result, authorizationErr), created, nil
 	}
 	if result.Request.Grant.ID == "" {
-		return s.approveStoredOperation(operation), created, nil
+		return operation, created, nil
 	}
 	return s.bindOperationApproval(ctx, operation, result.Request.Grant), created, nil
 }
@@ -210,21 +215,36 @@ func (s *Server) finishRefusedOperation(operation agentv1.Operation, plan operat
 }
 
 func (s *Server) bindOperationApproval(ctx context.Context, operation agentv1.Operation, grant grants.Grant) agentv1.Operation {
+	updated, err := s.operations.SetApproval(operation.ID, grant.ID)
+	if err != nil {
+		s.abandonOperationApproval(grant.ID, operation.ClientID)
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind approval request")
+	}
 	if s.notifier != nil {
 		if err := s.notifyOperationApproval(ctx, grant); err != nil {
-			if errors.Is(err, errApprovalNotificationClaimed) {
-				return operation
+			if errors.Is(err, errApprovalNotificationClaimed) || s.operatorConfigured {
+				return updated
 			}
+			s.abandonOperationApproval(grant.ID, operation.ClientID)
 			return s.failOperation(operation.ID, agentv1.StateFailed, "approval_notification_failed", "Could not notify the operator")
 		}
-	} else if !s.operatorConfigured {
-		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
-	}
-	updated, err := s.operations.SetApproval(operation.ID, grant.ID)
-	if err == nil {
 		return updated
 	}
-	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind approval request")
+	if !s.operatorConfigured {
+		s.abandonOperationApproval(grant.ID, operation.ClientID)
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
+	}
+	return updated
+}
+
+func (s *Server) abandonOperationApproval(id, client string) {
+	if id == "" {
+		return
+	}
+	grant, err := s.grants.Get(id)
+	if err == nil {
+		s.cancelGrantForClient(grant, client)
+	}
 }
 
 func (s *Server) notifyOperationApproval(ctx context.Context, grant grants.Grant) error {
@@ -266,18 +286,6 @@ func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
 		hash *= 1099511628211
 	}
 	return &s.operationAuthLocks[hash%uint64(len(s.operationAuthLocks))]
-}
-
-func (s *Server) approveStoredOperation(operation agentv1.Operation) agentv1.Operation {
-	updated, err := s.operations.Transition(operation.ID, agentv1.StateApproved)
-	if err == nil {
-		return updated
-	}
-	current, getErr := s.operations.GetByID(operation.ID)
-	if getErr == nil && current.State != agentv1.StatePending {
-		return current
-	}
-	return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not update operation")
 }
 
 func (s *Server) failOperation(id string, state agentv1.State, code, message string) agentv1.Operation {
@@ -353,6 +361,9 @@ func (s *Server) advanceOperation(ctx context.Context, operation agentv1.Operati
 	if err != nil {
 		return
 	}
+	if current.State == agentv1.StatePending && current.ApprovalID == "" {
+		current = s.recoverOperationApproval(current)
+	}
 	if current.State == agentv1.StatePending && current.ApprovalID != "" {
 		current = s.syncOperationApproval(current)
 	}
@@ -363,6 +374,31 @@ func (s *Server) advanceOperation(ctx context.Context, operation agentv1.Operati
 	if err == nil {
 		s.executeOperation(ctx, claimed)
 	}
+}
+
+func (s *Server) recoverOperationApproval(operation agentv1.Operation) agentv1.Operation {
+	values, err := s.grants.ListForClient(operation.ClientID)
+	if err != nil {
+		return operation
+	}
+	grant, found := operationApproval(values, operation)
+	if !found {
+		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_missing", "Approval request is missing")
+	}
+	updated, err := s.operations.SetApproval(operation.ID, grant.ID)
+	if err != nil {
+		return operation
+	}
+	return updated
+}
+
+func operationApproval(values []grants.Grant, operation agentv1.Operation) (grants.Grant, bool) {
+	for _, grant := range values {
+		if grant.ClientRequestID == operation.ID && grant.Operation == operation.Operation && grant.Metadata[hfplan.MetadataDigest] == operation.PlanDigest {
+			return grant, true
+		}
+	}
+	return grants.Grant{}, false
 }
 
 func (s *Server) syncOperationApproval(operation agentv1.Operation) agentv1.Operation {
@@ -385,6 +421,7 @@ func (s *Server) syncOperationApproval(operation agentv1.Operation) agentv1.Oper
 	}
 }
 
+//nolint:cyclop // Execution and reconciliation outcomes are explicit and tracked by the exact HF CRAP baseline.
 func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operation) {
 	adapter, plan, err := s.loadOperationPlan(operation)
 	if err != nil {
@@ -407,6 +444,10 @@ func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operati
 		s.record(operation.ClientID, operation.Operation, operationPolicyTarget(plan.Policy), audit.DecisionAllowed, "", http.StatusOK)
 		return
 	}
+	if definitiveExecutionFailure(executionErr) {
+		s.failOperationExecution(operation, executionErr, nil)
+		return
+	}
 	outcome, reconcileErr := adapter.Reconcile(ctx, plan)
 	if reconcileErr == nil && outcome.Proven {
 		if len(outcome.Result) == 0 {
@@ -427,10 +468,52 @@ func (s *Server) reconcileInterruptedOperation(ctx context.Context, operation ag
 	}
 	outcome, err := adapter.Reconcile(ctx, plan)
 	if err == nil && outcome.Proven {
+		if !s.settleRecoveredOperationApproval(operation) {
+			return
+		}
 		_, _ = s.operations.Succeed(operation.ID, outcome.Result)
 		return
 	}
 	s.failOperation(operation.ID, agentv1.StateFailed, "upstream_result_unknown", "Operation result could not be proven after restart")
+}
+
+func definitiveExecutionFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var upstream *hubclient.Error
+	return !errors.As(err, &upstream) || upstream.Definitive()
+}
+
+func (s *Server) settleRecoveredOperationApproval(operation agentv1.Operation) bool {
+	if operation.ApprovalID == "" {
+		return true
+	}
+	grant, err := s.grants.Get(operation.ApprovalID)
+	if err != nil || s.planValidator.ValidateExecution(grant) != nil {
+		s.failOperation(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
+		return false
+	}
+	commit, valid := recoveredApprovalCommit(grant)
+	if !valid {
+		s.failOperation(operation.ID, agentv1.StateFailed, "approval_reservation_missing", "Approval was not reserved before execution")
+		return false
+	}
+	if !commit {
+		return true
+	}
+	if _, err := s.grants.CommitUse(grant.ID); err != nil {
+		s.failOperation(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
+		return false
+	}
+	return true
+}
+
+func recoveredApprovalCommit(grant grants.Grant) (commit, valid bool) {
+	if grant.UsedCount > 0 {
+		return false, true
+	}
+	return grant.ReservedCount > 0, grant.ReservedCount > 0
 }
 
 //nolint:cyclop // Plan binding checks are explicit and tracked by the exact HF CRAP baseline.

@@ -163,26 +163,41 @@ func (a *repositoryAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, 
 	if err := decodeClosed(plan.Target, &target, maxTargetBytes); err != nil {
 		return Outcome{}, err
 	}
-	_, err := a.readRepository(ctx, target)
+	info, err := a.client.RepoInfo(ctx, target.repoRef())
 	switch a.descriptor.Name {
 	case "repo.create":
-		if err != nil {
-			return Outcome{}, err
-		}
-		result, _ := canonical(map[string]any{"repo_id": target.Owner + "/" + target.Name, "url": a.repoURL(target)})
-		return Outcome{Proven: true, Result: result}, nil
+		return a.reconcileCreate(plan, target, info, err)
 	case "repo.delete":
-		var upstream *hubclient.Error
-		if errors.As(err, &upstream) && upstream.Code == hubclient.CodeNotFound {
-			return Outcome{Proven: true, Result: json.RawMessage(`{"deleted":true}`)}, nil
-		}
-		if err != nil {
-			return Outcome{}, err
-		}
-		return Outcome{Proven: false}, nil
+		return reconcileDelete(err)
 	default:
 		return Outcome{}, errors.New("repository operation is not implemented")
 	}
+}
+
+func (a *repositoryAdapter) reconcileCreate(plan Plan, target repositoryTarget, info hubclient.RepoInfo, readErr error) (Outcome, error) {
+	if readErr != nil {
+		return Outcome{}, readErr
+	}
+	var arguments repoCreateArguments
+	if err := decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes); err != nil {
+		return Outcome{}, err
+	}
+	if !repoCreationMatches(target, arguments, info) {
+		return Outcome{Proven: false}, nil
+	}
+	result, _ := canonical(map[string]any{"repo_id": target.Owner + "/" + target.Name, "url": a.repoURL(target)})
+	return Outcome{Proven: true, Result: result}, nil
+}
+
+func reconcileDelete(err error) (Outcome, error) {
+	var upstream *hubclient.Error
+	if errors.As(err, &upstream) && upstream.Code == hubclient.CodeNotFound {
+		return Outcome{Proven: true, Result: json.RawMessage(`{"deleted":true}`)}, nil
+	}
+	if err != nil {
+		return Outcome{}, err
+	}
+	return Outcome{Proven: false}, nil
 }
 
 func (a *repositoryAdapter) resolvePreconditions(ctx context.Context, target repositoryTarget) (repoPreconditions, error) {
@@ -269,13 +284,20 @@ func validRepositoryTarget(target repositoryTarget) bool {
 }
 
 func validRepoCreateArguments(target repositoryTarget, arguments repoCreateArguments) bool {
-	if arguments.Visibility != "public" && arguments.Visibility != "private" && (target.Type != "space" || arguments.Visibility != "protected") {
+	if arguments.Visibility != "public" && arguments.Visibility != "private" {
 		return false
 	}
 	if target.Type == "space" {
 		return arguments.SDK == "docker" || arguments.SDK == "gradio" || arguments.SDK == "static"
 	}
 	return arguments.SDK == ""
+}
+
+func repoCreationMatches(target repositoryTarget, arguments repoCreateArguments, info hubclient.RepoInfo) bool {
+	if info.ID != target.Owner+"/"+target.Name || info.Private != (arguments.Visibility == "private") {
+		return false
+	}
+	return target.Type != "space" || info.SDK == arguments.SDK
 }
 
 func (target repositoryTarget) repoRef() hubclient.RepoRef {

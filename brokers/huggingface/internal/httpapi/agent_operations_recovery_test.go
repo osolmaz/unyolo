@@ -18,8 +18,10 @@ import (
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 )
 
 func TestInterruptedOperationRecoveryProvesOrRefusesResult(t *testing.T) {
@@ -87,6 +89,107 @@ func TestInterruptedOperationRejectsMissingPlan(t *testing.T) {
 	stored, err := handler.operations.GetByID(operation.ID)
 	if err != nil || stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "invalid_stored_operation" {
 		t.Fatalf("operation = %#v, %v", stored, err)
+	}
+}
+
+func TestPendingOperationRecoveryRebindsExactApproval(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "rebind")
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
+	defer func() { _ = handler.Close() }()
+	operation, requested := seedPendingRepoCreateGrant(t, handler, "op_rebind", "rebind")
+	handler.advanceOperation(t.Context(), operation)
+	stored, err := handler.operations.GetByID(operation.ID)
+	if err != nil || stored.State != agentv1.StatePending || stored.ApprovalID != requested.Grant.ID {
+		t.Fatalf("rebound operation = %#v, %v", stored, err)
+	}
+}
+
+func TestInterruptedOperationCommitsReservedApproval(t *testing.T) {
+	var present atomic.Bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/whoami-v2":
+			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+		case "/api/datasets/alice/reserved":
+			if !present.Load() {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"id": "alice/reserved", "sha": "created", "private": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
+	defer func() { _ = handler.Close() }()
+	operation, requested := seedPendingRepoCreateGrant(t, handler, "op_reserved", "reserved")
+	approved, err := handler.grants.Approve(requested.Grant.ID, requested.DecisionToken, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, _ = handler.operations.SetApproval(operation.ID, approved.ID)
+	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateApproved)
+	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateExecuting)
+	if _, err := handler.grants.ReserveUse(approved.ID); err != nil {
+		t.Fatal(err)
+	}
+	present.Store(true)
+	handler.reconcileInterruptedOperation(t.Context(), operation)
+	stored, err := handler.operations.GetByID(operation.ID)
+	settled, grantErr := handler.grants.Get(approved.ID)
+	if err != nil || stored.State != agentv1.StateSucceeded || grantErr != nil || settled.UsedCount != 1 || settled.ReservedCount != 0 {
+		t.Fatalf("recovered operation = %#v, %v; grant = %#v, %v", stored, err, settled, grantErr)
+	}
+}
+
+func TestOperationInsertionFailureCancelsCreatedApproval(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "orphan")
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL,
+		`{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"orphan"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`)
+	defer func() { _ = handler.Close() }()
+	adapter, _ := handler.operationRegistry.Lookup("repo.create")
+	input, _ := adapter.Decode([]byte(`{"kind":"repo","type":"dataset","owner":"alice","name":"orphan"}`), []byte(`{"visibility":"private"}`))
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Policy.Client = "agent"
+	conflict := agentops.Submit{ID: "op_conflict", Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "existing", Operation: "repo.create",
+		Target: plan.Target, Arguments: plan.Arguments, Reason: "existing", Presentation: adapter.Present(plan)}
+	if _, _, err := handler.operations.Submit(conflict); err != nil {
+		t.Fatal(err)
+	}
+	request := agentv1.SubmitRequest{IdempotencyKey: "new", Operation: "repo.create", Target: plan.Target, Arguments: plan.Arguments, Reason: "must roll back"}
+	if _, _, err := handler.authorizeAndSubmitOperation(t.Context(), adapter, plan, "agent", "op_conflict", request); err == nil {
+		t.Fatal("conflicting operation insertion succeeded")
+	}
+	values, err := handler.grants.ListForClient("agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, grant := range values {
+		if grant.ClientRequestID == "op_conflict" {
+			found = true
+			if grant.Status != grants.StatusCanceled {
+				t.Fatalf("orphan approval remains active: %+v", grant)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("authorization did not create the expected approval")
+	}
+}
+
+func TestDefinitiveExecutionFailuresSkipReconciliation(t *testing.T) {
+	if !definitiveExecutionFailure(errors.New("operation_precondition_failed")) ||
+		!definitiveExecutionFailure(&hubclient.Error{Code: hubclient.CodeConflict}) ||
+		definitiveExecutionFailure(&hubclient.Error{Code: hubclient.CodeResultUnknown, Ambiguous: true}) ||
+		definitiveExecutionFailure(nil) {
+		t.Fatal("execution failure classification mismatch")
 	}
 }
 
@@ -169,4 +272,43 @@ func seedExecutingRepoCreate(t *testing.T, handler *Server, id string) agentv1.O
 		t.Fatal(err)
 	}
 	return operation
+}
+
+func seedPendingRepoCreateGrant(t *testing.T, handler *Server, id, name string) (agentv1.Operation, grants.RequestResult) {
+	t.Helper()
+	adapter, found := handler.operationRegistry.Lookup("repo.create")
+	if !found {
+		t.Fatal("repo.create adapter is unavailable")
+	}
+	target := []byte(`{"kind":"repo","type":"dataset","owner":"alice","name":"` + name + `"}`)
+	input, err := adapter.Decode(target, []byte(`{"visibility":"private"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Policy.Client = "agent"
+	request, err := hfgrant.CanonicalRequest(hfgrant.Input{Client: "agent", ClientRequestID: id, Operation: "repo.create", Mode: hfgrant.ModeExecution,
+		Target: operationPolicyTarget(plan.Policy), Attrs: plan.Policy.Attrs, Reason: "recovery test", RequestedDuration: time.Minute,
+		PendingTimeout: time.Minute, MaxUses: 1, MaxUsesSpecified: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := prepareAdapterPlan(plan, request, adapter.Present(plan), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hfplan.BindPrepared(&request, prepared)
+	requested, _, err := handler.grants.RequestWithPlan(request, prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, _, err := handler.operations.SubmitWithPlan(agentops.Submit{ID: id, Broker: "hf-broker", ClientID: "agent", IdempotencyKey: id,
+		Operation: "repo.create", Target: plan.Target, Arguments: plan.Arguments, Reason: "recovery test", Presentation: adapter.Present(plan)}, planRecord(prepared))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return operation, requested
 }

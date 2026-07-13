@@ -230,6 +230,7 @@ type RepoInfo struct {
 	SHA     string
 	Private bool
 	Gated   GatedMode
+	SDK     string
 }
 
 // RepoSettings is the bounded response from an exact settings mutation.
@@ -242,10 +243,11 @@ type repoInfoWire struct {
 	SHA     string          `json:"sha"`
 	Private bool            `json:"private"`
 	Gated   json.RawMessage `json:"gated"`
+	SDK     string          `json:"sdk"`
 }
 
 func (w repoInfoWire) toRepoInfo() RepoInfo {
-	return RepoInfo{ID: w.ID, SHA: w.SHA, Private: w.Private, Gated: gatedFromWire(w.Gated)}
+	return RepoInfo{ID: w.ID, SHA: w.SHA, Private: w.Private, Gated: gatedFromWire(w.Gated), SDK: w.SDK}
 }
 
 func gatedFromWire(raw json.RawMessage) GatedMode {

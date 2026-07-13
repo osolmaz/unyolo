@@ -21,11 +21,23 @@ func TestRepositoryAndContentValidationCorpus(t *testing.T) {
 	}{
 		{validTarget, repoCreateArguments{Visibility: "private"}, true},
 		{validTarget, repoCreateArguments{Visibility: "protected"}, false},
-		{repositoryTarget{Type: "space"}, repoCreateArguments{Visibility: "protected", SDK: "docker"}, true},
+		{repositoryTarget{Type: "space"}, repoCreateArguments{Visibility: "protected", SDK: "docker"}, false},
 		{repositoryTarget{Type: "space"}, repoCreateArguments{Visibility: "public", SDK: "unknown"}, false},
 	} {
 		if validRepoCreateArguments(test.target, test.arguments) != test.valid {
 			t.Errorf("validRepoCreateArguments(%+v, %+v) mismatch", test.target, test.arguments)
+		}
+	}
+	if !repoCreationMatches(repositoryTarget{Type: "space", Owner: "acme", Name: "demo"}, repoCreateArguments{Visibility: "private", SDK: "docker"}, hubclient.RepoInfo{ID: "acme/demo", Private: true, SDK: "docker"}) {
+		t.Fatal("matching repository creation was not proven")
+	}
+	for _, mismatch := range []hubclient.RepoInfo{
+		{ID: "other/demo", Private: true, SDK: "docker"},
+		{ID: "acme/demo", Private: false, SDK: "docker"},
+		{ID: "acme/demo", Private: true, SDK: "gradio"},
+	} {
+		if repoCreationMatches(repositoryTarget{Type: "space", Owner: "acme", Name: "demo"}, repoCreateArguments{Visibility: "private", SDK: "docker"}, mismatch) {
+			t.Fatalf("mismatched repository creation was proven: %+v", mismatch)
 		}
 	}
 	for _, metadata := range []struct{ summary, description, parent string }{

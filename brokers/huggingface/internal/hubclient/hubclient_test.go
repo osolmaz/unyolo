@@ -23,7 +23,7 @@ func TestTypedRepositoryCallsAreBoundedAndAuthenticated(t *testing.T) {
 			if r.Method != http.MethodGet || r.URL.Path != "/api/datasets/acme/demo" {
 				t.Fatalf("repo info request = %s %s", r.Method, r.URL.Path)
 			}
-			_, _ = w.Write([]byte(`{"id":"acme/demo","sha":"abc","private":true,"gated":"manual"}`))
+			_, _ = w.Write([]byte(`{"id":"acme/demo","sha":"abc","private":true,"gated":"manual","sdk":"docker"}`))
 		case 2:
 			if r.Method != http.MethodDelete || r.URL.Path != "/api/repos/delete" {
 				t.Fatalf("delete request = %s %s", r.Method, r.URL.Path)
@@ -42,7 +42,7 @@ func TestTypedRepositoryCallsAreBoundedAndAuthenticated(t *testing.T) {
 	}
 	ref := RepoRef{Type: RepoTypeDataset, Owner: "acme", Name: "demo"}
 	info, err := client.RepoInfo(context.Background(), ref)
-	if err != nil || info.SHA != "abc" || info.Gated != GatedManual {
+	if err != nil || info.SHA != "abc" || info.Gated != GatedManual || info.SDK != "docker" {
 		t.Fatalf("RepoInfo() = %+v, %v", info, err)
 	}
 	if err := client.DeleteRepo(context.Background(), ref); err != nil {

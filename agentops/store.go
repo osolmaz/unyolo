@@ -76,27 +76,37 @@ func newStore(database *state.Database, now func() time.Time, newID func() (stri
 }
 
 func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
-	return s.submit(input, nil)
+	return s.submit(input, nil, agentv1.StatePending)
 }
 
 // SubmitWithPlan atomically persists an immutable execution plan and its
 // operation. Replays must provide the same plan digest.
 func (s *Store) SubmitWithPlan(input Submit, plan state.PlanRecord) (agentv1.Operation, bool, error) {
-	input.PlanDigest = plan.Digest
-	return s.submit(input, &plan)
+	return s.submitWithPlan(input, plan, agentv1.StatePending)
 }
 
-func (s *Store) submit(input Submit, plan *state.PlanRecord) (agentv1.Operation, bool, error) {
+// SubmitApprovedWithPlan atomically persists a direct operation in its approved
+// state so restart recovery never has to infer whether approval was required.
+func (s *Store) SubmitApprovedWithPlan(input Submit, plan state.PlanRecord) (agentv1.Operation, bool, error) {
+	return s.submitWithPlan(input, plan, agentv1.StateApproved)
+}
+
+func (s *Store) submitWithPlan(input Submit, plan state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
+	input.PlanDigest = plan.Digest
+	return s.submit(input, &plan, initialState)
+}
+
+func (s *Store) submit(input Submit, plan *state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
 	normalized, err := normalizeSubmit(input)
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.submitLocked(normalized, plan)
+	return s.submitLocked(normalized, plan, initialState)
 }
 
-func (s *Store) submitLocked(input Submit, plan *state.PlanRecord) (agentv1.Operation, bool, error) {
+func (s *Store) submitLocked(input Submit, plan *state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
 	ctx := context.Background()
 	now := s.now().UTC()
 	if _, err := s.db.DeleteTerminalOperationsBefore(ctx, now.Add(-terminalRetention)); err != nil {
@@ -105,7 +115,7 @@ func (s *Store) submitLocked(input Submit, plan *state.PlanRecord) (agentv1.Oper
 	if existing, found, err := s.findSubmission(ctx, input); err != nil || found {
 		return existing, false, err
 	}
-	return s.createOperation(ctx, input, now, plan)
+	return s.createOperation(ctx, input, now, plan, initialState)
 }
 
 func (s *Store) findSubmission(ctx context.Context, input Submit) (agentv1.Operation, bool, error) {
@@ -126,7 +136,7 @@ func (s *Store) findSubmission(ctx context.Context, input Submit) (agentv1.Opera
 	return agentv1.Operation{}, false, err
 }
 
-func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time, plan *state.PlanRecord) (agentv1.Operation, bool, error) {
+func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time, plan *state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
 	count, err := s.db.CountOperations(ctx)
 	if err != nil {
 		return agentv1.Operation{}, false, err
@@ -145,7 +155,7 @@ func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time
 	op := agentv1.Operation{
 		APIVersion: agentv1.APIVersion, ID: id, Broker: input.Broker, ClientID: input.ClientID,
 		IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: input.Target,
-		Arguments: input.Arguments, Reason: input.Reason, State: agentv1.StatePending, Revision: 1,
+		Arguments: input.Arguments, Reason: input.Reason, State: initialState, Revision: 1,
 		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation, PlanDigest: input.PlanDigest,
 	}
 	var insertErr error
@@ -178,7 +188,8 @@ func (s *Store) GetByID(id string) (agentv1.Operation, error) {
 // GetByIdempotency returns an existing submission for provider lifecycle
 // services that must avoid re-resolving mutable upstream state on replay.
 func (s *Store) GetByIdempotency(clientID, key string) (agentv1.Operation, error) {
-	if strings.TrimSpace(clientID) == "" || strings.TrimSpace(key) == "" {
+	clientID, key = strings.TrimSpace(clientID), strings.TrimSpace(key)
+	if clientID == "" || key == "" {
 		return agentv1.Operation{}, ErrNotFound
 	}
 	s.mu.Lock()
