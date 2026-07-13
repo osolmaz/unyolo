@@ -1,0 +1,223 @@
+// Package capability defines provider-neutral operation catalog metadata and
+// structural validation. Providers own the catalog values and their semantics.
+package capability
+
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"slices"
+	"strings"
+)
+
+type AuthorizationMode string
+
+const (
+	ModeWindow    AuthorizationMode = "window"
+	ModeExecution AuthorizationMode = "execution"
+)
+
+type ImplementationStatus string
+
+const (
+	StatusImplemented       ImplementationStatus = "implemented"
+	StatusProtocol          ImplementationStatus = "protocol"
+	StatusGraphQL           ImplementationStatus = "graphql"
+	StatusInternal          ImplementationStatus = "internal"
+	StatusOperatorOnly      ImplementationStatus = "operator-only"
+	StatusLocal             ImplementationStatus = "local"
+	StatusDuplicate         ImplementationStatus = "duplicate"
+	StatusBlockedCredential ImplementationStatus = "blocked-credential"
+	StatusBlockedUpstream   ImplementationStatus = "blocked-upstream"
+)
+
+type Risk string
+
+const (
+	RiskLow      Risk = "low"
+	RiskMedium   Risk = "medium"
+	RiskHigh     Risk = "high"
+	RiskCritical Risk = "critical"
+)
+
+// DefaultPolicyEffect is the provider-owned baseline for generated policy.
+type DefaultPolicyEffect string
+
+const (
+	DefaultEffectAllow   DefaultPolicyEffect = "allow"
+	DefaultEffectRequest DefaultPolicyEffect = "request"
+	DefaultEffectDeny    DefaultPolicyEffect = "deny"
+)
+
+// Descriptor is provider-owned registration metadata. It contains no
+// credentials or requester-controlled values.
+type Descriptor struct {
+	Name                 string               `json:"name"`
+	OperationRevision    int                  `json:"operation_revision"`
+	Disposition          string               `json:"disposition"`
+	AuthorizationMode    AuthorizationMode    `json:"authorization_mode"`
+	ExplicitOnly         bool                 `json:"explicit_only"`
+	Sealed               bool                 `json:"sealed"`
+	CredentialOutputKind *string              `json:"credential_output_kind,omitempty"`
+	Internal             bool                 `json:"internal"`
+	Implementation       ImplementationStatus `json:"implementation_status"`
+	Risk                 Risk                 `json:"risk"`
+	DefaultPolicyEffect  DefaultPolicyEffect  `json:"default_policy_effect,omitempty"`
+	TargetKind           string               `json:"target_kind"`
+	MaxUses              int                  `json:"max_uses"`
+	RequestTTLSeconds    int                  `json:"request_ttl_seconds"`
+	ApprovalTTLSeconds   int                  `json:"approval_ttl_seconds"`
+	FamilyGlobAllowed    bool                 `json:"family_glob_allowed"`
+	AgentFacing          bool                 `json:"agent_facing"`
+	MCPTool              *string              `json:"mcp_tool"`
+	CLICommand           *string              `json:"cli_command"`
+}
+
+// ValidationOptions contains provider registration constraints without
+// embedding provider vocabulary in the shared package.
+type ValidationOptions struct {
+	Provider                   string
+	ExpectedCount              int
+	MCPToolPrefix              string
+	RequireDefaultPolicyEffect bool
+}
+
+var (
+	operationPattern      = regexp.MustCompile(`^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$`)
+	targetPattern         = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	toolPattern           = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	credentialKindPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+)
+
+// Validate rejects catalog drift that could weaken policy or expose an unsafe
+// operation through broad families.
+func Validate(values []Descriptor, options ValidationOptions) error {
+	if err := validateOptions(options); err != nil {
+		return err
+	}
+	if len(values) != options.ExpectedCount {
+		return fmt.Errorf("%s operation catalog has %d entries, want %d", options.Provider, len(values), options.ExpectedCount)
+	}
+	seenNames := make(map[string]bool, len(values))
+	seenTools := make(map[string]bool, len(values))
+	seenCommands := make(map[string]bool, len(values))
+	previous := ""
+	for index, value := range values {
+		if err := validateDescriptor(value, options); err != nil {
+			return fmt.Errorf("catalog entry %d: %w", index, err)
+		}
+		if seenNames[value.Name] || previous >= value.Name {
+			return fmt.Errorf("operation %q is duplicated or out of order", value.Name)
+		}
+		seenNames[value.Name] = true
+		previous = value.Name
+		if err := registerOptional("MCP tool", value.MCPTool, seenTools); err != nil {
+			return err
+		}
+		if err := registerOptional("CLI command", value.CLICommand, seenCommands); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateOptions(options ValidationOptions) error {
+	if strings.TrimSpace(options.Provider) == "" || options.ExpectedCount <= 0 {
+		return errors.New("capability validation options are incomplete")
+	}
+	if options.MCPToolPrefix == "" || !toolPattern.MatchString(options.MCPToolPrefix+"operation") {
+		return errors.New("MCP tool prefix is invalid")
+	}
+	return nil
+}
+
+func registerOptional(kind string, value *string, seen map[string]bool) error {
+	if value == nil {
+		return nil
+	}
+	if seen[*value] {
+		return fmt.Errorf("%s %q is duplicated", kind, *value)
+	}
+	seen[*value] = true
+	return nil
+}
+
+//nolint:cyclop // Security invariants remain explicit at the shared boundary.
+func validateDescriptor(value Descriptor, options ValidationOptions) error {
+	if !operationPattern.MatchString(value.Name) || value.OperationRevision != 1 || !targetPattern.MatchString(value.TargetKind) {
+		return errors.New("operation identity is invalid")
+	}
+	if !validStatus(value.Implementation) || !validRisk(value.Risk) || value.RequestTTLSeconds <= 0 || value.ApprovalTTLSeconds <= 0 {
+		return fmt.Errorf("operation %q has invalid lifecycle metadata", value.Name)
+	}
+	if options.RequireDefaultPolicyEffect {
+		if err := validateDefaultPolicyEffect(value); err != nil {
+			return err
+		}
+	}
+	if value.AuthorizationMode == ModeExecution {
+		if value.MaxUses != 1 || !strings.Contains(value.Disposition, "E") {
+			return fmt.Errorf("execution operation %q must be one-use E", value.Name)
+		}
+	} else if value.AuthorizationMode != ModeWindow || value.MaxUses < 1 || !strings.Contains(value.Disposition, "W") {
+		return fmt.Errorf("window operation %q has invalid use semantics", value.Name)
+	}
+	if value.ExplicitOnly != strings.Contains(value.Disposition, "X") || value.Sealed != strings.Contains(value.Disposition, "S") || value.Internal != strings.Contains(value.Disposition, "I") {
+		return fmt.Errorf("operation %q disposition flags drifted", value.Name)
+	}
+	if value.ExplicitOnly && value.FamilyGlobAllowed {
+		return fmt.Errorf("explicit operation %q allows family globs", value.Name)
+	}
+	if value.Sealed && value.AuthorizationMode != ModeExecution {
+		return fmt.Errorf("sealed operation %q is not execution-scoped", value.Name)
+	}
+	if value.CredentialOutputKind != nil && (!value.Sealed || !value.ExplicitOnly || !credentialKindPattern.MatchString(*value.CredentialOutputKind)) {
+		return fmt.Errorf("credential output operation %q is invalid", value.Name)
+	}
+	if value.Internal && (value.AgentFacing || value.MCPTool != nil || value.CLICommand != nil || value.Implementation != StatusInternal) {
+		return fmt.Errorf("internal operation %q is agent-facing", value.Name)
+	}
+	if value.AgentFacing && !validAgentSurface(value, options.MCPToolPrefix) {
+		return fmt.Errorf("agent-facing operation %q has invalid UX metadata", value.Name)
+	}
+	return nil
+}
+
+func validateDefaultPolicyEffect(value Descriptor) error {
+	if !slices.Contains([]DefaultPolicyEffect{DefaultEffectAllow, DefaultEffectRequest, DefaultEffectDeny}, value.DefaultPolicyEffect) {
+		return fmt.Errorf("operation %q has invalid default policy effect", value.Name)
+	}
+	if operationRequiresDefaultDeny(value) && value.DefaultPolicyEffect != DefaultEffectDeny {
+		return fmt.Errorf("operation %q must be denied by default", value.Name)
+	}
+	if value.DefaultPolicyEffect == DefaultEffectAllow && operationIsUnsafeDefaultAllow(value) {
+		return fmt.Errorf("dangerous operation %q cannot be allowed by default", value.Name)
+	}
+	return nil
+}
+
+func operationRequiresDefaultDeny(value Descriptor) bool {
+	return value.Internal || !value.AgentFacing || value.CredentialOutputKind != nil
+}
+
+func operationIsUnsafeDefaultAllow(value Descriptor) bool {
+	return value.Risk == RiskHigh || value.Risk == RiskCritical || value.AuthorizationMode == ModeExecution || value.ExplicitOnly || value.Sealed
+}
+
+func validAgentSurface(value Descriptor, toolPrefix string) bool {
+	return value.MCPTool != nil && value.CLICommand != nil &&
+		strings.HasPrefix(*value.MCPTool, toolPrefix) && toolPattern.MatchString(*value.MCPTool) &&
+		strings.TrimSpace(*value.CLICommand) != ""
+}
+
+func validStatus(value ImplementationStatus) bool {
+	return slices.Contains([]ImplementationStatus{
+		StatusImplemented, StatusProtocol, StatusGraphQL, StatusInternal,
+		StatusOperatorOnly, StatusLocal, StatusDuplicate,
+		StatusBlockedCredential, StatusBlockedUpstream,
+	}, value)
+}
+
+func validRisk(value Risk) bool {
+	return slices.Contains([]Risk{RiskLow, RiskMedium, RiskHigh, RiskCritical}, value)
+}

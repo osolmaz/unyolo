@@ -106,6 +106,13 @@ then
   exit 1
 fi
 
+if ! grep -q 'github.com/osolmaz/brokerkit/capability' brokers/huggingface/internal/opcatalog/catalog.go ||
+  grep -R -n --include='*.go' 'type Descriptor struct' brokers/*/internal/opcatalog 2>/dev/null
+then
+  echo 'provider operation catalogs must use the shared capability descriptor' >&2
+  exit 1
+fi
+
 if grep -R -n -E '"\$ref"[[:space:]]*:[[:space:]]*"\.\.' protocol/openapi 2>/dev/null; then
   echo 'canonical OpenAPI documents must own all payload schemas' >&2
   exit 1
