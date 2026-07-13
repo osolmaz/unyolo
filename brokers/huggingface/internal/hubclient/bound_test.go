@@ -53,3 +53,40 @@ func TestExecuteBoundRejectsUnknownOperationAndPathFields(t *testing.T) {
 		}
 	}
 }
+
+func TestBoundResultAndObservationStayOnRegisteredRoutes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if request.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"id":"resource-1"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"token":"generated-secret"}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "hf_test_token", WithHTTPTransport(server.Client().Transport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.ExecuteBoundResult(context.Background(), "service_account.token.create",
+		json.RawMessage(`{"name":"acme","serviceAccountId":"service-1"}`), json.RawMessage(`{"name":"automation"}`))
+	if err != nil || string(result) != `{"token":"generated-secret"}` {
+		t.Fatalf("ExecuteBoundResult() = %s, %v", result, err)
+	}
+	observed, absent, err := client.ObserveBound(context.Background(), "collection.delete",
+		json.RawMessage(`{"namespace":"acme","slug":"review","id":"123"}`))
+	if err != nil || absent || string(observed) != `{"id":"resource-1"}` {
+		t.Fatalf("ObserveBound() = %s, %v, %v", observed, absent, err)
+	}
+}
+
+func TestObserveBoundTreatsNotFoundAsAbsence(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	client, _ := New(server.URL, "hf_test_token", WithHTTPTransport(server.Client().Transport))
+	observed, absent, err := client.ObserveBound(context.Background(), "collection.delete",
+		json.RawMessage(`{"namespace":"acme","slug":"review","id":"123"}`))
+	if err != nil || !absent || observed != nil {
+		t.Fatalf("ObserveBound() = %s, %v, %v", observed, absent, err)
+	}
+}

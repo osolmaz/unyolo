@@ -35,6 +35,35 @@ type Outcome struct {
 	Result json.RawMessage
 }
 
+type reconstructedPlan struct {
+	presentation agentv1.Presentation
+	request      hfpolicy.Request
+}
+
+func reconstructPlan[T any](target, arguments json.RawMessage, decode func(json.RawMessage) (T, error),
+	present func(T, json.RawMessage) (agentv1.Presentation, hfpolicy.Request)) reconstructedPlan {
+	decoded, err := decode(target)
+	if err != nil {
+		return reconstructedPlan{}
+	}
+	presentation, request := present(decoded, arguments)
+	return reconstructedPlan{presentation: presentation, request: request}
+}
+
+func authorizeReconstructed(plan Plan, rebuilt reconstructedPlan) hfpolicy.Request {
+	if plan.Policy.Operation != "" {
+		return plan.Policy
+	}
+	return rebuilt.request
+}
+
+func presentReconstructed(plan Plan, rebuilt reconstructedPlan) agentv1.Presentation {
+	if plan.Presentation.Title != "" {
+		return plan.Presentation
+	}
+	return rebuilt.presentation
+}
+
 type Adapter interface {
 	Descriptor() opcatalog.Descriptor
 	Decode(target, arguments json.RawMessage) (Input, error)

@@ -99,7 +99,19 @@ func (a *credentialOutputAdapter) Authorize(plan Plan) hfpolicy.Request {
 	return request
 }
 
-func (a *credentialOutputAdapter) Present(plan Plan) agentv1.Presentation { return plan.Presentation }
+func (a *credentialOutputAdapter) Present(plan Plan) agentv1.Presentation {
+	if plan.Presentation.Title != "" {
+		return plan.Presentation
+	}
+	slot := decodeCredentialSlot(plan.Arguments)
+	withoutSlot := plan
+	withoutSlot.Arguments = withoutCredentialSlot(plan.Arguments)
+	presentation := a.sealedBoundAdapter.Present(withoutSlot)
+	if presentation.Summary != "" {
+		presentation.Summary += fmt.Sprintf(" into broker credential slot %s", slot)
+	}
+	return presentation
+}
 
 func (a *credentialOutputAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	slot := decodeCredentialSlot(plan.Arguments)

@@ -70,6 +70,7 @@ func TestCredentialOutputAdapterStoresTokenWithoutReturningIt(t *testing.T) {
 	if err != nil || plan.Policy.Attrs["credential_slot"] != "deployment-token" || !bytes.Contains([]byte(plan.Presentation.Summary), []byte("deployment-token")) {
 		t.Fatalf("plan=%#v err=%v", plan, err)
 	}
+	assertPlanReconstruction(t, adapter, plan)
 	plan.Policy = adapter.Authorize(plan)
 	if plan.Policy.Attrs["credential_kind"] != "hf-service-account-token" {
 		t.Fatalf("reconstructed policy = %#v", plan.Policy)

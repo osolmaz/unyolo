@@ -129,27 +129,18 @@ func (a *refsAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
 }
 
 func (a *refsAdapter) Authorize(plan Plan) hfpolicy.Request {
-	if plan.Policy.Operation != "" {
-		return plan.Policy
-	}
-	target, err := decodeRefTarget(plan.Target)
-	if err != nil {
-		return hfpolicy.Request{}
-	}
-	_, request := a.presentationAndPolicy(target)
-	return request
+	return authorizeReconstructed(plan, a.reconstruct(plan))
 }
 
 func (a *refsAdapter) Present(plan Plan) agentv1.Presentation {
-	if plan.Presentation.Title != "" {
-		return plan.Presentation
-	}
-	target, err := decodeRefTarget(plan.Target)
-	if err != nil {
-		return agentv1.Presentation{}
-	}
-	presentation, _ := a.presentationAndPolicy(target)
-	return presentation
+	return presentReconstructed(plan, a.reconstruct(plan))
+}
+
+func (a *refsAdapter) reconstruct(plan Plan) reconstructedPlan {
+	return reconstructPlan(plan.Target, plan.Arguments, decodeRefTarget,
+		func(target refTarget, _ json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
+			return a.presentationAndPolicy(target)
+		})
 }
 
 func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {

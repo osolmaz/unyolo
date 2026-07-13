@@ -41,6 +41,7 @@ func TestRepositorySettingsAdaptersExecuteAndReconcile(t *testing.T) {
 			if err != nil || plan.Policy.Operation == "" || plan.Presentation.Title == "" {
 				t.Fatalf("Resolve() = %+v, %v", plan, err)
 			}
+			assertPlanReconstruction(t, adapter, plan)
 			if _, err := adapter.Execute(context.Background(), plan); err != nil {
 				t.Fatal(err)
 			}

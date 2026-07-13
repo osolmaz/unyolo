@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 func TestRepositoryCreateAndDeleteAdapters(t *testing.T) {
@@ -60,6 +61,7 @@ func TestRepositoryCreateAndDeleteAdapters(t *testing.T) {
 	if err != nil || plan.Policy.Target.Owner != "acme" || !strings.Contains(plan.Presentation.Summary, "private") {
 		t.Fatalf("create plan = %+v, %v", plan, err)
 	}
+	assertPlanReconstruction(t, create, plan)
 	if _, err := create.Execute(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +75,7 @@ func TestRepositoryCreateAndDeleteAdapters(t *testing.T) {
 	if err != nil || !strings.Contains(plan.Presentation.Summary, "Permanently") {
 		t.Fatalf("delete plan = %+v, %v", plan, err)
 	}
+	assertPlanReconstruction(t, deleteAdapter, plan)
 	if _, err := deleteAdapter.Execute(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
@@ -187,4 +190,16 @@ func equalJSONValue(left, right any) bool {
 	leftJSON, _ := json.Marshal(left)
 	rightJSON, _ := json.Marshal(right)
 	return string(leftJSON) == string(rightJSON)
+}
+
+func assertPlanReconstruction(t *testing.T, adapter Adapter, plan Plan) {
+	t.Helper()
+	reloaded := Plan{Operation: plan.Operation, OperationRevision: plan.OperationRevision, Target: plan.Target,
+		Arguments: plan.Arguments, Preconditions: plan.Preconditions}
+	if request := adapter.Authorize(reloaded); request.Operation != hfpolicy.Operation(plan.Operation) {
+		t.Fatalf("reconstructed policy operation = %q, want %q", request.Operation, plan.Operation)
+	}
+	if presentation := adapter.Present(reloaded); presentation.Title == "" || presentation.Summary == "" {
+		t.Fatalf("reconstructed presentation = %+v", presentation)
+	}
 }

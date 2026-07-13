@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
 )
 
@@ -123,14 +124,100 @@ func TestSandboxAdaptersUseClosedOperationSpecificInputs(t *testing.T) {
 	}
 }
 
+func TestSandboxAdaptersExecuteEveryOperationLifecycle(t *testing.T) {
+	poolHost := runningSandboxState()
+	poolHost.Mode = "pool"
+	poolHost.Pool = "workers"
+	poolHost.Capacity = 10
+	poolHost.MaxHosts = 3
+
+	tests := []struct {
+		operation string
+		target    json.RawMessage
+		arguments json.RawMessage
+		configure func(*sandboxFake)
+	}{
+		{"sandbox.command.run", existingSandboxTarget(), json.RawMessage(`{"argv":["echo","hi"],"max_output_bytes":4096}`), nil},
+		{"sandbox.create", json.RawMessage(`{"kind":"sandbox","namespace":"acme","name":"review"}`), json.RawMessage(`{"public":{"image":"python:3.12","flavor":"cpu-basic","environment":{"MODE":"test"}}}`), nil},
+		{"sandbox.create", json.RawMessage(`{"kind":"sandbox","namespace":"acme","name":"pooled","pool":"workers"}`), json.RawMessage(`{"public":{"environment":{"MODE":"test"}}}`), func(fake *sandboxFake) {
+			fake.pool = []hubclient.SandboxState{poolHost}
+		}},
+		{"sandbox.delete", existingSandboxTarget(), json.RawMessage(`{}`), nil},
+		{"sandbox.file.write", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/result","content_base64":"aGk=","mode":"0644"}`), nil},
+		{"sandbox.file.mkdir", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/output"}`), nil},
+		{"sandbox.file.delete", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/result","recursive":false}`), func(fake *sandboxFake) {
+			fake.file = hubclient.SandboxFileInfo{Name: "result", Path: "/tmp/result", Type: "file", Size: 2, Mode: "0644"}
+		}},
+		{"sandbox.process.kill", existingSandboxTarget(), json.RawMessage(`{"pid":12}`), func(fake *sandboxFake) {
+			fake.processes = []hubclient.SandboxProcess{{PID: 12, Command: []string{"sleep", "60"}, Running: true}}
+		}},
+		{"sandbox.pool.create", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"public":{"image":"python:3.12","flavor":"cpu-basic","sandboxes_per_host":10,"warm_up":1,"max_hosts":3}}`), nil},
+		{"sandbox.pool.warm", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"num_hosts":2}`), func(fake *sandboxFake) {
+			fake.pool = []hubclient.SandboxState{poolHost}
+		}},
+		{"sandbox.pool.delete", json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{}`), func(fake *sandboxFake) {
+			fake.pool = []hubclient.SandboxState{poolHost}
+		}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.operation, func(t *testing.T) {
+			store, err := sealedstore.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := &sandboxFake{identity: "operator", state: runningSandboxState()}
+			if test.configure != nil {
+				test.configure(client)
+			}
+			adapters, err := NewSandboxAdapters(client, store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			registry, err := NewRegistry(adapters...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			adapter, found := registry.Lookup(test.operation)
+			if !found {
+				t.Fatal("adapter is not registered")
+			}
+			input, err := adapter.Decode(test.target, test.arguments)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := adapter.Resolve(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request := adapter.Authorize(Plan{Target: plan.Target, Arguments: plan.Arguments}); request.Operation != hfpolicy.Operation(test.operation) {
+				t.Fatalf("Authorize() operation = %q", request.Operation)
+			}
+			if presentation := adapter.Present(Plan{Target: plan.Target, Arguments: plan.Arguments}); presentation.Title == "" {
+				t.Fatal("Present() returned an empty title")
+			}
+			outcome, err := adapter.Execute(context.Background(), plan)
+			if err != nil || !outcome.Proven {
+				t.Fatalf("Execute() = %+v, %v", outcome, err)
+			}
+			reconciled, err := adapter.Reconcile(context.Background(), plan)
+			wantReconciled := test.operation != "sandbox.command.run" && test.operation != "sandbox.file.write" && !bytes.Contains(test.target, []byte(`"pool":"workers"`))
+			if err != nil || reconciled.Proven != wantReconciled {
+				t.Fatalf("Reconcile() = %+v, %v; want proven=%v", reconciled, err, wantReconciled)
+			}
+		})
+	}
+}
+
 type sandboxFake struct {
-	identity  string
-	state     hubclient.SandboxState
-	pool      []hubclient.SandboxState
-	created   hubclient.SandboxCreateSpec
-	command   hubclient.SandboxCommand
-	file      hubclient.SandboxFileInfo
-	processes []hubclient.SandboxProcess
+	identity           string
+	state              hubclient.SandboxState
+	pool               []hubclient.SandboxState
+	created            hubclient.SandboxCreateSpec
+	command            hubclient.SandboxCommand
+	file               hubclient.SandboxFileInfo
+	processes          []hubclient.SandboxProcess
+	createdByOperation []hubclient.SandboxState
 }
 
 func (f *sandboxFake) WhoAmI(context.Context) (hubclient.Identity, error) {
@@ -152,25 +239,35 @@ func (f *sandboxFake) ListSandboxPool(context.Context, hubclient.SandboxPoolRef)
 }
 
 func (f *sandboxFake) ListSandboxesByOperation(context.Context, string, string) ([]hubclient.SandboxState, error) {
-	return nil, nil
+	return append([]hubclient.SandboxState(nil), f.createdByOperation...), nil
 }
 
 func (f *sandboxFake) CreateSandbox(_ context.Context, spec hubclient.SandboxCreateSpec) (hubclient.SandboxState, error) {
 	f.created = spec
-	return runningSandboxState(), nil
+	state := runningSandboxState()
+	f.createdByOperation = append(f.createdByOperation, state)
+	return state, nil
 }
 
 func (f *sandboxFake) CreateSandboxPoolHost(context.Context, hubclient.SandboxPoolSpec) (hubclient.SandboxState, error) {
-	return runningSandboxState(), nil
+	state := runningSandboxState()
+	f.createdByOperation = append(f.createdByOperation, state)
+	return state, nil
 }
 
 func (f *sandboxFake) CreateSandboxInPool(context.Context, hubclient.SandboxRef, map[string]string, *int) (hubclient.SandboxRef, error) {
 	return hubclient.SandboxRef{Namespace: "acme", JobID: "687fb701029421ae5549d998", LocalID: "local"}, nil
 }
 
-func (f *sandboxFake) DeleteSandbox(context.Context, hubclient.SandboxRef) error { return nil }
+func (f *sandboxFake) DeleteSandbox(context.Context, hubclient.SandboxRef) error {
+	f.state.Stage = "DELETED"
+	return nil
+}
 
-func (f *sandboxFake) CancelSandboxJob(context.Context, hubclient.SandboxRef) error { return nil }
+func (f *sandboxFake) CancelSandboxJob(context.Context, hubclient.SandboxRef) error {
+	f.pool = nil
+	return nil
+}
 
 func (f *sandboxFake) RunSandboxCommand(_ context.Context, _ hubclient.SandboxRef, command hubclient.SandboxCommand) (hubclient.SandboxCommandResult, error) {
 	f.command = command
@@ -189,11 +286,13 @@ func (f *sandboxFake) WriteSandboxFile(context.Context, hubclient.SandboxRef, st
 	return nil
 }
 
-func (f *sandboxFake) MakeSandboxDirectory(context.Context, hubclient.SandboxRef, string) error {
+func (f *sandboxFake) MakeSandboxDirectory(_ context.Context, _ hubclient.SandboxRef, path string) error {
+	f.file = hubclient.SandboxFileInfo{Name: "output", Path: path, Type: "dir", Mode: "0755"}
 	return nil
 }
 
 func (f *sandboxFake) DeleteSandboxFile(context.Context, hubclient.SandboxRef, string, bool) error {
+	f.file = hubclient.SandboxFileInfo{}
 	return nil
 }
 
@@ -202,6 +301,9 @@ func (f *sandboxFake) SandboxProcesses(context.Context, hubclient.SandboxRef) ([
 }
 
 func (f *sandboxFake) KillSandboxProcess(context.Context, hubclient.SandboxRef, int) error {
+	for index := range f.processes {
+		f.processes[index].Running = false
+	}
 	return nil
 }
 

@@ -44,6 +44,7 @@ func TestSpaceAdaptersExecuteAndReconcile(t *testing.T) {
 			if err != nil || plan.Presentation.Title == "" {
 				t.Fatalf("Resolve() = %+v, %v", plan, err)
 			}
+			assertPlanReconstruction(t, adapter, plan)
 			if test.name == "space.variable.set" && strings.Contains(plan.Presentation.Summary, "production") {
 				t.Fatal("variable value leaked into presentation")
 			}

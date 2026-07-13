@@ -42,6 +42,7 @@ func TestRefsAdaptersExecuteAndReconcile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			assertPlanReconstruction(t, adapter, plan)
 			if _, err := adapter.Execute(context.Background(), plan); err != nil {
 				t.Fatal(err)
 			}

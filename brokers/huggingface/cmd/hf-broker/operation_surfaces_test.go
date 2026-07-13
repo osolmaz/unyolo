@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -148,5 +149,66 @@ func TestCredentialOutputToolRequiresSlotAndHidesSealedInput(t *testing.T) {
 	required := schema["required"].([]string)
 	if !slices.Contains(required, "credential_slot") {
 		t.Fatalf("required = %v", required)
+	}
+}
+
+func TestCatalogCLIExecutionAndWindowOperations(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/api/agent/v1/operations":
+			operation := testAgentOperation(agentv1.StateSucceeded)
+			operation.Operation = "repo.delete"
+			_ = json.NewEncoder(writer).Encode(operation)
+		case "/api/grants":
+			_, _ = writer.Write([]byte(`{"status":"success","data":{"grant":{"id":"grant-1","status":"pending","operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"mode":"window","minutes":5,"max_uses":1,"uses_remaining":1,"used_count":0}}}`))
+		default:
+			t.Fatalf("unexpected CLI request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	deleteDescriptor, _ := opcatalog.ByName("repo.delete")
+	if err := runCatalogOperation(t.Context(), client, &stdout, &stderr, deleteDescriptor, []string{
+		"--target-json", `{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"}`,
+		"--arguments-json", `{}`, "--idempotency-key", "delete-1", "--wait=false", "--json",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"operation": "repo.delete"`) {
+		t.Fatalf("execution output = %q", stdout.String())
+	}
+	stdout.Reset()
+	readDescriptor, _ := opcatalog.ByName("repo.contents.read")
+	if err := runCatalogOperation(t.Context(), client, &stdout, &stderr, readDescriptor, []string{
+		"--target-json", `{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"}`,
+		"--attrs-json", `{}`, "--minutes", "5", "--max-uses", "1", "--idempotency-key", "read-1", "--wait=false", "--json",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"operation":"repo.contents.read"`) {
+		t.Fatalf("window output = %q", stdout.String())
+	}
+}
+
+func TestCatalogCLIReadsBoundedJSONFilesAndRejectsMixedInputs(t *testing.T) {
+	path := t.TempDir() + "/target.json"
+	if err := os.WriteFile(path, []byte(`{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	descriptor, _ := opcatalog.ByName("repo.delete")
+	options, err := parseOperationClientOptions(descriptor, []string{"--target-file", path, "--arguments-json", `{}`, "--wait=false"})
+	if err != nil || !bytes.Contains(options.target, []byte("throwaway")) {
+		t.Fatalf("options = %+v, %v", options, err)
+	}
+	if _, err := readJSONOption(`{}`, path, true); err == nil {
+		t.Fatal("mixed inline and file JSON accepted")
+	}
+	if _, err := readJSONOption("", "", true); err == nil {
+		t.Fatal("missing required JSON accepted")
 	}
 }

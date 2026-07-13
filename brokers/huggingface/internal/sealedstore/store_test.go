@@ -125,3 +125,54 @@ func TestStoreBindsOwnerPurposeAndExpiry(t *testing.T) {
 		t.Fatal("expired payload accepted")
 	}
 }
+
+func TestStoreDeleteAndInputValidation(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	for _, test := range []struct {
+		owner, purpose string
+		value          []byte
+		expires        time.Time
+	}{
+		{"../bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour)},
+		{"bob", "invalid", []byte("secret"), time.Now().Add(time.Hour)},
+		{"bob", "space.secret.set", nil, time.Now().Add(time.Hour)},
+		{"bob", "space.secret.set", []byte("secret"), time.Now().Add(-time.Hour)},
+		{"bob", "space.secret.set", []byte("secret"), time.Now().Add(25 * time.Hour)},
+	} {
+		if _, err := store.Put(test.owner, test.purpose, test.value, test.expires); err == nil {
+			t.Fatalf("invalid payload accepted: %+v", test)
+		}
+	}
+	reference, _ := store.Put("bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour))
+	if err := store.Delete(reference); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(reference); err != nil {
+		t.Fatal("idempotent delete failed:", err)
+	}
+	bad := reference
+	bad.Digest = "not-hex"
+	if err := store.Delete(bad); err == nil {
+		t.Fatal("invalid reference deletion accepted")
+	}
+}
+
+func TestStoreRejectsUnsupportedFormatAndBindingDrift(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := Open(dir)
+	reference, _ := store.Put("bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour))
+	path := filepath.Join(dir, "sealed-payloads", reference.ID+".bin")
+	data, _ := os.ReadFile(path)
+	data[0] = 99
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Get(reference); err == nil {
+		t.Fatal("unsupported sealed format accepted")
+	}
+	reference, _ = store.Put("bob", "space.secret.set", []byte("secret"), time.Now().Add(time.Hour))
+	reference.Size++
+	if _, err := store.Get(reference); err == nil {
+		t.Fatal("sealed payload size drift accepted")
+	}
+}

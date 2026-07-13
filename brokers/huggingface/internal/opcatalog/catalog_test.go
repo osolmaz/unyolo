@@ -32,10 +32,22 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 	values := MustAll()
 	tests := map[string]func([]Descriptor){
 		"duplicate":        func(items []Descriptor) { items[1] = items[0] },
+		"missing name":     func(items []Descriptor) { items[0].Name = "" },
+		"invalid mode":     func(items []Descriptor) { items[0].AuthorizationMode = "other" },
+		"invalid status":   func(items []Descriptor) { items[0].Implementation = "other" },
+		"missing risk":     func(items []Descriptor) { items[0].Risk = "" },
+		"missing target":   func(items []Descriptor) { items[0].TargetKind = "" },
+		"invalid ttl":      func(items []Descriptor) { items[0].RequestTTLSeconds = 0 },
 		"family glob":      func(items []Descriptor) { item := find(items, "repo.delete"); item.FamilyGlobAllowed = true },
 		"execution uses":   func(items []Descriptor) { item := find(items, "repo.create"); item.MaxUses = 2 },
 		"sealed window":    func(items []Descriptor) { item := find(items, "space.secret.set"); item.AuthorizationMode = ModeWindow },
 		"internal exposed": func(items []Descriptor) { item := find(items, "sandbox.port.proxy"); item.AgentFacing = true },
+		"missing MCP":      func(items []Descriptor) { item := find(items, "repo.create"); item.MCPTool = nil },
+		"duplicate CLI": func(items []Descriptor) {
+			item := find(items, "repo.delete")
+			other := find(items, "repo.create")
+			item.CLICommand = other.CLICommand
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -45,6 +57,12 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 				t.Fatal("Validate() accepted drift")
 			}
 		})
+	}
+}
+
+func TestCatalogLookupMissesUnknownOperation(t *testing.T) {
+	if _, found := ByName("http.request"); found {
+		t.Fatal("unknown operation found")
 	}
 }
 

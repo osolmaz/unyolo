@@ -222,27 +222,11 @@ func (a *repositoryContentAdapter) Resolve(ctx context.Context, input Input) (Pl
 }
 
 func (a *repositoryContentAdapter) Authorize(plan Plan) hfpolicy.Request {
-	if plan.Policy.Operation != "" {
-		return plan.Policy
-	}
-	target, err := a.decodeTarget(plan.Target)
-	if err != nil {
-		return hfpolicy.Request{}
-	}
-	_, request := a.presentationAndPolicy(target, plan.Arguments)
-	return request
+	return authorizeReconstructed(plan, reconstructPlan(plan.Target, plan.Arguments, a.decodeTarget, a.presentationAndPolicy))
 }
 
 func (a *repositoryContentAdapter) Present(plan Plan) agentv1.Presentation {
-	if plan.Presentation.Title != "" {
-		return plan.Presentation
-	}
-	target, err := a.decodeTarget(plan.Target)
-	if err != nil {
-		return agentv1.Presentation{}
-	}
-	presentation, _ := a.presentationAndPolicy(target, plan.Arguments)
-	return presentation
+	return presentReconstructed(plan, reconstructPlan(plan.Target, plan.Arguments, a.decodeTarget, a.presentationAndPolicy))
 }
 
 func (a *repositoryContentAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {

@@ -112,27 +112,24 @@ func (a *repositoryAdapter) Resolve(ctx context.Context, input Input) (Plan, err
 }
 
 func (a *repositoryAdapter) Authorize(plan Plan) hfpolicy.Request {
-	if plan.Policy.Operation != "" {
-		return plan.Policy
-	}
-	var target repositoryTarget
-	if decodeClosed(plan.Target, &target, maxTargetBytes) != nil {
-		return hfpolicy.Request{}
-	}
-	_, request, _ := a.presentationAndPolicy(target, plan.Arguments)
-	return request
+	return authorizeReconstructed(plan, a.reconstruct(plan))
 }
 
 func (a *repositoryAdapter) Present(plan Plan) agentv1.Presentation {
-	if plan.Presentation.Title != "" {
-		return plan.Presentation
-	}
+	return presentReconstructed(plan, a.reconstruct(plan))
+}
+
+func (a *repositoryAdapter) reconstruct(plan Plan) reconstructedPlan {
+	return reconstructPlan(plan.Target, plan.Arguments, decodeRepositoryOperationTarget,
+		func(target repositoryTarget, arguments json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
+			presentation, request, _ := a.presentationAndPolicy(target, arguments)
+			return presentation, request
+		})
+}
+
+func decodeRepositoryOperationTarget(raw json.RawMessage) (repositoryTarget, error) {
 	var target repositoryTarget
-	if decodeClosed(plan.Target, &target, maxTargetBytes) != nil {
-		return agentv1.Presentation{}
-	}
-	presentation, _, _ := a.presentationAndPolicy(target, plan.Arguments)
-	return presentation
+	return target, decodeClosed(raw, &target, maxTargetBytes)
 }
 
 func (a *repositoryAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {

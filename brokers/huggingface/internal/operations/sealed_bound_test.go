@@ -57,6 +57,7 @@ func TestSealedBoundAdapterKeepsSecretOutsidePlanAndConsumesOnce(t *testing.T) {
 	if err != nil || bytes.Contains(plan.Arguments, []byte("canary-secret")) || strings.Contains(plan.Presentation.Summary, "canary-secret") {
 		t.Fatalf("Resolve() plan=%+v err=%v", plan, err)
 	}
+	assertPlanReconstruction(t, adapter, plan)
 	outcome, err := adapter.Execute(context.Background(), plan)
 	if err != nil || !outcome.Proven || client.operation != "space.secret.set" || !bytes.Contains(client.arguments, []byte("canary-secret")) {
 		t.Fatalf("Execute() = %+v, %v; arguments=%s", outcome, err, client.arguments)

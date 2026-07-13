@@ -71,6 +71,7 @@ func TestBucketAdaptersExecuteTypedOperations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			assertPlanReconstruction(t, adapter, plan)
 			outcome, err := adapter.Execute(context.Background(), plan)
 			if err != nil || !outcome.Proven {
 				t.Fatalf("Execute() = %#v, %v", outcome, err)

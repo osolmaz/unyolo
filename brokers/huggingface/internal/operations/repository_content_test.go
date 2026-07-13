@@ -80,6 +80,7 @@ func TestRepositoryContentAdaptersExecuteAllVariants(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			assertPlanReconstruction(t, adapter, plan)
 			outcome, err := adapter.Execute(context.Background(), plan)
 			if err != nil || !outcome.Proven || len(client.commits) != 1 {
 				t.Fatalf("Execute() = %#v, %v; commits=%d", outcome, err, len(client.commits))

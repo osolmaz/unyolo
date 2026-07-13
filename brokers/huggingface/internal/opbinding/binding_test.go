@@ -2,6 +2,7 @@ package opbinding
 
 import (
 	"encoding/json"
+	"net/http"
 	"testing"
 )
 
@@ -22,6 +23,56 @@ func TestPinnedBindingsLoadAndValidateClosedSchemas(t *testing.T) {
 	}
 	if err := binding.Validate(json.RawMessage(`{"webhookId":"0123456789abcdef01234567","action":"disable"}`), json.RawMessage(`{}`)); err == nil {
 		t.Fatal("fixed action was accepted from the requester")
+	}
+}
+
+func TestBindingConstructionRejectsUnpinnedAndInvalidRoutes(t *testing.T) {
+	closed := map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}
+	for _, source := range []routeSource{
+		{},
+		{Operation: "test", Method: "TRACE", Path: "/api/test"},
+		{Operation: "test", Method: http.MethodPost, Path: "relative"},
+		{Operation: "test", Method: http.MethodPost, Path: "/api/test", TargetSchema: closed, ArgumentsSchema: closed},
+		{Operation: "test", Method: http.MethodPost, Path: "/api/test", TargetSchema: closed, ArgumentsSchema: closed, UpstreamReference: "pinned", ObserveMethod: "TRACE", ObservePath: "/api/test", Reconcile: "present"},
+		{Operation: "test", Method: http.MethodPost, Path: "/api/test", TargetSchema: closed, ArgumentsSchema: closed, UpstreamReference: "pinned", Transform: "shell"},
+	} {
+		if _, err := bindingFromSource(nil, nil, source); err == nil {
+			t.Fatalf("invalid route accepted: %+v", source)
+		}
+	}
+	if _, err := bindingFromSource(map[string]map[string]json.RawMessage{}, nil, routeSource{Operation: "test", Method: http.MethodPost, Path: "/missing"}); err == nil {
+		t.Fatal("missing OpenAPI path accepted")
+	}
+	paths := map[string]map[string]json.RawMessage{"/api/test": {"get": json.RawMessage(`{}`)}}
+	if _, err := bindingFromSource(paths, nil, routeSource{Operation: "test", Method: http.MethodPost, Path: "/api/test"}); err == nil {
+		t.Fatal("missing OpenAPI method accepted")
+	}
+}
+
+func TestSchemaProjectionCoversFixedAndNonObjectBodies(t *testing.T) {
+	parameters := []parameter{
+		{Name: "namespace", In: "path", Required: true, Schema: map[string]any{"type": "string"}},
+		{Name: "fixed", In: "path", Required: true, Schema: map[string]any{"type": "string"}},
+		{Name: "query", In: "query", Schema: map[string]any{"type": "string"}},
+	}
+	schema := schemaForParameters(parameters, "path", map[string]any{"fixed": "value"})
+	if len(schema["required"].([]string)) != 1 {
+		t.Fatalf("parameter schema = %#v", schema)
+	}
+	operation := operationDocument{RequestBody: &requestBody{Content: map[string]mediaType{"application/json": {Schema: map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}}}}
+	if _, err := schemaForArguments(operation, nil, ""); err == nil {
+		t.Fatal("non-object body without projection accepted")
+	}
+	projected, err := schemaForArguments(operation, nil, "items")
+	if err != nil || projected["type"] != "object" {
+		t.Fatalf("projected schema = %#v, %v", projected, err)
+	}
+	nonJSON := operationDocument{RequestBody: &requestBody{Content: map[string]mediaType{"text/plain": {}}}}
+	if _, err := schemaForArguments(nonJSON, nil, ""); err == nil {
+		t.Fatal("non-JSON body accepted")
+	}
+	if _, err := compileECMAScriptRegexp("["); err == nil {
+		t.Fatal("invalid ECMAScript regexp accepted")
 	}
 }
 
