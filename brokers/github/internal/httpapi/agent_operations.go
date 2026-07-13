@@ -1,12 +1,10 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -438,49 +436,19 @@ func (s *Server) failPullRequestExecution(operation agentv1.Operation, reserved,
 }
 
 func (s *Server) createUpstreamPullRequest(ctx context.Context, target pullRequestTarget, arguments pullRequestArguments) (pullRequestResult, bool, error) {
-	token, err := s.githubCredentialForRepoContext(ctx, target.Owner, target.Name)
+	credential, err := s.githubCredentialForRepoContext(ctx, string(policy.OperationPullRequestCreate), target.Owner, target.Name)
 	if err != nil {
 		return pullRequestResult{}, false, err
 	}
-	body, _ := json.Marshal(arguments)
-	requestURL := s.githubAPIBaseURL.JoinPath("repos", target.Owner, target.Name, "pulls")
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
+	api, err := s.githubCredentials.API(credential)
 	if err != nil {
 		return pullRequestResult{}, false, err
 	}
-	configureInstallationTokenRequest(request, token)
-	request.Header.Set("Content-Type", "application/json")
-	response, err := s.githubClient.Do(request)
+	created, definitive, err := api.CreatePullRequest(ctx, target.Owner, target.Name, arguments.Title, arguments.Head, arguments.Base, arguments.Body)
 	if err != nil {
-		return pullRequestResult{}, false, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	return decodePullRequestResponse(response)
-}
-
-func decodePullRequestResponse(response *http.Response) (pullRequestResult, bool, error) {
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxAgentGitHubBody+1))
-	if err != nil || len(data) > maxAgentGitHubBody {
-		return pullRequestResult{}, false, errors.New("GitHub response is invalid")
-	}
-	if definitive, err := pullRequestResponseStatus(response.StatusCode); err != nil {
 		return pullRequestResult{}, definitive, err
 	}
-	var upstream struct {
-		Number  int    `json:"number"`
-		HTMLURL string `json:"html_url"`
-	}
-	if json.Unmarshal(data, &upstream) != nil || upstream.Number <= 0 || upstream.HTMLURL == "" {
-		return pullRequestResult{}, false, errors.New("GitHub response is invalid")
-	}
-	return pullRequestResult{Number: upstream.Number, URL: upstream.HTMLURL}, true, nil
-}
-
-func pullRequestResponseStatus(status int) (bool, error) {
-	if status >= 200 && status < 300 {
-		return true, nil
-	}
-	return status >= 400 && status < 500, fmt.Errorf("GitHub status %d", status)
+	return pullRequestResult{Number: created.Number, URL: created.URL}, true, nil
 }
 
 func (s *Server) failAgentOperation(id string, state agentv1.State, code, message string) agentv1.Operation {

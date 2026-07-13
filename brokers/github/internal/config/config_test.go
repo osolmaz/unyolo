@@ -20,6 +20,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", "/tmp/scope.json")
 	t.Setenv("GH_BROKER_STATE_DIR", "/tmp/gh-state")
 	t.Setenv("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", telegramTokenFile)
@@ -44,6 +45,7 @@ func TestLoadFromLookupUsesInjectedValues(t *testing.T) {
 		"GH_BROKER_BIND_ADDR":               "127.0.0.9",
 		"GH_BROKER_SHARED_SECRET":           strings.Repeat("s", minimumSharedSecretBytes),
 		"GH_BROKER_GITHUB_TOKEN":            "github-token",
+		"GH_BROKER_GITHUB_TOKEN_FILE":       "/protected/github-token",
 		"GH_BROKER_SCOPE_FILE":              "/etc/gh-broker/scope.json",
 		"GH_BROKER_STATE_DIR":               "/var/lib/gh-broker",
 		"GH_BROKER_TELEGRAM_CHAT_ID":        "42",
@@ -116,6 +118,7 @@ func TestLoadReadsTelegramBotTokenFile(t *testing.T) {
 	values := map[string]string{
 		"GH_BROKER_SHARED_SECRET":           strings.Repeat("a", minimumSharedSecretBytes),
 		"GH_BROKER_GITHUB_TOKEN":            "github-token",
+		"GH_BROKER_GITHUB_TOKEN_FILE":       "/protected/github-token",
 		"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE": path,
 		"GH_BROKER_TELEGRAM_CHAT_ID":        "123",
 	}
@@ -132,6 +135,7 @@ func TestLoadRejectsInlineTelegramToken(t *testing.T) {
 	values := map[string]string{
 		"GH_BROKER_SHARED_SECRET":      strings.Repeat("a", minimumSharedSecretBytes),
 		"GH_BROKER_GITHUB_TOKEN":       "github-token",
+		"GH_BROKER_GITHUB_TOKEN_FILE":  "/protected/github-token",
 		"GH_BROKER_TELEGRAM_BOT_TOKEN": "inline-token",
 		"GH_BROKER_TELEGRAM_CHAT_ID":   "123",
 	}
@@ -173,6 +177,55 @@ func TestLoadReadsGitHubAppCredentialFiles(t *testing.T) {
 	}
 }
 
+func TestLoadReadsOptionalGitHubAppUserCredentialFiles(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"app-id": "12345", "private-key": "private-key", "webhook": "webhook-secret",
+		"client-id": "Iv1.client", "client-secret": "client-secret",
+	}
+	for name, value := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	values := map[string]string{
+		"GH_BROKER_SHARED_SECRET":                 strings.Repeat("a", minimumSharedSecretBytes),
+		"GH_BROKER_GITHUB_APP_ID_FILE":            filepath.Join(dir, "app-id"),
+		"GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE":   filepath.Join(dir, "private-key"),
+		"GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE":    filepath.Join(dir, "webhook"),
+		"GH_BROKER_GITHUB_APP_CLIENT_ID_FILE":     filepath.Join(dir, "client-id"),
+		"GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE": filepath.Join(dir, "client-secret"),
+	}
+	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GitHubAppClientID != "Iv1.client" || cfg.GitHubAppClientSecret != "client-secret" {
+		t.Fatalf("GitHub App user credential config = %+v", cfg)
+	}
+	values["GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE"] = ""
+	if _, err := LoadFromLookup(func(key string) string { return values[key] }); err == nil {
+		t.Fatal("unpaired GitHub App client credential accepted")
+	}
+}
+
+func TestValidateRejectsInlineDevelopmentAndAppClientSecrets(t *testing.T) {
+	base := Config{Port: "8080", BindAddr: "127.0.0.1", ClientID: "bob", SharedSecret: strings.Repeat("a", minimumSharedSecretBytes),
+		ScopeFile: "scope.json", StateDir: "state", GitHubHTTPTimeout: time.Second, MaxReceivePackBytes: 1}
+	development := base
+	development.GitHubToken = "inline-canary"
+	if err := development.Validate(); err == nil || strings.Contains(err.Error(), "canary") {
+		t.Fatalf("inline development token error = %v", err)
+	}
+	app := base
+	app.GitHubAppID, app.GitHubAppPrivateKey, app.GitHubWebhookSecret = "123", []byte("key-canary"), "webhook-canary"
+	app.GitHubAPIBaseURL, app.GitHubWebBaseURL = "https://api.github.com/", "https://github.com/"
+	app.GitHubAppClientID, app.GitHubAppClientSecret = "client-id", "secret-canary"
+	if err := app.Validate(); err == nil || strings.Contains(err.Error(), "canary") {
+		t.Fatalf("inline app client secret error = %v", err)
+	}
+}
+
 func TestLoadReadsBrokerSecretFile(t *testing.T) {
 	dir := t.TempDir()
 	secretFile := filepath.Join(dir, "secrets")
@@ -183,6 +236,7 @@ func TestLoadReadsBrokerSecretFile(t *testing.T) {
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SECRETS_FILE", secretFile)
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -210,7 +264,8 @@ func TestLoadReadsSeparateOperatorSecretFile(t *testing.T) {
 	values := map[string]string{
 		"GH_BROKER_CLIENT_ID": "bob", "GH_BROKER_SECRETS_FILE": clientFile,
 		"GH_BROKER_OPERATOR_ID": "onur", "GH_BROKER_OPERATOR_SECRETS_FILE": operatorFile,
-		"GH_BROKER_GITHUB_TOKEN": "github-token",
+		"GH_BROKER_GITHUB_TOKEN":      "github-token",
+		"GH_BROKER_GITHUB_TOKEN_FILE": "/protected/github-token",
 	}
 	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
 	if err != nil || cfg.OperatorSecret != operatorSecret || cfg.OperatorPort != "8082" {
@@ -228,7 +283,7 @@ func TestOperatorConfigRejectsEquivalentListenerPorts(t *testing.T) {
 	cfg := Config{
 		Port: "08082", BindAddr: "127.0.0.1", ClientID: "bob", SharedSecret: strings.Repeat("c", minimumSharedSecretBytes),
 		OperatorID: "onur", OperatorSecret: strings.Repeat("o", minimumSharedSecretBytes), OperatorBindAddr: "127.0.0.1", OperatorPort: "8082",
-		GitHubToken: "github-token", ScopeFile: "scope.json", StateDir: "state", GitHubHTTPTimeout: time.Second, MaxReceivePackBytes: 1,
+		GitHubToken: "github-token", GitHubTokenFile: "/protected/github-token", ScopeFile: "scope.json", StateDir: "state", GitHubHTTPTimeout: time.Second, MaxReceivePackBytes: 1,
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "different ports") {
 		t.Fatalf("Validate() error = %v", err)
@@ -285,6 +340,9 @@ func TestValidateAcceptsGitHubAppCredential(t *testing.T) {
 		SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
 		GitHubAppID:         "12345",
 		GitHubAppPrivateKey: []byte("private-key"),
+		GitHubWebhookSecret: "webhook-secret",
+		GitHubAPIBaseURL:    "https://api.github.com/",
+		GitHubWebBaseURL:    "https://github.com/",
 		ScopeFile:           "scope.json",
 		StateDir:            "state",
 		GitHubHTTPTimeout:   time.Second,

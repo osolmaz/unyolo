@@ -122,6 +122,34 @@ then
   exit 1
 fi
 
+if [ -d brokers/github/internal/githubapp ] || [ -d brokers/github/internal/githubapi ] ||
+  grep -R -n --include='*.go' -E 'brokers/github/internal/(githubapp|githubapi)' brokers/github 2>/dev/null
+then
+  echo 'GH custom JWT, installation pagination, or narrow API reader survived the credential cutover' >&2
+  exit 1
+fi
+
+if ! grep -R -q --include='*.go' 'github.com/bradleyfalzon/ghinstallation/v2' brokers/github/internal/githubauth ||
+  ! grep -R -q --include='*.go' 'github.com/google/go-github/v88/github' brokers/github/internal/githubauth
+then
+  echo 'GH credential handling must use ghinstallation and go-github behind githubauth' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'github.com/(google/go-github|bradleyfalzon/ghinstallation)' \
+  . --exclude-dir=.git --exclude-dir=brokers 2>/dev/null
+then
+  echo 'shared packages must not expose GitHub provider types' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'github.com/(google/go-github|bradleyfalzon/ghinstallation)' \
+  brokers/github --exclude-dir=githubauth 2>/dev/null
+then
+  echo 'GitHub SDK types must remain behind the githubauth boundary' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.go' --exclude='*_test.go' -E \
   'json:"(graphql|caller|headers)"' brokers/github/cmd/gh-broker brokers/github/internal/httpapi 2>/dev/null
 then

@@ -55,6 +55,33 @@ type Store struct {
 	now  func() time.Time
 }
 
+// Exists reports whether an encrypted credential slot exists. It does not
+// decrypt the slot or expose credential metadata.
+func (s *Store) Exists(slot string) bool {
+	if s == nil || !slotPattern.MatchString(slot) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	info, err := os.Lstat(s.path(slot))
+	return err == nil && info.Mode().IsRegular()
+}
+
+// Delete immediately removes an encrypted credential slot. Deletion is
+// idempotent so revocation webhooks can be replayed safely.
+func (s *Store) Delete(slot string) error {
+	if s == nil || !slotPattern.MatchString(slot) {
+		return errors.New("credential slot is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := os.Remove(s.path(slot))
+	if err != nil && !os.IsNotExist(err) {
+		return errors.New("delete credential slot")
+	}
+	return nil
+}
+
 func ValidSlot(value string) bool { return slotPattern.MatchString(value) }
 
 func Open(stateDir string) (*Store, error) {

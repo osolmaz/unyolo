@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -48,7 +47,8 @@ func TestAgentV1Conformance(t *testing.T) {
 	var current *Server
 	start := func() (agentconformance.Endpoint, error) {
 		handler, err := New(config.Config{
-			ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, StateDir: stateDirectory,
+			ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, GitHubTokenFile: "/protected/github-token", StateDir: stateDirectory,
+			GitHubAPIBaseURL: upstream.URL, GitHubWebBaseURL: upstream.URL,
 			OperatorID: "operator", OperatorSecret: "operator-secret-abcdefghijklmnopqrstuvwxyz",
 		}, requestPRPolicy(t))
 		if err != nil {
@@ -384,28 +384,6 @@ func TestAdvanceAgentOperationRejectsInvalidStoredPayload(t *testing.T) {
 	failed, err := server.operations.GetByID(operation.ID)
 	if err != nil || failed.State != agentv1.StateFailed || failed.Error == nil || failed.Error.Code != "invalid_stored_operation" {
 		t.Fatalf("invalid stored operation = %#v, %v", failed, err)
-	}
-}
-
-func TestDecodePullRequestResponse(t *testing.T) {
-	for _, test := range []struct {
-		status     int
-		body       string
-		definitive bool
-		ok         bool
-	}{
-		{status: http.StatusCreated, body: `{"number":1,"html_url":"https://example.test/pr/1"}`, definitive: true, ok: true},
-		{status: http.StatusForbidden, body: `{}`, definitive: true},
-		{status: http.StatusBadGateway, body: `{}`},
-		{status: http.StatusCreated, body: `{}`},
-		{status: http.StatusCreated, body: `{"number":1}`},
-		{status: http.StatusCreated, body: strings.Repeat("x", maxAgentGitHubBody+1)},
-	} {
-		response := &http.Response{StatusCode: test.status, Body: io.NopCloser(strings.NewReader(test.body))}
-		result, definitive, err := decodePullRequestResponse(response)
-		if (err == nil) != test.ok || definitive != test.definitive || test.ok && result.Number != 1 {
-			t.Fatalf("decode = %#v, %v, %v", result, definitive, err)
-		}
 	}
 }
 

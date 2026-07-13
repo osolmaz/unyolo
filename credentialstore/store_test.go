@@ -56,6 +56,42 @@ func TestStoreRejectsInvalidSlotsAndKinds(t *testing.T) {
 	if _, _, err := store.Get("missing", "token"); err == nil {
 		t.Fatal("missing slot was available")
 	}
+	if store.Exists("missing") || store.Exists("../escape") {
+		t.Fatal("invalid or missing slot exists")
+	}
+	if err := store.Delete("../escape"); err == nil {
+		t.Fatal("Delete accepted invalid slot")
+	}
+}
+
+func TestStoreExistsAndDelete(t *testing.T) {
+	t.Parallel()
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put("github-user-42", "github-app-user-token", []byte("encrypted")); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Exists("github-user-42") {
+		t.Fatal("stored slot does not exist")
+	}
+	if err := store.Delete("github-user-42"); err != nil {
+		t.Fatal(err)
+	}
+	if store.Exists("github-user-42") {
+		t.Fatal("deleted slot still exists")
+	}
+	if err := store.Delete("github-user-42"); err != nil {
+		t.Fatalf("idempotent Delete() error = %v", err)
+	}
+	var nilStore *Store
+	if nilStore.Exists("github-user-42") {
+		t.Fatal("nil store reported a slot")
+	}
+	if err := nilStore.Delete("github-user-42"); err == nil {
+		t.Fatal("nil store deleted a slot")
+	}
 }
 
 func TestStorePersistsKeyAndRejectsTampering(t *testing.T) {

@@ -215,6 +215,8 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 	dir := t.TempDir()
 	appIDFile := writeFixture(t, dir, "app-id", "12345\n")
 	privateKeyFile := writeFixture(t, dir, "private-key.pem", "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----\n")
+	clientIDFile := writeFixture(t, dir, "client-id", "Iv1.fixture\n")
+	clientSecretFile := writeFixture(t, dir, "client-secret", "oauth-client-fixture\n")
 	webhookSecretFile := writeFixture(t, dir, "webhook-secret", "webhook-fixture\n")
 	plan := systemdSetupPlan(setupSystemdOptions{
 		SystemdOptions: bksetup.SystemdOptions{
@@ -223,15 +225,17 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
 			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, NoStart: true,
 		},
-		GitHubAppIDFile:         appIDFile,
-		GitHubAppPrivateKeyFile: privateKeyFile,
-		GitHubWebhookSecretFile: webhookSecretFile,
-		ScopeFile:               writeFixture(t, dir, "scope.json", minimalScopeJSON()),
-		SharedSecret:            strings.Repeat("s", 32),
-		OperatorID:              "onur",
-		OperatorSecret:          strings.Repeat("o", 32),
-		OperatorBindAddr:        "127.0.0.1",
-		OperatorPort:            8082,
+		GitHubAppIDFile:           appIDFile,
+		GitHubAppPrivateKeyFile:   privateKeyFile,
+		GitHubAppClientIDFile:     clientIDFile,
+		GitHubAppClientSecretFile: clientSecretFile,
+		GitHubWebhookSecretFile:   webhookSecretFile,
+		ScopeFile:                 writeFixture(t, dir, "scope.json", minimalScopeJSON()),
+		SharedSecret:              strings.Repeat("s", 32),
+		OperatorID:                "onur",
+		OperatorSecret:            strings.Repeat("o", 32),
+		OperatorBindAddr:          "127.0.0.1",
+		OperatorPort:              8082,
 	})
 	installPlan, err := brokerkitSystemdInstallPlan(plan)
 	if err != nil {
@@ -241,13 +245,15 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 		t.Fatal("Telegram credential retirement requires a readiness check")
 	}
 	wantOwners := map[string]bkservice.ManagedFileOwner{
-		githubAppIDFileName:         bkservice.ManagedFileOwnerRoot,
-		githubAppPrivateKeyFileName: bkservice.ManagedFileOwnerService,
-		githubWebhookSecretFileName: bkservice.ManagedFileOwnerService,
-		ghSecretsFileName:           bkservice.ManagedFileOwnerService,
-		ghOperatorSecretsFileName:   bkservice.ManagedFileOwnerService,
-		ghScopeFileName:             bkservice.ManagedFileOwnerRoot,
-		ghEnvFileName:               bkservice.ManagedFileOwnerRoot,
+		githubAppIDFileName:           bkservice.ManagedFileOwnerRoot,
+		githubAppPrivateKeyFileName:   bkservice.ManagedFileOwnerService,
+		githubAppClientIDFileName:     bkservice.ManagedFileOwnerRoot,
+		githubAppClientSecretFileName: bkservice.ManagedFileOwnerService,
+		githubWebhookSecretFileName:   bkservice.ManagedFileOwnerService,
+		ghSecretsFileName:             bkservice.ManagedFileOwnerService,
+		ghOperatorSecretsFileName:     bkservice.ManagedFileOwnerService,
+		ghScopeFileName:               bkservice.ManagedFileOwnerRoot,
+		ghEnvFileName:                 bkservice.ManagedFileOwnerRoot,
 	}
 	for _, file := range installPlan.Files {
 		if file.Owner != wantOwners[file.Name] {
@@ -257,6 +263,17 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 	}
 	if len(wantOwners) != 0 {
 		t.Fatalf("missing managed files: %v", wantOwners)
+	}
+	env := ""
+	for _, file := range installPlan.Files {
+		if file.Name == ghEnvFileName {
+			env = string(file.Data)
+		}
+	}
+	for _, want := range []string{"GH_BROKER_GITHUB_APP_CLIENT_ID_FILE=", "GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE="} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("env missing %q:\n%s", want, env)
+		}
 	}
 }
 

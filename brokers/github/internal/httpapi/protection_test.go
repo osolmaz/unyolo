@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
 
@@ -16,7 +17,9 @@ func TestProtectedDefaultBranchWriteFailsBeforeGitDispatch(t *testing.T) {
 		case "/repos/dutifuldev/gh-broker":
 			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
 		case "/repos/dutifuldev/gh-broker/rules/branches/main":
-			_, _ = w.Write([]byte(`[{}]`))
+			_, _ = w.Write([]byte(`[]`))
+		case "/repos/dutifuldev/gh-broker/branches/main/protection":
+			_, _ = w.Write([]byte(`{"required_status_checks":null}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -61,6 +64,11 @@ func newProtectedWriteTestServer(t *testing.T, apiHandler http.HandlerFunc) (*Se
 	api := httptest.NewServer(apiHandler)
 	t.Cleanup(api.Close)
 	server.githubAPIBaseURL, err = url.Parse(api.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.githubCredentials, err = githubauth.New(githubauth.Config{DevelopmentToken: []byte(testGitHubToken), DevelopmentTokenFile: "/protected/github-token",
+		APIBaseURL: server.githubAPIBaseURL, WebBaseURL: server.githubAPIBaseURL, HTTPClient: api.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}

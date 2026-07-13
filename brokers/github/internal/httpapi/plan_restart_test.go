@@ -17,7 +17,7 @@ func TestGitHubPlanRetryReusesCreatedAtAcrossStoreReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	grantStore := grants.NewDatabase(database, grants.Options{})
-	plans, err := ghplan.NewStore(database, "github_app")
+	plans, err := ghplan.NewStore(database, "installation")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestGitHubPlanRetryReusesCreatedAtAcrossStoreReload(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	reloadedGrants := grants.NewDatabase(database, grants.Options{})
-	reloadedPlans, err := ghplan.NewStore(database, "github_app")
+	reloadedPlans, err := ghplan.NewStore(database, "installation")
 	if err != nil {
 		t.Fatal(err)
 	}

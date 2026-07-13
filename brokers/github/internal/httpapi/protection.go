@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapi"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 )
 
 func (s *Server) enforceReceivePackBackstops(c echo.Context, authorized []authorizedReceivePackRequest) error {
@@ -15,17 +15,20 @@ func (s *Server) enforceReceivePackBackstops(c echo.Context, authorized []author
 	}
 	owner := c.Param("owner")
 	repo := strings.TrimSuffix(c.Param("repoGit"), ".git")
-	token, err := s.githubCredentialForRepo(c, owner, repo)
+	credential, err := s.githubCredentialForRepo(c, owner, repo)
 	if err != nil {
 		return err
 	}
-	reader := githubapi.Reader{BaseURL: s.githubAPIBaseURL, HTTPClient: s.githubReadClient}
-	defaultBranch, err := reader.DefaultBranch(c.Request().Context(), token, owner, repo)
+	api, err := s.githubCredentials.API(credential)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub repository safety state is unavailable")
+	}
+	defaultBranch, err := api.DefaultBranch(c.Request().Context(), owner, repo)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub repository safety state is unavailable")
 	}
 	for branch := range branches {
-		if err := enforceBranchBackstop(c, reader, token, owner, repo, branch, defaultBranch); err != nil {
+		if err := enforceBranchBackstop(c, api, owner, repo, branch, defaultBranch); err != nil {
 			return err
 		}
 	}
@@ -43,8 +46,8 @@ func receivePackBranches(authorized []authorizedReceivePackRequest) map[string]b
 	return branches
 }
 
-func enforceBranchBackstop(c echo.Context, reader githubapi.Reader, token, owner, repo, branch, defaultBranch string) error {
-	protected, err := reader.BranchProtected(c.Request().Context(), token, owner, repo, branch)
+func enforceBranchBackstop(c echo.Context, api *githubauth.API, owner, repo, branch, defaultBranch string) error {
+	protected, err := api.BranchProtected(c.Request().Context(), owner, repo, branch)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub branch safety state is unavailable")
 	}

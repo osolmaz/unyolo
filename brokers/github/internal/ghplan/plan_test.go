@@ -18,7 +18,7 @@ var fixtureTime = time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
 func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 	t.Parallel()
 	database := testDatabase(t)
-	plans, err := newStore(database, "github_app", func() time.Time { return fixtureTime })
+	plans, err := newStore(database, "installation", func() time.Time { return fixtureTime })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,18 +63,18 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 }
 
 func TestCanonicalPlanDigest(t *testing.T) {
-	encoded, err := encode(FromRequest(testRequest(), "github_app", fixtureTime))
+	encoded, err := encode(FromRequest(testRequest(), "installation", fixtureTime))
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = "986bf18a493e4dbbeef6bb4a9c701f845f30a9d602dc7506d3fa920163ff9a8c"
+	const expected = "c7ab8edcd7da93dd297f9d4e100aba09dcdae48cf66bde63e72f1db161cf3818"
 	if got := plandigest.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}
 }
 
 func TestDecodeRejectsUnknownDuplicateSensitiveAndTrailingFields(t *testing.T) {
-	valid := `{"schema_version":"gh-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"repo","target":{"name":["gh-broker"],"owner":["osolmaz"]},"constraints":{"attributes":{"ref":["refs/heads/main"]},"requested_duration_seconds":300,"requested_max_uses":2},"credential_selector":"github_app","created_at":"2026-07-12T00:00:00Z"}`
+	valid := `{"schema_version":"gh-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"repo","target":{"name":["gh-broker"],"owner":["osolmaz"]},"constraints":{"attributes":{"ref":["refs/heads/main"]},"requested_duration_seconds":300,"requested_max_uses":2},"credential_selector":"installation","created_at":"2026-07-12T00:00:00Z"}`
 	for _, value := range []string{
 		strings.Replace(valid, `"kind":`, `"unknown":true,"kind":`, 1),
 		strings.Replace(valid, `"kind":"capability_window"`, `"kind":"capability_window","kind":"single_execution"`, 1),
@@ -92,7 +92,7 @@ func TestDecodeRejectsUnknownDuplicateSensitiveAndTrailingFields(t *testing.T) {
 }
 
 func FuzzDecodePlan(f *testing.F) {
-	f.Add([]byte(`{"schema_version":"gh-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"repo","target":{"name":["gh-broker"],"owner":["osolmaz"]},"constraints":{"attributes":{"ref":["refs/heads/main"]},"requested_duration_seconds":300,"requested_max_uses":2},"credential_selector":"github_app","created_at":"2026-07-12T00:00:00Z"}`))
+	f.Add([]byte(`{"schema_version":"gh-broker.io/plan/v1","kind":"capability_window","client_id":"bob","client_request_id":"request-1","operation":"git.push.force","target_kind":"repo","target":{"name":["gh-broker"],"owner":["osolmaz"]},"constraints":{"attributes":{"ref":["refs/heads/main"]},"requested_duration_seconds":300,"requested_max_uses":2},"credential_selector":"installation","created_at":"2026-07-12T00:00:00Z"}`))
 	f.Add([]byte(`{"schema_version":"unknown"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		plan, err := decode(data)
@@ -112,9 +112,9 @@ func FuzzDecodePlan(f *testing.F) {
 func TestStoreRejectsMissingCorruptAndCrossCredentialPlans(t *testing.T) {
 	t.Parallel()
 	database := testDatabase(t)
-	plans, _ := newStore(database, "github_app", func() time.Time { return fixtureTime })
+	plans, _ := newStore(database, "installation", func() time.Time { return fixtureTime })
 	request := testRequest()
-	encoded, err := encode(FromRequest(request, "github_app", fixtureTime))
+	encoded, err := encode(FromRequest(request, "installation", fixtureTime))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestStoreRejectsMissingCorruptAndCrossCredentialPlans(t *testing.T) {
 	if err := (Validator{Store: plans}).ValidateExecution(grant); err == nil {
 		t.Fatal("validator accepted missing digest")
 	}
-	if _, err := NewStore(nil, "github_app"); err == nil {
+	if _, err := NewStore(nil, "installation"); err == nil {
 		t.Fatal("NewStore accepted nil database")
 	}
 	if _, err := NewStore(database, "token"); err == nil {
@@ -151,7 +151,7 @@ func TestKindForOperationAndValidation(t *testing.T) {
 	if _, ok := kindForOperation("contents.read"); ok {
 		t.Fatal("read operation is grantable")
 	}
-	plans, _ := newStore(testDatabase(t), "github_app", func() time.Time { return fixtureTime })
+	plans, _ := newStore(testDatabase(t), "installation", func() time.Time { return fixtureTime })
 	tests := []grants.Request{testRequest(), testRequest(), testRequest()}
 	tests[0].Operation = "repo.delete"
 	tests[1].Target.Fields["installation"] = []string{"42"}

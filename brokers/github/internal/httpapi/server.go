@@ -24,10 +24,11 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
@@ -48,11 +49,9 @@ type Server struct {
 	agentAPI            *agentapi.Handler
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
-	githubToken         string
-	githubApp           *githubapp.Source
+	githubCredentials   *githubauth.Manager
 	githubWebhookSecret string
 	githubClient        *http.Client
-	githubReadClient    *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
 	auditWriter         *bkaudit.Writer
@@ -90,8 +89,8 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	server := &Server{
 		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
 		database: core.database, operations: agentops.New(core.database), notifier: core.notifier, telegram: core.telegram,
-		githubToken: cfg.GitHubToken, githubApp: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
-		githubClient: githubClient, githubReadClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
+		githubCredentials: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
+		githubClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
 	}
@@ -146,21 +145,33 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
 }
 
-func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubapp.Source, error) {
-	gitBaseURL, apiBaseURL, err := githubBaseURLs()
+func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, error) {
+	gitBaseURL, apiBaseURL, err := githubBaseURLs(cfg)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 	client := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
-	app, err := configuredGitHubApp(cfg, apiBaseURL, client)
-	return gitBaseURL, apiBaseURL, client, app, err
+	var encryptedStore *credentialstore.Store
+	if strings.TrimSpace(cfg.GitHubAppID) != "" {
+		encryptedStore, err = credentialstore.Open(cfg.StateDir)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	}
+	manager, err := githubauth.New(githubauth.Config{
+		AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey, AppClientID: cfg.GitHubAppClientID,
+		AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
+		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: apiBaseURL, WebBaseURL: gitBaseURL,
+		HTTPClient: client, Store: encryptedStore,
+	})
+	return gitBaseURL, apiBaseURL, client, manager, err
 }
 
 func githubCredentialMode(cfg config.Config) string {
 	if strings.TrimSpace(cfg.GitHubAppID) != "" && len(cfg.GitHubAppPrivateKey) > 0 {
-		return "github_app"
+		return string(githubauth.KindInstallation)
 	}
-	return "development_pat"
+	return string(githubauth.KindDevelopmentToken)
 }
 
 func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator ghplan.Validator, auditWriter *bkaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
@@ -203,12 +214,20 @@ func (s *Server) registerRoutes(auth security.TokenAuth) {
 // OperatorHandler exposes Brokerkit's shared inbox over the canonical grant store.
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
 
-func githubBaseURLs() (*url.URL, *url.URL, error) {
-	gitBaseURL, err := url.Parse("https://github.com")
+func githubBaseURLs(cfg config.Config) (*url.URL, *url.URL, error) {
+	webBase := cfg.GitHubWebBaseURL
+	if strings.TrimSpace(webBase) == "" {
+		webBase = "https://github.com/"
+	}
+	apiBase := cfg.GitHubAPIBaseURL
+	if strings.TrimSpace(apiBase) == "" {
+		apiBase = "https://api.github.com/"
+	}
+	gitBaseURL, err := url.Parse(webBase)
 	if err != nil {
 		return nil, nil, err
 	}
-	apiBaseURL, err := url.Parse("https://api.github.com")
+	apiBaseURL, err := url.Parse(apiBase)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -412,6 +431,7 @@ func (s *Server) runAuthorizedBrokerRequest(
 	reserved []grants.Grant,
 	run func(echo.Context) error,
 ) error {
+	c.Set(githubOperationContextKey, string(request.Operation))
 	err := run(c)
 	if err != nil {
 		err = s.settleFailedExecution(c, reserved, err)
@@ -687,69 +707,7 @@ func (s *Server) fetchAndFilterRepos(c echo.Context) error {
 }
 
 func (s *Server) fetchRepoList(c echo.Context) (*http.Response, error) {
-	if s.githubApp != nil {
-		return s.fetchGitHubAppRepoList(c)
-	}
-	upstreamURLs := s.repoListURLs(c)
-	var response *http.Response
-	var err error
-	for index, upstreamURL := range upstreamURLs {
-		response, err = s.fetchRepoListURL(c, upstreamURL)
-		if err != nil {
-			return nil, err
-		}
-		if index == 0 && repoListShouldFallback(response.StatusCode) {
-			_ = response.Body.Close()
-			continue
-		}
-		return response, nil
-	}
-	return response, nil
-}
-
-func (s *Server) fetchRepoListURL(c echo.Context, upstreamURL *url.URL) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, upstreamURL.String(), http.NoBody)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
-	}
-	if err := s.configureGitHubAPIRequest(c, request, "", ""); err != nil {
-		return nil, err
-	}
-	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL.
-	markUpstreamDispatched(c)
-	response, err := s.githubClient.Do(request)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
-	}
-	return response, nil
-}
-
-func (s *Server) repoListURLs(c echo.Context) []*url.URL {
-	userURL := s.repoListURL(c, "user", "repos")
-	installationURL := s.repoListURL(c, "installation", "repositories")
-	if looksLikeInstallationToken(s.githubToken) {
-		return []*url.URL{installationURL, userURL}
-	}
-	return []*url.URL{userURL, installationURL}
-}
-
-func (s *Server) repoListURL(c echo.Context, pathSegments ...string) *url.URL {
-	upstreamURL := s.githubAPIBaseURL.JoinPath(pathSegments...)
-	query := url.Values{}
-	query.Set("per_page", boundedQueryInt(c.QueryParam("per_page"), 100, 1, 100))
-	if page := boundedQueryInt(c.QueryParam("page"), 0, 1, 100000); page != "0" {
-		query.Set("page", page)
-	}
-	upstreamURL.RawQuery = query.Encode()
-	return upstreamURL
-}
-
-func looksLikeInstallationToken(token string) bool {
-	return strings.HasPrefix(token, "ghs_")
-}
-
-func repoListShouldFallback(status int) bool {
-	return status == http.StatusUnauthorized || status == http.StatusForbidden
+	return s.fetchCredentialRepoList(c)
 }
 
 func successfulStatus(status int) bool {
@@ -830,17 +788,6 @@ func repoIdentity(raw json.RawMessage) (string, string, bool) {
 		}
 	}
 	return owner, name, owner != "" && name != ""
-}
-
-func boundedQueryInt(value string, fallback int, minValue int, maxValue int) string {
-	if value == "" {
-		return strconv.Itoa(fallback)
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed < minValue || parsed > maxValue {
-		return strconv.Itoa(fallback)
-	}
-	return strconv.Itoa(parsed)
 }
 
 func (s *Server) audit(c echo.Context, request policy.Request, outcome string, reason string, status int, matchedRuleIDs []string) {

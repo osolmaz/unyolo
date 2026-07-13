@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapi"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
@@ -48,7 +47,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options) (bkdoctor.Report,
 }
 
 func localSecretChecks(cfg config.Config, agent bkdoctor.Identity) []bkdoctor.Check {
-	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubWebhookSecretFile, cfg.SecretsFile, cfg.TelegramBotTokenFile}
+	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubAppClientSecretFile, cfg.GitHubWebhookSecretFile, cfg.SecretsFile, cfg.TelegramBotTokenFile}
 	checks := make([]bkdoctor.Check, 0, len(paths)*5)
 	for _, path := range paths {
 		if path != "" {
@@ -60,10 +59,11 @@ func localSecretChecks(cfg config.Config, agent bkdoctor.Identity) []bkdoctor.Ch
 }
 
 func inlineCredentialChecks(cfg config.Config) []bkdoctor.Check {
-	checks := make([]bkdoctor.Check, 0, 4)
+	checks := make([]bkdoctor.Check, 0, 5)
 	checks = appendInlineCredentialCheck(checks, cfg.SharedSecret != "" && cfg.SecretsFile == "", "broker_client_secret")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubToken != "" && cfg.GitHubTokenFile == "", "github_token")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubWebhookSecret != "" && cfg.GitHubWebhookSecretFile == "", "github_webhook_secret")
+	checks = appendInlineCredentialCheck(checks, cfg.GitHubAppClientSecret != "" && cfg.GitHubAppClientSecretFile == "", "github_app_client_secret")
 	checks = appendInlineCredentialCheck(checks, cfg.TelegramBotToken != "" && cfg.TelegramBotTokenFile == "", "telegram_bot_token")
 	return checks
 }
@@ -88,76 +88,86 @@ func githubChecks(ctx context.Context, cfg config.Config, opts Options, owner st
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	token, installationChecks := githubDoctorToken(ctx, cfg, baseURL, client, owner, repo)
+	api, installationChecks := githubDoctorAPI(ctx, cfg, baseURL, client, owner, repo)
 	checks := append([]bkdoctor.Check(nil), installationChecks...)
-	if token == "" {
+	if api == nil {
 		return checks
 	}
-	defaultBranch, err := fetchDefaultBranch(ctx, client, baseURL, token, owner, repo)
+	defaultBranch, err := api.DefaultBranch(ctx, owner, repo)
 	checks = append(checks, resultCheck("github_repo_visible", "configured repository is visible", "configured repository is not visible", err))
 	if err != nil {
 		return checks
 	}
 	checks = append(checks, bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_default_branch", Message: "default branch is " + defaultBranch})
-	protected, protectionErr := branchProtected(ctx, client, baseURL, token, owner, repo, defaultBranch)
+	protected, protectionErr := api.BranchProtected(ctx, owner, repo, defaultBranch)
 	checks = append(checks, protectionCheck(opts.RequireProtection, protected, protectionErr))
 	return checks
 }
 
-func githubDoctorToken(ctx context.Context, cfg config.Config, baseURL *url.URL, client *http.Client, owner string, repo string) (string, []bkdoctor.Check) {
-	if cfg.GitHubAppID != "" || len(cfg.GitHubAppPrivateKey) > 0 {
-		source, err := githubapp.New(githubapp.Config{AppID: cfg.GitHubAppID, PrivateKeyPEM: cfg.GitHubAppPrivateKey, APIBaseURL: baseURL, HTTPClient: client})
+func githubDoctorAPI(ctx context.Context, cfg config.Config, baseURL *url.URL, client *http.Client, owner string, repo string) (*githubauth.API, []bkdoctor.Check) {
+	var webURL *url.URL
+	if strings.TrimSpace(cfg.GitHubWebBaseURL) != "" {
+		var err error
+		webURL, err = url.Parse(cfg.GitHubWebBaseURL)
 		if err != nil {
-			return "", []bkdoctor.Check{resultCheck("github_app_jwt", "GitHub App JWT can be signed", "GitHub App JWT cannot be signed", err)}
+			return nil, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
 		}
-		return githubAppDoctorToken(ctx, source, owner, repo)
 	}
-	if cfg.GitHubToken == "" {
-		return "", []bkdoctor.Check{{Status: bkdoctor.CheckFail, Name: "github_credentials", Message: "no GitHub credential is configured"}}
+	manager, err := githubauth.New(githubauth.Config{AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey,
+		AppClientID: cfg.GitHubAppClientID, AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
+		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: baseURL, WebBaseURL: webURL, HTTPClient: client})
+	if err != nil {
+		return nil, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
 	}
-	return cfg.GitHubToken, []bkdoctor.Check{{Status: bkdoctor.CheckWarn, Name: "github_app_credentials", Message: "development token fallback cannot prove GitHub App permissions"}}
+	if manager.CredentialKind() == githubauth.KindDevelopmentToken {
+		return developmentDoctorAPI(ctx, cfg.Environment, manager, owner, repo)
+	}
+	return appDoctorAPI(ctx, manager, owner, repo)
 }
 
-func githubAppDoctorToken(ctx context.Context, source *githubapp.Source, owner string, repo string) (string, []bkdoctor.Check) {
-	_, jwtErr := source.JWT()
-	checks := []bkdoctor.Check{resultCheck("github_app_jwt", "GitHub App JWT can be signed", "GitHub App JWT cannot be signed", jwtErr)}
+func developmentDoctorAPI(ctx context.Context, environment string, manager *githubauth.Manager, owner, repo string) (*githubauth.API, []bkdoctor.Check) {
+	status := bkdoctor.CheckWarn
+	message := "development-token fallback is non-production and cannot prove GitHub App permission narrowing"
+	if strings.EqualFold(environment, "production") || strings.EqualFold(environment, "prod") {
+		status = bkdoctor.CheckFail
+		message = "development-token fallback must not be used in production"
+	}
+	check := bkdoctor.Check{Status: status, Name: "github_development_token", Message: message}
+	credential, err := manager.RepositoryCredential(ctx, "repo.contents.read", owner, repo)
+	if err != nil {
+		return nil, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
+	}
+	api, err := manager.API(credential)
+	if err != nil {
+		return nil, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
+	}
+	return api, []bkdoctor.Check{check}
+}
+
+func appDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo string) (*githubauth.API, []bkdoctor.Check) {
+	jwtErr := manager.CheckApp(ctx)
+	checks := []bkdoctor.Check{resultCheck("github_app_jwt", "GitHub App authenticated transport works", "GitHub App authenticated transport failed", jwtErr)}
 	if jwtErr != nil {
-		return "", checks
+		return nil, checks
 	}
-	token, tokenErr := source.InstallationTokenForRepo(ctx, owner, repo)
-	checks = append(checks, resultCheck("github_installation_token", "installation token can be minted for the configured repository", "installation token cannot be minted for the configured repository", tokenErr))
+	credential, tokenErr := manager.RepositoryCredential(ctx, "repo.contents.read", owner, repo)
+	checks = append(checks, resultCheck("github_installation_token", "exact repository installation token can be minted", "exact repository installation token cannot be minted", tokenErr))
 	if tokenErr != nil {
-		return "", checks
+		return nil, checks
 	}
-	checks = append(checks, permissionCheck(token.Permissions))
-	return token.Value, checks
+	checks = append(checks, permissionCheck(credential.Metadata().Permissions))
+	api, apiErr := manager.API(credential)
+	if apiErr != nil {
+		return nil, append(checks, resultCheck("github_api_client", "GitHub API client is ready", "GitHub API client is unavailable", apiErr))
+	}
+	return api, checks
 }
 
 func permissionCheck(permissions map[string]string) bkdoctor.Check {
-	allowed := map[string]map[string]bool{
-		"administration": {"read": true},
-		"checks":         {"read": true},
-		"contents":       {"write": true},
-		"metadata":       {"read": true},
-		"pull_requests":  {"write": true},
+	if len(permissions) != 1 || permissions["contents"] != "read" {
+		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_app_permissions", Message: "repository inspection credential was not narrowed to contents read"}
 	}
-	for permission, level := range permissions {
-		if !allowed[permission][level] {
-			return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_app_permissions", Message: "GitHub App installation token has an unexpected permission or access level"}
-		}
-	}
-	if permissions["contents"] != "write" || permissions["pull_requests"] != "write" {
-		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_app_permissions", Message: "GitHub App lacks required contents and pull request permissions"}
-	}
-	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_app_permissions", Message: "GitHub App has required repository permissions without known broad administration writes"}
-}
-
-func fetchDefaultBranch(ctx context.Context, client *http.Client, baseURL *url.URL, token string, owner string, repo string) (string, error) {
-	return (githubapi.Reader{BaseURL: baseURL, HTTPClient: client}).DefaultBranch(ctx, token, owner, repo)
-}
-
-func branchProtected(ctx context.Context, client *http.Client, baseURL *url.URL, token string, owner string, repo string, branch string) (bool, error) {
-	return (githubapi.Reader{BaseURL: baseURL, HTTPClient: client}).BranchProtected(ctx, token, owner, repo, branch)
+	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_app_permissions", Message: "repository inspection credential is narrowed to contents read"}
 }
 
 func protectionCheck(required bool, protected bool, err error) bkdoctor.Check {
@@ -167,7 +177,7 @@ func protectionCheck(required bool, protected bool, err error) bkdoctor.Check {
 	if !required {
 		return bkdoctor.Check{Status: bkdoctor.CheckWarn, Name: "github_default_branch_protected", Message: "default branch protection was not required by this doctor run"}
 	}
-	if code, statusError := githubapi.StatusCode(err); err != nil && (!statusError || code != http.StatusNotFound) {
+	if code, statusError := githubauth.StatusCode(err); err != nil && (!statusError || code != http.StatusNotFound) {
 		return bkdoctor.Check{Status: bkdoctor.CheckUnknown, Name: "github_default_branch_protected", Message: "default branch protection could not be inspected with the configured credential"}
 	}
 	return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_default_branch_protected", Message: "default branch has no verifiable ruleset or branch protection"}

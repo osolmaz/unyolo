@@ -6,140 +6,59 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
-	"github.com/osolmaz/brokerkit/httpx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
 
-func configuredGitHubApp(cfg config.Config, apiBaseURL *url.URL, client *http.Client) (*githubapp.Source, error) {
-	if strings.TrimSpace(cfg.GitHubAppID) == "" && len(cfg.GitHubAppPrivateKey) == 0 {
-		return nil, nil
-	}
-	return githubapp.New(githubapp.Config{
-		AppID:         cfg.GitHubAppID,
-		PrivateKeyPEM: cfg.GitHubAppPrivateKey,
-		APIBaseURL:    apiBaseURL,
-		HTTPClient:    client,
-	})
-}
+const githubOperationContextKey = "gh_broker_operation"
 
-func (s *Server) fetchGitHubAppRepoList(c echo.Context) (*http.Response, error) {
-	ids, err := s.githubApp.Installations(c.Request().Context())
+func (s *Server) fetchCredentialRepoList(c echo.Context) (*http.Response, error) {
+	repositories, err := s.githubCredentials.ListRepositories(c.Request().Context())
 	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "github app installation lookup failed")
+		return nil, echo.NewHTTPError(http.StatusBadGateway, "GitHub repository listing failed")
 	}
-	repos := make([]json.RawMessage, 0)
-	for _, id := range ids {
-		response, err := s.fetchGitHubAppInstallationRepos(c, id)
-		if err != nil {
-			return nil, err
-		}
-		if !successfulStatus(response.StatusCode) {
-			return response, nil
-		}
-		installationRepos, err := decodeInstallationRepos(response.Body)
-		_ = response.Body.Close()
-		if err != nil {
-			return nil, echo.NewHTTPError(http.StatusBadGateway, "decode github app repository list")
-		}
-		repos = append(repos, installationRepos...)
-	}
-	body, err := json.Marshal(map[string][]json.RawMessage{"repositories": repos})
+	body, err := json.Marshal(repositories)
 	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "encode github app repository list")
+		return nil, echo.NewHTTPError(http.StatusBadGateway, "encode GitHub repository list")
 	}
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(bytes.NewReader(body)),
-	}, nil
-}
-
-func (s *Server) fetchGitHubAppInstallationRepos(c echo.Context, installationID int64) (*http.Response, error) {
-	token, err := s.githubApp.InstallationToken(c.Request().Context(), installationID)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "github app token minting failed")
-	}
-	request, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, s.repoListURL(c, "installation", "repositories").String(), http.NoBody)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
-	}
-	configureInstallationTokenRequest(request, token.Value)
-	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL.
 	markUpstreamDispatched(c)
-	response, err := s.githubClient.Do(request)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
-	}
-	return response, nil
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(body))}, nil
 }
 
-func decodeInstallationRepos(body io.Reader) ([]json.RawMessage, error) {
-	data, err := httpx.ReadLimited(body, 10*1024*1024)
-	if err != nil {
-		return nil, err
-	}
-	var payload struct {
-		Repositories []json.RawMessage `json:"repositories"`
-	}
-	if err := strictjson.Decode(data, &payload, false); err != nil {
-		return nil, err
-	}
-	return payload.Repositories, nil
-}
-
-func (s *Server) configureGitHubAPIRequest(c echo.Context, request *http.Request, owner string, repo string) error {
-	token, err := s.githubCredentialForRepo(c, owner, repo)
+func (s *Server) configureGitHubAPIRequest(c echo.Context, request *http.Request, owner, repo string) error {
+	credential, err := s.githubCredentialForRepo(c, owner, repo)
 	if err != nil {
 		return err
 	}
-	configureInstallationTokenRequest(request, token)
-	return nil
+	return credential.AuthorizeAPI(request)
 }
 
-func (s *Server) configureGitHubGitRequest(c echo.Context, request *http.Request, owner string, repo string) error {
-	token, err := s.githubCredentialForRepo(c, owner, repo)
+func (s *Server) configureGitHubGitRequest(c echo.Context, request *http.Request, owner, repo string) error {
+	credential, err := s.githubCredentialForRepo(c, owner, repo)
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Authorization", githubGitAuthorization(token))
-	return nil
+	return credential.AuthorizeGit(request)
 }
 
-func (s *Server) githubCredentialForRepo(c echo.Context, owner string, repo string) (string, error) {
-	token, installationID, err := s.githubCredentialForRepoWithInstallation(c.Request().Context(), owner, repo)
+func (s *Server) githubCredentialForRepo(c echo.Context, owner, repo string) (*githubauth.Credential, error) {
+	operation, _ := c.Get(githubOperationContextKey).(string)
+	credential, err := s.githubCredentialForRepoContext(c.Request().Context(), operation, owner, repo)
 	if err != nil {
-		return "", echo.NewHTTPError(http.StatusBadGateway, "github app token minting failed")
+		return nil, echo.NewHTTPError(http.StatusBadGateway, "GitHub credential acquisition failed")
 	}
-	if installationID != 0 {
+	if installationID := credential.Metadata().InstallationID; installationID > 0 {
 		c.Set("github_installation_id", installationID)
 	}
-	return token, nil
+	return credential, nil
 }
 
-func (s *Server) githubCredentialForRepoContext(ctx context.Context, owner string, repo string) (string, error) {
-	token, _, err := s.githubCredentialForRepoWithInstallation(ctx, owner, repo)
-	return token, err
-}
-
-func (s *Server) githubCredentialForRepoWithInstallation(ctx context.Context, owner string, repo string) (string, int64, error) {
-	if s.githubApp == nil {
-		return s.githubToken, 0, nil
+func (s *Server) githubCredentialForRepoContext(ctx context.Context, operation string, owner, repo string) (*githubauth.Credential, error) {
+	if strings.TrimSpace(operation) == "" {
+		operation = string(policy.OperationContentsRead)
 	}
-	token, err := s.githubApp.InstallationTokenForRepo(ctx, owner, repo)
-	if err != nil {
-		return "", 0, err
-	}
-	return token.Value, token.InstallationID, nil
-}
-
-func configureInstallationTokenRequest(request *http.Request, token string) {
-	request.Header.Set("Authorization", "Bearer "+token)
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	return s.githubCredentials.RepositoryCredential(ctx, operation, owner, repo)
 }

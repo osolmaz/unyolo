@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapi"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
@@ -26,7 +27,9 @@ func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {
 		case "/repos/osolmaz/repo":
 			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
 		case "/repos/osolmaz/repo/rules/branches/main":
-			_, _ = w.Write([]byte(`[{}]`))
+			_, _ = w.Write([]byte(`[]`))
+		case "/repos/osolmaz/repo/branches/main/protection":
+			_, _ = w.Write([]byte(`{"required_status_checks":null}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -40,7 +43,7 @@ func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {
 		return bkdoctor.Identity{User: name, UID: 1001, GID: 1001}, nil
 	}
 	t.Cleanup(func() { lookupIdentity = oldLookup })
-	report, err := Run(context.Background(), config.Config{GitHubToken: "github-token"}, Options{
+	report, err := Run(context.Background(), config.Config{Environment: "local", GitHubToken: "github-token", GitHubTokenFile: "/protected/github-token"}, Options{
 		AgentUser: "bob", ServiceUser: "gh-broker", Repo: "osolmaz/repo",
 		RequireProtection: true, APIBaseURL: mustURL(t, api.URL), HTTPClient: api.Client(),
 	})
@@ -55,24 +58,35 @@ func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {
 }
 
 func TestPermissionCheck(t *testing.T) {
-	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write"}); got.Status != bkdoctor.CheckPass {
+	if got := permissionCheck(map[string]string{"contents": "read"}); got.Status != bkdoctor.CheckPass {
 		t.Fatalf("required permissions = %+v", got)
 	}
 	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "administration": "write"}); got.Status != bkdoctor.CheckFail {
 		t.Fatalf("administrative permissions = %+v", got)
 	}
-	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "administration": "read"}); got.Status != bkdoctor.CheckPass {
-		t.Fatalf("read-only administration permission = %+v", got)
-	}
-	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "workflows": "write"}); got.Status != bkdoctor.CheckFail {
-		t.Fatalf("unexpected write permissions = %+v", got)
-	}
-	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "issues": "read"}); got.Status != bkdoctor.CheckFail {
-		t.Fatalf("unexpected read permissions = %+v", got)
-	}
-	if got := permissionCheck(map[string]string{"contents": "read"}); got.Status != bkdoctor.CheckFail {
+	if got := permissionCheck(map[string]string{}); got.Status != bkdoctor.CheckFail {
 		t.Fatalf("missing permissions = %+v", got)
 	}
+}
+
+func TestDevelopmentTokenDoctorIsUnsafeInProduction(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/acme/repo":
+			_, _ = io.WriteString(w, `{"default_branch":"main"}`)
+		case "/repos/acme/repo/rules/branches/main":
+			_, _ = io.WriteString(w, `[]`)
+		case "/repos/acme/repo/branches/main/protection":
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(api.Close)
+	client, checks := githubDoctorAPI(t.Context(), config.Config{Environment: "production", GitHubToken: "dev-canary", GitHubTokenFile: "/protected/token"},
+		mustURL(t, api.URL), api.Client(), "acme", "repo")
+	if client == nil {
+		t.Fatal("development API unavailable")
+	}
+	assertCheck(t, checks, "github_development_token", bkdoctor.CheckFail)
 }
 
 func TestInlineCredentialChecksAreInconclusive(t *testing.T) {
@@ -99,44 +113,56 @@ func TestInlineCredentialChecksAreInconclusive(t *testing.T) {
 	}
 }
 
-func TestGitHubDoctorTokenMintsAppCredential(t *testing.T) {
+func TestGitHubDoctorAPIMintsAppCredential(t *testing.T) {
+	var tokenMints int
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/app":
+			_, _ = w.Write([]byte(`{"id":12345}`))
 		case "/repos/osolmaz/repo/installation":
 			_, _ = w.Write([]byte(`{"id":42}`))
 		case "/app/installations/42/access_tokens":
-			_, _ = w.Write([]byte(`{"token":"installation-token","permissions":{"contents":"write","pull_requests":"write"}}`))
+			tokenMints++
+			if tokenMints == 1 {
+				_, _ = w.Write([]byte(`{"token":"bootstrap-token","expires_at":"2099-07-09T18:00:00Z"}`))
+			} else {
+				_, _ = w.Write([]byte(`{"token":"installation-token","expires_at":"2099-07-09T18:00:00Z","permissions":{"contents":"read"}}`))
+			}
+		case "/repos/osolmaz/repo":
+			_, _ = w.Write([]byte(`{"id":99,"name":"repo","owner":{"login":"osolmaz"}}`))
+		case "/installation/token":
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer api.Close()
-	token, checks := githubDoctorToken(context.Background(), config.Config{
-		GitHubToken: "stale-fallback-token", GitHubAppID: "12345", GitHubAppPrivateKey: doctorPrivateKey(t),
+	client, checks := githubDoctorAPI(context.Background(), config.Config{
+		GitHubAppID: "12345", GitHubAppPrivateKey: doctorPrivateKey(t),
 	}, mustURL(t, api.URL), api.Client(), "osolmaz", "repo")
-	if token != "installation-token" {
-		t.Fatalf("token = %q", token)
+	if client == nil {
+		t.Fatal("GitHub doctor API is nil")
 	}
 	assertCheck(t, checks, "github_app_jwt", bkdoctor.CheckPass)
 	assertCheck(t, checks, "github_installation_token", bkdoctor.CheckPass)
 	assertCheck(t, checks, "github_app_permissions", bkdoctor.CheckPass)
 }
 
-func TestGitHubDoctorTokenReportsCredentialFailures(t *testing.T) {
-	if token, checks := githubDoctorToken(context.Background(), config.Config{}, mustURL(t, "https://api.github.com"), http.DefaultClient, "owner", "repo"); token != "" || checks[0].Status != bkdoctor.CheckFail {
-		t.Fatalf("invalid app credential result = %q, %+v", token, checks)
+func TestGitHubDoctorAPIReportsCredentialFailures(t *testing.T) {
+	if api, checks := githubDoctorAPI(context.Background(), config.Config{}, mustURL(t, "https://api.github.com"), http.DefaultClient, "owner", "repo"); api != nil || checks[0].Status != bkdoctor.CheckFail {
+		t.Fatalf("invalid app credential result = %v, %+v", api, checks)
 	}
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "denied", http.StatusForbidden)
 	}))
 	defer api.Close()
-	token, checks := githubDoctorToken(context.Background(), config.Config{
+	client, checks := githubDoctorAPI(context.Background(), config.Config{
 		GitHubAppID: "12345", GitHubAppPrivateKey: doctorPrivateKey(t),
 	}, mustURL(t, api.URL), api.Client(), "owner", "repo")
-	if token != "" {
-		t.Fatalf("failed mint token = %q", token)
+	if client != nil {
+		t.Fatal("failed GitHub App returned an API client")
 	}
-	assertCheck(t, checks, "github_installation_token", bkdoctor.CheckFail)
+	assertCheck(t, checks, "github_app_jwt", bkdoctor.CheckFail)
 }
 
 func TestBranchProtectedFallsBackToClassicProtection(t *testing.T) {
@@ -148,7 +174,13 @@ func TestBranchProtectedFallsBackToClassicProtection(t *testing.T) {
 		_, _ = w.Write([]byte(`{"required_status_checks":null}`))
 	}))
 	defer api.Close()
-	protected, err := branchProtected(context.Background(), api.Client(), mustURL(t, api.URL), "token", "owner", "repo", "main")
+	manager, err := githubauth.New(githubauth.Config{DevelopmentToken: []byte("token"), DevelopmentTokenFile: "/protected/token", APIBaseURL: mustURL(t, api.URL), HTTPClient: api.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, _ := manager.RepositoryCredential(context.Background(), "repo.contents.read", "owner", "repo")
+	client, _ := manager.API(credential)
+	protected, err := client.BranchProtected(context.Background(), "owner", "repo", "main")
 	if err != nil || !protected {
 		t.Fatalf("branchProtected() = %t, %v", protected, err)
 	}
@@ -169,11 +201,11 @@ func TestParseRepoAndOptionalProtection(t *testing.T) {
 }
 
 func TestProtectionCheckDistinguishesAbsentAndInconclusive(t *testing.T) {
-	unknown := protectionCheck(true, false, githubapi.StatusError{Code: http.StatusForbidden})
+	unknown := protectionCheck(true, false, githubauth.APIError{Code: "forbidden", StatusCode: http.StatusForbidden})
 	if unknown.Status != bkdoctor.CheckUnknown {
 		t.Fatalf("forbidden protection check = %+v", unknown)
 	}
-	missing := protectionCheck(true, false, githubapi.StatusError{Code: http.StatusNotFound})
+	missing := protectionCheck(true, false, githubauth.APIError{Code: "not_found", StatusCode: http.StatusNotFound})
 	if missing.Status != bkdoctor.CheckFail {
 		t.Fatalf("missing protection check = %+v", missing)
 	}

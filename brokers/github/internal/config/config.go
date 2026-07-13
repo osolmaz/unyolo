@@ -15,36 +15,42 @@ import (
 const minimumSharedSecretBytes = 32
 
 type Config struct {
-	Environment             string
-	BindAddr                string
-	Port                    string
-	ClientID                string
-	SharedSecret            string
-	SecretsFile             string
-	OperatorID              string
-	OperatorSecret          string
-	OperatorSecretsFile     string
-	OperatorBindAddr        string
-	OperatorPort            string
-	GitHubToken             string
-	GitHubTokenFile         string
-	GitHubAppID             string
-	GitHubAppIDFile         string
-	GitHubAppPrivateKey     []byte
-	GitHubAppPrivateKeyFile string
-	GitHubWebhookSecret     string
-	GitHubWebhookSecretFile string
-	ScopeFile               string
-	StateDir                string
-	TelegramBotToken        string
-	TelegramBotTokenFile    string
-	TelegramChatID          int64
-	GitHubHTTPTimeout       time.Duration
-	MaxReceivePackBytes     int64
-	ReadHeaderTimeout       time.Duration
-	ReadTimeout             time.Duration
-	WriteTimeout            time.Duration
-	IdleTimeout             time.Duration
+	Environment               string
+	BindAddr                  string
+	Port                      string
+	ClientID                  string
+	SharedSecret              string
+	SecretsFile               string
+	OperatorID                string
+	OperatorSecret            string
+	OperatorSecretsFile       string
+	OperatorBindAddr          string
+	OperatorPort              string
+	GitHubToken               string
+	GitHubTokenFile           string
+	GitHubAppID               string
+	GitHubAppIDFile           string
+	GitHubAppPrivateKey       []byte
+	GitHubAppPrivateKeyFile   string
+	GitHubAppClientID         string
+	GitHubAppClientIDFile     string
+	GitHubAppClientSecret     string
+	GitHubAppClientSecretFile string
+	GitHubWebhookSecret       string
+	GitHubWebhookSecretFile   string
+	GitHubAPIBaseURL          string
+	GitHubWebBaseURL          string
+	ScopeFile                 string
+	StateDir                  string
+	TelegramBotToken          string
+	TelegramBotTokenFile      string
+	TelegramChatID            int64
+	GitHubHTTPTimeout         time.Duration
+	MaxReceivePackBytes       int64
+	ReadHeaderTimeout         time.Duration
+	ReadTimeout               time.Duration
+	WriteTimeout              time.Duration
+	IdleTimeout               time.Duration
 }
 
 func Load() (Config, error) {
@@ -54,34 +60,40 @@ func Load() (Config, error) {
 // LoadFromLookup loads configuration from an injected environment lookup.
 func LoadFromLookup(getenv func(string) string) (Config, error) {
 	cfg := Config{
-		Environment:             getEnvFrom(getenv, "local", "GH_BROKER_ENVIRONMENT"),
-		BindAddr:                getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_BIND_ADDR"),
-		Port:                    getEnvFrom(getenv, "8080", "GH_BROKER_PORT"),
-		ClientID:                getEnvFrom(getenv, "bob", "GH_BROKER_CLIENT_ID"),
-		SharedSecret:            getEnvFrom(getenv, "", "GH_BROKER_SHARED_SECRET"),
-		SecretsFile:             getEnvFrom(getenv, "", "GH_BROKER_SECRETS_FILE"),
-		OperatorID:              getEnvFrom(getenv, "onur", "GH_BROKER_OPERATOR_ID"),
-		OperatorSecret:          getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SHARED_SECRET"),
-		OperatorSecretsFile:     getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SECRETS_FILE"),
-		OperatorBindAddr:        getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_OPERATOR_BIND_ADDR"),
-		OperatorPort:            getEnvFrom(getenv, "8082", "GH_BROKER_OPERATOR_PORT"),
-		GitHubToken:             getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN"),
-		GitHubTokenFile:         getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN_FILE"),
-		GitHubAppID:             getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID"),
-		GitHubAppIDFile:         getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID_FILE"),
-		GitHubAppPrivateKeyFile: getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"),
-		GitHubWebhookSecret:     getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET"),
-		GitHubWebhookSecretFile: getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"),
-		ScopeFile:               getEnvFrom(getenv, "scope.json", "GH_BROKER_SCOPE_FILE"),
-		StateDir:                getEnvFrom(getenv, "./state", "GH_BROKER_STATE_DIR"),
-		TelegramBotTokenFile:    getEnvFrom(getenv, "", "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"),
-		TelegramChatID:          telegramChatIDEnvFrom(getenv, "GH_BROKER_TELEGRAM_CHAT_ID"),
-		GitHubHTTPTimeout:       durationEnvFrom(getenv, 30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT"),
-		MaxReceivePackBytes:     int64EnvFrom(getenv, 25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES"),
-		ReadHeaderTimeout:       durationEnvFrom(getenv, 5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT"),
-		ReadTimeout:             durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_READ_TIMEOUT"),
-		WriteTimeout:            durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_WRITE_TIMEOUT"),
-		IdleTimeout:             durationEnvFrom(getenv, 60*time.Second, "GH_BROKER_IDLE_TIMEOUT"),
+		Environment:               getEnvFrom(getenv, "local", "GH_BROKER_ENVIRONMENT"),
+		BindAddr:                  getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_BIND_ADDR"),
+		Port:                      getEnvFrom(getenv, "8080", "GH_BROKER_PORT"),
+		ClientID:                  getEnvFrom(getenv, "bob", "GH_BROKER_CLIENT_ID"),
+		SharedSecret:              getEnvFrom(getenv, "", "GH_BROKER_SHARED_SECRET"),
+		SecretsFile:               getEnvFrom(getenv, "", "GH_BROKER_SECRETS_FILE"),
+		OperatorID:                getEnvFrom(getenv, "onur", "GH_BROKER_OPERATOR_ID"),
+		OperatorSecret:            getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SHARED_SECRET"),
+		OperatorSecretsFile:       getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SECRETS_FILE"),
+		OperatorBindAddr:          getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_OPERATOR_BIND_ADDR"),
+		OperatorPort:              getEnvFrom(getenv, "8082", "GH_BROKER_OPERATOR_PORT"),
+		GitHubToken:               getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN"),
+		GitHubTokenFile:           getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN_FILE"),
+		GitHubAppID:               getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID"),
+		GitHubAppIDFile:           getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID_FILE"),
+		GitHubAppPrivateKeyFile:   getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"),
+		GitHubAppClientID:         getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_ID"),
+		GitHubAppClientIDFile:     getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_ID_FILE"),
+		GitHubAppClientSecret:     getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_SECRET"),
+		GitHubAppClientSecretFile: getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE"),
+		GitHubWebhookSecret:       getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET"),
+		GitHubWebhookSecretFile:   getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"),
+		GitHubAPIBaseURL:          getEnvFrom(getenv, "https://api.github.com/", "GH_BROKER_GITHUB_API_URL"),
+		GitHubWebBaseURL:          getEnvFrom(getenv, "https://github.com/", "GH_BROKER_GITHUB_WEB_URL"),
+		ScopeFile:                 getEnvFrom(getenv, "scope.json", "GH_BROKER_SCOPE_FILE"),
+		StateDir:                  getEnvFrom(getenv, "./state", "GH_BROKER_STATE_DIR"),
+		TelegramBotTokenFile:      getEnvFrom(getenv, "", "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"),
+		TelegramChatID:            telegramChatIDEnvFrom(getenv, "GH_BROKER_TELEGRAM_CHAT_ID"),
+		GitHubHTTPTimeout:         durationEnvFrom(getenv, 30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT"),
+		MaxReceivePackBytes:       int64EnvFrom(getenv, 25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES"),
+		ReadHeaderTimeout:         durationEnvFrom(getenv, 5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT"),
+		ReadTimeout:               durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_READ_TIMEOUT"),
+		WriteTimeout:              durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_WRITE_TIMEOUT"),
+		IdleTimeout:               durationEnvFrom(getenv, 60*time.Second, "GH_BROKER_IDLE_TIMEOUT"),
 	}
 	if err := cfg.loadCredentialFiles(); err != nil {
 		return Config{}, err
@@ -94,7 +106,7 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 
 func (c *Config) loadCredentialFiles() error {
 	loaders := []func() error{
-		c.loadGitHubTokenFile, c.loadGitHubAppFiles, c.loadGitHubWebhookSecretFile,
+		c.loadGitHubTokenFile, c.loadGitHubAppFiles, c.loadGitHubAppClientFiles, c.loadGitHubWebhookSecretFile,
 		c.loadBrokerSecretFile, c.loadOperatorSecretFile, c.loadTelegramBotTokenFile,
 	}
 	for _, load := range loaders {
@@ -103,6 +115,13 @@ func (c *Config) loadCredentialFiles() error {
 		}
 	}
 	return nil
+}
+
+func (c *Config) loadGitHubAppClientFiles() error {
+	if err := loadOptionalSecretFile(&c.GitHubAppClientID, c.GitHubAppClientIDFile, "github app client id file"); err != nil {
+		return err
+	}
+	return loadOptionalSecretFile(&c.GitHubAppClientSecret, c.GitHubAppClientSecretFile, "github app client secret file")
 }
 
 func (c *Config) loadTelegramBotTokenFile() error {
@@ -284,12 +303,35 @@ func positiveInt64(value int64, message string) error {
 
 func githubCredential(c Config) error {
 	if strings.TrimSpace(c.GitHubToken) != "" {
-		return nil
+		return developmentCredential(c)
 	}
 	if strings.TrimSpace(c.GitHubAppID) != "" && len(c.GitHubAppPrivateKey) > 0 {
-		return nil
+		return appCredential(c)
 	}
 	return errors.New("GH_BROKER_GITHUB_TOKEN_FILE or GitHub App credential files are required")
+}
+
+func developmentCredential(c Config) error {
+	if strings.TrimSpace(c.GitHubTokenFile) == "" {
+		return errors.New("development GitHub token must be loaded from GH_BROKER_GITHUB_TOKEN_FILE")
+	}
+	if strings.TrimSpace(c.GitHubAppID) != "" || len(c.GitHubAppPrivateKey) > 0 {
+		return errors.New("development GitHub token and GitHub App credentials are mutually exclusive")
+	}
+	return nil
+}
+
+func appCredential(c Config) error {
+	if strings.TrimSpace(c.GitHubWebhookSecret) == "" {
+		return errors.New("GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE is required with GitHub App credentials")
+	}
+	if (strings.TrimSpace(c.GitHubAppClientID) == "") != (strings.TrimSpace(c.GitHubAppClientSecret) == "") {
+		return errors.New("GitHub App client id and client secret must be configured together")
+	}
+	if c.GitHubAppClientSecret != "" && c.GitHubAppClientSecretFile == "" {
+		return errors.New("GitHub App client secret must be loaded from GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE")
+	}
+	return firstError(required(c.GitHubAPIBaseURL, "GH_BROKER_GITHUB_API_URL is required"), required(c.GitHubWebBaseURL, "GH_BROKER_GITHUB_WEB_URL is required"))
 }
 
 func telegramPair(token string, chatID int64) error {

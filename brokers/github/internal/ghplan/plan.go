@@ -67,7 +67,7 @@ func newStore(database *state.Database, credentialSelector string, now func() ti
 	if database == nil {
 		return nil, errors.New("GitHub plan database is required")
 	}
-	if credentialSelector != "github_app" && credentialSelector != "development_pat" { // #nosec G101 -- these are credential mode identifiers, not credentials.
+	if credentialSelector != "installation" && credentialSelector != "development-token" { // #nosec G101 -- these are credential kind identifiers, not credentials.
 		return nil, errors.New("GitHub credential selector is invalid")
 	}
 	if now == nil {
@@ -268,7 +268,7 @@ func validPlanConstraints(plan Plan) bool {
 }
 
 func validCredentialSelector(value string) bool {
-	return value == "github_app" || value == "development_pat"
+	return value == "installation" || value == "development-token"
 }
 
 func validTarget(target map[string][]string) bool {

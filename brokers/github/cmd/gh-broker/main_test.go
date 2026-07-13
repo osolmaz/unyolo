@@ -193,6 +193,7 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", writeScopeFile(t))
 	t.Setenv("GH_BROKER_STATE_DIR", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
@@ -208,6 +209,7 @@ func TestRunReturnsScopeFileError(t *testing.T) {
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", filepath.Join(t.TempDir(), "missing.json"))
 	err := run(t.Context())
 	if err == nil {
@@ -274,6 +276,7 @@ func configForBuildTest(t *testing.T) config.Config {
 		ClientID:            "bob",
 		SharedSecret:        strings.Repeat("a", 32),
 		GitHubToken:         "github-token",
+		GitHubTokenFile:     "/protected/github-token",
 		ScopeFile:           writeScopeFile(t),
 		StateDir:            t.TempDir(),
 		GitHubHTTPTimeout:   time.Second,

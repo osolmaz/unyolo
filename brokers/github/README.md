@@ -12,6 +12,8 @@ The shared install, setup, policy, approval, and release contract is in
 - Echo HTTP server
 - `gh-broker --version`
 - `gh-broker setup client`
+- `gh-broker setup github-user enroll|rotate|revoke` for protected local
+  enrollment of expiring GitHub App user credentials
 - `gh-broker setup systemd` for Linux service file/config generation
 - `gh-broker doctor github` for local isolation, GitHub App, repository, and
   default-branch protection checks
@@ -21,7 +23,10 @@ The shared install, setup, policy, approval, and release contract is in
   brokerkit policy engine
 - Git smart HTTP fetch and push route shape
 - Narrow GitHub API routes for repository listing, content reads, and pull request creation
-- Server-side GitHub token forwarding as a development credential path
+- Opaque broker-owned `app-jwt`, exact installation, user, and protected-file
+  development credential providers
+- Exact installation-token narrowing and cache isolation by installation,
+  repository ids, permissions, API host, and expiry behavior
 - Localhost bind by default for Tailnet-oriented deployment
 - Conservative receive-pack size cap and upstream GitHub timeouts
 - Structured audit logs without secrets, request bodies, diffs, or pack contents
@@ -54,17 +59,19 @@ capabilities, and the operator exposure profile. With no configured
 intersection it advertises zero execution tools; it never publishes the full
 catalog as 1,000+ tools by default.
 
-Credentials and upstream execution for the new generated operations are
-deliberately not enabled in stages 2–3. Existing execution paths remain in
-place until the later credential and lifecycle cutover stages.
+Credential selection is immutable broker metadata. Callers choose an operation
+and target, never a credential kind, token scope, installation, or permission
+set. The generated operation catalog supplies the minimum GitHub App permission
+map used for installation-token minting.
 
 ## Local Development
 
 ```sh
 cp .env.example .env
 cp scope.example.json scope.json
+install -m 600 /dev/null github-token
+# write a development-only fine-grained token to github-token
 # edit GH_BROKER_SHARED_SECRET to a generated value with at least 32 bytes
-# set GH_BROKER_GITHUB_TOKEN to a GitHub token with the repo access gh-broker should broker
 # edit scope.json by hand
 source .env
 make check
@@ -108,6 +115,19 @@ sudo gh-broker setup systemd \
   --scope-file ./scope.json
 ```
 
+To enable encrypted GitHub App user credentials, add the App's OAuth client
+files to setup:
+
+```sh
+sudo gh-broker setup systemd \
+  --github-app-id-file ./app-id \
+  --github-app-private-key-file ./private-key.pem \
+  --github-app-client-id-file ./client-id \
+  --github-app-client-secret-file ./client-secret \
+  --github-webhook-secret-file ./webhook-secret \
+  --scope-file ./scope.json
+```
+
 Development setup with a token file:
 
 ```sh
@@ -116,6 +136,40 @@ sudo gh-broker setup systemd \
   --github-token-file ./github-token \
   --scope-file ./scope.json
 ```
+
+This fallback is protected-file-only and non-production. `doctor github`
+returns an unsafe result if it is selected with
+`GH_BROKER_ENVIRONMENT=production`.
+
+Enroll an expiring GitHub App user credential from a local operator shell while
+the broker is stopped. The input is a mode `0600` JSON file and is deleted by
+the operator after a successful enrollment:
+
+```json
+{
+  "user_id": 1234,
+  "login": "octocat",
+  "access_token": "expiring-access-token",
+  "refresh_token": "expiring-refresh-token",
+  "access_expires_at": "2026-07-14T12:00:00Z",
+  "refresh_expires_at": "2026-10-14T12:00:00Z"
+}
+```
+
+```sh
+chmod 600 user-credential.json app-client-id app-client-secret
+gh-broker setup github-user enroll \
+  --state-dir /var/lib/gh-broker \
+  --credential-file ./user-credential.json \
+  --github-app-client-id-file ./app-client-id \
+  --github-app-client-secret-file ./app-client-secret
+rm user-credential.json
+```
+
+Use the same command with `rotate` and a replacement credential file to rotate
+an enrollment. Revoke immediately with `github-user revoke --user-id 1234`
+and the same state/client flags. These commands return only the action and
+immutable user id; there is no credential readback command or API route.
 
 Add Telegram notifications by passing the bot token as a protected file:
 
@@ -285,13 +339,17 @@ GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE=/etc/gh-broker/github-webhook-secret
 ```
 
 For repo-scoped requests, gh-broker resolves the GitHub App installation for
-the target repository and mints a short-lived installation token after broker
-policy allows the request. For repository listing, gh-broker lists App
-installations and then filters visible installation repositories through
-`scope.json`.
+the target repository with `go-github` and mints a short-lived token with the
+exact repository id and catalog-derived minimum permission map after broker
+policy allows the request. Cache keys include the installation id, sorted exact
+repository ids, exact permissions, API host, and refresh behavior. Broader
+credentials are never reused for narrower requests. App JWT transport is
+provided by `ghinstallation`; typed GitHub API pagination, errors, rate limits,
+installation resolution, token requests, and webhook parsing use `go-github`.
+Repository-list credentials are uncached and revoked immediately after use.
 
-`GH_BROKER_GITHUB_TOKEN_FILE` remains available as a local development
-fallback.
+`GH_BROKER_GITHUB_TOKEN_FILE` remains available only as a protected-file local
+development fallback. Inline PAT configuration is rejected.
 
 GitHub App webhooks are accepted at:
 
@@ -303,7 +361,15 @@ The webhook route requires `X-Hub-Signature-256`, `X-GitHub-Event`, and
 `X-GitHub-Delivery`. It verifies the payload with
 `GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE`, accepts bodies up to 1 MiB, and logs only
 audit-safe metadata such as event, delivery id, action, installation id, and
-repository name.
+repository name. Installation suspension/deletion, repository selection
+changes, and `github_app_authorization` revocation invalidate affected cached
+credentials immediately. Invalid or unknown signed payloads fail closed.
+
+User access and refresh credentials are stored only in BrokerKit's encrypted
+credential store. Access credentials refresh before expiry, rotating refresh
+credentials are persisted as one encrypted record, and enrollment, rotation,
+revocation, errors, plans, results, audit events, and operator surfaces never
+return credential material.
 
 Deployment safety defaults:
 
@@ -319,7 +385,7 @@ Deployment safety defaults:
   for the request, and verified webhook event metadata.
 - Audit logs do not include tokens, cookies, request bodies, PR bodies, pack
   contents, diffs, raw upstream bodies, JWTs, installation tokens, or private
-  keys.
+  keys, refresh tokens, PATs, or GitHub App client secrets.
 
 ## Grants
 
