@@ -232,17 +232,40 @@ func (a *bucketAdapter) checkPreconditions(ctx context.Context, target bucketTar
 }
 
 func (a *bucketAdapter) presentationAndPolicy(target bucketTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
-	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: hfpolicy.Target{Kind: hfpolicy.KindBucket, Owner: target.Namespace, Name: target.Name}, Attrs: map[string]any{}}
+	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: hfpolicy.Target{
+		Kind: hfpolicy.KindBucket, Owner: target.Namespace, Name: target.Name, Keys: bucketOperationKeys(a.descriptor.Name, raw),
+	}, Attrs: map[string]any{}}
 	summary := fmt.Sprintf("%s on bucket %s/%s", a.descriptor.Name, target.Namespace, target.Name)
 	if a.descriptor.Name == "bucket.move" {
 		var destination bucketMoveArguments
 		if decodeClosed(raw, &destination, maxArgumentsBytes) == nil {
-			request.Attrs["to_namespace"] = destination.ToNamespace
-			request.Attrs["to_name"] = destination.ToName
+			request.Attrs["destination"] = destination.ToNamespace + "/" + destination.ToName
 			summary = fmt.Sprintf("Move bucket %s/%s to %s/%s", target.Namespace, target.Name, destination.ToNamespace, destination.ToName)
 		}
 	}
 	return agentv1.Presentation{Title: a.descriptor.Name, Summary: summary}, request
+}
+
+func bucketOperationKeys(operation string, raw json.RawMessage) []string {
+	if operation == "bucket.object.delete" {
+		var arguments bucketDeleteArguments
+		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
+			return []string{arguments.Path}
+		}
+		return nil
+	}
+	if operation != "bucket.batch.apply" && operation != "bucket.sync.apply" {
+		return nil
+	}
+	var arguments bucketBatchArguments
+	if decodeClosed(raw, &arguments, maxArgumentsBytes) != nil {
+		return nil
+	}
+	keys := make([]string, len(arguments.Operations))
+	for index := range arguments.Operations {
+		keys[index] = arguments.Operations[index].Path
+	}
+	return keys
 }
 
 func validBucketTarget(target bucketTarget) bool {

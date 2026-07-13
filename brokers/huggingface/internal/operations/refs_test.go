@@ -22,12 +22,18 @@ func TestRefsAdaptersExecuteAndReconcile(t *testing.T) {
 		arguments json.RawMessage
 		prepare   func()
 	}{
-		{name: "repo.branch.create", ref: "release", arguments: json.RawMessage(`{"starting_point":"main"}`), prepare: func() { client.refs = hubclient.Refs{} }},
-		{name: "repo.branch.delete", ref: "release", arguments: json.RawMessage(`{}`), prepare: func() {
-			client.refs = hubclient.Refs{Branches: []hubclient.GitRef{{Name: "release", TargetCommit: "abc"}}}
+		{name: "repo.branch.create", ref: "release", arguments: json.RawMessage(`{"starting_point":"main"}`), prepare: func() {
+			client.refs = hubclient.Refs{Branches: []hubclient.GitRef{{Name: "main", TargetCommit: "abcdef1"}}}
 		}},
-		{name: "repo.tag.create", ref: "v1.0", arguments: json.RawMessage(`{"revision":"main","message":"release"}`), prepare: func() { client.refs = hubclient.Refs{} }},
-		{name: "repo.tag.delete", ref: "v1.0", arguments: json.RawMessage(`{}`), prepare: func() { client.refs = hubclient.Refs{Tags: []hubclient.GitRef{{Name: "v1.0", TargetCommit: "abc"}}} }},
+		{name: "repo.branch.delete", ref: "release", arguments: json.RawMessage(`{}`), prepare: func() {
+			client.refs = hubclient.Refs{Branches: []hubclient.GitRef{{Name: "release", TargetCommit: "abcdef1"}}}
+		}},
+		{name: "repo.tag.create", ref: "v1.0", arguments: json.RawMessage(`{"revision":"main","message":"release"}`), prepare: func() {
+			client.refs = hubclient.Refs{Branches: []hubclient.GitRef{{Name: "main", TargetCommit: "abcdef1"}}}
+		}},
+		{name: "repo.tag.delete", ref: "v1.0", arguments: json.RawMessage(`{}`), prepare: func() {
+			client.refs = hubclient.Refs{Tags: []hubclient.GitRef{{Name: "v1.0", TargetCommit: "abcdef1"}}}
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -68,14 +74,30 @@ func TestRefsAdaptersRejectUnknownAndExistingCreate(t *testing.T) {
 	}
 }
 
+func TestRefsCreateReconciliationRequiresExactApprovedCommit(t *testing.T) {
+	client := &refsFake{refs: hubclient.Refs{Branches: []hubclient.GitRef{{Name: "main", TargetCommit: "abcdef1"}}}}
+	adapters, _ := NewRefsAdapters(client)
+	adapter := adapters[0]
+	input, _ := adapter.Decode(json.RawMessage(`{"kind":"repo","type":"model","owner":"acme","name":"demo","ref":"release"}`), json.RawMessage(`{"starting_point":"main"}`))
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.refs.Branches = append(client.refs.Branches, hubclient.GitRef{Name: "release", TargetCommit: "deadbee"})
+	outcome, err := adapter.Reconcile(t.Context(), plan)
+	if err != nil || outcome.Proven {
+		t.Fatalf("wrong-commit reconciliation = %+v, %v", outcome, err)
+	}
+}
+
 type refsFake struct{ refs hubclient.Refs }
 
 func (f *refsFake) ListRefs(context.Context, hubclient.RepoRef) (hubclient.Refs, error) {
 	return f.refs, nil
 }
 
-func (f *refsFake) CreateBranch(_ context.Context, _ hubclient.RepoRef, branch, _ string) error {
-	f.refs.Branches = append(f.refs.Branches, hubclient.GitRef{Name: branch, TargetCommit: "abc"})
+func (f *refsFake) CreateBranch(_ context.Context, _ hubclient.RepoRef, branch, commit string) error {
+	f.refs.Branches = append(f.refs.Branches, hubclient.GitRef{Name: branch, TargetCommit: commit})
 	return nil
 }
 
@@ -89,8 +111,8 @@ func (f *refsFake) DeleteBranch(_ context.Context, _ hubclient.RepoRef, branch s
 	return errors.New("branch missing")
 }
 
-func (f *refsFake) CreateTag(_ context.Context, _ hubclient.RepoRef, tag, _, _ string) error {
-	f.refs.Tags = append(f.refs.Tags, hubclient.GitRef{Name: tag, TargetCommit: "abc"})
+func (f *refsFake) CreateTag(_ context.Context, _ hubclient.RepoRef, tag, _, commit string) error {
+	f.refs.Tags = append(f.refs.Tags, hubclient.GitRef{Name: tag, TargetCommit: commit})
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/state"
 )
@@ -25,6 +26,21 @@ func TestCanonicalRequestRoundTrip(t *testing.T) {
 	attrs, err := Attrs(result.Grant)
 	if err != nil || attrs["max_bytes"] != int64(42) || Target(result.Grant) != "model/owner/repo" || Ref(result.Grant) != "refs/heads/main" {
 		t.Fatalf("round trip = %+v, %v", attrs, err)
+	}
+}
+
+func TestCanonicalRequestPreservesExactProviderTarget(t *testing.T) {
+	target := hfpolicy.Target{Kind: hfpolicy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/one.json"}}
+	request, err := CanonicalRequest(Input{Client: "bob", ClientRequestID: "bucket-1", Operation: "bucket.object.read",
+		PolicyTarget: &target, Reason: "inspect result", RequestedDuration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := grants.Grant{Operation: "bucket.object.read", Target: request.Target}
+	decoded, err := PolicyTarget(stored)
+	if err != nil || decoded.Kind != hfpolicy.KindBucket || decoded.Owner != "acme" || decoded.Name != "artifacts" ||
+		len(decoded.Keys) != 1 || decoded.Keys[0] != "runs/one.json" || Target(stored) != "bucket/acme/artifacts" {
+		t.Fatalf("provider target round trip = %#v, %v", decoded, err)
 	}
 }
 

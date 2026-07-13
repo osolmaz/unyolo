@@ -28,11 +28,32 @@ type Plan struct {
 	Preconditions     json.RawMessage
 	Presentation      agentv1.Presentation
 	Policy            hfpolicy.Request
+	PolicyDecision    PolicyDecision
+}
+
+// PolicyDecision is the immutable policy context selected at submission.
+type PolicyDecision struct {
+	Effect  string
+	RuleIDs []string
 }
 
 type Outcome struct {
 	Proven bool
 	Result json.RawMessage
+}
+
+// PossiblePartialError marks a multi-call operation that may have changed
+// upstream state before a later call failed. Workers must reconcile it instead
+// of treating the wrapped error as a definitive refusal.
+type PossiblePartialError struct{ Err error }
+
+func (e *PossiblePartialError) Error() string { return e.Err.Error() }
+func (e *PossiblePartialError) Unwrap() error { return e.Err }
+
+// IsPossiblePartial reports whether an execution error requires reconciliation.
+func IsPossiblePartial(err error) bool {
+	var partial *PossiblePartialError
+	return errors.As(err, &partial)
 }
 
 type reconstructedPlan struct {

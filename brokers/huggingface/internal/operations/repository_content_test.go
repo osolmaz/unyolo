@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,12 +51,13 @@ func TestRepositoryContentAdaptersExecuteAllVariants(t *testing.T) {
 		name      string
 		repoType  string
 		arguments json.RawMessage
+		paths     []string
 	}{
-		{"repo.commit.create", "model", json.RawMessage(`{"summary":"commit","operations":[{"kind":"file","path":"file.txt","content_base64":"ZGF0YQ=="},{"kind":"deleted_file","path":"old.txt"}]}`)},
-		{"repo.file.upload", "model", json.RawMessage(`{"path":"file.txt","content_base64":"ZGF0YQ==","summary":"upload"}`)},
-		{"repo.file.delete", "model", json.RawMessage(`{"path":"dir/","folder":true,"summary":"delete"}`)},
-		{"repo.file.copy", "model", json.RawMessage(`{"source_type":"dataset","source_owner":"source","source_name":"data","source_revision":"main","source_path":"src.txt","path":"copied.txt","summary":"copy"}`)},
-		{"space.hot_reload.apply", "space", json.RawMessage(`{"summary":"reload","operations":[{"kind":"lfs_file","path":"large.bin","oid":"` + hash + `","size":12}]}`)},
+		{"repo.commit.create", "model", json.RawMessage(`{"summary":"commit","operations":[{"kind":"file","path":"file.txt","content_base64":"ZGF0YQ=="},{"kind":"deleted_file","path":"old.txt"}]}`), []string{"file.txt", "old.txt"}},
+		{"repo.file.upload", "model", json.RawMessage(`{"path":"file.txt","content_base64":"ZGF0YQ==","summary":"upload"}`), []string{"file.txt"}},
+		{"repo.file.delete", "model", json.RawMessage(`{"path":"dir/","folder":true,"summary":"delete"}`), []string{"dir/"}},
+		{"repo.file.copy", "model", json.RawMessage(`{"source_type":"dataset","source_owner":"source","source_name":"data","source_revision":"main","source_path":"src.txt","path":"copied.txt","summary":"copy"}`), []string{"copied.txt"}},
+		{"space.hot_reload.apply", "space", json.RawMessage(`{"summary":"reload","operations":[{"kind":"lfs_file","path":"large.bin","oid":"` + hash + `","size":12}]}`), []string{"large.bin"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -81,6 +83,13 @@ func TestRepositoryContentAdaptersExecuteAllVariants(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertPlanReconstruction(t, adapter, plan)
+			if plan.Policy.Target.Refs[0] != "main" || !slices.Equal(plan.Policy.Target.Paths, test.paths) {
+				t.Fatalf("policy target = %#v", plan.Policy.Target)
+			}
+			if test.name == "repo.file.copy" && (plan.Policy.Attrs["source"] != "dataset/source/data" ||
+				plan.Policy.Attrs["source_ref"] != "main" || plan.Policy.Attrs["source_path"] != "src.txt") {
+				t.Fatalf("copy policy attrs = %#v", plan.Policy.Attrs)
+			}
 			outcome, err := adapter.Execute(context.Background(), plan)
 			if err != nil || !outcome.Proven || len(client.commits) != 1 {
 				t.Fatalf("Execute() = %#v, %v; commits=%d", outcome, err, len(client.commits))

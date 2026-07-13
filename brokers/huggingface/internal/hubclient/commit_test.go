@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCommitClientUsesPinnedTypedRoutes(t *testing.T) {
@@ -73,6 +74,19 @@ func TestCommitClientRejectsInvalidPlansAndUntrustedRedirects(t *testing.T) {
 	client, _ := New(server.URL, "token", WithHTTPTransport(server.Client().Transport))
 	if _, err := client.ReadRepoFile(context.Background(), ref, "main", "file"); err == nil {
 		t.Fatal("untrusted content redirect accepted")
+	}
+}
+
+func TestReadRepoFileAppliesClientTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	client, _ := New(server.URL, "token", WithHTTPTransport(server.Client().Transport), WithTimeout(20*time.Millisecond))
+	started := time.Now()
+	_, err := client.ReadRepoFile(context.Background(), RepoRef{Type: RepoTypeModel, Owner: "acme", Name: "demo"}, "main", "file")
+	if err == nil || time.Since(started) > time.Second {
+		t.Fatalf("ReadRepoFile timeout error = %v after %s", err, time.Since(started))
 	}
 }
 

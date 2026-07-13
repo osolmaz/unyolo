@@ -117,14 +117,8 @@ type callSpec struct {
 }
 
 func (c *Client) call(ctx context.Context, spec callSpec) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-	}
+	ctx, cancel := c.callContext(ctx)
+	defer cancel()
 	request, err := c.newRequest(ctx, spec)
 	if err != nil {
 		return err
@@ -148,6 +142,16 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 		return statusError(response.StatusCode, response.Header)
 	}
 	return classifyDecodedResponse(spec.method, response.StatusCode, decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode))
+}
+
+func (c *Client) callContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, c.timeout)
 }
 
 func classifyDecodedResponse(method string, status int, err error) error {

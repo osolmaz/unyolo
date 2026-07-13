@@ -22,9 +22,11 @@ import (
 )
 
 const (
-	SchemaV1       = "hf-broker.io/plan/v1"
-	MetadataSchema = "hf_plan_schema"
-	MetadataDigest = "hf_plan_digest"
+	SchemaV1        = "hf-broker.io/plan/v1"
+	MetadataSchema  = "hf_plan_schema"
+	MetadataDigest  = "hf_plan_digest"
+	MetadataTitle   = "hf_plan_title"
+	MetadataSummary = "hf_plan_summary"
 
 	maxTargetBytes        = 16 * 1024
 	maxArgumentsBytes     = 1024 * 1024
@@ -61,6 +63,8 @@ type Authorization struct {
 	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted,omitempty"`
 	Target                    GrantTarget         `json:"target"`
 	Attributes                map[string][]string `json:"attributes,omitempty"`
+	PolicyEffect              string              `json:"policy_effect,omitempty"`
+	PolicyRuleIDs             []string            `json:"policy_rule_ids,omitempty"`
 }
 
 type GrantTarget struct {
@@ -197,12 +201,24 @@ func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (gra
 	if s == nil || request == nil {
 		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
 	}
-	prepared, err := Prepare(FromRequest(*request, createdAt))
+	plan := FromRequest(*request, createdAt)
+	prepared, err := Prepare(plan)
 	if err != nil {
 		return grants.ImmutablePlan{}, err
 	}
 	BindPrepared(request, prepared)
+	BindPresentation(request, plan.Presentation)
 	return prepared, nil
+}
+
+// BindPresentation copies the bounded, redacted plan projection into grant
+// metadata consumed by transports that intentionally cannot read plan bodies.
+func BindPresentation(request *grants.Request, presentation agentv1.Presentation) {
+	if request.Metadata == nil {
+		request.Metadata = map[string]string{}
+	}
+	request.Metadata[MetadataTitle] = truncateUTF8(strings.TrimSpace(presentation.Title), 160)
+	request.Metadata[MetadataSummary] = truncateUTF8(strings.TrimSpace(presentation.Summary), 500)
 }
 
 // BindPrepared links a canonical immutable plan to one grant request.

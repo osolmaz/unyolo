@@ -72,6 +72,13 @@ func TestBucketAdaptersExecuteTypedOperations(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertPlanReconstruction(t, adapter, plan)
+			if test.name == "bucket.move" {
+				if plan.Policy.Attrs["destination"] != "acme/renamed" {
+					t.Fatalf("move policy attrs = %#v", plan.Policy.Attrs)
+				}
+			} else if len(plan.Policy.Target.Keys) != 1 {
+				t.Fatalf("bucket policy target = %#v", plan.Policy.Target)
+			}
 			outcome, err := adapter.Execute(context.Background(), plan)
 			if err != nil || !outcome.Proven {
 				t.Fatalf("Execute() = %#v, %v", outcome, err)

@@ -205,7 +205,7 @@ func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) 
 	if err != nil {
 		return Outcome{}, err
 	}
-	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
+	return Outcome{Proven: true, Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
 //nolint:cyclop // Space reconciliation is explicit and tracked by the exact HF CRAP baseline.
@@ -218,8 +218,9 @@ func (a *spaceAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error
 	proven := false
 	switch a.descriptor.Name {
 	case "space.restart":
-		runtime, readErr := a.client.SpaceRuntime(ctx, space)
-		err, proven = readErr, readErr == nil && runtime.Stage != "PAUSED"
+		// The runtime response to RestartSpace proves acceptance. A later read
+		// cannot distinguish this restart from the pre-existing running state.
+		return Outcome{Proven: false}, nil
 	case "space.pause":
 		runtime, readErr := a.client.SpaceRuntime(ctx, space)
 		err, proven = readErr, readErr == nil && runtime.Stage == "PAUSED"

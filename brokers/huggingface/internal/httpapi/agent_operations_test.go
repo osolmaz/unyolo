@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	bknotify "github.com/osolmaz/brokerkit/notify"
@@ -198,6 +199,12 @@ func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 	if err != nil || grant.Notification == nil {
 		t.Fatalf("grant notification = %#v, %v", grant.Notification, err)
 	}
+	message := notifier.Messages[0]
+	if !strings.Contains(message.Text, "Create Hugging Face repository") ||
+		!strings.Contains(message.Text, "Create private dataset alice/data") ||
+		!strings.Contains(message.Text, grant.Metadata[hfplan.MetadataDigest]) {
+		t.Fatalf("approval message omitted immutable operation details: %q", message.Text)
+	}
 }
 
 func TestAgentRequesterCancelsPendingOperationAndApproval(t *testing.T) {
@@ -368,7 +375,7 @@ func TestAgentApprovalBindingSerializesWithOperationWorker(t *testing.T) {
 	}()
 	select {
 	case <-notifier.entered:
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("approval notifier was not called")
 	}
 

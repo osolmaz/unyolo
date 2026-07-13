@@ -10,6 +10,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	bknotify "github.com/osolmaz/brokerkit/notify"
@@ -117,6 +118,9 @@ func grantApprovalMessage(grant grants.Grant, decisionToken string) bknotify.App
 		RequestedMinutes: requestedMinutes,
 		MaxUses:          grant.MaxUses,
 		PendingExpiresAt: grant.PendingExpiresAt,
+		PlanTitle:        grant.Metadata[hfplan.MetadataTitle],
+		PlanSummary:      grant.Metadata[hfplan.MetadataSummary],
+		PlanDigest:       grant.Metadata[hfplan.MetadataDigest],
 	}
 	return bknotify.ApprovalMessage{
 		GrantID:          grant.ID,

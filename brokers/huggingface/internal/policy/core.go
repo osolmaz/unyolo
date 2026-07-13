@@ -270,7 +270,8 @@ func operationUsesRefs(operation Operation) bool {
 }
 
 func bucketOperationMutatesObjects(operation Operation) bool {
-	return operation == OpBucketObjectWrite || operation == OpBucketObjectDel
+	return operation == OpBucketObjectWrite || operation == OpBucketObjectDel ||
+		operation == "bucket.batch.apply" || operation == "bucket.sync.apply" || operation == "bucket.object.delete"
 }
 
 func hfRegistry() corepolicy.Registry {
@@ -299,7 +300,7 @@ func hfRegistry() corepolicy.Registry {
 		}
 		spec := corepolicy.OperationSpec{
 			TargetKinds: []string{kind},
-			Attrs:       []string{"destination", "factory_reboot", "gating", "hardware", "key", "max_bytes", "private", "ref_change", "sdk", "sleep_time_seconds", "visibility"},
+			Attrs:       []string{"destination", "factory_reboot", "gating", "hardware", "key", "max_bytes", "private", "ref_change", "sdk", "sleep_time_seconds", "source", "source_path", "source_ref", "visibility"},
 			Grantable:   info.mode != GrantModeNone,
 		}
 		if spec.Grantable {
@@ -327,6 +328,9 @@ func hfRegistry() corepolicy.Registry {
 			"hardware":           {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
 			"key":                {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
 			"sleep_time_seconds": {Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true},
+			"source":             {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"source_path":        {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"source_ref":         {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
 		},
 	}
 }
@@ -442,7 +446,7 @@ func canonicalCoreAttr(key string, value any) string {
 			return "invalid"
 		}
 		return strconv.FormatInt(number, 10)
-	case "destination", "factory_reboot", "gating", "hardware", "key", "private", "ref_change", "sdk", "visibility":
+	case "destination", "factory_reboot", "gating", "hardware", "key", "private", "ref_change", "sdk", "source", "source_path", "source_ref", "visibility":
 		text, _ := value.(string)
 		return text
 	default:

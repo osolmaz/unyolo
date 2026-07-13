@@ -114,7 +114,7 @@ func (a *sandboxAdapter) executeSandboxPoolDelete(ctx context.Context, target sa
 	}
 	for _, host := range hosts {
 		if err := a.client.CancelSandboxJob(ctx, host.Ref); err != nil {
-			return Outcome{}, err
+			return Outcome{}, &PossiblePartialError{Err: err}
 		}
 	}
 	result, _ := canonical(map[string]any{"canceled_host_ids": sandboxStateIDs(hosts), "pool": target.Name})
@@ -225,7 +225,11 @@ func (a *sandboxAdapter) createSandboxHosts(ctx context.Context, config hubclien
 	for range count {
 		state, err := a.client.CreateSandboxPoolHost(ctx, config)
 		if err != nil {
-			return nil, fmt.Errorf("create sandbox pool host: %w", err)
+			wrapped := fmt.Errorf("create sandbox pool host: %w", err)
+			if len(created) > 0 {
+				return nil, &PossiblePartialError{Err: wrapped}
+			}
+			return nil, wrapped
 		}
 		created = append(created, state)
 	}

@@ -29,9 +29,15 @@ const (
 	ModeWindow    = "window"
 	ModeExecution = "execution"
 
-	metadataMode = "hf_grant_mode"
-	targetName   = "name"
-	targetRef    = "ref"
+	metadataMode     = "hf_grant_mode"
+	targetKind       = "kind"
+	targetType       = "type"
+	targetOwner      = "owner"
+	targetName       = "name"
+	targetRefs       = "refs"
+	targetPaths      = "paths"
+	targetKeys       = "keys"
+	targetVisibility = "visibility"
 )
 
 // Input contains the provider fields accepted by HF Broker's request boundary.
@@ -42,6 +48,7 @@ type Input struct {
 	Mode              string
 	Target            string
 	Ref               string
+	PolicyTarget      *hfpolicy.Target
 	Attrs             map[string]any
 	Reason            string
 	RequestedDuration time.Duration
@@ -122,9 +129,9 @@ func CanonicalRequest(input Input) (grants.Request, error) {
 	if err != nil {
 		return grants.Request{}, err
 	}
-	fields := map[string][]string{targetName: {input.Target}}
-	if input.Ref != "" {
-		fields[targetRef] = []string{input.Ref}
+	fields, err := canonicalTargetFields(input)
+	if err != nil {
+		return grants.Request{}, err
 	}
 	return grants.Request{
 		Client: input.Client, ClientRequestID: clientRequestID, Operation: input.Operation,
@@ -154,7 +161,36 @@ func normalizeIdentity(input Input) (string, string, error) {
 }
 
 func validInputIdentity(input Input) bool {
-	return input.Client != "" && hfpolicy.IsOperation(input.Operation) && input.Target != ""
+	return input.Client != "" && hfpolicy.IsOperation(input.Operation) && (input.PolicyTarget != nil || input.Target != "")
+}
+
+func canonicalTargetFields(input Input) (map[string][]string, error) {
+	if input.PolicyTarget == nil {
+		fields := map[string][]string{targetName: {input.Target}}
+		if input.Ref != "" {
+			fields[targetRefs] = []string{input.Ref}
+		}
+		return fields, nil
+	}
+	target := *input.PolicyTarget
+	if err := hfpolicy.ValidateRequest(hfpolicy.Request{Operation: hfpolicy.Operation(input.Operation), Target: target, Attrs: input.Attrs}); err != nil {
+		return nil, err
+	}
+	fields := map[string][]string{targetKind: {string(target.Kind)}, targetOwner: {target.Owner}, targetName: {target.Name}}
+	if target.Type != "" {
+		fields[targetType] = []string{string(target.Type)}
+	}
+	copyTargetField(fields, targetRefs, target.Refs)
+	copyTargetField(fields, targetPaths, target.Paths)
+	copyTargetField(fields, targetKeys, target.Keys)
+	copyTargetField(fields, targetVisibility, target.Visibility)
+	return fields, nil
+}
+
+func copyTargetField(fields map[string][]string, name string, values []string) {
+	if len(values) > 0 {
+		fields[name] = append([]string(nil), values...)
+	}
 }
 
 func normalizeGrant(input Input) (string, time.Duration, usebudget.Limit, error) {
@@ -274,11 +310,48 @@ func normalizeAttrNumber(value any) any {
 	return integer
 }
 
-// Target returns the canonical exact HF resource name.
-func Target(grant grants.Grant) string { return bkpolicy.FirstValue(grant.Target.Fields[targetName]) }
+// Target returns the canonical exact HF resource name used in logs and Git
+// transport matching.
+func Target(grant grants.Grant) string {
+	fields := grant.Target.Fields
+	if kind := bkpolicy.FirstValue(fields[targetKind]); kind != "" {
+		owner, name := bkpolicy.FirstValue(fields[targetOwner]), bkpolicy.FirstValue(fields[targetName])
+		if kind == string(hfpolicy.KindRepo) {
+			return bkpolicy.FirstValue(fields[targetType]) + "/" + owner + "/" + name
+		}
+		return kind + "/" + owner + "/" + name
+	}
+	return bkpolicy.FirstValue(fields[targetName])
+}
 
 // Ref returns the optional exact Git ref.
-func Ref(grant grants.Grant) string { return bkpolicy.FirstValue(grant.Target.Fields[targetRef]) }
+func Ref(grant grants.Grant) string { return bkpolicy.FirstValue(grant.Target.Fields[targetRefs]) }
+
+// PolicyTarget reconstructs the exact provider target persisted in a grant.
+func PolicyTarget(grant grants.Grant) (hfpolicy.Target, error) {
+	fields := grant.Target.Fields
+	kind := hfpolicy.TargetKind(bkpolicy.FirstValue(fields[targetKind]))
+	if kind == "" {
+		return legacyPolicyTarget(grant)
+	}
+	target := hfpolicy.Target{Kind: kind, Type: hfpolicy.RepoType(bkpolicy.FirstValue(fields[targetType])),
+		Owner: bkpolicy.FirstValue(fields[targetOwner]), Name: bkpolicy.FirstValue(fields[targetName]),
+		Refs: append([]string(nil), fields[targetRefs]...), Paths: append([]string(nil), fields[targetPaths]...),
+		Keys: append([]string(nil), fields[targetKeys]...), Visibility: append([]string(nil), fields[targetVisibility]...)}
+	if err := hfpolicy.ValidateRequest(hfpolicy.Request{Operation: hfpolicy.Operation(grant.Operation), Target: target}); err != nil {
+		return hfpolicy.Target{}, fmt.Errorf("stored grant target is invalid: %w", err)
+	}
+	return target, nil
+}
+
+func legacyPolicyTarget(grant grants.Grant) (hfpolicy.Target, error) {
+	parts := strings.Split(Target(grant), "/")
+	if len(parts) != 3 {
+		return hfpolicy.Target{}, errors.New("stored grant target is invalid")
+	}
+	return hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(parts[0]), Owner: parts[1], Name: parts[2],
+		Refs: append([]string(nil), grant.Target.Fields[targetRefs]...)}, nil
+}
 
 // Mode returns the provider grant mode.
 func Mode(grant grants.Grant) string { return grant.Metadata[metadataMode] }

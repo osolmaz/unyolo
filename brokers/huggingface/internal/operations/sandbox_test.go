@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -220,6 +221,21 @@ func TestSandboxPoolWarmNoOpReconciliationVerifiesCapturedState(t *testing.T) {
 	}
 }
 
+func TestSandboxPoolMultiCallFailuresReportPossiblePartialApplication(t *testing.T) {
+	fake := &sandboxFake{failCreateAt: 2}
+	adapter := &sandboxAdapter{client: fake}
+	_, err := adapter.createSandboxHosts(t.Context(), hubclient.SandboxPoolSpec{}, 2)
+	if err == nil || !IsPossiblePartial(err) {
+		t.Fatalf("create error = %v", err)
+	}
+	fake = &sandboxFake{pool: []hubclient.SandboxState{runningSandboxState(), runningSandboxState()}, failCancelAt: 2}
+	adapter.client = fake
+	_, err = adapter.executeSandboxPoolDelete(t.Context(), sandboxTarget{Namespace: "acme", Name: "workers"}, sandboxPreconditions{PoolDigest: sandboxStatesDigest(fake.pool)})
+	if err == nil || !IsPossiblePartial(err) {
+		t.Fatalf("delete error = %v", err)
+	}
+}
+
 type sandboxFake struct {
 	identity           string
 	state              hubclient.SandboxState
@@ -228,6 +244,10 @@ type sandboxFake struct {
 	file               hubclient.SandboxFileInfo
 	processes          []hubclient.SandboxProcess
 	createdByOperation []hubclient.SandboxState
+	createCalls        int
+	failCreateAt       int
+	cancelCalls        int
+	failCancelAt       int
 }
 
 func (f *sandboxFake) WhoAmI(context.Context) (hubclient.Identity, error) {
@@ -260,6 +280,10 @@ func (f *sandboxFake) CreateSandbox(_ context.Context, spec hubclient.SandboxCre
 }
 
 func (f *sandboxFake) CreateSandboxPoolHost(context.Context, hubclient.SandboxPoolSpec) (hubclient.SandboxState, error) {
+	f.createCalls++
+	if f.createCalls == f.failCreateAt {
+		return hubclient.SandboxState{}, errors.New("create failed")
+	}
 	state := runningSandboxState()
 	f.createdByOperation = append(f.createdByOperation, state)
 	return state, nil
@@ -275,6 +299,10 @@ func (f *sandboxFake) DeleteSandbox(context.Context, hubclient.SandboxRef) error
 }
 
 func (f *sandboxFake) CancelSandboxJob(context.Context, hubclient.SandboxRef) error {
+	f.cancelCalls++
+	if f.cancelCalls == f.failCancelAt {
+		return errors.New("cancel failed")
+	}
 	f.pool = nil
 	return nil
 }

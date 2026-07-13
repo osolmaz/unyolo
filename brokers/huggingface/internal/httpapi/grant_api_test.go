@@ -330,9 +330,9 @@ func TestGrantRequestErrors(t *testing.T) {
 		{name: "bad operation", method: http.MethodPost, body: apiGrantRequestJSON(policy.Operation("git.upload_pack"), "refs/heads/main", "recover", "", 0, 0), want: http.StatusBadRequest},
 		{name: "transport operation", method: http.MethodPost, body: apiGrantRequestJSON(policy.Operation("git.receive-pack"), "refs/heads/main", "recover", "", 0, 0), want: http.StatusBadRequest},
 		{name: "unknown attrs", method: http.MethodPost, body: `{"operation":"git.push.force","target":{"kind":"repo","type":"dataset","owner":"acme","name":"repo","refs":["refs/heads/main"]},"attrs":{"unknown":"value"},"reason":"recover","client_request_id":"unknown-attrs"}`, want: http.StatusBadRequest},
-		{name: "target paths", method: http.MethodPost, body: `{"operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"acme","name":"repo","paths":["README.md"]},"reason":"read one file","client_request_id":"target-paths"}`, want: http.StatusBadRequest},
+		{name: "target paths", method: http.MethodPost, body: `{"operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"acme","name":"repo","paths":["README.md"]},"reason":"read one file","client_request_id":"target-paths"}`, want: http.StatusForbidden},
 		{name: "wildcard target", method: http.MethodPost, body: `{"operation":"git.push.force","target":{"kind":"repo","type":"dataset","owner":"acme","name":"*","refs":["refs/heads/main"]},"reason":"recover","client_request_id":"wildcard-target"}`, want: http.StatusBadRequest},
-		{name: "bucket target", method: http.MethodPost, body: `{"operation":"bucket.object.read","target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/one"]},"reason":"read one object","client_request_id":"bucket-target"}`, want: http.StatusBadRequest},
+		{name: "bucket target", method: http.MethodPost, body: `{"operation":"bucket.object.read","target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/one"]},"reason":"read one object","client_request_id":"bucket-target"}`, want: http.StatusForbidden},
 		{name: "unconfigured capability", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitRefDelete, "refs/heads/main", "recover", "", 0, 0), want: http.StatusForbidden},
 		{name: "bad ref", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitPushForce, "main", "recover", "", 0, 0), want: http.StatusBadRequest},
 		{name: "out of scope", method: http.MethodPost, body: apiGrantRequestForRepoJSON(policy.OpGitPushForce, "other", "refs/heads/main", "recover", "", 0, 0), want: http.StatusForbidden},
@@ -407,9 +407,9 @@ func TestValidateGrantTargetForOperation(t *testing.T) {
 		{name: "force with ref", operation: policy.OpGitPushForce, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"}}},
 		{name: "fetch without ref", operation: policy.OpGitFetch, target: repo},
 		{name: "force missing ref", operation: policy.OpGitPushForce, target: repo, wantErr: true},
-		{name: "fetch with ref", operation: policy.OpGitFetch, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"}}, wantErr: true},
-		{name: "path constraint", operation: policy.OpRepoContentsRead, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo", Paths: []string{"README.md"}}, wantErr: true},
-		{name: "bucket target", operation: policy.OpBucketObjectRead, target: policy.Target{Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/one"}}, wantErr: true},
+		{name: "fetch with ref", operation: policy.OpGitFetch, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"}}},
+		{name: "path constraint", operation: policy.OpRepoContentsRead, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo", Paths: []string{"README.md"}}},
+		{name: "bucket target", operation: policy.OpBucketObjectRead, target: policy.Target{Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/one"}}},
 		{name: "bad repo identity", operation: policy.OpGitFetch, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeAny, Owner: "acme", Name: "repo"}, wantErr: true},
 		{name: "wildcard owner", operation: policy.OpGitFetch, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "*", Name: "repo"}, wantErr: true},
 		{name: "wildcard name", operation: policy.OpGitFetch, target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "*"}, wantErr: true},
@@ -421,6 +421,40 @@ func TestValidateGrantTargetForOperation(t *testing.T) {
 				t.Fatalf("validateGrantTargetForOperation() error = %v, wantErr %v", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestBucketWindowGrantPersistsExactKeyScope(t *testing.T) {
+	policyJSON, _ := json.Marshal(map[string]any{"rules": []any{map[string]any{
+		"id": "read-result", "effect": "request", "clients": []string{"agent"}, "operations": []string{"bucket.object.read"},
+		"targets":      []any{map[string]any{"kind": "bucket", "owner": "acme", "name": "artifacts", "keys": []string{"runs/**"}}},
+		"grant_policy": map[string]any{"mode": "window", "default_minutes": 5, "max_minutes": 5, "request_ttl_minutes": 5, "default_max_uses": 1, "max_uses": 2},
+	}}})
+	scp, err := policy.Parse(policyJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+		StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
+		Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: &captureGrantNotifier{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	response, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(
+		`{"operation":"bucket.object.read","target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/one.json"]},"reason":"inspect result","client_request_id":"bucket-read"}`))
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("grant request = %d %s", response.StatusCode, body)
+	}
+	stored := decodeAPIGrantResponse(t, body)
+	grant, err := handler.grants.Get(stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := targetFromGrant(grant)
+	if target.Kind != policy.KindBucket || target.Owner != "acme" || target.Name != "artifacts" || len(target.Keys) != 1 || target.Keys[0] != "runs/one.json" {
+		t.Fatalf("stored target = %#v", target)
 	}
 }
 

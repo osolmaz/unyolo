@@ -100,6 +100,8 @@ func (c *Client) ReadRepoFile(ctx context.Context, ref RepoRef, revision, path s
 	if !ValidGitRefComponent(revision) || !ValidRepoPath(path, false) {
 		return nil, errors.New("hubclient: repository file identity is invalid")
 	}
+	ctx, cancel := c.callContext(ctx)
+	defer cancel()
 	prefix := ""
 	if ref.Type != RepoTypeModel {
 		prefix = "/" + string(ref.Type) + "s"

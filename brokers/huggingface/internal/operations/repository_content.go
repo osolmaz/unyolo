@@ -352,18 +352,50 @@ func (a *repositoryContentAdapter) checkPreconditions(ctx context.Context, targe
 }
 
 func (a *repositoryContentAdapter) presentationAndPolicy(target repositoryContentTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
-	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(target.Type), Owner: target.Owner, Name: target.Name}, Attrs: map[string]any{"revision": target.Revision}}
+	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: hfpolicy.Target{
+		Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(target.Type), Owner: target.Owner, Name: target.Name,
+		Refs: []string{target.Revision}, Paths: repositoryContentPaths(a.descriptor.Name, raw),
+	}, Attrs: map[string]any{}}
 	summary := fmt.Sprintf("%s on %s %s/%s at %s", a.descriptor.Name, target.Type, target.Owner, target.Name, target.Revision)
 	if a.descriptor.Name == "repo.file.copy" {
 		var arguments fileCopyArguments
 		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
-			request.Attrs["source_owner"] = arguments.SourceOwner
-			request.Attrs["source_name"] = arguments.SourceName
+			request.Attrs["source"] = arguments.SourceType + "/" + arguments.SourceOwner + "/" + arguments.SourceName
+			request.Attrs["source_ref"] = arguments.SourceRevision
 			request.Attrs["source_path"] = arguments.SourcePath
-			request.Attrs["path"] = arguments.Path
 		}
 	}
 	return agentv1.Presentation{Title: a.descriptor.Name, Summary: summary}, request
+}
+
+func repositoryContentPaths(operation string, raw json.RawMessage) []string {
+	switch operation {
+	case "repo.commit.create", "space.hot_reload.apply":
+		var arguments commitCreateArguments
+		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
+			paths := make([]string, len(arguments.Operations))
+			for index := range arguments.Operations {
+				paths[index] = arguments.Operations[index].Path
+			}
+			return paths
+		}
+	case "repo.file.upload":
+		var arguments fileUploadArguments
+		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
+			return []string{arguments.Path}
+		}
+	case "repo.file.delete":
+		var arguments fileDeleteArguments
+		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
+			return []string{arguments.Path}
+		}
+	case "repo.file.copy":
+		var arguments fileCopyArguments
+		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
+			return []string{arguments.Path}
+		}
+	}
+	return nil
 }
 
 func (a *repositoryContentAdapter) decodeTarget(raw json.RawMessage) (repositoryContentTarget, error) {

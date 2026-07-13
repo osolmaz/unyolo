@@ -113,6 +113,10 @@ func (a *refsAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
 			return Plan{}, errors.New("operation target already exists")
 		}
 		preconditions.ExpectedAbsent = true
+		preconditions.ExpectedCommit, err = a.resolveCreateCommit(refs, input.Arguments)
+		if err != nil {
+			return Plan{}, err
+		}
 	} else {
 		if !found {
 			return Plan{}, &hubclient.Error{Code: hubclient.CodeNotFound}
@@ -154,15 +158,13 @@ func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	}
 	switch a.descriptor.Name {
 	case "repo.branch.create":
-		var arguments branchCreateArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.CreateBranch(ctx, target.repoRef(), target.Ref, arguments.StartingPoint)
+		err = a.client.CreateBranch(ctx, target.repoRef(), target.Ref, preconditions.ExpectedCommit)
 	case "repo.branch.delete":
 		err = a.client.DeleteBranch(ctx, target.repoRef(), target.Ref)
 	case "repo.tag.create":
 		var arguments tagCreateArguments
 		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.CreateTag(ctx, target.repoRef(), target.Ref, arguments.Message, arguments.Revision)
+		err = a.client.CreateTag(ctx, target.repoRef(), target.Ref, arguments.Message, preconditions.ExpectedCommit)
 	case "repo.tag.delete":
 		err = a.client.DeleteTag(ctx, target.repoRef(), target.Ref)
 	}
@@ -173,7 +175,7 @@ func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 }
 
 func (a *refsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
-	target, _, err := a.decodePlan(plan)
+	target, preconditions, err := a.decodePlan(plan)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -181,9 +183,9 @@ func (a *refsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error)
 	if err != nil {
 		return Outcome{}, err
 	}
-	_, found := a.find(refs, target.Ref)
+	value, found := a.find(refs, target.Ref)
 	if strings.HasSuffix(a.descriptor.Name, ".create") {
-		return Outcome{Proven: found, Result: json.RawMessage(`{"updated":true}`)}, nil
+		return Outcome{Proven: found && value.TargetCommit == preconditions.ExpectedCommit, Result: json.RawMessage(`{"updated":true}`)}, nil
 	}
 	return Outcome{Proven: !found, Result: json.RawMessage(`{"updated":true}`)}, nil
 }
@@ -192,7 +194,32 @@ func (a *refsAdapter) decodePlan(plan Plan) (refTarget, refsPreconditions, error
 	return decodePlanState(plan, decodeRefTarget, maxTargetBytes, validRefsPreconditions, "operation plan preconditions are invalid")
 }
 
-func validRefsPreconditions(value refsPreconditions) bool { return value.ObservedDigest != "" }
+func validRefsPreconditions(value refsPreconditions) bool {
+	return value.ObservedDigest != "" && value.ExpectedCommit != ""
+}
+
+func (a *refsAdapter) resolveCreateCommit(refs hubclient.Refs, raw json.RawMessage) (string, error) {
+	revision := ""
+	if a.descriptor.Name == "repo.branch.create" {
+		var arguments branchCreateArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		revision = arguments.StartingPoint
+	} else {
+		var arguments tagCreateArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		revision = arguments.Revision
+	}
+	if validCommitParent(revision) {
+		return revision, nil
+	}
+	if value, found := refs.Branch(revision); found && validCommitParent(value.TargetCommit) {
+		return value.TargetCommit, nil
+	}
+	if value, found := refs.Tag(revision); found && validCommitParent(value.TargetCommit) {
+		return value.TargetCommit, nil
+	}
+	return "", errors.New("operation starting revision could not be resolved to an exact commit")
+}
 
 func (a *refsAdapter) find(refs hubclient.Refs, name string) (hubclient.GitRef, bool) {
 	if strings.Contains(a.descriptor.Name, ".branch.") {

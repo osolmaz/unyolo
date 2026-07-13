@@ -269,7 +269,9 @@ func (a *repositoryAdapter) presentationAndPolicy(target repositoryTarget, raw j
 			return agentv1.Presentation{}, hfpolicy.Request{}, err
 		}
 		request.Attrs["visibility"] = arguments.Visibility
-		request.Attrs["sdk"] = arguments.SDK
+		if arguments.SDK != "" {
+			request.Attrs["sdk"] = arguments.SDK
+		}
 		return agentv1.Presentation{Title: "Create Hugging Face repository", Summary: fmt.Sprintf("Create %s %s %s/%s", arguments.Visibility, target.Type, target.Owner, target.Name)}, request, nil
 	case "repo.delete":
 		return agentv1.Presentation{Title: "Delete Hugging Face repository", Summary: fmt.Sprintf("Permanently delete %s %s/%s", target.Type, target.Owner, target.Name)}, request, nil

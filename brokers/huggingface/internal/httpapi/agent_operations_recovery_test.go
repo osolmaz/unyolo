@@ -241,7 +241,7 @@ func seedExecutingRepoCreate(t *testing.T, handler *Server, id string) agentv1.O
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := prepareAdapterPlan(plan, request, adapter.Present(plan), time.Now().UTC())
+	prepared, err := prepareAdapterPlan(plan, request, adapter.Present(plan), "request", []string{"request-rule"}, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func seedPendingRepoCreateGrant(t *testing.T, handler *Server, id, name string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := prepareAdapterPlan(plan, request, adapter.Present(plan), time.Now().UTC())
+	prepared, err := prepareAdapterPlan(plan, request, adapter.Present(plan), "request", []string{"request-rule"}, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
 	}

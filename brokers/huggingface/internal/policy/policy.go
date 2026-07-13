@@ -254,10 +254,19 @@ var operations = catalogOperations()
 var operationFamilyPrefixes = catalogOperationFamilies()
 
 var refScopedOperations = map[Operation]bool{
-	OpGitPushAppend: true,
-	OpGitPushForce:  true,
-	OpGitRefDelete:  true,
-	OpGitTagUpdate:  true,
+	OpGitPushAppend:          true,
+	OpGitPushForce:           true,
+	OpGitRefDelete:           true,
+	OpGitTagUpdate:           true,
+	"repo.branch.create":     true,
+	"repo.branch.delete":     true,
+	"repo.commit.create":     true,
+	"repo.file.copy":         true,
+	"repo.file.delete":       true,
+	"repo.file.upload":       true,
+	"repo.tag.create":        true,
+	"repo.tag.delete":        true,
+	"space.hot_reload.apply": true,
 }
 
 var validRepoVisibilities = map[string]bool{
@@ -278,6 +287,9 @@ var knownAttrs = map[string]bool{
 	"hardware":           true,
 	"key":                true,
 	"sleep_time_seconds": true,
+	"source":             true,
+	"source_path":        true,
+	"source_ref":         true,
 }
 
 // KnownAttributeNames returns the closed request-attribute vocabulary used by
@@ -463,6 +475,39 @@ func operationTargetKind(op Operation) TargetKind {
 func IsOperation(value string) bool {
 	_, ok := operations[Operation(value)]
 	return ok
+}
+
+// ValidateRequest checks one exact provider request against the closed
+// operation, target, and attribute vocabulary without making a policy decision.
+func ValidateRequest(req Request) error {
+	info, ok := operations[req.Operation]
+	if !ok {
+		return errors.New("invalid operation")
+	}
+	if req.Target.Kind != info.targetKind {
+		return fmt.Errorf("operation %s requires %s target", req.Operation, info.targetKind)
+	}
+	if err := validateRequestTarget(req.Target); err != nil {
+		return err
+	}
+	if _, err := AttrConstraintsFromValues(req.Attrs); err != nil {
+		return err
+	}
+	if err := validateExactTargetConstraints(req.Target); err != nil {
+		return err
+	}
+	return hfRegistry().ValidateRequest(AuthorizationRequest(req))
+}
+
+func validateExactTargetConstraints(target Target) error {
+	for _, values := range [][]string{target.Refs, target.Paths, target.Keys, target.Visibility} {
+		for _, value := range values {
+			if value == "" || len(value) > MaxGlobBytes || strings.ContainsAny(value, "\x00*?") {
+				return errors.New("target constraints must be exact bounded values")
+			}
+		}
+	}
+	return nil
 }
 
 // Operations returns the complete registered HF operation set.
@@ -988,6 +1033,21 @@ func validateAttrConstraint(key string, constraint AttrConstraint) error {
 			}
 		}
 		return nil
+	case "source":
+		if constraint.Number != nil || len(constraint.Values) == 0 {
+			return errors.New("must be a TYPE/OWNER/NAME glob")
+		}
+		for _, value := range constraint.Values {
+			if value != "*" && (strings.Count(value, "/") != 2 || len(value) > MaxGlobBytes) {
+				return errors.New("must be a TYPE/OWNER/NAME glob")
+			}
+		}
+		return nil
+	case "source_path", "source_ref":
+		if constraint.Number != nil || len(constraint.Values) == 0 {
+			return errors.New("must be one or more bounded values")
+		}
+		return nil
 	case "factory_reboot":
 		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
 	case "hardware", "key":
@@ -1305,8 +1365,7 @@ func validateRepoRequestTarget(target Target) error {
 func validRequestSegment(value string) bool {
 	return value != "" &&
 		value != ".." &&
-		!strings.Contains(value, "/") &&
-		!strings.Contains(value, "\x00")
+		!strings.ContainsAny(value, " \t\r\n/\x00*?")
 }
 
 func validConcreteRepoType(value RepoType) bool {

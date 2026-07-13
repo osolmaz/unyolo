@@ -4,13 +4,41 @@ package httpapi
 import (
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 func targetName(rt route) string {
 	return string(rt.repoType) + "/" + rt.owner + "/" + rt.name
+}
+
+func (s *Server) recordOperationOutcome(operation agentv1.Operation, plan operations.Plan, decision, reason string, upstreamStatus int) {
+	event := audit.Event{Client: operation.ClientID, Operation: operation.Operation, Target: operationPolicyTarget(plan.Policy),
+		Decision: decision, Reason: reason, UpstreamStatus: upstreamStatus, PlanDigest: operation.PlanDigest}
+	if operation.ApprovalID != "" {
+		event.GrantID = operation.ApprovalID
+		event.MatchedGrantRuleIDs = []string{operation.ApprovalID}
+		if grant, err := s.grants.Get(operation.ApprovalID); err == nil {
+			event.Approver = grant.DecidedBy
+		}
+	}
+	if planPolicyEffect(plan) == "allow" {
+		event.MatchedAllowRuleIDs = planPolicyRuleIDs(plan)
+	} else if planPolicyEffect(plan) == "request" {
+		event.MatchedRequestRuleIDs = planPolicyRuleIDs(plan)
+	}
+	s.recordAudit(event)
+}
+
+func planPolicyEffect(plan operations.Plan) string {
+	return plan.PolicyDecision.Effect
+}
+
+func planPolicyRuleIDs(plan operations.Plan) []string {
+	return append([]string(nil), plan.PolicyDecision.RuleIDs...)
 }
 
 func (s *Server) record(client, operation, target, decision, reason string, upstreamStatus int) {

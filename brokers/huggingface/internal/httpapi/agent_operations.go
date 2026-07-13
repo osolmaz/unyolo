@@ -174,7 +174,7 @@ func (s *Server) prepareStaticDirectOperation(adapter operations.Adapter, plan o
 	if !decision.Allowed || len(decision.MatchedAllowRuleIDs) == 0 {
 		return grants.ImmutablePlan{}, false, nil
 	}
-	prepared, err := s.prepareDirectOperationPlan(adapter, plan, request.Client, operationID, reason)
+	prepared, err := s.prepareDirectOperationPlan(adapter, plan, request.Client, operationID, reason, decision)
 	return prepared, true, err
 }
 
@@ -204,7 +204,7 @@ func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operat
 	authorizationRequest := policy.AuthorizationRequest(adapter.Authorize(plan))
 	var prepared grants.ImmutablePlan
 	result, authorizationErr := s.authorization.RequestApproval(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
-		intent, immutable, err := s.prepareOperationIntent(adapter, plan, operation.ClientID, operation.ID, reason, decision.GrantPolicy)
+		intent, immutable, err := s.prepareOperationIntent(adapter, plan, operation.ClientID, operation.ID, reason, decision)
 		prepared = immutable
 		return intent, err
 	})
@@ -226,7 +226,8 @@ func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operat
 	return s.bindOperationApproval(ctx, bound, result.Request.Grant), nil
 }
 
-func (s *Server) prepareOperationIntent(adapter operations.Adapter, plan operations.Plan, client, operationID, reason string, bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, grants.ImmutablePlan, error) {
+func (s *Server) prepareOperationIntent(adapter operations.Adapter, plan operations.Plan, client, operationID, reason string, decision corepolicy.Decision) (bkauthorization.GrantIntent, grants.ImmutablePlan, error) {
+	bounds := decision.GrantPolicy
 	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeExecution {
 		return bkauthorization.GrantIntent{}, grants.ImmutablePlan{}, errors.New("operation requires execution approval")
 	}
@@ -235,42 +236,45 @@ func (s *Server) prepareOperationIntent(adapter operations.Adapter, plan operati
 	pending := min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, time.Duration(descriptor.RequestTTLSeconds)*time.Second)
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
 		Client: client, ClientRequestID: operationID, Operation: descriptor.Name, Mode: hfgrant.ModeExecution,
-		Target: operationPolicyTarget(plan.Policy), Attrs: plan.Policy.Attrs, Reason: reason,
+		PolicyTarget: &plan.Policy.Target, Attrs: plan.Policy.Attrs, Reason: reason,
 		RequestedDuration: duration, PendingTimeout: pending, MaxUses: 1, MaxUsesSpecified: true,
 	})
 	if err != nil {
 		return bkauthorization.GrantIntent{}, grants.ImmutablePlan{}, err
 	}
-	prepared, err := prepareAdapterPlan(plan, request, adapter.Present(plan), s.utcNow())
+	presentation := adapter.Present(plan)
+	prepared, err := prepareAdapterPlan(plan, request, presentation, string(decision.Effect), decision.MatchedRequestRuleIDs, s.utcNow())
 	if err != nil {
 		return bkauthorization.GrantIntent{}, grants.ImmutablePlan{}, err
 	}
 	hfplan.BindPrepared(&request, prepared)
+	hfplan.BindPresentation(&request, presentation)
 	return bkauthorization.GrantIntent{Mode: corepolicy.GrantModeExecution, Authorization: policy.AuthorizationRequest(plan.Policy), Request: request, Plan: prepared}, prepared, nil
 }
 
-func (s *Server) prepareDirectOperationPlan(adapter operations.Adapter, plan operations.Plan, client, operationID, reason string) (grants.ImmutablePlan, error) {
+func (s *Server) prepareDirectOperationPlan(adapter operations.Adapter, plan operations.Plan, client, operationID, reason string, decision corepolicy.Decision) (grants.ImmutablePlan, error) {
 	descriptor := adapter.Descriptor()
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
 		Client: client, ClientRequestID: operationID, Operation: descriptor.Name, Mode: hfgrant.ModeExecution,
-		Target: operationPolicyTarget(plan.Policy), Attrs: plan.Policy.Attrs, Reason: reason,
+		PolicyTarget: &plan.Policy.Target, Attrs: plan.Policy.Attrs, Reason: reason,
 		RequestedDuration: time.Duration(descriptor.ApprovalTTLSeconds) * time.Second,
 		PendingTimeout:    time.Duration(descriptor.RequestTTLSeconds) * time.Second, MaxUses: 1, MaxUsesSpecified: true,
 	})
 	if err != nil {
 		return grants.ImmutablePlan{}, err
 	}
-	return prepareAdapterPlan(plan, request, adapter.Present(plan), s.utcNow())
+	return prepareAdapterPlan(plan, request, adapter.Present(plan), string(decision.Effect), decision.MatchedAllowRuleIDs, s.utcNow())
 }
 
-func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, createdAt time.Time) (grants.ImmutablePlan, error) {
+func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {
 	expiresAt := createdAt.Add(request.PendingTimeout + request.Duration)
 	return hfplan.Prepare(hfplan.Plan{
 		APIVersion: hfplan.SchemaV1, Operation: provider.Operation, OperationRevision: provider.OperationRevision,
 		ClientID: request.Client, ClientRequestID: request.ClientRequestID, Target: provider.Target, Arguments: provider.Arguments,
 		Preconditions: provider.Preconditions, CredentialSelector: hfplan.CredentialSelector{Name: "primary"}, Presentation: presentation,
 		Authorization: hfplan.Authorization{Mode: hfgrant.ModeExecution, RequestedDurationSeconds: int64(request.Duration.Seconds()),
-			RequestedMaxUses: 1, Target: hfplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs},
+			RequestedMaxUses: 1, Target: hfplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,
+			PolicyEffect: policyEffect, PolicyRuleIDs: append([]string(nil), policyRuleIDs...)},
 		CreatedAt: createdAt, ExpiresAt: expiresAt,
 	})
 }
@@ -534,7 +538,7 @@ func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operati
 	}
 	if executionErr == nil && execution.Proven {
 		_, _ = s.operations.Succeed(operation.ID, execution.Result)
-		s.record(operation.ClientID, operation.Operation, operationPolicyTarget(plan.Policy), audit.DecisionAllowed, "", http.StatusOK)
+		s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, "", http.StatusOK)
 		return
 	}
 	if definitiveExecutionFailure(executionErr) {
@@ -547,7 +551,7 @@ func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operati
 			outcome.Result = execution.Result
 		}
 		_, _ = s.operations.Succeed(operation.ID, outcome.Result)
-		s.record(operation.ClientID, operation.Operation, operationPolicyTarget(plan.Policy), audit.DecisionAllowed, "", http.StatusOK)
+		s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, "", http.StatusOK)
 		return
 	}
 	s.failOperationExecution(operation, executionErr, reconcileErr)
@@ -565,6 +569,7 @@ func (s *Server) reconcileInterruptedOperation(ctx context.Context, operation ag
 			return
 		}
 		_, _ = s.operations.Succeed(operation.ID, outcome.Result)
+		s.recordOperationOutcome(operation, plan, audit.DecisionAllowed, "reconciled after restart", http.StatusOK)
 		return
 	}
 	s.failOperation(operation.ID, agentv1.StateFailed, "upstream_result_unknown", "Operation result could not be proven after restart")
@@ -572,6 +577,9 @@ func (s *Server) reconcileInterruptedOperation(ctx context.Context, operation ag
 
 func definitiveExecutionFailure(err error) bool {
 	if err == nil {
+		return false
+	}
+	if operations.IsPossiblePartial(err) {
 		return false
 	}
 	var upstream *hubclient.Error
@@ -621,7 +629,8 @@ func (s *Server) loadOperationPlan(operation agentv1.Operation) (operations.Adap
 		return nil, operations.Plan{}, errors.New("operation plan binding is invalid")
 	}
 	plan := operations.Plan{Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
-		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Presentation: envelope.Presentation}
+		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Presentation: envelope.Presentation,
+		PolicyDecision: operations.PolicyDecision{Effect: envelope.Authorization.PolicyEffect, RuleIDs: envelope.Authorization.PolicyRuleIDs}}
 	input, err := adapter.Decode(plan.Target, plan.Arguments)
 	if err != nil || !equalJSONObject(input.Target, plan.Target) || !equalJSONObject(input.Arguments, plan.Arguments) {
 		return nil, operations.Plan{}, errors.New("operation plan payload is invalid")

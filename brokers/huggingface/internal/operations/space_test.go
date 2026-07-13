@@ -48,12 +48,14 @@ func TestSpaceAdaptersExecuteAndReconcile(t *testing.T) {
 			if test.name == "space.variable.set" && strings.Contains(plan.Presentation.Summary, "production") {
 				t.Fatal("variable value leaked into presentation")
 			}
-			if _, err := adapter.Execute(context.Background(), plan); err != nil {
-				t.Fatal(err)
+			executed, err := adapter.Execute(context.Background(), plan)
+			if err != nil || !executed.Proven {
+				t.Fatalf("Execute() = %+v, %v", executed, err)
 			}
 			outcome, err := adapter.Reconcile(context.Background(), plan)
-			if err != nil || !outcome.Proven {
-				t.Fatalf("Reconcile() = %+v, %v", outcome, err)
+			wantProven := test.name != "space.restart"
+			if err != nil || outcome.Proven != wantProven {
+				t.Fatalf("Reconcile() = %+v, %v; want proven=%v", outcome, err, wantProven)
 			}
 		})
 	}
