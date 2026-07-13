@@ -68,7 +68,7 @@ A decision body uses optimistic concurrency:
 ```json
 {
   "expected_revision": 3,
-  "idempotency_key": "decision-019f4c",
+  "idempotency_key": "example-request",
   "constraints": {
     "duration_seconds": 300,
     "max_uses": 1
