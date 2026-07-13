@@ -70,13 +70,9 @@ func (s *Server) cancelGrantForClient(grant grants.Grant, client string) error {
 
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
 	ctx = s.agentLifecycleContext(ctx)
-	adapter, found := s.operationRegistry.Lookup(request.Operation)
-	if !found {
-		return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_not_registered", "Operation is not registered")
-	}
-	input, err := adapter.Decode(request.Target, request.Arguments)
+	adapter, input, err := s.decodeAgentOperation(request)
 	if err != nil {
-		return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
+		return agentv1.Operation{}, false, err
 	}
 	submissionLock := s.operationAuthorizationLock("submit:" + client + ":" + request.IdempotencyKey)
 	submissionLock.Lock()
@@ -84,30 +80,54 @@ func (s *Server) submitAgentOperation(ctx context.Context, client string, reques
 	if existing, found, err := s.replayedOperation(client, request, input); err != nil || found {
 		return existing, false, err
 	}
-	if bound, ok := adapter.(operations.ClientBoundAdapter); ok {
-		if err := bound.ValidateClient(input, client); err != nil {
-			return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
-		}
+	if err := validateOperationClient(adapter, input, client); err != nil {
+		return agentv1.Operation{}, false, err
 	}
 	resolved, err := adapter.Resolve(ctx, input)
 	if err != nil {
 		return agentv1.Operation{}, false, mapOperationSubmissionError(err)
 	}
 	resolved.Policy.Client = client
-	operationID, err := s.operations.NewID()
-	if err != nil {
-		return agentv1.Operation{}, false, err
-	}
-	operation, created, err := s.operations.Submit(agentops.Submit{
-		ID: operationID, Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey,
-		Operation: request.Operation, Target: resolved.Target, Arguments: resolved.Arguments, Reason: request.Reason,
-		Presentation: adapter.Present(resolved),
-	})
+	operation, created, err := s.createPendingAgentOperation(client, request, adapter.Present(resolved), resolved)
 	if err != nil || !created {
 		return operation, created, err
 	}
 	operation, err = s.authorizeAndSubmitOperation(ctx, adapter, resolved, operation, request.Reason)
 	return operation, true, err
+}
+
+func (s *Server) decodeAgentOperation(request agentv1.SubmitRequest) (operations.Adapter, operations.Input, error) {
+	adapter, found := s.operationRegistry.Lookup(request.Operation)
+	if !found {
+		return nil, operations.Input{}, operationAPIError(http.StatusBadRequest, "operation_not_registered", "Operation is not registered")
+	}
+	input, err := adapter.Decode(request.Target, request.Arguments)
+	if err != nil {
+		return nil, operations.Input{}, operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
+	}
+	return adapter, input, nil
+}
+
+func validateOperationClient(adapter operations.Adapter, input operations.Input, client string) error {
+	bound, ok := adapter.(operations.ClientBoundAdapter)
+	if !ok {
+		return nil
+	}
+	if err := bound.ValidateClient(input, client); err != nil {
+		return operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
+	}
+	return nil
+}
+
+func (s *Server) createPendingAgentOperation(client string, request agentv1.SubmitRequest, presentation agentv1.Presentation, plan operations.Plan) (agentv1.Operation, bool, error) {
+	operationID, err := s.operations.NewID()
+	if err != nil {
+		return agentv1.Operation{}, false, err
+	}
+	return s.operations.Submit(agentops.Submit{
+		ID: operationID, Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey,
+		Operation: request.Operation, Target: plan.Target, Arguments: plan.Arguments, Reason: request.Reason, Presentation: presentation,
+	})
 }
 
 func (s *Server) agentLifecycleContext(fallback context.Context) context.Context {
@@ -157,7 +177,7 @@ func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operat
 	if err != nil {
 		_ = s.abandonOperationApproval(result.Request.Grant.ID, operation.ClientID)
 		s.cleanupResolvedOperation(adapter, plan)
-		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind operation plan"), nil
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind operation plan"), nil //nolint:nilerr // The durable operation carries the terminal failure.
 	}
 	if direct {
 		return bound, nil
@@ -234,20 +254,21 @@ func (s *Server) bindOperationApproval(ctx context.Context, operation agentv1.Op
 			if errors.Is(err, errApprovalNotificationClaimed) || s.operatorConfigured {
 				return operation
 			}
-			if s.abandonOperationApproval(grant.ID, operation.ClientID) != nil {
-				return operation
-			}
-			return s.failOperation(operation.ID, agentv1.StateFailed, "approval_notification_failed", "Could not notify the operator")
+			return s.failUnnotifiedOperation(operation, grant, "approval_notification_failed", "Could not notify the operator")
 		}
 		return operation
 	}
 	if !s.operatorConfigured {
-		if s.abandonOperationApproval(grant.ID, operation.ClientID) != nil {
-			return operation
-		}
-		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
+		return s.failUnnotifiedOperation(operation, grant, "approval_channel_not_configured", "Approval channel is not configured")
 	}
 	return operation
+}
+
+func (s *Server) failUnnotifiedOperation(operation agentv1.Operation, grant grants.Grant, code, message string) agentv1.Operation {
+	if s.abandonOperationApproval(grant.ID, operation.ClientID) != nil {
+		return operation
+	}
+	return s.failOperation(operation.ID, agentv1.StateFailed, code, message)
 }
 
 func (s *Server) abandonOperationApproval(id, client string) error {

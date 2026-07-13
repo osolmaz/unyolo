@@ -147,11 +147,14 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return statusError(response.StatusCode, response.Header)
 	}
-	err = decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode)
-	if err != nil && spec.method != http.MethodGet {
+	return classifyDecodedResponse(spec.method, response.StatusCode, decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode))
+}
+
+func classifyDecodedResponse(method string, status int, err error) error {
+	if err != nil && method != http.MethodGet {
 		var classified *Error
 		if errors.As(err, &classified) && classified.Code == CodeResponseInvalid {
-			return &Error{Code: CodeResultUnknown, StatusCode: response.StatusCode, Ambiguous: true}
+			return &Error{Code: CodeResultUnknown, StatusCode: status, Ambiguous: true}
 		}
 	}
 	return err

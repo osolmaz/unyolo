@@ -199,6 +199,27 @@ func TestStoreBindsPlanAfterRecoverableOperationInsert(t *testing.T) {
 	if _, err := store.BindPlan(operation.ID, plan, "grant-1", false); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("duplicate plan binding = %v", err)
 	}
+	invalidStore := newTestStore(t, func() time.Time { return now }, func() (string, error) { return "op_invalid_binding", nil })
+	invalid, _, err := invalidStore.Submit(validSubmit("invalid-binding"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name       string
+		plan       state.PlanRecord
+		approvalID string
+		direct     bool
+	}{
+		{name: "missing mode", plan: plan},
+		{name: "conflicting modes", plan: plan, approvalID: "grant-1", direct: true},
+		{name: "invalid plan", plan: state.PlanRecord{}, approvalID: "grant-1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, bindErr := invalidStore.BindPlan(invalid.ID, test.plan, test.approvalID, test.direct); !errors.Is(bindErr, ErrInvalidTransition) {
+				t.Fatalf("BindPlan() = %v", bindErr)
+			}
+		})
+	}
 
 	directInput := validSubmit("direct-binding")
 	directInput.ID = "op_direct_binding"

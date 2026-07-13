@@ -195,19 +195,28 @@ func (a *boundAdapter) presentationAndPolicy(targetRaw, argumentsRaw json.RawMes
 }
 
 func policyIdentity(target map[string]any, fallback, kind string) (string, string) {
-	owner := firstString(target, "namespace", "owner", "organization", "name", "username")
-	if kind != string(hfpolicy.KindRepo) {
-		if owner == "" {
-			owner = fallback
-		}
-		return owner, exactTargetIdentity(target, kind)
+	if kind == string(hfpolicy.KindRepo) {
+		return repoPolicyIdentity(target, fallback)
 	}
+	return resourcePolicyIdentity(target, fallback, kind)
+}
+
+func resourcePolicyIdentity(target map[string]any, fallback, kind string) (string, string) {
+	owner := firstString(target, "namespace", "owner", "organization", "name", "username")
+	if owner == "" {
+		owner = fallback
+	}
+	return owner, exactTargetIdentity(target, kind)
+}
+
+func repoPolicyIdentity(target map[string]any, fallback string) (string, string) {
+	owner := firstString(target, "namespace", "owner", "organization", "name", "username")
 	name := firstString(target, "repo", "endpoint", "jobId", "resourceGroupId", "serviceAccountId", "webhookId", "paperId", "id", "slug")
 	if owner == "" {
 		owner = fallback
 	}
 	if name == "" || name == owner {
-		name = kind
+		name = string(hfpolicy.KindRepo)
 	}
 	return owner, name
 }

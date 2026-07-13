@@ -256,17 +256,12 @@ func (s *Store) SetApproval(id, approvalID string) (agentv1.Operation, error) {
 func (s *Store) BindPlan(id string, plan state.PlanRecord, approvalID string, direct bool) (agentv1.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	record, err := s.db.OperationByID(context.Background(), id)
-	if err != nil {
-		return agentv1.Operation{}, mapStateError(err)
-	}
-	operation, err := operationFromRecord(record)
+	operation, err := storedOperation(s.db.OperationByID(context.Background(), id))
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
 	approvalID = strings.TrimSpace(approvalID)
-	if operation.State != agentv1.StatePending || operation.PlanDigest != "" || direct == (approvalID != "") ||
-		!plandigest.Valid(plan.Digest) {
+	if !validPlanBinding(operation, plan, approvalID, direct) {
 		return agentv1.Operation{}, ErrInvalidTransition
 	}
 	expectedRevision := operation.Revision
@@ -285,6 +280,11 @@ func (s *Store) BindPlan(id string, plan state.PlanRecord, approvalID string, di
 	}
 	s.notify()
 	return clone(operation), nil
+}
+
+func validPlanBinding(operation agentv1.Operation, plan state.PlanRecord, approvalID string, direct bool) bool {
+	return operation.State == agentv1.StatePending && operation.PlanDigest == "" && direct != (approvalID != "") &&
+		plandigest.Valid(plan.Digest)
 }
 
 func (s *Store) Transition(id string, state agentv1.State) (agentv1.Operation, error) {

@@ -49,8 +49,7 @@ func (s *Server) uploadSealedPayload(c echo.Context) error {
 		writeJSendFail(c.Response(), http.StatusBadRequest, "sealed_purpose_invalid", "A sealed operation is required")
 		return nil
 	}
-	if requestKey == "" || len(requestKey) > 128 || strings.ContainsAny(requestKey, " \t\r\n") ||
-		request.Header.Get("Content-Type") != "application/octet-stream" || request.ContentLength == 0 || request.ContentLength > maxSealedPayloadBytes {
+	if !validSealedRequestKey(requestKey) || !validSealedRequestBody(request) {
 		writeJSendFail(c.Response(), http.StatusBadRequest, "sealed_payload_invalid", "Sealed payload must be bounded binary content")
 		return nil
 	}
@@ -71,4 +70,13 @@ func (s *Server) uploadSealedPayload(c echo.Context) error {
 	c.Response().Header().Set("Content-Type", "application/json")
 	c.Response().WriteHeader(http.StatusCreated)
 	return json.NewEncoder(c.Response()).Encode(reference)
+}
+
+func validSealedRequestKey(value string) bool {
+	return value != "" && len(value) <= 128 && !strings.ContainsAny(value, " \t\r\n")
+}
+
+func validSealedRequestBody(request *http.Request) bool {
+	return request.Header.Get("Content-Type") == "application/octet-stream" && request.ContentLength > 0 &&
+		request.ContentLength <= maxSealedPayloadBytes
 }

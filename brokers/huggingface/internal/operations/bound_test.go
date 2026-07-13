@@ -144,6 +144,18 @@ func TestBoundPolicyIdentityIncludesEverySubresourceIdentifier(t *testing.T) {
 	if other == name || !strings.Contains(other, "username=alice") {
 		t.Fatalf("distinct member identity collapsed to %q", other)
 	}
+	repoOwner, repoName := policyIdentity(map[string]any{"owner": "acme", "repo": "data"}, "operator", "repo")
+	if repoOwner != "acme" || repoName != "data" {
+		t.Fatalf("repository identity = %q/%q", repoOwner, repoName)
+	}
+	fallbackOwner, fallbackName := policyIdentity(map[string]any{"sequence": float64(7)}, "operator", "resource")
+	if fallbackOwner != "operator" || fallbackName != "sequence=7" {
+		t.Fatalf("fallback identity = %q/%q", fallbackOwner, fallbackName)
+	}
+	emptyOwner, emptyName := policyIdentity(map[string]any{}, "operator", "resource")
+	if emptyOwner != "operator" || emptyName != "resource" {
+		t.Fatalf("empty identity = %q/%q", emptyOwner, emptyName)
+	}
 }
 
 func TestBoundAdaptersExcludeSpecializedOperations(t *testing.T) {
