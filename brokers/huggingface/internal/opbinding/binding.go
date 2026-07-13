@@ -26,6 +26,9 @@ var routesRaw []byte
 //go:embed manual-routes.json
 var manualRoutesRaw []byte
 
+//go:embed endpoint-routes.json
+var endpointRoutesRaw []byte
+
 type routeSource struct {
 	Operation          string            `json:"operation"`
 	Method             string            `json:"method"`
@@ -162,6 +165,11 @@ func load() ([]Binding, error) {
 		return nil, fmt.Errorf("decode manual HF route bindings: %w", err)
 	}
 	sources = append(sources, manual...)
+	var endpoints []routeSource
+	if err := strictjson.Decode(endpointRoutesRaw, &endpoints, true); err != nil {
+		return nil, fmt.Errorf("decode endpoint route bindings: %w", err)
+	}
+	sources = append(sources, endpoints...)
 	values := make([]Binding, 0, len(sources))
 	seen := make(map[string]bool, len(sources))
 	for _, source := range sources {
@@ -299,6 +307,14 @@ func schemaForArguments(operation operationDocument, fixed map[string]any, proje
 }
 
 func compileSchema(name string, schema, components map[string]any) (json.RawMessage, *jsonschema.Schema, error) {
+	schema = cloneMap(schema)
+	definitions := map[string]any{}
+	if local, ok := schema["$defs"].(map[string]any); ok {
+		for key, value := range local {
+			definitions[key] = value
+		}
+		delete(schema, "$defs")
+	}
 	schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
 	raw, err := json.Marshal(schema)
 	if err != nil {
@@ -308,9 +324,10 @@ func compileSchema(name string, schema, components map[string]any) (json.RawMess
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, nil, err
 	}
+	definitions["root"] = root
 	document := map[string]any{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
-		"$ref":    "#/$defs/root", "$defs": map[string]any{"root": root},
+		"$ref":    "#/$defs/root", "$defs": definitions,
 		"components": components,
 	}
 	compiler := jsonschema.NewCompiler()

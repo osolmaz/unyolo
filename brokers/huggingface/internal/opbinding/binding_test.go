@@ -10,8 +10,8 @@ func TestPinnedBindingsLoadAndValidateClosedSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bindings) != 103 {
-		t.Fatalf("binding count = %d, want 103", len(bindings))
+	if len(bindings) != 105 {
+		t.Fatalf("binding count = %d, want 105", len(bindings))
 	}
 	binding, found := ByName("webhook.enable")
 	if !found || binding.Method != "POST" || binding.FixedPath["action"] != "enable" {
@@ -22,6 +22,21 @@ func TestPinnedBindingsLoadAndValidateClosedSchemas(t *testing.T) {
 	}
 	if err := binding.Validate(json.RawMessage(`{"webhookId":"0123456789abcdef01234567","action":"disable"}`), json.RawMessage(`{}`)); err == nil {
 		t.Fatal("fixed action was accepted from the requester")
+	}
+}
+
+func TestEndpointBindingsKeepSecretsInSealedModelField(t *testing.T) {
+	create, found := ByName("endpoint.create")
+	if !found || create.Origin != "inference_endpoints" || create.Method != "POST" {
+		t.Fatalf("endpoint.create binding = %+v", create)
+	}
+	target := []byte(`{"namespace":"acme"}`)
+	public := []byte(`{"compute":{"accelerator":"gpu","instanceSize":"x1","instanceType":"nvidia-a10g","scaling":{"maxReplica":1,"minReplica":0}},"model":{"framework":"pytorch","repository":"acme/model","image":{"huggingface":{}}},"name":"demo","provider":{"region":"us-east-1","vendor":"aws"},"type":"authenticated"}`)
+	if err := create.Validate(target, public); err != nil {
+		t.Fatal(err)
+	}
+	if err := create.Validate(target, []byte(`{"compute":{},"model":{"secrets":{"TOKEN":"secret"}},"name":"demo","provider":{},"type":"authenticated"}`)); err == nil {
+		t.Fatal("invalid endpoint configuration accepted")
 	}
 }
 

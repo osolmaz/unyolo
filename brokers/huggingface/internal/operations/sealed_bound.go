@@ -34,6 +34,8 @@ type sealedBoundArguments struct {
 }
 
 var sealedInputPaths = map[string][]string{
+	"endpoint.create":                      {"model.secrets"},
+	"endpoint.update":                      {"model.secrets"},
 	"job.run":                              {"secrets"},
 	"job.uv.run":                           {"secrets"},
 	"provisioning.resource.create":         {"payment_credentials"},
