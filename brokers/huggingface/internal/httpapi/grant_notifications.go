@@ -4,6 +4,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -128,4 +129,174 @@ func grantApprovalMessage(grant grants.Grant, decisionToken string) bknotify.App
 		RequestedMinutes: requestedMinutes,
 		MaxUses:          grant.MaxUses,
 	}
+}
+func (s *Server) startGrantNotificationSweeper(ctx context.Context) {
+	if s.notifier == nil {
+		return
+	}
+	s.backgroundWorkers.Add(1)
+	go func() {
+		defer s.backgroundWorkers.Done()
+		s.sweepGrantNotifications(ctx)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.sweepGrantNotifications(ctx)
+			}
+		}
+	}()
+}
+
+func (s *Server) sweepGrantNotifications(ctx context.Context) {
+	s.sweepPendingGrantApprovals(ctx)
+	updates, err := s.grants.StatusUpdatesDue()
+	if err != nil {
+		return
+	}
+	for _, item := range updates {
+		status := grantStatusUpdateText(item)
+		if err := s.updateGrantMessage(ctx, item.Grant, status); err == nil {
+			_ = s.grants.MarkNotificationStatus(item.Grant.ID, item.NotificationStatusKey())
+		}
+	}
+}
+
+func (s *Server) sweepPendingGrantApprovals(ctx context.Context) {
+	pending, err := s.grants.ApprovalNotificationsDue()
+	if err != nil {
+		return
+	}
+	for _, grant := range pending {
+		claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
+		if err != nil || !claimed {
+			continue
+		}
+		ref, err := s.notifier.SendApproval(ctx, grantApprovalMessage(claim.Grant, claim.DecisionToken))
+		if err != nil || ref.MessageID <= 0 {
+			_, _, _ = s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
+			continue
+		}
+		updated, recorded, err := s.grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
+		if err != nil {
+			_, _, _ = s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
+			continue
+		}
+		if !recorded && shouldSupersedeNotifier(updated.Notification, ref) {
+			s.supersedeGrantMessage(ctx, ref)
+		}
+	}
+}
+
+func grantStatusUpdateText(update grants.StatusUpdate) string {
+	switch update.Kind {
+	case grants.StatusUpdateLifecycle:
+	case grants.StatusUpdateRetainedReservation:
+		return retainedGrantReservationStatus(update.Grant)
+	case grants.StatusUpdateUsed, grants.StatusUpdateUsedExpired:
+		return grantUseStatus(update.Grant)
+	}
+	switch update.Status {
+	case grants.StatusActive:
+		return "✅ Approved. Access is active."
+	case grants.StatusDenied:
+		return "❌ Denied. Access was not granted."
+	default:
+		return pendingExpiredStatusForGrant(update.Grant)
+	}
+}
+
+func (s *Server) updateGrantUseMessage(grant grants.Grant) {
+	s.deliverGrantStatusUpdate(context.Background(), grant.ID)
+}
+
+func (s *Server) updateRetainedGrantReservationMessage(grant grants.Grant) {
+	current, err := s.grants.RetainUse(grant.ID)
+	if err != nil {
+		return
+	}
+	s.deliverGrantStatusUpdate(context.Background(), current.ID)
+}
+
+func (s *Server) deliverGrantStatusUpdate(ctx context.Context, id string) {
+	updates, err := s.grants.StatusUpdatesDue()
+	if err != nil {
+		return
+	}
+	for _, update := range updates {
+		if update.Grant.ID != id {
+			continue
+		}
+		if err := s.updateGrantMessage(ctx, update.Grant, grantStatusUpdateText(update)); err == nil {
+			_ = s.grants.MarkNotificationStatus(id, update.NotificationStatusKey())
+		}
+		return
+	}
+}
+
+func (s *Server) updateGrantMessage(ctx context.Context, grant grants.Grant, status string) error {
+	if grant.Notification == nil {
+		return nil
+	}
+	return s.updateNotifierStatus(ctx, *grant.Notification, status)
+}
+
+func (s *Server) updateNotifierStatus(ctx context.Context, ref bknotify.MessageRef, status string) error {
+	if s.notifier == nil {
+		return nil
+	}
+	return s.notifier.UpdateStatus(ctx, ref, status)
+}
+
+func pendingExpiredStatusForGrant(grant grants.Grant) string {
+	if grant.ExpiredFrom == grants.StatusPending {
+		return "⌛ Expired. Request was not approved in time."
+	}
+	return "⌛ Expired. Access window ended."
+}
+
+func grantUseStatus(grant grants.Grant) string {
+	maxUses := grant.MaxUses
+	if grant.Status == grants.StatusConsumed {
+		return "✅ Used. Access is now closed."
+	}
+	if grant.Status == grants.StatusExpired {
+		return "✅ Used. Access is now closed."
+	}
+	heldUses := grant.ReservedCount
+	remaining, finite := maxUses.Remaining(grant.UsedCount, heldUses)
+	if !finite {
+		return fmt.Sprintf("✅ Used %d times. Access remains active until expiry.", grant.UsedCount)
+	}
+	if heldUses > 0 {
+		if heldUses == 1 {
+			return fmt.Sprintf("✅ Used %d of %d. 1 use is held; %d uses remain.", grant.UsedCount, int(maxUses), remaining)
+		}
+		return fmt.Sprintf("✅ Used %d of %d. %d uses are held; %d uses remain.", grant.UsedCount, int(maxUses), heldUses, remaining)
+	}
+	return fmt.Sprintf("✅ Used %d of %d. %d uses remain.", grant.UsedCount, int(maxUses), remaining)
+}
+
+func retainedGrantReservationStatus(grant grants.Grant) string {
+	maxUses := grant.MaxUses
+	if maxUses.IsUnlimited() {
+		return "⚠️ Push result is ambiguous. Unlimited access remains blocked pending operator review."
+	}
+	if grant.Status == grants.StatusExpired {
+		return "⚠️ Push result is ambiguous. Access is closed; operator review is still needed."
+	}
+	heldUses := grant.UsedCount + grant.ReservedCount
+	if heldUses <= grant.UsedCount {
+		heldUses = grant.UsedCount + 1
+	}
+	if maxUses == 1 {
+		return "⚠️ Push result is ambiguous. Access is closed until an operator reviews it."
+	}
+	if heldUses == 1 {
+		return fmt.Sprintf("⚠️ Push result is ambiguous. 1 of %d uses is held; access is closed until an operator reviews it.", maxUses)
+	}
+	return fmt.Sprintf("⚠️ Push result is ambiguous. %d of %d uses are held; access is closed until an operator reviews it.", heldUses, maxUses)
 }
