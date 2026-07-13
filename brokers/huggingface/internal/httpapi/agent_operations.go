@@ -83,7 +83,7 @@ func (s *Server) submitAgentOperation(ctx context.Context, client string, reques
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
-	submissionLock := s.operationAuthorizationLock("submit:" + client + ":" + request.IdempotencyKey)
+	submissionLock := stripedOperationLock("submit:"+client+":"+request.IdempotencyKey, s.operationSubmissionLocks[:])
 	submissionLock.Lock()
 	defer submissionLock.Unlock()
 	if existing, found, err := s.replayedOperation(client, request, input); err != nil || found {
@@ -117,17 +117,22 @@ func (s *Server) submitResolvedAgentOperation(ctx context.Context, client string
 	}
 	operationLock := s.operationAuthorizationLock(operationID)
 	operationLock.Lock()
-	defer operationLock.Unlock()
 	operation, created, err := s.operations.Submit(submission)
 	if err != nil {
+		operationLock.Unlock()
 		s.cleanupResolvedOperation(adapter, resolved)
 		return operation, created, err
 	}
 	if !created {
+		operationLock.Unlock()
 		return operation, created, err
 	}
-	operation, err = s.authorizeAndSubmitOperation(ctx, adapter, resolved, operation, request.Reason)
-	return operation, true, err
+	operation, grant, err := s.authorizeAndSubmitOperation(adapter, resolved, operation, request.Reason)
+	operationLock.Unlock()
+	if err != nil || grant.ID == "" {
+		return operation, true, err
+	}
+	return s.bindOperationApproval(ctx, operation, grant), true, nil
 }
 
 func (s *Server) submitDirectAgentOperation(submission agentops.Submit, prepared grants.ImmutablePlan, adapter operations.Adapter, resolved operations.Plan) (agentv1.Operation, bool, error) {
@@ -200,7 +205,7 @@ func (s *Server) replayedOperation(client string, request agentv1.SubmitRequest,
 	return existing, true, nil
 }
 
-func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operations.Adapter, plan operations.Plan, operation agentv1.Operation, reason string) (agentv1.Operation, error) {
+func (s *Server) authorizeAndSubmitOperation(adapter operations.Adapter, plan operations.Plan, operation agentv1.Operation, reason string) (agentv1.Operation, grants.Grant, error) {
 	authorizationRequest := policy.AuthorizationRequest(adapter.Authorize(plan))
 	var prepared grants.ImmutablePlan
 	result, authorizationErr := s.authorization.RequestApproval(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
@@ -211,19 +216,19 @@ func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operat
 	if authorizationErr != nil {
 		_ = s.abandonOperationApproval(result.Request.Grant.ID, operation.ClientID)
 		s.cleanupResolvedOperation(adapter, plan)
-		return s.finishRefusedOperation(operation, plan, result, authorizationErr), nil
+		return s.finishRefusedOperation(operation, plan, result, authorizationErr), grants.Grant{}, nil
 	}
 	if prepared.Digest == "" {
 		s.cleanupResolvedOperation(adapter, plan)
-		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_plan_invalid", "Could not prepare immutable operation plan"), nil
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_plan_invalid", "Could not prepare immutable operation plan"), grants.Grant{}, nil
 	}
 	bound, err := s.operations.BindPlan(operation.ID, planRecord(prepared), result.Request.Grant.ID, false)
 	if err != nil {
 		_ = s.abandonOperationApproval(result.Request.Grant.ID, operation.ClientID)
 		s.cleanupResolvedOperation(adapter, plan)
-		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind operation plan"), nil //nolint:nilerr // The durable operation carries the terminal failure.
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind operation plan"), grants.Grant{}, nil //nolint:nilerr // The durable operation carries the terminal failure.
 	}
-	return s.bindOperationApproval(ctx, bound, result.Request.Grant), nil
+	return bound, result.Request.Grant, nil
 }
 
 func (s *Server) prepareOperationIntent(adapter operations.Adapter, plan operations.Plan, client, operationID, reason string, decision corepolicy.Decision) (bkauthorization.GrantIntent, grants.ImmutablePlan, error) {
@@ -367,12 +372,16 @@ func (s *Server) settleOperationNotificationFailure(claim grants.NotificationCla
 }
 
 func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
+	return stripedOperationLock(id, s.operationAuthLocks[:])
+}
+
+func stripedOperationLock(id string, locks []sync.Mutex) *sync.Mutex {
 	var hash uint64 = 14695981039346656037
 	for i := 0; i < len(id); i++ {
 		hash ^= uint64(id[i])
 		hash *= 1099511628211
 	}
-	return &s.operationAuthLocks[hash%uint64(len(s.operationAuthLocks))]
+	return &locks[hash%uint64(len(locks))]
 }
 
 func (s *Server) failOperation(id string, state agentv1.State, code, message string) agentv1.Operation {

@@ -383,8 +383,12 @@ func (a *sandboxAdapter) presentationAndPolicy(target sandboxTarget, raw json.Ra
 	case "sandbox.create":
 		var arguments sandboxCreatePublic
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["pool"] = target.Pool
-		request.Attrs["flavor"] = arguments.Flavor
+		if target.Pool != "" {
+			request.Attrs["pool"] = target.Pool
+		}
+		if arguments.Flavor != "" {
+			request.Attrs["flavor"] = arguments.Flavor
+		}
 		summary = fmt.Sprintf("Create sandbox %s/%s with image %s and flavor %s", target.Namespace, target.Name, arguments.Image, arguments.Flavor)
 		if target.Pool != "" {
 			summary = fmt.Sprintf("Create sandbox %s/%s in pool %s", target.Namespace, target.Name, target.Pool)
@@ -406,7 +410,7 @@ func (a *sandboxAdapter) presentationAndPolicy(target sandboxTarget, raw json.Ra
 		var arguments sandboxFileDeleteArguments
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
 		request.Attrs["path"] = arguments.Path
-		request.Attrs["recursive"] = arguments.Recursive
+		request.Attrs["recursive"] = fmt.Sprint(arguments.Recursive)
 		summary = fmt.Sprintf("Delete %s from sandbox %s/%s (recursive: %t)", arguments.Path, target.Namespace, name, arguments.Recursive)
 	case "sandbox.file.mkdir":
 		var arguments sandboxFileMkdirArguments
@@ -416,7 +420,7 @@ func (a *sandboxAdapter) presentationAndPolicy(target sandboxTarget, raw json.Ra
 	case "sandbox.process.kill":
 		var arguments sandboxProcessKillArguments
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["pid"] = int64(arguments.PID)
+		request.Attrs["pid"] = fmt.Sprint(arguments.PID)
 		summary = fmt.Sprintf("Kill process %d in sandbox %s/%s", arguments.PID, target.Namespace, name)
 	case "sandbox.pool.warm":
 		var arguments sandboxPoolWarmArguments

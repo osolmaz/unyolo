@@ -352,7 +352,7 @@ func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
 	}
 }
 
-func TestAgentApprovalBindingSerializesWithOperationWorker(t *testing.T) {
+func TestAgentApprovalBindingPrecedesNotification(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "serialized")
 	defer upstream.Close()
 	notifier := &blockingApprovalNotifier{entered: make(chan struct{}), release: make(chan struct{})}
@@ -383,25 +383,20 @@ func TestAgentApprovalBindingSerializesWithOperationWorker(t *testing.T) {
 	if err != nil || len(unfinished) != 1 || unfinished[0].PlanDigest == "" || unfinished[0].ApprovalID == "" {
 		t.Fatalf("operation before notification = %#v, %v", unfinished, err)
 	}
-	advanced := make(chan struct{})
-	go func() {
-		handler.advanceOperations(t.Context())
-		close(advanced)
-	}()
+	handler.advanceOperations(t.Context())
+	current, err := handler.operations.GetByID(unfinished[0].ID)
+	if err != nil || current.State != agentv1.StatePending {
+		t.Fatalf("operation advanced before approval: %#v, %v", current, err)
+	}
 	select {
-	case <-advanced:
-		t.Fatal("operation worker advanced while approval binding was locked")
-	case <-time.After(25 * time.Millisecond):
+	case completed := <-result:
+		t.Fatalf("submission returned before notification completed: %#v", completed)
+	default:
 	}
 	close(notifier.release)
 	completed := <-result
 	if completed.err != nil || !completed.created || completed.operation.PlanDigest == "" || completed.operation.ApprovalID == "" {
 		t.Fatalf("submit = %#v", completed)
-	}
-	select {
-	case <-advanced:
-	case <-time.After(time.Second):
-		t.Fatal("operation worker remained blocked after approval submission")
 	}
 }
 

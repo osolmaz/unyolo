@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
 type boundFake struct {
@@ -55,6 +56,9 @@ func TestBoundAdapterLifecycle(t *testing.T) {
 	}
 	if request := adapter.Authorize(Plan{Target: plan.Target, Arguments: plan.Arguments, Preconditions: plan.Preconditions}); request.Operation != "webhook.enable" {
 		t.Fatalf("Authorize() = %+v", request)
+	}
+	if err := hfpolicy.ValidateRequest(adapter.Authorize(plan)); err != nil {
+		t.Fatalf("Authorize() produced an invalid policy request: %v", err)
 	}
 	if presentation := adapter.Present(Plan{Target: plan.Target, Arguments: plan.Arguments, Preconditions: plan.Preconditions}); presentation.Title == "" {
 		t.Fatal("Present() returned an empty title")

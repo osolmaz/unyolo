@@ -166,6 +166,9 @@ func TestSandboxAdaptersExecuteEveryOperationLifecycle(t *testing.T) {
 			if request := adapter.Authorize(Plan{Target: plan.Target, Arguments: plan.Arguments}); request.Operation != hfpolicy.Operation(test.operation) {
 				t.Fatalf("Authorize() operation = %q", request.Operation)
 			}
+			if err := hfpolicy.ValidateRequest(adapter.Authorize(plan)); err != nil {
+				t.Fatalf("Authorize() produced an invalid policy request: %v", err)
+			}
 			if presentation := adapter.Present(Plan{Target: plan.Target, Arguments: plan.Arguments}); presentation.Title == "" {
 				t.Fatal("Present() returned an empty title")
 			}

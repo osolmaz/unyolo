@@ -12,7 +12,9 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
@@ -55,10 +57,11 @@ func (s *Server) serveInference(w http.ResponseWriter, r *http.Request, client s
 		}
 		const operation = policy.OpInferenceModels
 		target := policy.Target{Kind: policy.KindInference, Owner: "router", Name: "models"}
-		if !s.inferenceAllowed(w, client, operation, target, 0) {
+		reserved, allowed := s.authorizeInference(w, client, operation, target, 0)
+		if !allowed {
 			return
 		}
-		s.forwardInference(w, r, client, string(operation), "models", nil)
+		s.forwardInference(w, r, client, string(operation), "models", nil, reserved)
 	case "/v1/chat/completions":
 		s.serveChatCompletion(w, r, client)
 	}
@@ -93,10 +96,11 @@ func (s *Server) serveChatCompletion(w http.ResponseWriter, r *http.Request, cli
 		s.refuseInference(w, client, operation, model, http.StatusBadRequest, "invalid_model")
 		return
 	}
-	if !s.inferenceAllowed(w, client, policy.OpInferenceChat, target, len(body)) {
+	reserved, allowed := s.authorizeInference(w, client, policy.OpInferenceChat, target, len(body))
+	if !allowed {
 		return
 	}
-	s.forwardInference(w, r, client, operation, model, body)
+	s.forwardInference(w, r, client, operation, model, body, reserved)
 }
 
 func inferencePolicyTarget(model string) (policy.Target, bool) {
@@ -112,20 +116,49 @@ func inferencePolicyTarget(model string) (policy.Target, bool) {
 	return policy.Target{Kind: policy.KindInference, Owner: parts[0], Name: name}, true
 }
 
-func (s *Server) inferenceAllowed(w http.ResponseWriter, client string, operation policy.Operation, target policy.Target, bodyBytes int) bool {
+func (s *Server) authorizeInference(w http.ResponseWriter, client string, operation policy.Operation, target policy.Target, bodyBytes int) (*grants.Grant, bool) {
 	attrs := map[string]any{}
 	if bodyBytes > 0 {
 		attrs["max_bytes"] = int64(bodyBytes)
 	}
-	decision := s.policy.Decide(policy.Request{Client: client, Operation: operation, Target: target, Attrs: attrs}, nil, s.utcNow(), false)
-	targetName := target.Owner + "/" + target.Name
+	activeGrants, err := s.activeGrantRules(client)
+	targetName := targetNameFromPolicy(target)
+	if err != nil {
+		writeInferenceError(w, http.StatusInternalServerError, "grant_store_unavailable")
+		s.record(client, string(operation), targetName, audit.DecisionRefused, "could not inspect grants", 0)
+		return nil, false
+	}
+	decision := s.policy.Decide(policy.Request{Client: client, Operation: operation, Target: target, Attrs: attrs}, activeGrants, s.utcNow(), false)
 	if decision.Effect != policy.EffectAllow {
 		writeInferenceError(w, http.StatusForbidden, "policy_denied")
 		s.recordPolicyDecision(client, string(operation), targetName, audit.DecisionRefused, decision.Reason, 0, decision)
-		return false
+		return nil, false
+	}
+	var reserved *grants.Grant
+	if decision.GrantID != "" {
+		grant, reserveErr := s.reserveInferenceGrant(decision.GrantID, client, operation, targetName, attrs)
+		if reserveErr != nil {
+			writeInferenceError(w, http.StatusConflict, "grant_unavailable")
+			s.recordPolicyDecision(client, string(operation), targetName, audit.DecisionRefused, "grant_unavailable", 0, decision)
+			return nil, false
+		}
+		reserved = &grant
 	}
 	s.recordPolicyDecision(client, string(operation), targetName, audit.DecisionAllowed, "", 0, decision)
-	return true
+	return reserved, true
+}
+
+func (s *Server) reserveInferenceGrant(id, client string, operation policy.Operation, target string, attrs map[string]any) (grants.Grant, error) {
+	grant, err := s.grants.Get(id)
+	if err != nil || grant.Client != client || grant.Operation != string(operation) || hfgrant.Target(grant) != target || hfgrant.Ref(grant) != "" ||
+		!grantEligibleForRule(grant) || s.planValidator.ValidateExecution(grant) != nil {
+		return grants.Grant{}, errors.New("inference grant is not usable")
+	}
+	values, err := hfgrant.Attrs(grant)
+	if err != nil || !policy.AttrValuesMatch(values, attrs) {
+		return grants.Grant{}, errors.New("inference grant does not match the request")
+	}
+	return s.grants.ReserveUse(grant.ID)
 }
 
 func jsonContentType(value string) bool {
@@ -267,7 +300,7 @@ func writeInferenceError(w http.ResponseWriter, status int, code string) {
 	})
 }
 
-func (s *Server) forwardInference(w http.ResponseWriter, downstream *http.Request, client, operation, target string, body []byte) {
+func (s *Server) forwardInference(w http.ResponseWriter, downstream *http.Request, client, operation, target string, body []byte, reserved *grants.Grant) {
 	upstreamURL := *s.routerUpstream
 	upstreamURL.Path = downstream.URL.Path
 	var requestBody io.Reader
@@ -276,6 +309,7 @@ func (s *Server) forwardInference(w http.ResponseWriter, downstream *http.Reques
 	}
 	request, err := http.NewRequestWithContext(downstream.Context(), downstream.Method, upstreamURL.String(), requestBody)
 	if err != nil {
+		s.settleInferenceGrant(reserved, false)
 		s.refuseInference(w, client, operation, target, http.StatusBadGateway, "upstream_unavailable")
 		return
 	}
@@ -285,6 +319,7 @@ func (s *Server) forwardInference(w http.ResponseWriter, downstream *http.Reques
 		request.Header.Set("Content-Type", "application/json")
 	}
 	response, err := s.inferenceHTTPClient.Do(request) // #nosec G704 -- destination is derived from the startup-validated operator base URL.
+	s.settleInferenceGrant(reserved, true)
 	if err != nil {
 		s.refuseInference(w, client, operation, target, http.StatusBadGateway, "upstream_unavailable")
 		return
@@ -298,6 +333,17 @@ func (s *Server) forwardInference(w http.ResponseWriter, downstream *http.Reques
 	w.WriteHeader(response.StatusCode)
 	copyErr := copyInferenceBody(w, response)
 	s.recordInferenceResult(client, operation, target, response.StatusCode, copyErr)
+}
+
+func (s *Server) settleInferenceGrant(reserved *grants.Grant, attempted bool) {
+	if reserved == nil {
+		return
+	}
+	if !attempted {
+		s.releaseGrantUses([]grants.Grant{*reserved})
+		return
+	}
+	s.updateGrantMessages(s.commitGrantUses([]grants.Grant{*reserved}), s.updateGrantUseMessage)
 }
 
 func (s *Server) forwardBufferedInference(w http.ResponseWriter, client, operation, target string, response *http.Response) {

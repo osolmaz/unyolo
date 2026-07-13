@@ -80,37 +80,38 @@ type Options struct {
 type Server struct {
 	router *echo.Echo
 
-	control             *controlplane.Runtime
-	authorization       *bkauthorization.Coordinator
-	policy              policy.Policy
-	audit               audit.Recorder
-	mirrors             *mirror.Manager
-	upstream            *url.URL
-	routerUpstream      *url.URL
-	httpClient          *http.Client
-	inferenceHTTPClient *http.Client
-	hfToken             string
-	maxBody             int64
-	grants              *grants.Store
-	plans               *hfplan.Store
-	operations          *agentops.Store
-	operationRegistry   *operations.Registry
-	hubClient           *hubclient.Client
-	sealedStore         *sealedstore.Store
-	credentialStore     *credentialstore.Store
-	agentAPI            *agentapi.Handler
-	database            *state.Database
-	planValidator       hfplan.Validator
-	notifier            bknotify.Notifier
-	operatorConfigured  bool
-	lifecycleContext    context.Context
-	lifecycleCancel     context.CancelFunc
-	backgroundWorkers   sync.WaitGroup
-	closeOnce           sync.Once
-	closeErr            error
-	operationAuthLocks  [64]sync.Mutex
-	now                 func() time.Time
-	newLFSActionID      func() (string, error)
+	control                  *controlplane.Runtime
+	authorization            *bkauthorization.Coordinator
+	policy                   policy.Policy
+	audit                    audit.Recorder
+	mirrors                  *mirror.Manager
+	upstream                 *url.URL
+	routerUpstream           *url.URL
+	httpClient               *http.Client
+	inferenceHTTPClient      *http.Client
+	hfToken                  string
+	maxBody                  int64
+	grants                   *grants.Store
+	plans                    *hfplan.Store
+	operations               *agentops.Store
+	operationRegistry        *operations.Registry
+	hubClient                *hubclient.Client
+	sealedStore              *sealedstore.Store
+	credentialStore          *credentialstore.Store
+	agentAPI                 *agentapi.Handler
+	database                 *state.Database
+	planValidator            hfplan.Validator
+	notifier                 bknotify.Notifier
+	operatorConfigured       bool
+	lifecycleContext         context.Context
+	lifecycleCancel          context.CancelFunc
+	backgroundWorkers        sync.WaitGroup
+	closeOnce                sync.Once
+	closeErr                 error
+	operationAuthLocks       [64]sync.Mutex
+	operationSubmissionLocks [64]sync.Mutex
+	now                      func() time.Time
+	newLFSActionID           func() (string, error)
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction

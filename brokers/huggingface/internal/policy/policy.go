@@ -276,20 +276,33 @@ var validRepoVisibilities = map[string]bool{
 }
 
 var knownAttrs = map[string]bool{
-	"max_bytes":          true,
-	"private":            true,
-	"ref_change":         true,
-	"sdk":                true,
-	"visibility":         true,
+	"arguments_digest":   true,
+	"content_digest":     true,
+	"credential_kind":    true,
+	"credential_slot":    true,
 	"destination":        true,
-	"gating":             true,
 	"factory_reboot":     true,
+	"flavor":             true,
+	"gating":             true,
 	"hardware":           true,
 	"key":                true,
+	"max_bytes":          true,
+	"max_hosts":          true,
+	"num_hosts":          true,
+	"path":               true,
+	"pid":                true,
+	"pool":               true,
+	"private":            true,
+	"recursive":          true,
+	"ref_change":         true,
+	"sdk":                true,
 	"sleep_time_seconds": true,
 	"source":             true,
 	"source_path":        true,
 	"source_ref":         true,
+	"target_digest":      true,
+	"visibility":         true,
+	"warm_up":            true,
 }
 
 // KnownAttributeNames returns the closed request-attribute vocabulary used by
@@ -1011,7 +1024,7 @@ func AttrConstraintsFromValues(attrs map[string]any) (map[string]AttrConstraint,
 //nolint:cyclop // Attribute constraint combinations are explicit and tracked by the exact HF CRAP baseline.
 func validateAttrConstraint(key string, constraint AttrConstraint) error {
 	switch key {
-	case "max_bytes":
+	case "max_bytes", "max_hosts", "num_hosts", "warm_up":
 		return validateMaximumConstraint(constraint)
 	case "ref_change":
 		return validateNamedConstraint(constraint, "a ref change value", validRefChangeAttrs, "unsupported ref change")

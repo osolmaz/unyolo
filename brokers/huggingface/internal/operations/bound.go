@@ -288,18 +288,10 @@ func policyRepoType(target map[string]any) hfpolicy.RepoType {
 }
 
 func policyAttributes(target, arguments map[string]any) map[string]any {
-	attributes := make(map[string]any, len(target)+len(arguments))
-	for key, value := range target {
-		if scalarPolicyValue(value) {
-			attributes["target_"+key] = value
-		}
+	return map[string]any{
+		"target_digest":    digestValue(target),
+		"arguments_digest": digestValue(arguments),
 	}
-	for key, value := range arguments {
-		if scalarPolicyValue(value) {
-			attributes[key] = value
-		}
-	}
-	return attributes
 }
 
 func scalarPolicyValue(value any) bool {

@@ -48,7 +48,7 @@ func (c *Client) ApplyBucketBatch(ctx context.Context, ref BucketRef, operations
 		return err
 	}
 	if !result.Success || result.Processed != len(operations) || result.Succeeded != len(operations) || len(result.Failed) != 0 {
-		return &Error{Code: CodeInvalid, StatusCode: http.StatusOK}
+		return &Error{Code: CodeResultUnknown, StatusCode: http.StatusOK, Ambiguous: true}
 	}
 	return nil
 }

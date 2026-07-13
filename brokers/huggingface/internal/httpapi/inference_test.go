@@ -13,6 +13,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
@@ -260,6 +261,39 @@ func TestInferenceDefaultsToPolicyDeny(t *testing.T) {
 	}
 }
 
+func TestInferenceWindowGrantIsExactAndConsumedOnce(t *testing.T) {
+	var hits atomic.Int32
+	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer router.Close()
+	policyJSON := `{"rules":[{"id":"request-chat","effect":"request","clients":["agent"],"operations":["inference.chat.complete"],"targets":[{"kind":"inference","owner":"acme","name":"model"}],"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
+	broker, _, handler := newInferenceBrokerWithPolicyHandler(t, router.URL, time.Second, policyJSON)
+	defer broker.Close()
+	body := `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`
+	target := policy.Target{Kind: policy.KindInference, Owner: "acme", Name: "model"}
+	requested, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
+		Client: "agent", Operation: string(policy.OpInferenceChat), Mode: hfgrant.ModeWindow,
+		PolicyTarget: &target, Attrs: map[string]any{"max_bytes": int64(len(body))}, Reason: "run one completion",
+		RequestedDuration: 5 * time.Minute, PendingTimeout: 5 * time.Minute, MaxUses: 1, MaxUsesSpecified: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.grants.Approve(requested.ID, requested.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	first := inferenceRequestToBroker(t, broker, body)
+	_ = first.Body.Close()
+	second := inferenceRequestToBroker(t, broker, body)
+	_ = second.Body.Close()
+	grant, err := handler.grants.Get(requested.ID)
+	if err != nil || first.StatusCode != http.StatusOK || second.StatusCode != http.StatusForbidden || grant.UsedCount != 1 || hits.Load() != 1 {
+		t.Fatalf("responses = %d/%d, grant = %#v, hits = %d, err = %v", first.StatusCode, second.StatusCode, grant, hits.Load(), err)
+	}
+}
+
 func TestInferenceModelValidation(t *testing.T) {
 	tests := map[string]bool{
 		"acme/model":           true,
@@ -346,6 +380,12 @@ func newInferenceBroker(t *testing.T, routerURL string, timeout time.Duration) (
 
 func newInferenceBrokerWithPolicy(t *testing.T, routerURL string, timeout time.Duration, policyJSON string) (*httptest.Server, *bytes.Buffer) {
 	t.Helper()
+	broker, auditLog, _ := newInferenceBrokerWithPolicyHandler(t, routerURL, timeout, policyJSON)
+	return broker, auditLog
+}
+
+func newInferenceBrokerWithPolicyHandler(t *testing.T, routerURL string, timeout time.Duration, policyJSON string) (*httptest.Server, *bytes.Buffer, *Server) {
+	t.Helper()
 	scp, err := policy.Parse([]byte(policyJSON))
 	if err != nil {
 		t.Fatal(err)
@@ -361,7 +401,7 @@ func newInferenceBrokerWithPolicy(t *testing.T, routerURL string, timeout time.D
 	if err != nil {
 		t.Fatal(err)
 	}
-	return httptest.NewServer(handler), &auditLog
+	return httptest.NewServer(handler), &auditLog, handler
 }
 
 func inferenceAllowPolicyJSON() string {

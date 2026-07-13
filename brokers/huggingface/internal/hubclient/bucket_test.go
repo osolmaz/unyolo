@@ -3,6 +3,7 @@ package hubclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -73,5 +74,18 @@ func TestBucketClientRejectsUnsafeOrAmbiguousBatches(t *testing.T) {
 	}
 	if err := (BucketRef{Namespace: "acme", Name: "../source"}).Validate(); err == nil {
 		t.Fatal("unsafe bucket name accepted")
+	}
+}
+
+func TestBucketClientTreatsPartialBatchResultAsAmbiguous(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"success":false,"processed":1,"succeeded":1,"failed":[{"path":"second"}]}`)
+	}))
+	defer server.Close()
+	client, _ := New(server.URL, "token", WithHTTPTransport(server.Client().Transport))
+	err := client.ApplyBucketBatch(context.Background(), BucketRef{Namespace: "acme", Name: "source"}, []BucketBatchOperation{{Type: "deleteFile", Path: "first"}, {Type: "deleteFile", Path: "second"}})
+	var upstream *Error
+	if !errors.As(err, &upstream) || upstream.Code != CodeResultUnknown || !upstream.Ambiguous || upstream.Definitive() {
+		t.Fatalf("ApplyBucketBatch() error = %#v", err)
 	}
 }

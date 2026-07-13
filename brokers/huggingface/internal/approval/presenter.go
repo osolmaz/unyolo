@@ -42,9 +42,17 @@ func (Presenter) Present(_ context.Context, grant bkgrants.Grant) (operatorinbox
 	if grant.ReservationRetained {
 		fields = append(fields, operatorinbox.DisplayField{Label: "Needs attention", Value: "Execution result is ambiguous; authority is closed"})
 	}
+	title := grant.Metadata[hfplan.MetadataTitle]
+	if title == "" {
+		title = titleForOperation(grant.Operation)
+	}
+	summary := grant.Metadata[hfplan.MetadataSummary]
+	if summary == "" {
+		summary = "Review this Hugging Face operation before granting temporary access."
+	}
 	return operatorinbox.Presentation{
-		Risk: riskForOperation(grant.Operation), Title: nonEmpty(grant.Metadata[hfplan.MetadataTitle], titleForOperation(grant.Operation)),
-		Summary: nonEmpty(grant.Metadata[hfplan.MetadataSummary], "Review this Hugging Face operation before granting temporary access."),
+		Risk: riskForOperation(grant.Operation), Title: title,
+		Summary: summary,
 		Target:  target, Fields: fields, PlanHash: grant.Metadata[hfplan.MetadataDigest],
 	}, nil
 }
@@ -61,13 +69,6 @@ func displayTarget(grant bkgrants.Grant) string {
 		kind = policy.FirstValue(fields[targetTypeField])
 	}
 	return kind + "/" + owner + "/" + name
-}
-
-func nonEmpty(value, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
 }
 
 func riskForOperation(operation string) operatorinbox.Risk {

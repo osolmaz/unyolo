@@ -300,7 +300,7 @@ func hfRegistry() corepolicy.Registry {
 		}
 		spec := corepolicy.OperationSpec{
 			TargetKinds: []string{kind},
-			Attrs:       []string{"destination", "factory_reboot", "gating", "hardware", "key", "max_bytes", "private", "ref_change", "sdk", "sleep_time_seconds", "source", "source_path", "source_ref", "visibility"},
+			Attrs:       KnownAttributeNames(),
 			Grantable:   info.mode != GrantModeNone,
 		}
 		if spec.Grantable {
@@ -314,25 +314,20 @@ func hfRegistry() corepolicy.Registry {
 	return corepolicy.Registry{
 		Operations: coreOperations,
 		Targets:    targets,
-		Attrs: map[string]corepolicy.AttrSpec{
-			"max_bytes": {
-				Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true,
-			},
-			"ref_change":         {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"private":            {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"sdk":                {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"visibility":         {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"destination":        {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"gating":             {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"factory_reboot":     {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"hardware":           {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"key":                {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"sleep_time_seconds": {Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true},
-			"source":             {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"source_path":        {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"source_ref":         {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-		},
+		Attrs:      hfAttributeSpecs(),
 	}
+}
+
+func hfAttributeSpecs() map[string]corepolicy.AttrSpec {
+	specs := make(map[string]corepolicy.AttrSpec, len(knownAttrs))
+	for name := range knownAttrs {
+		specs[name] = corepolicy.AttrSpec{GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true}
+	}
+	maximum := corepolicy.AttrSpec{Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true}
+	for _, name := range []string{"max_bytes", "max_hosts", "num_hosts", "sleep_time_seconds", "warm_up"} {
+		specs[name] = maximum
+	}
+	return specs
 }
 
 func ownerNameTargetFields() map[string]corepolicy.FieldSpec {

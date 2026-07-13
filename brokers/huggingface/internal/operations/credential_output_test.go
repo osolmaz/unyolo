@@ -9,6 +9,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialstore"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
 )
 
@@ -74,6 +75,9 @@ func TestCredentialOutputAdapterStoresTokenWithoutReturningIt(t *testing.T) {
 	plan.Policy = adapter.Authorize(plan)
 	if plan.Policy.Attrs["credential_kind"] != "hf-service-account-token" {
 		t.Fatalf("reconstructed policy = %#v", plan.Policy)
+	}
+	if err := hfpolicy.ValidateRequest(plan.Policy); err != nil {
+		t.Fatalf("Authorize() produced an invalid policy request: %v", err)
 	}
 	outcome, err := adapter.Execute(t.Context(), plan)
 	if err != nil || !outcome.Proven || slots.slot != "deployment-token" || string(slots.secret) != "hf_generated-secret" {
