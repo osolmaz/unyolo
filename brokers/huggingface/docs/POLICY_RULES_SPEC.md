@@ -535,7 +535,7 @@ Fields:
 | Field | Required | Type | Meaning |
 |-------|----------|------|---------|
 | `kind` | yes | string | Must be `repo`. |
-| `type` | yes | string | `model`, `dataset`, `space`, or `*`. |
+| `type` | yes | string | `model`, `dataset`, `space`, `kernel`, or `*`. |
 | `owner` | yes | string | Exact owner or segment glob. |
 | `name` | yes | string | Exact repo name or segment glob. |
 | `refs` | no | array | Exact ref names or ref globs. Applies only to push/ref-update operations whose refs the broker classifies. LFS upload support traffic does not carry a ref, so it is authorized at the repo target level and the following `git-receive-pack` request enforces ref scope. |

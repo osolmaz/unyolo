@@ -50,6 +50,64 @@ func TestTypedRepositoryCallsAreBoundedAndAuthenticated(t *testing.T) {
 	}
 }
 
+func TestTypedKernelRepositoryCallsUseKernelPathsAndType(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			if r.Method != http.MethodGet || r.URL.Path != "/api/kernels/acme/demo" {
+				t.Fatalf("kernel info request = %s %s", r.Method, r.URL.Path)
+			}
+			_, _ = w.Write([]byte(`{"id":"acme/demo","sha":"abc","private":true}`))
+		case 2:
+			if r.Method != http.MethodPost || r.URL.Path != "/api/repos/create" {
+				t.Fatalf("kernel create request = %s %s", r.Method, r.URL.Path)
+			}
+			var body map[string]any
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body["type"] != "kernel" {
+				t.Fatalf("kernel create body = %#v", body)
+			}
+			_, _ = w.Write([]byte(`{"url":"https://huggingface.co/kernels/acme/demo"}`))
+		case 3:
+			if r.Method != http.MethodDelete || r.URL.Path != "/api/repos/delete" {
+				t.Fatalf("kernel delete request = %s %s", r.Method, r.URL.Path)
+			}
+			var body map[string]any
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body["type"] != "kernel" {
+				t.Fatalf("kernel delete body = %#v", body)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "secret", WithHTTPTransport(server.Client().Transport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := RepoRef{Type: RepoTypeKernel, Owner: "acme", Name: "demo"}
+	if info, err := client.RepoInfo(t.Context(), ref); err != nil || info.ID != "acme/demo" {
+		t.Fatalf("RepoInfo() = %+v, %v", info, err)
+	}
+	if created, err := client.CreateRepo(t.Context(), CreateRepoInput{Ref: ref, Visibility: VisibilityPrivate}); err != nil || created.URL == "" {
+		t.Fatalf("CreateRepo() = %+v, %v", created, err)
+	}
+	if err := client.DeleteRepo(t.Context(), ref); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPinnedSpaceHardwareFlavorsAreAccepted(t *testing.T) {
+	for _, flavor := range []string{"cpu-performance", "cpu-xl", "sprx8", "h200", "h200x8", "rtx-pro-6000", "rtx-pro-6000x8", "inf2x6"} {
+		if !ValidHardwareFlavor(flavor) {
+			t.Errorf("pinned Space hardware flavor %q was rejected", flavor)
+		}
+	}
+	if ValidHardwareFlavor("future-unpinned-hardware") {
+		t.Fatal("unpinned Space hardware flavor was accepted")
+	}
+}
+
 func TestTypedClientClassifiesAndRedactsErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "17")

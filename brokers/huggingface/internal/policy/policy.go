@@ -78,6 +78,7 @@ const (
 	TypeModel   RepoType = "model"
 	TypeDataset RepoType = "dataset"
 	TypeSpace   RepoType = "space"
+	TypeKernel  RepoType = "kernel"
 	TypeAny     RepoType = "*"
 )
 
@@ -814,7 +815,7 @@ func validateNoRepoTargetFields(pathName string, target *TargetMatcher) error {
 
 func validateRepoTargetType(pathName string, repoType RepoType) error {
 	if !validRepoType(repoType) {
-		return fmt.Errorf("%s.type: must be model, dataset, space, or *", pathName)
+		return fmt.Errorf("%s.type: must be model, dataset, space, kernel, or *", pathName)
 	}
 	return nil
 }
@@ -913,7 +914,7 @@ func validatePathGlobSyntax(pathName, value string) error {
 
 func validRepoType(value RepoType) bool {
 	switch value {
-	case TypeModel, TypeDataset, TypeSpace, TypeAny:
+	case TypeModel, TypeDataset, TypeSpace, TypeKernel, TypeAny:
 		return true
 	default:
 		return false

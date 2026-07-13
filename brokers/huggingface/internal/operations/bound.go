@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
@@ -213,8 +214,69 @@ func (a *boundAdapter) presentationAndPolicy(targetRaw, argumentsRaw json.RawMes
 		request.Target.Type = policyRepoType(target)
 	}
 	title := strings.ReplaceAll(a.descriptor.Name, ".", " ")
-	summary := fmt.Sprintf("%s on %s/%s", title, owner, name)
+	summary := truncatePresentationText(fmt.Sprintf("%s on %s/%s", title, owner, name), 180)
+	if requested := requestedStateSummary(arguments); requested != "" {
+		summary += "; requested: " + requested
+	}
 	return agentv1.Presentation{Title: title, Summary: summary}, request
+}
+
+const maxRequestedStateSummaryBytes = 300
+
+func requestedStateSummary(arguments map[string]any) string {
+	if len(arguments) == 0 {
+		return ""
+	}
+	redacted := redactPresentationValue(arguments)
+	encoded, err := json.Marshal(redacted)
+	if err != nil {
+		return "details unavailable"
+	}
+	return truncatePresentationText(string(encoded), maxRequestedStateSummaryBytes)
+}
+
+func truncatePresentationText(value string, maximum int) string {
+	if len(value) <= maximum {
+		return value
+	}
+	prefix := []byte(value)[:maximum-3]
+	for !utf8.Valid(prefix) {
+		prefix = prefix[:len(prefix)-1]
+	}
+	return string(prefix) + "..."
+}
+
+func redactPresentationValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		redacted := make(map[string]any, len(typed))
+		for key, child := range typed {
+			if sensitivePresentationKey(key) {
+				redacted[key] = "[redacted]"
+			} else {
+				redacted[key] = redactPresentationValue(child)
+			}
+		}
+		return redacted
+	case []any:
+		redacted := make([]any, len(typed))
+		for index, child := range typed {
+			redacted[index] = redactPresentationValue(child)
+		}
+		return redacted
+	default:
+		return value
+	}
+}
+
+func sensitivePresentationKey(key string) bool {
+	normalized := strings.ToLower(key)
+	for _, marker := range []string{"authorization", "cookie", "credential", "password", "secret", "token"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func policyIdentity(target map[string]any, fallback, kind string) (string, string) {

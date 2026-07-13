@@ -83,6 +83,48 @@ func TestBoundAdapterLifecycle(t *testing.T) {
 	}
 }
 
+func TestBoundAdapterPresentationIncludesRedactedRequestedState(t *testing.T) {
+	client := &boundFake{identity: "operator"}
+	adapters, err := NewBoundAdapters(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := NewRegistry(adapters...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, found := registry.Lookup("organization.member.role.update")
+	if !found {
+		t.Fatal("organization.member.role.update is not registered")
+	}
+	input, err := adapter.Decode(json.RawMessage(`{"name":"acme","username":"bob"}`), json.RawMessage(`{"role":"admin"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.Presentation.Summary, `requested: {"role":"admin"}`) {
+		t.Fatalf("presentation summary = %q", plan.Presentation.Summary)
+	}
+
+	redacted := requestedStateSummary(map[string]any{
+		"role": "admin", "nested": map[string]any{"accessToken": "must-not-escape"},
+		"items": []any{map[string]any{"password": "also-must-not-escape"}},
+	})
+	if strings.Contains(redacted, "must-not-escape") || !strings.Contains(redacted, `"accessToken":"[redacted]"`) ||
+		!strings.Contains(redacted, `"password":"[redacted]"`) {
+		t.Fatalf("redacted requested state = %q", redacted)
+	}
+	if got := requestedStateSummary(map[string]any{"content": strings.Repeat("x", 1000)}); len(got) > maxRequestedStateSummaryBytes {
+		t.Fatalf("bounded requested state length = %d", len(got))
+	}
+	if got := truncatePresentationText(strings.Repeat("x", 179)+"\u754c", 180); len(got) > 180 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("UTF-8 bounded text = %q (%d bytes)", got, len(got))
+	}
+}
+
 func TestBoundAdapterObservedLifecycle(t *testing.T) {
 	client := &boundFake{identity: "operator", observed: json.RawMessage(`{"enabled":true}`)}
 	adapters, err := NewBoundAdapters(client)

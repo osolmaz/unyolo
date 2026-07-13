@@ -65,6 +65,42 @@ func TestSandboxCreateConsumesSealedSecretsWithoutLeakingThemIntoPlan(t *testing
 	}
 }
 
+func TestSandboxCreateRejectsOverlappingSealedSecretBeforeApproval(t *testing.T) {
+	store, err := sealedstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference, err := store.PutForRequest("bob", "sandbox.create", "sandbox-overlap", []byte(`{"secrets":{"MODE":"secret"}}`), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapters, err := NewSandboxAdapters(&sandboxFake{identity: "operator"}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := NewRegistry(adapters...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, _ := registry.Lookup("sandbox.create")
+	arguments, _ := json.Marshal(sealedBoundArguments{
+		Public: json.RawMessage(`{"image":"python:3.12","flavor":"cpu-basic","environment":{"MODE":"public"}}`), SealedPayload: &reference,
+	})
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"sandbox","namespace":"acme","name":"review"}`), arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "sandbox-overlap"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Resolve(t.Context(), input); err == nil || !strings.Contains(err.Error(), "overlaps") {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if _, err := store.Get(reference); err != nil {
+		t.Fatalf("sealed payload was consumed during validation: %v", err)
+	}
+}
+
 func TestSandboxAdaptersUseClosedOperationSpecificInputs(t *testing.T) {
 	store, _ := sealedstore.Open(t.TempDir())
 	adapters, _ := NewSandboxAdapters(&sandboxFake{}, store)

@@ -16,6 +16,7 @@ const (
 	RepoTypeModel   RepoType = "model"
 	RepoTypeDataset RepoType = "dataset"
 	RepoTypeSpace   RepoType = "space"
+	RepoTypeKernel  RepoType = "kernel"
 )
 
 // Visibility is the closed repository visibility vocabulary of the pinned
@@ -45,11 +46,14 @@ var namespaceSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,9
 // spaceHardwareFlavors is the closed hardware set from the pinned
 // huggingface_hub SpaceHardware enum at commit c4ed724.
 var spaceHardwareFlavors = map[string]bool{
-	"cpu-basic": true, "cpu-upgrade": true, "zero-a10g": true,
+	"cpu-basic": true, "cpu-upgrade": true, "cpu-performance": true, "cpu-xl": true, "sprx8": true, "zero-a10g": true,
 	"t4-small": true, "t4-medium": true,
 	"l4x1": true, "l4x4": true, "l40sx1": true, "l40sx4": true, "l40sx8": true,
 	"a10g-small": true, "a10g-large": true, "a10g-largex2": true, "a10g-largex4": true,
 	"a100-large": true, "a100x4": true, "a100x8": true,
+	"h200": true, "h200x2": true, "h200x4": true, "h200x8": true,
+	"rtx-pro-6000": true, "rtx-pro-6000x2": true, "rtx-pro-6000x4": true, "rtx-pro-6000x8": true,
+	"inf2x6": true,
 }
 
 // ValidHardwareFlavor reports whether flavor is in the pinned Space hardware
@@ -91,8 +95,8 @@ type RepoRef struct {
 
 // Validate rejects unsafe or ambiguous repository identities.
 func (r RepoRef) Validate() error {
-	if r.Type != RepoTypeModel && r.Type != RepoTypeDataset && r.Type != RepoTypeSpace {
-		return errors.New("hubclient: repository type must be model, dataset, or space")
+	if r.Type != RepoTypeModel && r.Type != RepoTypeDataset && r.Type != RepoTypeSpace && r.Type != RepoTypeKernel {
+		return errors.New("hubclient: repository type must be model, dataset, space, or kernel")
 	}
 	if !ValidNamespaceSegment(r.Owner) || !ValidNamespaceSegment(r.Name) {
 		return errors.New("hubclient: repository owner and name must be exact safe segments")

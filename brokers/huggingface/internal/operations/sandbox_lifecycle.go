@@ -25,7 +25,12 @@ func (a *sandboxAdapter) Resolve(ctx context.Context, input Input) (Plan, error)
 	preconditions := sandboxPreconditions{CredentialIdentity: identity.Name}
 	switch a.descriptor.Name {
 	case "sandbox.create":
-		if _, _, err = a.materializeSandboxCreate(input.Arguments, false); err != nil {
+		var public sandboxCreatePublic
+		var secret sandboxCreateSecret
+		if public, secret, err = a.materializeSandboxCreate(input.Arguments, false); err != nil {
+			return Plan{}, err
+		}
+		if err = validateDistinctSandboxEnvironment(public.Environment, secret.Secrets); err != nil {
 			return Plan{}, err
 		}
 		preconditions.OperationID, err = newOperationMarker()
@@ -418,17 +423,26 @@ func nonNotFound(err error) error {
 }
 
 func mergeSandboxEnvironment(public, secret map[string]string) (map[string]string, error) {
+	if err := validateDistinctSandboxEnvironment(public, secret); err != nil {
+		return nil, err
+	}
 	merged := make(map[string]string, len(public)+len(secret))
 	for key, value := range public {
 		merged[key] = value
 	}
 	for key, value := range secret {
-		if _, exists := merged[key]; exists {
-			return nil, errors.New("sealed sandbox environment overlaps public environment")
-		}
 		merged[key] = value
 	}
 	return merged, nil
+}
+
+func validateDistinctSandboxEnvironment(public, secret map[string]string) error {
+	for key := range secret {
+		if _, exists := public[key]; exists {
+			return errors.New("sealed sandbox environment overlaps public environment")
+		}
+	}
+	return nil
 }
 
 func decodeSandboxContent(value string) []byte {

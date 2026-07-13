@@ -62,6 +62,23 @@ func TestDecideAllowDenyAndNoMatch(t *testing.T) {
 	}
 }
 
+func TestKernelRepositoryRulesAreSupported(t *testing.T) {
+	pol := mustParse(t, `{"rules":[{
+		"id":"deny-kernel-delete",
+		"effect":"deny",
+		"clients":["agent"],
+		"operations":["repo.delete"],
+		"targets":[{"kind":"repo","type":"kernel","owner":"acme","name":"demo"}]
+	}]}`)
+	request := repoReq("agent", Operation("repo.delete"), "kernel", "acme", "demo", "")
+	if err := ValidateRequest(request); err != nil {
+		t.Fatalf("kernel request validation error = %v", err)
+	}
+	if decision := pol.Decide(request, nil, time.Now(), false); decision.Effect != EffectDeny {
+		t.Fatalf("kernel decision = %+v", decision)
+	}
+}
+
 func TestRequestableDoesNotMeanExecutable(t *testing.T) {
 	pol := mustParse(t, `{
 		"rules": [
