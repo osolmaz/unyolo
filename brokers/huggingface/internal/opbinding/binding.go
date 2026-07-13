@@ -29,6 +29,9 @@ var manualRoutesRaw []byte
 //go:embed endpoint-routes.json
 var endpointRoutesRaw []byte
 
+//go:embed uv-routes.json
+var uvRoutesRaw []byte
+
 type routeSource struct {
 	Operation          string            `json:"operation"`
 	Method             string            `json:"method"`
@@ -44,6 +47,7 @@ type routeSource struct {
 	ArgumentsSchema    map[string]any    `json:"arguments_schema,omitempty"`
 	BodyFromTarget     map[string]string `json:"body_from_target,omitempty"`
 	UpstreamReference  string            `json:"upstream_reference,omitempty"`
+	Transform          string            `json:"transform,omitempty"`
 }
 
 type Binding struct {
@@ -59,6 +63,7 @@ type Binding struct {
 	Origin             string
 	BodyFromTarget     map[string]string
 	UpstreamReference  string
+	Transform          string
 	TargetSchema       json.RawMessage
 	ArgumentsSchema    json.RawMessage
 	targetValidator    *jsonschema.Schema
@@ -170,6 +175,11 @@ func load() ([]Binding, error) {
 		return nil, fmt.Errorf("decode endpoint route bindings: %w", err)
 	}
 	sources = append(sources, endpoints...)
+	var uv []routeSource
+	if err := strictjson.Decode(uvRoutesRaw, &uv, true); err != nil {
+		return nil, fmt.Errorf("decode UV Job route bindings: %w", err)
+	}
+	sources = append(sources, uv...)
 	values := make([]Binding, 0, len(sources))
 	seen := make(map[string]bool, len(sources))
 	for _, source := range sources {
@@ -228,10 +238,14 @@ func bindingFromSource(paths map[string]map[string]json.RawMessage, components m
 			return Binding{}, errors.New("observation binding is invalid")
 		}
 	}
+	if source.Transform != "" && source.Transform != "uv_job" && source.Transform != "uv_scheduled_job" {
+		return Binding{}, errors.New("operation transform is invalid")
+	}
 	return Binding{Operation: source.Operation, Method: source.Method, Path: source.Path,
 		FixedPath: source.FixedPath, FixedBody: source.FixedBody, ArgumentProjection: source.ArgumentProjection,
 		ObserveMethod: source.ObserveMethod, ObservePath: source.ObservePath, Reconcile: source.Reconcile,
 		Origin: source.Origin, BodyFromTarget: source.BodyFromTarget, UpstreamReference: source.UpstreamReference,
+		Transform:    source.Transform,
 		TargetSchema: targetRaw, ArgumentsSchema: argumentsRaw, targetValidator: targetValidator,
 		argumentsValidator: argumentsValidator}, nil
 }

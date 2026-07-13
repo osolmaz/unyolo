@@ -117,6 +117,9 @@ func scalarPathValue(value any) (string, bool) {
 }
 
 func boundBody(binding opbinding.Binding, targetRaw, raw json.RawMessage) (any, error) {
+	if binding.Transform != "" {
+		return transformBoundBody(binding.Transform, raw)
+	}
 	var arguments map[string]any
 	if err := strictjson.Decode(raw, &arguments, true); err != nil {
 		return nil, errors.New("hubclient: bound arguments are invalid")

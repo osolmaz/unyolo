@@ -42,7 +42,7 @@ var sealedInputPaths = map[string][]string{
 	"provisioning.resource.create":         {"payment_credentials"},
 	"provisioning.resource.service.update": {"payment_credentials"},
 	"scheduled_job.create":                 {"jobSpec.secrets"},
-	"scheduled_job.uv.create":              {"jobSpec.secrets"},
+	"scheduled_job.uv.create":              {"secrets"},
 	"space.secret.set":                     {"value"},
 	"webhook.create":                       {"secret", "job.secrets"},
 	"webhook.update":                       {"secret", "job.secrets"},

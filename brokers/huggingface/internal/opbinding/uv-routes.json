@@ -1,0 +1,100 @@
+[
+  {
+    "operation": "job.uv.run",
+    "method": "POST",
+    "path": "/api/jobs/{namespace}",
+    "transform": "uv_job",
+    "target_schema": {
+      "type": "object",
+      "properties": {"namespace": {"type": "string", "minLength": 1, "maxLength": 96}},
+      "required": ["namespace"],
+      "additionalProperties": false
+    },
+    "arguments_schema": {
+      "$defs": {
+        "volume": {
+          "type": "object",
+          "properties": {
+            "type": {"enum": ["bucket", "model", "dataset", "space"]},
+            "source": {"type": "string", "minLength": 1, "maxLength": 256},
+            "mount_path": {"type": "string", "pattern": "^/", "maxLength": 512},
+            "revision": {"type": "string", "minLength": 1, "maxLength": 256},
+            "read_only": {"type": "boolean"},
+            "path": {"type": "string", "maxLength": 512}
+          },
+          "required": ["type", "source", "mount_path"],
+          "additionalProperties": false
+        }
+      },
+      "type": "object",
+      "properties": {
+        "script": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "script_args": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 4096}},
+        "dependencies": {"type": "array", "maxItems": 128, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+        "python": {"type": "string", "minLength": 1, "maxLength": 64},
+        "image": {"type": "string", "minLength": 1, "maxLength": 512},
+        "environment": {"type": "object", "maxProperties": 256, "propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, "additionalProperties": {"type": "string", "maxLength": 16384}},
+        "secrets": {"type": "object", "maxProperties": 256, "propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, "additionalProperties": {"type": "string", "maxLength": 16384}},
+        "flavor": {"type": "string", "minLength": 1, "maxLength": 64},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 604800},
+        "labels": {"type": "object", "maxProperties": 64, "propertyNames": {"pattern": "^[A-Za-z0-9._-]{1,100}$"}, "additionalProperties": {"type": "string", "maxLength": 100, "pattern": "^[A-Za-z0-9._-]*$"}},
+        "volumes": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/volume"}},
+        "expose": {"type": "array", "maxItems": 20, "items": {"type": "integer", "minimum": 1, "maximum": 65535}},
+        "ssh": {"type": "boolean"}
+      },
+      "required": ["script"],
+      "additionalProperties": false
+    },
+    "upstream_reference": "huggingface_hub@1.23.0:HfApi.run_uv_job"
+  },
+  {
+    "operation": "scheduled_job.uv.create",
+    "method": "POST",
+    "path": "/api/scheduled-jobs/{namespace}",
+    "transform": "uv_scheduled_job",
+    "target_schema": {
+      "type": "object",
+      "properties": {"namespace": {"type": "string", "minLength": 1, "maxLength": 96}},
+      "required": ["namespace"],
+      "additionalProperties": false
+    },
+    "arguments_schema": {
+      "$defs": {
+        "volume": {
+          "type": "object",
+          "properties": {
+            "type": {"enum": ["bucket", "model", "dataset", "space"]},
+            "source": {"type": "string", "minLength": 1, "maxLength": 256},
+            "mount_path": {"type": "string", "pattern": "^/", "maxLength": 512},
+            "revision": {"type": "string", "minLength": 1, "maxLength": 256},
+            "read_only": {"type": "boolean"},
+            "path": {"type": "string", "maxLength": 512}
+          },
+          "required": ["type", "source", "mount_path"],
+          "additionalProperties": false
+        }
+      },
+      "type": "object",
+      "properties": {
+        "script": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "script_args": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 4096}},
+        "dependencies": {"type": "array", "maxItems": 128, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+        "python": {"type": "string", "minLength": 1, "maxLength": 64},
+        "image": {"type": "string", "minLength": 1, "maxLength": 512},
+        "environment": {"type": "object", "maxProperties": 256, "propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, "additionalProperties": {"type": "string", "maxLength": 16384}},
+        "secrets": {"type": "object", "maxProperties": 256, "propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, "additionalProperties": {"type": "string", "maxLength": 16384}},
+        "flavor": {"type": "string", "minLength": 1, "maxLength": 64},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 604800},
+        "labels": {"type": "object", "maxProperties": 64, "propertyNames": {"pattern": "^[A-Za-z0-9._-]{1,100}$"}, "additionalProperties": {"type": "string", "maxLength": 100, "pattern": "^[A-Za-z0-9._-]*$"}},
+        "volumes": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/volume"}},
+        "expose": {"type": "array", "maxItems": 20, "items": {"type": "integer", "minimum": 1, "maximum": 65535}},
+        "schedule": {"type": "string", "minLength": 1, "maxLength": 128},
+        "suspend": {"type": "boolean"},
+        "concurrency": {"type": "boolean"}
+      },
+      "required": ["script", "schedule"],
+      "additionalProperties": false
+    },
+    "upstream_reference": "huggingface_hub@1.23.0:HfApi.create_scheduled_uv_job"
+  }
+]

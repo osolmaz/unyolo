@@ -24,7 +24,6 @@
   {"operation":"job.duplicate","method":"POST","path":"/api/jobs/{namespace}/{jobId}/duplicate"},
   {"operation":"job.labels.update","method":"PUT","path":"/api/jobs/{namespace}/{jobId}/labels","observe_method":"GET","observe_path":"/api/jobs/{namespace}/{jobId}","reconcile":"present"},
   {"operation":"job.run","method":"POST","path":"/api/jobs/{namespace}"},
-  {"operation":"job.uv.run","method":"POST","path":"/api/jobs/{namespace}","fixed_body":{"runner":"uv"}},
 
   {"operation":"notification.delete","method":"DELETE","path":"/api/notifications"},
   {"operation":"notification.read_status.update","method":"POST","path":"/api/notifications/mark-as-read"},
@@ -75,7 +74,6 @@
   {"operation":"scheduled_job.schedule.update","method":"POST","path":"/api/scheduled-jobs/{namespace}/{jobId}/schedule","observe_method":"GET","observe_path":"/api/scheduled-jobs/{namespace}/{jobId}","reconcile":"present"},
   {"operation":"scheduled_job.suspend","method":"POST","path":"/api/scheduled-jobs/{namespace}/{jobId}/suspend","observe_method":"GET","observe_path":"/api/scheduled-jobs/{namespace}/{jobId}","reconcile":"present"},
   {"operation":"scheduled_job.trigger","method":"POST","path":"/api/scheduled-jobs/{namespace}/{jobId}/run"},
-  {"operation":"scheduled_job.uv.create","method":"POST","path":"/api/scheduled-jobs/{namespace}","fixed_body":{"runner":"uv"}},
 
   {"operation":"scim.group.create","method":"POST","path":"/api/organizations/{name}/scim/v2/Groups"},
   {"operation":"scim.group.delete","method":"DELETE","path":"/api/organizations/{name}/scim/v2/Groups/{groupId}"},
