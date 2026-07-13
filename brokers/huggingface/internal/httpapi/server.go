@@ -358,6 +358,11 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	sandboxAdapters, err := operations.NewSandboxAdapters(hub, sealedPayloads)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	providerAdapters = append(providerAdapters, settingsAdapters...)
 	providerAdapters = append(providerAdapters, refsAdapters...)
 	providerAdapters = append(providerAdapters, spaceAdapters...)
@@ -365,8 +370,13 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	providerAdapters = append(providerAdapters, bucketAdapters...)
 	providerAdapters = append(providerAdapters, contentAdapters...)
 	providerAdapters = append(providerAdapters, sealedAdapters...)
+	providerAdapters = append(providerAdapters, sandboxAdapters...)
 	operationRegistry, err := operations.NewRegistry(providerAdapters...)
 	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	if err := operationRegistry.ValidateCoverage(); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
