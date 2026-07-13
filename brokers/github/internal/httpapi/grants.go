@@ -84,15 +84,16 @@ func (s *Server) requestGrant(request grants.Request) (grants.RequestResult, boo
 	if err != nil {
 		return grants.RequestResult{}, false, err
 	}
+	var plan grants.ImmutablePlan
 	if exists {
-		err = s.plans.BindAt(&request, createdAt)
+		plan, err = s.plans.PrepareBindAt(&request, createdAt)
 	} else {
-		err = s.plans.Bind(&request)
+		plan, err = s.plans.PrepareBind(&request)
 	}
 	if err != nil {
 		return grants.RequestResult{}, false, fmt.Errorf("store immutable GitHub plan: %w", err)
 	}
-	return s.grants.Request(request)
+	return s.grants.RequestWithPlan(request, plan)
 }
 
 func existingGitHubPlanCreatedAt(store *grants.Store, plans *ghplan.Store, client string, clientRequestID string) (time.Time, bool, error) {

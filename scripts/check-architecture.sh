@@ -77,6 +77,13 @@ then
   exit 1
 fi
 
+if grep -R -n --include='*.go' -E 'grants\.New\(|brokerkit/planstore|planstore\.' \
+  brokers/github --exclude='*_test.go' 2>/dev/null
+then
+  echo 'GH lifecycle state must use the shared SQLite database' >&2
+  exit 1
+fi
+
 if grep -R -n --include='*.go' -E 'plans\.Bind(At)?\(|store\.Request\(' \
   brokers/huggingface/internal/hfgrant --exclude='*_test.go' 2>/dev/null
 then

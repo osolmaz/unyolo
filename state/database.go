@@ -75,6 +75,10 @@ func openLeasedDatabase(ctx context.Context, directory string, options Options, 
 }
 
 func openSQL(path string, options Options) (*sql.DB, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve state database path: %w", err)
+	}
 	values := url.Values{}
 	for _, pragma := range []string{
 		"foreign_keys(1)",
@@ -84,7 +88,7 @@ func openSQL(path string, options Options) (*sql.DB, error) {
 	} {
 		values.Add("_pragma", pragma)
 	}
-	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(path), RawQuery: values.Encode()}).String()
+	dsn := (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: values.Encode()}).String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open state database: %w", err)

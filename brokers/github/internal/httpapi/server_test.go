@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -950,7 +949,7 @@ func TestUnresolvedGrantNotificationReclaimsAfterLease(t *testing.T) {
 
 func createUnresolvedNotificationClaim(t *testing.T, server *Server, now func() time.Time) (grants.Grant, grants.NotificationClaim) {
 	t.Helper()
-	server.grants = grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{Now: now})
+	server.grants = grants.NewDatabase(server.database, grants.Options{Now: now})
 	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
@@ -1043,11 +1042,15 @@ func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
 	}
 	grant := decodeGrantResponse(t, created)
 	approveGrant(t, server, grant.ID, createdNotifier.token)
+	if err := server.Close(); err != nil {
+		t.Fatalf("Close(first) error = %v", err)
+	}
 
 	restarted, err := New(cfg, brokerPolicy)
 	if err != nil {
 		t.Fatalf("New(restarted) error = %v", err)
 	}
+	t.Cleanup(func() { _ = restarted.Close() })
 	statusNotifier := &captureNotifier{}
 	restarted.notifier = statusNotifier
 	restarted.deliverGrantStatusUpdates(context.Background())
@@ -2269,6 +2272,7 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	t.Cleanup(func() { _ = server.Close() })
 	if server.githubClient.Timeout != 7*time.Second {
 		t.Fatalf("github timeout = %s, want 7s", server.githubClient.Timeout)
 	}

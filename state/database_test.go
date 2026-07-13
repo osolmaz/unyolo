@@ -63,6 +63,24 @@ func TestOpenRejectsMissingDirectory(t *testing.T) {
 	}
 }
 
+func TestOpenAcceptsRelativeDirectory(t *testing.T) {
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := filepath.Rel(workingDirectory, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	database, err := Open(t.Context(), directory, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenRejectsAStatePathUnderAFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {

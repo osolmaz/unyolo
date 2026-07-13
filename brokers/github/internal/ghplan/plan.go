@@ -2,19 +2,18 @@
 package ghplan
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/planstore"
+	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
 
@@ -51,27 +50,30 @@ type Constraints struct {
 }
 
 type Store struct {
-	shared             *planstore.Store
+	database           *state.Database
 	credentialSelector string
 	now                func() time.Time
 }
 
-func NewStore(directory string, credentialSelector string) (*Store, error) {
-	return newStore(directory, credentialSelector, time.Now)
+func NewStore(database *state.Database, credentialSelector string) (*Store, error) {
+	return newStore(database, credentialSelector, time.Now)
 }
 
-func newStore(directory string, credentialSelector string, now func() time.Time) (*Store, error) {
+func NewStoreWithClock(database *state.Database, credentialSelector string, now func() time.Time) (*Store, error) {
+	return newStore(database, credentialSelector, now)
+}
+
+func newStore(database *state.Database, credentialSelector string, now func() time.Time) (*Store, error) {
+	if database == nil {
+		return nil, errors.New("GitHub plan database is required")
+	}
 	if credentialSelector != "github_app" && credentialSelector != "development_pat" { // #nosec G101 -- these are credential mode identifiers, not credentials.
 		return nil, errors.New("GitHub credential selector is invalid")
-	}
-	shared, err := planstore.New(directory, "GitHub")
-	if err != nil {
-		return nil, err
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{shared: shared, credentialSelector: credentialSelector, now: now}, nil
+	return &Store{database: database, credentialSelector: credentialSelector, now: now}, nil
 }
 
 func FromRequest(request grants.Request, credentialSelector string, createdAt time.Time) Plan {
@@ -99,40 +101,24 @@ func kindForOperation(operation string) (string, bool) {
 	}
 }
 
-func (s *Store) Put(plan Plan) (string, error) {
-	if s == nil || s.shared == nil {
-		return "", errors.New("GitHub plan store is unavailable")
-	}
-	encoded, err := encode(plan)
-	if err != nil {
-		return "", err
-	}
-	return s.shared.Put(encoded)
-}
-
 func (s *Store) Get(digest string) (Plan, error) {
-	if s == nil || s.shared == nil {
+	if s == nil || s.database == nil {
 		return Plan{}, errors.New("GitHub plan store is unavailable")
 	}
-	data, err := s.shared.Get(digest)
+	record, err := s.database.Plan(context.Background(), digest)
 	if err != nil {
 		return Plan{}, err
 	}
-	return decode(data)
+	if record.SchemaName != SchemaV1 {
+		return Plan{}, errors.New("GitHub plan schema is unsupported")
+	}
+	return decode(record.Canonical)
 }
 
 func decode(data []byte) (Plan, error) {
-	if err := strictjson.RejectDuplicateKeys(data); err != nil {
-		return Plan{}, fmt.Errorf("decode GitHub plan: %w", err)
-	}
 	var plan Plan
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&plan); err != nil {
+	if err := strictjson.Decode(data, &plan, true); err != nil {
 		return Plan{}, fmt.Errorf("decode GitHub plan: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return Plan{}, errors.New("decode GitHub plan: trailing data")
 	}
 	if err := validate(plan); err != nil {
 		return Plan{}, err
@@ -148,31 +134,42 @@ func (s *Store) Bind(request *grants.Request) error {
 }
 
 func (s *Store) BindAt(request *grants.Request, createdAt time.Time) error {
+	envelope, err := s.PrepareBindAt(request, createdAt)
+	if err != nil {
+		return err
+	}
+	_, err = s.database.PutPlan(context.Background(), envelope.SchemaName, envelope.Canonical, envelope.CreatedAt)
+	return err
+}
+
+// PrepareBind constructs and binds an immutable plan without persisting it.
+func (s *Store) PrepareBind(request *grants.Request) (grants.ImmutablePlan, error) {
+	if s == nil {
+		return grants.ImmutablePlan{}, errors.New("GitHub grant request is required")
+	}
+	return s.PrepareBindAt(request, s.now().UTC())
+}
+
+func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (grants.ImmutablePlan, error) {
 	if s == nil || request == nil {
-		return errors.New("GitHub grant request is required")
+		return grants.ImmutablePlan{}, errors.New("GitHub grant request is required")
 	}
 	kind, ok := kindForOperation(request.Operation)
 	if !ok {
-		return fmt.Errorf("GitHub operation %q is not grantable", request.Operation)
+		return grants.ImmutablePlan{}, fmt.Errorf("GitHub operation %q is not grantable", request.Operation)
 	}
+	encoded, err := encode(FromRequest(*request, s.credentialSelector, createdAt))
+	if err != nil {
+		return grants.ImmutablePlan{}, err
+	}
+	digest := plandigest.Digest(encoded)
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
 	request.Metadata[MetadataMode] = kind
-	digest, err := s.Put(FromRequest(*request, s.credentialSelector, createdAt))
-	if err != nil {
-		return err
-	}
 	request.Metadata[MetadataSchema] = SchemaV1
 	request.Metadata[MetadataDigest] = digest
-	return nil
-}
-
-func (s *Store) CollectOrphans(referenced map[string]bool, olderThan time.Time) (int, error) {
-	if s == nil || s.shared == nil {
-		return 0, errors.New("GitHub plan store is unavailable")
-	}
-	return s.shared.CollectOrphans(referenced, olderThan)
+	return grants.ImmutablePlan{Digest: digest, SchemaName: SchemaV1, Canonical: encoded, CreatedAt: createdAt.UTC()}, nil
 }
 
 type Validator struct{ Store *Store }

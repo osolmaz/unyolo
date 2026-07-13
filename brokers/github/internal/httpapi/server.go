@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -30,12 +31,10 @@ import (
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/state"
 )
 
-const (
-	maxPullRequestBodyBytes int64 = 64 * 1024
-	githubPlanOrphanGrace         = 24 * time.Hour
-)
+const maxPullRequestBodyBytes int64 = 64 * 1024
 
 type Server struct {
 	echo                *echo.Echo
@@ -44,6 +43,7 @@ type Server struct {
 	plans               *ghplan.Store
 	planValidator       ghplan.Validator
 	control             *controlplane.Runtime
+	database            *state.Database
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
 	githubToken         string
@@ -57,13 +57,15 @@ type Server struct {
 	logger              *slog.Logger
 	maxReceivePackBytes int64
 	operatorConfigured  bool
+	closeOnce           sync.Once
+	closeErr            error
 }
 
 func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if brokerPolicy == nil {
 		return nil, errors.New("policy is required")
 	}
-	grantStore, plans, planValidator, auditWriter, control, auth, notifier, telegram, err := newCoreDependencies(cfg)
+	core, err := newCoreDependencies(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -75,36 +77,58 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	e.GET("/healthz", health)
 	gitBaseURL, apiBaseURL, githubClient, appSource, err := newGitHubDependencies(cfg)
 	if err != nil {
+		_ = core.database.Close()
 		return nil, err
 	}
 	server := &Server{
-		echo: e, policy: brokerPolicy, grants: grantStore, plans: plans, planValidator: planValidator, control: control, notifier: notifier, telegram: telegram,
+		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
+		database: core.database, notifier: core.notifier, telegram: core.telegram,
 		githubToken: cfg.GitHubToken, githubApp: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
 		githubClient: githubClient, githubReadClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
-		auditWriter: auditWriter, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
+		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
 	}
-	if err := collectGitHubPlanOrphans(grantStore, plans, time.Now().UTC()); err != nil {
-		server.logger.Warn("collect orphan GitHub plans", "error", err)
-	}
-	server.registerRoutes(auth)
+	server.registerRoutes(core.auth)
 	return server, nil
 }
 
-func newCoreDependencies(cfg config.Config) (*grants.Store, *ghplan.Store, ghplan.Validator, *bkaudit.Writer, *controlplane.Runtime, security.TokenAuth, notify.Notifier, *bktelegram.Client, error) {
-	grantStore := grants.New(filepath.Join(stateDir(cfg.StateDir), "grants.json"), grants.Options{})
-	plans, err := ghplan.NewStore(filepath.Join(stateDir(cfg.StateDir), "plans"), githubCredentialMode(cfg))
+type coreDependencies struct {
+	database  *state.Database
+	grants    *grants.Store
+	plans     *ghplan.Store
+	validator ghplan.Validator
+	audit     *bkaudit.Writer
+	control   *controlplane.Runtime
+	auth      security.TokenAuth
+	notifier  notify.Notifier
+	telegram  *bktelegram.Client
+}
+
+func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
+	database, err := state.Open(context.Background(), stateDir(cfg.StateDir), state.Options{})
 	if err != nil {
-		return nil, nil, ghplan.Validator{}, nil, nil, security.TokenAuth{}, nil, nil, err
+		return coreDependencies{}, err
+	}
+	grantStore := grants.NewDatabase(database, grants.Options{})
+	plans, err := ghplan.NewStore(database, githubCredentialMode(cfg))
+	if err != nil {
+		_ = database.Close()
+		return coreDependencies{}, err
 	}
 	validator := ghplan.Validator{Store: plans}
 	auditWriter := bkaudit.New(os.Stderr)
 	control, auth, err := newControlPlane(cfg, grantStore, validator, auditWriter)
 	if err != nil {
-		return nil, nil, ghplan.Validator{}, nil, nil, security.TokenAuth{}, nil, nil, err
+		_ = database.Close()
+		return coreDependencies{}, err
 	}
 	notifier, telegram, err := configuredNotifier(cfg)
-	return grantStore, plans, validator, auditWriter, control, auth, notifier, telegram, err
+	if err != nil {
+		_ = database.Close()
+		return coreDependencies{}, err
+	}
+	return coreDependencies{database: database, grants: grantStore, plans: plans, validator: validator, audit: auditWriter,
+		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
 }
 
 func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubapp.Source, error) {
@@ -115,21 +139,6 @@ func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client,
 	client := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
 	app, err := configuredGitHubApp(cfg, apiBaseURL, client)
 	return gitBaseURL, apiBaseURL, client, app, err
-}
-
-func collectGitHubPlanOrphans(grantStore *grants.Store, plans *ghplan.Store, now time.Time) error {
-	items, err := grantStore.List()
-	if err != nil {
-		return err
-	}
-	referenced := make(map[string]bool, len(items))
-	for _, grant := range items {
-		if grant.Metadata[ghplan.MetadataSchema] == ghplan.SchemaV1 {
-			referenced[grant.Metadata[ghplan.MetadataDigest]] = true
-		}
-	}
-	_, err = plans.CollectOrphans(referenced, now.Add(-githubPlanOrphanGrace))
-	return err
 }
 
 func githubCredentialMode(cfg config.Config) string {
@@ -218,6 +227,15 @@ func stopGitHubRedirect(_ *http.Request, _ []*http.Request) error {
 
 func (s *Server) Handler() http.Handler {
 	return s.echo
+}
+
+// Close releases the broker's durable state lease and database handles.
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.closeOnce.Do(func() { s.closeErr = s.database.Close() })
+	return s.closeErr
 }
 
 func health(c echo.Context) error {
