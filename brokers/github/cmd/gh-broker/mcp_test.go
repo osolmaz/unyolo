@@ -1,0 +1,157 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/osolmaz/brokerkit/agentv1"
+)
+
+func mcpTestEnv(values map[string]string) func(string) string {
+	return func(name string) string { return values[name] }
+}
+
+func TestMCPAdvertisesOnlyIntersectedDefaultTools(t *testing.T) {
+	all := "repo.metadata.read,repo.contents.read,pull_request.create,pull_request.update"
+	tools, err := configuredMCPTools(mcpTestEnv(map[string]string{"GH_BROKER_MCP_EXPOSURE_PROFILE": "default", "GH_BROKER_MCP_CLIENT_OPERATIONS": all, "GH_BROKER_MCP_POLICY_OPERATIONS": all, "GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read,pull_request.create"}))
+	if err != nil || len(tools) != 2 {
+		t.Fatalf("tools=%d err=%v", len(tools), err)
+	}
+	for _, tool := range tools {
+		schema := tool["inputSchema"].(map[string]any)
+		if schema["additionalProperties"] != false {
+			t.Fatalf("open tool=%#v", tool)
+		}
+	}
+}
+
+func TestMCPDiscoveryIsPagedAndExhaustiveWithoutAdvertisingCatalog(t *testing.T) {
+	response := handleMCP(t.Context(), mcpTestEnv(nil), mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/list"})
+	if response.Error != nil || len(response.Result.(map[string]any)["tools"].([]map[string]any)) != 0 {
+		t.Fatalf("tools response=%#v", response)
+	}
+	resource, err := readMCPResource(json.RawMessage(`{"uri":"github://operations?limit=7"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := resource["contents"].([]map[string]any)
+	text := contents[0]["text"].(string)
+	if !strings.Contains(text, `"total":1436`) || !strings.Contains(text, `"next_cursor"`) {
+		t.Fatalf("page=%s", text)
+	}
+}
+
+func TestMCPRejectsUnknownOrUnadvertisedTool(t *testing.T) {
+	_, err := callMCP(t.Context(), mcpTestEnv(nil), mcpToolCall{Name: "gh_http_request", Arguments: json.RawMessage(`{}`)})
+	if err == nil || !strings.Contains(err.Error(), "not advertised") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestMCPToolSignatureChangesWithLivePolicyExposure(t *testing.T) {
+	values := map[string]string{"GH_BROKER_MCP_EXPOSURE_PROFILE": "default", "GH_BROKER_MCP_CLIENT_OPERATIONS": "repo.metadata.read", "GH_BROKER_MCP_POLICY_OPERATIONS": "repo.metadata.read", "GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read"}
+	getenv := mcpTestEnv(values)
+	before, err := mcpToolSignature(getenv)
+	if err != nil || before == "" {
+		t.Fatalf("before=%q err=%v", before, err)
+	}
+	values["GH_BROKER_MCP_POLICY_OPERATIONS"] = ""
+	after, err := mcpToolSignature(getenv)
+	if err != nil || after != "" || after == before {
+		t.Fatalf("after=%q before=%q err=%v", after, before, err)
+	}
+}
+
+func TestRunMCPAndJSONRPCDispatch(t *testing.T) {
+	input := strings.Join([]string{
+		`not-json`,
+		`{"jsonrpc":"2.0","method":"ping"}`,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"ping"}`,
+		`{"jsonrpc":"2.0","id":3,"method":"resources/list"}`,
+		`{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"github://operations?limit=2"}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"unknown"}`,
+	}, "\n")
+	var output bytes.Buffer
+	if err := runMCP(t.Context(), mcpTestEnv(nil), strings.NewReader(input), &output, nil); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"Parse error", `"protocolVersion":"2025-06-18"`, `github://operations?limit=50`, "not advertised", "Method not found"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("MCP output missing %q: %s", want, text)
+		}
+	}
+	if err := runMCP(t.Context(), mcpTestEnv(nil), strings.NewReader(""), &output, []string{"extra"}); err == nil {
+		t.Fatal("accepted MCP arguments")
+	}
+}
+
+func TestMCPTypedToolSubmission(t *testing.T) {
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/agent/v1/operations" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StatePending))
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"GH_BROKER_URL":                    server.URL,
+		"GH_BROKER_SHARED_SECRET":          operationTestSecret,
+		"GH_BROKER_MCP_EXACT_OPERATIONS":   "repo.metadata.read",
+		"GH_BROKER_MCP_CLIENT_OPERATIONS":  "repo.metadata.read",
+		"GH_BROKER_MCP_POLICY_OPERATIONS":  "repo.metadata.read",
+		"GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read",
+	}
+	value, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
+		Name:      "gh_repo_metadata_read",
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","idempotency_key":"request-1","wait_seconds":0}`),
+	})
+	operation, ok := value.(agentv1.Operation)
+	if err != nil || !ok || operation.Operation != "repo.metadata.read" {
+		t.Fatalf("value=%#v err=%v", value, err)
+	}
+	response := handleMCP(t.Context(), mcpTestEnv(env), mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: json.RawMessage(`{"name":"gh_repo_metadata_read","arguments":{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","idempotency_key":"request-2","wait_seconds":0}}`)})
+	if response.Error != nil || response.Result.(map[string]any)["isError"] != false {
+		t.Fatalf("response=%#v", response)
+	}
+}
+
+func TestMCPRejectsUnsafeCallsAndResourceRequests(t *testing.T) {
+	all := map[string]string{
+		"GH_BROKER_MCP_EXACT_OPERATIONS":   "repo.metadata.read,agent_task.create_or_update_repo_secret",
+		"GH_BROKER_MCP_CLIENT_OPERATIONS":  "repo.metadata.read,agent_task.create_or_update_repo_secret",
+		"GH_BROKER_MCP_POLICY_OPERATIONS":  "repo.metadata.read,agent_task.create_or_update_repo_secret",
+		"GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read,agent_task.create_or_update_repo_secret",
+	}
+	for _, call := range []mcpToolCall{
+		{Name: "gh_repo_metadata_read", Arguments: json.RawMessage(`{}`)},
+		{Name: "gh_repo_metadata_read", Arguments: json.RawMessage(`{"target":{},"reason":"x","idempotency_key":"x","wait_seconds":901}`)},
+		{Name: "gh_agent_task_create_or_update_repo_secret", Arguments: json.RawMessage(`{"reason":"x","idempotency_key":"x"}`)},
+	} {
+		if _, err := callMCP(t.Context(), mcpTestEnv(all), call); err == nil {
+			t.Fatalf("accepted unsafe call %#v", call)
+		}
+	}
+	for _, raw := range []json.RawMessage{
+		json.RawMessage(`{}`),
+		json.RawMessage(`{"uri":"https://example.invalid"}`),
+		json.RawMessage(`{"uri":"github://operations?limit=bad"}`),
+		json.RawMessage(`{"uri":"github://operations?limit=101"}`),
+	} {
+		if _, err := readMCPResource(raw); err == nil {
+			t.Fatalf("accepted resource request %s", raw)
+		}
+	}
+	result := mcpToolResult(map[string]any{"ok": true}, nil)
+	if result["isError"] != false || !strings.Contains(result["content"].([]map[string]any)[0]["text"].(string), "true") {
+		t.Fatalf("result=%#v", result)
+	}
+}

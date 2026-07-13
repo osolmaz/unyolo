@@ -107,9 +107,25 @@ then
 fi
 
 if ! grep -q 'github.com/osolmaz/brokerkit/capability' brokers/huggingface/internal/opcatalog/catalog.go ||
-  grep -R -n --include='*.go' 'type Descriptor struct' brokers/*/internal/opcatalog 2>/dev/null
+  ! grep -A4 'type Descriptor struct' brokers/github/internal/opcatalog/catalog.go | grep -q 'capability.Descriptor'
 then
   echo 'provider operation catalogs must use the shared capability descriptor' >&2
+  exit 1
+fi
+
+if ! grep -q 'githubsurface.Validate' brokers/github/cmd/gh-broker/main.go ||
+  ! grep -q 'mcpcatalog.Tools' brokers/github/cmd/gh-broker/mcp.go ||
+  [ ! -f brokers/github/internal/inventory/rest-coverage.json ] ||
+  [ ! -f brokers/github/internal/inventory/graphql-coverage.json ]
+then
+  echo 'GH generated catalog startup validation or filtered MCP discovery is missing' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' --exclude='*_test.go' -E \
+  'json:"(graphql|caller|headers)"' brokers/github/cmd/gh-broker brokers/github/internal/httpapi 2>/dev/null
+then
+  echo 'GH caller boundary accepts a raw transport selector' >&2
   exit 1
 fi
 

@@ -1,0 +1,327 @@
+[
+  {
+    "kind": "advisory",
+    "schema": "target.advisory.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "alert",
+    "schema": "target.alert.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "app",
+    "schema": "target.app.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "artifact",
+    "schema": "target.artifact.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "cache",
+    "schema": "target.cache.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "check",
+    "schema": "target.check.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "codespace",
+    "schema": "target.codespace.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "comment",
+    "schema": "target.comment.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "commit",
+    "schema": "target.commit.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "deployment",
+    "schema": "target.deployment.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "discussion",
+    "schema": "target.discussion.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "enterprise",
+    "schema": "target.enterprise.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "environment",
+    "schema": "target.environment.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "gist",
+    "schema": "target.gist.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "installation",
+    "schema": "target.installation.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "issue",
+    "schema": "target.issue.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "job",
+    "schema": "target.job.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "label",
+    "schema": "target.label.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "member",
+    "schema": "target.member.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "milestone",
+    "schema": "target.milestone.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "notification",
+    "schema": "target.notification.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "organization",
+    "schema": "target.organization.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "package",
+    "schema": "target.package.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "project",
+    "schema": "target.project.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "pull_request",
+    "schema": "target.pull_request.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "reaction",
+    "schema": "target.reaction.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "ref",
+    "schema": "target.ref.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "release",
+    "schema": "target.release.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "repo",
+    "schema": "target.repo.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "name"
+    ]
+  },
+  {
+    "kind": "ruleset",
+    "schema": "target.ruleset.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "run",
+    "schema": "target.run.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "security",
+    "schema": "target.security.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "team",
+    "schema": "target.team.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "user",
+    "schema": "target.user.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "webhook",
+    "schema": "target.webhook.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  },
+  {
+    "kind": "workflow",
+    "schema": "target.workflow.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "name"
+    ]
+  }
+]

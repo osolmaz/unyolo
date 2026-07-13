@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -85,7 +86,7 @@ func NewRegistry[I, P, A any](options RegistryOptions, adapters ...Adapter[I, P,
 		}
 		descriptor := adapter.Descriptor()
 		canonical, found := options.Descriptor(descriptor.Name)
-		if !found || canonical != descriptor || canonical.AuthorizationMode != capability.ModeExecution {
+		if !found || !reflect.DeepEqual(canonical, descriptor) || canonical.AuthorizationMode != capability.ModeExecution {
 			return nil, fmt.Errorf("adapter %q does not match the capability catalog", descriptor.Name)
 		}
 		if _, exists := registry.byName[descriptor.Name]; exists {

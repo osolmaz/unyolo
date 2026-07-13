@@ -30,6 +30,34 @@ The shared install, setup, policy, approval, and release contract is in
 - No policy read/write API
 - Tests for auth, route shape, policy decisions, and receive-pack classification
 
+## Generated operation surface
+
+The checked-in stage 2–3 inventory classifies all 1,196 operations in the
+pinned stable GitHub REST API and all 300 roots in the pinned full GraphQL
+introspection, including 16 deprecated mutation roots. It generates 1,436
+canonical typed catalog operations, closed target/argument/result schemas,
+REST bindings, persisted GraphQL documents, policy metadata, GitHub App
+permission profiles, CLI metadata, MCP tool schemas, and capability docs.
+
+Browse the generated reference in
+[CAPABILITIES.md](docs/generated/CAPABILITIES.md) or query it locally:
+
+```sh
+gh-broker operations list --family pull_request
+gh-broker operations describe repo.visibility.update
+```
+
+The MCP server exposes the exhaustive catalog through the paged
+`github://operations` resource. `tools/list` is separately filtered by the
+authenticated client's enabled operations, policy-visible operations, runtime
+capabilities, and the operator exposure profile. With no configured
+intersection it advertises zero execution tools; it never publishes the full
+catalog as 1,000+ tools by default.
+
+Credentials and upstream execution for the new generated operations are
+deliberately not enabled in stages 2–3. Existing execution paths remain in
+place until the later credential and lifecycle cutover stages.
+
 ## Local Development
 
 ```sh

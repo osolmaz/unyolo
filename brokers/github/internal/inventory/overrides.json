@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "rest_operation_names": {
+    "apps/list-repos-accessible-to-installation": ["installation.repo.list"],
+    "pulls/create": ["pull_request.create"],
+    "pulls/merge": ["pull_request.merge"],
+    "pulls/update": ["pull_request.update"],
+    "repos/get": ["repo.metadata.read"],
+    "repos/get-content": ["repo.contents.read"],
+    "repos/update": [
+      "repo.archival.update",
+      "repo.default_branch.update",
+      "repo.description.update",
+      "repo.feature.update",
+      "repo.merge_policy.update",
+      "repo.name.update",
+      "repo.security.update",
+      "repo.visibility.update",
+      "repo.website.update"
+    ]
+  },
+  "high_risk_operations": [
+    "pull_request.merge",
+    "repo.archival.update",
+    "repo.default_branch.update",
+    "repo.merge_policy.update",
+    "repo.security.update",
+    "repo.visibility.update"
+  ],
+  "internal_graphql_roots": ["_entities", "relay", "resource"]
+}

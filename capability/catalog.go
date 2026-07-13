@@ -29,6 +29,9 @@ const (
 	StatusDuplicate         ImplementationStatus = "duplicate"
 	StatusBlockedCredential ImplementationStatus = "blocked-credential"
 	StatusBlockedUpstream   ImplementationStatus = "blocked-upstream"
+	// StatusCataloged means the typed operation is frozen and generated, but its
+	// credential provider and upstream executor have not been enabled yet.
+	StatusCataloged ImplementationStatus = "cataloged"
 )
 
 type Risk string
@@ -54,6 +57,7 @@ const (
 type Descriptor struct {
 	Name                 string               `json:"name"`
 	OperationRevision    int                  `json:"operation_revision"`
+	Summary              string               `json:"summary,omitempty"`
 	Disposition          string               `json:"disposition"`
 	AuthorizationMode    AuthorizationMode    `json:"authorization_mode"`
 	ExplicitOnly         bool                 `json:"explicit_only"`
@@ -71,6 +75,14 @@ type Descriptor struct {
 	AgentFacing          bool                 `json:"agent_facing"`
 	MCPTool              *string              `json:"mcp_tool"`
 	CLICommand           *string              `json:"cli_command"`
+	TargetSchema         string               `json:"target_schema,omitempty"`
+	ArgumentSchema       string               `json:"argument_schema,omitempty"`
+	ResultSchema         string               `json:"result_schema,omitempty"`
+	CredentialKind       string               `json:"credential_kind,omitempty"`
+	SealedInputPaths     []string             `json:"sealed_input_paths,omitempty"`
+	UpstreamBindingIDs   []string             `json:"upstream_binding_ids,omitempty"`
+	ExecutorKind         string               `json:"executor_kind,omitempty"`
+	ReconcilerKind       string               `json:"reconciler_kind,omitempty"`
 }
 
 // ValidationOptions contains provider registration constraints without
@@ -195,7 +207,7 @@ func validateSecretDisposition(value Descriptor) error {
 }
 
 func validateSurface(value Descriptor, toolPrefix string) error {
-	if value.Internal && (value.AgentFacing || value.MCPTool != nil || value.CLICommand != nil || value.Implementation != StatusInternal) {
+	if value.Internal && !validInternalSurface(value) {
 		return fmt.Errorf("internal operation %q is agent-facing", value.Name)
 	}
 	if value.AgentFacing && !validAgentSurface(value, toolPrefix) {
@@ -225,6 +237,13 @@ func operationIsUnsafeDefaultAllow(value Descriptor) bool {
 	return value.Risk == RiskHigh || value.Risk == RiskCritical || value.AuthorizationMode == ModeExecution || value.ExplicitOnly || value.Sealed
 }
 
+func validInternalSurface(value Descriptor) bool {
+	if value.AgentFacing || value.MCPTool != nil || value.CLICommand != nil {
+		return false
+	}
+	return value.Implementation == StatusInternal || value.Implementation == StatusCataloged
+}
+
 func validAgentSurface(value Descriptor, toolPrefix string) bool {
 	return value.MCPTool != nil && value.CLICommand != nil &&
 		strings.HasPrefix(*value.MCPTool, toolPrefix) && toolPattern.MatchString(*value.MCPTool) &&
@@ -236,6 +255,7 @@ func validStatus(value ImplementationStatus) bool {
 		StatusImplemented, StatusProtocol, StatusGraphQL, StatusInternal,
 		StatusOperatorOnly, StatusLocal, StatusDuplicate,
 		StatusBlockedCredential, StatusBlockedUpstream,
+		StatusCataloged,
 	}, value)
 }
 
