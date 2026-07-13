@@ -71,6 +71,23 @@
       }
     },
     {
+      "id": "request-exact-repository-deletion",
+      "effect": "request",
+      "clients": ["default"],
+      "operations": ["repo.delete"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "throwaway-test-data"}
+      ],
+      "grant_policy": {
+        "mode": "execution",
+        "default_minutes": 5,
+        "max_minutes": 5,
+        "request_ttl_minutes": 5,
+        "default_max_uses": 1,
+        "max_uses": 1
+      }
+    },
+    {
       "id": "allow-acme-router-chat",
       "effect": "allow",
       "clients": ["default"],

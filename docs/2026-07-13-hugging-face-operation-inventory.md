@@ -298,7 +298,7 @@ limits.
 | `sandbox.file.mkdir`   | `E/X`       | Create an exact directory and mode.                                                               |
 | `sandbox.file.delete`  | `E/X`       | Delete an exact path with explicit recursive intent.                                              |
 | `sandbox.port.proxy`   | `W/X/I`     | Broker-proxied access to an exact port/path; derived proxy credentials never leave the broker.    |
-| `sandbox.pool.create`  | `E/X/S`     | Create an exact paid host-pool configuration.                                                     |
+| `sandbox.pool.create`  | `E/X`       | Create an exact paid host-pool configuration.                                                     |
 | `sandbox.pool.connect` | `W/X`       | Attach to an exact existing pool.                                                                 |
 | `sandbox.pool.read`    | `W/X`       | Read host/sandbox counts and IDs.                                                                 |
 | `sandbox.pool.warm`    | `E/X`       | Warm an exact bounded number of hosts with cost presentation.                                     |
