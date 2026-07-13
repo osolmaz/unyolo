@@ -1,4 +1,4 @@
-// Package securefile owns durable writes shared by broker-private stores.
+// Package securefile owns durable writes shared by BrokerKit-private stores.
 package securefile
 
 import (

@@ -142,7 +142,6 @@ func registerOptional(kind string, value *string, seen map[string]bool) error {
 	return nil
 }
 
-//nolint:cyclop // Security invariants remain explicit at the shared boundary.
 func validateDescriptor(value Descriptor, options ValidationOptions) error {
 	if !operationPattern.MatchString(value.Name) || value.OperationRevision != 1 || !targetPattern.MatchString(value.TargetKind) {
 		return errors.New("operation identity is invalid")
@@ -155,6 +154,16 @@ func validateDescriptor(value Descriptor, options ValidationOptions) error {
 			return err
 		}
 	}
+	if err := validateAuthorization(value); err != nil {
+		return err
+	}
+	if err := validateDisposition(value); err != nil {
+		return err
+	}
+	return validateSurface(value, options.MCPToolPrefix)
+}
+
+func validateAuthorization(value Descriptor) error {
 	if value.AuthorizationMode == ModeExecution {
 		if value.MaxUses != 1 || !strings.Contains(value.Disposition, "E") {
 			return fmt.Errorf("execution operation %q must be one-use E", value.Name)
@@ -162,9 +171,17 @@ func validateDescriptor(value Descriptor, options ValidationOptions) error {
 	} else if value.AuthorizationMode != ModeWindow || value.MaxUses < 1 || !strings.Contains(value.Disposition, "W") {
 		return fmt.Errorf("window operation %q has invalid use semantics", value.Name)
 	}
+	return nil
+}
+
+func validateDisposition(value Descriptor) error {
 	if value.ExplicitOnly != strings.Contains(value.Disposition, "X") || value.Sealed != strings.Contains(value.Disposition, "S") || value.Internal != strings.Contains(value.Disposition, "I") {
 		return fmt.Errorf("operation %q disposition flags drifted", value.Name)
 	}
+	return validateSecretDisposition(value)
+}
+
+func validateSecretDisposition(value Descriptor) error {
 	if value.ExplicitOnly && value.FamilyGlobAllowed {
 		return fmt.Errorf("explicit operation %q allows family globs", value.Name)
 	}
@@ -174,10 +191,14 @@ func validateDescriptor(value Descriptor, options ValidationOptions) error {
 	if value.CredentialOutputKind != nil && (!value.Sealed || !value.ExplicitOnly || !credentialKindPattern.MatchString(*value.CredentialOutputKind)) {
 		return fmt.Errorf("credential output operation %q is invalid", value.Name)
 	}
+	return nil
+}
+
+func validateSurface(value Descriptor, toolPrefix string) error {
 	if value.Internal && (value.AgentFacing || value.MCPTool != nil || value.CLICommand != nil || value.Implementation != StatusInternal) {
 		return fmt.Errorf("internal operation %q is agent-facing", value.Name)
 	}
-	if value.AgentFacing && !validAgentSurface(value, options.MCPToolPrefix) {
+	if value.AgentFacing && !validAgentSurface(value, toolPrefix) {
 		return fmt.Errorf("agent-facing operation %q has invalid UX metadata", value.Name)
 	}
 	return nil

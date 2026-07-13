@@ -1,4 +1,4 @@
-package main
+package capability
 
 import "testing"
 
@@ -70,6 +70,30 @@ func TestEmbeddedOperationSchemaKeepsReferenceSiblings(t *testing.T) {
 	})
 	if schema["type"] != "string" || schema["description"] != "kept" || schema["$defs"] != nil {
 		t.Fatalf("embedded schema = %#v", schema)
+	}
+}
+
+func TestExportedSchemaSurface(t *testing.T) {
+	schema := map[string]any{"type": "object", "required": []any{"secret"}, "properties": map[string]any{
+		"secret": map[string]any{"type": "string"},
+	}}
+	public, sealed := SplitSealedArgumentsSchema(schema, []string{"secret"})
+	if public == nil || sealed == nil || !SchemaRequiresProperty(sealed, "secret") {
+		t.Fatalf("split = %#v, %#v", public, sealed)
+	}
+	if required, found := SchemaPathRequirements(schema, schema, []string{"secret"}); !found || len(required) != 1 || !required[0] {
+		t.Fatalf("requirements = %#v, %v", required, found)
+	}
+	if embedded := EmbeddedOperationSchema(schema); embedded["$defs"] != nil {
+		t.Fatalf("embedded = %#v", embedded)
+	}
+	root := map[string]any{"$defs": map[string]any{"value": map[string]any{"type": "string"}}}
+	if _, found := ResolveSchemaPointer(root, "#/$defs/value"); !found {
+		t.Fatal("schema pointer was not resolved")
+	}
+	RequireSchemaPaths(sealed, []string{"secret"})
+	if len(SchemaBranches([]any{map[string]any{"type": "string"}})) != 1 {
+		t.Fatal("schema branch was not returned")
 	}
 }
 

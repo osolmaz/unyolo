@@ -11,7 +11,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
+	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 type sealedBoundFake struct {

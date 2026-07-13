@@ -1,4 +1,4 @@
-package sealedstore
+package sealedstore //nolint:testpackage // Tests exercise private integrity helpers.
 
 import (
 	"bytes"

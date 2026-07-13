@@ -1,4 +1,4 @@
-package credentialstore
+package credentialstore //nolint:testpackage // Tests exercise private integrity helpers.
 
 import (
 	"bytes"

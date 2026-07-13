@@ -10,20 +10,20 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialstore"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
+	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/clienthttp"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
 
@@ -58,34 +58,11 @@ type mcpCatalogOperationInput struct {
 }
 
 func agentFacingDescriptors() []opcatalog.Descriptor {
-	all := opcatalog.MustAll()
-	result := make([]opcatalog.Descriptor, 0, len(all))
-	for _, descriptor := range all {
-		if descriptor.AgentFacing {
-			result = append(result, descriptor)
-		}
-	}
-	return result
+	return capability.AgentFacing(opcatalog.MustAll())
 }
 
 func matchCLICommand(args []string) (opcatalog.Descriptor, int, bool) {
-	for _, descriptor := range agentFacingDescriptors() {
-		words := strings.Fields(*descriptor.CLICommand)
-		if len(args) < len(words) {
-			continue
-		}
-		matched := true
-		for index := range words {
-			if args[index] != words[index] {
-				matched = false
-				break
-			}
-		}
-		if matched {
-			return descriptor, len(words), true
-		}
-	}
-	return opcatalog.Descriptor{}, 0, false
+	return capability.MatchCLICommand(opcatalog.MustAll(), args)
 }
 
 func runCatalogOperation(ctx context.Context, client *agentClient, stdout, stderr io.Writer, descriptor opcatalog.Descriptor, args []string) error {
@@ -354,62 +331,25 @@ func runCatalogGrant(ctx context.Context, client *hfGrantClient, stdout, stderr 
 }
 
 func catalogMCPTools() []map[string]any {
-	tools := make([]map[string]any, 0, len(agentFacingDescriptors()))
-	for _, descriptor := range agentFacingDescriptors() {
-		tools = append(tools, map[string]any{
-			"name":        *descriptor.MCPTool,
-			"description": fmt.Sprintf("Run %s through HF Broker policy and approval. Never request a Hugging Face token.", descriptor.Name),
-			"inputSchema": catalogMCPToolSchema(descriptor),
-		})
-	}
-	return tools
+	return capability.MCPTools(hfSurfaceOptions())
 }
 
 func catalogMCPToolSchema(descriptor opcatalog.Descriptor) map[string]any {
-	targetSchema, argumentsSchema, sealedSchema := catalogOperationInputSchemas(descriptor)
-	properties := map[string]any{
-		"target":          targetSchema,
-		"reason":          map[string]any{"type": "string", "minLength": 1, "maxLength": 2000},
-		"idempotency_key": map[string]any{"type": "string", "minLength": 1},
-		"wait_seconds":    map[string]any{"type": "integer", "minimum": 0, "maximum": 900},
-	}
-	required := []string{"target", "reason", "idempotency_key"}
-	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-		properties["arguments"] = argumentsSchema
-		required = append(required, "arguments")
-		if descriptor.Sealed {
-			if descriptor.CredentialOutputKind != nil {
-				properties["credential_slot"] = map[string]any{"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$"}
-				required = append(required, "credential_slot")
-			} else if sealedSchema != nil {
-				properties["sealed_arguments"] = sealedSchema
-				if len(requiredPropertyNames(sealedSchema)) > 0 {
-					required = append(required, "sealed_arguments")
-				}
-			}
-		}
-	} else {
-		properties["attrs"] = catalogAttributeSchema()
-		properties["minutes"] = map[string]any{"type": "integer", "minimum": 0}
-		properties["max_uses"] = map[string]any{"type": []string{"integer", "null"}, "minimum": 1}
-	}
-	return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
+	return capability.MCPToolSchema(descriptor, hfSurfaceOptions())
 }
 
 func requiredPropertyNames(schema map[string]any) []string {
-	switch values := schema["required"].(type) {
-	case []any:
-		result := make([]string, 0, len(values))
-		for _, value := range values {
-			if name, ok := value.(string); ok {
-				result = append(result, name)
-			}
-		}
-		return result
-	case []string:
-		return slices.Clone(values)
+	return capability.RequiredPropertyNames(schema)
+}
+
+func hfSurfaceOptions() capability.SurfaceOptions {
+	return capability.SurfaceOptions{
+		Descriptors: opcatalog.MustAll(), Schemas: catalogOperationInputSchemas,
+		AttributeNames: policy.KnownAttributeNames(),
+		ToolDescription: func(descriptor capability.Descriptor) string {
+			return fmt.Sprintf("Run %s through HF Broker policy and approval. Never request a Hugging Face token.", descriptor.Name)
+		},
 	}
-	return nil
 }
 
 func catalogOperationInputSchemas(descriptor opcatalog.Descriptor) (map[string]any, map[string]any, map[string]any) {
@@ -454,18 +394,6 @@ func setTargetKind(schema map[string]any, kind string) {
 	if kindSchema, ok := properties["kind"].(map[string]any); ok {
 		kindSchema["const"] = kind
 	}
-}
-
-func catalogAttributeSchema() map[string]any {
-	properties := make(map[string]any)
-	for _, name := range policy.KnownAttributeNames() {
-		properties[name] = map[string]any{"oneOf": []any{
-			map[string]any{"type": "integer", "minimum": 0},
-			map[string]any{"type": "string"},
-			map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-		}}
-	}
-	return map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
 }
 
 func descriptorByMCPTool(name string) (opcatalog.Descriptor, bool) {

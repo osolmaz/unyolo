@@ -1,3 +1,4 @@
+// Package schemautil contains provider-neutral closed-schema helpers.
 package schemautil
 
 // RemoveRequiredProperty removes name from a decoded JSON Schema required list.

@@ -113,6 +113,36 @@ then
   exit 1
 fi
 
+if ! grep -q 'github.com/osolmaz/brokerkit/operationruntime' brokers/huggingface/internal/operations/operations.go ||
+  grep -R -n --include='*.go' -E 'type Adapter interface|byName map\[string\].*Adapter|type PossiblePartialError struct' \
+    brokers/huggingface --exclude='*_test.go' 2>/dev/null
+then
+  echo 'HF operation adapters and registry must use the shared operationruntime contract' >&2
+  exit 1
+fi
+
+if grep -R -l --include='*.go' --exclude='*_test.go' -E \
+  'func \([^)]*\) startOperationWorker|StateExecuting|operations\.Transition\(' brokers 2>/dev/null |
+  grep -v -E '^brokers/(github/internal/httpapi/(agent_operations|runtime)|sudo/internal/routes/agent_operations)\.go$'
+then
+  echo 'provider-local Agent lifecycle orchestration exists outside the temporary legacy allowlist' >&2
+  exit 1
+fi
+
+if find brokers -type d \( -name sealedstore -o -name credentialstore -o -name schemautil -o -name securefile \) -print |
+  grep .
+then
+  echo 'provider-local generic operation primitives survived the shared runtime cutover' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' --exclude='*_test.go' -E \
+  'func (inlineSchemaReferences|inlineSchemaMap|startSealedPayloadSweeper)\(' brokers 2>/dev/null
+then
+  echo 'provider-local generated-surface or sealed-payload lifecycle implementation survived the cutover' >&2
+  exit 1
+fi
+
 if grep -R -n -E '"\$ref"[[:space:]]*:[[:space:]]*"\.\.' protocol/openapi 2>/dev/null; then
   echo 'canonical OpenAPI documents must own all payload schemas' >&2
   exit 1

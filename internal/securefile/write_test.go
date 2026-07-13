@@ -1,4 +1,4 @@
-package securefile
+package securefile //nolint:testpackage // Tests exercise private failure paths.
 
 import (
 	"os"

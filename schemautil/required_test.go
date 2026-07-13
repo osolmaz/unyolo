@@ -1,4 +1,4 @@
-package schemautil
+package schemautil //nolint:testpackage // Tests exercise the small mutation helper directly.
 
 import (
 	"reflect"

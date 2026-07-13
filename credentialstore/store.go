@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/securefile"
+	"github.com/osolmaz/brokerkit/internal/securefile"
 )
 
 const (
