@@ -240,11 +240,14 @@ func (s *Store) Delete(reference Reference) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	path := s.path(reference.ID)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	return s.deleteLocked(reference, s.path(reference.ID))
+}
+
+func (s *Store) deleteLocked(reference Reference, path string) error {
+	envelope, err := readDiskEnvelope(path)
+	if os.IsNotExist(err) {
 		return nil
 	}
-	envelope, err := readDiskEnvelope(path)
 	if err != nil {
 		return errors.New("delete sealed payload")
 	}
@@ -277,25 +280,32 @@ func (s *Store) encodeConsumed(reference Reference) ([]byte, error) {
 }
 
 func (s *Store) replaceLocked(path string, encoded []byte) error {
+	file, temporary, err := s.replacementFile()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(temporary) }()
+	if err := securefile.WriteAndSync(file, encoded, "sealed payload replacement"); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		return errors.New("replace sealed payload")
+	}
+	return nil
+}
+
+func (s *Store) replacementFile() (*os.File, string, error) {
 	file, err := os.CreateTemp(s.dir, ".sealed-payload-*")
 	if err != nil {
-		return errors.New("create sealed payload replacement")
+		return nil, "", errors.New("create sealed payload replacement")
 	}
 	temporary := file.Name()
 	if err := file.Chmod(0o600); err != nil {
 		_ = file.Close()
 		_ = os.Remove(temporary)
-		return errors.New("secure sealed payload replacement")
+		return nil, "", errors.New("secure sealed payload replacement")
 	}
-	if err := securefile.WriteAndSync(file, encoded, "sealed payload replacement"); err != nil {
-		_ = os.Remove(temporary)
-		return err
-	}
-	if err := os.Rename(temporary, path); err != nil {
-		_ = os.Remove(temporary)
-		return errors.New("replace sealed payload")
-	}
-	return nil
+	return file, temporary, nil
 }
 
 func (s *Store) read(reference Reference, path string) ([]byte, error) {
@@ -389,16 +399,8 @@ func (s *Store) findRequestLocked(owner, purpose, requestKey, digest string, siz
 		return Reference{}, false, errors.New("scan sealed payload directory")
 	}
 	for _, entry := range entries {
-		path, ok := s.storedPayloadPath(entry)
-		if !ok {
-			continue
-		}
-		envelope, readErr := readDiskEnvelope(path)
-		if readErr != nil || !s.validStoredEnvelope(envelope, entry.Name()) {
-			continue
-		}
-		reference := envelope.Reference
-		if !sameRequest(reference, owner, purpose, requestKey) {
+		reference, ok := s.requestReference(entry)
+		if !ok || !sameRequest(reference, owner, purpose, requestKey) {
 			continue
 		}
 		if !samePayload(reference, digest, size) {
@@ -407,6 +409,18 @@ func (s *Store) findRequestLocked(owner, purpose, requestKey, digest string, siz
 		return reference, true, nil
 	}
 	return Reference{}, false, nil
+}
+
+func (s *Store) requestReference(entry os.DirEntry) (Reference, bool) {
+	path, ok := s.storedPayloadPath(entry)
+	if !ok {
+		return Reference{}, false
+	}
+	envelope, err := readDiskEnvelope(path)
+	if err != nil || !s.validStoredEnvelope(envelope, entry.Name()) {
+		return Reference{}, false
+	}
+	return envelope.Reference, true
 }
 
 func (s *Store) storedPayloadPath(entry os.DirEntry) (string, bool) {
@@ -456,7 +470,10 @@ func (s *Store) storedUsage() (int, int64, error) {
 
 func readDiskEnvelope(path string) (diskEnvelope, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- caller supplies a path discovered under the fixed store directory.
-	if err != nil || len(data) == 0 || len(data) > maxFileBytes {
+	if err != nil {
+		return diskEnvelope{}, fmt.Errorf("sealed payload envelope is unavailable: %w", err)
+	}
+	if len(data) == 0 || len(data) > maxFileBytes {
 		return diskEnvelope{}, errors.New("sealed payload envelope is unavailable")
 	}
 	var envelope diskEnvelope

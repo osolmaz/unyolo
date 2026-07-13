@@ -61,6 +61,7 @@ func (s *Server) cancelAgentApproval(operation agentv1.Operation, client string)
 		_, err = s.grants.CancelForClient(grant.ID, client)
 	case grants.StatusActive:
 		_, err = s.grants.RevokeForClient(grant.ID, client)
+	case grants.StatusDenied, grants.StatusExpired, grants.StatusConsumed, grants.StatusRevoked, grants.StatusCanceled:
 	}
 	return err
 }

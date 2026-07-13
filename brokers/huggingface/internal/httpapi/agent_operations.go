@@ -532,7 +532,6 @@ func (s *Server) syncOperationApproval(operation agentv1.Operation) agentv1.Oper
 	}
 }
 
-//nolint:cyclop // Execution and reconciliation outcomes are explicit and tracked by the exact HF CRAP baseline.
 func (s *Server) executeOperation(ctx context.Context, operation agentv1.Operation) {
 	adapter, plan, err := s.loadOperationPlan(operation)
 	if err != nil {

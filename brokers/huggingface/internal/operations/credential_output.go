@@ -164,7 +164,6 @@ func withoutCredentialSlot(raw json.RawMessage) json.RawMessage {
 	return encoded
 }
 
-//nolint:cyclop // Credential extraction is explicit and tracked by the exact HF CRAP baseline.
 func extractCredentialOutput(operation string, raw json.RawMessage) ([]byte, map[string]any, error) {
 	if operation == "provisioning.deep_link.create" {
 		return extractDeepLink(raw)
