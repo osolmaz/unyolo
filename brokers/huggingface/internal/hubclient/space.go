@@ -80,6 +80,31 @@ func (c *Client) RequestSpaceHardware(ctx context.Context, space SpaceRef, flavo
 	return c.runtimeCall(ctx, spec)
 }
 
+type spaceSleepTimeBody struct {
+	Seconds int `json:"seconds"`
+}
+
+func (c *Client) SetSpaceSleepTime(ctx context.Context, space SpaceRef, seconds int) (SpaceRuntime, error) {
+	if err := space.Validate(); err != nil {
+		return SpaceRuntime{}, err
+	}
+	if seconds < -1 {
+		return SpaceRuntime{}, errors.New("hubclient: sleep time must be -1 or a non-negative number of seconds")
+	}
+	return c.runtimeCall(ctx, callSpec{method: http.MethodPost, path: space.apiPath("sleeptime"), body: spaceSleepTimeBody{Seconds: seconds}})
+}
+
+type spaceDevModeBody struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (c *Client) SetSpaceDevMode(ctx context.Context, space SpaceRef, enabled bool) (SpaceRuntime, error) {
+	if err := space.Validate(); err != nil {
+		return SpaceRuntime{}, err
+	}
+	return c.runtimeCall(ctx, callSpec{method: http.MethodPost, path: space.apiPath("dev-mode"), body: spaceDevModeBody{Enabled: enabled}})
+}
+
 func (c *Client) runtimeCall(ctx context.Context, spec callSpec) (SpaceRuntime, error) {
 	var wire spaceRuntimeWire
 	spec.out = &wire

@@ -267,11 +267,17 @@ var validRepoVisibilities = map[string]bool{
 }
 
 var knownAttrs = map[string]bool{
-	"max_bytes":  true,
-	"private":    true,
-	"ref_change": true,
-	"sdk":        true,
-	"visibility": true,
+	"max_bytes":          true,
+	"private":            true,
+	"ref_change":         true,
+	"sdk":                true,
+	"visibility":         true,
+	"destination":        true,
+	"gating":             true,
+	"factory_reboot":     true,
+	"hardware":           true,
+	"key":                true,
+	"sleep_time_seconds": true,
 }
 
 var validRefChangeAttrs = map[string]bool{
@@ -959,6 +965,27 @@ func validateAttrConstraint(key string, constraint AttrConstraint) error {
 		return validateNamedConstraint(constraint, "a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK")
 	case "visibility":
 		return validateNamedConstraint(constraint, "a visibility", map[string]bool{"public": true, "private": true, "protected": true, "*": true}, "unsupported visibility")
+	case "gating":
+		return validateNamedConstraint(constraint, "a gating mode", map[string]bool{"auto": true, "manual": true, "disabled": true, "*": true}, "unsupported gating mode")
+	case "destination":
+		if constraint.Number != nil || len(constraint.Values) == 0 {
+			return errors.New("must be an OWNER/NAME glob")
+		}
+		for _, value := range constraint.Values {
+			if value != "*" && (!strings.Contains(value, "/") || len(value) > MaxGlobBytes) {
+				return errors.New("must be an OWNER/NAME glob")
+			}
+		}
+		return nil
+	case "factory_reboot":
+		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
+	case "hardware", "key":
+		if constraint.Number != nil || len(constraint.Values) == 0 {
+			return errors.New("must be one or more bounded values")
+		}
+		return nil
+	case "sleep_time_seconds":
+		return validateMaximumConstraint(constraint)
 	}
 	return nil
 }

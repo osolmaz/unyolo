@@ -316,6 +316,24 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	settingsAdapters, err := operations.NewRepositorySettingsAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	refsAdapters, err := operations.NewRefsAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	spaceAdapters, err := operations.NewSpaceAdapters(hub)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	providerAdapters = append(providerAdapters, settingsAdapters...)
+	providerAdapters = append(providerAdapters, refsAdapters...)
+	providerAdapters = append(providerAdapters, spaceAdapters...)
 	operationRegistry, err := operations.NewRegistry(providerAdapters...)
 	if err != nil {
 		_ = database.Close()

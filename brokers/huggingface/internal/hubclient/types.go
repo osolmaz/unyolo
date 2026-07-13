@@ -222,6 +222,8 @@ type SpaceRuntime struct {
 	Stage             string
 	Hardware          string
 	RequestedHardware string
+	SleepTimeSeconds  *int
+	DevMode           bool
 }
 
 type spaceRuntimeWire struct {
@@ -230,10 +232,12 @@ type spaceRuntimeWire struct {
 		Current   string `json:"current"`
 		Requested string `json:"requested"`
 	} `json:"hardware"`
+	SleepTimeSeconds *int `json:"gcTimeout"`
+	DevMode          bool `json:"devMode"`
 }
 
 func (w spaceRuntimeWire) toRuntime() SpaceRuntime {
-	return SpaceRuntime{Stage: w.Stage, Hardware: w.Hardware.Current, RequestedHardware: w.Hardware.Requested}
+	return SpaceRuntime{Stage: w.Stage, Hardware: w.Hardware.Current, RequestedHardware: w.Hardware.Requested, SleepTimeSeconds: w.SleepTimeSeconds, DevMode: w.DevMode}
 }
 
 // SpaceVariable is one non-secret Space environment variable.

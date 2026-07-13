@@ -299,7 +299,7 @@ func hfRegistry() corepolicy.Registry {
 		}
 		spec := corepolicy.OperationSpec{
 			TargetKinds: []string{kind},
-			Attrs:       []string{"max_bytes", "private", "ref_change", "sdk", "visibility"},
+			Attrs:       []string{"destination", "factory_reboot", "gating", "hardware", "key", "max_bytes", "private", "ref_change", "sdk", "sleep_time_seconds", "visibility"},
 			Grantable:   info.mode != GrantModeNone,
 		}
 		if spec.Grantable {
@@ -317,10 +317,16 @@ func hfRegistry() corepolicy.Registry {
 			"max_bytes": {
 				Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true,
 			},
-			"ref_change": {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"private":    {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"sdk":        {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
-			"visibility": {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"ref_change":         {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"private":            {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"sdk":                {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"visibility":         {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"destination":        {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"gating":             {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"factory_reboot":     {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"hardware":           {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"key":                {GrantMatch: corepolicy.MatchAnyGlob, GrantMayOmit: true},
+			"sleep_time_seconds": {Match: corepolicy.MatchIntegerMaximum, GrantMatch: corepolicy.MatchIntegerMaximum, GrantMayOmit: true},
 		},
 	}
 }
@@ -430,13 +436,13 @@ func coreAttrsFromHF(attrs map[string]any, view coreView) map[string][]string {
 
 func canonicalCoreAttr(key string, value any) string {
 	switch key {
-	case "max_bytes":
+	case "max_bytes", "sleep_time_seconds":
 		number, ok := int64Value(value)
 		if !ok {
 			return "invalid"
 		}
 		return strconv.FormatInt(number, 10)
-	case "private", "ref_change", "sdk", "visibility":
+	case "destination", "factory_reboot", "gating", "hardware", "key", "private", "ref_change", "sdk", "visibility":
 		text, _ := value.(string)
 		return text
 	default:
