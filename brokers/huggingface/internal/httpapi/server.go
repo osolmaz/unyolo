@@ -202,6 +202,7 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 		return nil, err
 	}
 	server.startGrantNotificationSweeper(lifecycleContext)
+	server.startSealedPayloadSweeper(lifecycleContext)
 	server.startOperationWorker(lifecycleContext)
 	go func() {
 		<-lifecycleContext.Done()

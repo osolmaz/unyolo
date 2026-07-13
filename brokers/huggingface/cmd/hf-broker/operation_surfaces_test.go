@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dlclark/regexp2"
 	"github.com/osolmaz/brokerkit/agentv1"
@@ -146,6 +147,33 @@ func TestMCPDestructiveOperationUsesCatalogOperation(t *testing.T) {
 	}
 }
 
+func TestSubmitWaitTimeoutReturnsResumableOperation(t *testing.T) {
+	pending := testAgentOperation(agentv1.StatePending)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/api/agent/v1/operations":
+			writer.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(writer).Encode(pending)
+		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/api/agent/v1/operations/"):
+			<-request.Context().Done()
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := submitAndMaybeWait(t.Context(), client, agentv1.SubmitRequest{
+		IdempotencyKey: "timeout-1", Operation: "repo.delete", Target: json.RawMessage(`{"kind":"repo"}`),
+		Arguments: json.RawMessage(`{}`), Reason: "test resumable timeout",
+	}, true, 10*time.Millisecond)
+	if err != nil || operation.ID != pending.ID || operation.State != agentv1.StatePending {
+		t.Fatalf("timed wait = %+v, %v", operation, err)
+	}
+}
+
 func TestMCPWindowOperationRequestsExactGrant(t *testing.T) {
 	var submitted map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -179,9 +207,12 @@ func TestMCPSealedOperationSeparatesSecretFromPlan(t *testing.T) {
 		_, _ = body.ReadFrom(request.Body)
 		switch request.URL.Path {
 		case "/api/agent/v1/sealed-payloads":
+			if request.Header.Get("X-Broker-Idempotency-Key") != "secret-1" {
+				t.Fatalf("sealed idempotency key = %q", request.Header.Get("X-Broker-Idempotency-Key"))
+			}
 			sealedBody = body.Bytes()
 			writer.WriteHeader(http.StatusCreated)
-			_, _ = writer.Write([]byte(`{"id":"sealed_abcdefghijklmnopqrstuvwx","owner":"agent","purpose":"space.secret.set","digest":"digest","size":40,"expires_at":9999999999}`))
+			_, _ = writer.Write([]byte(`{"id":"sealed_abcdefghijklmnopqrstuvwx","owner":"agent","purpose":"space.secret.set","request_key":"secret-1","digest":"digest","size":40,"expires_at":9999999999}`))
 		case "/api/agent/v1/operations":
 			operationBody = body.Bytes()
 			operation := testAgentOperation(agentv1.StatePending)

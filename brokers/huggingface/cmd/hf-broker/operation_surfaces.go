@@ -244,7 +244,7 @@ func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descr
 				return agentv1.SubmitRequest{}, fmt.Errorf("sealed arguments: %w", err)
 			}
 		}
-		wrapped, err := client.wrapSealedArguments(ctx, descriptor.Name, arguments, sealed, credentialSlot)
+		wrapped, err := client.wrapSealedArguments(ctx, descriptor.Name, idempotencyKey, arguments, sealed, credentialSlot)
 		if err != nil {
 			return agentv1.SubmitRequest{}, err
 		}
@@ -255,13 +255,13 @@ func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descr
 	return agentv1.SubmitRequest{IdempotencyKey: idempotencyKey, Operation: descriptor.Name, Target: target, Arguments: arguments, Reason: strings.TrimSpace(reason)}, nil
 }
 
-func (client *agentClient) wrapSealedArguments(ctx context.Context, operation string, public, secret json.RawMessage, credentialSlot string) (json.RawMessage, error) {
+func (client *agentClient) wrapSealedArguments(ctx context.Context, operation, idempotencyKey string, public, secret json.RawMessage, credentialSlot string) (json.RawMessage, error) {
 	wrapper := map[string]any{"public": public}
 	if credentialSlot != "" {
 		wrapper["credential_slot"] = credentialSlot
 	}
 	if len(secret) != 0 {
-		reference, err := client.uploadSealedPayload(ctx, operation, secret)
+		reference, err := client.uploadSealedPayload(ctx, operation, idempotencyKey, secret)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +270,7 @@ func (client *agentClient) wrapSealedArguments(ctx context.Context, operation st
 	return json.Marshal(wrapper)
 }
 
-func (client *agentClient) uploadSealedPayload(ctx context.Context, operation string, payload []byte) (sealedstore.Reference, error) {
+func (client *agentClient) uploadSealedPayload(ctx context.Context, operation, idempotencyKey string, payload []byte) (sealedstore.Reference, error) {
 	base, err := clienthttp.ParseBaseURL(client.baseURL)
 	if err != nil {
 		return sealedstore.Reference{}, err
@@ -282,6 +282,7 @@ func (client *agentClient) uploadSealedPayload(ctx context.Context, operation st
 	request.Header.Set("Authorization", "Bearer "+client.secret)
 	request.Header.Set("Content-Type", "application/octet-stream")
 	request.Header.Set("X-Broker-Operation", operation)
+	request.Header.Set("X-Broker-Idempotency-Key", idempotencyKey)
 	response, err := client.httpClient.Do(request)
 	if err != nil {
 		return sealedstore.Reference{}, errors.New("upload sealed payload")
@@ -305,7 +306,11 @@ func submitAndMaybeWait(ctx context.Context, client *agentClient, request agentv
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return client.wait(waitCtx, operation)
+	updated, err := client.wait(waitCtx, operation)
+	if err != nil && errors.Is(waitCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		return operation, nil
+	}
+	return updated, err
 }
 
 func printOperationStatus(stderr io.Writer, operation agentv1.Operation, jsonOutput bool) {

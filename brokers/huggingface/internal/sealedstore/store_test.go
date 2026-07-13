@@ -64,6 +64,59 @@ func TestStoreAllowsOnlyOneConcurrentConsumer(t *testing.T) {
 	}
 }
 
+func TestStoreIdempotentlyBindsOneRequestKey(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	expires := time.Now().Add(time.Hour)
+	first, err := store.PutForRequest("bob", "space.secret.set", "submission-1", []byte("secret"), expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := store.PutForRequest("bob", "space.secret.set", "submission-1", []byte("secret"), expires.Add(time.Minute))
+	if err != nil || replayed != first {
+		t.Fatalf("idempotent PutForRequest() = %+v, %v; want %+v", replayed, err, first)
+	}
+	if _, err := store.PutForRequest("bob", "space.secret.set", "submission-1", []byte("different"), expires); err == nil {
+		t.Fatal("request key accepted different sealed content")
+	}
+}
+
+func TestStoreSweepsExpiredAndIncompletePayloads(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference, err := store.PutForRequest("bob", "space.secret.set", "expiring", []byte("secret"), time.Now().Add(time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	removed, err := store.SweepExpired(time.Now())
+	if err != nil || removed != 1 {
+		t.Fatalf("SweepExpired() = %d, %v", removed, err)
+	}
+	if _, err := store.Get(reference); err == nil {
+		t.Fatal("expired sealed payload remained readable")
+	}
+	active, err := store.PutForRequest("bob", "space.secret.set", "consuming", []byte("secret"), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(dir, "sealed-payloads", active.ID+".bin")
+	if err := os.Rename(source, source+".consuming"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(source + ".consuming"); !os.IsNotExist(err) {
+		t.Fatalf("incomplete consume claim remains: %v", err)
+	}
+}
+
 func TestStorePersistsKeyAndRejectsUnsafePermissions(t *testing.T) {
 	dir := t.TempDir()
 	first, err := Open(dir)
@@ -208,11 +261,12 @@ func TestReferenceValidationVariants(t *testing.T) {
 	if err != nil || !referencePattern.MatchString(reference) {
 		t.Fatalf("randomReference() = %q, %v", reference, err)
 	}
-	valid := Reference{ID: reference, Owner: "bob", Purpose: "space.secret.set", Digest: strings.Repeat("a", 64), Size: 1, ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	valid := Reference{ID: reference, Owner: "bob", Purpose: "space.secret.set", RequestKey: "request-1", Digest: strings.Repeat("a", 64), Size: 1, ExpiresAt: time.Now().Add(time.Hour).Unix()}
 	for _, mutate := range []func(*Reference){
 		func(value *Reference) { value.ID = "bad" },
 		func(value *Reference) { value.Owner = "../bob" },
 		func(value *Reference) { value.Purpose = "bad" },
+		func(value *Reference) { value.RequestKey = "" },
 		func(value *Reference) { value.Digest = "short" },
 		func(value *Reference) { value.Digest = strings.Repeat("z", 64) },
 		func(value *Reference) { value.Size = 0 },
