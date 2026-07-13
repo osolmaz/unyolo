@@ -52,7 +52,6 @@ var customInputSchemaExamples = map[string]inputSchemaExamples{
 	"space.dev_mode.disable":  {spaceTarget{}, emptyArguments{}, nil},
 	"sandbox.create":          {sandboxTarget{}, sandboxCreatePublic{}, sandboxCreateSecret{}},
 	"sandbox.pool.create":     {sandboxTarget{}, sandboxPoolCreatePublic{}, nil},
-	"sandbox.command.run":     {sandboxTarget{}, sandboxCommandArguments{}, nil},
 	"sandbox.file.write":      {sandboxTarget{}, sandboxFileWriteArguments{}, nil},
 	"sandbox.file.delete":     {sandboxTarget{}, sandboxFileDeleteArguments{}, nil},
 	"sandbox.file.mkdir":      {sandboxTarget{}, sandboxFileMkdirArguments{}, nil},

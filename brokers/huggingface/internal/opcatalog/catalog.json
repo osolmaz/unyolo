@@ -3383,25 +3383,6 @@
     "cli_command": "resource_group update"
   },
   {
-    "name": "sandbox.command.run",
-    "operation_revision": 1,
-    "disposition": "E/X",
-    "authorization_mode": "execution",
-    "explicit_only": true,
-    "sealed": false,
-    "internal": false,
-    "implementation_status": "implemented",
-    "risk": "high",
-    "target_kind": "sandbox",
-    "max_uses": 1,
-    "request_ttl_seconds": 900,
-    "approval_ttl_seconds": 300,
-    "family_glob_allowed": false,
-    "agent_facing": true,
-    "mcp_tool": "hf_sandbox_command_run",
-    "cli_command": "sandbox command run"
-  },
-  {
     "name": "sandbox.connect",
     "operation_revision": 1,
     "disposition": "W/X",

@@ -3,6 +3,7 @@ package hubclient
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -89,15 +90,11 @@ func TestTypedClientsRejectInvalidInputsBeforeTransport(t *testing.T) {
 		},
 		"sandbox pool list":      func() error { _, err := client.ListSandboxPool(ctx, badPool); return err },
 		"sandbox operation list": func() error { _, err := client.ListSandboxesByOperation(ctx, "../acme", "operation"); return err },
-		"sandbox command": func() error {
-			_, err := client.RunSandboxCommand(ctx, badSandbox, SandboxCommand{Argv: []string{"id"}, MaxOutputBytes: 1024})
-			return err
-		},
-		"sandbox file stat":   func() error { _, err := client.SandboxFileStat(ctx, badSandbox, ""); return err },
-		"sandbox file write":  func() error { return client.WriteSandboxFile(ctx, badSandbox, "/tmp/file", "9999", []byte("x")) },
-		"sandbox mkdir":       func() error { return client.MakeSandboxDirectory(ctx, badSandbox, "") },
-		"sandbox file delete": func() error { return client.DeleteSandboxFile(ctx, badSandbox, "", false) },
-		"sandbox kill":        func() error { return client.KillSandboxProcess(ctx, badSandbox, 0) },
+		"sandbox file stat":      func() error { _, err := client.SandboxFileStat(ctx, badSandbox, ""); return err },
+		"sandbox file write":     func() error { return client.WriteSandboxFile(ctx, badSandbox, "/tmp/file", "9999", []byte("x")) },
+		"sandbox mkdir":          func() error { return client.MakeSandboxDirectory(ctx, badSandbox, "") },
+		"sandbox file delete":    func() error { return client.DeleteSandboxFile(ctx, badSandbox, "", false) },
+		"sandbox kill":           func() error { return client.KillSandboxProcess(ctx, badSandbox, 0) },
 		"sandbox pooled create": func() error {
 			_, err := client.CreateSandboxInPool(ctx, SandboxRef{Namespace: "acme", JobID: "job", LocalID: "local"}, nil, nil)
 			return err
@@ -107,6 +104,47 @@ func TestTypedClientsRejectInvalidInputsBeforeTransport(t *testing.T) {
 		if err := call(); err == nil {
 			t.Errorf("%s accepted invalid input", name)
 		}
+	}
+}
+
+func TestSandboxEnvironmentAndJobBodyValidation(t *testing.T) {
+	tooMany := make(map[string]string, 129)
+	for index := range 129 {
+		tooMany[fmt.Sprintf("KEY_%d", index)] = "value"
+	}
+	invalid := []struct {
+		values map[string]string
+		secret bool
+	}{
+		{values: tooMany},
+		{values: map[string]string{"BAD-KEY": "value"}},
+		{values: map[string]string{"SBX_PORT": "1"}},
+		{values: map[string]string{"KEY": strings.Repeat("x", 64*1024+1)}},
+		{values: map[string]string{"KEY": "bad\x00value"}},
+		{values: map[string]string{"HF_TOKEN": "scoped"}},
+	}
+	for _, test := range invalid {
+		if err := validateSandboxEnvironment(test.values, test.secret); err == nil {
+			t.Fatalf("invalid sandbox environment accepted: %#v", test.values)
+		}
+	}
+	if err := validateSandboxEnvironment(map[string]string{"HF_TOKEN": "scoped"}, true); err != nil {
+		t.Fatalf("sealed HF token rejected: %v", err)
+	}
+	client, err := New("https://huggingface.co", "broker-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idle := 60
+	body, err := client.sandboxJobBody("https://huggingface.co/spaces/acme/demo", "cpu-basic", &idle,
+		map[string]string{"MODE": "test"}, map[string]string{"TOKEN": "scoped"}, nil, nil, 2, 3)
+	if err != nil || body.SpaceID != "acme/demo" || body.DockerImage != "" || body.Environment["SBX_IDLE_TIMEOUT"] != "60" ||
+		body.Environment["SBX_CAPACITY"] != "2" || body.Environment["SBX_MAX_HOSTS"] != "3" {
+		t.Fatalf("sandboxJobBody() = %+v, %v", body, err)
+	}
+	if _, err := client.sandboxJobBody("python:3.12", "cpu-basic", nil, nil,
+		map[string]string{"TOKEN": "broker-token"}, nil, nil, 0, 0); err == nil {
+		t.Fatal("broker token accepted in sandbox secrets")
 	}
 }
 

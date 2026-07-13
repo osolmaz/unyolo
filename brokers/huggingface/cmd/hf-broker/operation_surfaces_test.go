@@ -22,7 +22,7 @@ import (
 func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 	descriptors := agentFacingDescriptors()
 	tools := catalogMCPTools()
-	if len(descriptors) != 258 || len(tools) != len(descriptors) {
+	if len(descriptors) != 257 || len(tools) != len(descriptors) {
 		t.Fatalf("descriptors=%d tools=%d", len(descriptors), len(tools))
 	}
 	for index, descriptor := range descriptors {

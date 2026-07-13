@@ -82,6 +82,11 @@ func TestCredentialOutputAdapterStoresTokenWithoutReturningIt(t *testing.T) {
 	if bytes.Contains(outcome.Result, []byte("hf_generated-secret")) || bytes.Contains(client.request, []byte("credential_slot")) {
 		t.Fatalf("secret or broker metadata leaked: result=%s request=%s", outcome.Result, client.request)
 	}
+	var publicResult map[string]any
+	if json.Unmarshal(outcome.Result, &publicResult) != nil || len(publicResult) != 3 || publicResult["stored"] != true ||
+		publicResult["slot"] != "deployment-token" || publicResult["kind"] != "hf-service-account-token" {
+		t.Fatalf("credential result exposed unexpected fields: %s", outcome.Result)
+	}
 	if reconciled, err := adapter.Reconcile(t.Context(), plan); err != nil || reconciled.Proven {
 		t.Fatalf("credential output reconciled = %#v, %v", reconciled, err)
 	}

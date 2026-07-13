@@ -348,7 +348,7 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 		t.Fatal("oversized repository wait accepted")
 	}
 	tools := catalogMCPTools()
-	if len(tools) != len(agentFacingDescriptors()) || len(tools) != 258 {
+	if len(tools) != len(agentFacingDescriptors()) || len(tools) != 257 {
 		t.Fatalf("catalog MCP tools = %d", len(tools))
 	}
 	largeID := json.RawMessage(`9007199254740993`)

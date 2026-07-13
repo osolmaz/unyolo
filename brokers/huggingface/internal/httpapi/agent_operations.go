@@ -42,17 +42,26 @@ func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (age
 	if operation.State == agentv1.StateExecuting {
 		return agentv1.Operation{}, agentops.ErrNotCancelable
 	}
-	if operation.ApprovalID != "" {
-		grant, grantErr := s.grants.Get(operation.ApprovalID)
-		if grantErr != nil {
-			return agentv1.Operation{}, grantErr
-		}
-		if err := s.cancelGrantForClient(grant, client); err != nil {
-			return agentv1.Operation{}, err
-		}
+	if err := s.cancelOperationApproval(operation, client); err != nil {
+		return agentv1.Operation{}, err
 	}
-	operation = s.failOperation(operation.ID, agentv1.StateCanceled, "operation_canceled", "Request was canceled")
+	operation, err = s.operations.Cancel(client, operation.ID)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	s.cleanupOperationPlan(operation)
 	return operation, nil
+}
+
+func (s *Server) cancelOperationApproval(operation agentv1.Operation, client string) error {
+	if operation.ApprovalID == "" {
+		return nil
+	}
+	grant, err := s.grants.Get(operation.ApprovalID)
+	if err != nil {
+		return err
+	}
+	return s.cancelGrantForClient(grant, client)
 }
 
 func (s *Server) cancelGrantForClient(grant grants.Grant, client string) error {
@@ -88,12 +97,45 @@ func (s *Server) submitAgentOperation(ctx context.Context, client string, reques
 		return agentv1.Operation{}, false, mapOperationSubmissionError(err)
 	}
 	resolved.Policy.Client = client
-	operation, created, err := s.createPendingAgentOperation(client, request, adapter.Present(resolved), resolved)
-	if err != nil || !created {
+	return s.submitResolvedAgentOperation(ctx, client, request, adapter, resolved)
+}
+
+func (s *Server) submitResolvedAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest, adapter operations.Adapter, resolved operations.Plan) (agentv1.Operation, bool, error) {
+	operationID, err := s.operations.NewID()
+	if err != nil {
+		s.cleanupResolvedOperation(adapter, resolved)
+		return agentv1.Operation{}, false, err
+	}
+	submission := operationSubmission(operationID, client, request, adapter.Present(resolved), resolved)
+	prepared, direct, err := s.prepareStaticDirectOperation(adapter, resolved, operationID, request.Reason)
+	if err != nil {
+		s.cleanupResolvedOperation(adapter, resolved)
+		return agentv1.Operation{}, false, err
+	}
+	if direct {
+		return s.submitDirectAgentOperation(submission, prepared, adapter, resolved)
+	}
+	operationLock := s.operationAuthorizationLock(operationID)
+	operationLock.Lock()
+	defer operationLock.Unlock()
+	operation, created, err := s.operations.Submit(submission)
+	if err != nil {
+		s.cleanupResolvedOperation(adapter, resolved)
+		return operation, created, err
+	}
+	if !created {
 		return operation, created, err
 	}
 	operation, err = s.authorizeAndSubmitOperation(ctx, adapter, resolved, operation, request.Reason)
 	return operation, true, err
+}
+
+func (s *Server) submitDirectAgentOperation(submission agentops.Submit, prepared grants.ImmutablePlan, adapter operations.Adapter, resolved operations.Plan) (agentv1.Operation, bool, error) {
+	operation, created, err := s.operations.SubmitApprovedWithPlan(submission, planRecord(prepared))
+	if err != nil {
+		s.cleanupResolvedOperation(adapter, resolved)
+	}
+	return operation, created, err
 }
 
 func (s *Server) decodeAgentOperation(request agentv1.SubmitRequest) (operations.Adapter, operations.Input, error) {
@@ -119,15 +161,21 @@ func validateOperationClient(adapter operations.Adapter, input operations.Input,
 	return nil
 }
 
-func (s *Server) createPendingAgentOperation(client string, request agentv1.SubmitRequest, presentation agentv1.Presentation, plan operations.Plan) (agentv1.Operation, bool, error) {
-	operationID, err := s.operations.NewID()
-	if err != nil {
-		return agentv1.Operation{}, false, err
-	}
-	return s.operations.Submit(agentops.Submit{
+func operationSubmission(operationID, client string, request agentv1.SubmitRequest, presentation agentv1.Presentation, plan operations.Plan) agentops.Submit {
+	return agentops.Submit{
 		ID: operationID, Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey,
 		Operation: request.Operation, Target: plan.Target, Arguments: plan.Arguments, Reason: request.Reason, Presentation: presentation,
-	})
+	}
+}
+
+func (s *Server) prepareStaticDirectOperation(adapter operations.Adapter, plan operations.Plan, operationID, reason string) (grants.ImmutablePlan, bool, error) {
+	request := policy.AuthorizationRequest(adapter.Authorize(plan))
+	decision := s.policy.DecideAuthorization(request, corepolicy.DecisionOptions{Now: s.utcNow()})
+	if !decision.Allowed || len(decision.MatchedAllowRuleIDs) == 0 {
+		return grants.ImmutablePlan{}, false, nil
+	}
+	prepared, err := s.prepareDirectOperationPlan(adapter, plan, request.Client, operationID, reason)
+	return prepared, true, err
 }
 
 func (s *Server) agentLifecycleContext(fallback context.Context) context.Context {
@@ -155,32 +203,25 @@ func (s *Server) replayedOperation(client string, request agentv1.SubmitRequest,
 func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operations.Adapter, plan operations.Plan, operation agentv1.Operation, reason string) (agentv1.Operation, error) {
 	authorizationRequest := policy.AuthorizationRequest(adapter.Authorize(plan))
 	var prepared grants.ImmutablePlan
-	result, authorizationErr := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+	result, authorizationErr := s.authorization.RequestApproval(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
 		intent, immutable, err := s.prepareOperationIntent(adapter, plan, operation.ClientID, operation.ID, reason, decision.GrantPolicy)
 		prepared = immutable
 		return intent, err
 	})
-	if prepared.Digest == "" {
-		prepared, _ = s.prepareDirectOperationPlan(adapter, plan, operation.ClientID, operation.ID, reason)
-	}
-	if prepared.Digest == "" {
-		s.cleanupResolvedOperation(adapter, plan)
-		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_plan_invalid", "Could not prepare immutable operation plan"), nil
-	}
 	if authorizationErr != nil {
 		_ = s.abandonOperationApproval(result.Request.Grant.ID, operation.ClientID)
 		s.cleanupResolvedOperation(adapter, plan)
 		return s.finishRefusedOperation(operation, plan, result, authorizationErr), nil
 	}
-	direct := result.Request.Grant.ID == ""
-	bound, err := s.operations.BindPlan(operation.ID, planRecord(prepared), result.Request.Grant.ID, direct)
+	if prepared.Digest == "" {
+		s.cleanupResolvedOperation(adapter, plan)
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_plan_invalid", "Could not prepare immutable operation plan"), nil
+	}
+	bound, err := s.operations.BindPlan(operation.ID, planRecord(prepared), result.Request.Grant.ID, false)
 	if err != nil {
 		_ = s.abandonOperationApproval(result.Request.Grant.ID, operation.ClientID)
 		s.cleanupResolvedOperation(adapter, plan)
 		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind operation plan"), nil //nolint:nilerr // The durable operation carries the terminal failure.
-	}
-	if direct {
-		return bound, nil
 	}
 	return s.bindOperationApproval(ctx, bound, result.Request.Grant), nil
 }

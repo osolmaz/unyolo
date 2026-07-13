@@ -2,9 +2,6 @@ package hubclient
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -29,44 +26,6 @@ func (t rewriteTransport) RoundTrip(request *http.Request) (*http.Response, erro
 	return t.base.RoundTrip(request)
 }
 
-func TestSandboxClientDerivesTrustedServerCredentialsAndBoundsCommand(t *testing.T) {
-	const jobID = "687fb701029421ae5549d998"
-	const nonce = "0123456789abcdef0123456789abcdef"
-	mac := hmac.New(sha256.New, []byte("hf-secret"))
-	_, _ = io.WriteString(mac, "hf-sandbox:"+nonce)
-	wantSandboxToken := hex.EncodeToString(mac.Sum(nil))
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/jobs/acme/"+jobID:
-			_, _ = io.WriteString(w, `{"id":"`+jobID+`","dockerImage":"python:3.12","environment":{},"flavor":"cpu-basic","labels":{"hf-sandbox":"1","hf-sandbox-mode":"dedicated","hf-sandbox-nonce":"`+nonce+`"},"status":{"stage":"RUNNING","exposeUrls":["https://`+jobID+`--49983.hf.jobs"]},"owner":{"name":"acme"}}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/exec":
-			if r.Header.Get("Authorization") != "Bearer hf-secret" || r.Header.Get("X-Sandbox-Token") != wantSandboxToken {
-				t.Fatalf("sandbox auth headers = %q, %q", r.Header.Get("Authorization"), r.Header.Get("X-Sandbox-Token"))
-			}
-			var payload map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload["shell"] != false {
-				t.Fatalf("command payload = %#v, %v", payload, err)
-			}
-			_, _ = io.WriteString(w, "{\"event\":\"stdout\",\"data\":\"hello\\n\"}\n{\"event\":\"exit\",\"exit_code\":0,\"duration_ms\":12}\n")
-		default:
-			t.Fatalf("unexpected sandbox request: %s %s", r.Method, r.URL.String())
-		}
-	}))
-	defer server.Close()
-	target, _ := url.Parse(server.URL)
-	client, err := New(server.URL, "hf-secret", WithHTTPTransport(rewriteTransport{target: target, base: server.Client().Transport}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := client.RunSandboxCommand(context.Background(), SandboxRef{Namespace: "acme", JobID: jobID}, SandboxCommand{
-		Argv: []string{"printf", "hello\\n"}, MaxOutputBytes: 1024,
-	})
-	if err != nil || result.ExitCode == nil || *result.ExitCode != 0 || result.Stdout != "hello\n" {
-		t.Fatalf("RunSandboxCommand() = %#v, %v", result, err)
-	}
-}
-
 func TestSandboxClientRejectsRequesterControlledOrUntrustedServerEndpoints(t *testing.T) {
 	const jobID = "687fb701029421ae5549d998"
 	requests := 0
@@ -76,15 +35,13 @@ func TestSandboxClientRejectsRequesterControlledOrUntrustedServerEndpoints(t *te
 	}))
 	defer server.Close()
 	client, _ := New(server.URL, "secret", WithHTTPTransport(server.Client().Transport))
-	_, err := client.RunSandboxCommand(context.Background(), SandboxRef{Namespace: "acme", JobID: jobID}, SandboxCommand{
-		ShellCommand: "id", MaxOutputBytes: 1024,
-	})
+	_, err := client.SandboxProcesses(context.Background(), SandboxRef{Namespace: "acme", JobID: jobID})
 	if err == nil || requests != 1 {
 		t.Fatalf("untrusted endpoint result = %v, requests = %d", err, requests)
 	}
 }
 
-func TestSandboxCreateUsesFixedBootstrapAndKeepsBrokerTokenInJobSecrets(t *testing.T) {
+func TestSandboxCreateUsesMountedBootstrapWithoutBrokerToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/jobs/acme" {
 			t.Fatalf("create request = %s %s", r.Method, r.URL.Path)
@@ -93,7 +50,7 @@ func TestSandboxCreateUsesFixedBootstrapAndKeepsBrokerTokenInJobSecrets(t *testi
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body.Secrets["SBX_DL_TOKEN"] != "hf-secret" || body.Environment["SBX_DL_TOKEN"] != "" ||
+		if body.Secrets["SBX_DL_TOKEN"] != "" || body.Environment["SBX_DL_TOKEN"] != "" ||
 			body.Labels[sandboxNonceLabel] == "" || body.Labels[sandboxNameLabel] != "review" ||
 			body.Command[0] != "/bin/sh" || body.Expose.Ports[0] != SandboxServerPort ||
 			body.Volumes[len(body.Volumes)-1].Source != "huggingface/sbx-server" {
@@ -110,15 +67,6 @@ func TestSandboxCreateUsesFixedBootstrapAndKeepsBrokerTokenInJobSecrets(t *testi
 	}
 }
 
-func TestSandboxCommandDecoderRejectsOutputOverflowAndMissingExit(t *testing.T) {
-	if _, err := decodeSandboxCommandEvents([]byte("{\"event\":\"stdout\",\"data\":\"12345\"}\n{\"event\":\"exit\",\"exit_code\":0}\n"), 4); err == nil {
-		t.Fatal("output overflow accepted")
-	}
-	if _, err := decodeSandboxCommandEvents([]byte("{\"event\":\"stdout\",\"data\":\"ok\"}\n"), 4); err == nil {
-		t.Fatal("missing exit event accepted")
-	}
-}
-
 func TestSandboxClientExercisesDedicatedAndPooledServerOperations(t *testing.T) {
 	const jobID = "687fb701029421ae5549d998"
 	const nonce = "0123456789abcdef0123456789abcdef"
@@ -131,8 +79,6 @@ func TestSandboxClientExercisesDedicatedAndPooledServerOperations(t *testing.T) 
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/jobs/acme/"+jobID+"/cancel":
 			w.WriteHeader(http.StatusNoContent)
-		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/exec"):
-			_, _ = io.WriteString(w, "{\"event\":\"ping\"}\n{\"event\":\"stderr\",\"data\":\"warn\"}\n{\"event\":\"exit\",\"exit_code\":0}\n")
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/processes"):
 			_, _ = io.WriteString(w, `{"pid":42}`)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/files/stat"):
@@ -157,12 +103,6 @@ func TestSandboxClientExercisesDedicatedAndPooledServerOperations(t *testing.T) 
 	dedicated := SandboxRef{Namespace: "acme", JobID: jobID}
 	if state, err := client.SandboxState(ctx, dedicated); err != nil || state.Mode != modeDedicated {
 		t.Fatalf("SandboxState() = %+v, %v", state, err)
-	}
-	if result, err := client.RunSandboxCommand(ctx, dedicated, SandboxCommand{ShellCommand: "echo hi", MaxOutputBytes: 4096}); err != nil || result.ExitCode == nil || result.Stderr != "warn" {
-		t.Fatalf("RunSandboxCommand() = %+v, %v", result, err)
-	}
-	if result, err := client.RunSandboxCommand(ctx, dedicated, SandboxCommand{Argv: []string{"sleep", "60"}, Background: true, MaxOutputBytes: 4096}); err != nil || result.PID != 42 {
-		t.Fatalf("RunSandboxCommand(background) = %+v, %v", result, err)
 	}
 	if info, err := client.SandboxFileStat(ctx, dedicated, "/tmp/result"); err != nil || info.Size != 2 {
 		t.Fatalf("SandboxFileStat() = %+v, %v", info, err)

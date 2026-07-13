@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-const ExpectedCount = 259
+const ExpectedCount = 258
 
 type AuthorizationMode string
 

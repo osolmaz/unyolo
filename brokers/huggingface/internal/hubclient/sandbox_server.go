@@ -1,7 +1,6 @@
 package hubclient
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -52,64 +51,6 @@ func (c *Client) DeleteSandbox(ctx context.Context, ref SandboxRef) error {
 		return err
 	}
 	return c.sandboxServerJSON(ctx, endpoint, http.MethodDelete, "/v1/sandboxes/"+url.PathEscape(ref.LocalID), nil, nil, nil, c.maxResponseBytes)
-}
-
-//nolint:cyclop // Command lifecycle checks are explicit and tracked by the exact HF CRAP baseline.
-func (c *Client) RunSandboxCommand(ctx context.Context, ref SandboxRef, command SandboxCommand) (SandboxCommandResult, error) {
-	if err := validateSandboxCommand(command); err != nil {
-		return SandboxCommandResult{}, err
-	}
-	endpoint, basePath, err := c.resolveSandboxEndpoint(ctx, ref)
-	if err != nil {
-		return SandboxCommandResult{}, err
-	}
-	payload := make(map[string]any)
-	if command.ShellCommand != "" {
-		payload["cmd"] = command.ShellCommand
-		payload["shell"] = true
-	} else {
-		payload["cmd"] = command.Argv
-		payload["shell"] = false
-	}
-	if len(command.Environment) > 0 {
-		payload["env"] = command.Environment
-	}
-	if command.WorkingDir != "" {
-		payload["cwd"] = command.WorkingDir
-	}
-	if command.Background {
-		var process struct {
-			PID int `json:"pid"`
-		}
-		if err := c.sandboxServerJSON(ctx, endpoint, http.MethodPost, basePath+"/processes", nil, payload, &process, 64*1024); err != nil {
-			return SandboxCommandResult{}, err
-		}
-		if process.PID < 1 {
-			return SandboxCommandResult{}, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
-		}
-		return SandboxCommandResult{PID: process.PID}, nil
-	}
-	if command.TimeoutSeconds > 0 {
-		payload["timeout"] = command.TimeoutSeconds
-	}
-	if command.Stdin != "" {
-		payload["stdin"] = command.Stdin
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return SandboxCommandResult{}, errors.New("hubclient: sandbox command is invalid")
-	}
-	responseLimit := int64(command.MaxOutputBytes + 64*1024)
-	requestTimeout := c.timeout
-	if command.TimeoutSeconds > 0 && time.Duration(command.TimeoutSeconds+10)*time.Second > requestTimeout {
-		requestTimeout = time.Duration(command.TimeoutSeconds+10) * time.Second
-	}
-	raw, err := c.sandboxServer(ctx, endpoint, sandboxRequest{method: http.MethodPost, path: basePath + "/exec", rawBody: encoded,
-		contentType: "application/json", limit: responseLimit, timeout: requestTimeout})
-	if err != nil {
-		return SandboxCommandResult{}, err
-	}
-	return decodeSandboxCommandEvents(raw, command.MaxOutputBytes)
 }
 
 func (c *Client) SandboxFileStat(ctx context.Context, ref SandboxRef, path string) (SandboxFileInfo, error) {
@@ -184,7 +125,7 @@ func (c *Client) SandboxProcesses(ctx context.Context, ref SandboxRef) ([]Sandbo
 		return nil, err
 	}
 	for _, process := range processes {
-		if process.PID < 1 || !validSandboxCommandValue(process.Command) {
+		if process.PID < 1 || !validSandboxProcessCommandValue(process.Command) {
 			return nil, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
 		}
 	}
@@ -322,23 +263,9 @@ func (c *Client) sandboxServer(ctx context.Context, endpoint sandboxEndpoint, sp
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	if spec.body != nil && len(spec.rawBody) > 0 {
-		return nil, errors.New("hubclient: sandbox request has conflicting bodies")
-	}
-	var reader io.Reader
-	contentType := spec.contentType
-	if spec.body != nil {
-		encoded, err := json.Marshal(spec.body)
-		if err != nil || len(encoded) > maxRequestBodyBytes {
-			return nil, errors.New("hubclient: sandbox request body is invalid")
-		}
-		reader = bytes.NewReader(encoded)
-		contentType = "application/json"
-	} else if len(spec.rawBody) > 0 {
-		if len(spec.rawBody) > maxRequestBodyBytes {
-			return nil, errors.New("hubclient: sandbox request body is invalid")
-		}
-		reader = bytes.NewReader(spec.rawBody)
+	reader, contentType, err := sandboxRequestBody(spec)
+	if err != nil {
+		return nil, err
 	}
 	requestURL := endpoint.base + spec.path
 	if len(spec.query) > 0 {
@@ -348,7 +275,6 @@ func (c *Client) sandboxServer(ctx context.Context, endpoint sandboxEndpoint, sp
 	if err != nil {
 		return nil, errors.New("hubclient: sandbox request construction failed")
 	}
-	request.Header.Set("Authorization", "Bearer "+c.token)
 	request.Header.Set("X-Sandbox-Token", endpoint.token)
 	request.Header.Set("Accept", "application/json")
 	if contentType != "" {
@@ -379,75 +305,28 @@ func (c *Client) sandboxServer(ctx context.Context, endpoint sandboxEndpoint, sp
 	return payload, nil
 }
 
-//nolint:cyclop // Event-stream validation is explicit and tracked by the exact HF CRAP baseline.
-func decodeSandboxCommandEvents(raw []byte, maxOutput int) (SandboxCommandResult, error) {
-	result := SandboxCommandResult{}
-	foundExit := false
-	scanner := bufio.NewScanner(bytes.NewReader(raw))
-	scanner.Buffer(make([]byte, 64*1024), maxOutput+64*1024)
-	for scanner.Scan() {
-		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
-			continue
-		}
-		var event struct {
-			Event      string `json:"event"`
-			Data       string `json:"data"`
-			ExitCode   *int   `json:"exit_code"`
-			Signal     *int   `json:"signal"`
-			TimedOut   bool   `json:"timed_out"`
-			DurationMS int64  `json:"duration_ms"`
-		}
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			return SandboxCommandResult{}, ambiguousSandboxCommandResult()
-		}
-		switch event.Event {
-		case "ping":
-		case "stdout":
-			result.Stdout += event.Data
-		case "stderr":
-			result.Stderr += event.Data
-		case "exit":
-			if foundExit || event.ExitCode == nil {
-				return SandboxCommandResult{}, ambiguousSandboxCommandResult()
-			}
-			foundExit = true
-			result.ExitCode, result.Signal, result.TimedOut, result.DurationMS = event.ExitCode, event.Signal, event.TimedOut, event.DurationMS
-		default:
-			return SandboxCommandResult{}, ambiguousSandboxCommandResult()
-		}
-		if len(result.Stdout)+len(result.Stderr) > maxOutput {
-			return SandboxCommandResult{}, ambiguousSandboxCommandResult()
-		}
+func sandboxRequestBody(spec sandboxRequest) (io.Reader, string, error) {
+	if spec.body != nil && len(spec.rawBody) > 0 {
+		return nil, "", errors.New("hubclient: sandbox request has conflicting bodies")
 	}
-	if scanner.Err() != nil || !foundExit {
-		return SandboxCommandResult{}, ambiguousSandboxCommandResult()
-	}
-	return result, nil
-}
-
-func ambiguousSandboxCommandResult() error {
-	return &Error{Code: CodeResultUnknown, StatusCode: http.StatusOK, Ambiguous: true}
-}
-
-//nolint:cyclop // Command-value validation is explicit and tracked by the exact HF CRAP baseline.
-func validateSandboxCommand(command SandboxCommand) error {
-	if (len(command.Argv) == 0) == (command.ShellCommand == "") || len(command.Argv) > 256 || len(command.ShellCommand) > 64*1024 ||
-		len(command.Stdin) > 256*1024 || command.TimeoutSeconds < 0 || command.TimeoutSeconds > 60*60 ||
-		command.Background && (command.TimeoutSeconds != 0 || command.Stdin != "") ||
-		command.MaxOutputBytes < 1 || command.MaxOutputBytes > SandboxMaxCommandOutput ||
-		command.WorkingDir != "" && !validSandboxPath(command.WorkingDir) || validateSandboxEnvironment(command.Environment, true) != nil {
-		return errors.New("hubclient: sandbox command is invalid")
-	}
-	for _, argument := range command.Argv {
-		if argument == "" || len(argument) > 64*1024 || strings.ContainsRune(argument, 0) {
-			return errors.New("hubclient: sandbox command is invalid")
+	if spec.body != nil {
+		encoded, err := json.Marshal(spec.body)
+		if err != nil || len(encoded) > maxRequestBodyBytes {
+			return nil, "", errors.New("hubclient: sandbox request body is invalid")
 		}
+		return bytes.NewReader(encoded), "application/json", nil
 	}
-	return nil
+	if len(spec.rawBody) > maxRequestBodyBytes {
+		return nil, "", errors.New("hubclient: sandbox request body is invalid")
+	}
+	if len(spec.rawBody) > 0 {
+		return bytes.NewReader(spec.rawBody), spec.contentType, nil
+	}
+	return nil, spec.contentType, nil
 }
 
 //nolint:cyclop // Recursive command values are explicit and tracked by the exact HF CRAP baseline.
-func validSandboxCommandValue(value any) bool {
+func validSandboxProcessCommandValue(value any) bool {
 	switch value := value.(type) {
 	case string:
 		return value != "" && len(value) <= 64*1024

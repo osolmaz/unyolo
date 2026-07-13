@@ -6,8 +6,8 @@ import (
 )
 
 func TestCustomInputSchemasAreClosedAndComplete(t *testing.T) {
-	if len(customInputSchemaExamples) != 36 {
-		t.Fatalf("custom schema count = %d, want 36", len(customInputSchemaExamples))
+	if len(customInputSchemaExamples) != 35 {
+		t.Fatalf("custom schema count = %d, want 35", len(customInputSchemaExamples))
 	}
 	for operation := range customInputSchemaExamples {
 		schemas, found := CustomInputSchemas(operation)

@@ -103,27 +103,6 @@ type SandboxState struct {
 	IdleTimeoutSeconds *int              `json:"idle_timeout_seconds,omitempty"`
 }
 
-type SandboxCommand struct {
-	Argv           []string
-	ShellCommand   string
-	Environment    map[string]string
-	WorkingDir     string
-	TimeoutSeconds int
-	Stdin          string
-	Background     bool
-	MaxOutputBytes int
-}
-
-type SandboxCommandResult struct {
-	ExitCode   *int   `json:"exit_code,omitempty"`
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-	Signal     *int   `json:"signal,omitempty"`
-	TimedOut   bool   `json:"timed_out"`
-	DurationMS int64  `json:"duration_ms"`
-	PID        int    `json:"pid,omitempty"`
-}
-
 type SandboxFileInfo struct {
 	Name    string `json:"name"`
 	Path    string `json:"path"`

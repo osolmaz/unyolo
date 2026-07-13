@@ -125,15 +125,6 @@ func (a *sandboxAdapter) executeSandboxPoolDelete(ctx context.Context, target sa
 func (a *sandboxAdapter) executeSandboxAction(ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
 	ref := target.ref()
 	switch a.descriptor.Name {
-	case "sandbox.command.run":
-		var arguments sandboxCommandArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		result, err := a.client.RunSandboxCommand(ctx, ref, arguments.command())
-		if err != nil {
-			return Outcome{}, err
-		}
-		encoded, _ := canonical(result)
-		return Outcome{Proven: true, Result: encoded}, nil
 	case "sandbox.delete":
 		if err := a.client.DeleteSandbox(ctx, ref); err != nil {
 			return Outcome{}, err

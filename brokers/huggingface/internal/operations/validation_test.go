@@ -120,21 +120,6 @@ func TestSandboxValidationCorpus(t *testing.T) {
 			t.Errorf("invalid pool configuration accepted: %+v", value)
 		}
 	}
-	validCommand := sandboxCommandArguments{Argv: []string{"echo", "hi"}, MaxOutputBytes: 1024}
-	if validateSandboxCommandArguments(validCommand) != nil {
-		t.Fatal("valid sandbox command rejected")
-	}
-	for _, command := range []sandboxCommandArguments{
-		{MaxOutputBytes: 1024},
-		{Argv: []string{"echo"}, ShellCommand: "echo", MaxOutputBytes: 1024},
-		{Argv: []string{""}, MaxOutputBytes: 1024},
-		{Argv: []string{strings.Repeat("x", 1201)}, MaxOutputBytes: 1024},
-		{Argv: []string{"echo"}, Environment: map[string]string{"BAD-KEY": "x"}, MaxOutputBytes: 1024},
-	} {
-		if validateSandboxCommandArguments(command) == nil {
-			t.Errorf("invalid sandbox command accepted: %+v", command)
-		}
-	}
 	if validateSandboxFileWrite(sandboxFileWriteArguments{Path: "/tmp/file", ContentBase64: "aGk=", Mode: "0644"}) != nil {
 		t.Fatal("valid sandbox file rejected")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -48,30 +49,13 @@ func TestRequestAndBindingInternalsFailClosed(t *testing.T) {
 }
 
 func TestSandboxInternalValidationAndDecoding(t *testing.T) {
-	valid := SandboxCommand{Argv: []string{"echo", "hi"}, MaxOutputBytes: 1024}
-	if err := validateSandboxCommand(valid); err != nil {
-		t.Fatal(err)
-	}
-	invalid := []SandboxCommand{
-		{MaxOutputBytes: 1024},
-		{Argv: []string{"echo"}, ShellCommand: "echo", MaxOutputBytes: 1024},
-		{Argv: []string{""}, MaxOutputBytes: 1024},
-		{Argv: []string{"echo"}, Background: true, Stdin: "x", MaxOutputBytes: 1024},
-		{Argv: []string{"echo"}, WorkingDir: "bad\x00path", MaxOutputBytes: 1024},
-		{Argv: []string{"echo"}, Environment: map[string]string{"BAD-KEY": "x"}, MaxOutputBytes: 1024},
-	}
-	for _, command := range invalid {
-		if err := validateSandboxCommand(command); err == nil {
-			t.Fatalf("invalid command accepted: %+v", command)
-		}
-	}
 	for _, value := range []any{"echo", []any{"echo", "hi"}} {
-		if !validSandboxCommandValue(value) {
+		if !validSandboxProcessCommandValue(value) {
 			t.Fatalf("valid command value rejected: %#v", value)
 		}
 	}
 	for _, value := range []any{"", []any{}, []any{"echo", 1}, true} {
-		if validSandboxCommandValue(value) {
+		if validSandboxProcessCommandValue(value) {
 			t.Fatalf("invalid command value accepted: %#v", value)
 		}
 	}
@@ -80,15 +64,6 @@ func TestSandboxInternalValidationAndDecoding(t *testing.T) {
 	}
 	if !isHex("0123456789abcdef", 16) || isHex("not-hex-not-hex!", 16) {
 		t.Fatal("hex validation mismatch")
-	}
-	for _, raw := range [][]byte{
-		[]byte("{\"event\":\"unknown\"}\n"),
-		[]byte("{\"event\":\"exit\",\"exit_code\":0}\n{\"event\":\"exit\",\"exit_code\":0}\n"),
-		[]byte("{\"event\":\"exit\"}\n"),
-	} {
-		if _, err := decodeSandboxCommandEvents(raw, 1024); err == nil {
-			t.Fatalf("invalid command event stream accepted: %s", raw)
-		}
 	}
 }
 
@@ -138,6 +113,21 @@ func TestSandboxServerRequestBoundsAndEndpointSelection(t *testing.T) {
 	}
 	if _, err := client.sandboxServer(context.Background(), endpoint, sandboxRequest{method: http.MethodPost, path: "/v1/test", rawBody: make([]byte, maxRequestBodyBytes+1)}); err == nil {
 		t.Fatal("oversized sandbox request accepted")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "" || request.Header.Get("X-Sandbox-Token") != "sandbox-token" ||
+			request.Header.Get("Content-Type") != "application/octet-stream" || request.URL.Query().Get("path") != "/tmp/file" {
+			t.Fatalf("sandbox request = %#v", request)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	payload, err := client.sandboxServer(context.Background(), sandboxEndpoint{base: server.URL, token: "sandbox-token"}, sandboxRequest{
+		method: http.MethodPost, path: "/v1/test", query: url.Values{"path": []string{"/tmp/file"}},
+		rawBody: []byte("payload"), contentType: "application/octet-stream", limit: 1024,
+	})
+	if err != nil || string(payload) != `{"ok":true}` {
+		t.Fatalf("sandboxServer() = %q, %v", payload, err)
 	}
 	job := sandboxJobWire{ID: "job", Labels: map[string]string{sandboxNonceLabel: "0123456789abcdef0123456789abcdef"}}
 	job.Status.ExposeURLs = []string{"https://attacker.example", "http://job--49983.hf.jobs", "https://job--49983.hf.jobs/path"}

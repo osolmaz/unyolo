@@ -278,10 +278,9 @@ The broker never returns raw SSH credentials to an agent.
 ### Sandboxes
 
 The official Sandbox API is a managed workflow over Jobs plus a sandbox server.
-Its dynamic command and file APIs are still typed broker operations. The
-approved plan binds the backing Job configuration, sandbox identity, argv or
-shell string, file paths, content digests, environment, timeout, and output
-limits.
+Its dynamic file and process-management APIs are typed broker operations. The
+approved plan binds the backing Job configuration, sandbox identity, file
+paths, content digests, and other operation-specific values.
 
 | Broker operation       | Disposition | Official capability                                                                               |
 | ---------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
@@ -289,7 +288,6 @@ limits.
 | `sandbox.connect`      | `W/X`       | Attach broker plumbing to an exact existing sandbox.                                              |
 | `sandbox.read`         | `W/X`       | Read exact sandbox image, host, and lifecycle metadata.                                           |
 | `sandbox.delete`       | `E/X`       | Close a sandbox and cancel its backing Job.                                                       |
-| `sandbox.command.run`  | `E/X`       | Run exact argv with bounded output; shell mode is a separate explicit plan attribute.             |
 | `sandbox.process.list` | `W/X`       | List processes in an exact sandbox.                                                               |
 | `sandbox.process.kill` | `E/X`       | Kill one exact observed process.                                                                  |
 | `sandbox.file.list`    | `W/X`       | List/stat/exists under exact bounded sandbox paths.                                               |
@@ -307,8 +305,9 @@ limits.
 The CLI's interactive Sandbox shell, Job SSH, and Space SSH are not raw-token
 tools. BrokerKit may provide a bounded proxied session only through a dedicated
 session operation that keeps derived credentials inside the broker. Until that
-session adapter exists, these workflows are operator-only rather than mapped to
-`sandbox.command.run` implicitly.
+session adapter exists, these workflows are operator-only. BrokerKit does not
+expose arbitrary sandbox command execution through Agent V1, CLI, or MCP
+because command output could disclose sealed sandbox secrets.
 
 Agent-created sandboxes must never receive the broker's root HF token through
 `forward_hf_token`. A future credential mount must select a separately scoped

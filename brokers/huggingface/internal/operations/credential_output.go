@@ -129,7 +129,7 @@ func (a *credentialOutputAdapter) Execute(ctx context.Context, plan Plan) (Outco
 		return Outcome{}, err
 	}
 	defer zero(response)
-	secret, metadata, err := extractCredentialOutput(a.descriptor.Name, response)
+	secret, _, err := extractCredentialOutput(a.descriptor.Name, response)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -138,7 +138,7 @@ func (a *credentialOutputAdapter) Execute(ctx context.Context, plan Plan) (Outco
 	if err != nil {
 		return Outcome{}, errors.New("upstream_result_unknown")
 	}
-	result, _ := canonical(map[string]any{"stored": true, "slot": stored.Slot, "kind": stored.Kind, "upstream": metadata})
+	result, _ := canonical(map[string]any{"stored": true, "slot": stored.Slot, "kind": stored.Kind})
 	return Outcome{Proven: true, Result: result}, nil
 }
 

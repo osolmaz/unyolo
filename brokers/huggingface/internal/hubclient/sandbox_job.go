@@ -26,15 +26,9 @@ const (
 
 const sandboxBootstrap = `set -eu
 d=/tmp/.sbx-server
-if command -v curl >/dev/null 2>&1; then
-  curl -fsSL -H "Authorization: Bearer $SBX_DL_TOKEN" -o "$d" "$SBX_SERVER_URL"
-elif command -v wget >/dev/null 2>&1; then
-  wget -q --header "Authorization: Bearer $SBX_DL_TOKEN" -O "$d" "$SBX_SERVER_URL"
-else
-  cp "$SBX_SERVER_MOUNT/sbx-server" "$d"
-fi
+cp "$SBX_SERVER_MOUNT/sbx-server" "$d"
 chmod +x "$d"
-unset SBX_DL_TOKEN SBX_SERVER_URL SBX_SERVER_MOUNT
+unset SBX_SERVER_MOUNT
 exec "$d"`
 
 var environmentKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
@@ -245,7 +239,6 @@ func (c *Client) sandboxJobBody(image, flavor string, idle *int, environment, se
 		}
 	}
 	env["SBX_PORT"] = fmt.Sprint(SandboxServerPort)
-	env["SBX_SERVER_URL"] = c.base + "/buckets/huggingface/sbx-server/resolve/sbx-server"
 	env["SBX_SERVER_MOUNT"] = sandboxMountPath
 	if idle != nil {
 		env["SBX_IDLE_TIMEOUT"] = fmt.Sprint(*idle)
@@ -258,7 +251,6 @@ func (c *Client) sandboxJobBody(image, flavor string, idle *int, environment, se
 		env["SBX_MAX_HOSTS"] = fmt.Sprint(maxHosts)
 	}
 	secretValues["SBX_TOKEN"] = sandboxToken
-	secretValues["SBX_DL_TOKEN"] = c.token
 	labels = cloneStrings(labels)
 	labels[sandboxNonceLabel] = nonce
 	serverVolume := SandboxVolume{Type: "bucket", Source: "huggingface/sbx-server", MountPath: sandboxMountPath}

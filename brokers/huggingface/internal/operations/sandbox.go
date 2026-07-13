@@ -26,7 +26,6 @@ type sandboxClient interface {
 	CreateSandboxInPool(context.Context, hubclient.SandboxRef, map[string]string, *int) (hubclient.SandboxRef, error)
 	DeleteSandbox(context.Context, hubclient.SandboxRef) error
 	CancelSandboxJob(context.Context, hubclient.SandboxRef) error
-	RunSandboxCommand(context.Context, hubclient.SandboxRef, hubclient.SandboxCommand) (hubclient.SandboxCommandResult, error)
 	SandboxFileStat(context.Context, hubclient.SandboxRef, string) (hubclient.SandboxFileInfo, error)
 	WriteSandboxFile(context.Context, hubclient.SandboxRef, string, string, []byte) error
 	MakeSandboxDirectory(context.Context, hubclient.SandboxRef, string) error
@@ -80,17 +79,6 @@ type sandboxPoolCreatePublic struct {
 	IdleTimeoutSeconds *int   `json:"idle_timeout_seconds,omitempty"`
 }
 
-type sandboxCommandArguments struct {
-	Argv           []string          `json:"argv,omitempty"`
-	ShellCommand   string            `json:"shell_command,omitempty"`
-	Environment    map[string]string `json:"environment,omitempty"`
-	WorkingDir     string            `json:"working_dir,omitempty"`
-	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
-	Stdin          string            `json:"stdin,omitempty"`
-	Background     bool              `json:"background,omitempty"`
-	MaxOutputBytes int               `json:"max_output_bytes"`
-}
-
 type sandboxFileWriteArguments struct {
 	Path          string `json:"path"`
 	ContentBase64 string `json:"content_base64"`
@@ -136,7 +124,7 @@ type sandboxPoolConfig struct {
 }
 
 var sandboxOperations = []string{
-	"sandbox.command.run", "sandbox.create", "sandbox.delete", "sandbox.file.delete", "sandbox.file.mkdir",
+	"sandbox.create", "sandbox.delete", "sandbox.file.delete", "sandbox.file.mkdir",
 	"sandbox.file.write", "sandbox.pool.create", "sandbox.pool.delete", "sandbox.pool.warm", "sandbox.process.kill",
 }
 
@@ -227,12 +215,6 @@ func (a *sandboxAdapter) decodeArguments(target sandboxTarget, raw json.RawMessa
 		var value sandboxPoolCreatePublic
 		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateSandboxPoolCreatePublic(value) != nil {
 			return nil, errors.New("sandbox pool create arguments are invalid")
-		}
-		return value, nil
-	case "sandbox.command.run":
-		var value sandboxCommandArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateSandboxCommandArguments(value) != nil {
-			return nil, errors.New("sandbox command arguments are invalid")
 		}
 		return value, nil
 	case "sandbox.file.write":
@@ -327,32 +309,6 @@ func validateSandboxPoolCreatePublic(value sandboxPoolCreatePublic) error {
 	return nil
 }
 
-//nolint:cyclop // Command argument bounds are explicit and tracked by the exact HF CRAP baseline.
-func validateSandboxCommandArguments(value sandboxCommandArguments) error {
-	command := value.command()
-	if (len(value.Argv) == 0) == (value.ShellCommand == "") || command.MaxOutputBytes < 1 || command.MaxOutputBytes > hubclient.SandboxMaxCommandOutput ||
-		value.TimeoutSeconds < 0 || value.TimeoutSeconds > 3600 || value.Background && (value.TimeoutSeconds != 0 || value.Stdin != "") ||
-		len(value.Stdin) > 256*1024 || value.WorkingDir != "" && !validSandboxOperationPath(value.WorkingDir) || len(value.Environment) > 128 {
-		return errors.New("sandbox command bounds are invalid")
-	}
-	commandBytes := len(value.ShellCommand)
-	for key, item := range value.Environment {
-		if !validEnvironmentEntry(key, item) {
-			return errors.New("sandbox command environment is invalid")
-		}
-	}
-	for _, argument := range value.Argv {
-		if argument == "" || len(argument) > 64*1024 || strings.ContainsRune(argument, 0) {
-			return errors.New("sandbox argv is invalid")
-		}
-		commandBytes += len(argument) + 1
-	}
-	if commandBytes > 1200 {
-		return errors.New("sandbox command is too large for exact operator presentation")
-	}
-	return nil
-}
-
 func validateSandboxFileWrite(value sandboxFileWriteArguments) error {
 	content, err := base64.StdEncoding.Strict().DecodeString(value.ContentBase64)
 	if err != nil || len(content) > 700*1024 || !validSandboxOperationPath(value.Path) || !hubclient.ValidSandboxFileMode(value.Mode) {
@@ -390,12 +346,6 @@ func (target sandboxTarget) poolRef() hubclient.SandboxPoolRef {
 		name = target.Pool
 	}
 	return hubclient.SandboxPoolRef{Namespace: target.Namespace, Name: name}
-}
-
-func (value sandboxCommandArguments) command() hubclient.SandboxCommand {
-	return hubclient.SandboxCommand{Argv: value.Argv, ShellCommand: value.ShellCommand, Environment: value.Environment,
-		WorkingDir: value.WorkingDir, TimeoutSeconds: value.TimeoutSeconds, Stdin: value.Stdin,
-		Background: value.Background, MaxOutputBytes: value.MaxOutputBytes}
 }
 
 func (value sandboxVolumeArgument) hubVolume() hubclient.SandboxVolume {
@@ -446,21 +396,6 @@ func (a *sandboxAdapter) presentationAndPolicy(target sandboxTarget, raw json.Ra
 		request.Attrs["warm_up"] = int64(arguments.WarmUp)
 		request.Attrs["max_hosts"] = int64(arguments.MaxHosts)
 		summary = fmt.Sprintf("Create sandbox pool %s/%s with %d warm host(s), at most %d host(s), flavor %s", target.Namespace, target.Name, arguments.WarmUp, arguments.MaxHosts, arguments.Flavor)
-	case "sandbox.command.run":
-		var arguments sandboxCommandArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["shell"] = arguments.ShellCommand != ""
-		request.Attrs["background"] = arguments.Background
-		request.Attrs["command_digest"] = digest([]byte(strings.Join(arguments.Argv, "\x00") + arguments.ShellCommand))
-		command := ""
-		if arguments.ShellCommand != "" {
-			encoded, _ := json.Marshal(arguments.ShellCommand)
-			command = string(encoded)
-		} else {
-			encoded, _ := json.Marshal(arguments.Argv)
-			command = string(encoded)
-		}
-		summary = fmt.Sprintf("Run %s in sandbox %s/%s", command, target.Namespace, name)
 	case "sandbox.file.write":
 		var arguments sandboxFileWriteArguments
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)

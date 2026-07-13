@@ -64,32 +64,6 @@ func TestSandboxCreateConsumesSealedSecretsWithoutLeakingThemIntoPlan(t *testing
 	}
 }
 
-func TestSandboxCommandPresentationIsExactAndStaleStateFailsClosed(t *testing.T) {
-	store, _ := sealedstore.Open(t.TempDir())
-	client := &sandboxFake{identity: "operator", state: runningSandboxState()}
-	adapters, _ := NewSandboxAdapters(client, store)
-	registry, _ := NewRegistry(adapters...)
-	adapter, _ := registry.Lookup("sandbox.command.run")
-	input, err := adapter.Decode(existingSandboxTarget(), json.RawMessage(`{"argv":["echo","hi"],"max_output_bytes":4096}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := adapter.Resolve(context.Background(), input)
-	if err != nil || !strings.Contains(plan.Presentation.Summary, `["echo","hi"]`) {
-		t.Fatalf("Resolve() = %+v, %v", plan, err)
-	}
-	client.state.Image = "changed:latest"
-	if _, err := adapter.Execute(context.Background(), plan); err == nil || !strings.Contains(err.Error(), "precondition") {
-		t.Fatalf("stale command plan error = %v", err)
-	}
-	client.state = runningSandboxState()
-	plan, _ = adapter.Resolve(context.Background(), input)
-	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven || len(client.command.Argv) != 2 {
-		t.Fatalf("Execute() = %+v, %v; command=%+v", outcome, err, client.command)
-	}
-}
-
 func TestSandboxAdaptersUseClosedOperationSpecificInputs(t *testing.T) {
 	store, _ := sealedstore.Open(t.TempDir())
 	adapters, _ := NewSandboxAdapters(&sandboxFake{}, store)
@@ -99,7 +73,6 @@ func TestSandboxAdaptersUseClosedOperationSpecificInputs(t *testing.T) {
 		target    json.RawMessage
 		arguments json.RawMessage
 	}{
-		{"sandbox.command.run", existingSandboxTarget(), json.RawMessage(`{"shell_command":"echo hi","max_output_bytes":4096}`)},
 		{"sandbox.delete", existingSandboxTarget(), json.RawMessage(`{}`)},
 		{"sandbox.file.delete", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/result","recursive":false}`)},
 		{"sandbox.file.mkdir", existingSandboxTarget(), json.RawMessage(`{"path":"/tmp/output"}`)},
@@ -137,7 +110,6 @@ func TestSandboxAdaptersExecuteEveryOperationLifecycle(t *testing.T) {
 		arguments json.RawMessage
 		configure func(*sandboxFake)
 	}{
-		{"sandbox.command.run", existingSandboxTarget(), json.RawMessage(`{"argv":["echo","hi"],"max_output_bytes":4096}`), nil},
 		{"sandbox.create", json.RawMessage(`{"kind":"sandbox","namespace":"acme","name":"review"}`), json.RawMessage(`{"public":{"image":"python:3.12","flavor":"cpu-basic","environment":{"MODE":"test"}}}`), nil},
 		{"sandbox.create", json.RawMessage(`{"kind":"sandbox","namespace":"acme","name":"pooled","pool":"workers"}`), json.RawMessage(`{"public":{"environment":{"MODE":"test"}}}`), func(fake *sandboxFake) {
 			fake.pool = []hubclient.SandboxState{poolHost}
@@ -201,11 +173,50 @@ func TestSandboxAdaptersExecuteEveryOperationLifecycle(t *testing.T) {
 				t.Fatalf("Execute() = %+v, %v", outcome, err)
 			}
 			reconciled, err := adapter.Reconcile(context.Background(), plan)
-			wantReconciled := test.operation != "sandbox.command.run" && test.operation != "sandbox.file.write" && !bytes.Contains(test.target, []byte(`"pool":"workers"`))
+			wantReconciled := test.operation != "sandbox.file.write" && !bytes.Contains(test.target, []byte(`"pool":"workers"`))
 			if err != nil || reconciled.Proven != wantReconciled {
 				t.Fatalf("Reconcile() = %+v, %v; want proven=%v", reconciled, err, wantReconciled)
 			}
 		})
+	}
+}
+
+func TestSandboxPoolWarmNoOpReconciliationVerifiesCapturedState(t *testing.T) {
+	host := runningSandboxState()
+	host.Mode = "pool"
+	host.Pool = "workers"
+	host.Capacity = 10
+	host.MaxHosts = 3
+	fake := &sandboxFake{identity: "operator", pool: []hubclient.SandboxState{host}}
+	store, err := sealedstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapters, err := NewSandboxAdapters(fake, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := NewRegistry(adapters...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, _ := registry.Lookup("sandbox.pool.warm")
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"sandbox_pool","namespace":"acme","name":"workers"}`), json.RawMessage(`{"num_hosts":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := adapter.Reconcile(t.Context(), plan)
+	if err != nil || !outcome.Proven {
+		t.Fatalf("unchanged pool reconciliation = %+v, %v", outcome, err)
+	}
+	fake.pool[0].Stage = "STOPPED"
+	outcome, err = adapter.Reconcile(t.Context(), plan)
+	if err != nil || outcome.Proven {
+		t.Fatalf("changed pool reconciliation = %+v, %v", outcome, err)
 	}
 }
 
@@ -214,7 +225,6 @@ type sandboxFake struct {
 	state              hubclient.SandboxState
 	pool               []hubclient.SandboxState
 	created            hubclient.SandboxCreateSpec
-	command            hubclient.SandboxCommand
 	file               hubclient.SandboxFileInfo
 	processes          []hubclient.SandboxProcess
 	createdByOperation []hubclient.SandboxState
@@ -267,12 +277,6 @@ func (f *sandboxFake) DeleteSandbox(context.Context, hubclient.SandboxRef) error
 func (f *sandboxFake) CancelSandboxJob(context.Context, hubclient.SandboxRef) error {
 	f.pool = nil
 	return nil
-}
-
-func (f *sandboxFake) RunSandboxCommand(_ context.Context, _ hubclient.SandboxRef, command hubclient.SandboxCommand) (hubclient.SandboxCommandResult, error) {
-	f.command = command
-	exitCode := 0
-	return hubclient.SandboxCommandResult{ExitCode: &exitCode, Stdout: "hi\n"}, nil
 }
 
 func (f *sandboxFake) SandboxFileStat(context.Context, hubclient.SandboxRef, string) (hubclient.SandboxFileInfo, error) {

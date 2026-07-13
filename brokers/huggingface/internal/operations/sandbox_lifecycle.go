@@ -153,11 +153,15 @@ func (a *sandboxAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error
 	case "sandbox.pool.delete":
 		return a.executeSandboxPoolDelete(ctx, target, preconditions)
 	default:
-		if err = a.checkSandboxState(ctx, target, plan.Arguments, preconditions); err != nil {
-			return Outcome{}, err
-		}
-		return a.executeSandboxAction(ctx, target, plan.Arguments, preconditions)
+		return a.executeExistingSandboxAction(ctx, target, plan.Arguments, preconditions)
 	}
+}
+
+func (a *sandboxAdapter) executeExistingSandboxAction(ctx context.Context, target sandboxTarget, arguments json.RawMessage, preconditions sandboxPreconditions) (Outcome, error) {
+	if err := a.checkSandboxState(ctx, target, arguments, preconditions); err != nil {
+		return Outcome{}, err
+	}
+	return a.executeSandboxAction(ctx, target, arguments, preconditions)
 }
 
 //nolint:cyclop // Resource reconciliation is explicit and tracked by the exact HF CRAP baseline.
@@ -174,11 +178,7 @@ func (a *sandboxAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, err
 		states, listErr := a.client.ListSandboxesByOperation(ctx, target.Namespace, preconditions.OperationID)
 		return Outcome{Proven: listErr == nil && len(states) == 1, Result: json.RawMessage(`{"created":true}`)}, listErr
 	case "sandbox.pool.create", "sandbox.pool.warm":
-		if preconditions.CreatedHosts == 0 {
-			return Outcome{Proven: true, Result: json.RawMessage(`{"warmed":true}`)}, nil
-		}
-		states, listErr := a.client.ListSandboxesByOperation(ctx, target.Namespace, preconditions.OperationID)
-		return Outcome{Proven: listErr == nil && len(states) == preconditions.CreatedHosts, Result: json.RawMessage(`{"warmed":true}`)}, listErr
+		return a.reconcileSandboxPool(ctx, target, preconditions)
 	case "sandbox.pool.delete":
 		hosts, listErr := a.client.ListSandboxPool(ctx, target.poolRef())
 		return Outcome{Proven: listErr == nil && len(hosts) == 0, Result: json.RawMessage(`{"deleted":true}`)}, listErr
@@ -212,6 +212,17 @@ func (a *sandboxAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, err
 	default:
 		return Outcome{Proven: false}, nil
 	}
+}
+
+func (a *sandboxAdapter) reconcileSandboxPool(ctx context.Context, target sandboxTarget, preconditions sandboxPreconditions) (Outcome, error) {
+	if preconditions.CreatedHosts > 0 {
+		states, err := a.client.ListSandboxesByOperation(ctx, target.Namespace, preconditions.OperationID)
+		return Outcome{Proven: err == nil && len(states) == preconditions.CreatedHosts, Result: json.RawMessage(`{"warmed":true}`)}, err
+	}
+	hosts, err := a.client.ListSandboxPool(ctx, target.poolRef())
+	proven := err == nil && len(hosts) == preconditions.ExpectedHosts && preconditions.PoolDigest != "" &&
+		sandboxStatesDigest(hosts) == preconditions.PoolDigest
+	return Outcome{Proven: proven, Result: json.RawMessage(`{"warmed":true}`)}, err
 }
 
 func (a *sandboxAdapter) Cleanup(plan Plan) error {

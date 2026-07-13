@@ -334,10 +334,87 @@ func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
 		t.Fatalf("allow submit = %d %s", response.StatusCode, text)
 	}
 	var operation agentv1.Operation
-	_ = json.Unmarshal([]byte(text), &operation)
+	if err := json.Unmarshal([]byte(text), &operation); err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != agentv1.StateApproved || operation.Revision != 1 || operation.PlanDigest == "" || operation.ApprovalID != "" {
+		t.Fatalf("direct operation was not atomically approved with its plan: %#v", operation)
+	}
 	if got := waitForTestOperation(t, server.URL, operation.ID); got.State != agentv1.StateSucceeded {
 		t.Fatalf("allow operation = %#v", got)
 	}
+}
+
+func TestAgentApprovalBindingSerializesWithOperationWorker(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "serialized")
+	defer upstream.Close()
+	notifier := &blockingApprovalNotifier{entered: make(chan struct{}), release: make(chan struct{})}
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"serialized"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
+	defer cancel()
+	defer server.Close()
+
+	request := agentv1.SubmitRequest{IdempotencyKey: "serialized", Operation: "repo.create",
+		Target:    json.RawMessage(`{"kind":"repo","type":"dataset","owner":"alice","name":"serialized"}`),
+		Arguments: json.RawMessage(`{"visibility":"private"}`), Reason: "serialize plan binding"}
+	type submitResult struct {
+		operation agentv1.Operation
+		created   bool
+		err       error
+	}
+	result := make(chan submitResult, 1)
+	go func() {
+		operation, created, err := handler.submitAgentOperation(t.Context(), "agent", request)
+		result <- submitResult{operation: operation, created: created, err: err}
+	}()
+	select {
+	case <-notifier.entered:
+	case <-time.After(time.Second):
+		t.Fatal("approval notifier was not called")
+	}
+
+	unfinished, err := handler.operations.ListUnfinished()
+	if err != nil || len(unfinished) != 1 || unfinished[0].PlanDigest == "" || unfinished[0].ApprovalID == "" {
+		t.Fatalf("operation before notification = %#v, %v", unfinished, err)
+	}
+	advanced := make(chan struct{})
+	go func() {
+		handler.advanceOperations(t.Context())
+		close(advanced)
+	}()
+	select {
+	case <-advanced:
+		t.Fatal("operation worker advanced while approval binding was locked")
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(notifier.release)
+	completed := <-result
+	if completed.err != nil || !completed.created || completed.operation.PlanDigest == "" || completed.operation.ApprovalID == "" {
+		t.Fatalf("submit = %#v", completed)
+	}
+	select {
+	case <-advanced:
+	case <-time.After(time.Second):
+		t.Fatal("operation worker remained blocked after approval submission")
+	}
+}
+
+type blockingApprovalNotifier struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (n *blockingApprovalNotifier) SendApproval(ctx context.Context, _ bknotify.ApprovalMessage) (bknotify.MessageRef, error) {
+	close(n.entered)
+	select {
+	case <-n.release:
+		return bknotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
+	case <-ctx.Done():
+		return bknotify.MessageRef{}, ctx.Err()
+	}
+}
+
+func (*blockingApprovalNotifier) UpdateStatus(context.Context, bknotify.MessageRef, string) error {
+	return nil
 }
 
 func TestAgentRepoCreateConcurrentIdempotentAllow(t *testing.T) {
