@@ -17,10 +17,9 @@ export default defineConfig({
       transformIndexHtml: {
         order: "post",
         handler(html) {
-          return html.replace(
-            '<script type="module" crossorigin',
-            "<script defer crossorigin",
-          );
+          return html
+            .replace('<script type="module"', "<script defer")
+            .replaceAll(" crossorigin", "");
         },
       },
     },

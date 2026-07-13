@@ -62,11 +62,13 @@ const uiIndex = readFileSync(
 if (uiIndex.includes('type="module"'))
   throw new Error("packed UI must not require a module entrypoint");
 if (
-  !/<script defer crossorigin src="\/plugins\/brokerkit\/ui\/assets\/index-[^"]+\.js"><\/script>/u.test(
+  !/<script defer src="\/plugins\/brokerkit\/ui\/assets\/index-[^"]+\.js"><\/script>/u.test(
     uiIndex,
   )
 )
   throw new Error("packed UI is missing its classic sandbox entrypoint");
+if (uiIndex.includes("crossorigin"))
+  throw new Error("packed UI assets must not require CORS mode");
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
