@@ -123,6 +123,13 @@ then
   exit 1
 fi
 
+if ! grep -q 'agentAPI.Register' brokers/github/internal/httpapi/server.go ||
+	grep -R -n --include='*.go' -E 'POST\("/api/repos/:owner/:repo/pulls"|func .*createPullRequest\(' brokers/github 2>/dev/null
+then
+	echo 'GH discrete operations must use the shared Agent V1 boundary' >&2
+	exit 1
+fi
+
 if ! grep -q 'operatorwire.NewClient' operatorclient/client.go ||
 	! grep -q 'agentwire.NewClient' agentclient/client.go ||
 	grep -R -n --include='*.go' 'agentwire.NewClient' brokers 2>/dev/null

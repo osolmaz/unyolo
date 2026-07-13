@@ -40,6 +40,7 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 }
 
 func (s *Server) Start(ctx context.Context) {
+	s.startOperationWorker(ctx)
 	s.startTelegram(ctx)
 	s.startNotificationSweeper(ctx)
 }

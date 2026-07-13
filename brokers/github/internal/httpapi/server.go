@@ -18,6 +18,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/osolmaz/brokerkit/agentapi"
+	"github.com/osolmaz/brokerkit/agentops"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
@@ -34,8 +36,6 @@ import (
 	"github.com/osolmaz/brokerkit/state"
 )
 
-const maxPullRequestBodyBytes int64 = 64 * 1024
-
 type Server struct {
 	echo                *echo.Echo
 	policy              *policy.Policy
@@ -44,6 +44,8 @@ type Server struct {
 	planValidator       ghplan.Validator
 	control             *controlplane.Runtime
 	database            *state.Database
+	operations          *agentops.Store
+	agentAPI            *agentapi.Handler
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
 	githubToken         string
@@ -59,6 +61,11 @@ type Server struct {
 	operatorConfigured  bool
 	closeOnce           sync.Once
 	closeErr            error
+	lifecycleContext    context.Context
+	lifecycleCancel     context.CancelFunc
+	backgroundWorkers   sync.WaitGroup
+	operationWorkerOnce sync.Once
+	operationAuthLocks  [64]sync.Mutex
 }
 
 func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
@@ -82,11 +89,19 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	}
 	server := &Server{
 		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
-		database: core.database, notifier: core.notifier, telegram: core.telegram,
+		database: core.database, operations: agentops.New(core.database), notifier: core.notifier, telegram: core.telegram,
 		githubToken: cfg.GitHubToken, githubApp: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
 		githubClient: githubClient, githubReadClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
+	}
+	server.agentAPI, err = agentapi.New(agentapi.Options{
+		Store: server.operations, Authenticate: core.control.Clients.AuthenticateHeader,
+		Submit: server.submitAgentOperation, Realm: "gh-broker",
+	})
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
 	}
 	server.registerRoutes(core.auth)
 	return server, nil
@@ -169,6 +184,7 @@ func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator 
 }
 
 func (s *Server) registerRoutes(auth security.TokenAuth) {
+	s.agentAPI.Register(s.echo)
 	protected := s.echo.Group("")
 	protected.Use(auth.Middleware)
 	protected.Use(validateRouteParams)
@@ -178,7 +194,6 @@ func (s *Server) registerRoutes(auth security.TokenAuth) {
 	protected.GET("/api/grants/:id", s.getGrant)
 	protected.GET("/api/repos/:owner/:repo/contents", s.readContents)
 	protected.GET("/api/repos/:owner/:repo/contents/*", s.readContents)
-	protected.POST("/api/repos/:owner/:repo/pulls", s.createPullRequest)
 	protected.GET("/:owner/:repoGit/info/refs", s.gitInfoRefs)
 	protected.POST("/:owner/:repoGit/git-upload-pack", s.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", s.gitReceivePack)
@@ -234,7 +249,13 @@ func (s *Server) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.closeOnce.Do(func() { s.closeErr = s.database.Close() })
+	s.closeOnce.Do(func() {
+		if s.lifecycleCancel != nil {
+			s.lifecycleCancel()
+		}
+		s.backgroundWorkers.Wait()
+		s.closeErr = s.database.Close()
+	})
 	return s.closeErr
 }
 
@@ -338,23 +359,6 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 	}
 	s.auditAuthorizedReceivePack(c, authorized, "proxied", "", responseStatus(c))
 	return nil
-}
-
-func (s *Server) createPullRequest(c echo.Context) error {
-	body, err := httpx.ReadLimited(c.Request().Body, maxPullRequestBodyBytes)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "pull request body is too large")
-	}
-	attrs, err := pullRequestAttrs(body)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	request := s.repoRequest(c, policy.OperationPullRequestCreate, attrs)
-	return s.authorizeBrokerRequest(c, request, func(c echo.Context) error {
-		c.Request().Body = io.NopCloser(bytes.NewReader(body))
-		c.Request().ContentLength = int64(len(body))
-		return s.proxyPullRequest(c)
-	})
 }
 
 func (s *Server) listRepos(c echo.Context) error {
@@ -636,13 +640,6 @@ func validateContentPath(contentPath string) error {
 
 func escapedPathSeparator(segment string) bool {
 	return strings.Contains(strings.ToLower(segment), "%2f")
-}
-
-func (s *Server) proxyPullRequest(c echo.Context) error {
-	upstreamURL := s.githubAPIBaseURL.JoinPath("repos", c.Param("owner"), c.Param("repo"), "pulls")
-	return s.proxyTo(c, upstreamURL, func(request *http.Request) error {
-		return s.configureGitHubAPIRequest(c, request, c.Param("owner"), c.Param("repo"))
-	})
 }
 
 func (s *Server) proxyContents(c echo.Context) error {

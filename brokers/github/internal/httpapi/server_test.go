@@ -601,29 +601,6 @@ func TestGitReceivePackDeniedBranchUpdateDoesNotCompare(t *testing.T) {
 	}
 }
 
-func TestPullRequestRouteValidatesPolicyAndUsesGitHubShape(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusCreated)
-	})
-	response := doWithBody(
-		t,
-		server,
-		http.MethodPost,
-		"/api/repos/dutifuldev/gh-broker/pulls",
-		bearerAuth(),
-		[]byte(`{"title":"work","head":"bob/work","base":"main","body":"ready"}`),
-	)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if gotPath != "/repos/dutifuldev/gh-broker/pulls" {
-		t.Fatalf("upstream path = %q, want GitHub pulls path", gotPath)
-	}
-}
-
 func TestPullRequestGitHubShapedAliasIsNotRegistered(t *testing.T) {
 	t.Parallel()
 	var upstreamCalls int
@@ -644,123 +621,6 @@ func TestPullRequestGitHubShapedAliasIsNotRegistered(t *testing.T) {
 	}
 	if upstreamCalls != 0 {
 		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
-	}
-}
-
-func TestCreatePullRequestDirect(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusCreated)
-	})
-	context := newRepoAPIContext(t, server, http.MethodPost, "/api/repos/dutifuldev/gh-broker/pulls", []byte(`{"title":"work","head":"bob/work","base":"main"}`))
-	if err := server.createPullRequest(context); err != nil {
-		t.Fatalf("createPullRequest() error = %v", err)
-	}
-	if gotPath != "/repos/dutifuldev/gh-broker/pulls" {
-		t.Fatalf("upstream path = %q, want GitHub pulls path", gotPath)
-	}
-	badContext := newRepoAPIContext(t, server, http.MethodPost, "/api/repos/dutifuldev/gh-broker/pulls", []byte(`{`))
-	if err := server.createPullRequest(badContext); err == nil {
-		t.Fatal("createPullRequest(bad body) error = nil, want bad request")
-	}
-}
-
-func TestPullRequestRejectsForkHeadSyntax(t *testing.T) {
-	t.Parallel()
-	var upstreamCalls int
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		upstreamCalls++
-		w.WriteHeader(http.StatusCreated)
-	})
-	response := doWithBody(
-		t,
-		server,
-		http.MethodPost,
-		"/api/repos/dutifuldev/gh-broker/pulls",
-		bearerAuth(),
-		[]byte(`{"title":"work","head":"evil:bob/work","base":"main"}`),
-	)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if upstreamCalls != 0 {
-		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
-	}
-}
-
-func TestPullRequestRejectsLongTitle(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	body := []byte(`{"title":"` + strings.Repeat("a", 257) + `","head":"bob/work","base":"main"}`)
-	response := doWithBody(t, server, http.MethodPost, "/api/repos/dutifuldev/gh-broker/pulls", bearerAuth(), body)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-}
-
-func TestPullRequestPolicyDenialDoesNotCallUpstream(t *testing.T) {
-	t.Parallel()
-	var upstreamCalls int
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		upstreamCalls++
-		w.WriteHeader(http.StatusCreated)
-	})
-	response := doWithBody(
-		t,
-		server,
-		http.MethodPost,
-		"/api/repos/dutifuldev/gh-broker/pulls",
-		bearerAuth(),
-		[]byte(`{"title":"work","head":"bob/work","base":"develop"}`),
-	)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if upstreamCalls != 0 {
-		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
-	}
-}
-
-func TestGrantRequestApproveAndUsePullRequestGrant(t *testing.T) {
-	t.Parallel()
-	var upstreamCalls int
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		upstreamCalls++
-		w.WriteHeader(http.StatusCreated)
-	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
-
-	assertPullRequestNeedsGrant(t, server, "work")
-	grant := createPullRequestGrant(t, server, notifier, "pr-1")
-	approveGrant(t, server, grant.ID, notifier.token)
-	assertGrantBackedPullRequestConsumed(t, server, grant.ID, &upstreamCalls)
-}
-
-func TestGrantBackedPullRequestRetainsGrantOnProxyError(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
-	grant := createPullRequestGrant(t, server, notifier, "pr-proxy-error")
-	approveGrant(t, server, grant.ID, notifier.token)
-	server.githubClient = &http.Client{Transport: errorRoundTripper{}}
-
-	response := createPullRequest(t, server, "uncertain work")
-	if response.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, body = %s, want upstream proxy error", response.Code, response.Body.String())
-	}
-	assertGrantUseState(t, server, grant.ID, grants.StatusRevoked, 0, 1)
-	stored, err := server.grants.Get(grant.ID)
-	if err != nil {
-		t.Fatalf("Get(%q) error = %v", grant.ID, err)
-	}
-	if !stored.ReservationRetained {
-		t.Fatalf("grant = %+v, want retained reservation", stored)
 	}
 }
 
@@ -1305,29 +1165,6 @@ func TestGrantNotificationSweeperStopsWithContext(t *testing.T) {
 	server.runGrantNotificationSweeper(ctx)
 }
 
-func assertPullRequestNeedsGrant(t *testing.T, server *Server, title string) {
-	t.Helper()
-	response := createPullRequest(t, server, title)
-	if response.Code != http.StatusConflict {
-		t.Fatalf("pull request status = %d, body = %s, want grant required", response.Code, response.Body.String())
-	}
-}
-
-func createPullRequestGrant(t *testing.T, server *Server, notifier *captureNotifier, requestID string) apiGrant {
-	t.Helper()
-	response := createGrant(t, server, requestID, "open the work PR")
-	if response.Code != http.StatusCreated {
-		t.Fatalf("grant create status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if strings.Contains(response.Body.String(), notifier.token) || strings.Contains(response.Body.String(), "decision_token") {
-		t.Fatalf("grant create response leaked decision token: %s", response.Body.String())
-	}
-	if len(notifier.messages) != 1 || notifier.token == "" {
-		t.Fatalf("notifier messages = %+v token=%q, want one approval with token", notifier.messages, notifier.token)
-	}
-	return decodeGrantResponse(t, response)
-}
-
 func approveGrant(t *testing.T, server *Server, grantID string, token string) {
 	t.Helper()
 	decision := server.control.HandleDecision(context.Background(), notify.Decision{
@@ -1342,26 +1179,6 @@ func approveGrant(t *testing.T, server *Server, grantID string, token string) {
 	if decision.Answer != "Grant approved" {
 		t.Fatalf("telegram decision = %+v, want approval", decision)
 	}
-}
-
-func assertGrantBackedPullRequestConsumed(t *testing.T, server *Server, grantID string, upstreamCalls *int) {
-	t.Helper()
-	after := createPullRequest(t, server, "work")
-	if after.Code != http.StatusCreated {
-		t.Fatalf("after approval status = %d, body = %s", after.Code, after.Body.String())
-	}
-	if *upstreamCalls != 1 {
-		t.Fatalf("upstream calls = %d, want one grant-backed request", *upstreamCalls)
-	}
-	list := do(t, server, http.MethodGet, "/api/grants", bearerAuth())
-	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), grantID) || strings.Contains(list.Body.String(), "decision_token") {
-		t.Fatalf("grant list response = %d %s, want grant without decision token", list.Code, list.Body.String())
-	}
-	get := do(t, server, http.MethodGet, "/api/grants/"+grantID, bearerAuth())
-	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"status":"consumed"`) {
-		t.Fatalf("grant get after use = %d %s, want consumed", get.Code, get.Body.String())
-	}
-	assertPullRequestNeedsGrant(t, server, "again")
 }
 
 func createTelegramPullRequestGrant(t *testing.T, server *Server, state *fakeTelegramState) apiGrant {
@@ -1431,12 +1248,6 @@ func TestGetGrantDirect(t *testing.T) {
 	if err := server.getGrant(otherClient); err == nil {
 		t.Fatal("getGrant(other client) error = nil, want not found")
 	}
-}
-
-func createPullRequest(t *testing.T, server *Server, title string) *httptest.ResponseRecorder {
-	t.Helper()
-	body := fmt.Sprintf(`{"title":%q,"head":"bob/work","base":"main"}`, title)
-	return doWithBody(t, server, http.MethodPost, "/api/repos/dutifuldev/gh-broker/pulls", bearerAuth(), []byte(body))
 }
 
 func createGrant(t *testing.T, server *Server, requestID string, reason string) *httptest.ResponseRecorder {
@@ -1689,22 +1500,6 @@ func TestAPITarget(t *testing.T) {
 	target := apiTarget(policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "brokerkit"}))
 	if target.Owner != "osolmaz" || target.Name != "brokerkit" || target.Kind != "repo" {
 		t.Fatalf("apiTarget() = %+v, want repo target", target)
-	}
-}
-
-func TestPullRequestRejectsMalformedBody(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	response := doWithBody(
-		t,
-		server,
-		http.MethodPost,
-		"/api/repos/dutifuldev/gh-broker/pulls",
-		bearerAuth(),
-		[]byte(`{"head":"bad branch","base":"main"}`),
-	)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
@@ -2989,16 +2784,6 @@ func newGrantContext(t *testing.T, server *Server, grantID string, client string
 	context.Set("gh-broker.client", client)
 	context.SetParamNames("id")
 	context.SetParamValues(grantID)
-	return context
-}
-
-func newRepoAPIContext(t *testing.T, server *Server, method string, path string, body []byte) echo.Context {
-	t.Helper()
-	request := httptest.NewRequestWithContext(context.Background(), method, path, bytes.NewReader(body))
-	context := server.echo.NewContext(request, httptest.NewRecorder())
-	context.Set("gh-broker.client", "bob")
-	context.SetParamNames("owner", "repo")
-	context.SetParamValues("dutifuldev", "gh-broker")
 	return context
 }
 
