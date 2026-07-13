@@ -320,19 +320,15 @@ func (s *Store) update(id string, change func(*agentv1.Operation) error) (agentv
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	if err := change(&operation); err != nil {
-		if errors.Is(err, errNoOperationChange) {
-			return clone(operation), nil
-		}
+	changed, err := applyOperationChange(&operation, change)
+	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	expectedRevision := operation.Revision
-	operation.Revision++
-	operation.UpdatedAt = s.now().UTC()
-	if operation.State.Terminal() {
-		terminal := operation.UpdatedAt
-		operation.TerminalAt = &terminal
+	if !changed {
+		return clone(operation), nil
 	}
+	expectedRevision := operation.Revision
+	prepareOperationUpdate(&operation, s.now())
 	updated, err := s.db.UpdateOperation(context.Background(), operationRecord(operation), expectedRevision)
 	if err != nil {
 		return agentv1.Operation{}, err
@@ -342,6 +338,26 @@ func (s *Store) update(id string, change func(*agentv1.Operation) error) (agentv
 	}
 	s.notify()
 	return clone(operation), nil
+}
+
+func applyOperationChange(operation *agentv1.Operation, change func(*agentv1.Operation) error) (bool, error) {
+	err := change(operation)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, errNoOperationChange) {
+		return false, nil
+	}
+	return false, err
+}
+
+func prepareOperationUpdate(operation *agentv1.Operation, now time.Time) {
+	operation.Revision++
+	operation.UpdatedAt = now.UTC()
+	if operation.State.Terminal() {
+		terminal := operation.UpdatedAt
+		operation.TerminalAt = &terminal
+	}
 }
 
 func (s *Store) notify() {
@@ -433,8 +449,15 @@ func normalizeSubmit(input Submit) (Submit, error) {
 }
 
 func validSubmitIdentity(input Submit) bool {
-	return (input.ID == "" || validOperationID(input.ID)) && input.Broker != "" && len(input.Broker) <= 64 && input.ClientID != "" && len(input.ClientID) <= 128 &&
-		input.IdempotencyKey != "" && len(input.IdempotencyKey) <= 128 && input.Operation != "" && len(input.Operation) <= 128
+	return (input.ID == "" || validOperationID(input.ID)) &&
+		validRequiredValue(input.Broker, 64) &&
+		validRequiredValue(input.ClientID, 128) &&
+		validRequiredValue(input.IdempotencyKey, 128) &&
+		validRequiredValue(input.Operation, 128)
+}
+
+func validRequiredValue(value string, maximum int) bool {
+	return value != "" && len(value) <= maximum
 }
 
 func validOperationID(value string) bool {

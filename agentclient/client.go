@@ -71,15 +71,17 @@ func (c *Client) Submit(ctx context.Context, request agentv1.SubmitRequest) (age
 
 // Get retrieves one operation owned by the authenticated client.
 func (c *Client) Get(ctx context.Context, id string) (agentv1.Operation, error) {
-	//nolint:bodyclose // decodeHTTPResponse owns and closes generated responses.
-	response, err := c.api.GetAgentOperation(ctx, id)
-	return decodeHTTPResponse(response, err)
+	return c.operationByID(ctx, id, c.api.GetAgentOperation)
 }
 
 // Cancel cancels requester-owned work that has not started executing.
 func (c *Client) Cancel(ctx context.Context, id string) (agentv1.Operation, error) {
+	return c.operationByID(ctx, id, c.api.CancelAgentOperation)
+}
+
+func (c *Client) operationByID(ctx context.Context, id string, call func(context.Context, agentwire.OperationID, ...agentwire.RequestEditorFn) (*http.Response, error)) (agentv1.Operation, error) {
 	//nolint:bodyclose // decodeHTTPResponse owns and closes generated responses.
-	response, err := c.api.CancelAgentOperation(ctx, id)
+	response, err := call(ctx, id)
 	return decodeHTTPResponse(response, err)
 }
 
