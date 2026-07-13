@@ -178,11 +178,18 @@ func (a *sealedBoundAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome,
 	if a.binding.ObserveMethod == "" {
 		return Outcome{Proven: false}, nil
 	}
-	_, absent, err := a.client.ObserveBound(ctx, a.descriptor.Name, plan.Target)
+	observed, absent, err := a.client.ObserveBound(ctx, a.descriptor.Name, plan.Target)
 	if err != nil {
 		return Outcome{}, err
 	}
-	proven := a.binding.Reconcile == "absent" && absent || a.binding.Reconcile == "present" && !absent
+	proven := a.binding.Reconcile == "absent" && absent
+	if a.binding.Reconcile == "present" && !absent {
+		arguments, decodeErr := decodeSealedArguments(plan.Arguments)
+		if decodeErr != nil {
+			return Outcome{}, decodeErr
+		}
+		proven = requestedStateMatches(arguments.Public, observed)
+	}
 	return Outcome{Proven: proven}, nil
 }
 

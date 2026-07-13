@@ -17,6 +17,8 @@ type sealedBoundFake struct {
 	operation string
 	target    json.RawMessage
 	arguments json.RawMessage
+	observed  json.RawMessage
+	absent    bool
 }
 
 func (f *sealedBoundFake) WhoAmI(context.Context) (hubclient.Identity, error) {
@@ -29,7 +31,7 @@ func (f *sealedBoundFake) ExecuteBound(_ context.Context, operation string, targ
 }
 
 func (f *sealedBoundFake) ObserveBound(context.Context, string, json.RawMessage) (json.RawMessage, bool, error) {
-	return nil, false, nil
+	return f.observed, f.absent, nil
 }
 
 func TestSealedBoundAdapterKeepsSecretOutsidePlanAndConsumesOnce(t *testing.T) {

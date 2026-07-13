@@ -60,7 +60,7 @@ func TestCleanupAndReconciliationHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &sealedBoundFake{identity: "operator"}
+	client := &sealedBoundFake{identity: "operator", observed: json.RawMessage(`{"key":"OTHER"}`)}
 	adapters, err := NewSealedBoundAdapters(client, store)
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +76,12 @@ func TestCleanupAndReconciliationHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if outcome, err := adapter.Reconcile(context.Background(), plan); err != nil || outcome.Proven {
+		t.Fatalf("mismatched sealed Reconcile() = %+v, %v", outcome, err)
+	}
+	client.observed = json.RawMessage(`{"key":"TOKEN"}`)
 	if outcome, err := adapter.Reconcile(context.Background(), plan); err != nil || !outcome.Proven {
-		t.Fatalf("sealed Reconcile() = %+v, %v", outcome, err)
+		t.Fatalf("matching sealed Reconcile() = %+v, %v", outcome, err)
 	}
 	if err := adapter.(PlanCleaner).Cleanup(plan); err != nil {
 		t.Fatal(err)

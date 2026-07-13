@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/agentv1"
@@ -162,11 +165,14 @@ func (a *boundAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error
 	if a.binding.ObserveMethod == "" {
 		return Outcome{Proven: false}, nil
 	}
-	_, absent, err := a.client.ObserveBound(ctx, a.descriptor.Name, plan.Target)
+	observed, absent, err := a.client.ObserveBound(ctx, a.descriptor.Name, plan.Target)
 	if err != nil {
 		return Outcome{}, err
 	}
-	proven := a.binding.Reconcile == "absent" && absent || a.binding.Reconcile == "present" && !absent
+	proven := a.binding.Reconcile == "absent" && absent
+	if a.binding.Reconcile == "present" && !absent {
+		proven = requestedStateMatches(plan.Arguments, observed)
+	}
 	result, _ := canonical(map[string]any{"reconciled": proven, "operation": a.descriptor.Name})
 	return Outcome{Proven: proven, Result: result}, nil
 }
@@ -190,6 +196,12 @@ func (a *boundAdapter) presentationAndPolicy(targetRaw, argumentsRaw json.RawMes
 
 func policyIdentity(target map[string]any, fallback, kind string) (string, string) {
 	owner := firstString(target, "namespace", "owner", "organization", "name", "username")
+	if kind != string(hfpolicy.KindRepo) {
+		if owner == "" {
+			owner = fallback
+		}
+		return owner, exactTargetIdentity(target, kind)
+	}
 	name := firstString(target, "repo", "endpoint", "jobId", "resourceGroupId", "serviceAccountId", "webhookId", "paperId", "id", "slug")
 	if owner == "" {
 		owner = fallback
@@ -198,6 +210,55 @@ func policyIdentity(target map[string]any, fallback, kind string) (string, strin
 		name = kind
 	}
 	return owner, name
+}
+
+func exactTargetIdentity(target map[string]any, fallback string) string {
+	keys := make([]string, 0, len(target))
+	for key, value := range target {
+		if scalarPolicyValue(value) {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, url.QueryEscape(key)+"="+url.QueryEscape(fmt.Sprint(target[key])))
+	}
+	if len(parts) == 0 {
+		return fallback
+	}
+	return strings.Join(parts, "&")
+}
+
+func requestedStateMatches(argumentsRaw, observedRaw json.RawMessage) bool {
+	var expected map[string]any
+	var observed any
+	if strictDecodeObject(argumentsRaw, &expected) != nil || len(expected) == 0 || json.Unmarshal(observedRaw, &observed) != nil {
+		return false
+	}
+	return stateContains(observed, expected)
+}
+
+func strictDecodeObject(raw json.RawMessage, target *map[string]any) error {
+	return decodeClosed(raw, target, maxArgumentsBytes)
+}
+
+func stateContains(observed, expected any) bool {
+	expectedObject, isObject := expected.(map[string]any)
+	if !isObject {
+		return reflect.DeepEqual(observed, expected)
+	}
+	observedObject, ok := observed.(map[string]any)
+	if !ok {
+		return false
+	}
+	for key, expectedValue := range expectedObject {
+		observedValue, found := observedObject[key]
+		if !found || !stateContains(observedValue, expectedValue) {
+			return false
+		}
+	}
+	return true
 }
 
 func firstString(values map[string]any, names ...string) string {

@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
@@ -100,6 +101,48 @@ func TestBoundAdapterObservedLifecycle(t *testing.T) {
 	outcome, err := adapter.Reconcile(context.Background(), plan)
 	if err != nil || !outcome.Proven {
 		t.Fatalf("Reconcile() = %+v, %v", outcome, err)
+	}
+}
+
+func TestBoundAdapterReconcileRequiresRequestedState(t *testing.T) {
+	client := &boundFake{identity: "operator", observed: json.RawMessage(`{"labels":{"stage":"old"}}`)}
+	adapters, err := NewBoundAdapters(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := NewRegistry(adapters...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, found := registry.Lookup("job.labels.update")
+	if !found {
+		t.Fatal("job.labels.update is not registered")
+	}
+	input, err := adapter.Decode(json.RawMessage(`{"namespace":"acme","jobId":"job-1"}`), json.RawMessage(`{"labels":{"stage":"prod"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, reconcileErr := adapter.Reconcile(context.Background(), plan); reconcileErr != nil || outcome.Proven {
+		t.Fatalf("mismatched state reconciled = %+v, %v", outcome, reconcileErr)
+	}
+	client.observed = json.RawMessage(`{"id":"job-1","labels":{"stage":"prod"},"status":"RUNNING"}`)
+	if outcome, reconcileErr := adapter.Reconcile(context.Background(), plan); reconcileErr != nil || !outcome.Proven {
+		t.Fatalf("matching state did not reconcile = %+v, %v", outcome, reconcileErr)
+	}
+}
+
+func TestBoundPolicyIdentityIncludesEverySubresourceIdentifier(t *testing.T) {
+	owner, name := policyIdentity(map[string]any{"name": "acme", "username": "bob"}, "operator", "organization")
+	if owner != "acme" || name != "name=acme&username=bob" {
+		t.Fatalf("member identity = %q/%q", owner, name)
+	}
+	_, other := policyIdentity(map[string]any{"name": "acme", "username": "alice"}, "operator", "organization")
+	if other == name || !strings.Contains(other, "username=alice") {
+		t.Fatalf("distinct member identity collapsed to %q", other)
 	}
 }
 
