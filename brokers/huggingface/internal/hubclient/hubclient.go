@@ -147,7 +147,14 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return statusError(response.StatusCode, response.Header)
 	}
-	return decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode)
+	err = decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode)
+	if err != nil && spec.method != http.MethodGet {
+		var classified *Error
+		if errors.As(err, &classified) && classified.Code == CodeResponseInvalid {
+			return &Error{Code: CodeResultUnknown, StatusCode: response.StatusCode, Ambiguous: true}
+		}
+	}
+	return err
 }
 
 //nolint:cyclop // Request constraints are explicit and tracked by the exact HF CRAP baseline.

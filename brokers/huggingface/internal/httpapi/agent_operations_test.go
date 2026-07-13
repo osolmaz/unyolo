@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -223,6 +224,21 @@ func TestAgentRequesterCancelsPendingOperationAndApproval(t *testing.T) {
 	response, _ = doRequest(t, http.MethodPost, server.URL+agentOperationsPath+"/"+submitted.ID+"/cancel", "Bearer "+testSecret, nil)
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("cancel replay = %d", response.StatusCode)
+	}
+}
+
+func TestGrantCancellationFailureIsNotDiscarded(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "cancel-error")
+	defer upstream.Close()
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
+	defer func() { _ = handler.Close() }()
+	_, requested := seedPendingRepoCreateGrant(t, handler, "op_cancel_error", "cancel-error")
+	if err := handler.cancelGrantForClient(requested.Grant, "other-client"); !errors.Is(err, grants.ErrNotFound) {
+		t.Fatalf("cancelGrantForClient() = %v", err)
+	}
+	stored, err := handler.grants.Get(requested.Grant.ID)
+	if err != nil || stored.Status != grants.StatusPending {
+		t.Fatalf("grant after refused close = %+v, %v", stored, err)
 	}
 }
 

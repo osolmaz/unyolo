@@ -95,6 +95,31 @@ func TestInsertOperationWithPlanIsAtomic(t *testing.T) {
 	}
 }
 
+func TestUpdateOperationWithPlanIsAtomic(t *testing.T) {
+	database, err := Open(t.Context(), t.TempDir(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Date(2026, 7, 13, 9, 30, 0, 0, time.UTC)
+	record := OperationRecord{ID: "op_bind", APIVersion: "brokerkit.io/agent/v1", Broker: "hf-broker", ClientID: "agent",
+		IdempotencyKey: "bind", Operation: "repo.delete", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), Reason: "delete",
+		State: "pending", Revision: 1, CreatedAt: now, UpdatedAt: now, PresentationJSON: []byte(`{"title":"Delete"}`)}
+	if err := database.InsertOperation(t.Context(), record); err != nil {
+		t.Fatal(err)
+	}
+	canonical := []byte(`{"api_version":"hf-broker.io/plan/v1","operation":"repo.delete"}`)
+	plan := PlanRecord{Digest: plandigest.Digest(canonical), SchemaName: "hf-broker.io/plan/v1", Canonical: canonical, CreatedAt: now}
+	record.PlanDigest, record.ApprovalID, record.Revision = plan.Digest, "grant-1", 2
+	if updated, err := database.UpdateOperationWithPlan(t.Context(), record, 1, plan); err != nil || !updated {
+		t.Fatalf("UpdateOperationWithPlan() = %v, %v", updated, err)
+	}
+	stored, err := database.OperationByID(t.Context(), record.ID)
+	if err != nil || stored.PlanDigest != plan.Digest || stored.ApprovalID != "grant-1" {
+		t.Fatalf("bound operation = %+v, %v", stored, err)
+	}
+}
+
 func TestOperationRepositoryRejectsCorruptTimestamps(t *testing.T) {
 	database, err := Open(t.Context(), t.TempDir(), Options{})
 	if err != nil {

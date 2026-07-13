@@ -27,6 +27,8 @@ import (
 	"github.com/osolmaz/brokerkit/state"
 )
 
+const operationAuthorizationGrace = 30 * time.Second
+
 var errApprovalNotificationClaimed = errors.New("approval notification is already claimed")
 
 func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (agentv1.Operation, error) {
@@ -42,21 +44,27 @@ func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (age
 	}
 	if operation.ApprovalID != "" {
 		grant, grantErr := s.grants.Get(operation.ApprovalID)
-		if grantErr == nil {
-			s.cancelGrantForClient(grant, client)
+		if grantErr != nil {
+			return agentv1.Operation{}, grantErr
+		}
+		if err := s.cancelGrantForClient(grant, client); err != nil {
+			return agentv1.Operation{}, err
 		}
 	}
 	operation = s.failOperation(operation.ID, agentv1.StateCanceled, "operation_canceled", "Request was canceled")
 	return operation, nil
 }
 
-func (s *Server) cancelGrantForClient(grant grants.Grant, client string) {
+func (s *Server) cancelGrantForClient(grant grants.Grant, client string) error {
 	switch grant.Status {
 	case grants.StatusPending:
-		_, _ = s.grants.CancelForClient(grant.ID, client)
+		_, err := s.grants.CancelForClient(grant.ID, client)
+		return err
 	case grants.StatusActive:
-		_, _ = s.grants.RevokeForClient(grant.ID, client)
+		_, err := s.grants.RevokeForClient(grant.ID, client)
+		return err
 	default:
+		return nil
 	}
 }
 
@@ -90,7 +98,16 @@ func (s *Server) submitAgentOperation(ctx context.Context, client string, reques
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
-	return s.authorizeAndSubmitOperation(ctx, adapter, resolved, client, operationID, request)
+	operation, created, err := s.operations.Submit(agentops.Submit{
+		ID: operationID, Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey,
+		Operation: request.Operation, Target: resolved.Target, Arguments: resolved.Arguments, Reason: request.Reason,
+		Presentation: adapter.Present(resolved),
+	})
+	if err != nil || !created {
+		return operation, created, err
+	}
+	operation, err = s.authorizeAndSubmitOperation(ctx, adapter, resolved, operation, request.Reason)
+	return operation, true, err
 }
 
 func (s *Server) agentLifecycleContext(fallback context.Context) context.Context {
@@ -115,40 +132,37 @@ func (s *Server) replayedOperation(client string, request agentv1.SubmitRequest,
 	return existing, true, nil
 }
 
-func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operations.Adapter, plan operations.Plan, client, operationID string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
+func (s *Server) authorizeAndSubmitOperation(ctx context.Context, adapter operations.Adapter, plan operations.Plan, operation agentv1.Operation, reason string) (agentv1.Operation, error) {
 	authorizationRequest := policy.AuthorizationRequest(adapter.Authorize(plan))
 	var prepared grants.ImmutablePlan
 	result, authorizationErr := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
-		intent, immutable, err := s.prepareOperationIntent(adapter, plan, client, operationID, request.Reason, decision.GrantPolicy)
+		intent, immutable, err := s.prepareOperationIntent(adapter, plan, operation.ClientID, operation.ID, reason, decision.GrantPolicy)
 		prepared = immutable
 		return intent, err
 	})
 	if prepared.Digest == "" {
-		prepared, _ = s.prepareDirectOperationPlan(adapter, plan, client, operationID, request.Reason)
+		prepared, _ = s.prepareDirectOperationPlan(adapter, plan, operation.ClientID, operation.ID, reason)
 	}
 	if prepared.Digest == "" {
-		return agentv1.Operation{}, false, errors.New("could not prepare immutable operation plan")
-	}
-	submit := s.operations.SubmitWithPlan
-	if authorizationErr == nil && result.Request.Grant.ID == "" {
-		submit = s.operations.SubmitApprovedWithPlan
-	}
-	operation, created, err := submit(agentops.Submit{
-		ID: operationID, Broker: "hf-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey,
-		Operation: request.Operation, Target: plan.Target, Arguments: plan.Arguments, Reason: request.Reason,
-		Presentation: adapter.Present(plan), PlanDigest: prepared.Digest,
-	}, planRecord(prepared))
-	if err != nil {
-		s.abandonOperationApproval(result.Request.Grant.ID, client)
-		return agentv1.Operation{}, false, err
+		s.cleanupResolvedOperation(adapter, plan)
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_plan_invalid", "Could not prepare immutable operation plan"), nil
 	}
 	if authorizationErr != nil {
-		return s.finishRefusedOperation(operation, plan, result, authorizationErr), created, nil
+		_ = s.abandonOperationApproval(result.Request.Grant.ID, operation.ClientID)
+		s.cleanupResolvedOperation(adapter, plan)
+		return s.finishRefusedOperation(operation, plan, result, authorizationErr), nil
 	}
-	if result.Request.Grant.ID == "" {
-		return operation, created, nil
+	direct := result.Request.Grant.ID == ""
+	bound, err := s.operations.BindPlan(operation.ID, planRecord(prepared), result.Request.Grant.ID, direct)
+	if err != nil {
+		_ = s.abandonOperationApproval(result.Request.Grant.ID, operation.ClientID)
+		s.cleanupResolvedOperation(adapter, plan)
+		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind operation plan"), nil
 	}
-	return s.bindOperationApproval(ctx, operation, result.Request.Grant), created, nil
+	if direct {
+		return bound, nil
+	}
+	return s.bindOperationApproval(ctx, bound, result.Request.Grant), nil
 }
 
 func (s *Server) prepareOperationIntent(adapter operations.Adapter, plan operations.Plan, client, operationID, reason string, bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, grants.ImmutablePlan, error) {
@@ -215,35 +229,42 @@ func (s *Server) finishRefusedOperation(operation agentv1.Operation, plan operat
 }
 
 func (s *Server) bindOperationApproval(ctx context.Context, operation agentv1.Operation, grant grants.Grant) agentv1.Operation {
-	updated, err := s.operations.SetApproval(operation.ID, grant.ID)
-	if err != nil {
-		s.abandonOperationApproval(grant.ID, operation.ClientID)
-		return s.failOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind approval request")
-	}
 	if s.notifier != nil {
 		if err := s.notifyOperationApproval(ctx, grant); err != nil {
 			if errors.Is(err, errApprovalNotificationClaimed) || s.operatorConfigured {
-				return updated
+				return operation
 			}
-			s.abandonOperationApproval(grant.ID, operation.ClientID)
+			if s.abandonOperationApproval(grant.ID, operation.ClientID) != nil {
+				return operation
+			}
 			return s.failOperation(operation.ID, agentv1.StateFailed, "approval_notification_failed", "Could not notify the operator")
 		}
-		return updated
+		return operation
 	}
 	if !s.operatorConfigured {
-		s.abandonOperationApproval(grant.ID, operation.ClientID)
+		if s.abandonOperationApproval(grant.ID, operation.ClientID) != nil {
+			return operation
+		}
 		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
 	}
-	return updated
+	return operation
 }
 
-func (s *Server) abandonOperationApproval(id, client string) {
+func (s *Server) abandonOperationApproval(id, client string) error {
 	if id == "" {
-		return
+		return nil
 	}
 	grant, err := s.grants.Get(id)
-	if err == nil {
-		s.cancelGrantForClient(grant, client)
+	if err != nil {
+		return err
+	}
+	return s.cancelGrantForClient(grant, client)
+}
+
+func (s *Server) cleanupResolvedOperation(adapter operations.Adapter, plan operations.Plan) {
+	cleaner, ok := adapter.(operations.PlanCleaner)
+	if ok {
+		_ = cleaner.Cleanup(plan)
 	}
 }
 
@@ -383,9 +404,17 @@ func (s *Server) recoverOperationApproval(operation agentv1.Operation) agentv1.O
 	}
 	grant, found := operationApproval(values, operation)
 	if !found {
+		if s.utcNow().Sub(operation.UpdatedAt) < operationAuthorizationGrace {
+			return operation
+		}
 		return s.failOperation(operation.ID, agentv1.StateFailed, "approval_missing", "Approval request is missing")
 	}
-	updated, err := s.operations.SetApproval(operation.ID, grant.ID)
+	digest := grant.Metadata[hfplan.MetadataDigest]
+	plan, err := s.database.Plan(context.Background(), digest)
+	if err != nil {
+		return operation
+	}
+	updated, err := s.operations.BindPlan(operation.ID, plan, grant.ID, false)
 	if err != nil {
 		return operation
 	}
@@ -394,7 +423,9 @@ func (s *Server) recoverOperationApproval(operation agentv1.Operation) agentv1.O
 
 func operationApproval(values []grants.Grant, operation agentv1.Operation) (grants.Grant, bool) {
 	for _, grant := range values {
-		if grant.ClientRequestID == operation.ID && grant.Operation == operation.Operation && grant.Metadata[hfplan.MetadataDigest] == operation.PlanDigest {
+		digest := grant.Metadata[hfplan.MetadataDigest]
+		if grant.ClientRequestID == operation.ID && grant.Operation == operation.Operation && digest != "" &&
+			(operation.PlanDigest == "" || digest == operation.PlanDigest) {
 			return grant, true
 		}
 	}

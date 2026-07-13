@@ -183,6 +183,35 @@ func TestStorePersistsDirectOperationAsApproved(t *testing.T) {
 	}
 }
 
+func TestStoreBindsPlanAfterRecoverableOperationInsert(t *testing.T) {
+	now := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	store := newTestStore(t, func() time.Time { return now }, func() (string, error) { return "op_binding", nil })
+	operation, fresh, err := store.Submit(validSubmit("binding"))
+	if err != nil || !fresh || operation.PlanDigest != "" || operation.State != agentv1.StatePending {
+		t.Fatalf("recoverable submit = %+v, %v, %v", operation, fresh, err)
+	}
+	canonical := []byte(`{"api_version":"provider.io/plan/v1","operation":"repo.delete"}`)
+	plan := state.PlanRecord{Digest: plandigest.Digest(canonical), SchemaName: "provider.io/plan/v1", Canonical: canonical, CreatedAt: now}
+	bound, err := store.BindPlan(operation.ID, plan, "grant-1", false)
+	if err != nil || bound.PlanDigest != plan.Digest || bound.ApprovalID != "grant-1" || bound.State != agentv1.StatePending || bound.Revision != 2 {
+		t.Fatalf("approval binding = %+v, %v", bound, err)
+	}
+	if _, err := store.BindPlan(operation.ID, plan, "grant-1", false); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("duplicate plan binding = %v", err)
+	}
+
+	directInput := validSubmit("direct-binding")
+	directInput.ID = "op_direct_binding"
+	direct, _, err := store.Submit(directInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct, err = store.BindPlan(direct.ID, plan, "", true)
+	if err != nil || direct.State != agentv1.StateApproved || direct.PlanDigest != plan.Digest {
+		t.Fatalf("direct binding = %+v, %v", direct, err)
+	}
+}
+
 func TestStoreAcceptsManifestAndCanonicalReasonBounds(t *testing.T) {
 	store := newTestStore(t, time.Now, func() (string, error) { return "op_manifest", nil })
 	input := validSubmit("manifest")

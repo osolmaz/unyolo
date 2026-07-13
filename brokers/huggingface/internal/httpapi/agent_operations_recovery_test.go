@@ -125,11 +125,14 @@ func TestInterruptedOperationCommitsReservedApproval(t *testing.T) {
 	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
 	defer func() { _ = handler.Close() }()
 	operation, requested := seedPendingRepoCreateGrant(t, handler, "op_reserved", "reserved")
+	operation = handler.recoverOperationApproval(operation)
+	if operation.PlanDigest == "" || operation.ApprovalID != requested.Grant.ID {
+		t.Fatalf("recovered binding = %+v", operation)
+	}
 	approved, err := handler.grants.Approve(requested.Grant.ID, requested.DecisionToken, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
-	operation, _ = handler.operations.SetApproval(operation.ID, approved.ID)
 	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateApproved)
 	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateExecuting)
 	if _, err := handler.grants.ReserveUse(approved.ID); err != nil {
@@ -144,43 +147,27 @@ func TestInterruptedOperationCommitsReservedApproval(t *testing.T) {
 	}
 }
 
-func TestOperationInsertionFailureCancelsCreatedApproval(t *testing.T) {
-	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "orphan")
+func TestFreshUnboundOperationWaitsForAuthorization(t *testing.T) {
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "unbound")
 	defer upstream.Close()
-	handler := newRecoveryTestServer(t, upstream.URL,
-		`{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"orphan"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`)
+	handler := newRecoveryTestServer(t, upstream.URL, emptyPolicyJSON())
 	defer func() { _ = handler.Close() }()
-	adapter, _ := handler.operationRegistry.Lookup("repo.create")
-	input, _ := adapter.Decode([]byte(`{"kind":"repo","type":"dataset","owner":"alice","name":"orphan"}`), []byte(`{"visibility":"private"}`))
-	plan, err := adapter.Resolve(t.Context(), input)
+	operation, _, err := handler.operations.Submit(agentops.Submit{ID: "op_unbound", Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "unbound",
+		Operation: "repo.create", Target: []byte(`{"kind":"repo","type":"dataset","owner":"alice","name":"unbound"}`),
+		Arguments: []byte(`{"visibility":"private"}`), Reason: "authorization in progress", Presentation: agentv1.Presentation{Title: "Create repository"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan.Policy.Client = "agent"
-	conflict := agentops.Submit{ID: "op_conflict", Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "existing", Operation: "repo.create",
-		Target: plan.Target, Arguments: plan.Arguments, Reason: "existing", Presentation: adapter.Present(plan)}
-	if _, _, err := handler.operations.Submit(conflict); err != nil {
-		t.Fatal(err)
+	handler.advanceOperation(t.Context(), operation)
+	stored, err := handler.operations.GetByID(operation.ID)
+	if err != nil || stored.State != agentv1.StatePending || stored.Error != nil {
+		t.Fatalf("fresh operation = %+v, %v", stored, err)
 	}
-	request := agentv1.SubmitRequest{IdempotencyKey: "new", Operation: "repo.create", Target: plan.Target, Arguments: plan.Arguments, Reason: "must roll back"}
-	if _, _, err := handler.authorizeAndSubmitOperation(t.Context(), adapter, plan, "agent", "op_conflict", request); err == nil {
-		t.Fatal("conflicting operation insertion succeeded")
-	}
-	values, err := handler.grants.ListForClient("agent")
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, grant := range values {
-		if grant.ClientRequestID == "op_conflict" {
-			found = true
-			if grant.Status != grants.StatusCanceled {
-				t.Fatalf("orphan approval remains active: %+v", grant)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("authorization did not create the expected approval")
+	handler.now = func() time.Time { return operation.UpdatedAt.Add(operationAuthorizationGrace + time.Second) }
+	handler.advanceOperation(t.Context(), operation)
+	stored, err = handler.operations.GetByID(operation.ID)
+	if err != nil || stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "approval_missing" {
+		t.Fatalf("stale operation = %+v, %v", stored, err)
 	}
 }
 
@@ -305,8 +292,8 @@ func seedPendingRepoCreateGrant(t *testing.T, handler *Server, id, name string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	operation, _, err := handler.operations.SubmitWithPlan(agentops.Submit{ID: id, Broker: "hf-broker", ClientID: "agent", IdempotencyKey: id,
-		Operation: "repo.create", Target: plan.Target, Arguments: plan.Arguments, Reason: "recovery test", Presentation: adapter.Present(plan)}, planRecord(prepared))
+	operation, _, err := handler.operations.Submit(agentops.Submit{ID: id, Broker: "hf-broker", ClientID: "agent", IdempotencyKey: id,
+		Operation: "repo.create", Target: plan.Target, Arguments: plan.Arguments, Reason: "recovery test", Presentation: adapter.Present(plan)})
 	if err != nil {
 		t.Fatal(err)
 	}

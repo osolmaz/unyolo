@@ -79,6 +79,21 @@ func TestTypedClientDistinguishesReadFailureFromAmbiguousMutation(t *testing.T) 
 	}
 }
 
+func TestTypedClientTreatsInvalidMutationResponseAsAmbiguous(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`not-json`))
+	}))
+	defer server.Close()
+	client, _ := New(server.URL, "secret", WithHTTPTransport(server.Client().Transport))
+	var output map[string]any
+	err := client.call(t.Context(), callSpec{method: http.MethodPost, path: "/mutation", out: &output})
+	var upstream *Error
+	if !errors.As(err, &upstream) || upstream.Code != CodeResultUnknown || !upstream.Ambiguous || upstream.Definitive() {
+		t.Fatalf("mutation response error = %#v (%v)", upstream, err)
+	}
+}
+
 func TestTypedClientRejectsUnsafeInputs(t *testing.T) {
 	if _, err := New("https://user@example.com", "secret"); err == nil {
 		t.Fatal("credentialed endpoint accepted")

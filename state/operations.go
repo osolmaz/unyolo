@@ -120,7 +120,33 @@ func (d *Database) DeleteTerminalOperationsBefore(ctx context.Context, cutoff ti
 }
 
 func (d *Database) UpdateOperation(ctx context.Context, record OperationRecord, expectedRevision int64) (bool, error) {
-	count, err := d.queries.UpdateOperation(ctx, dbsql.UpdateOperationParams{
+	return updateOperation(ctx, d.queries, record, expectedRevision)
+}
+
+// UpdateOperationWithPlan commits an immutable plan and its operation binding
+// in one transaction.
+func (d *Database) UpdateOperationWithPlan(ctx context.Context, record OperationRecord, expectedRevision int64, plan PlanRecord) (bool, error) {
+	if record.PlanDigest != plan.Digest {
+		return false, errors.New("operation plan digest does not match immutable plan")
+	}
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	queries := d.queries.WithTx(tx)
+	if err := putPlanWithQueries(ctx, queries, plan); err != nil {
+		return false, err
+	}
+	updated, err := updateOperation(ctx, queries, record, expectedRevision)
+	if err != nil || !updated {
+		return updated, err
+	}
+	return true, tx.Commit()
+}
+
+func updateOperation(ctx context.Context, queries *dbsql.Queries, record OperationRecord, expectedRevision int64) (bool, error) {
+	count, err := queries.UpdateOperation(ctx, dbsql.UpdateOperationParams{
 		State: record.State, Revision: record.Revision, UpdatedAt: formatTime(record.UpdatedAt),
 		TerminalAt: nullableTime(record.TerminalAt), ApprovalID: record.ApprovalID,
 		ResultJson: nullableBytes(record.ResultJSON), ErrorJson: nullableBytes(record.ErrorJSON),

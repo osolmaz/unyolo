@@ -43,6 +43,9 @@ func (e *Error) Error() string {
 // the request. Non-definitive failures must never trigger an automatic retry
 // of a mutation; the caller reconciles observed state instead.
 func (e *Error) Definitive() bool {
+	if e.Ambiguous {
+		return false
+	}
 	switch e.Code {
 	case CodeInvalid, CodeUnauthorized, CodeForbidden, CodeNotFound, CodeConflict, CodeRateLimited, CodeResponseInvalid:
 		return true

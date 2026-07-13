@@ -251,6 +251,42 @@ func (s *Store) SetApproval(id, approvalID string) (agentv1.Operation, error) {
 	})
 }
 
+// BindPlan atomically stores the immutable plan and binds a pending operation
+// to either an approval request or direct execution.
+func (s *Store) BindPlan(id string, plan state.PlanRecord, approvalID string, direct bool) (agentv1.Operation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.db.OperationByID(context.Background(), id)
+	if err != nil {
+		return agentv1.Operation{}, mapStateError(err)
+	}
+	operation, err := operationFromRecord(record)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	if operation.State != agentv1.StatePending || operation.PlanDigest != "" || direct == (approvalID != "") ||
+		!plandigest.Valid(plan.Digest) {
+		return agentv1.Operation{}, ErrInvalidTransition
+	}
+	expectedRevision := operation.Revision
+	operation.PlanDigest = plan.Digest
+	operation.ApprovalID = approvalID
+	if direct {
+		operation.State = agentv1.StateApproved
+	}
+	prepareOperationUpdate(&operation, s.now())
+	updated, err := s.db.UpdateOperationWithPlan(context.Background(), operationRecord(operation), expectedRevision, plan)
+	if err != nil {
+		return agentv1.Operation{}, err
+	}
+	if !updated {
+		return agentv1.Operation{}, ErrInvalidTransition
+	}
+	s.notify()
+	return clone(operation), nil
+}
+
 func (s *Store) Transition(id string, state agentv1.State) (agentv1.Operation, error) {
 	return s.update(id, func(operation *agentv1.Operation) error {
 		if !allowedTransition(operation.State, state) {
