@@ -83,6 +83,44 @@ func TestStoreIdempotentlyBindsOneRequestKey(t *testing.T) {
 	}
 }
 
+func TestStorePreservesIdempotencyAfterConsumeAndDelete(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expires := time.Now().Add(time.Hour)
+	for _, requestKey := range []string{"consumed", "deleted"} {
+		first, err := store.PutForRequest("bob", "space.secret.set", requestKey, []byte("secret"), expires)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if requestKey == "consumed" {
+			value, consumeErr := store.Consume(first)
+			if consumeErr != nil || string(value) != "secret" {
+				t.Fatalf("Consume() = %q, %v", value, consumeErr)
+			}
+		} else if err := store.Delete(first); err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replayed, err := reopened.PutForRequest("bob", "space.secret.set", requestKey, []byte("secret"), expires)
+		if err != nil || replayed != first {
+			t.Fatalf("replayed %s reference = %+v, %v; want %+v", requestKey, replayed, err, first)
+		}
+		if _, err := reopened.Get(first); err == nil {
+			t.Fatalf("%s payload remained readable", requestKey)
+		}
+		if _, err := reopened.PutForRequest("bob", "space.secret.set", requestKey, []byte("different"), expires); err == nil {
+			t.Fatalf("%s request key accepted different plaintext", requestKey)
+		}
+		store = reopened
+	}
+}
+
 func TestStoreSweepsExpiredAndIncompletePayloads(t *testing.T) {
 	dir := t.TempDir()
 	store, err := Open(dir)
@@ -113,7 +151,7 @@ func TestStoreSweepsExpiredAndIncompletePayloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(source + ".consuming"); !os.IsNotExist(err) {
-		t.Fatalf("incomplete consume claim remains: %v", err)
+		t.Fatalf("unsupported consume artifact remains: %v", err)
 	}
 }
 

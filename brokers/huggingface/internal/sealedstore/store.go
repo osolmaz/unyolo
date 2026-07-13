@@ -49,6 +49,7 @@ type Reference struct {
 type diskEnvelope struct {
 	Version    int       `json:"version"`
 	Reference  Reference `json:"reference"`
+	Consumed   bool      `json:"consumed,omitempty"`
 	Nonce      []byte    `json:"nonce"`
 	Ciphertext []byte    `json:"ciphertext"`
 }
@@ -211,21 +212,26 @@ func (s *Store) Get(reference Reference) ([]byte, error) {
 	return s.read(reference, s.path(reference.ID))
 }
 
-// Consume atomically claims, decrypts, and removes one payload. A second
-// caller cannot observe the plaintext even when executions race.
+// Consume atomically decrypts one payload and replaces it with an authenticated
+// consumed marker. The marker preserves submission idempotency without
+// retaining plaintext, and a second caller cannot observe the secret.
 func (s *Store) Consume(reference Reference) ([]byte, error) {
 	if err := validateReference(reference); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	source := s.path(reference.ID)
-	claimed := source + ".consuming"
-	if err := os.Rename(source, claimed); err != nil {
-		return nil, errors.New("sealed payload is unavailable")
+	path := s.path(reference.ID)
+	plaintext, err := s.read(reference, path)
+	if err != nil {
+		return nil, err
 	}
-	defer func() { _ = os.Remove(claimed) }()
-	return s.read(reference, claimed)
+	encoded, err := s.encodeConsumed(reference)
+	if err != nil || s.replaceLocked(path, encoded) != nil {
+		zero(plaintext)
+		return nil, errors.New("consume sealed payload")
+	}
+	return plaintext, nil
 }
 
 func (s *Store) Delete(reference Reference) error {
@@ -234,12 +240,60 @@ func (s *Store) Delete(reference Reference) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err := os.Remove(s.path(reference.ID))
-	if os.IsNotExist(err) {
+	path := s.path(reference.ID)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil
 	}
+	envelope, err := readDiskEnvelope(path)
 	if err != nil {
 		return errors.New("delete sealed payload")
+	}
+	if envelope.Consumed && s.validStoredEnvelope(envelope, filepath.Base(path)) {
+		return nil
+	}
+	plaintext, err := s.read(reference, path)
+	if err != nil {
+		return err
+	}
+	zero(plaintext)
+	encoded, err := s.encodeConsumed(reference)
+	if err != nil {
+		return err
+	}
+	return s.replaceLocked(path, encoded)
+}
+
+func (s *Store) encodeConsumed(reference Reference) ([]byte, error) {
+	nonce := make([]byte, s.aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, errors.New("generate consumed payload nonce")
+	}
+	ciphertext := s.aead.Seal(nil, nonce, nil, consumedAssociatedData(reference))
+	encoded, err := json.Marshal(diskEnvelope{Version: formatVersion, Reference: reference, Consumed: true, Nonce: nonce, Ciphertext: ciphertext})
+	if err != nil || len(encoded) > maxFileBytes {
+		return nil, errors.New("encode consumed payload marker")
+	}
+	return encoded, nil
+}
+
+func (s *Store) replaceLocked(path string, encoded []byte) error {
+	file, err := os.CreateTemp(s.dir, ".sealed-payload-*")
+	if err != nil {
+		return errors.New("create sealed payload replacement")
+	}
+	temporary := file.Name()
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		_ = os.Remove(temporary)
+		return errors.New("secure sealed payload replacement")
+	}
+	if err := securefile.WriteAndSync(file, encoded, "sealed payload replacement"); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		_ = os.Remove(temporary)
+		return errors.New("replace sealed payload")
 	}
 	return nil
 }
@@ -315,11 +369,18 @@ func (s *Store) sweepCandidate(entry os.DirEntry, now time.Time) (string, bool) 
 		return "", false
 	}
 	envelope, err := readDiskEnvelope(path)
-	return path, err != nil || !validStoredEnvelope(envelope, name) || now.Unix() >= envelope.Reference.ExpiresAt
+	return path, err != nil || !s.validStoredEnvelope(envelope, name) || now.Unix() >= envelope.Reference.ExpiresAt
 }
 
-func validStoredEnvelope(envelope diskEnvelope, name string) bool {
-	return envelope.Version == formatVersion && validateReference(envelope.Reference) == nil && name == envelope.Reference.ID+".bin"
+func (s *Store) validStoredEnvelope(envelope diskEnvelope, name string) bool {
+	if envelope.Version != formatVersion || validateReference(envelope.Reference) != nil || name != envelope.Reference.ID+".bin" {
+		return false
+	}
+	if !envelope.Consumed {
+		return len(envelope.Nonce) == s.aead.NonceSize() && len(envelope.Ciphertext) >= s.aead.Overhead()
+	}
+	plaintext, err := s.aead.Open(nil, envelope.Nonce, envelope.Ciphertext, consumedAssociatedData(envelope.Reference))
+	return err == nil && len(plaintext) == 0
 }
 
 func (s *Store) findRequestLocked(owner, purpose, requestKey, digest string, size int) (Reference, bool, error) {
@@ -333,7 +394,7 @@ func (s *Store) findRequestLocked(owner, purpose, requestKey, digest string, siz
 			continue
 		}
 		envelope, readErr := readDiskEnvelope(path)
-		if readErr != nil {
+		if readErr != nil || !s.validStoredEnvelope(envelope, entry.Name()) {
 			continue
 		}
 		reference := envelope.Reference
@@ -473,4 +534,14 @@ func validRequestKey(value string) bool {
 func associatedData(reference Reference) []byte {
 	return []byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%d\x00%d", reference.ID, reference.Owner, reference.Purpose,
 		reference.RequestKey, reference.Size, reference.ExpiresAt))
+}
+
+func consumedAssociatedData(reference Reference) []byte {
+	return append(associatedData(reference), []byte("\x00consumed")...)
+}
+
+func zero(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
 }

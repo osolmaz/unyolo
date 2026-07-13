@@ -72,21 +72,15 @@ func (e *Error) Error() string { return e.Message }
 
 // New validates and constructs an Agent V1 HTTP handler.
 func New(options Options) (*Handler, error) {
-	if options.Store == nil || options.Authenticate == nil || options.Submit == nil {
-		return nil, errors.New("agent store, authenticator, and submitter are required")
+	if options.Store == nil || options.Authenticate == nil || options.Submit == nil || options.Cancel == nil {
+		return nil, errors.New("agent store, authenticator, submitter, and canceler are required")
 	}
 	if strings.TrimSpace(options.Realm) == "" {
 		options.Realm = "brokerkit-agent"
 	}
-	cancel := options.Cancel
-	if cancel == nil {
-		cancel = func(_ context.Context, client, id string) (agentv1.Operation, error) {
-			return options.Store.Cancel(client, id)
-		}
-	}
 	return &Handler{
 		store: options.Store, authenticate: options.Authenticate, submit: options.Submit,
-		cancel: cancel, authFailure: options.AuthFailure, realm: options.Realm,
+		cancel: options.Cancel, authFailure: options.AuthFailure, realm: options.Realm,
 	}, nil
 }
 

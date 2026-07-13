@@ -131,7 +131,7 @@ func (a *credentialOutputAdapter) Execute(ctx context.Context, plan Plan) (Outco
 	defer zero(response)
 	secret, _, err := extractCredentialOutput(a.descriptor.Name, response)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
 	}
 	defer zero(secret)
 	stored, err := a.store.Put(slot, a.kind, secret)

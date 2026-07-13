@@ -23,6 +23,40 @@ import (
 
 const maxAgentGitHubBody = 64 * 1024
 
+func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (agentv1.Operation, error) {
+	lock := s.operationAuthorizationLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	operation, err := s.operations.Get(client, id)
+	if err != nil || operation.State.Terminal() {
+		return operation, err
+	}
+	if operation.State == agentv1.StateExecuting {
+		return agentv1.Operation{}, agentops.ErrNotCancelable
+	}
+	if err := s.cancelAgentApproval(operation, client); err != nil {
+		return agentv1.Operation{}, err
+	}
+	return s.operations.Cancel(client, id)
+}
+
+func (s *Server) cancelAgentApproval(operation agentv1.Operation, client string) error {
+	if operation.ApprovalID == "" {
+		return nil
+	}
+	grant, err := s.grants.Get(operation.ApprovalID)
+	if err != nil {
+		return err
+	}
+	switch grant.Status {
+	case grants.StatusPending:
+		_, err = s.grants.CancelForClient(grant.ID, client)
+	case grants.StatusActive:
+		_, err = s.grants.RevokeForClient(grant.ID, client)
+	}
+	return err
+}
+
 type pullRequestTarget struct {
 	Kind  string `json:"kind"`
 	Owner string `json:"owner"`

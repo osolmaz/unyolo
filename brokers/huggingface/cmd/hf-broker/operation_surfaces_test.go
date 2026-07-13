@@ -149,12 +149,21 @@ func TestMCPDestructiveOperationUsesCatalogOperation(t *testing.T) {
 
 func TestSubmitWaitTimeoutReturnsResumableOperation(t *testing.T) {
 	pending := testAgentOperation(agentv1.StatePending)
+	updated := pending
+	updated.Revision++
+	updated.Presentation.Summary = "approval requested"
+	var waits int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodPost && request.URL.Path == "/api/agent/v1/operations":
 			writer.WriteHeader(http.StatusAccepted)
 			_ = json.NewEncoder(writer).Encode(pending)
 		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/api/agent/v1/operations/"):
+			waits++
+			if waits == 1 {
+				_ = json.NewEncoder(writer).Encode(updated)
+				return
+			}
 			<-request.Context().Done()
 		default:
 			http.NotFound(writer, request)
@@ -169,7 +178,7 @@ func TestSubmitWaitTimeoutReturnsResumableOperation(t *testing.T) {
 		IdempotencyKey: "timeout-1", Operation: "repo.delete", Target: json.RawMessage(`{"kind":"repo"}`),
 		Arguments: json.RawMessage(`{}`), Reason: "test resumable timeout",
 	}, true, 10*time.Millisecond)
-	if err != nil || operation.ID != pending.ID || operation.State != agentv1.StatePending {
+	if err != nil || operation.ID != pending.ID || operation.State != agentv1.StatePending || operation.Revision != updated.Revision || operation.Presentation.Summary != updated.Presentation.Summary {
 		t.Fatalf("timed wait = %+v, %v", operation, err)
 	}
 }

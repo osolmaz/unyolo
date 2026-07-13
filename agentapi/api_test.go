@@ -230,7 +230,10 @@ func TestInvalidStoredOperationFailsClosed(t *testing.T) {
 
 func newTestServer(t *testing.T, store Store, authenticate AuthenticateFunc, submit SubmitFunc, authFailure AuthFailureFunc) *httptest.Server {
 	t.Helper()
-	handler, err := New(Options{Store: store, Authenticate: authenticate, Submit: submit, AuthFailure: authFailure, Realm: "test-broker"})
+	handler, err := New(Options{Store: store, Authenticate: authenticate, Submit: submit,
+		Cancel: func(ctx context.Context, client, id string) (agentv1.Operation, error) {
+			return store.Cancel(client, id)
+		}, AuthFailure: authFailure, Realm: "test-broker"})
 	if err != nil {
 		t.Fatal(err)
 	}

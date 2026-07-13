@@ -212,6 +212,35 @@ func TestAgentApprovalNotificationsFailClosed(t *testing.T) {
 	}
 }
 
+func TestAgentCancellationClosesApproval(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(http.ResponseWriter, *http.Request) {})
+		server.operatorConfigured = true
+		operation, _, err := server.submitAgentOperation(t.Context(), "bob", validPullRequestSubmission(fmt.Sprintf("cancel-%t", active)))
+		if err != nil || operation.ApprovalID == "" {
+			t.Fatalf("submit active=%t: %#v, %v", active, operation, err)
+		}
+		grant, _ := server.grants.Get(operation.ApprovalID)
+		if active {
+			_, err = server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+				ExpectedRevision: grant.Revision, IdempotencyKey: "approve-before-cancel",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		canceled, err := server.cancelAgentOperation(t.Context(), "bob", operation.ID)
+		closed, getErr := server.grants.Get(operation.ApprovalID)
+		want := grants.StatusCanceled
+		if active {
+			want = grants.StatusRevoked
+		}
+		if err != nil || getErr != nil || canceled.State != agentv1.StateCanceled || closed.Status != want {
+			t.Fatalf("cancel active=%t: operation=%#v grant=%#v err=%v/%v", active, canceled, closed, err, getErr)
+		}
+	}
+}
+
 func TestConcurrentAgentReplayCreatesOneApproval(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(http.ResponseWriter, *http.Request) {})
 	server.operatorConfigured = true

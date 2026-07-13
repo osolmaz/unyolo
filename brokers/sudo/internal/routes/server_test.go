@@ -123,6 +123,37 @@ func TestSudoAgentAmbiguousExecutionRetainsApproval(t *testing.T) {
 	}
 }
 
+func TestSudoAgentCancellationClosesApproval(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		server, _, closeServer := testServer(t)
+		operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission(fmt.Sprintf("cancel-%t", active)))
+		if err != nil || operation.ApprovalID == "" {
+			closeServer()
+			t.Fatalf("submit active=%t: %#v, %v", active, operation, err)
+		}
+		grant, _ := server.grants.Get(operation.ApprovalID)
+		if active {
+			_, err = server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+				ExpectedRevision: grant.Revision, IdempotencyKey: "approve-before-cancel",
+			})
+			if err != nil {
+				closeServer()
+				t.Fatal(err)
+			}
+		}
+		canceled, err := server.cancelAgentOperation(t.Context(), "bob", operation.ID)
+		closed, getErr := server.grants.Get(operation.ApprovalID)
+		want := grants.StatusCanceled
+		if active {
+			want = grants.StatusRevoked
+		}
+		closeServer()
+		if err != nil || getErr != nil || canceled.State != agentv1.StateCanceled || closed.Status != want {
+			t.Fatalf("cancel active=%t: operation=%#v grant=%#v err=%v/%v", active, canceled, closed, err, getErr)
+		}
+	}
+}
+
 func TestConcurrentSudoReplayCreatesOneGrant(t *testing.T) {
 	server, _, closeServer := testServer(t)
 	defer closeServer()

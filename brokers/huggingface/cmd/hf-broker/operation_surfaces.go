@@ -308,7 +308,7 @@ func submitAndMaybeWait(ctx context.Context, client *agentClient, request agentv
 	defer cancel()
 	updated, err := client.wait(waitCtx, operation)
 	if err != nil && errors.Is(waitCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
-		return operation, nil
+		return updated, nil
 	}
 	return updated, err
 }

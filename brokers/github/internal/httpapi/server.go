@@ -97,7 +97,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	}
 	server.agentAPI, err = agentapi.New(agentapi.Options{
 		Store: server.operations, Authenticate: core.control.Clients.AuthenticateHeader,
-		Submit: server.submitAgentOperation, Realm: "gh-broker",
+		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "gh-broker",
 	})
 	if err != nil {
 		_ = core.database.Close()

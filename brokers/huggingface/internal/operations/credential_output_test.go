@@ -115,6 +115,11 @@ func TestCredentialOutputAdapterFailsClosed(t *testing.T) {
 	if _, err := adapter.Execute(t.Context(), plan); err == nil || err.Error() != "upstream_result_unknown" {
 		t.Fatalf("slot failure = %v", err)
 	}
+	client.response = json.RawMessage(`{"token":"missing-token-info"}`)
+	slots.err = nil
+	if _, err := adapter.Execute(t.Context(), plan); err == nil || err.Error() != "upstream_result_unknown" {
+		t.Fatalf("malformed success = %v", err)
+	}
 }
 
 func TestDeepLinkOutputIsStoredAsCredential(t *testing.T) {
