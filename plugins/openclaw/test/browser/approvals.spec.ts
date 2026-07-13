@@ -328,6 +328,8 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
         ...response.headers(),
         "access-control-allow-origin": "null",
         "access-control-allow-private-network": "true",
+        "content-security-policy":
+          "default-src 'self'; script-src 'self' http://127.0.0.1:4179; style-src 'self' 'unsafe-inline' http://127.0.0.1:4179; connect-src http://127.0.0.1:4179; img-src 'self' data:",
       },
     });
   });
@@ -344,6 +346,8 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
         ...response.headers(),
         "access-control-allow-origin": "null",
         "access-control-allow-private-network": "true",
+        "content-security-policy":
+          "default-src 'self'; script-src 'self' http://127.0.0.1:4179; style-src 'self' 'unsafe-inline' http://127.0.0.1:4179; connect-src http://127.0.0.1:4179; img-src 'self' data:",
       },
     });
   });

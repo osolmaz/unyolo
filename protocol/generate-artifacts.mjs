@@ -1,11 +1,20 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { format } from "prettier";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pluginRequire = createRequire(
+  path.join(root, "plugins/openclaw/package.json"),
+);
+const Ajv2020 = pluginRequire("ajv/dist/2020.js").default;
+const addFormatsModule = pluginRequire("ajv-formats");
+const addFormats = addFormatsModule.default ?? addFormatsModule;
+const standaloneCode = pluginRequire("ajv/dist/standalone/index.js").default;
+const { _ } = pluginRequire("ajv/dist/compile/codegen/index.js");
 const check = process.argv.includes("--check");
 const specs = [
   {
@@ -62,7 +71,7 @@ for (const spec of specs) {
   }
   if (spec.name === "operator") {
     await emitOperatorWrapper(source, components);
-    await emitOperatorSchemas(components);
+    emitOperatorValidators(components);
   }
 }
 if (stale) process.exit(1);
@@ -138,7 +147,7 @@ export type UISummary = components["schemas"]["UISummary"];
   );
 }
 
-async function emitOperatorSchemas(components) {
+function emitOperatorValidators(components) {
   const names = [
     "Descriptor",
     "Health",
@@ -151,21 +160,54 @@ async function emitOperatorSchemas(components) {
     "UISummary",
     "UIRequest",
   ];
-  const declarations = names.map((name) => {
-    const schema = {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      $id: `https://brokerkit.dev/schema/operator/v1/runtime/${name}`,
-      ...rewriteRefs(structuredClone(components[name])),
-      $defs: definitionsFor(components[name], components),
-    };
-    return `export const ${name}Schema = ${JSON.stringify(schema)} as const;`;
+  const rootID = "https://brokerkit.dev/schema/operator/v1/runtime/components";
+  const definitions = Object.fromEntries(
+    Object.entries(components).map(([name, schema]) => [
+      name,
+      rewriteRefs(structuredClone(schema)),
+    ]),
+  );
+  const ajv = new Ajv2020({
+    strict: true,
+    allErrors: false,
+    code: { source: true, esm: true, formats: _`formats` },
   });
+  addFormats(ajv);
+  ajv.addSchema({
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $id: rootID,
+    $defs: definitions,
+  });
+  for (const name of names) {
+    ajv.addSchema(
+      {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        $id: `https://brokerkit.dev/schema/operator/v1/runtime/${name}`,
+        $ref: `${rootID}#/$defs/${name}`,
+      },
+      name,
+    );
+  }
+  const exports = Object.fromEntries(
+    names.map((name) => [`validate${name}`, name]),
+  );
+  const generated = standaloneCode(ajv, exports)
+    .replace(
+      /const (func\d+) = require\("ajv\/dist\/runtime\/equal"\)\.default;/gu,
+      "const $1 = equal;",
+    )
+    .replace(
+      /const (func\d+) = require\("ajv\/dist\/runtime\/ucs2length"\)\.default;/gu,
+      "const $1 = ucs2length;",
+    );
+  if (/\brequire\s*\(|\bnew Function\s*\(|\beval\s*\(/u.test(generated)) {
+    throw new Error(
+      "generated operator validators contain runtime code loading",
+    );
+  }
   emit(
-    path.join(root, "plugins/openclaw/src/generated/operator-schemas.ts"),
-    await format(
-      `// Generated from protocol/openapi/operator-v1.yaml. Do not edit.\n${declarations.join("\n")}`,
-      { parser: "typescript" },
-    ),
+    path.join(root, "plugins/openclaw/src/generated/operator-validators.ts"),
+    `/* eslint-disable */\n// @ts-nocheck -- generated Ajv standalone code\n// Generated from protocol/openapi/operator-v1.yaml. Do not edit.\nimport formatsModule from "ajv-formats/dist/formats.js";\nimport equal from "ajv/dist/runtime/equal.js";\nimport ucs2length from "ajv/dist/runtime/ucs2length.js";\nconst formats = formatsModule.fullFormats;\n${generated}\n`,
   );
 }
 
