@@ -122,6 +122,7 @@ func Validate(values []Descriptor) error {
 	}
 	seenNames := make(map[string]bool, len(values))
 	seenTools := make(map[string]bool, len(values))
+	seenCommands := make(map[string]bool, len(values))
 	previous := ""
 	for index, value := range values {
 		if err := validateDescriptor(value); err != nil {
@@ -137,6 +138,12 @@ func Validate(values []Descriptor) error {
 				return fmt.Errorf("MCP tool %q is duplicated", *value.MCPTool)
 			}
 			seenTools[*value.MCPTool] = true
+		}
+		if value.CLICommand != nil {
+			if seenCommands[*value.CLICommand] {
+				return fmt.Errorf("CLI command %q is duplicated", *value.CLICommand)
+			}
+			seenCommands[*value.CLICommand] = true
 		}
 	}
 	return nil

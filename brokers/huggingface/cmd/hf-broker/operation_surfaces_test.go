@@ -1,0 +1,135 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+)
+
+func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
+	descriptors := agentFacingDescriptors()
+	tools := catalogMCPTools()
+	if len(descriptors) != 258 || len(tools) != len(descriptors) {
+		t.Fatalf("descriptors=%d tools=%d", len(descriptors), len(tools))
+	}
+	for index, descriptor := range descriptors {
+		words := strings.Fields(*descriptor.CLICommand)
+		matched, consumed, found := matchCLICommand(append(words, "--json"))
+		if !found || consumed != len(words) || matched.Name != descriptor.Name {
+			t.Fatalf("CLI descriptor %q did not round trip", descriptor.Name)
+		}
+		if tools[index]["name"] != *descriptor.MCPTool {
+			t.Fatalf("MCP descriptor %q drifted", descriptor.Name)
+		}
+		schema, ok := tools[index]["inputSchema"].(map[string]any)
+		if !ok || schema["additionalProperties"] != false {
+			t.Fatalf("MCP schema %q is not closed", descriptor.Name)
+		}
+	}
+}
+
+func TestMCPDestructiveOperationUsesCatalogOperation(t *testing.T) {
+	var submitted map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/agent/v1/operations" || request.Method != http.MethodPost {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&submitted); err != nil {
+			t.Fatal(err)
+		}
+		operation := testAgentOperation(agentv1.StatePending)
+		operation.Operation = "repo.delete"
+		_ = json.NewEncoder(writer).Encode(operation)
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_delete", Arguments: json.RawMessage(
+		`{"target":{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"},"arguments":{},"reason":"remove test repository","idempotency_key":"delete-1","wait_seconds":0}`)})
+	operation, ok := value.(agentv1.Operation)
+	if err != nil || !ok || operation.Operation != "repo.delete" || submitted["operation"] != "repo.delete" {
+		t.Fatalf("operation=%#v submitted=%#v err=%v", value, submitted, err)
+	}
+}
+
+func TestMCPWindowOperationRequestsExactGrant(t *testing.T) {
+	var submitted map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/grants" || request.Method != http.MethodPost {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&submitted); err != nil {
+			t.Fatal(err)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"status":"success","data":{"grant":{"id":"grant-1","status":"pending","operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"mode":"window","minutes":5,"max_uses":1,"uses_remaining":1,"used_count":0}}}`))
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_contents_read", Arguments: json.RawMessage(
+		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"attrs":{},"reason":"inspect data","idempotency_key":"read-1","minutes":5,"max_uses":1,"wait_seconds":0}`)})
+	grant, ok := value.(hfClientGrant)
+	if err != nil || !ok || grant.Operation != "repo.contents.read" || submitted["operation"] != "repo.contents.read" {
+		t.Fatalf("grant=%#v submitted=%#v err=%v", value, submitted, err)
+	}
+}
+
+func TestMCPSealedOperationSeparatesSecretFromPlan(t *testing.T) {
+	const secret = "not-in-the-operation-plan"
+	var sealedBody, operationBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body := new(bytes.Buffer)
+		_, _ = body.ReadFrom(request.Body)
+		switch request.URL.Path {
+		case "/api/agent/v1/sealed-payloads":
+			sealedBody = body.Bytes()
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = writer.Write([]byte(`{"id":"sealed_abcdefghijklmnopqrstuvwx","owner":"agent","purpose":"space.secret.set","digest":"digest","size":40,"expires_at":9999999999}`))
+		case "/api/agent/v1/operations":
+			operationBody = body.Bytes()
+			operation := testAgentOperation(agentv1.StatePending)
+			operation.Operation = "space.secret.set"
+			_ = json.NewEncoder(writer).Encode(operation)
+		default:
+			t.Fatalf("unexpected path %s", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = callMCPTool(context.Background(), client, mcpToolCall{Name: "hf_space_secret_set", Arguments: json.RawMessage(
+		`{"target":{"namespace":"osolmaz","repo":"app"},"arguments":{"key":"TOKEN"},"sealed_arguments":{"value":"` + secret + `"},"reason":"set deployment secret","idempotency_key":"secret-1","wait_seconds":0}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(sealedBody, []byte(secret)) || bytes.Contains(operationBody, []byte(secret)) || !bytes.Contains(operationBody, []byte("sealed_abcdefghijklmnopqrstuvwx")) {
+		t.Fatalf("sealed=%q operation=%q", sealedBody, operationBody)
+	}
+}
+
+func TestCatalogSchemaUsesPinnedBindingWhenAvailable(t *testing.T) {
+	descriptor, found := opcatalog.ByName("space.secret.set")
+	if !found {
+		t.Fatal("space.secret.set missing")
+	}
+	schema := catalogMCPToolSchema(descriptor)
+	properties := schema["properties"].(map[string]any)
+	arguments := properties["arguments"].(map[string]any)
+	if arguments["type"] != "object" || properties["sealed_arguments"] == nil {
+		t.Fatalf("schema = %#v", schema)
+	}
+}

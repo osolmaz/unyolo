@@ -46,7 +46,10 @@ func TestRunAgentClientRepoCreateWaitsForApproval(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	err := runAgentClient(context.Background(), getenv, &stdout, &stderr, []string{"repo", "create", "alice/data", "--type", "dataset", "--idempotency-key", "create-data"})
+	err := runAgentClient(context.Background(), getenv, &stdout, &stderr, []string{
+		"repo", "create", "--target-json", `{"kind":"repo","type":"dataset","owner":"alice","name":"data"}`,
+		"--arguments-json", `{"visibility":"private"}`, "--idempotency-key", "create-data",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +201,7 @@ func TestRunMCPListsAndCallsTools(t *testing.T) {
 	input := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hf_repo_create","arguments":{"repo_id":"alice/data","type":"dataset","visibility":"private","reason":"create","idempotency_key":"one","wait_seconds":0}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hf_repo_create","arguments":{"target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create","idempotency_key":"one","wait_seconds":0}}}`,
 	}, "\n") + "\n"
 	var output bytes.Buffer
 	if err := runMCP(context.Background(), getenv, strings.NewReader(input), &output, &bytes.Buffer{}, nil); err != nil {
@@ -286,29 +289,27 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 	}
 }
 
-func TestRepoCreateOptionsAndTerminalOutput(t *testing.T) {
-	invalid := [][]string{
-		{},
-		{"alice/data", "--type", "bad"},
-		{"alice/data", "--type", "dataset", "--sdk", "docker"},
-		{"alice/data", "--reason", ""},
-		{"alice/data", "extra"},
+func TestCatalogOperationOptionsAndTerminalOutput(t *testing.T) {
+	descriptor, _, found := matchCLICommand([]string{"repo", "create"})
+	if !found || descriptor.Name != "repo.create" {
+		t.Fatalf("repo create descriptor = %#v, %v", descriptor, found)
 	}
-	for _, args := range invalid {
-		if _, err := parseRepoCreateClientOptions(args); err == nil {
+	for _, args := range [][]string{
+		{},
+		{"--target-json", `{}`, "--reason", ""},
+		{"--target-json", `{}`, "--sealed-file", "secret.json"},
+		{"--target-json", `{}`, "extra"},
+	} {
+		if _, err := parseOperationClientOptions(descriptor, args); err == nil {
 			t.Fatalf("options accepted: %v", args)
 		}
 	}
-	options, err := parseRepoCreateClientOptions([]string{"--type", "space", "--public", "alice/app"})
-	if err != nil || options.sdk != "docker" || options.visibility != "public" {
-		t.Fatalf("Space options = %#v, %v", options, err)
-	}
-	request, err := repoCreateSubmitRequest(&repoCreateClientOptions{repoID: "alice/data", repoType: "dataset", visibility: "private", reason: "create"})
-	if err != nil || request.IdempotencyKey == "" {
-		t.Fatalf("generated request = %#v, %v", request, err)
-	}
-	if _, err := repoCreateSubmitRequest(&repoCreateClientOptions{repoID: "bad"}); err == nil {
-		t.Fatal("bad repo ID accepted")
+	options, err := parseOperationClientOptions(descriptor, []string{
+		"--target-json", `{"kind":"repo","type":"dataset","owner":"alice","name":"data"}`,
+		"--arguments-json", `{"visibility":"private"}`, "--idempotency-key", "create-data",
+	})
+	if err != nil || options.idempotencyKey != "create-data" {
+		t.Fatalf("catalog options = %#v, %v", options, err)
 	}
 	operation := testAgentOperation(agentv1.StateFailed)
 	operation.Error = &agentv1.OperationError{Code: "failed", Message: "failed safely"}
@@ -343,18 +344,12 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	if _, err := callMCPTool(context.Background(), client, mcpToolCall{Name: "unknown", Arguments: json.RawMessage(`{}`)}); err == nil {
 		t.Fatal("unknown MCP tool accepted")
 	}
-	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{}); err == nil {
-		t.Fatal("missing MCP visibility accepted")
-	}
-	if _, err := callMCPRepoCreate(context.Background(), client, json.RawMessage(`{"repo_id":"alice/data","type":"dataset","visibility":"private","reason":"create","idempotency_key":"bad-wait","wait_seconds":901}`)); err == nil {
+	if _, err := callMCPTool(context.Background(), client, mcpToolCall{Name: "hf_repo_create", Arguments: json.RawMessage(`{"target":{},"arguments":{},"reason":"create","idempotency_key":"bad-wait","wait_seconds":901}`)}); err == nil {
 		t.Fatal("oversized repository wait accepted")
 	}
-	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "bad", Visibility: "private"}); err == nil {
-		t.Fatal("bad MCP repo accepted")
-	}
-	space, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "alice/app", Type: "space", Visibility: "private", Reason: "create", IdempotencyKey: "space"})
-	if err != nil || !strings.Contains(string(space.Arguments), `"sdk":"docker"`) {
-		t.Fatalf("Space MCP default = %s, %v", space.Arguments, err)
+	tools := catalogMCPTools()
+	if len(tools) != len(agentFacingDescriptors()) || len(tools) != 258 {
+		t.Fatalf("catalog MCP tools = %d", len(tools))
 	}
 	largeID := json.RawMessage(`9007199254740993`)
 	response := handleMCPRequest(context.Background(), client, mcpRequest{JSONRPC: "2.0", ID: largeID, Method: "unknown"})
@@ -385,7 +380,7 @@ func TestMCPWaitDeadlineReturnsResumableOperation(t *testing.T) {
 	}
 	for _, call := range []mcpToolCall{
 		{Name: "hf_operation_wait", Arguments: json.RawMessage(`{"operation_id":"op_test","wait_seconds":1}`)},
-		{Name: "hf_repo_create", Arguments: mustJSON(t, mcpRepoCreateInput{RepoID: "alice/data", Type: "dataset", Visibility: "private", Reason: "create", IdempotencyKey: "create", WaitSeconds: 1})},
+		{Name: "hf_repo_create", Arguments: json.RawMessage(`{"target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create","idempotency_key":"create","wait_seconds":1}`)},
 	} {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		value, callErr := callMCPTool(ctx, client, call)
