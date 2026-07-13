@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
@@ -104,8 +103,4 @@ func (r *Registry) ValidateCoverage() error {
 		return fmt.Errorf("missing Hugging Face operation adapters: %s", strings.Join(missing, ", "))
 	}
 	return nil
-}
-
-type client interface {
-	Do(context.Context, hubclient.Call) (hubclient.Response, error)
 }

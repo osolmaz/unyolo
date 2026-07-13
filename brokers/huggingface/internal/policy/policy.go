@@ -271,6 +271,7 @@ var knownAttrs = map[string]bool{
 	"private":    true,
 	"ref_change": true,
 	"sdk":        true,
+	"visibility": true,
 }
 
 var validRefChangeAttrs = map[string]bool{
@@ -956,6 +957,8 @@ func validateAttrConstraint(key string, constraint AttrConstraint) error {
 		return validateNamedConstraint(constraint, "true or false", map[string]bool{"true": true, "false": true, "*": true}, "must be true or false")
 	case "sdk":
 		return validateNamedConstraint(constraint, "a Space SDK", map[string]bool{"docker": true, "gradio": true, "static": true, "*": true}, "unsupported Space SDK")
+	case "visibility":
+		return validateNamedConstraint(constraint, "a visibility", map[string]bool{"public": true, "private": true, "protected": true, "*": true}, "unsupported visibility")
 	}
 	return nil
 }

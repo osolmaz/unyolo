@@ -36,6 +36,7 @@ var (
 )
 
 type Submit struct {
+	ID             string
 	Broker         string
 	ClientID       string
 	IdempotencyKey string
@@ -45,6 +46,15 @@ type Submit struct {
 	Reason         string
 	Presentation   agentv1.Presentation
 	PlanDigest     string
+}
+
+// NewID allocates an operation identifier for callers that bind an approval
+// and immutable plan before inserting the operation row.
+func (s *Store) NewID() (string, error) {
+	if s == nil || s.newID == nil {
+		return "", errors.New("operation ID generator is unavailable")
+	}
+	return s.newID()
 }
 
 type Store struct {
@@ -122,9 +132,13 @@ func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time
 	if count >= maxOperations {
 		return agentv1.Operation{}, false, ErrCapacity
 	}
-	id, err := s.newID()
-	if err != nil {
-		return agentv1.Operation{}, false, err
+	id := input.ID
+	if id == "" {
+		var err error
+		id, err = s.NewID()
+		if err != nil {
+			return agentv1.Operation{}, false, err
+		}
 	}
 	op := agentv1.Operation{
 		APIVersion: agentv1.APIVersion, ID: id, Broker: input.Broker, ClientID: input.ClientID,
@@ -156,6 +170,18 @@ func (s *Store) GetByID(id string) (agentv1.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, err := s.db.OperationByID(context.Background(), id)
+	return storedOperation(record, err)
+}
+
+// GetByIdempotency returns an existing submission for provider lifecycle
+// services that must avoid re-resolving mutable upstream state on replay.
+func (s *Store) GetByIdempotency(clientID, key string) (agentv1.Operation, error) {
+	if strings.TrimSpace(clientID) == "" || strings.TrimSpace(key) == "" {
+		return agentv1.Operation{}, ErrNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.db.OperationByIdempotency(context.Background(), clientID, key)
 	return storedOperation(record, err)
 }
 
@@ -355,6 +381,7 @@ func operationFromRecord(record state.OperationRecord) (agentv1.Operation, error
 }
 
 func normalizeSubmit(input Submit) (Submit, error) {
+	input.ID = strings.TrimSpace(input.ID)
 	input.Broker = strings.TrimSpace(input.Broker)
 	input.ClientID = strings.TrimSpace(input.ClientID)
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
@@ -382,8 +409,12 @@ func normalizeSubmit(input Submit) (Submit, error) {
 }
 
 func validSubmitIdentity(input Submit) bool {
-	return input.Broker != "" && len(input.Broker) <= 64 && input.ClientID != "" && len(input.ClientID) <= 128 &&
+	return (input.ID == "" || validOperationID(input.ID)) && input.Broker != "" && len(input.Broker) <= 64 && input.ClientID != "" && len(input.ClientID) <= 128 &&
 		input.IdempotencyKey != "" && len(input.IdempotencyKey) <= 128 && input.Operation != "" && len(input.Operation) <= 128
+}
+
+func validOperationID(value string) bool {
+	return strings.HasPrefix(value, "op_") && len(value) >= 8 && len(value) <= 128 && !strings.ContainsAny(value, " \t\r\n")
 }
 
 func validSubmitPresentation(input Submit) bool {

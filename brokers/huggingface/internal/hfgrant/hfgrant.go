@@ -147,8 +147,8 @@ func normalizeIdentity(input Input) (string, string, error) {
 	if reason == "" {
 		return "", "", errors.New("grant reason is required")
 	}
-	if len(reason) > 512 {
-		return "", "", errors.New("grant reason is longer than 512 bytes")
+	if len(reason) > 2000 {
+		return "", "", errors.New("grant reason is longer than 2000 bytes")
 	}
 	return clientRequestID, reason, nil
 }

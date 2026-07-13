@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentconformance"
-	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
@@ -28,8 +28,9 @@ const (
 )
 
 func TestAgentV1Conformance(t *testing.T) {
+	var conformanceCreated atomic.Bool
 	stateDir := filepath.Join(t.TempDir(), "state")
-	policyJSON := `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"conformance"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
+	policyJSON := `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"conformance"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
 	scope, err := policy.Parse([]byte(policyJSON))
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +39,14 @@ func TestAgentV1Conformance(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/whoami-v2":
 			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+		case "/api/datasets/alice/conformance":
+			if r.Method == http.MethodGet && conformanceCreated.Load() {
+				writeJSON(w, http.StatusOK, map[string]any{"id": "alice/conformance", "sha": "created", "private": true})
+				return
+			}
+			http.NotFound(w, r)
 		case "/api/repos/create":
+			conformanceCreated.Store(true)
 			writeJSON(w, http.StatusCreated, map[string]any{})
 		default:
 			http.NotFound(w, r)
@@ -72,7 +80,7 @@ func TestAgentV1Conformance(t *testing.T) {
 		Request: agentv1.SubmitRequest{
 			IdempotencyKey: "hf-conformance", Operation: "repo.create",
 			Target:    json.RawMessage(`{"kind":"repo","type":"dataset","owner":"alice","name":"conformance"}`),
-			Arguments: json.RawMessage(`{"private":true}`), Reason: "verify Agent V1 lifecycle",
+			Arguments: json.RawMessage(`{"visibility":"private"}`), Reason: "verify Agent V1 lifecycle",
 		},
 		Approve: func(ctx context.Context, operation agentv1.Operation) error {
 			grant, err := current.grants.Get(operation.ApprovalID)
@@ -96,6 +104,7 @@ func TestAgentV1Conformance(t *testing.T) {
 func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	var mu sync.Mutex
 	createHits := 0
+	exists := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+testToken {
 			t.Fatalf("upstream authorization was not the broker token")
@@ -103,15 +112,25 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/whoami-v2":
 			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+		case "/api/datasets/alice/data":
+			mu.Lock()
+			present := exists
+			mu.Unlock()
+			if !present {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"id": "alice/data", "sha": "created", "private": true})
 		case "/api/repos/create":
 			mu.Lock()
 			createHits++
+			exists = true
 			mu.Unlock()
 			var payload map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			if payload["name"] != "data" || payload["organization"] != nil || payload["type"] != "dataset" || payload["private"] != true {
+			if payload["name"] != "data" || payload["organization"] != nil || payload["type"] != "dataset" || payload["visibility"] != "private" {
 				t.Fatalf("create payload = %#v", payload)
 			}
 			writeJSON(w, http.StatusCreated, map[string]any{})
@@ -121,12 +140,12 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	policyJSON := `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
+	policyJSON := `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
 	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
 	defer cancel()
 	defer server.Close()
 
-	body := `{"idempotency_key":"create-data","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"create test data"}`
+	body := `{"idempotency_key":"create-data","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create test data"}`
 	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
 	if response.StatusCode != http.StatusAccepted || strings.Contains(text, testToken) || strings.Contains(text, testSecret) {
 		t.Fatalf("submit = %d %s", response.StatusCode, text)
@@ -160,41 +179,14 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	}
 }
 
-func TestAgentRepoCreateRetryReconcilesUnboundOperation(t *testing.T) {
-	upstream := httptest.NewServer(http.NotFoundHandler())
-	defer upstream.Close()
-	policyJSON := `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
-	defer cancel()
-	defer server.Close()
-	body := `{"idempotency_key":"recover","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"recover after restart"}`
-	var request agentv1.SubmitRequest
-	if err := json.Unmarshal([]byte(body), &request); err != nil {
-		t.Fatal(err)
-	}
-	stored, created, err := handler.operations.Submit(agentops.Submit{
-		Broker: "hf-broker", ClientID: "agent", IdempotencyKey: request.IdempotencyKey, Operation: request.Operation,
-		Target: request.Target, Arguments: request.Arguments, Reason: request.Reason,
-		Presentation: agentv1.Presentation{Title: "Create Hugging Face repository", Summary: "Create private dataset alice/data"},
-	})
-	if err != nil || !created || stored.ApprovalID != "" {
-		t.Fatalf("stored = %#v, %v, %v", stored, created, err)
-	}
-	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
-	var operation agentv1.Operation
-	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.ApprovalID == "" {
-		t.Fatalf("reconciled = %d %#v", response.StatusCode, operation)
-	}
-}
-
 func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
-	upstream := httptest.NewServer(http.NotFoundHandler())
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
 	notifier := &bknotify.Memory{}
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
 	defer cancel()
 	defer server.Close()
-	body := `{"idempotency_key":"notify","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"notify operator"}`
+	body := `{"idempotency_key":"notify","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"notify operator"}`
 	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
 	var operation agentv1.Operation
 	if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &operation) != nil || len(notifier.Messages) != 1 {
@@ -207,15 +199,15 @@ func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 }
 
 func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
-	upstream := httptest.NewServer(http.NotFoundHandler())
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
 	notifier := &contextCheckingNotifier{}
-	server, handler, cancelServer := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
+	server, handler, cancelServer := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
 	defer cancelServer()
 	defer server.Close()
 	ctx, cancelRequest := context.WithCancel(context.Background())
 	cancelRequest()
-	body := `{"idempotency_key":"disconnect","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"survive disconnect"}`
+	body := `{"idempotency_key":"disconnect","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"survive disconnect"}`
 	var request agentv1.SubmitRequest
 	if err := json.Unmarshal([]byte(body), &request); err != nil {
 		t.Fatal(err)
@@ -241,12 +233,12 @@ func (*contextCheckingNotifier) UpdateStatus(context.Context, bknotify.MessageRe
 }
 
 func TestAgentRepoCreateFailsClosedWhenNotifierFails(t *testing.T) {
-	upstream := httptest.NewServer(http.NotFoundHandler())
+	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, failingGrantNotifier{})
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, failingGrantNotifier{})
 	defer cancel()
 	defer server.Close()
-	body := `{"idempotency_key":"notify-failure","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"notify operator"}`
+	body := `{"idempotency_key":"notify-failure","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"notify operator"}`
 	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
 	var operation agentv1.Operation
 	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_notification_failed" {
@@ -259,15 +251,26 @@ func TestAgentRepoCreateFailsClosedWhenNotifierFails(t *testing.T) {
 }
 
 func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
+	var exists atomic.Bool
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/whoami-v2" {
+		switch r.URL.Path {
+		case "/api/whoami-v2":
 			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
-			return
+		case "/api/datasets/alice/data":
+			if !exists.Load() {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"id": "alice/data", "sha": "created", "private": true})
+		case "/api/repos/create":
+			exists.Store(true)
+			writeJSON(w, http.StatusCreated, map[string]any{})
+		default:
+			http.NotFound(w, r)
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{})
 	}))
 	defer upstream.Close()
-	policyJSON := `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"private":"true"}}]}`
+	policyJSON := `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"}}]}`
 	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
 	defer cancel()
 	defer server.Close()
@@ -276,12 +279,12 @@ func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anonymous discovery = %d", response.StatusCode)
 	}
-	invalid := `{"idempotency_key":"bad","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true,"token":"secret"},"reason":"bad"}`
+	invalid := `{"idempotency_key":"bad","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private","token":"secret"},"reason":"bad"}`
 	response, _ = doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(invalid))
 	if response.StatusCode != http.StatusBadRequest {
 		t.Fatalf("unknown argument = %d", response.StatusCode)
 	}
-	valid := `{"idempotency_key":"allow","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"create"}`
+	valid := `{"idempotency_key":"allow","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create"}`
 	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(valid))
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("allow submit = %d %s", response.StatusCode, text)
@@ -296,21 +299,35 @@ func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
 func TestAgentRepoCreateConcurrentIdempotentAllow(t *testing.T) {
 	var mu sync.Mutex
 	createHits := 0
+	exists := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/whoami-v2" {
+		switch r.URL.Path {
+		case "/api/whoami-v2":
 			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
-			return
+		case "/api/datasets/alice/race":
+			mu.Lock()
+			present := exists
+			mu.Unlock()
+			if !present {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"id": "alice/race", "sha": "created", "private": true})
+		case "/api/repos/create":
+			mu.Lock()
+			createHits++
+			exists = true
+			mu.Unlock()
+			writeJSON(w, http.StatusCreated, map[string]any{})
+		default:
+			http.NotFound(w, r)
 		}
-		mu.Lock()
-		createHits++
-		mu.Unlock()
-		writeJSON(w, http.StatusCreated, map[string]any{})
 	}))
 	defer upstream.Close()
-	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"race"}],"attrs":{"private":"true"}}]}`)
+	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"race"}],"attrs":{"visibility":"private"}}]}`)
 	defer cancel()
 	defer server.Close()
-	body := `{"idempotency_key":"concurrent","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"race"},"arguments":{"private":true},"reason":"concurrent retry"}`
+	body := `{"idempotency_key":"concurrent","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"race"},"arguments":{"visibility":"private"},"reason":"concurrent retry"}`
 	var wg sync.WaitGroup
 	errorsSeen := make(chan string, 12)
 	for range 12 {
@@ -356,7 +373,11 @@ func operationIDFromSubmission(t *testing.T, serverURL, body string) string {
 
 func TestAgentOperationRoutesAndSubmissionErrors(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+		if r.URL.Path == "/api/whoami-v2" {
+			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+			return
+		}
+		http.NotFound(w, r)
 	}))
 	defer upstream.Close()
 	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"deny","effect":"deny","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"*"}]}]}`)
@@ -372,8 +393,8 @@ func TestAgentOperationRoutesAndSubmissionErrors(t *testing.T) {
 		{"duplicate field", `{"idempotency_key":"duplicate","operation":"repo.create","operation":"repo.create","target":{},"arguments":{},"reason":"test"}`, http.StatusBadRequest},
 		{"trailing data", `{"idempotency_key":"trailing","operation":"repo.create","target":{},"arguments":{},"reason":"test"}{}`, http.StatusBadRequest},
 		{"missing reason", `{"idempotency_key":"missing","operation":"repo.create","target":{},"arguments":{}}`, http.StatusBadRequest},
-		{"invalid target", `{"idempotency_key":"target","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"bad/name"},"arguments":{"private":true},"reason":"test"}`, http.StatusBadRequest},
-		{"invalid sdk", `{"idempotency_key":"sdk","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true,"sdk":"docker"},"reason":"test"}`, http.StatusBadRequest},
+		{"invalid target", `{"idempotency_key":"target","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"bad/name"},"arguments":{"visibility":"private"},"reason":"test"}`, http.StatusBadRequest},
+		{"invalid sdk", `{"idempotency_key":"sdk","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private","sdk":"docker"},"reason":"test"}`, http.StatusBadRequest},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -384,7 +405,7 @@ func TestAgentOperationRoutesAndSubmissionErrors(t *testing.T) {
 		})
 	}
 
-	denied := `{"idempotency_key":"same","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"private":true},"reason":"test"}`
+	denied := `{"idempotency_key":"same","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"test"}`
 	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(denied))
 	var operation agentv1.Operation
 	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.State != agentv1.StateDenied {
@@ -417,22 +438,27 @@ func TestAgentRepoCreateUpstreamFailures(t *testing.T) {
 		status   int
 		wantCode string
 	}{
-		{name: "rejected", status: http.StatusForbidden, wantCode: "upstream_rejected"},
-		{name: "unknown", status: http.StatusInternalServerError, wantCode: "upstream_result_unknown"},
+		{name: "rejected", status: http.StatusForbidden, wantCode: "operation_upstream_authorization_failed"},
+		{name: "unavailable", status: http.StatusInternalServerError, wantCode: "operation_upstream_unavailable"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/api/whoami-v2" {
+				switch r.URL.Path {
+				case "/api/whoami-v2":
 					writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
-					return
+				case "/api/models/alice/model":
+					http.NotFound(w, r)
+				case "/api/repos/create":
+					w.WriteHeader(test.status)
+				default:
+					http.NotFound(w, r)
 				}
-				w.WriteHeader(test.status)
 			}))
 			defer upstream.Close()
-			server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"model","owner":"alice","name":"model"}],"attrs":{"private":"false"}}]}`)
+			server, _, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"allow","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"model","owner":"alice","name":"model"}],"attrs":{"visibility":"public"}}]}`)
 			defer cancel()
 			defer server.Close()
-			body := `{"idempotency_key":"failure","operation":"repo.create","target":{"kind":"repo","type":"model","owner":"alice","name":"model"},"arguments":{"private":false},"reason":"test failure"}`
+			body := `{"idempotency_key":"failure","operation":"repo.create","target":{"kind":"repo","type":"model","owner":"alice","name":"model"},"arguments":{"visibility":"public"},"reason":"test failure"}`
 			response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
 			var operation agentv1.Operation
 			if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &operation) != nil {
@@ -473,6 +499,21 @@ func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, no
 		handler.backgroundWorkers.Wait()
 	}
 	return httptest.NewServer(handler), handler, stop
+}
+
+func newAbsentRepoUpstream(t *testing.T, owner, repoType, name string) *httptest.Server {
+	t.Helper()
+	path := "/api/" + repoType + "s/" + owner + "/" + name
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/whoami-v2":
+			writeJSON(w, http.StatusOK, map[string]string{"name": owner})
+		case path:
+			http.NotFound(w, r)
+		default:
+			t.Fatalf("unexpected upstream request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
 }
 
 func waitForTestOperation(t *testing.T, serverURL, id string) agentv1.Operation {

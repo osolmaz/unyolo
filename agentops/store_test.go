@@ -55,6 +55,26 @@ func TestStoreLifecycleAndIdempotency(t *testing.T) {
 	if err != nil || byID.ID != created.ID {
 		t.Fatalf("get by ID = %#v, %v", byID, err)
 	}
+	byKey, err := reloaded.GetByIdempotency("agent", "create-one")
+	if err != nil || byKey.ID != created.ID {
+		t.Fatalf("get by idempotency = %#v, %v", byKey, err)
+	}
+}
+
+func TestStoreAcceptsPreallocatedOperationID(t *testing.T) {
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_generated", nil })
+	input := validSubmit("preallocated")
+	input.ID = "op_preallocated"
+	operation, created, err := store.Submit(input)
+	if err != nil || !created || operation.ID != input.ID {
+		t.Fatalf("Submit() = %+v, %v, %v", operation, created, err)
+	}
+	if _, _, err := store.Submit(Submit{ID: "invalid", Broker: "hf-broker"}); err == nil {
+		t.Fatal("invalid preallocated ID accepted")
+	}
+	if id, err := store.NewID(); err != nil || id != "op_generated" {
+		t.Fatalf("NewID() = %q, %v", id, err)
+	}
 }
 
 func TestStoreWaitAndStrictFile(t *testing.T) {

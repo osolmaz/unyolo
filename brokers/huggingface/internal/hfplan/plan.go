@@ -59,10 +59,11 @@ type Authorization struct {
 	RequestedDurationSeconds  int64               `json:"requested_duration_seconds"`
 	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
 	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted,omitempty"`
+	Target                    GrantTarget         `json:"target"`
 	Attributes                map[string][]string `json:"attributes,omitempty"`
 }
 
-type grantTarget struct {
+type GrantTarget struct {
 	Kind   string              `json:"kind"`
 	Fields map[string][]string `json:"fields"`
 }
@@ -94,7 +95,7 @@ func newStore(database *state.Database, now func() time.Time) (*Store, error) {
 
 // FromRequest creates the immutable plan for a bounded protocol grant.
 func FromRequest(request grants.Request, createdAt time.Time) Plan {
-	target, _ := json.Marshal(grantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)})
+	target, _ := json.Marshal(GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)})
 	arguments, _ := json.Marshal(grantArguments{Attributes: cloneValues(request.Attrs)})
 	expiresAt := createdAt.Add(request.PendingTimeout + request.Duration)
 	if !expiresAt.After(createdAt) {
@@ -107,7 +108,8 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 		CredentialSelector: CredentialSelector{Name: "primary"},
 		Presentation:       agentv1.Presentation{Title: request.Operation, Summary: truncateUTF8(request.Reason, 500)},
 		Authorization: Authorization{Mode: request.Metadata["hf_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
-			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted, Attributes: cloneValues(request.Attrs)},
+			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
+			Target: GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)}, Attributes: cloneValues(request.Attrs)},
 		CreatedAt: createdAt.UTC(), ExpiresAt: expiresAt.UTC(),
 	}
 }
@@ -263,13 +265,8 @@ func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 }
 
 func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
-	var target grantTarget
-	var arguments grantArguments
-	if strictjson.Decode(plan.Target, &target, true) != nil || strictjson.Decode(plan.Arguments, &arguments, true) != nil {
-		return false
-	}
 	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation &&
-		target.Kind == grant.Target.Kind && reflect.DeepEqual(target.Fields, grant.Target.Fields) && reflect.DeepEqual(arguments.Attributes, grant.Attrs) &&
+		plan.Authorization.Target.Kind == grant.Target.Kind && reflect.DeepEqual(plan.Authorization.Target.Fields, grant.Target.Fields) && reflect.DeepEqual(plan.Authorization.Attributes, grant.Attrs) &&
 		plan.Authorization.Mode == grant.Metadata["hf_grant_mode"] && plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
 		plan.Authorization.RequestedMaxUses == maxUses && plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
@@ -310,7 +307,8 @@ func validate(plan Plan) error {
 	}
 	if plan.Authorization.Mode != "window" && plan.Authorization.Mode != "execution" ||
 		plan.Authorization.RequestedDurationSeconds <= 0 || plan.Authorization.RequestedMaxUses < 0 ||
-		plan.Authorization.Mode == "execution" && plan.Authorization.RequestedMaxUses != 1 {
+		plan.Authorization.Mode == "execution" && plan.Authorization.RequestedMaxUses != 1 ||
+		strings.TrimSpace(plan.Authorization.Target.Kind) == "" || len(plan.Authorization.Target.Fields) == 0 {
 		return errors.New("HF plan authorization is invalid")
 	}
 	for _, value := range []json.RawMessage{plan.Target, plan.Arguments, plan.Preconditions} {
@@ -320,6 +318,9 @@ func validate(plan Plan) error {
 		if containsRawSecret(value) {
 			return errors.New("HF plan contains a raw secret field")
 		}
+	}
+	if err := validateValues(plan.Authorization.Target.Fields); err != nil {
+		return err
 	}
 	return validateValues(plan.Authorization.Attributes)
 }

@@ -23,7 +23,9 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
@@ -90,6 +92,8 @@ type Server struct {
 	grants              *grants.Store
 	plans               *hfplan.Store
 	operations          *agentops.Store
+	operationRegistry   *operations.Registry
+	hubClient           *hubclient.Client
 	agentAPI            *agentapi.Handler
 	database            *state.Database
 	planValidator       hfplan.Validator
@@ -302,6 +306,21 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		return nil, err
 	}
 	planValidator := hfplan.Validator{Store: plans}
+	hub, err := hubclient.New(upstream.String(), opts.Config.HFToken, hubclient.WithTimeout(opts.Config.HFTimeout))
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	providerAdapters, err := operations.NewRepositoryAdapters(hub, upstream.String())
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	operationRegistry, err := operations.NewRegistry(providerAdapters...)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	runtime, err := controlplane.New(controlplane.Options{
 		Broker: "hf-broker", Store: store, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
@@ -331,6 +350,8 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		grants:             store,
 		plans:              plans,
 		operations:         agentops.New(database),
+		operationRegistry:  operationRegistry,
+		hubClient:          hub,
 		database:           database,
 		planValidator:      planValidator,
 		notifier:           opts.GrantNotifier,

@@ -28,7 +28,7 @@ type agentClient struct {
 type repoCreateClientOptions struct {
 	repoID         string
 	repoType       string
-	private        bool
+	visibility     string
 	sdk            string
 	reason         string
 	idempotencyKey string
@@ -94,7 +94,7 @@ func repoCreateSubmitRequest(options *repoCreateClientOptions) (agentv1.SubmitRe
 		options.idempotencyKey = value
 	}
 	target, _ := json.Marshal(map[string]any{"kind": "repo", "type": options.repoType, "owner": owner, "name": name})
-	arguments := map[string]any{"private": options.private}
+	arguments := map[string]any{"visibility": options.visibility}
 	if options.sdk != "" {
 		arguments["sdk"] = options.sdk
 	}
@@ -103,13 +103,14 @@ func repoCreateSubmitRequest(options *repoCreateClientOptions) (agentv1.SubmitRe
 }
 
 func parseRepoCreateClientOptions(args []string) (repoCreateClientOptions, error) {
-	options := repoCreateClientOptions{repoType: "dataset", private: true, reason: "Create a Hugging Face repository through HF Broker", wait: true, waitTimeout: defaultClientWait}
+	options := repoCreateClientOptions{repoType: "dataset", visibility: "private", reason: "Create a Hugging Face repository through HF Broker", wait: true, waitTimeout: defaultClientWait}
 	args = takeLeadingRepoID(args, &options)
 	flags := flag.NewFlagSet("repo create", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&options.repoType, "type", options.repoType, "model, dataset, or space")
-	flags.BoolVar(&options.private, "private", options.private, "create a private repository")
+	private := flags.Bool("private", false, "create a private repository")
 	public := flags.Bool("public", false, "create a public repository")
+	flags.StringVar(&options.visibility, "visibility", options.visibility, "public, private, or protected")
 	flags.StringVar(&options.sdk, "sdk", "", "Space SDK")
 	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
 	flags.StringVar(&options.idempotencyKey, "idempotency-key", "", "stable retry key")
@@ -122,8 +123,13 @@ func parseRepoCreateClientOptions(args []string) (repoCreateClientOptions, error
 	if err := takeTrailingRepoID(flags.Args(), &options); err != nil {
 		return options, err
 	}
-	if *public {
-		options.private = false
+	if *private && *public {
+		return options, errors.New("--private and --public are mutually exclusive")
+	}
+	if *private {
+		options.visibility = "private"
+	} else if *public {
+		options.visibility = "public"
 	}
 	return validateRepoCreateClientOptions(options)
 }
@@ -153,6 +159,9 @@ func takeTrailingRepoID(args []string, options *repoCreateClientOptions) error {
 func validateRepoCreateClientOptions(options repoCreateClientOptions) (repoCreateClientOptions, error) {
 	if options.repoType != "model" && options.repoType != "dataset" && options.repoType != "space" {
 		return options, errors.New("repository type must be model, dataset, or space")
+	}
+	if options.visibility != "public" && options.visibility != "private" {
+		return options, errors.New("repository creation visibility must be public or private")
 	}
 	if options.repoType == "space" && options.sdk == "" {
 		options.sdk = "docker"

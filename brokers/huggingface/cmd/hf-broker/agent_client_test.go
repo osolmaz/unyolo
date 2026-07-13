@@ -198,7 +198,7 @@ func TestRunMCPListsAndCallsTools(t *testing.T) {
 	input := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hf_repo_create","arguments":{"repo_id":"alice/data","type":"dataset","private":true,"reason":"create","idempotency_key":"one","wait_seconds":0}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hf_repo_create","arguments":{"repo_id":"alice/data","type":"dataset","visibility":"private","reason":"create","idempotency_key":"one","wait_seconds":0}}}`,
 	}, "\n") + "\n"
 	var output bytes.Buffer
 	if err := runMCP(context.Background(), getenv, strings.NewReader(input), &output, &bytes.Buffer{}, nil); err != nil {
@@ -300,10 +300,10 @@ func TestRepoCreateOptionsAndTerminalOutput(t *testing.T) {
 		}
 	}
 	options, err := parseRepoCreateClientOptions([]string{"--type", "space", "--public", "alice/app"})
-	if err != nil || options.sdk != "docker" || options.private {
+	if err != nil || options.sdk != "docker" || options.visibility != "public" {
 		t.Fatalf("Space options = %#v, %v", options, err)
 	}
-	request, err := repoCreateSubmitRequest(&repoCreateClientOptions{repoID: "alice/data", repoType: "dataset", private: true, reason: "create"})
+	request, err := repoCreateSubmitRequest(&repoCreateClientOptions{repoID: "alice/data", repoType: "dataset", visibility: "private", reason: "create"})
 	if err != nil || request.IdempotencyKey == "" {
 		t.Fatalf("generated request = %#v, %v", request, err)
 	}
@@ -344,16 +344,15 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 		t.Fatal("unknown MCP tool accepted")
 	}
 	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{}); err == nil {
-		t.Fatal("missing MCP privacy accepted")
+		t.Fatal("missing MCP visibility accepted")
 	}
-	if _, err := callMCPRepoCreate(context.Background(), client, json.RawMessage(`{"repo_id":"alice/data","type":"dataset","private":true,"reason":"create","idempotency_key":"bad-wait","wait_seconds":901}`)); err == nil {
+	if _, err := callMCPRepoCreate(context.Background(), client, json.RawMessage(`{"repo_id":"alice/data","type":"dataset","visibility":"private","reason":"create","idempotency_key":"bad-wait","wait_seconds":901}`)); err == nil {
 		t.Fatal("oversized repository wait accepted")
 	}
-	private := true
-	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "bad", Private: &private}); err == nil {
+	if _, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "bad", Visibility: "private"}); err == nil {
 		t.Fatal("bad MCP repo accepted")
 	}
-	space, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "alice/app", Type: "space", Private: &private, Reason: "create", IdempotencyKey: "space"})
+	space, err := mcpRepoCreateRequest(mcpRepoCreateInput{RepoID: "alice/app", Type: "space", Visibility: "private", Reason: "create", IdempotencyKey: "space"})
 	if err != nil || !strings.Contains(string(space.Arguments), `"sdk":"docker"`) {
 		t.Fatalf("Space MCP default = %s, %v", space.Arguments, err)
 	}
@@ -384,10 +383,9 @@ func TestMCPWaitDeadlineReturnsResumableOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	private := true
 	for _, call := range []mcpToolCall{
 		{Name: "hf_operation_wait", Arguments: json.RawMessage(`{"operation_id":"op_test","wait_seconds":1}`)},
-		{Name: "hf_repo_create", Arguments: mustJSON(t, mcpRepoCreateInput{RepoID: "alice/data", Type: "dataset", Private: &private, Reason: "create", IdempotencyKey: "create", WaitSeconds: 1})},
+		{Name: "hf_repo_create", Arguments: mustJSON(t, mcpRepoCreateInput{RepoID: "alice/data", Type: "dataset", Visibility: "private", Reason: "create", IdempotencyKey: "create", WaitSeconds: 1})},
 	} {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		value, callErr := callMCPTool(ctx, client, call)
@@ -423,6 +421,6 @@ func agentClientTestEnv(serverURL string) func(string) string {
 func testAgentOperation(state agentv1.State) agentv1.Operation {
 	now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
 	return agentv1.Operation{APIVersion: agentv1.APIVersion, ID: "op_test", Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one",
-		Operation: "repo.create", Target: json.RawMessage(`{"kind":"repo"}`), Arguments: json.RawMessage(`{"private":true}`), State: state,
+		Operation: "repo.create", Target: json.RawMessage(`{"kind":"repo"}`), Arguments: json.RawMessage(`{"visibility":"private"}`), State: state,
 		Revision: 2, CreatedAt: now, UpdatedAt: now, Presentation: agentv1.Presentation{Title: "Create", Summary: "Create alice/data"}}
 }

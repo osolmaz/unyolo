@@ -98,7 +98,7 @@ func handleMCPRequest(ctx context.Context, client *agentClient, request mcpReque
 
 func mcpTools() []map[string]any {
 	return []map[string]any{
-		{"name": "hf_repo_create", "description": "Create a Hugging Face repository through HF Broker. Never ask for a Hugging Face token. The operation may wait for user approval.", "inputSchema": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"repo_id", "type", "private", "reason", "idempotency_key"}, "properties": map[string]any{"repo_id": map[string]any{"type": "string"}, "type": map[string]any{"enum": []string{"model", "dataset", "space"}}, "private": map[string]any{"type": "boolean"}, "sdk": map[string]any{"enum": []string{"docker", "gradio", "static"}, "default": "docker", "description": "Space SDK; defaults to docker for Spaces"}, "reason": map[string]any{"type": "string"}, "idempotency_key": map[string]any{"type": "string"}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": 900}}}},
+		{"name": "hf_repo_create", "description": "Create a Hugging Face repository through HF Broker. Never ask for a Hugging Face token. The operation may wait for user approval.", "inputSchema": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"repo_id", "type", "visibility", "reason", "idempotency_key"}, "properties": map[string]any{"repo_id": map[string]any{"type": "string"}, "type": map[string]any{"enum": []string{"model", "dataset", "space"}}, "visibility": map[string]any{"enum": []string{"public", "private"}}, "sdk": map[string]any{"enum": []string{"docker", "gradio", "static"}, "default": "docker", "description": "Space SDK; defaults to docker for Spaces"}, "reason": map[string]any{"type": "string", "maxLength": 2000}, "idempotency_key": map[string]any{"type": "string"}, "wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": 900}}}},
 		{"name": "hf_operation_get", "description": "Get a resumable HF Broker operation by ID.", "inputSchema": mcpIDSchema("operation_id", false)},
 		{"name": "hf_operation_wait", "description": "Wait for a resumable HF Broker operation without requesting a Hugging Face token.", "inputSchema": mcpIDSchema("operation_id", true)},
 		{"name": "hf_grant_request", "description": "Request temporary, policy-bounded Hugging Face access. Never ask for a Hugging Face token.", "inputSchema": mcpGrantRequestSchema()},
@@ -270,7 +270,7 @@ func waitForMCPGrant(ctx context.Context, client *hfGrantClient, id string, time
 type mcpRepoCreateInput struct {
 	RepoID         string `json:"repo_id"`
 	Type           string `json:"type"`
-	Private        *bool  `json:"private"`
+	Visibility     string `json:"visibility"`
 	SDK            string `json:"sdk"`
 	Reason         string `json:"reason"`
 	IdempotencyKey string `json:"idempotency_key"`
@@ -303,15 +303,15 @@ func callMCPRepoCreate(ctx context.Context, client *agentClient, raw json.RawMes
 }
 
 func mcpRepoCreateRequest(input mcpRepoCreateInput) (agentv1.SubmitRequest, error) {
-	if input.Private == nil {
-		return agentv1.SubmitRequest{}, errors.New("private is required")
+	if input.Visibility != "public" && input.Visibility != "private" {
+		return agentv1.SubmitRequest{}, errors.New("visibility must be public or private")
 	}
 	owner, name, ok := strings.Cut(input.RepoID, "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return agentv1.SubmitRequest{}, errors.New("repo_id must be OWNER/NAME")
 	}
 	target, _ := json.Marshal(map[string]any{"kind": "repo", "type": input.Type, "owner": owner, "name": name})
-	arguments := map[string]any{"private": *input.Private}
+	arguments := map[string]any{"visibility": input.Visibility}
 	if input.Type == "space" && input.SDK == "" {
 		input.SDK = "docker"
 	}

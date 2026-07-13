@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 
@@ -22,8 +20,15 @@ var repoSegment = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$`)
 
 type repositoryAdapter struct {
 	descriptor opcatalog.Descriptor
-	client     client
+	client     repositoryClient
 	endpoint   string
+}
+
+type repositoryClient interface {
+	WhoAmI(context.Context) (hubclient.Identity, error)
+	RepoInfo(context.Context, hubclient.RepoRef) (hubclient.RepoInfo, error)
+	CreateRepo(context.Context, hubclient.CreateRepoInput) (hubclient.CreatedRepo, error)
+	DeleteRepo(context.Context, hubclient.RepoRef) error
 }
 
 type repositoryTarget struct {
@@ -41,11 +46,12 @@ type repoCreateArguments struct {
 type emptyArguments struct{}
 
 type repoPreconditions struct {
-	Absent         bool   `json:"absent,omitempty"`
-	ObservedDigest string `json:"observed_digest,omitempty"`
+	Absent             bool   `json:"absent,omitempty"`
+	CredentialIdentity string `json:"credential_identity,omitempty"`
+	ObservedDigest     string `json:"observed_digest,omitempty"`
 }
 
-func NewRepositoryAdapters(hub client, endpoint string) ([]Adapter, error) {
+func NewRepositoryAdapters(hub repositoryClient, endpoint string) ([]Adapter, error) {
 	if hub == nil {
 		return nil, errors.New("Hugging Face Hub client is required")
 	}
@@ -105,8 +111,29 @@ func (a *repositoryAdapter) Resolve(ctx context.Context, input Input) (Plan, err
 		Arguments: input.Arguments, Preconditions: encodedPreconditions, Presentation: presentation, Policy: policyRequest}, nil
 }
 
-func (a *repositoryAdapter) Authorize(plan Plan) hfpolicy.Request   { return plan.Policy }
-func (a *repositoryAdapter) Present(plan Plan) agentv1.Presentation { return plan.Presentation }
+func (a *repositoryAdapter) Authorize(plan Plan) hfpolicy.Request {
+	if plan.Policy.Operation != "" {
+		return plan.Policy
+	}
+	var target repositoryTarget
+	if decodeClosed(plan.Target, &target, maxTargetBytes) != nil {
+		return hfpolicy.Request{}
+	}
+	_, request, _ := a.presentationAndPolicy(target, plan.Arguments)
+	return request
+}
+
+func (a *repositoryAdapter) Present(plan Plan) agentv1.Presentation {
+	if plan.Presentation.Title != "" {
+		return plan.Presentation
+	}
+	var target repositoryTarget
+	if decodeClosed(plan.Target, &target, maxTargetBytes) != nil {
+		return agentv1.Presentation{}
+	}
+	presentation, _, _ := a.presentationAndPolicy(target, plan.Arguments)
+	return presentation
+}
 
 func (a *repositoryAdapter) Execute(ctx context.Context, plan Plan) (json.RawMessage, error) {
 	var target repositoryTarget
@@ -123,18 +150,12 @@ func (a *repositoryAdapter) Execute(ctx context.Context, plan Plan) (json.RawMes
 		if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
 			return nil, errors.New("operation plan arguments are invalid")
 		}
-		body := map[string]any{"name": target.Name, "organization": target.Owner, "type": target.Type, "visibility": arguments.Visibility}
-		if arguments.SDK != "" {
-			body["sdk"] = arguments.SDK
-		}
-		encoded, _ := canonical(body)
-		if _, err := a.client.Do(ctx, hubclient.Call{Method: http.MethodPost, Path: "/api/repos/create", Body: encoded}); err != nil {
+		if _, err := a.client.CreateRepo(ctx, hubclient.CreateRepoInput{Ref: target.repoRef(), Visibility: hubclient.Visibility(arguments.Visibility), SpaceSDK: arguments.SDK, PersonalNamespace: preconditions.CredentialIdentity == target.Owner}); err != nil {
 			return nil, err
 		}
 		return canonical(map[string]any{"repo_id": target.Owner + "/" + target.Name, "url": a.repoURL(target)})
 	case "repo.delete":
-		body, _ := canonical(map[string]any{"name": target.Name, "organization": target.Owner, "type": target.Type})
-		if _, err := a.client.Do(ctx, hubclient.Call{Method: http.MethodDelete, Path: "/api/repos/delete", Body: body}); err != nil {
+		if err := a.client.DeleteRepo(ctx, target.repoRef()); err != nil {
 			return nil, err
 		}
 		return json.RawMessage(`{"deleted":true}`), nil
@@ -175,7 +196,11 @@ func (a *repositoryAdapter) resolvePreconditions(ctx context.Context, target rep
 	var upstream *hubclient.Error
 	if a.descriptor.Name == "repo.create" {
 		if errors.As(err, &upstream) && upstream.Code == hubclient.CodeNotFound {
-			return repoPreconditions{Absent: true}, nil
+			identity, identityErr := a.client.WhoAmI(ctx)
+			if identityErr != nil {
+				return repoPreconditions{}, identityErr
+			}
+			return repoPreconditions{Absent: true, CredentialIdentity: identity.Name}, nil
 		}
 		if err != nil {
 			return repoPreconditions{}, err
@@ -192,6 +217,13 @@ func (a *repositoryAdapter) checkPreconditions(ctx context.Context, target repos
 	body, err := a.readRepository(ctx, target)
 	var upstream *hubclient.Error
 	if expected.Absent {
+		identity, identityErr := a.client.WhoAmI(ctx)
+		if identityErr != nil || identity.Name != expected.CredentialIdentity {
+			if identityErr != nil {
+				return identityErr
+			}
+			return errors.New("operation_precondition_failed")
+		}
 		if errors.As(err, &upstream) && upstream.Code == hubclient.CodeNotFound {
 			return nil
 		}
@@ -210,8 +242,11 @@ func (a *repositoryAdapter) checkPreconditions(ctx context.Context, target repos
 }
 
 func (a *repositoryAdapter) readRepository(ctx context.Context, target repositoryTarget) (json.RawMessage, error) {
-	response, err := a.client.Do(ctx, hubclient.Call{Method: http.MethodGet, Path: repoAPIPath(target), Idempotent: true})
-	return response.Body, err
+	response, err := a.client.RepoInfo(ctx, target.repoRef())
+	if err != nil {
+		return nil, err
+	}
+	return canonical(response)
 }
 
 func (a *repositoryAdapter) presentationAndPolicy(target repositoryTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request, error) {
@@ -248,9 +283,8 @@ func validRepoCreateArguments(target repositoryTarget, arguments repoCreateArgum
 	return arguments.SDK == ""
 }
 
-func repoAPIPath(target repositoryTarget) string {
-	plural := target.Type + "s"
-	return "/api/" + plural + "/" + url.PathEscape(target.Owner) + "/" + url.PathEscape(target.Name)
+func (target repositoryTarget) repoRef() hubclient.RepoRef {
+	return hubclient.RepoRef{Type: hubclient.RepoType(target.Type), Owner: target.Owner, Name: target.Name}
 }
 
 func (a *repositoryAdapter) repoURL(target repositoryTarget) string {

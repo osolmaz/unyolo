@@ -70,7 +70,7 @@ func TestCanonicalPlanDigestFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = "2b1fd2788689c05d8306df7b6537251ccc281f0b2733421b6e3cdc0fa1444551"
+	const expected = "fd4b6fe4595c07215d1a88949b10ea33d3cab5d6289c7f7112314b13a2cf94df"
 	if got := plandigest.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}
@@ -94,7 +94,7 @@ func TestFromRequestBoundsLongReasonPresentation(t *testing.T) {
 }
 
 func TestDecodeRejectsUnknownDuplicateAndSensitiveFields(t *testing.T) {
-	valid := `{"api_version":"hf-broker.io/plan/v1","operation":"git.push.force","operation_revision":1,"client_id":"bob","client_request_id":"request-1","target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}},"arguments":{},"preconditions":{},"credential_selector":{"name":"primary"},"presentation":{"title":"Force push"},"authorization":{"mode":"execution","requested_duration_seconds":300,"requested_max_uses":1},"created_at":"2026-07-11T12:00:00Z","expires_at":"2026-07-11T12:05:00Z"}`
+	valid := `{"api_version":"hf-broker.io/plan/v1","operation":"git.push.force","operation_revision":1,"client_id":"bob","client_request_id":"request-1","target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}},"arguments":{},"preconditions":{},"credential_selector":{"name":"primary"},"presentation":{"title":"Force push"},"authorization":{"mode":"execution","requested_duration_seconds":300,"requested_max_uses":1,"target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}}},"created_at":"2026-07-11T12:00:00Z","expires_at":"2026-07-11T12:05:00Z"}`
 	for _, value := range []string{
 		strings.Replace(valid, `"operation":`, `"unknown":true,"operation":`, 1),
 		strings.Replace(valid, `"operation":"git.push.force"`, `"operation":"git.push.force","operation":"repo.delete"`, 1),
@@ -111,7 +111,7 @@ func TestDecodeRejectsUnknownDuplicateAndSensitiveFields(t *testing.T) {
 }
 
 func FuzzDecodePlan(f *testing.F) {
-	f.Add([]byte(`{"api_version":"hf-broker.io/plan/v1","operation":"git.push.force","operation_revision":1,"client_id":"bob","client_request_id":"request-1","target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}},"arguments":{},"preconditions":{},"credential_selector":{"name":"primary"},"presentation":{"title":"Force push"},"authorization":{"mode":"execution","requested_duration_seconds":300,"requested_max_uses":1},"created_at":"2026-07-11T12:00:00Z","expires_at":"2026-07-11T12:05:00Z"}`))
+	f.Add([]byte(`{"api_version":"hf-broker.io/plan/v1","operation":"git.push.force","operation_revision":1,"client_id":"bob","client_request_id":"request-1","target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}},"arguments":{},"preconditions":{},"credential_selector":{"name":"primary"},"presentation":{"title":"Force push"},"authorization":{"mode":"execution","requested_duration_seconds":300,"requested_max_uses":1,"target":{"kind":"hf","fields":{"name":["dataset/acme/demo"]}}},"created_at":"2026-07-11T12:00:00Z","expires_at":"2026-07-11T12:05:00Z"}`))
 	f.Add([]byte(`{"api_version":"unknown"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		plan, err := decode(data)
