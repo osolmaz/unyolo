@@ -158,6 +158,50 @@ type BucketBatchOperation struct {
 	SourceRepoID   string `json:"sourceRepoId,omitempty"`
 }
 
+type CommitOperationKind string
+
+const (
+	CommitFile          CommitOperationKind = "file"
+	CommitLFSFile       CommitOperationKind = "lfs_file"
+	CommitDeletedFile   CommitOperationKind = "deleted_file"
+	CommitDeletedFolder CommitOperationKind = "deleted_folder"
+)
+
+// CommitOperation is one validated wire operation in a Hub commit.
+type CommitOperation struct {
+	Kind    CommitOperationKind
+	Path    string
+	Content []byte
+	OID     string
+	Size    int64
+}
+
+type CommitRequest struct {
+	Ref          RepoRef
+	Revision     string
+	Summary      string
+	Description  string
+	ParentCommit string
+	CreatePR     bool
+	HotReload    bool
+	Operations   []CommitOperation
+}
+
+type CommitResult struct {
+	CommitURL      string `json:"commitUrl"`
+	CommitOID      string `json:"commitOid"`
+	PullRequestURL string `json:"pullRequestUrl"`
+}
+
+type RepoPathInfo struct {
+	Type    string `json:"type"`
+	Path    string `json:"path"`
+	OID     string `json:"oid"`
+	Size    int64  `json:"size"`
+	LFSSHA  string `json:"lfs_sha,omitempty"`
+	XetHash string `json:"xet_hash,omitempty"`
+}
+
 // Validate rejects unsafe or ambiguous Space identities.
 func (s SpaceRef) Validate() error {
 	if !ValidNamespaceSegment(s.Owner) || !ValidNamespaceSegment(s.Name) {

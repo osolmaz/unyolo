@@ -29,6 +29,7 @@ func TestBucketClientUsesPinnedNDJSONAndMoveRoutes(t *testing.T) {
 			if string(body) != want {
 				t.Fatalf("batch body = %q, want %q", body, want)
 			}
+			_, _ = io.WriteString(w, `{"success":true,"processed":2,"succeeded":2,"failed":[]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api/repos/move":
 			var body map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["fromRepo"] != "acme/source" || body["toRepo"] != "acme/destination" || body["type"] != "bucket" {

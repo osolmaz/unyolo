@@ -42,7 +42,14 @@ func (c *Client) ApplyBucketBatch(ctx context.Context, ref BucketRef, operations
 		body.Write(line)
 		body.WriteByte('\n')
 	}
-	return c.call(ctx, callSpec{method: http.MethodPost, path: ref.apiPath("batch"), rawBody: body.Bytes(), contentType: "application/x-ndjson"})
+	var result mutationBatchResult
+	if err := c.call(ctx, callSpec{method: http.MethodPost, path: ref.apiPath("batch"), rawBody: body.Bytes(), contentType: "application/x-ndjson", out: &result}); err != nil {
+		return err
+	}
+	if !result.Success || result.Processed != len(operations) || result.Succeeded != len(operations) || len(result.Failed) != 0 {
+		return &Error{Code: CodeInvalid, StatusCode: http.StatusOK}
+	}
+	return nil
 }
 
 func ValidateBucketBatchOperations(operations []BucketBatchOperation) error {
@@ -134,4 +141,11 @@ func validSourceRepo(repoType, repoID string) bool {
 	}
 	parts := strings.Split(repoID, "/")
 	return len(parts) == 2 && ValidNamespaceSegment(parts[0]) && ValidNamespaceSegment(parts[1]) && url.PathEscape(repoID) != ""
+}
+
+type mutationBatchResult struct {
+	Success   bool             `json:"success"`
+	Processed int              `json:"processed"`
+	Succeeded int              `json:"succeeded"`
+	Failed    []map[string]any `json:"failed"`
 }
