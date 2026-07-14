@@ -1,6 +1,7 @@
 package githubauth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -37,6 +38,7 @@ type Manager struct {
 }
 
 func New(cfg Config) (*Manager, error) {
+	cfg.DevelopmentToken = bytes.TrimSpace(cfg.DevelopmentToken)
 	apiURL, err := normalizeAPIURL(cfg.APIBaseURL)
 	if err != nil {
 		return nil, err

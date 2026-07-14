@@ -152,7 +152,7 @@ func bindingByID(values []Binding, id string) (Binding, bool) {
 
 func safeResponseField(field string) bool {
 	switch field {
-	case "id", "node_id", "name", "number", "state", "status", "sha", "url", "created_at", "updated_at":
+	case "id", "node_id", "name", "number", "state", "status", "type", "sha", "url", "created_at", "updated_at":
 		return true
 	default:
 		return false

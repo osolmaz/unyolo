@@ -114,6 +114,27 @@ func TestInstallationCredentialsUseExactImmutableCacheTuple(t *testing.T) {
 	}
 }
 
+func TestDevelopmentTokenNormalizesProtectedFileNewline(t *testing.T) {
+	manager, err := New(Config{DevelopmentToken: []byte("test-token\n"), DevelopmentTokenFile: "/protected/token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _ := http.NewRequest(http.MethodGet, "https://api.github.test", http.NoBody)
+	if err := manager.development.AuthorizeAPI(request); err != nil {
+		t.Fatal(err)
+	}
+	if got := request.Header.Get("Authorization"); got != "Bearer test-token" {
+		t.Fatalf("authorization = %q", got)
+	}
+	invalid, err := New(Config{DevelopmentToken: []byte("bad token"), DevelopmentTokenFile: "/protected/token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := invalid.development.AuthorizeAPI(request); err == nil {
+		t.Fatal("token with embedded whitespace authorized a request")
+	}
+}
+
 func TestInstallationCredentialExpiryAndErrorsAreDeterministicAndRedacted(t *testing.T) {
 	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
 	mints := 0

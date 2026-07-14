@@ -2976,6 +2976,17 @@
         "additionalProperties": false,
         "description": "A GitHub Security Advisory.",
         "properties": {
+          "type": {
+            "description": "The type of advisory.",
+            "enum": [
+              "reviewed",
+              "unreviewed",
+              "malware"
+            ],
+            "maxLength": 1048576,
+            "readOnly": true,
+            "type": "string"
+          },
           "updated_at": {
             "description": "The date and time of when the advisory was last updated, in ISO 8601 format.",
             "format": "date-time",
@@ -3196,6 +3207,17 @@
           "additionalProperties": false,
           "description": "A GitHub Security Advisory.",
           "properties": {
+            "type": {
+              "description": "The type of advisory.",
+              "enum": [
+                "reviewed",
+                "unreviewed",
+                "malware"
+              ],
+              "maxLength": 1048576,
+              "readOnly": true,
+              "type": "string"
+            },
             "updated_at": {
               "description": "The date and time of when the advisory was last updated, in ISO 8601 format.",
               "format": "date-time",
@@ -5302,6 +5324,10 @@
           "id": {
             "type": "integer"
           },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "url": {
             "maxLength": 1048576,
             "type": "string"
@@ -5333,6 +5359,10 @@
         "properties": {
           "id": {
             "type": "integer"
+          },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
           },
           "url": {
             "maxLength": 1048576,
@@ -5395,6 +5425,10 @@
           "properties": {
             "id": {
               "type": "integer"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             },
             "url": {
               "maxLength": 1048576,
@@ -5460,6 +5494,10 @@
           "properties": {
             "id": {
               "type": "integer"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             },
             "url": {
               "maxLength": 1048576,
@@ -7198,7 +7236,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Only allow users with bypass permission to create matching refs.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "creation"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "creation",
                   "type": "object"
                 },
@@ -7215,7 +7261,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Only allow users with bypass permission to update matching refs.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "update"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "update",
                   "type": "object"
                 },
@@ -7232,7 +7286,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Only allow users with bypass permissions to delete matching refs.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "deletion"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "deletion",
                   "type": "object"
                 },
@@ -7249,7 +7311,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Prevent merge commits from being pushed to matching refs.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "required_linear_history"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "required_linear_history",
                   "type": "object"
                 },
@@ -7266,7 +7336,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Merges must be performed via a merge queue.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "merge_queue"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "merge_queue",
                   "type": "object"
                 },
@@ -7283,7 +7361,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Choose which environments must be successfully deployed to before refs can be pushed into a ref that matches this rule.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "required_deployments"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "required_deployments",
                   "type": "object"
                 },
@@ -7300,7 +7386,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Commits pushed to matching refs must have verified signatures.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "required_signatures"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "required_signatures",
                   "type": "object"
                 },
@@ -7317,7 +7411,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Require all commits be made to a non-target branch and submitted via a pull request before they can be merged.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "pull_request"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "pull_request",
                   "type": "object"
                 },
@@ -7334,7 +7436,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Choose which status checks must pass before the ref is updated. When enabled, commits must first be pushed to another ref where the checks pass.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "required_status_checks"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "required_status_checks",
                   "type": "object"
                 },
@@ -7351,7 +7461,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Prevent users with push access from force pushing to refs.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "non_fast_forward"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "non_fast_forward",
                   "type": "object"
                 },
@@ -7368,7 +7486,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Parameters to be used for the commit_message_pattern rule",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "commit_message_pattern"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "commit_message_pattern",
                   "type": "object"
                 },
@@ -7385,7 +7511,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Parameters to be used for the commit_author_email_pattern rule",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "commit_author_email_pattern"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "commit_author_email_pattern",
                   "type": "object"
                 },
@@ -7402,7 +7536,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Parameters to be used for the committer_email_pattern rule",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "committer_email_pattern"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "committer_email_pattern",
                   "type": "object"
                 },
@@ -7419,7 +7561,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Parameters to be used for the branch_name_pattern rule",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "branch_name_pattern"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "branch_name_pattern",
                   "type": "object"
                 },
@@ -7436,7 +7586,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Parameters to be used for the tag_name_pattern rule",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "tag_name_pattern"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "tag_name_pattern",
                   "type": "object"
                 },
@@ -7453,7 +7611,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Require all changes made to a targeted branch to pass the specified workflows before they can be merged.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "workflows"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "workflows",
                   "type": "object"
                 },
@@ -7470,7 +7636,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Choose which tools must provide code scanning results before the reference is updated. When configured, code scanning must be enabled and have results for both the commit and the reference being updated.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "code_scanning"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "code_scanning",
                   "type": "object"
                 },
@@ -7487,7 +7661,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Request Copilot code review for new pull requests automatically if the author has access to Copilot code review and their premium requests quota has not reached the limit.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "copilot_code_review"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "copilot_code_review",
                   "type": "object"
                 },
@@ -7504,7 +7686,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Enforce any added or changed dependencies to comply with the organization's license policy.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "license_compliance_scanning"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "license_compliance_scanning",
                   "type": "object"
                 },
@@ -7521,7 +7711,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Prevent commits that include changes in specified file and folder paths from being pushed to the commit graph. This includes absolute paths that contain file names.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "file_path_restriction"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "file_path_restriction",
                   "type": "object"
                 },
@@ -7538,7 +7736,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Prevent commits that include file paths that exceed the specified character limit from being pushed to the commit graph.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "max_file_path_length"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "max_file_path_length",
                   "type": "object"
                 },
@@ -7555,7 +7761,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Prevent commits that include files with specified file extensions from being pushed to the commit graph.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "file_extension_restriction"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "file_extension_restriction",
                   "type": "object"
                 },
@@ -7572,7 +7786,15 @@
                 {
                   "additionalProperties": false,
                   "description": "Prevent commits with individual files that exceed the specified limit from being pushed to the commit graph.",
-                  "properties": {},
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "max_file_size"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
                   "title": "max_file_size",
                   "type": "object"
                 },
@@ -7873,6 +8095,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -7936,6 +8167,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -8404,6 +8639,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -8448,6 +8692,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -8681,6 +8929,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -8744,6 +9001,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -8984,6 +9245,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -9047,6 +9317,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -13810,6 +14084,10 @@
                     "maxLength": 1048576,
                     "type": "string"
                   },
+                  "type": {
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
                   "url": {
                     "format": "uri",
                     "maxLength": 1048576,
@@ -13840,6 +14118,13 @@
                 "maxLength": 1048576,
                 "type": "string"
               },
+              "type": {
+                "enum": [
+                  "Team"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
               "url": {
                 "format": "uri",
                 "maxLength": 1048576,
@@ -13859,6 +14144,13 @@
             "type": "string"
           },
           "node_id": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "Team"
+            ],
             "maxLength": 1048576,
             "type": "string"
           },
@@ -14025,6 +14317,10 @@
                     "maxLength": 1048576,
                     "type": "string"
                   },
+                  "type": {
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
                   "url": {
                     "format": "uri",
                     "maxLength": 1048576,
@@ -14055,6 +14351,13 @@
                 "maxLength": 1048576,
                 "type": "string"
               },
+              "type": {
+                "enum": [
+                  "Team"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
               "url": {
                 "format": "uri",
                 "maxLength": 1048576,
@@ -14074,6 +14377,13 @@
             "type": "string"
           },
           "node_id": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "Team"
+            ],
             "maxLength": 1048576,
             "type": "string"
           },
@@ -14167,6 +14477,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -14370,6 +14684,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -23947,6 +24265,15 @@
           "node_id": {
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "description": "Whether this rule targets a branch or tag.",
+            "enum": [
+              "branch",
+              "tag"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
           }
         },
         "title": "Deployment branch policy",
@@ -24271,6 +24598,15 @@
           "node_id": {
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "description": "Whether this rule targets a branch or tag.",
+            "enum": [
+              "branch",
+              "tag"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
           }
         },
         "title": "Deployment branch policy",
@@ -24427,6 +24763,15 @@
             "type": "string"
           },
           "node_id": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
+            "description": "Whether this rule targets a branch or tag.",
+            "enum": [
+              "branch",
+              "tag"
+            ],
             "maxLength": 1048576,
             "type": "string"
           }
@@ -27701,6 +28046,70 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -27768,6 +28177,70 @@
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -27919,6 +28392,70 @@
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -28148,6 +28685,70 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -28221,6 +28822,70 @@
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -28315,6 +28980,70 @@
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -28444,6 +29173,70 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "additionalProperties": false,
+              "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+              "properties": {
+                "color": {
+                  "description": "The color of the issue type.",
+                  "enum": [
+                    "gray",
+                    "blue",
+                    "green",
+                    "yellow",
+                    "orange",
+                    "red",
+                    "pink",
+                    "purple"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "The time the issue type created.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "description": {
+                  "description": "The description of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The unique identifier of the issue type.",
+                  "type": "integer"
+                },
+                "is_enabled": {
+                  "description": "The enabled state of the issue type.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The name of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "description": "The node identifier of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "description": "The time the issue type last updated.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "node_id",
+                "name",
+                "description"
+              ],
+              "title": "Issue Type",
+              "type": "object"
+            },
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
@@ -28499,6 +29292,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -28563,6 +29360,70 @@
               "description": "State of the issue; either 'open' or 'closed'",
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "additionalProperties": false,
+              "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+              "properties": {
+                "color": {
+                  "description": "The color of the issue type.",
+                  "enum": [
+                    "gray",
+                    "blue",
+                    "green",
+                    "yellow",
+                    "orange",
+                    "red",
+                    "pink",
+                    "purple"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "The time the issue type created.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "description": {
+                  "description": "The description of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The unique identifier of the issue type.",
+                  "type": "integer"
+                },
+                "is_enabled": {
+                  "description": "The enabled state of the issue type.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The name of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "description": "The node identifier of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "description": "The time the issue type last updated.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "node_id",
+                "name",
+                "description"
+              ],
+              "title": "Issue Type",
+              "type": "object"
             },
             "updated_at": {
               "format": "date-time",
@@ -28631,6 +29492,70 @@
               "description": "State of the issue; either 'open' or 'closed'",
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "additionalProperties": false,
+              "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+              "properties": {
+                "color": {
+                  "description": "The color of the issue type.",
+                  "enum": [
+                    "gray",
+                    "blue",
+                    "green",
+                    "yellow",
+                    "orange",
+                    "red",
+                    "pink",
+                    "purple"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "The time the issue type created.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "description": {
+                  "description": "The description of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The unique identifier of the issue type.",
+                  "type": "integer"
+                },
+                "is_enabled": {
+                  "description": "The enabled state of the issue type.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The name of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "description": "The node identifier of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "description": "The time the issue type last updated.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "node_id",
+                "name",
+                "description"
+              ],
+              "title": "Issue Type",
+              "type": "object"
             },
             "updated_at": {
               "format": "date-time",
@@ -30243,6 +31168,70 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "additionalProperties": false,
+              "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+              "properties": {
+                "color": {
+                  "description": "The color of the issue type.",
+                  "enum": [
+                    "gray",
+                    "blue",
+                    "green",
+                    "yellow",
+                    "orange",
+                    "red",
+                    "pink",
+                    "purple"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "The time the issue type created.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "description": {
+                  "description": "The description of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The unique identifier of the issue type.",
+                  "type": "integer"
+                },
+                "is_enabled": {
+                  "description": "The enabled state of the issue type.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The name of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "description": "The node identifier of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "description": "The time the issue type last updated.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "node_id",
+                "name",
+                "description"
+              ],
+              "title": "Issue Type",
+              "type": "object"
+            },
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
@@ -30365,6 +31354,70 @@
               "description": "State of the issue; either 'open' or 'closed'",
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "additionalProperties": false,
+              "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+              "properties": {
+                "color": {
+                  "description": "The color of the issue type.",
+                  "enum": [
+                    "gray",
+                    "blue",
+                    "green",
+                    "yellow",
+                    "orange",
+                    "red",
+                    "pink",
+                    "purple"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "The time the issue type created.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "description": {
+                  "description": "The description of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The unique identifier of the issue type.",
+                  "type": "integer"
+                },
+                "is_enabled": {
+                  "description": "The enabled state of the issue type.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The name of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "description": "The node identifier of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "description": "The time the issue type last updated.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "node_id",
+                "name",
+                "description"
+              ],
+              "title": "Issue Type",
+              "type": "object"
             },
             "updated_at": {
               "format": "date-time",
@@ -30496,6 +31549,70 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "additionalProperties": false,
+              "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+              "properties": {
+                "color": {
+                  "description": "The color of the issue type.",
+                  "enum": [
+                    "gray",
+                    "blue",
+                    "green",
+                    "yellow",
+                    "orange",
+                    "red",
+                    "pink",
+                    "purple"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "The time the issue type created.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "description": {
+                  "description": "The description of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The unique identifier of the issue type.",
+                  "type": "integer"
+                },
+                "is_enabled": {
+                  "description": "The enabled state of the issue type.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The name of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "description": "The node identifier of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "description": "The time the issue type last updated.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "node_id",
+                "name",
+                "description"
+              ],
+              "title": "Issue Type",
+              "type": "object"
+            },
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
@@ -30603,6 +31720,70 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "additionalProperties": false,
+              "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+              "properties": {
+                "color": {
+                  "description": "The color of the issue type.",
+                  "enum": [
+                    "gray",
+                    "blue",
+                    "green",
+                    "yellow",
+                    "orange",
+                    "red",
+                    "pink",
+                    "purple"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "The time the issue type created.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "description": {
+                  "description": "The description of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The unique identifier of the issue type.",
+                  "type": "integer"
+                },
+                "is_enabled": {
+                  "description": "The enabled state of the issue type.",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The name of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "description": "The node identifier of the issue type.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "description": "The time the issue type last updated.",
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "node_id",
+                "name",
+                "description"
+              ],
+              "title": "Issue Type",
+              "type": "object"
+            },
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
@@ -30707,6 +31888,70 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -30757,6 +32002,70 @@
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -30825,6 +32134,70 @@
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -30901,6 +32274,70 @@
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "type": {
+            "additionalProperties": false,
+            "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+            "properties": {
+              "color": {
+                "description": "The color of the issue type.",
+                "enum": [
+                  "gray",
+                  "blue",
+                  "green",
+                  "yellow",
+                  "orange",
+                  "red",
+                  "pink",
+                  "purple"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "created_at": {
+                "description": "The time the issue type created.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "description": {
+                "description": "The description of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "id": {
+                "description": "The unique identifier of the issue type.",
+                "type": "integer"
+              },
+              "is_enabled": {
+                "description": "The enabled state of the issue type.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "The name of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "description": "The node identifier of the issue type.",
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "The time the issue type last updated.",
+                "format": "date-time",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "node_id",
+              "name",
+              "description"
+            ],
+            "title": "Issue Type",
+            "type": "object"
           },
           "updated_at": {
             "format": "date-time",
@@ -31201,6 +32638,70 @@
                 "description": "State of the issue; either 'open' or 'closed'",
                 "maxLength": 1048576,
                 "type": "string"
+              },
+              "type": {
+                "additionalProperties": false,
+                "description": "The type assigned to the issue. This is only present for issues in repositories where issue types are supported.",
+                "properties": {
+                  "color": {
+                    "description": "The color of the issue type.",
+                    "enum": [
+                      "gray",
+                      "blue",
+                      "green",
+                      "yellow",
+                      "orange",
+                      "red",
+                      "pink",
+                      "purple"
+                    ],
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "description": "The time the issue type created.",
+                    "format": "date-time",
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "The description of the issue type.",
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "The unique identifier of the issue type.",
+                    "type": "integer"
+                  },
+                  "is_enabled": {
+                    "description": "The enabled state of the issue type.",
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "description": "The name of the issue type.",
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
+                  "node_id": {
+                    "description": "The node identifier of the issue type.",
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
+                  "updated_at": {
+                    "description": "The time the issue type last updated.",
+                    "format": "date-time",
+                    "maxLength": 1048576,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "node_id",
+                  "name",
+                  "description"
+                ],
+                "title": "Issue Type",
+                "type": "object"
               },
               "updated_at": {
                 "format": "date-time",
@@ -35712,6 +37213,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -35818,6 +37323,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -37091,6 +38600,10 @@
                 "maxLength": 1048576,
                 "type": "string"
               },
+              "type": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
               "updated_at": {
                 "format": "date-time",
                 "maxLength": 1048576,
@@ -37123,6 +38636,10 @@
                 "type": "string"
               },
               "node_id": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
                 "maxLength": 1048576,
                 "type": "string"
               },
@@ -37189,6 +38706,10 @@
                 "maxLength": 1048576,
                 "type": "string"
               },
+              "type": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
               "updated_at": {
                 "format": "date-time",
                 "maxLength": 1048576,
@@ -37221,6 +38742,10 @@
                 "type": "string"
               },
               "node_id": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
                 "maxLength": 1048576,
                 "type": "string"
               },
@@ -37280,6 +38805,10 @@
                 "maxLength": 1048576,
                 "type": "string"
               },
+              "type": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
               "updated_at": {
                 "format": "date-time",
                 "maxLength": 1048576,
@@ -37312,6 +38841,10 @@
                 "type": "string"
               },
               "node_id": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
                 "maxLength": 1048576,
                 "type": "string"
               },
@@ -37509,6 +39042,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -37659,6 +39196,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -37745,6 +39286,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -37794,6 +39339,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -37849,6 +39398,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -37898,6 +39451,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -38447,6 +40004,10 @@
             "type": "string"
           },
           "node_id": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
             "maxLength": 1048576,
             "type": "string"
           },
@@ -39629,6 +41190,10 @@
             "id": {
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             }
           },
           "title": "Event",
@@ -39738,6 +41303,10 @@
             "id": {
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             }
           },
           "title": "Event",
@@ -39794,6 +41363,10 @@
             "id": {
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             }
           },
           "title": "Event",
@@ -39836,6 +41409,10 @@
               "type": "string"
             },
             "id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             }
@@ -39882,6 +41459,10 @@
             "id": {
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             }
           },
           "title": "Event",
@@ -39926,6 +41507,10 @@
             "id": {
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             }
           },
           "title": "Event",
@@ -39968,6 +41553,10 @@
               "type": "string"
             },
             "id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             }
@@ -40326,6 +41915,10 @@
                   "maxLength": 1048576,
                   "type": "string"
                 },
+                "type": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
                 "url": {
                   "format": "uri",
                   "maxLength": 1048576,
@@ -40450,6 +42043,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -41584,6 +43181,10 @@
             "id": {
               "maxLength": 1048576,
               "type": "string"
+            },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
             }
           },
           "title": "Event",
@@ -41626,6 +43227,10 @@
               "type": "string"
             },
             "id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             }
@@ -42911,6 +44516,15 @@
           "id": {
             "description": "Unique identifier of the repository.",
             "type": "integer"
+          },
+          "type": {
+            "description": "Whether it's a group assignment or individual assignment.",
+            "enum": [
+              "individual",
+              "group"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
           }
         },
         "title": "Classroom Assignment",
@@ -43026,6 +44640,15 @@
             "id": {
               "description": "Unique identifier of the repository.",
               "type": "integer"
+            },
+            "type": {
+              "description": "Whether it's a Group Assignment or Individual Assignment.",
+              "enum": [
+                "individual",
+                "group"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
             }
           },
           "title": "Simple Classroom Assignment",
@@ -45918,6 +47541,10 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -46687,6 +48314,10 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -47265,6 +48896,10 @@
             "type": "integer"
           },
           "name": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
             "maxLength": 1048576,
             "type": "string"
           },
@@ -47900,6 +49535,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -48096,6 +49735,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -48610,6 +50253,10 @@
               "type": "integer"
             },
             "name": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -50926,6 +52573,10 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -51251,6 +52902,10 @@
             "type": "integer"
           },
           "name": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
             "maxLength": 1048576,
             "type": "string"
           },
@@ -57772,6 +59427,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -62207,6 +63866,16 @@
                   "maxLength": 1048576,
                   "type": "string"
                 },
+                "type": {
+                  "enum": [
+                    "dir",
+                    "file",
+                    "submodule",
+                    "symlink"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
                 "url": {
                   "format": "uri",
                   "maxLength": 1048576,
@@ -62231,6 +63900,13 @@
                 "maxLength": 1048576,
                 "type": "string"
               },
+              "type": {
+                "enum": [
+                  "file"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
               "url": {
                 "format": "uri",
                 "maxLength": 1048576,
@@ -62252,6 +63928,13 @@
                 "maxLength": 1048576,
                 "type": "string"
               },
+              "type": {
+                "enum": [
+                  "symlink"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
               "url": {
                 "format": "uri",
                 "maxLength": 1048576,
@@ -62270,6 +63953,13 @@
                 "type": "string"
               },
               "sha": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "submodule"
+                ],
                 "maxLength": 1048576,
                 "type": "string"
               },
@@ -67711,6 +69401,13 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "enum": [
+              "file"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "url": {
             "format": "uri",
             "maxLength": 1048576,
@@ -67751,6 +69448,13 @@
             "type": "string"
           },
           "sha": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "file"
+            ],
             "maxLength": 1048576,
             "type": "string"
           },
@@ -68023,6 +69727,10 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "url": {
             "format": "uri",
             "maxLength": 1048576,
@@ -68292,6 +70000,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -86888,7 +88600,28 @@
         "description": "List of locations where the secret was detected",
         "items": {
           "additionalProperties": false,
-          "properties": {},
+          "properties": {
+            "type": {
+              "description": "The location type. Because secrets may be found in different types of resources (ie. code, comments, issues, pull requests, discussions), this field identifies the type of resource where the secret was found.",
+              "enum": [
+                "commit",
+                "wiki_commit",
+                "issue_title",
+                "issue_body",
+                "issue_comment",
+                "discussion_title",
+                "discussion_body",
+                "discussion_comment",
+                "pull_request_title",
+                "pull_request_body",
+                "pull_request_comment",
+                "pull_request_review",
+                "pull_request_review_comment"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            }
+          },
           "type": "object"
         },
         "maxItems": 100,
@@ -87970,6 +89703,10 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "url": {
             "format": "uri",
             "maxLength": 1048576,
@@ -88031,6 +89768,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -88101,6 +89842,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -88149,6 +89894,10 @@
             "type": "string"
           },
           "node_id": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
             "maxLength": 1048576,
             "type": "string"
           },
@@ -88205,6 +89954,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -88952,6 +90705,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -89010,6 +90772,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -89047,6 +90818,15 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
               "maxLength": 1048576,
               "type": "string"
             },
@@ -89175,6 +90955,15 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
               "maxLength": 1048576,
               "type": "string"
             },
@@ -89639,6 +91428,15 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "description": "The ownership type of the team",
+            "enum": [
+              "enterprise",
+              "organization"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -89734,6 +91532,15 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "description": "The ownership type of the team",
+            "enum": [
+              "enterprise",
+              "organization"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -89778,6 +91585,15 @@
             "type": "string"
           },
           "node_id": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
+            "description": "The ownership type of the team",
+            "enum": [
+              "enterprise",
+              "organization"
+            ],
             "maxLength": 1048576,
             "type": "string"
           },
@@ -89954,6 +91770,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -90012,6 +91837,15 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -90060,6 +91894,15 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
               "maxLength": 1048576,
               "type": "string"
             },
@@ -90118,6 +91961,15 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
+              "description": "The ownership type of the team",
+              "enum": [
+                "enterprise",
+                "organization"
+              ],
               "maxLength": 1048576,
               "type": "string"
             },
@@ -90196,6 +92048,10 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "type": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "url": {
               "format": "uri",
               "maxLength": 1048576,
@@ -90255,6 +92111,10 @@
               "type": "string"
             },
             "node_id": {
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -90731,6 +92591,15 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "description": "The ownership type of the team",
+            "enum": [
+              "enterprise",
+              "organization"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -90831,6 +92700,15 @@
             "type": "string"
           },
           "node_id": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
+            "description": "The ownership type of the team",
+            "enum": [
+              "enterprise",
+              "organization"
+            ],
             "maxLength": 1048576,
             "type": "string"
           },
@@ -91891,6 +93769,10 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "type": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -91960,6 +93842,10 @@
           },
           "name": {
             "description": "The name of a valid service, use 'web' for a webhook.",
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
             "maxLength": 1048576,
             "type": "string"
           },
@@ -92147,6 +94033,10 @@
             },
             "name": {
               "description": "The name of a valid service, use 'web' for a webhook.",
+              "maxLength": 1048576,
+              "type": "string"
+            },
+            "type": {
               "maxLength": 1048576,
               "type": "string"
             },
@@ -92349,6 +94239,10 @@
           },
           "name": {
             "description": "The name of a valid service, use 'web' for a webhook.",
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "type": {
             "maxLength": 1048576,
             "type": "string"
           },

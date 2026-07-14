@@ -317,7 +317,7 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	if err != nil {
 		return Plan{}, errors.New("GitHub operation arguments are invalid")
 	}
-	credential, err := a.manager.SelectMetadata(ctx, a.descriptor, targetMap, a.options.RequestingUserID)
+	credential, err := a.resolveCredential(ctx, targetMap)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -342,6 +342,14 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 		Presentation:      presentation,
 		Authorization:     authorization,
 	}, nil
+}
+
+func (a generatedAdapter) resolveCredential(ctx context.Context, target map[string]any) (githubauth.Metadata, error) {
+	credential, err := a.manager.SelectMetadata(ctx, a.descriptor, target, a.options.RequestingUserID)
+	if err != nil || a.descriptor.TargetKind != "user" {
+		return credential, err
+	}
+	return credential, a.manager.ValidateAuthenticatedUserTarget(ctx, credential, target)
 }
 
 func (a generatedAdapter) Authorize(plan Plan) Authorization {

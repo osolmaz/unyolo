@@ -3,6 +3,7 @@
 package githubauth
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	github "github.com/google/go-github/v88/github"
 )
@@ -95,7 +97,7 @@ func (c *Credential) tokenCopy() ([]byte, error) {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if len(c.token) == 0 {
+	if len(c.token) == 0 || bytes.IndexFunc(c.token, unicode.IsSpace) >= 0 {
 		return nil, errors.New("GitHub credential is unavailable")
 	}
 	return append([]byte(nil), c.token...), nil

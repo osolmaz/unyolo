@@ -62,6 +62,30 @@ func TestExecuteRESTBindsPathQueryBodyAndHeaders(t *testing.T) {
 	assertJSONEqual(t, result.Body, `{"id":7,"state":"open","url":"https://example.test/pull/7"}`)
 }
 
+func TestAuthenticatedUserTargetMustMatchCredential(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user" || r.Header.Get("Authorization") != "Bearer dev-canary" {
+			t.Fatalf("request = %s, authorization = %q", r.URL.Path, r.Header.Get("Authorization"))
+		}
+		_, _ = io.WriteString(w, `{"id":7,"login":"osolmaz","token":"not-projected"}`)
+	}))
+	t.Cleanup(server.Close)
+	manager := newDevelopmentManager(t, server.URL)
+	selector := manager.development.Metadata()
+	if err := manager.ValidateAuthenticatedUserTarget(t.Context(), selector, map[string]any{"kind": "user", "name": "osolmaz", "id": float64(7)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []map[string]any{
+		{"kind": "user", "name": "dutifuldev"},
+		{"kind": "user", "name": "osolmaz", "id": float64(8)},
+		{"kind": "repo", "name": "osolmaz"},
+	} {
+		if err := manager.ValidateAuthenticatedUserTarget(t.Context(), selector, target); err == nil {
+			t.Fatalf("mismatched target accepted: %#v", target)
+		}
+	}
+}
+
 func TestExecuteRESTEnforcesLimitsAndClassifiesErrors(t *testing.T) {
 	t.Run("response limit", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -390,6 +414,16 @@ func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	}
 	if projected, ok := projectJSON(value, nil); !ok || projected == nil {
 		t.Fatal("empty projection did not preserve value")
+	}
+	projected, ok = projectRESTResponse(map[string]any{"id": 7, "owner": map[string]any{"id": 8}}, []string{"id"})
+	encoded, _ = json.Marshal(projected)
+	if !ok || string(encoded) != `{"id":7}` {
+		t.Fatalf("REST projection retained nested fields = %s, %t", encoded, ok)
+	}
+	projected, ok = projectRESTResponse([]any{map[string]any{"id": 7, "owner": value}}, []string{"id"})
+	encoded, _ = json.Marshal(projected)
+	if !ok || string(encoded) != `[{"id":7}]` {
+		t.Fatalf("REST list projection = %s, %t", encoded, ok)
 	}
 }
 

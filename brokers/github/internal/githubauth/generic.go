@@ -25,6 +25,45 @@ type ExecutionResult struct {
 	Body       json.RawMessage
 }
 
+// ValidateAuthenticatedUserTarget binds implicit /user endpoints to the
+// identity represented by the selected credential.
+func (m *Manager) ValidateAuthenticatedUserTarget(ctx context.Context, selector Metadata, target map[string]any) error {
+	if targetregistry.String(target, "kind") != "user" {
+		return errors.New("GitHub authenticated-user target is invalid")
+	}
+	requestURL := m.apiURL.ResolveReference(&url.URL{Path: "/user"})
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), http.NoBody)
+	if err != nil {
+		return errors.New("create GitHub authenticated-user request")
+	}
+	response, err := m.doAPI(ctx, selector, request)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := limitedBody(response.Body, 64<<10)
+	if err != nil {
+		return err
+	}
+	var identity struct {
+		ID    int64  `json:"id"`
+		Login string `json:"login"`
+	}
+	if strictjson.Decode(body, &identity, false) != nil || !authenticatedUserMatches(target, identity.ID, identity.Login) {
+		return errors.New("GitHub authenticated-user target does not match the selected credential")
+	}
+	return nil
+}
+
+func authenticatedUserMatches(target map[string]any, id int64, login string) bool {
+	name := targetregistry.String(target, "name")
+	if id <= 0 || name == "" || !strings.EqualFold(name, login) {
+		return false
+	}
+	targetID := int64Field(target, "id")
+	return targetID == 0 || targetID == id
+}
+
 //nolint:cyclop // Credential-domain selection remains explicit at the provider trust boundary.
 func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descriptor, target map[string]any, userID int64) (Metadata, error) {
 	if m == nil {
@@ -382,7 +421,7 @@ func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (Exe
 	if err := strictjson.Decode(body, &value, false); err != nil {
 		return ExecutionResult{}, errors.New("GitHub API response is invalid")
 	}
-	projected, ok := projectJSON(value, binding.ResponseProjection)
+	projected, ok := projectRESTResponse(value, binding.ResponseProjection)
 	if !ok {
 		projected = map[string]any{}
 	}
@@ -391,6 +430,40 @@ func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (Exe
 		return ExecutionResult{}, errors.New("encode projected GitHub response")
 	}
 	return ExecutionResult{StatusCode: response.StatusCode, Body: encoded}, nil
+}
+
+func projectRESTResponse(value any, projection []string) (any, bool) {
+	if len(projection) == 0 {
+		return value, true
+	}
+	allowed := make(map[string]bool, len(projection))
+	for _, name := range projection {
+		allowed[name] = true
+	}
+	return projectTopLevel(value, allowed)
+}
+
+func projectTopLevel(value any, allowed map[string]bool) (any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		result := map[string]any{}
+		for key, child := range typed {
+			if allowed[key] {
+				result[key] = child
+			}
+		}
+		return result, len(result) > 0
+	case []any:
+		result := make([]any, 0, len(typed))
+		for _, child := range typed {
+			if projected, keep := projectTopLevel(child, allowed); keep {
+				result = append(result, projected)
+			}
+		}
+		return result, len(result) > 0
+	default:
+		return nil, false
+	}
 }
 
 func decodeGraphQLResponse(response *http.Response, document graphqlmanifest.Document) (ExecutionResult, error) {

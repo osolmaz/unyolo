@@ -439,7 +439,7 @@ func pathParameterNames(path string) []string {
 func responseProjection(operation restOperation) []string {
 	// Projection is intentionally conservative until the typed executors land.
 	// These fields are safe metadata shared by GitHub resource responses.
-	return []string{"id", "node_id", "name", "number", "state", "status", "sha", "url", "created_at", "updated_at"}
+	return []string{"id", "node_id", "name", "number", "state", "status", "type", "sha", "url", "created_at", "updated_at"}
 }
 
 func redirectPolicy(executor string) string {
