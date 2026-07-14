@@ -475,6 +475,14 @@ notification state, audit sequence, readiness result, and restart behavior. No
 failure may broaden policy, switch transport, regenerate credentials silently,
 discard an ambiguous operation, or report success without durable evidence.
 
+Implemented on the production-readiness branch: the maintained drill matrix is
+documented in `docs/FAILURE_DRILLS.md`. Shared tests cover SQLite corruption and
+failed writes, clock movement, Telegram retry and duplicate callbacks,
+ambiguous provider completion, crash recovery, listener/setup rollback,
+live-context shutdown, and overload while cancellation and approval remain
+available. Clean-host disk exhaustion and service-manager restart drills remain
+part of final CI qualification.
+
 ## Quality Debt Elimination
 
 CRAP non-regression baselines were acceptable during the exhaustive provider

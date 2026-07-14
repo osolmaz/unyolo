@@ -80,6 +80,28 @@ func TestControllerRateLimitAndFixedClients(t *testing.T) {
 	}
 }
 
+func TestControllerBackwardClockMovementCannotResetRateLimit(t *testing.T) {
+	now := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)
+	limits := Limits{RequestsPerWindow: 1, Window: time.Minute, ClientActive: 2, ClientPending: 2, GlobalActive: 2, GlobalExecuting: 2}
+	controller, err := newController([]string{"agent"}, limits, func(context.Context, string) (Usage, error) {
+		return Usage{}, nil
+	}, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	permit, err := controller.Admit(t.Context(), "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	permit.Release()
+	now = now.Add(-time.Hour)
+	_, err = controller.Admit(t.Context(), "agent")
+	var limited *LimitError
+	if !errors.As(err, &limited) || limited.Code != "submission_rate_limited" || limited.RetryAfter <= time.Hour {
+		t.Fatalf("backward-clock admission = %#v", err)
+	}
+}
+
 func TestControllerSerializesConcurrentReservations(t *testing.T) {
 	limits := Limits{RequestsPerWindow: 10, Window: time.Minute, ClientActive: 1, ClientPending: 1, GlobalActive: 1, GlobalExecuting: 1}
 	controller, err := New([]string{"agent"}, limits, func(context.Context, string) (Usage, error) { return Usage{}, nil })

@@ -174,6 +174,53 @@ func TestRuntimeAdmissionDoesNotChargeIdempotentReplay(t *testing.T) {
 	}
 }
 
+func TestRuntimeOverloadLeavesCancellationAndApprovalAvailable(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	limits := admission.Limits{RequestsPerWindow: 10, Window: time.Minute, ClientActive: 1, ClientPending: 1, GlobalActive: 1, GlobalExecuting: 1}
+	controller, err := admission.New([]string{"agent"}, limits, operations.AdmissionUsage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.options.Admission = controller
+	request := agentv1.SubmitRequest{IdempotencyKey: "overload-one", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "exercise recovery capacity"}
+	first, _, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || first.State != agentv1.StatePending {
+		t.Fatalf("first submission = %+v, %v", first, err)
+	}
+	request.IdempotencyKey = "overload-refused"
+	if _, _, err := runtime.Submit(t.Context(), "agent", request); admissionAPIErrorCode(err) != "client_operation_limit" {
+		t.Fatalf("saturated submission = %v", err)
+	}
+	canceled, err := runtime.Cancel(t.Context(), "agent", first.ID)
+	if err != nil || canceled.State != agentv1.StateCanceled {
+		t.Fatalf("overload cancellation = %+v, %v", canceled, err)
+	}
+	request.IdempotencyKey = "overload-approved"
+	second, _, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || second.State != agentv1.StatePending {
+		t.Fatalf("post-cancel submission = %+v, %v", second, err)
+	}
+	if _, err := grantStore.Approve(second.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatalf("operator approval at capacity: %v", err)
+	}
+	runtime.Advance(t.Context(), second)
+	completed, err := operations.Get("agent", second.ID)
+	if err != nil || completed.State != agentv1.StateSucceeded {
+		t.Fatalf("approved operation = %+v, %v", completed, err)
+	}
+}
+
+func admissionAPIErrorCode(err error) string {
+	var apiErr *agentapi.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code
+	}
+	return ""
+}
+
 func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 	runtime, adapter, operations, _, closeRuntime := newRuntime(t, &PossiblePartialError{Err: errors.New("connection lost")}, directDecision, nil, false)
 	defer closeRuntime()
