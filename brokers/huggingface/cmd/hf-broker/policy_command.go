@@ -33,48 +33,83 @@ func runPolicy(_ context.Context, stdout, stderr io.Writer, args []string) error
 }
 
 func runPolicyRender(stdout, stderr io.Writer, args []string) error {
+	command, err := parsePolicyRender(stderr, args)
+	if err != nil {
+		return err
+	}
+	artifacts, err := policypreset.Render(policypreset.Profile{
+		Version: policypreset.ProfileVersion, Preset: command.preset,
+		Clients: command.clients, DeniedOperations: command.deniedOperations,
+	})
+	if err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
+	outputs := policyArtifactOutputs(command, artifacts)
+	if err := writePolicyArtifactOutputs(outputs, command.replace); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "Rendered %s for %d operation(s).\nPolicy: %s\nProfile: %s\nManifest: %s\n", artifacts.Profile.Preset, artifacts.Manifest.OperationCounts.Total, command.policyOutput, command.profileOutput, command.manifestOutput)
+	return err
+}
+
+type policyRenderCommand struct {
+	preset           string
+	clients          stringListFlag
+	deniedOperations stringListFlag
+	policyOutput     string
+	profileOutput    string
+	manifestOutput   string
+	replace          bool
+}
+
+func parsePolicyRender(stderr io.Writer, args []string) (policyRenderCommand, error) {
+	var command policyRenderCommand
 	var clients stringListFlag
 	var denied stringListFlag
 	var flagOutput bytes.Buffer
 	fs := flag.NewFlagSet("hf-broker policy render", flag.ContinueOnError)
 	fs.SetOutput(&flagOutput)
-	preset := fs.String("preset", policypreset.RequestAllAgentOperations, "Hugging Face policy preset")
+	fs.StringVar(&command.preset, "preset", policypreset.RequestAllAgentOperations, "Hugging Face policy preset")
 	fs.Var(&clients, "client", "client identity; repeatable")
 	fs.Var(&denied, "deny-operation", "exact operation to deny; repeatable")
-	output := fs.String("output", "", "scope policy output path")
-	profileOutput := fs.String("profile-out", "", "policy profile output path")
-	manifestOutput := fs.String("manifest-out", "", "policy manifest output path")
-	replace := fs.Bool("replace", false, "replace existing output files")
+	fs.StringVar(&command.policyOutput, "output", "", "scope policy output path")
+	fs.StringVar(&command.profileOutput, "profile-out", "", "policy profile output path")
+	fs.StringVar(&command.manifestOutput, "manifest-out", "", "policy manifest output path")
+	fs.BoolVar(&command.replace, "replace", false, "replace existing output files")
 	if err := fs.Parse(args); err != nil {
-		return policyFlagError(stderr, &flagOutput, err)
+		return policyRenderCommand{}, policyFlagError(stderr, &flagOutput, err)
 	}
-	if fs.NArg() != 0 || *output == "" || *profileOutput == "" || *manifestOutput == "" {
-		return exitError{code: 64, message: "policy render requires --output, --profile-out, and --manifest-out"}
+	if fs.NArg() != 0 || command.policyOutput == "" || command.profileOutput == "" || command.manifestOutput == "" {
+		return policyRenderCommand{}, exitError{code: 64, message: "policy render requires --output, --profile-out, and --manifest-out"}
 	}
-	if *output == *profileOutput || *output == *manifestOutput || *profileOutput == *manifestOutput {
-		return exitError{code: 64, message: "policy render output paths must be distinct"}
+	if command.policyOutput == command.profileOutput || command.policyOutput == command.manifestOutput || command.profileOutput == command.manifestOutput {
+		return policyRenderCommand{}, exitError{code: 64, message: "policy render output paths must be distinct"}
 	}
 	if len(clients) == 0 {
 		clients = []string{"agent"}
 	}
-	artifacts, err := policypreset.Render(policypreset.Profile{
-		Version: policypreset.ProfileVersion, Preset: *preset,
-		Clients: clients, DeniedOperations: denied,
-	})
-	if err != nil {
-		return exitError{code: 64, message: err.Error()}
+	command.clients = clients
+	command.deniedOperations = denied
+	return command, nil
+}
+
+type policyArtifactOutput struct {
+	path string
+	data []byte
+}
+
+func policyArtifactOutputs(command policyRenderCommand, artifacts policypreset.Artifacts) []policyArtifactOutput {
+	return []policyArtifactOutput{
+		{command.profileOutput, artifacts.ProfileJSON},
+		{command.policyOutput, artifacts.PolicyJSON},
+		{command.manifestOutput, artifacts.ManifestJSON},
 	}
-	outputs := []struct {
-		path string
-		data []byte
-	}{{*profileOutput, artifacts.ProfileJSON}, {*output, artifacts.PolicyJSON}, {*manifestOutput, artifacts.ManifestJSON}}
-	if !*replace {
-		for _, item := range outputs {
-			if _, err := os.Stat(item.path); err == nil {
-				return exitError{code: 64, message: fmt.Sprintf("refusing to replace existing file %s; use --replace", item.path)}
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("inspect %s: %w", item.path, err)
-			}
+}
+
+func writePolicyArtifactOutputs(outputs []policyArtifactOutput, replace bool) error {
+	if !replace {
+		if err := ensurePolicyOutputsAbsent(outputs); err != nil {
+			return err
 		}
 	}
 	for _, item := range outputs {
@@ -82,8 +117,18 @@ func runPolicyRender(stdout, stderr io.Writer, args []string) error {
 			return err
 		}
 	}
-	_, err = fmt.Fprintf(stdout, "Rendered %s for %d operation(s).\nPolicy: %s\nProfile: %s\nManifest: %s\n", artifacts.Profile.Preset, artifacts.Manifest.OperationCounts.Total, *output, *profileOutput, *manifestOutput)
-	return err
+	return nil
+}
+
+func ensurePolicyOutputsAbsent(outputs []policyArtifactOutput) error {
+	for _, item := range outputs {
+		if _, err := os.Stat(item.path); err == nil {
+			return exitError{code: 64, message: fmt.Sprintf("refusing to replace existing file %s; use --replace", item.path)}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect %s: %w", item.path, err)
+		}
+	}
+	return nil
 }
 
 func runPolicyCheck(stdout, stderr io.Writer, args []string) error {

@@ -135,23 +135,39 @@ func ParseProfile(data []byte) (Profile, error) {
 
 // Check reports drift without changing any operator-owned files.
 func Check(profileData, manifestData, policyData []byte) DriftReport {
-	profile, err := ParseProfile(profileData)
+	manifest, current, err := checkInputs(profileData, manifestData, policyData)
 	if err != nil {
 		return invalidReport(err)
+	}
+	report := DriftReport{Status: DriftCurrent, Details: []string{}}
+	checkArtifactDigests(&report, profileData, policyData, manifest)
+	checkCatalogDrift(&report, manifest, current.Manifest)
+	if report.Status == DriftCurrent {
+		report.Details = append(report.Details, "profile, policy, manifest, and operation catalog match")
+	}
+	return report
+}
+
+func checkInputs(profileData, manifestData, policyData []byte) (Manifest, Artifacts, error) {
+	profile, err := ParseProfile(profileData)
+	if err != nil {
+		return Manifest{}, Artifacts{}, err
 	}
 	manifest, err := parseManifest(manifestData)
 	if err != nil {
-		return invalidReport(err)
+		return Manifest{}, Artifacts{}, err
 	}
 	if _, err := policy.Parse(policyData); err != nil {
-		return invalidReport(fmt.Errorf("parse policy: %w", err))
+		return Manifest{}, Artifacts{}, fmt.Errorf("parse policy: %w", err)
 	}
 	current, err := Render(profile)
 	if err != nil {
-		return invalidReport(err)
+		return Manifest{}, Artifacts{}, err
 	}
+	return manifest, current, nil
+}
 
-	report := DriftReport{Status: DriftCurrent, Details: []string{}}
+func checkArtifactDigests(report *DriftReport, profileData, policyData []byte, manifest Manifest) {
 	if manifest.ProfileDigest != digest(profileData) {
 		report.Status = DriftModified
 		report.Details = append(report.Details, "profile digest does not match the manifest")
@@ -160,23 +176,26 @@ func Check(profileData, manifestData, policyData []byte) DriftReport {
 		report.Status = DriftModified
 		report.Details = append(report.Details, "policy digest does not match the manifest")
 	}
-	if manifest.CatalogDigest != current.Manifest.CatalogDigest {
+}
+
+func checkCatalogDrift(report *DriftReport, manifest, current Manifest) {
+	if manifest.CatalogDigest != current.CatalogDigest {
 		if report.Status == DriftCurrent {
 			report.Status = DriftStale
 		}
 		report.Details = append(report.Details, "operation catalog changed since this policy was rendered")
 	}
-	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Manifest.Operations)
-	if manifest.OperationCounts != current.Manifest.OperationCounts || len(report.AddedOperations)+len(report.RemovedOperations)+len(report.ChangedOperations) > 0 {
+	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Operations)
+	if manifest.OperationCounts != current.OperationCounts || reportHasOperationDrift(*report) {
 		if report.Status == DriftCurrent {
 			report.Status = DriftModified
 		}
 		report.Details = append(report.Details, "manifest operation summary does not match the rendered profile and current catalog")
 	}
-	if report.Status == DriftCurrent {
-		report.Details = append(report.Details, "profile, policy, manifest, and operation catalog match")
-	}
-	return report
+}
+
+func reportHasOperationDrift(report DriftReport) bool {
+	return len(report.AddedOperations) > 0 || len(report.RemovedOperations) > 0 || len(report.ChangedOperations) > 0
 }
 
 // Render materializes a validated profile into deterministic policy artifacts.

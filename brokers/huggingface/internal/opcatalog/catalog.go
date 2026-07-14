@@ -208,14 +208,24 @@ func validateDefaultPolicyEffect(value Descriptor) error {
 	if !slices.Contains([]DefaultPolicyEffect{DefaultEffectAllow, DefaultEffectRequest, DefaultEffectDeny}, value.DefaultPolicyEffect) {
 		return fmt.Errorf("operation %q has invalid default policy effect", value.Name)
 	}
-	requiresDeny := value.Internal || !value.AgentFacing || value.CredentialOutputKind != nil
-	if requiresDeny && value.DefaultPolicyEffect != DefaultEffectDeny {
+	if operationRequiresDefaultDeny(value) && value.DefaultPolicyEffect != DefaultEffectDeny {
 		return fmt.Errorf("operation %q must be denied by default", value.Name)
 	}
-	if value.DefaultPolicyEffect == DefaultEffectAllow && (value.Risk == RiskHigh || value.Risk == RiskCritical || value.AuthorizationMode == ModeExecution || value.ExplicitOnly || value.Sealed) {
+	if value.DefaultPolicyEffect == DefaultEffectAllow && operationIsUnsafeDefaultAllow(value) {
 		return fmt.Errorf("dangerous operation %q cannot be allowed by default", value.Name)
 	}
 	return nil
+}
+
+func operationRequiresDefaultDeny(value Descriptor) bool {
+	return value.Internal || !value.AgentFacing || value.CredentialOutputKind != nil
+}
+
+func operationIsUnsafeDefaultAllow(value Descriptor) bool {
+	if value.Risk == RiskHigh || value.Risk == RiskCritical {
+		return true
+	}
+	return value.AuthorizationMode == ModeExecution || value.ExplicitOnly || value.Sealed
 }
 
 func validStatus(value ImplementationStatus) bool {
