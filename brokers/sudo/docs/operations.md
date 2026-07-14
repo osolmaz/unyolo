@@ -21,7 +21,8 @@ broker, operator, or Telegram credential.
 ## Installation
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/sudo/install.sh | sh
+BROKERKIT_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
 
 sudo sudo-broker setup systemd \
   --catalog-file ./catalog.json \

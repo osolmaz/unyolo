@@ -55,3 +55,41 @@ func TestInstallWrapperPropagatesDownloadFailure(t *testing.T) {
 		t.Fatalf("install wrapper succeeded after failed download: %s", output)
 	}
 }
+
+func TestInstallWrapperResolvesReleaseToImmutableCommit(t *testing.T) {
+	const revision = "0123456789abcdef0123456789abcdef01234567"
+	requested := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases":
+			_, _ = w.Write([]byte(`[{"tag_name":"hf-broker/v1.2.3"}]`))
+		case "/refs/hf-broker/v1.2.3":
+			_, _ = w.Write([]byte(`{"object":{"sha":"` + revision + `","type":"commit"}}`))
+		case "/raw/" + revision + "/installer/install.sh":
+			requested <- r.URL.Path
+			_, _ = w.Write([]byte("#!/bin/sh\nprintf '%s' \"$VERSION\"\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	command := exec.CommandContext(t.Context(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
+	command.Env = append(os.Environ(), "BROKERKIT_RELEASES_URL="+server.URL+"/releases",
+		"BROKERKIT_REF_URL_BASE="+server.URL+"/refs", "BROKERKIT_RAW_URL_BASE="+server.URL+"/raw")
+	output, err := command.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "hf-broker/v1.2.3" {
+		t.Fatalf("immutable wrapper err=%v output=%s", err, output)
+	}
+	if path := <-requested; !strings.Contains(path, revision) {
+		t.Fatalf("installer path = %q", path)
+	}
+}
+
+func TestInstallWrapperRejectsMutableRevision(t *testing.T) {
+	command := exec.CommandContext(t.Context(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
+	command.Env = append(os.Environ(), "BROKERKIT_INSTALLER_REV=main")
+	output, err := command.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "exact 40-character commit SHA") {
+		t.Fatalf("mutable revision err=%v output=%s", err, output)
+	}
+}

@@ -87,16 +87,18 @@ make run
 
 ## Install
 
-Install the latest release globally:
+Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+GH Broker release to its exact commit and installs to `$HOME/.local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
+BROKERKIT_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
 ```
 
 Pin a version from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | VERSION=<version> sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | VERSION=<version> sh
 ```
 
 Write a client config file from a broker secrets file:

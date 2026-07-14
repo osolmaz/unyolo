@@ -14,10 +14,12 @@ The runtime has two processes:
 
 ## Install
 
-Install the latest checksummed release on Linux or macOS:
+Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+Sudo Broker release to its exact commit and installs to `$HOME/.local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/sudo/install.sh | sh
+BROKERKIT_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
 ```
 
 The frontend is installed in the selected binary directory. The helper is

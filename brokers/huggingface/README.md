@@ -24,24 +24,26 @@ refused pushes never leave the broker and `git push` prints the reason.
 
 ## Install
 
-The recommended install path downloads a prebuilt release binary and
-installs it globally:
+Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+HF Broker release to its exact commit, verifies the release checksum, and
+installs to `$HOME/.local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | sh
+BROKERKIT_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
 ```
 
 Pin a version from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
 with `VERSION`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | VERSION=<version> sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | VERSION=<version> sh
 ```
 
 Install to a specific directory with `INSTALL_DIR`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | INSTALL_DIR="$HOME/.local/bin" sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | INSTALL_DIR=/absolute/path sh
 ```
 
 For development, install from a BrokerKit checkout with the Go version declared

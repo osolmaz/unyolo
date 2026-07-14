@@ -528,7 +528,10 @@ Node's bundled npm 11.16.0 instead of installing `npm@latest`. The architecture
 gate rejects mutable action refs, major-only Node selectors, and `npm@latest`.
 The canonical installer now defaults to `$HOME/.local/bin`, never invokes
 `sudo`, and fails with explicit privileged-shell guidance for an unwritable
-operator-selected destination. Immutable bootstrap/provenance verification and
+operator-selected destination. Broker wrappers no longer fetch `main`: they
+resolve the selected component release tag through GitHub's ref API, peel an
+annotated tag when necessary, require an exact 40-character commit SHA, and
+fetch the canonical installer from that commit. Provenance verification and
 post-publication artifact verification remain to finish this section.
 
 Build release artifacts from a clean checkout, verify generated artifacts and

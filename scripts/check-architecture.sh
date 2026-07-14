@@ -19,6 +19,11 @@ if grep -R -n -E '(^|[[:space:]])sudo([[:space:]]|$)' installer/*.sh 2>/dev/null
 	exit 1
 fi
 
+if grep -R -n -E 'BROKERKIT_INSTALLER_REV=.*main|raw\.githubusercontent\.com/[^/]+/[^/]+/main/' brokers/*/install.sh 2>/dev/null; then
+	echo 'broker installer wrappers must resolve an immutable installer commit' >&2
+	exit 1
+fi
+
 if find . -path './brokers' -prune -o -path './.git' -prune -o -name '*.go' -type f -print0 |
   xargs -0 grep -n 'github.com/osolmaz/brokerkit/brokers/'
 then

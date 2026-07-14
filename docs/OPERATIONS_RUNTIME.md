@@ -15,15 +15,18 @@ TAG_PREFIX=hf-broker/
 ```
 
 and executes the Brokerkit script. The runtime detects Linux or macOS and
-amd64 or arm64, resolves the latest qualified component release unless
-`VERSION` is set, downloads the matching tarball and `checksums.txt`, verifies
+amd64 or arm64. The wrapper resolves the selected qualified release tag to its
+exact commit SHA and fetches the canonical installer from that immutable
+revision. The installer downloads the matching tarball and `checksums.txt`, verifies
 the archive from its download directory, and installs the declared executable
 set. HF and GitHub declare one CLI. Sudo additionally declares its privileged
 `sudo-broker-exec` companion, which is installed outside the ordinary `PATH` in
 the adjacent `libexec` directory.
 
-The installer does not create users, credentials, config, state, or services.
-Those changes belong to an explicit broker setup command.
+The installer defaults to `$HOME/.local/bin` and never invokes `sudo`. An
+explicit system destination requires an operator-controlled privileged shell.
+It does not create users, credentials, config, state, or services; those
+changes belong to an explicit broker setup command.
 
 The `BROKERKIT_LATEST_RELEASE_URL`, `BROKERKIT_RELEASE_BASE_URL`,
 `BROKERKIT_UNAME_S`, and `BROKERKIT_UNAME_M` variables are deterministic test
