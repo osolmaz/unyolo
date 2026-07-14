@@ -142,6 +142,26 @@ Hugging Face credential-source and mirror checks, gh-broker owns GitHub App and
 ruleset checks, and sudo-broker owns catalog, target-user, and
 privileged-executor checks.
 
+## State Maintenance
+
+Every broker exposes the same offline maintenance surface:
+
+```text
+BROKER state check --state-dir /absolute/state [--full]
+BROKER state backup --state-dir /absolute/state --output /absolute/new-backup
+BROKER state restore --state-dir /absolute/state --backup /absolute/backup
+BROKER state export --state-dir /absolute/state --output /absolute/new-export.json
+```
+
+Maintenance commands acquire the BrokerKit state lease, so the service must be
+stopped. They accept only the exact current SQLite schema and never create,
+migrate, or convert a database while checking, backing up, or exporting it.
+Backup uses SQLite's consistent backup API and publishes a private database plus
+checksum manifest. Restore validates format, integrity, checksum, size,
+ownership, and modes before replacing offline state. Export is deterministic
+and bounded; it omits operation inputs and results, reasons, plan bodies,
+decision tokens, notification destinations, and credential material.
+
 ## Ownership Rule
 
 Broker directories contain only thin command adapters and provider-specific

@@ -305,10 +305,9 @@ while a clean installation receives the complete current preset.
 
 ### Current-format SQLite operations
 
-The shared state package currently provides an integrity query but not the
-backup, restore, and redacted export promised by the completed SQLite cutover
-record. Implement those operations once in BrokerKit and expose them through
-provider-neutral broker commands.
+The shared state package provides exact-format check, backup, restore, and
+redacted export through the same `state` command on all brokers. The completed
+implementation follows these constraints:
 
 - `state check` runs bounded quick and full integrity checks and reports only
   operational metadata.

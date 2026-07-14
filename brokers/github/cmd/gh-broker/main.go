@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/serverhttp"
+	"github.com/osolmaz/brokerkit/statecmd"
 )
 
 var version = "dev"
@@ -57,11 +58,13 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		return runStream(ctx, stdout, args[1:])
 	case "mcp":
 		return runMCP(ctx, os.Getenv, os.Stdin, stdout, args[1:])
+	case "state":
+		return statecmd.Run(ctx, args[1:], stdout, stderr)
 	default:
 		if found, err := runGeneratedCLI(ctx, stdout, args); found {
 			return err
 		}
-		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|policy|operations|operation|stream|mcp]")
+		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|policy|operations|operation|stream|mcp|state]")
 	}
 }
 

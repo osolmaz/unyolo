@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/osolmaz/brokerkit/statecmd"
 )
 
 var version = "dev"
@@ -33,7 +35,7 @@ func mainCode(args []string, stdout io.Writer, stderr io.Writer) int {
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: sudo-broker <serve|run|setup|version>")
+		return errors.New("usage: sudo-broker <serve|run|setup|state|version>")
 	}
 	switch args[0] {
 	case "doctor":
@@ -44,6 +46,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		return runCommand(ctx, args[1:], stdout, stderr)
 	case "setup":
 		return runSetup(ctx, args[1:], stdout, stderr)
+	case "state":
+		return statecmd.Run(ctx, args[1:], stdout, stderr)
 	case "version", "--version":
 		_, err := fmt.Fprintln(stdout, version)
 		return err

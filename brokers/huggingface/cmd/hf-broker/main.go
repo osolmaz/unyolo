@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/serverhttp"
+	"github.com/osolmaz/brokerkit/statecmd"
 )
 
 var version = "dev"
@@ -69,6 +70,8 @@ func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr 
 		return runClientCommand(ctx, getenv, stdout, stderr, args[1:])
 	case "mcp":
 		return runMCP(ctx, getenv, os.Stdin, stdout, stderr, args[1:])
+	case "state":
+		return statecmd.Run(ctx, args[1:], stdout, stderr)
 	case "__doctor-isolation-probe":
 		return runDoctorIsolationProbe(stdout, stderr, args[1:])
 	default:
@@ -80,7 +83,7 @@ func runAuxiliaryCommand(ctx context.Context, stdout, stderr io.Writer, args []s
 	if args[0] == "policy" {
 		return runPolicy(ctx, stdout, stderr, args[1:])
 	}
-	return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp]"}
+	return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp|state]"}
 }
 
 func runClientCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {

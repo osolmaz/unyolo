@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/osolmaz/brokerkit/state/internal/dbsql"
@@ -22,6 +23,9 @@ import (
 const (
 	databaseFile = "state.db"
 	leaseFile    = "state.lock"
+	// CurrentSchemaVersion is the only state format accepted by maintenance
+	// operations in this pre-release cutover.
+	CurrentSchemaVersion int64 = 1
 )
 
 //go:embed migrations/*.sql
@@ -32,11 +36,12 @@ type Options struct {
 }
 
 type Database struct {
-	sql      *sql.DB
-	queries  *dbsql.Queries
-	lease    *lease
-	close    sync.Once
-	closeErr error
+	sql       *sql.DB
+	queries   *dbsql.Queries
+	lease     *lease
+	directory string
+	close     sync.Once
+	closeErr  error
 }
 
 func Open(ctx context.Context, directory string, options Options) (*Database, error) {
@@ -67,7 +72,7 @@ func openLeasedDatabase(ctx context.Context, directory string, options Options, 
 		_ = lock.close()
 		return nil, err
 	}
-	result := &Database{sql: db, queries: dbsql.New(db), lease: lock}
+	result := &Database{sql: db, queries: dbsql.New(db), lease: lock, directory: directory}
 	if err := result.migrate(ctx); err != nil {
 		_ = result.Close()
 		return nil, err
@@ -77,6 +82,58 @@ func openLeasedDatabase(ctx context.Context, directory string, options Options, 
 		return nil, fmt.Errorf("check state database: %w", err)
 	}
 	return result, nil
+}
+
+// OpenExisting opens an exact current-format database under the process lease.
+// It never creates a directory, database, or migration.
+func OpenExisting(ctx context.Context, directory string, options Options) (*Database, error) {
+	if directory == "" {
+		return nil, errors.New("state directory is required")
+	}
+	info, err := os.Lstat(directory)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("existing state directory is required")
+	}
+	if err := ensurePrivateDirectory(directory); err != nil {
+		return nil, err
+	}
+	if options.BusyTimeout <= 0 {
+		options.BusyTimeout = 5 * time.Second
+	}
+	lock, err := acquireLease(filepath.Join(directory, leaseFile))
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(directory, databaseFile)
+	if err := validatePrivateDatabaseFile(path); err != nil {
+		_ = lock.close()
+		return nil, err
+	}
+	db, err := openSQL(path, options)
+	if err != nil {
+		_ = lock.close()
+		return nil, err
+	}
+	result := &Database{sql: db, queries: dbsql.New(db), lease: lock, directory: directory}
+	if err := result.ValidateCurrentFormat(ctx); err != nil {
+		_ = result.Close()
+		return nil, err
+	}
+	return result, nil
+}
+
+func validatePrivateDatabaseFile(path string) error {
+	info, err := os.Lstat(path) // #nosec G304 -- path is rooted in the selected state directory.
+	if err != nil {
+		return fmt.Errorf("read state database metadata: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("state database must be a private regular file")
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) { // #nosec G115 -- effective UIDs are non-negative.
+		return errors.New("state database must be owned by the current user")
+	}
+	return nil
 }
 
 func ensurePrivateFile(path string) error {
@@ -159,4 +216,26 @@ func (d *Database) IntegrityCheck(ctx context.Context) (string, error) {
 	var result string
 	err := d.sql.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result)
 	return result, err
+}
+
+// ValidateCurrentFormat rejects missing, old, or future state schemas.
+func (d *Database) ValidateCurrentFormat(ctx context.Context) error {
+	if d == nil || d.sql == nil {
+		return errors.New("state database is unavailable")
+	}
+	var version sql.NullInt64
+	if err := d.sql.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version WHERE is_applied = 1").Scan(&version); err != nil {
+		return fmt.Errorf("read state schema version: %w", err)
+	}
+	if !version.Valid || version.Int64 != CurrentSchemaVersion {
+		return fmt.Errorf("state schema version is %d, want %d", version.Int64, CurrentSchemaVersion)
+	}
+	var result string
+	if err := d.sql.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil || result != "ok" {
+		if err != nil {
+			return fmt.Errorf("state quick check failed: %w", err)
+		}
+		return fmt.Errorf("state quick check failed: %s", result)
+	}
+	return nil
 }
