@@ -45,6 +45,15 @@ other production-readiness work discovered with it.
 13. CI and release environments are pinned, reproducible, and cover supported
     operating systems.
 14. Maintained documentation describes only the final architecture.
+15. Current-format SQLite state can be checked, backed up, restored, and
+    exported safely without legacy readers or schema conversion.
+16. Authenticated clients cannot exhaust workers, state, approval channels, or
+    operator attention with unbounded requests.
+17. Every broker credential class has one atomic replacement and immediate
+    revocation path.
+18. Operators receive secret-safe health, metrics, and structured diagnostics.
+19. Crash, storage, clock, notification, upstream, and partial-setup failures
+    have deterministic fail-closed behavior.
 
 ## Current Problems To Remove
 
@@ -174,7 +183,7 @@ complete platform support:
 - dedicated service accounts and groups;
 - protected config, state, credential, and runtime paths;
 - separate agent and operator socket permissions;
-- atomic install, bootstrap, restart, readiness, and rollback behavior;
+- atomic install, bootstrap, restart, readiness, and safe failure behavior;
 - dry-run output matching the Linux setup contract; and
 - tests on a real macOS CI runner.
 
@@ -237,6 +246,139 @@ GH Broker adds a managed `request-all-agent-operations` preset that:
 Setup must never silently broaden an installed policy when the catalog grows.
 A newly generated preset is previewed and requires an explicit managed update,
 while a clean installation receives the complete current preset.
+
+## Operational Resilience
+
+### Current-format SQLite operations
+
+The shared state package currently provides an integrity query but not the
+backup, restore, and redacted export promised by the completed SQLite cutover
+record. Implement those operations once in BrokerKit and expose them through
+provider-neutral broker commands.
+
+- `state check` runs bounded quick and full integrity checks and reports only
+  operational metadata.
+- `state backup` creates a transactionally consistent current-format snapshot,
+  syncs it and its destination directory, records a checksum and format
+  manifest, and never copies a live WAL/database pair independently.
+- `state restore` is offline-only, requires the broker state lease to be free,
+  accepts only the exact current format and schema, verifies integrity,
+  checksum, ownership, mode, and size before atomically replacing state, and
+  leaves the existing database untouched on validation failure.
+- `state export` emits bounded, deterministic, redacted JSON for grants,
+  operations, plans, notification state, and audit references without secrets,
+  sealed payloads, credential outputs, raw arguments, or provider tokens.
+- Backup and export destinations must be explicit absolute paths and cannot be
+  inside the live state directory.
+- Doctor reports integrity and capacity status without mutating state.
+
+There are no legacy state importers, schema converters, dual reads, or
+automatic startup restores. Existing pre-release state is discarded at the
+cutover. Backup and restore support only the resulting current format.
+
+Test disk exhaustion, read-only filesystems, interrupted backup, corrupt pages,
+truncated files, checksum mismatch, unsafe ownership, concurrent open attempts,
+and restoration into a clean state root. A failed state commit must prevent the
+corresponding external side effect.
+
+### Admission control and backpressure
+
+Add one shared admission layer before durable operation creation and approval
+notification. Configuration defines conservative bounded defaults and explicit
+per-client overrides for:
+
+- submitted requests per time window;
+- concurrent non-terminal operations;
+- pending approval requests;
+- queued and executing provider operations;
+- outstanding stream bytes and sealed payloads; and
+- notification attempts and unresolved delivery failures.
+
+Authentication, syntax validation, and cheap request-size rejection happen
+before admission accounting. Accepted work receives a durable idempotency key;
+replays do not consume a second quota. Rejected work returns a stable `429`
+error with a bounded `Retry-After` where appropriate and creates no grant,
+operation, audit-cardinality explosion, Telegram message, or operator inbox
+entry.
+
+Use bounded queues and explicit worker concurrency rather than one goroutine per
+request. Reserve capacity for health, cancellation, revocation, and operator
+decisions so overload cannot prevent recovery. Metrics labels and in-memory
+accounting are bounded by configured client identities, never caller-supplied
+operation arguments.
+
+### Credential replacement and revocation
+
+Define one shared credential lifecycle for broker client secrets, operator
+secrets, HF tokens, GitHub App keys and OAuth credentials, Telegram bot tokens,
+and sealed credential-store encryption material where present.
+
+- Setup stages and validates replacement material in protected files before
+  changing service configuration.
+- Activation performs one exact cutover and readiness check; it does not retain
+  an old credential reader or an indefinite overlap window.
+- Old credentials fail immediately after successful activation and provider
+  credentials are revoked upstream when the provider supports revocation.
+- A failed activation keeps the previous installed configuration active without
+  partially exposing replacement material.
+- Generated local client configuration is replaced atomically and never prints
+  either credential.
+- Doctor reports credential source, age, expiry, and rotation need without
+  reading values into reports.
+- Audit records actor, credential class, old/new non-secret identifiers,
+  outcome, and time.
+
+A short controlled restart is acceptable for this fresh-state architecture;
+dual-secret compatibility is not. Test interrupted staging, failed readiness,
+stale clients, immediate old-secret rejection, provider revocation failure, and
+Telegram replacement.
+
+### Observability contract
+
+Audit is evidence of security decisions, not a substitute for operational
+telemetry. Add provider-neutral structured diagnostics with a single ownership
+boundary:
+
+- liveness means the process event loop is responsive;
+- readiness means configuration, listeners, state lease, database, workers,
+  and required local privilege boundaries are usable;
+- upstream and notification outages appear as explicit degraded dependencies
+  without leaking credentials or making an unsafe broker ready;
+- metrics cover admitted/rejected work, queue depth, pending approvals,
+  decision and execution latency, retries, upstream failures/rate limits,
+  notification failures, database health, and worker saturation; and
+- logs carry stable event names, correlation IDs, provider, operation class,
+  and redacted error category.
+
+Metrics are exposed only through an explicitly configured operator or platform
+endpoint. Labels must not include reasons, repository names, target users,
+paths, command arguments, URLs, tokens, free-form upstream errors, or unbounded
+caller input. Logging, metrics, audit, and API error redaction share tested
+helpers rather than separate deny lists.
+
+### Failure drills
+
+Add deterministic automated drills for:
+
+- disk full, read-only state, corrupt SQLite, and failed synchronization;
+- backward and forward wall-clock movement around request, approval, expiry,
+  reservation, and notification leases;
+- Telegram outage, duplicate callbacks, delayed delivery, and recovery;
+- provider timeout, connection reset, `429`, `5xx`, malformed response, and
+  ambiguous mutation completion;
+- termination before plan commit, after reservation, during provider execution,
+  during reconciliation, and during audit/outbox completion;
+- listener loss, socket permission change, service-manager restart, and stale
+  inherited descriptors;
+- interrupted setup, credential replacement, and partial file installation;
+  and
+- overload while cancellation, revocation, health, and operator decisions must
+  remain available.
+
+Every drill asserts the final durable state, external-side-effect count,
+notification state, audit sequence, readiness result, and restart behavior. No
+failure may broaden policy, switch transport, regenerate credentials silently,
+discard an ambiguous operation, or report success without durable evidence.
 
 ## Quality Debt Elimination
 
@@ -329,6 +471,16 @@ Required CI covers:
 - unauthorized local-user and operator-separation tests;
 - malformed configuration, unsafe path, plaintext origin, wildcard bind,
   symlink, stale socket, and descriptor-confusion tests;
+- state check, current-format backup/restore, redacted export, corruption,
+  disk-full, and read-only-filesystem tests;
+- per-client and global admission limits, bounded queues, idempotent replay
+  accounting, operator capacity reservation, and notification-spam tests;
+- atomic credential replacement and immediate old-credential rejection for
+  every broker credential class;
+- liveness, readiness, degraded dependency, bounded metrics-cardinality, and
+  cross-surface redaction tests;
+- deterministic crash, clock movement, notification outage, upstream failure,
+  listener loss, partial setup, and overload drills;
 - HF and GH Git clone, fetch, push, LFS, streaming, and cancellation;
 - exhaustive HF and GH operation construction plus representative live sandbox
   tests behind explicit credentials;
@@ -410,30 +562,38 @@ slice.
 - Add the GH request-all managed preset and ruleset/default-branch checks.
 - Delete provider-local preset lifecycle duplication.
 
-### 6. Eliminate quality baselines
+### 6. Complete operational resilience
+
+- Add current-format state check, backup, restore, and redacted export.
+- Add shared admission control, bounded queues, and recovery capacity.
+- Add atomic credential replacement and revocation for every credential class.
+- Add the shared liveness, readiness, metrics, logging, and redaction contract.
+- Run all deterministic failure drills and fix every non-fail-closed outcome.
+
+### 7. Eliminate quality baselines
 
 - Refactor every HF and GH CRAP exception through small green commits.
 - Add missing failure-path tests.
 - Remove baseline files and wrapper scripts once direct gates pass.
 
-### 7. Harden installation and release
+### 8. Harden installation and release
 
 - Make installer selection and verification immutable.
 - Pin workflow actions and tools.
 - Align Node and Go matrices and verify release artifacts after publication.
 
-### 8. Add upstream drift operations
+### 9. Add upstream drift operations
 
 - Add the scheduled non-mutating GitHub metadata monitor.
 - Document and test the reviewed snapshot-refresh workflow.
 
-### 9. Clean documentation and local metadata
+### 10. Clean documentation and local metadata
 
 - Update maintained contracts and examples to the final architecture.
 - Move completed plans out of Active Work.
 - Remove verified stale worktrees, branches, allowlists, and generated leftovers.
 
-### 10. End-to-end release qualification
+### 11. End-to-end release qualification
 
 - Install all brokers from packed immutable artifacts on clean Linux and macOS
   hosts.
@@ -467,15 +627,26 @@ The cutover is complete only when:
    without standing broad mutation authority.
 10. GitHub ruleset/default-branch enforcement is tested for both Git transport
     and generated direct-ref operations.
-11. Direct Slophammer CRAP analysis passes at `max_score: 8` with no baseline
+11. State check, current-format backup/restore, and bounded redacted export work
+    across Linux and macOS, and invalid backups never modify live state.
+12. Admission limits bound client, worker, state, stream, approval, and
+    notification load while preserving cancellation, revocation, health, and
+    operator decisions.
+13. Every credential class has a tested atomic replacement path and old
+    credentials fail immediately after successful activation.
+14. Liveness, readiness, degraded dependencies, structured logs, and bounded
+    metrics are secret-safe and operationally distinct from audit evidence.
+15. Storage, clock, notification, upstream, process, listener, setup, rotation,
+    and overload drills produce deterministic fail-closed outcomes.
+16. Direct Slophammer CRAP analysis passes at `max_score: 8` with no baseline
     exceptions or wrapper acceptance logic.
-12. Installers verify immutable release assets and provenance, and release
+17. Installers verify immutable release assets and provenance, and release
     workflows contain no mutable action or tool selection.
-13. Scheduled GitHub drift detection reports upstream changes without mutating
+18. Scheduled GitHub drift detection reports upstream changes without mutating
     generated artifacts.
-14. Linux, macOS, OpenClaw, provider conformance, race, coverage, lint,
+19. Linux, macOS, OpenClaw, provider conformance, race, coverage, lint,
     vulnerability, secret, license, architecture, and reproducibility gates are
     green.
-15. Active documentation describes only the final supported architecture and
+20. Active documentation describes only the final supported architecture and
     the repository contains no obsolete worktree metadata or completed work
     mislabeled as active.
