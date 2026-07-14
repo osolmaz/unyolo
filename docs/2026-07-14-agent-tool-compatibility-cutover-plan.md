@@ -2,7 +2,13 @@
 
 Date: 2026-07-14
 
-Status: ready to implement
+Status: complete
+
+Implemented by BrokerKit commit
+`88d7135` (`feat(mcp): add resumable agent tool compatibility`, PR #41).
+MLClaw pinned the resulting contract and completed the live test-space matrix
+documented in
+`osolmaz/mlclaw:docs/2026-07-14-broker-agent-tool-compatibility-plan.md`.
 
 ## Objective
 
