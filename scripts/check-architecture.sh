@@ -24,6 +24,15 @@ if grep -R -n -E 'BROKERKIT_INSTALLER_REV=.*main|raw\.githubusercontent\.com/[^/
 	exit 1
 fi
 
+if ! grep -q 'BROKERKIT_VERIFY_ONLY: "true"' .github/workflows/release.yml ||
+  ! grep -q 'BROKERKIT_VERIFY_RELEASE_SET: "true"' .github/workflows/release.yml ||
+  ! grep -q -- '--signer-workflow "$REPO/.github/workflows/release.yml"' installer/install.sh ||
+  ! grep -q -- '--deny-self-hosted-runners' installer/install.sh
+then
+  echo 'release publication and installation must verify pinned artifact provenance' >&2
+  exit 1
+fi
+
 if find . -path './brokers' -prune -o -path './.git' -prune -o -name '*.go' -type f -print0 |
   xargs -0 grep -n 'github.com/osolmaz/brokerkit/brokers/'
 then

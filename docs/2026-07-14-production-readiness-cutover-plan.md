@@ -531,8 +531,12 @@ The canonical installer now defaults to `$HOME/.local/bin`, never invokes
 operator-selected destination. Broker wrappers no longer fetch `main`: they
 resolve the selected component release tag through GitHub's ref API, peel an
 annotated tag when necessary, require an exact 40-character commit SHA, and
-fetch the canonical installer from that commit. Provenance verification and
-post-publication artifact verification remain to finish this section.
+fetch the canonical installer from that commit. The installer uses a pinned,
+checksum-verified GitHub CLI to validate archive and checksum attestations
+against the BrokerKit release workflow and selected tag. The release workflow
+then re-downloads the published assets through the same verify-only path, so
+publication is not successful until digest, provenance, archive shape, and
+source identity all pass.
 
 Build release artifacts from a clean checkout, verify generated artifacts and
 module integrity, produce SBOMs and provenance, smoke-test the packed artifacts,

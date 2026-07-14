@@ -76,9 +76,11 @@ The installer should:
 - detect `amd64` and `arm64`
 - download the release tarball for the selected version
 - download and verify `checksums.txt`
+- verify both files' GitHub attestations against the BrokerKit release workflow
+  and selected tag with a checksum-pinned verifier
 - install only the binary
-- prefer `$INSTALL_DIR`, then `/usr/local/bin` with `sudo`, then
-  `$HOME/.local/bin`
+- default to `$HOME/.local/bin` and require an explicit writable
+  `$INSTALL_DIR` for any other destination
 - print the installed binary path and `--version`
 
 The installer must not create users, service files, config files, token files,

@@ -17,9 +17,12 @@ TAG_PREFIX=hf-broker/
 and executes the Brokerkit script. The runtime detects Linux or macOS and
 amd64 or arm64. The wrapper resolves the selected qualified release tag to its
 exact commit SHA and fetches the canonical installer from that immutable
-revision. The installer downloads the matching tarball and `checksums.txt`, verifies
-the archive from its download directory, and installs the declared executable
-set. HF and GitHub declare one CLI. Sudo additionally declares its privileged
+revision. The installer downloads the matching tarball and `checksums.txt`,
+checks the archive digest, and verifies GitHub artifact attestations for both
+files against the BrokerKit repository, release workflow, and selected tag. It
+uses an exact GitHub CLI build whose Linux and macOS checksums are embedded in
+the installer. It then installs the declared executable set. HF and GitHub
+declare one CLI. Sudo additionally declares its privileged
 `sudo-broker-exec` companion, which is installed outside the ordinary `PATH` in
 the adjacent `libexec` directory.
 
@@ -28,9 +31,14 @@ explicit system destination requires an operator-controlled privileged shell.
 It does not create users, credentials, config, state, or services; those
 changes belong to an explicit broker setup command.
 
-The `BROKERKIT_LATEST_RELEASE_URL`, `BROKERKIT_RELEASE_BASE_URL`,
-`BROKERKIT_UNAME_S`, and `BROKERKIT_UNAME_M` variables are deterministic test
-seams. Normal installs do not need them.
+An offline installation may set `BROKERKIT_VERIFIER_FILE` to an absolute,
+executable path for a verifier the operator obtained and verified separately.
+`BROKERKIT_VERIFY_ONLY=true` downloads, authenticates, and validates release
+contents without installing them. The release workflow combines it with
+`BROKERKIT_VERIFY_RELEASE_SET=true` after publication to verify all four
+platform archives, the checksum manifest, and the SBOM. The remaining
+`BROKERKIT_*` URL and platform variables are test seams. Normal installs do not
+need them.
 
 ## Setup
 
