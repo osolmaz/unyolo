@@ -167,10 +167,10 @@ fi
 
 if grep -R -l --include='*.go' --exclude='*_test.go' -E \
   'func \([^)]*\) startOperationWorker|StateExecuting|operations\.Transition\(' brokers 2>/dev/null |
-  grep -v -E '^brokers/(github/internal/httpapi/(agent_operations|runtime)|sudo/internal/routes/agent_operations)\.go$'
+  grep .
 then
-  echo 'provider-local Agent lifecycle orchestration exists outside the temporary legacy allowlist' >&2
-  exit 1
+	echo 'provider-local Agent lifecycle orchestration survived the shared runtime cutover' >&2
+	exit 1
 fi
 
 if find brokers -type d \( -name sealedstore -o -name credentialstore -o -name schemautil -o -name securefile \) -print |

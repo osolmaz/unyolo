@@ -255,9 +255,9 @@ endpoint is never included in the agent Service or ingress.
 
 ### Agent lifecycle deduplication
 
-HF already uses the shared `operationruntime` contract. GH and sudo retain
-provider-local orchestration behind a temporary architecture-check allowlist.
-Move their remaining lifecycle mechanics into shared packages:
+HF, GH, and sudo use the shared `operationruntime` contract. The architecture
+gate rejects provider-local lifecycle state transitions and has no temporary
+provider allowlist. The shared runtime owns:
 
 - submit and idempotent replay;
 - policy classification and grant binding;
@@ -271,9 +271,9 @@ Move their remaining lifecycle mechanics into shared packages:
 - audit event sequencing.
 
 Providers retain only target/argument decoding, provider preconditions,
-credential selection, execution, reconciliation, and presentation. Delete the
-temporary allowlist and provider-local lifecycle implementations in the same
-slice.
+credential selection, execution, reconciliation, and presentation. Sudo's
+provider adapter additionally binds the exact reserved grant revision into its
+privileged-helper protocol immediately before dispatch.
 
 ### Provider-neutral policy presets
 

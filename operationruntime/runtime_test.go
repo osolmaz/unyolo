@@ -46,6 +46,8 @@ type runtimeAdapter struct {
 	executeRelease    <-chan struct{}
 	executeActive     atomic.Int32
 	maxExecuteActive  atomic.Int32
+	requiresApproval  bool
+	boundGrant        grants.Grant
 }
 
 func (a *runtimeAdapter) Descriptor() capability.Descriptor { return a.descriptor }
@@ -63,6 +65,11 @@ func (a *runtimeAdapter) Resolve(_ context.Context, input runtimeInput) (runtime
 }
 func (a *runtimeAdapter) ValidateClient(runtimeInput, string, string) error { return a.clientErr }
 func (a *runtimeAdapter) Authorize(plan runtimePlan) policy.Request         { return plan.Authorization }
+func (a *runtimeAdapter) RequiresApproval() bool                            { return a.requiresApproval }
+func (a *runtimeAdapter) BindReservation(plan runtimePlan, grant grants.Grant) (runtimePlan, error) {
+	a.boundGrant = grant
+	return plan, nil
+}
 func (a *runtimeAdapter) Present(runtimePlan) agentv1.Presentation {
 	return agentv1.Presentation{Title: "Create demo"}
 }
@@ -147,7 +154,7 @@ func (*captureNotifier) UpdateStatus(context.Context, notify.MessageRef, string)
 
 func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	notifier := &captureNotifier{}
-	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
 	defer closeRuntime()
 	request := agentv1.SubmitRequest{IdempotencyKey: "pending-1", Operation: "repo.create",
 		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"}
@@ -163,6 +170,9 @@ func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	if err != nil || completed.State != agentv1.StateSucceeded {
 		t.Fatalf("approved operation = %+v, %v", completed, err)
 	}
+	if adapter.boundGrant.ID != operation.ApprovalID || adapter.boundGrant.ReservationRevision < 1 {
+		t.Fatalf("reserved grant was not bound before execution: %+v", adapter.boundGrant)
+	}
 
 	request.IdempotencyKey = "pending-2"
 	operation, _, err = runtime.Submit(t.Context(), "agent", request)
@@ -172,6 +182,18 @@ func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	canceled, err := runtime.Cancel(t.Context(), "agent", operation.ID)
 	if err != nil || canceled.State != agentv1.StateCanceled {
 		t.Fatalf("canceled = %+v, %v", canceled, err)
+	}
+}
+
+func TestRuntimeApprovalRequiredAdapterIgnoresDirectAllow(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, adapter, _, _, closeRuntime := newRuntime(t, nil, allowThenRequestDecision, notifier, true)
+	defer closeRuntime()
+	adapter.requiresApproval = true
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "approval-required",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil || operation.State != agentv1.StatePending || operation.ApprovalID == "" || notifier.message.GrantID != operation.ApprovalID {
+		t.Fatalf("approval-required submit = %+v, %v; notification=%+v", operation, err, notifier.message)
 	}
 }
 
@@ -755,6 +777,37 @@ func TestRuntimeRestartRequiresReservedValidAuthority(t *testing.T) {
 	}
 }
 
+func TestRuntimeRestartRetainsUnprovenReservedAuthority(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	adapter.reconcileUnproven = true
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-unproven",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.ReserveUse(operation.ApprovalID); err != nil {
+		t.Fatal(err)
+	}
+	operation, err = operations.Transition(operation.ID, agentv1.StateApproved)
+	if err == nil {
+		operation, err = operations.Transition(operation.ID, agentv1.StateExecuting)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReconcileInterrupted(t.Context(), operation)
+	stored, _ := operations.Get("agent", operation.ID)
+	grant, _ := grantStore.Get(operation.ApprovalID)
+	if stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "upstream_result_unknown" || !grant.ReservationRetained {
+		t.Fatalf("recovered operation = %+v, grant = %+v", stored, grant)
+	}
+}
+
 func directDecision(policy.Request, policy.DecisionOptions) policy.Decision {
 	return policy.Decision{Effect: policy.EffectAllow, Allowed: true, MatchedAllowRuleIDs: []string{"allow"}}
 }
@@ -764,6 +817,13 @@ func requestDecision(policy.Request, policy.DecisionOptions) policy.Decision {
 		Mode: string(policy.GrantModeExecution), DefaultMinutes: 1, MaxMinutes: 2, RequestTTLMinutes: 1,
 		DefaultMaxUses: 1, MaxUses: 1,
 	}}
+}
+
+func allowThenRequestDecision(_ policy.Request, options policy.DecisionOptions) policy.Decision {
+	if options.ForGrantRequest {
+		return requestDecision(policy.Request{}, options)
+	}
+	return directDecision(policy.Request{}, options)
 }
 
 func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, policy.DecisionOptions) policy.Decision,

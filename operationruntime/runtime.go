@@ -249,7 +249,7 @@ func (r *Runtime[I, P, A]) submitResolved(ctx context.Context, client string, re
 	auth := adapter.Authorize(plan)
 	core := r.options.Project(auth)
 	decision := r.options.Decide(core, policy.DecisionOptions{Now: r.now()})
-	if decision.Allowed && len(decision.MatchedAllowRuleIDs) > 0 {
+	if decision.Allowed && len(decision.MatchedAllowRuleIDs) > 0 && !requiresApproval(adapter) {
 		intent, prepareErr := r.options.Prepare(Preparation[P, A]{Plan: plan, Auth: auth, Core: core, DescriptorName: adapter.Descriptor().Name,
 			Client: client, OperationID: id, Reason: request.Reason, Decision: decision, Direct: true, CreatedAt: r.now()})
 		if prepareErr != nil {
@@ -619,9 +619,19 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 		r.fail(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
 		return
 	}
-	reserved, ok := r.reserveApproval(operation)
+	grant, reserved, ok := r.reserveApproval(operation)
 	if !ok {
 		return
+	}
+	if reserved {
+		if binder, bound := any(adapter).(ReservationBinder[P]); bound {
+			plan, err = binder.BindReservation(plan, grant)
+			if err != nil {
+				_, _ = r.options.Grants.ReleaseUse(grant.ID)
+				r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approved operation binding is invalid")
+				return
+			}
+		}
 	}
 	r.executeReserved(ctx, operation, adapter, plan, reserved)
 }
@@ -720,7 +730,18 @@ func (r *Runtime[I, P, A]) ReconcileInterrupted(ctx context.Context, operation a
 		}
 		return
 	}
+	r.retainRecoveredApproval(operation)
 	r.fail(operation.ID, agentv1.StateFailed, "upstream_result_unknown", "Operation result could not be proven after restart")
+}
+
+func (r *Runtime[I, P, A]) retainRecoveredApproval(operation agentv1.Operation) {
+	if operation.ApprovalID == "" {
+		return
+	}
+	grant, err := r.options.Grants.Get(operation.ApprovalID)
+	if err == nil && grant.ReservedCount > 0 && !grant.ReservationRetained {
+		_, _ = r.options.Grants.RetainUse(grant.ID)
+	}
 }
 
 func normalizedUpstreamStatus(status int) int {
@@ -778,20 +799,26 @@ func (r *Runtime[I, P, A]) Load(operation agentv1.Operation) (Adapter[I, P, A], 
 	return adapter, plan, nil
 }
 
-func (r *Runtime[I, P, A]) reserveApproval(operation agentv1.Operation) (bool, bool) {
+func (r *Runtime[I, P, A]) reserveApproval(operation agentv1.Operation) (grants.Grant, bool, bool) {
 	if operation.ApprovalID == "" {
-		return false, true
+		return grants.Grant{}, false, true
 	}
 	grant, err := r.options.Grants.Get(operation.ApprovalID)
 	if err != nil || r.options.ValidateExecution(grant) != nil {
 		r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
-		return false, false
+		return grants.Grant{}, false, false
 	}
-	if _, err := r.options.Grants.ReserveUse(grant.ID); err != nil {
+	reserved, err := r.options.Grants.ReserveUse(grant.ID)
+	if err != nil {
 		r.fail(operation.ID, agentv1.StateFailed, "approval_unavailable", "Approval could not be reserved")
-		return false, false
+		return grants.Grant{}, false, false
 	}
-	return true, true
+	return reserved, true, true
+}
+
+func requiresApproval[I, P, A any](adapter Adapter[I, P, A]) bool {
+	required, ok := any(adapter).(ApprovalRequiredAdapter)
+	return ok && required.RequiresApproval()
 }
 
 func (r *Runtime[I, P, A]) failExecution(operation agentv1.Operation, plan P, executionErr, reconcileErr error) {

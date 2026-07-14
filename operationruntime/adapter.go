@@ -13,6 +13,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/grants"
 )
 
 // Outcome is the stable result of execution or reconciliation. Proven must be
@@ -54,6 +55,20 @@ type Adapter[I, P, A any] interface {
 // authenticated client is known and before provider resolution begins.
 type ClientBoundAdapter[I any] interface {
 	ValidateClient(I, string, string) error
+}
+
+// ApprovalRequiredAdapter marks an operation that cannot execute directly from
+// an allow rule. The runtime still evaluates request rules and creates the
+// ordinary one-use approval.
+type ApprovalRequiredAdapter interface {
+	RequiresApproval() bool
+}
+
+// ReservationBinder binds the exact reserved grant revision into a provider
+// plan immediately before dispatch. It is intended for executors whose replay
+// protection is part of the privileged execution protocol.
+type ReservationBinder[P any] interface {
+	BindReservation(P, grants.Grant) (P, error)
 }
 
 // PlanCleaner removes transient provider material when an operation reaches a

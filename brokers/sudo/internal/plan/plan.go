@@ -274,13 +274,23 @@ func (v Validator) ValidateActivation(ctx context.Context, grant grants.Grant, c
 }
 
 func (v Validator) ValidateExecution(ctx context.Context, grant grants.Grant) (Plan, error) {
-	if err := v.validateGrant(grant, grants.ApprovalConstraints{}); err != nil {
+	value, err := v.ValidateGrant(grant)
+	if err != nil {
 		return Plan{}, err
 	}
 	if v.Helper == nil {
 		return Plan{}, errors.New("sudo privileged helper is unavailable")
 	}
 	if err := v.Helper.Ready(ctx); err != nil {
+		return Plan{}, err
+	}
+	return value, nil
+}
+
+// ValidateGrant verifies the immutable command and current host bindings
+// without probing helper availability.
+func (v Validator) ValidateGrant(grant grants.Grant) (Plan, error) {
+	if err := v.validateGrant(grant, grants.ApprovalConstraints{}); err != nil {
 		return Plan{}, err
 	}
 	return v.Store.Get(grant.Metadata[MetadataDigest])

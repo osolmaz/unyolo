@@ -195,7 +195,7 @@ func (s *Server) cancelGrantForClient(grant grants.Grant, client string) error {
 	return s.operationRuntime.CancelGrant(grant, client)
 }
 
-func (s *Server) startOperationWorker(ctx context.Context) {
+func (s *Server) startOperationRuntime(ctx context.Context) {
 	workerContext, cancel := context.WithCancel(ctx)
 	s.lifecycleContext = workerContext
 	s.lifecycleCancel = cancel
