@@ -24,6 +24,7 @@ import (
 const (
 	defaultAuthorizationGrace = 30 * time.Second
 	defaultWorkerInterval     = 500 * time.Millisecond
+	defaultWorkerConcurrency  = 8
 	defaultNotificationLease  = 2 * time.Minute
 )
 
@@ -80,6 +81,7 @@ type Options[I, P, A any] struct {
 	Now                 func() time.Time
 	AuthorizationGrace  time.Duration
 	WorkerInterval      time.Duration
+	WorkerConcurrency   int
 	NotificationLease   time.Duration
 }
 
@@ -114,6 +116,9 @@ func defaultRuntimeTiming[I, P, A any](options Options[I, P, A]) Options[I, P, A
 	}
 	if options.WorkerInterval <= 0 {
 		options.WorkerInterval = defaultWorkerInterval
+	}
+	if options.WorkerConcurrency <= 0 {
+		options.WorkerConcurrency = defaultWorkerConcurrency
 	}
 	if options.NotificationLease <= 0 {
 		options.NotificationLease = defaultNotificationLease
@@ -484,13 +489,13 @@ func (r *Runtime[I, P, A]) Recover(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	for _, operation := range values {
+	r.runBatch(ctx, values, func(ctx context.Context, operation agentv1.Operation) {
 		if operation.State == agentv1.StateExecuting {
 			r.ReconcileInterrupted(ctx, operation)
 		} else {
 			r.Advance(ctx, operation)
 		}
-	}
+	})
 }
 
 // AdvanceAll advances every unfinished operation once.
@@ -499,9 +504,36 @@ func (r *Runtime[I, P, A]) AdvanceAll(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	for _, operation := range values {
-		r.Advance(ctx, operation)
+	r.runBatch(ctx, values, func(ctx context.Context, operation agentv1.Operation) { r.Advance(ctx, operation) })
+}
+
+func (r *Runtime[I, P, A]) runBatch(ctx context.Context, values []agentv1.Operation, run func(context.Context, agentv1.Operation)) {
+	if len(values) == 0 {
+		return
 	}
+	workers := min(r.options.WorkerConcurrency, len(values))
+	jobs := make(chan agentv1.Operation)
+	var batch sync.WaitGroup
+	batch.Add(workers)
+	for range workers {
+		go func() {
+			defer batch.Done()
+			for operation := range jobs {
+				run(ctx, operation)
+			}
+		}()
+	}
+	for _, operation := range values {
+		select {
+		case jobs <- operation:
+		case <-ctx.Done():
+			close(jobs)
+			batch.Wait()
+			return
+		}
+	}
+	close(jobs)
+	batch.Wait()
 }
 
 // Advance synchronizes approval state and dispatches one approved operation.

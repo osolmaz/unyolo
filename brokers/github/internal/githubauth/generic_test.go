@@ -234,6 +234,10 @@ func TestCredentialMetadataSelectionFailsClosed(t *testing.T) {
 			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindInstallation)), map[string]any{}, 0)
 			return callErr
 		},
+		"resource ID is not installation ID": func() error {
+			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindInstallation)), map[string]any{"kind": "team", "id": float64(42)}, 0)
+			return callErr
+		},
 		"missing user": func() error {
 			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindUser)), map[string]any{"kind": "user"}, 0)
 			return callErr

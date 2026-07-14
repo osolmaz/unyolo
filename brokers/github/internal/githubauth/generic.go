@@ -84,19 +84,14 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 		}
 		installationID := int64Field(target, "installation_id")
 		if installationID <= 0 {
-			account := targetregistry.String(target, "owner")
-			if account == "" {
-				account = targetregistry.String(target, "name")
-			}
+			account := installationAccount(target)
 			if account != "" {
 				metadata, err := m.InstallationForAccount(ctx, account)
-				if err == nil {
-					installationID = metadata.InstallationID
+				if err != nil {
+					return Metadata{}, err
 				}
+				installationID = metadata.InstallationID
 			}
-		}
-		if installationID <= 0 {
-			installationID = int64Field(target, "id")
 		}
 		if installationID <= 0 {
 			return Metadata{}, errors.New("GitHub installation selector is incomplete")
@@ -131,6 +126,18 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 		return m.development.Metadata(), nil
 	default:
 		return Metadata{}, fmt.Errorf("GitHub credential kind %q is unsupported", descriptor.CredentialKind)
+	}
+}
+
+func installationAccount(target map[string]any) string {
+	if account := targetregistry.String(target, "installation_account"); account != "" {
+		return account
+	}
+	switch targetregistry.String(target, "kind") {
+	case "organization", "installation", "user":
+		return targetregistry.String(target, "name")
+	default:
+		return ""
 	}
 }
 

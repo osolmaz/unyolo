@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,10 @@ type runtimeAdapter struct {
 	recordedStatus    int
 	clientErr         error
 	resolveErr        error
+	executeStarted    chan<- struct{}
+	executeRelease    <-chan struct{}
+	executeActive     atomic.Int32
+	maxExecuteActive  atomic.Int32
 }
 
 func (a *runtimeAdapter) Descriptor() capability.Descriptor { return a.descriptor }
@@ -61,6 +66,14 @@ func (a *runtimeAdapter) Present(runtimePlan) agentv1.Presentation {
 	return agentv1.Presentation{Title: "Create demo"}
 }
 func (a *runtimeAdapter) Execute(context.Context, runtimePlan) (Outcome, error) {
+	if a.executeStarted != nil {
+		active := a.executeActive.Add(1)
+		defer a.executeActive.Add(-1)
+		for maximum := a.maxExecuteActive.Load(); active > maximum && !a.maxExecuteActive.CompareAndSwap(maximum, active); maximum = a.maxExecuteActive.Load() {
+		}
+		a.executeStarted <- struct{}{}
+		<-a.executeRelease
+	}
 	if a.executeErr != nil {
 		return Outcome{}, a.executeErr
 	}
@@ -246,6 +259,60 @@ func TestRuntimeWorkerRecoversApprovedOperation(t *testing.T) {
 	cancel()
 	runtime.Wait()
 	t.Fatal("worker did not recover the approved operation")
+}
+
+func TestRuntimeAdvancesOperationsWithBoundedConcurrency(t *testing.T) {
+	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
+	defer closeRuntime()
+	runtime.options.WorkerConcurrency = 2
+	started := make(chan struct{}, 3)
+	release := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	adapter.executeStarted = started
+	adapter.executeRelease = release
+	for index := 0; index < 3; index++ {
+		_, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "parallel-" + string(rune('a'+index)), Operation: "repo.create",
+			Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := make(chan struct{})
+	go func() {
+		runtime.AdvanceAll(t.Context())
+		close(done)
+	}()
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("operations did not start concurrently")
+		}
+	}
+	select {
+	case <-started:
+		t.Fatal("worker concurrency bound was exceeded")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	released = true
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("concurrent batch did not finish")
+	}
+	if adapter.maxExecuteActive.Load() != 2 {
+		t.Fatalf("maximum concurrent executions = %d", adapter.maxExecuteActive.Load())
+	}
+	values, err := operations.ListUnfinished()
+	if err != nil || len(values) != 0 {
+		t.Fatalf("unfinished operations = %+v, %v", values, err)
+	}
 }
 
 func TestRuntimeRestartCommitsReservedApproval(t *testing.T) {

@@ -8,7 +8,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -20,7 +22,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -32,7 +36,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -44,7 +50,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -56,7 +64,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -68,7 +78,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -80,7 +92,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -92,7 +106,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -104,7 +120,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -116,7 +134,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -128,7 +148,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -140,7 +162,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -152,7 +176,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -164,7 +190,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -176,7 +204,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -188,7 +218,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -200,7 +232,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -212,7 +246,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -224,7 +260,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -236,7 +274,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -248,7 +288,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -260,7 +302,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -272,7 +316,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -284,7 +330,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -296,7 +344,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -308,7 +358,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -320,7 +372,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -332,7 +386,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -344,7 +400,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -356,7 +414,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -368,7 +428,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -380,7 +442,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -392,7 +456,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -404,7 +470,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -416,7 +484,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   },
   {
@@ -428,7 +498,9 @@
       "owner",
       "repo",
       "name",
-      "number"
+      "number",
+      "installation_id",
+      "installation_account"
     ]
   }
 ]

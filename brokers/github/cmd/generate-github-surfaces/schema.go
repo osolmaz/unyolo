@@ -19,10 +19,15 @@ func targetSchemas() map[string]map[string]any {
 	result := make(map[string]map[string]any, len(targetKinds))
 	for _, kind := range targetKinds {
 		properties := map[string]any{
-			"kind":    map[string]any{"const": kind},
-			"id":      map[string]any{"type": "integer", "minimum": 1},
-			"node_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 256},
-			"owner":   nameSchema(), "repo": nameSchema(), "name": nameSchema(), "number": map[string]any{"type": "integer", "minimum": 1},
+			"kind":                 map[string]any{"const": kind},
+			"id":                   map[string]any{"type": "integer", "minimum": 1},
+			"node_id":              map[string]any{"type": "string", "minLength": 1, "maxLength": 256},
+			"owner":                nameSchema(),
+			"repo":                 nameSchema(),
+			"name":                 nameSchema(),
+			"number":               map[string]any{"type": "integer", "minimum": 1},
+			"installation_id":      map[string]any{"type": "integer", "minimum": 1},
+			"installation_account": nameSchema(),
 		}
 		required := []string{"kind"}
 		result[kind] = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": properties, "required": required, "additionalProperties": false}
@@ -37,7 +42,7 @@ func nameSchema() map[string]any {
 func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 	result := make([]targetDescriptor, 0, len(schemas))
 	for kind := range schemas {
-		fields := []string{"id", "node_id", "owner", "repo", "name", "number"}
+		fields := []string{"id", "node_id", "owner", "repo", "name", "number", "installation_id", "installation_account"}
 		result = append(result, targetDescriptor{Kind: kind, Schema: "target." + kind + ".v1", PolicyFields: fields})
 	}
 	slices.SortFunc(result, func(a, b targetDescriptor) int { return strings.Compare(a.Kind, b.Kind) })

@@ -71,6 +71,26 @@ func TestPresenterShowsGeneratedPathSelectors(t *testing.T) {
 	t.Fatalf("presentation = %+v", presentation)
 }
 
+func TestPresenterShowsInstallationAndCreatedResourceSelectors(t *testing.T) {
+	presentation, err := (Presenter{}).Present(t.Context(), grants.Grant{
+		ID: "grant-installation", Operation: "repo.create_using_template",
+		Target: policy.Target{Kind: "installation", Fields: map[string][]string{"installation_id": {"42"}}},
+		Attrs:  map[string][]string{"resource_owner": {"osolmaz"}, "resource_name": {"brokerkit-next"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"Installation ID": "42", "Resource owner": "osolmaz", "Resource name": "brokerkit-next"}
+	for _, field := range presentation.Fields {
+		if expected, found := want[field.Label]; found && field.Value == expected {
+			delete(want, field.Label)
+		}
+	}
+	if presentation.Target != "installation 42" || len(want) != 0 {
+		t.Fatalf("presentation = %+v, missing = %+v", presentation, want)
+	}
+}
+
 func TestTargetSummaryRejectsKindOnlyAndFormatsNamedTargets(t *testing.T) {
 	t.Parallel()
 	if got := TargetSummary(policy.Target{Kind: "user"}); got != "" {

@@ -399,7 +399,7 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 			return Outcome{}, err
 		}
 		if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
-			return Outcome{}, err
+			return Outcome{}, classifyResponseValidationError(a.binding.Method, err)
 		}
 		return Outcome{Proven: true, Result: result.Body, UpstreamStatus: result.StatusCode}, nil
 	default:
@@ -755,12 +755,12 @@ func authorizationSelectorAttrs(binding *opbinding.Binding, arguments map[string
 
 func authorizationTargetFields(target map[string]any) map[string][]string {
 	fields := map[string][]string{}
-	for _, key := range []string{"owner", "repo", "name", "node_id"} {
+	for _, key := range []string{"owner", "repo", "name", "node_id", "installation_account"} {
 		if value := stringValue(target, key); value != "" {
 			fields[key] = []string{value}
 		}
 	}
-	for _, key := range []string{"id", "number"} {
+	for _, key := range []string{"id", "number", "installation_id"} {
 		if value := integerString(target, key); value != "" {
 			fields[key] = []string{value}
 		}
@@ -811,6 +811,7 @@ func authorizationAttributeName(name string) (string, bool) {
 		"path": "path", "paths": "path", "permission": "permission", "ref": "ref", "release_state": "release_state",
 		"releaseState": "release_state", "resource_id": "resource_id", "resourceId": "resource_id", "role": "role",
 		"visibility": "visibility", "workflow": "workflow", "workflow_ref": "workflow_ref", "workflowRef": "workflow_ref",
+		"name": "resource_name", "owner": "resource_owner",
 	}
 	attribute, found := aliases[name]
 	return attribute, found

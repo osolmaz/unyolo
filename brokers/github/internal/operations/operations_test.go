@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -265,6 +266,7 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	attrs := authorizationAttrs(map[string]any{"input": map[string]any{
 		"actorId": json.Number("1"), "actorLogin": "alice", "base": "main", "environmentName": "production", "head": "feature",
+		"name": "brokerkit-next", "owner": "osolmaz",
 		"labels": []any{"bug", "urgent"}, "mergeMethod": "squash", "paths": []any{"README.md", "docs/guide.md"},
 		"permission": "maintain", "ref": "refs/heads/main", "releaseState": "draft", "resourceId": "R_1", "role": "admin",
 		"visibility": "private", "workflow": "ci", "workflowRef": "ci.yml@main",
@@ -274,7 +276,7 @@ func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 		"head_ref": {"feature"}, "label": {"bug", "urgent"}, "merge_method": {"squash"},
 		"path": {"README.md", "docs/guide.md"}, "permission": {"maintain"}, "ref": {"refs/heads/main"},
 		"release_state": {"draft"}, "resource_id": {"R_1"}, "role": {"admin"}, "visibility": {"private"},
-		"workflow": {"ci"}, "workflow_ref": {"ci.yml@main"},
+		"workflow": {"ci"}, "workflow_ref": {"ci.yml@main"}, "resource_name": {"brokerkit-next"}, "resource_owner": {"osolmaz"},
 	}
 	if !maps.EqualFunc(attrs, want, slices.Equal) {
 		t.Fatalf("authorization attrs = %+v, want %+v", attrs, want)
@@ -445,6 +447,17 @@ func TestExecutionStatusRejectsUndocumentedOutcomes(t *testing.T) {
 				t.Fatalf("error = %v, partial = %t", err, IsPossiblePartial(err))
 			}
 		})
+	}
+}
+
+func TestMutationResponseValidationFailureRequiresReconciliation(t *testing.T) {
+	mutationErr := classifyResponseValidationError(http.MethodPost, errors.New("invalid projected response"))
+	if !IsPossiblePartial(mutationErr) {
+		t.Fatalf("mutation validation error = %v", mutationErr)
+	}
+	readErr := classifyResponseValidationError(http.MethodGet, errors.New("invalid projected response"))
+	if IsPossiblePartial(readErr) {
+		t.Fatalf("read validation error = %v", readErr)
 	}
 }
 

@@ -51,18 +51,31 @@ func repositoryTarget(owner, name string) string {
 }
 
 func targetLocator(target policy.Target, owner, name string) string {
+	return appendTargetQualifier(baseTargetLocator(target, owner, name), target)
+}
+
+func baseTargetLocator(target policy.Target, owner, name string) string {
 	locator := name
 	if owner != "" && name != "" {
-		locator = repositoryTarget(owner, name)
-	} else if locator == "" {
-		locator = owner
+		return repositoryTarget(owner, name)
 	}
+	if locator != "" {
+		return locator
+	}
+	if owner != "" {
+		return owner
+	}
+	return policy.FirstValue(target.Fields["installation_account"])
+}
+
+func appendTargetQualifier(locator string, target policy.Target) string {
 	if number := policy.FirstValue(target.Fields["number"]); number != "" {
-		locator = strings.TrimSpace(locator + " #" + number)
-	} else if id := policy.FirstValue(target.Fields["id"]); id != "" {
-		locator = strings.TrimSpace(locator + " " + id)
-	} else if nodeID := policy.FirstValue(target.Fields["node_id"]); nodeID != "" {
-		locator = strings.TrimSpace(locator + " " + nodeID)
+		return strings.TrimSpace(locator + " #" + number)
+	}
+	for _, key := range []string{"id", "installation_id", "node_id"} {
+		if value := policy.FirstValue(target.Fields[key]); value != "" {
+			return strings.TrimSpace(locator + " " + value)
+		}
 	}
 	return locator
 }
@@ -70,8 +83,9 @@ func targetLocator(target policy.Target, owner, name string) string {
 // DisplayFields returns the exact target and closed policy vocabulary used by every approval surface.
 func DisplayFields(grant grants.Grant) []operatorinbox.DisplayField {
 	fields := []operatorinbox.DisplayField{{Label: "Operation", Value: grant.Operation}, {Label: "Target", Value: TargetSummary(grant.Target)}}
-	targetLabels := map[string]string{"owner": "Target owner", "name": "Target name", "number": "Target number", "id": "Target ID", "node_id": "Target node ID"}
-	for _, key := range []string{"owner", "name", "number", "id", "node_id"} {
+	targetLabels := map[string]string{"owner": "Target owner", "name": "Target name", "number": "Target number", "id": "Target ID", "node_id": "Target node ID",
+		"installation_id": "Installation ID", "installation_account": "Installation account"}
+	for _, key := range []string{"owner", "name", "number", "id", "node_id", "installation_id", "installation_account"} {
 		if values := grant.Target.Fields[key]; len(values) > 0 {
 			fields = append(fields, operatorinbox.DisplayField{Label: targetLabels[key], Value: strings.Join(values, ", ")})
 		}
@@ -80,7 +94,8 @@ func DisplayFields(grant grants.Grant) []operatorinbox.DisplayField {
 		"actor_id": "Actor ID", "actor_login": "Actor", "base_ref": "Base ref", "credential_kind": "Credential kind",
 		"credential_slot": "Credential slot", "environment": "Environment", "head_ref": "Head ref", "label": "Labels",
 		"merge_method": "Merge method", "path": "Path", "permission": "Permission", "ref": "Ref", "release_state": "Release state",
-		"resource_id": "Resource ID", "role": "Role", "visibility": "Visibility", "workflow": "Workflow", "workflow_ref": "Workflow ref",
+		"resource_id": "Resource ID", "resource_name": "Resource name", "resource_owner": "Resource owner", "role": "Role",
+		"visibility": "Visibility", "workflow": "Workflow", "workflow_ref": "Workflow ref",
 	}
 	keys := make([]string, 0, len(grant.Attrs))
 	for key := range grant.Attrs {

@@ -9,6 +9,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "advisory"
         },
@@ -50,6 +60,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -97,6 +117,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "app"
         },
@@ -138,6 +168,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -185,6 +225,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "cache"
         },
@@ -226,6 +276,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -273,6 +333,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "codespace"
         },
@@ -314,6 +384,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -361,6 +441,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "commit"
         },
@@ -402,6 +492,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -449,6 +549,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "discussion"
         },
@@ -490,6 +600,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -537,6 +657,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "environment"
         },
@@ -578,6 +708,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -625,6 +765,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "installation"
         },
@@ -666,6 +816,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -713,6 +873,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "job"
         },
@@ -754,6 +924,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -801,6 +981,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "member"
         },
@@ -842,6 +1032,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -889,6 +1089,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "notification"
         },
@@ -930,6 +1140,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -977,6 +1197,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "package"
         },
@@ -1018,6 +1248,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -1065,6 +1305,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "pull_request"
         },
@@ -1106,6 +1356,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -1153,6 +1413,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "ref"
         },
@@ -1194,6 +1464,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -1241,6 +1521,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "repo"
         },
@@ -1282,6 +1572,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -1329,6 +1629,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "run"
         },
@@ -1370,6 +1680,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -1417,6 +1737,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "team"
         },
@@ -1458,6 +1788,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
@@ -1505,6 +1845,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
         "kind": {
           "const": "webhook"
         },
@@ -1546,6 +1896,16 @@
       "additionalProperties": false,
       "properties": {
         "id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installation_account": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
+        },
+        "installation_id": {
           "minimum": 1,
           "type": "integer"
         },
