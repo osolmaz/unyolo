@@ -713,12 +713,16 @@ func targetSummary(kind string, target map[string]any) string {
 func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Binding, target, arguments map[string]any,
 	credential githubauth.Metadata) Authorization {
 	attrs := authorizationAttrs(arguments)
+	attrs = normalizeOperationAuthorizationAttrs(descriptor.Name, attrs)
 	selectors := authorizationSelectorAttrs(binding, arguments)
-	if attrs == nil && len(selectors) > 0 {
+	if attrs == nil && (len(selectors) > 0 || credential.UserID > 0) {
 		attrs = map[string][]string{}
 	}
 	for key, values := range selectors {
 		attrs[key] = values
+	}
+	if credential.UserID > 0 {
+		attrs["actor_id"] = []string{fmt.Sprint(credential.UserID)}
 	}
 	return Authorization{
 		Operation:      descriptor.Name,

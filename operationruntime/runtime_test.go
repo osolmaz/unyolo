@@ -37,8 +37,8 @@ type runtimeAdapter struct {
 	reconcileUnproven bool
 	reconcileErr      error
 	resolveCount      int
-	cleanupCount      int
-	recordedStatus    int
+	cleanupCount      atomic.Int32
+	recordedStatus    atomic.Int32
 	clientErr         error
 	resolveErr        error
 	executeStarted    chan<- struct{}
@@ -90,7 +90,7 @@ func (a *runtimeAdapter) Reconcile(context.Context, runtimePlan) (Outcome, error
 	return Outcome{Proven: true, Result: json.RawMessage(`{"reconciled":true}`), UpstreamStatus: 204}, nil
 }
 func (a *runtimeAdapter) Cleanup(runtimePlan) error {
-	a.cleanupCount++
+	a.cleanupCount.Add(1)
 	return nil
 }
 
@@ -109,8 +109,8 @@ func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
 	}
 	runtime.Advance(t.Context(), operation)
 	completed, err := operations.Get("agent", operation.ID)
-	if err != nil || completed.State != agentv1.StateSucceeded || string(completed.Result) != `{"created":true}` || adapter.cleanupCount != 1 || adapter.recordedStatus != 201 {
-		t.Fatalf("completed = %+v cleanup=%d status=%d err=%v", completed, adapter.cleanupCount, adapter.recordedStatus, err)
+	if err != nil || completed.State != agentv1.StateSucceeded || string(completed.Result) != `{"created":true}` || adapter.cleanupCount.Load() != 1 || adapter.recordedStatus.Load() != 201 {
+		t.Fatalf("completed = %+v cleanup=%d status=%d err=%v", completed, adapter.cleanupCount.Load(), adapter.recordedStatus.Load(), err)
 	}
 }
 
@@ -124,8 +124,8 @@ func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 	}
 	runtime.Advance(t.Context(), operation)
 	completed, err := operations.Get("agent", operation.ID)
-	if err != nil || completed.State != agentv1.StateSucceeded || !adapter.reconciled || adapter.cleanupCount != 1 || adapter.recordedStatus != 204 {
-		t.Fatalf("completed = %+v, reconciled=%v cleanup=%d status=%d err=%v", completed, adapter.reconciled, adapter.cleanupCount, adapter.recordedStatus, err)
+	if err != nil || completed.State != agentv1.StateSucceeded || !adapter.reconciled || adapter.cleanupCount.Load() != 1 || adapter.recordedStatus.Load() != 204 {
+		t.Fatalf("completed = %+v, reconciled=%v cleanup=%d status=%d err=%v", completed, adapter.reconciled, adapter.cleanupCount.Load(), adapter.recordedStatus.Load(), err)
 	}
 }
 
@@ -450,8 +450,8 @@ func TestRuntimePolicyRefusalsAreTerminalAndCleaned(t *testing.T) {
 				t.Fatalf("submit = %+v, %t, %v", operation, created, err)
 			}
 			stored, err := operations.Get("agent", operation.ID)
-			if err != nil || stored.State != agentv1.StateDenied || stored.Error.Code != "operation_policy_denied" || adapter.cleanupCount == 0 {
-				t.Fatalf("stored = %+v cleanup=%d err=%v", stored, adapter.cleanupCount, err)
+			if err != nil || stored.State != agentv1.StateDenied || stored.Error.Code != "operation_policy_denied" || adapter.cleanupCount.Load() == 0 {
+				t.Fatalf("stored = %+v cleanup=%d err=%v", stored, adapter.cleanupCount.Load(), err)
 			}
 		})
 	}
@@ -473,8 +473,8 @@ func TestRuntimeRejectsApprovalWithoutNotificationReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, err := operations.Get("agent", operation.ID)
-	if err != nil || stored.State != agentv1.StateFailed || stored.Error.Code != "approval_notification_failed" || adapter.cleanupCount == 0 {
-		t.Fatalf("stored = %+v cleanup=%d err=%v", stored, adapter.cleanupCount, err)
+	if err != nil || stored.State != agentv1.StateFailed || stored.Error.Code != "approval_notification_failed" || adapter.cleanupCount.Load() == 0 {
+		t.Fatalf("stored = %+v cleanup=%d err=%v", stored, adapter.cleanupCount.Load(), err)
 	}
 }
 
@@ -544,8 +544,8 @@ func TestRuntimeExplicitOutcomeSettlement(t *testing.T) {
 	failed := submitExecuting("explicit-failure")
 	runtime.FailExecution(failed, runtimePlan{}, errors.New("upstream"), errors.New("unknown"))
 	stored, _ = operations.Get("agent", failed.ID)
-	if stored.State != agentv1.StateFailed || stored.Error.Code == "" || adapter.cleanupCount == 0 {
-		t.Fatalf("failed = %+v cleanup=%d", stored, adapter.cleanupCount)
+	if stored.State != agentv1.StateFailed || stored.Error.Code == "" || adapter.cleanupCount.Load() == 0 {
+		t.Fatalf("failed = %+v cleanup=%d", stored, adapter.cleanupCount.Load())
 	}
 }
 
@@ -709,7 +709,7 @@ func TestRuntimePlanPreparationFailuresCleanResolvedState(t *testing.T) {
 					t.Fatalf("stored preparation = %+v, %v", stored, getErr)
 				}
 			}
-			if adapter.cleanupCount == 0 {
+			if adapter.cleanupCount.Load() == 0 {
 				t.Fatal("failed preparation retained provider state")
 			}
 		})
@@ -824,7 +824,9 @@ func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, poli
 		Notifier:          notifier, ApprovalMessage: func(grant grants.Grant, token string) notify.ApprovalMessage {
 			return notify.ApprovalMessage{GrantID: grant.ID, DecisionToken: token, Operation: grant.Operation}
 		}, OperatorConfigured: operatorConfigured,
-		RecordOutcome: func(_ agentv1.Operation, _ runtimePlan, _, _ string, status int) { adapter.recordedStatus = status },
+		RecordOutcome: func(_ agentv1.Operation, _ runtimePlan, _, _ string, status int) {
+			adapter.recordedStatus.Store(int32(status))
+		},
 	})
 	if err != nil {
 		_ = database.Close()

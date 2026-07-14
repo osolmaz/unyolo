@@ -172,7 +172,9 @@ func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
 	authorization := adapter.Authorize(plan)
 	presentation := adapter.Present(plan)
 	if authorization.Operation != "pull_request.create" || !slices.Equal(authorization.TargetFields["owner"], []string{"osolmaz"}) ||
-		!slices.Equal(authorization.Attrs["head_ref"], []string{"agent/work"}) || presentation.Title == "" {
+		!slices.Equal(authorization.Attrs["head_ref"], []string{"refs/heads/agent/work"}) ||
+		!slices.Equal(authorization.Attrs["base_ref"], []string{"refs/heads/main"}) ||
+		!slices.Equal(authorization.Attrs["ref"], []string{"refs/heads/agent/work"}) || presentation.Title == "" {
 		t.Fatalf("authorization = %+v presentation = %+v", authorization, presentation)
 	}
 	if err := adapter.(PlanCleaner).Cleanup(plan); err != nil {
@@ -315,6 +317,52 @@ func TestAuthorizationUsesOnlyExecutionBoundTargetFields(t *testing.T) {
 		!slices.Equal(authorization.TargetFields["number"], []string{"7"}) ||
 		!slices.Equal(authorization.TargetFields["installation_id"], []string{"42"}) {
 		t.Fatalf("authorization target fields = %+v", authorization.TargetFields)
+	}
+}
+
+func TestAuthorizationKeepsCredentialActorSeparateFromUserTarget(t *testing.T) {
+	binding := opbinding.ByOperation("member.users_block")
+	descriptor, found := opcatalog.ByName("member.users_block")
+	if len(binding) != 1 || !found {
+		t.Fatal("user block binding is unavailable")
+	}
+	authorization := authorizeDescriptor(descriptor, &binding[0], map[string]any{
+		"kind": "user", "name": "victim",
+	}, map[string]any{}, githubauth.Metadata{Kind: githubauth.KindUser, UserID: 42})
+	if authorization.TargetFields["id"] != nil || !slices.Equal(authorization.TargetFields["name"], []string{"victim"}) ||
+		!slices.Equal(authorization.Attrs["actor_id"], []string{"42"}) {
+		t.Fatalf("authorization = %+v", authorization)
+	}
+}
+
+func TestAuthorizationBindsCredentialUserForAuthenticatedUserTarget(t *testing.T) {
+	binding := opbinding.ByOperation("member.users_get_authenticated")
+	descriptor, found := opcatalog.ByName("member.users_get_authenticated")
+	if len(binding) != 1 || !found || !binding[0].AuthenticatedUserTarget {
+		t.Fatal("authenticated user binding is unavailable")
+	}
+	authorization := authorizeDescriptor(descriptor, &binding[0], map[string]any{
+		"kind": "user", "name": "osolmaz",
+	}, map[string]any{}, githubauth.Metadata{Kind: githubauth.KindUser, UserID: 42})
+	if !slices.Equal(authorization.TargetFields["id"], []string{"42"}) ||
+		!slices.Equal(authorization.TargetFields["name"], []string{"osolmaz"}) ||
+		!slices.Equal(authorization.Attrs["actor_id"], []string{"42"}) {
+		t.Fatalf("authorization = %+v", authorization)
+	}
+}
+
+func TestPullRequestAuthorizationCanonicalizesPolicyRefs(t *testing.T) {
+	descriptor, found := opcatalog.ByName("pull_request.create")
+	if !found {
+		t.Fatal("pull request descriptor is unavailable")
+	}
+	authorization := authorizeDescriptor(descriptor, nil, map[string]any{}, map[string]any{
+		"input": map[string]any{"base": "main", "head": "alice:feature"},
+	}, githubauth.Metadata{})
+	if !slices.Equal(authorization.Attrs["base_ref"], []string{"refs/heads/main"}) ||
+		!slices.Equal(authorization.Attrs["head_ref"], []string{"alice:refs/heads/feature"}) ||
+		!slices.Equal(authorization.Attrs["ref"], []string{"alice:refs/heads/feature"}) {
+		t.Fatalf("authorization attrs = %+v", authorization.Attrs)
 	}
 }
 
