@@ -101,7 +101,7 @@ func mcpTools() []map[string]any {
 	return append(tools,
 		map[string]any{"name": "hf_operation_cancel", "description": "Cancel a pending or approved HF Broker operation.", "inputSchema": mcpIDSchema("operation_id", false)},
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
-		map[string]any{"name": "hf_grant_wait", "description": "Wait for a temporary HF Broker grant decision.", "inputSchema": mcpIDSchema("grant_id", true)},
+		map[string]any{"name": "hf_grant_wait", "description": "Wait briefly for a temporary HF Broker grant decision, then call again if it remains pending.", "inputSchema": mcpIDSchema("grant_id", true)},
 		map[string]any{"name": "hf_grant_cancel", "description": "Cancel a pending temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_revoke", "description": "Revoke an active temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
 	)
@@ -110,7 +110,7 @@ func mcpTools() []map[string]any {
 func mcpIDSchema(idField string, wait bool) map[string]any {
 	properties := map[string]any{idField: map[string]any{"type": "string"}}
 	if wait {
-		properties["wait_seconds"] = map[string]any{"type": "integer", "minimum": 1, "maximum": 900}
+		properties["wait_seconds"] = map[string]any{"type": "integer", "minimum": 1, "maximum": mcpoperation.MaxWaitSeconds}
 	}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{idField}, "properties": properties}
 }
@@ -158,11 +158,11 @@ func decodeMCPGrantLifecycle(raw json.RawMessage) (mcpGrantLifecycleInput, error
 }
 
 func waitForMCPGrantInput(ctx context.Context, client *hfGrantClient, input mcpGrantLifecycleInput) (hfClientGrant, error) {
-	if input.WaitSeconds < 0 || input.WaitSeconds > 900 {
-		return hfClientGrant{}, errors.New("wait_seconds must be between 0 and 900")
+	if input.WaitSeconds < 0 || input.WaitSeconds > mcpoperation.MaxWaitSeconds {
+		return hfClientGrant{}, fmt.Errorf("wait_seconds must be between 0 and %d", mcpoperation.MaxWaitSeconds)
 	}
 	if input.WaitSeconds == 0 {
-		input.WaitSeconds = 30
+		input.WaitSeconds = mcpoperation.DefaultWaitSeconds
 	}
 	return waitForMCPGrant(ctx, client, input.GrantID, time.Duration(input.WaitSeconds)*time.Second)
 }

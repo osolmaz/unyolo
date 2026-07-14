@@ -127,6 +127,16 @@ func TestRunAgentClientGrantLifecycle(t *testing.T) {
 	}); err == nil {
 		t.Fatal("hf_grant_get accepted wait_seconds")
 	}
+	if _, err := callMCPTool(t.Context(), mcpClient, mcpToolCall{
+		Name: "hf_grant_wait", Arguments: json.RawMessage(`{"grant_id":"grant-1","wait_seconds":26}`),
+	}); err == nil {
+		t.Fatal("hf_grant_wait accepted a wait above the bounded MCP deadline")
+	}
+	waitProperties := mcpIDSchema("grant_id", true)["properties"].(map[string]any)
+	waitSchema := waitProperties["wait_seconds"].(map[string]any)
+	if waitSchema["maximum"] != mcpoperation.MaxWaitSeconds {
+		t.Fatalf("hf_grant_wait maximum = %v", waitSchema["maximum"])
+	}
 	if err := runGrantClientFromEnv(t.Context(), env, &stdout, &bytes.Buffer{}, []string{"request", "missing", "bad"}); err == nil {
 		t.Fatal("invalid grant request succeeded")
 	}
