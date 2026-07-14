@@ -68,6 +68,22 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	}
 }
 
+func TestParseSetupSystemdDefaultsToRequestAllPreset(t *testing.T) {
+	opts, err := parseSetupSystemd(ioDiscard{}, []string{"--hf-token-file", "/tmp/hf-token"})
+	if err != nil {
+		t.Fatalf("parseSetupSystemd() error = %v", err)
+	}
+	if opts.PolicyPreset != "request-all-agent-operations" || opts.Repo != "" {
+		t.Fatalf("default policy selection = %+v", opts)
+	}
+	if _, err := parseSetupSystemd(ioDiscard{}, []string{"--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/repo"}); err == nil || !strings.Contains(err.Error(), "must be set together") {
+		t.Fatalf("incomplete repo selection error = %v", err)
+	}
+	if _, err := parseSetupSystemd(ioDiscard{}, []string{"--hf-token-file", "/tmp/hf-token", "--deny-operation", "repo.unknown"}); err == nil || !strings.Contains(err.Error(), "unknown operation") {
+		t.Fatalf("unknown deny override error = %v", err)
+	}
+}
+
 func TestParseSetupSystemdRequiresCompleteTelegramConfiguration(t *testing.T) {
 	base := []string{"--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/scraped-news", "--repo-type", "dataset"}
 	for _, args := range [][]string{
@@ -429,7 +445,7 @@ func TestBrokerkitSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
 	if !found || !strings.Contains(renderEnvFile(systemdSetupPlan(opts)), "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=") {
 		t.Fatalf("telegram token was not installed: %+v", plan.Files)
 	}
-	if len(plan.RemoveFiles) != 0 || plan.ReadyCheck != nil {
+	if len(plan.RemoveFiles) != 2 || plan.ReadyCheck != nil || !managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || !managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
 		t.Fatalf("configured Telegram plan retires files: %+v", plan.RemoveFiles)
 	}
 }
@@ -448,9 +464,8 @@ func TestBrokerkitSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRemoval := bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName}
-	if len(plan.RemoveFiles) != 1 || plan.RemoveFiles[0] != wantRemoval {
-		t.Fatalf("disabled Telegram removals = %+v, want %+v", plan.RemoveFiles, wantRemoval)
+	if len(plan.RemoveFiles) != 3 || !managedFileRefNamed(plan.RemoveFiles, telegramTokenFileName) || !managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || !managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
+		t.Fatalf("disabled Telegram removals = %+v", plan.RemoveFiles)
 	}
 	if plan.ReadyCheck == nil {
 		t.Fatal("disabled Telegram plan has no readiness check")
@@ -458,6 +473,74 @@ func TestBrokerkitSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.
 	if strings.Contains(renderEnvFile(systemdSetupPlan(opts)), "TELEGRAM") {
 		t.Fatal("disabled Telegram remains in the environment")
 	}
+}
+
+func TestBrokerkitSystemdInstallPlanIncludesPresetArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	tokenPath := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenPath, []byte("hf_example\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
+			ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"),
+			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/hf-broker",
+			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, NoStart: true,
+		},
+		HFTokenFile: tokenPath, PolicyPreset: "request-all-agent-operations",
+		DeniedOperations: []string{"repo.delete"}, SharedSecret: strings.Repeat("s", 32),
+		OperatorName: "operator", OperatorSecret: strings.Repeat("o", 32),
+		OperatorBindAddr: "127.0.0.1", OperatorPort: 8081,
+	}
+	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{scopeFileName, policyProfileFileName, policyManifestFileName} {
+		if !managedFileNamed(plan.Files, name) {
+			t.Fatalf("preset plan missing %s: %+v", name, plan.Files)
+		}
+	}
+	if managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
+		t.Fatalf("preset plan retires its artifacts: %+v", plan.RemoveFiles)
+	}
+}
+
+func TestRequirePolicyReplacement(t *testing.T) {
+	dir := t.TempDir()
+	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: bksetup.SystemdOptions{ConfigDir: dir}})
+	if err := requirePolicyReplacement(plan); err != nil {
+		t.Fatalf("fresh policy replacement check = %v", err)
+	}
+	if err := os.WriteFile(plan.scopePath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requirePolicyReplacement(plan); err == nil || !strings.Contains(err.Error(), "--replace-policy") {
+		t.Fatalf("existing policy replacement check = %v", err)
+	}
+	plan.opts.ReplacePolicy = true
+	if err := requirePolicyReplacement(plan); err != nil {
+		t.Fatalf("explicit policy replacement check = %v", err)
+	}
+}
+
+func managedFileNamed(files []bkservice.ManagedFile, name string) bool {
+	for _, file := range files {
+		if file.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func managedFileRefNamed(files []bkservice.ManagedFileRef, name string) bool {
+	for _, file := range files {
+		if file.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBrokerkitSystemdInstallPlanRejectsMissingToken(t *testing.T) {

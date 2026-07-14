@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/isolation"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 )
 
 func runDoctor(ctx context.Context, stdout, stderr io.Writer, args []string) error {
@@ -22,9 +23,94 @@ func runDoctor(ctx context.Context, stdout, stderr io.Writer, args []string) err
 	switch args[0] {
 	case "isolation":
 		return runDoctorIsolation(ctx, stdout, stderr, args[1:])
+	case "policy":
+		return runDoctorPolicy(stdout, stderr, args[1:])
 	default:
-		return exitError{code: 64, message: "usage: hf-broker doctor [isolation] [flags]"}
+		return exitError{code: 64, message: "usage: hf-broker doctor [isolation|policy] [flags]"}
 	}
+}
+
+func runDoctorPolicy(stdout, stderr io.Writer, args []string) error {
+	var flagOutput bytes.Buffer
+	fs := flag.NewFlagSet("hf-broker doctor policy", flag.ContinueOnError)
+	fs.SetOutput(&flagOutput)
+	profilePath := fs.String("profile", "", "policy profile path")
+	manifestPath := fs.String("manifest", "", "policy manifest path")
+	policyPath := fs.String("scope", "", "rendered scope policy path")
+	jsonOutput := fs.Bool("json", false, "write JSON output")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = io.Copy(stderr, &flagOutput)
+			return exitError{code: 0}
+		}
+		return exitError{code: 64, message: "invalid doctor policy flags"}
+	}
+	if fs.NArg() != 0 || *profilePath == "" || *manifestPath == "" || *policyPath == "" {
+		return exitError{code: 64, message: "doctor policy requires --profile, --manifest, and --scope"}
+	}
+	profileData, err := readDoctorPolicyFile("profile", *profilePath)
+	if err != nil {
+		return err
+	}
+	manifestData, err := readDoctorPolicyFile("manifest", *manifestPath)
+	if err != nil {
+		return err
+	}
+	policyData, err := readDoctorPolicyFile("scope", *policyPath)
+	if err != nil {
+		return err
+	}
+	report := policypreset.Check(profileData, manifestData, policyData)
+	if err := writeDoctorPolicyReport(stdout, report, *jsonOutput); err != nil {
+		return err
+	}
+	if report.Status == policypreset.DriftCurrent {
+		return nil
+	}
+	if report.Status == policypreset.DriftInvalid {
+		return exitError{code: 2}
+	}
+	return exitError{code: 1}
+}
+
+func readDoctorPolicyFile(label, path string) ([]byte, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- operator-supplied diagnostic path.
+	if err != nil {
+		return nil, fmt.Errorf("read policy %s: %w", label, err)
+	}
+	return data, nil
+}
+
+func writeDoctorPolicyReport(stdout io.Writer, report policypreset.DriftReport, jsonOutput bool) error {
+	if jsonOutput {
+		encoder := json.NewEncoder(stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(report)
+	}
+	if _, err := fmt.Fprintf(stdout, "Policy status: %s\n", report.Status); err != nil {
+		return err
+	}
+	for _, detail := range report.Details {
+		if _, err := fmt.Fprintf(stdout, "- %s\n", detail); err != nil {
+			return err
+		}
+	}
+	operationGroups := []struct {
+		label      string
+		operations []string
+	}{
+		{"Added operations", report.AddedOperations},
+		{"Removed operations", report.RemovedOperations},
+		{"Changed operations", report.ChangedOperations},
+	}
+	for _, group := range operationGroups {
+		if len(group.operations) > 0 {
+			if _, err := fmt.Fprintf(stdout, "%s: %s\n", group.label, strings.Join(group.operations, ", ")); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func runDoctorIsolation(ctx context.Context, stdout, stderr io.Writer, args []string) error {

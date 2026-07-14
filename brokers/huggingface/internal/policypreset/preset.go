@@ -68,6 +68,25 @@ type Artifacts struct {
 	ManifestJSON []byte
 }
 
+type DriftStatus string
+
+const (
+	DriftCurrent  DriftStatus = "current"
+	DriftStale    DriftStatus = "stale"
+	DriftModified DriftStatus = "modified"
+	DriftInvalid  DriftStatus = "invalid"
+)
+
+// DriftReport explains whether policy artifacts still match one another and
+// the catalog embedded in the running binary.
+type DriftReport struct {
+	Status            DriftStatus `json:"status"`
+	Details           []string    `json:"details"`
+	AddedOperations   []string    `json:"added_operations"`
+	RemovedOperations []string    `json:"removed_operations"`
+	ChangedOperations []string    `json:"changed_operations"`
+}
+
 type policyDocument struct {
 	Rules []policyRule `json:"rules"`
 }
@@ -112,6 +131,46 @@ func ParseProfile(data []byte) (Profile, error) {
 		return Profile{}, errors.New("parse policy profile: trailing content")
 	}
 	return normalizeProfile(profile)
+}
+
+// Check reports drift without changing any operator-owned files.
+func Check(profileData, manifestData, policyData []byte) DriftReport {
+	profile, err := ParseProfile(profileData)
+	if err != nil {
+		return invalidReport(err)
+	}
+	manifest, err := parseManifest(manifestData)
+	if err != nil {
+		return invalidReport(err)
+	}
+	if _, err := policy.Parse(policyData); err != nil {
+		return invalidReport(fmt.Errorf("parse policy: %w", err))
+	}
+	current, err := Render(profile)
+	if err != nil {
+		return invalidReport(err)
+	}
+
+	report := DriftReport{Status: DriftCurrent, Details: []string{}}
+	if manifest.ProfileDigest != digest(profileData) {
+		report.Status = DriftModified
+		report.Details = append(report.Details, "profile digest does not match the manifest")
+	}
+	if manifest.PolicyDigest != digest(policyData) {
+		report.Status = DriftModified
+		report.Details = append(report.Details, "policy digest does not match the manifest")
+	}
+	if manifest.CatalogDigest != current.Manifest.CatalogDigest {
+		if report.Status == DriftCurrent {
+			report.Status = DriftStale
+		}
+		report.Details = append(report.Details, "operation catalog changed since this policy was rendered")
+	}
+	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Manifest.Operations)
+	if report.Status == DriftCurrent {
+		report.Details = append(report.Details, "profile, policy, manifest, and operation catalog match")
+	}
+	return report
 }
 
 // Render materializes a validated profile into deterministic policy artifacts.
@@ -191,7 +250,7 @@ func normalizeProfile(profile Profile) (Profile, error) {
 		}
 	}
 	profile.Clients = clients
-	profile.DeniedOperations = denied
+	profile.DeniedOperations = nonNil(denied)
 	return profile, nil
 }
 
@@ -280,4 +339,58 @@ func marshalCanonical(value any) ([]byte, error) {
 func digest(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func parseManifest(data []byte) (Manifest, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var manifest Manifest
+	if err := decoder.Decode(&manifest); err != nil {
+		return Manifest{}, fmt.Errorf("parse policy manifest: %w", err)
+	}
+	var trailing struct{}
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return Manifest{}, errors.New("parse policy manifest: trailing content")
+	}
+	if manifest.Version != ManifestVersion || manifest.Preset != RequestAllAgentOperations {
+		return Manifest{}, errors.New("policy manifest version or preset is invalid")
+	}
+	if manifest.CatalogDigest == "" || manifest.ProfileDigest == "" || manifest.PolicyDigest == "" {
+		return Manifest{}, errors.New("policy manifest is missing digests")
+	}
+	return manifest, nil
+}
+
+func invalidReport(err error) DriftReport {
+	return DriftReport{Status: DriftInvalid, Details: []string{err.Error()}, AddedOperations: []string{}, RemovedOperations: []string{}, ChangedOperations: []string{}}
+}
+
+func compareOperations(previous, current []OperationFingerprint) (added, removed, changed []string) {
+	previousByName := make(map[string]OperationFingerprint, len(previous))
+	currentByName := make(map[string]OperationFingerprint, len(current))
+	for _, operation := range previous {
+		previousByName[operation.Name] = operation
+	}
+	for _, operation := range current {
+		currentByName[operation.Name] = operation
+		old, found := previousByName[operation.Name]
+		if !found {
+			added = append(added, operation.Name)
+		} else if old != operation {
+			changed = append(changed, operation.Name)
+		}
+	}
+	for _, operation := range previous {
+		if _, found := currentByName[operation.Name]; !found {
+			removed = append(removed, operation.Name)
+		}
+	}
+	return nonNil(added), nonNil(removed), nonNil(changed)
+}
+
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }
