@@ -42,6 +42,7 @@ import (
 	"github.com/osolmaz/brokerkit/sealedpayload"
 	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 type Server struct {
@@ -60,6 +61,7 @@ type Server struct {
 	sealedStore         *sealedstore.Store
 	sealedPayloads      *sealedpayload.Service
 	credentialStore     *credentialstore.Store
+	streamStore         *streamstore.Store
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
 	githubCredentials   *githubauth.Manager
@@ -111,10 +113,16 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		_ = core.database.Close()
 		return nil, err
 	}
+	server.streamStore, err = streamstore.Open(stateDir(cfg.StateDir))
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
 	adapters, err := operations.NewGeneratedAdapters(appSource, operations.Options{
 		RequestingUserID: cfg.GitHubUserID,
 		SealedStore:      server.sealedStore,
 		CredentialStore:  server.credentialStore,
+		StreamStore:      server.streamStore,
 	})
 	if err != nil {
 		_ = core.database.Close()
@@ -257,6 +265,8 @@ func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator 
 func (s *Server) registerRoutes(auth security.TokenAuth) {
 	s.agentAPI.Register(s.echo)
 	s.echo.POST("/api/agent/v1/sealed-payloads", s.sealedPayloads.Upload)
+	s.echo.POST("/api/agent/v1/streams", s.uploadStream)
+	s.echo.GET("/api/agent/v1/streams/:id", s.downloadStream)
 	protected := s.echo.Group("")
 	protected.Use(auth.Middleware)
 	protected.Use(validateRouteParams)

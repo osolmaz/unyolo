@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/capability"
@@ -40,11 +41,35 @@ func Tools(exposure Exposure, enabled Enabled) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return capability.MCPTools(capability.SurfaceOptions{Descriptors: opcatalog.CapabilityDescriptors(descriptors), Schemas: schemaregistry.InputSchemas,
+	tools := capability.MCPTools(capability.SurfaceOptions{Descriptors: opcatalog.CapabilityDescriptors(descriptors), Schemas: schemaregistry.InputSchemas,
 		AttributeNames: []string{"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method", "path", "permission", "ref", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref"},
 		ToolDescription: func(descriptor capability.Descriptor) string {
 			return descriptor.Summary + " GitHub credentials remain inside GH Broker."
-		}}), nil
+		}})
+	for index, descriptor := range descriptors {
+		bindings := opbinding.ByOperation(descriptor.Name)
+		if len(bindings) == 1 && bindings[0].StreamDirection == "upload" {
+			operation, _ := schemaregistry.ForOperation(descriptor.Name)
+			schema := tools[index]["inputSchema"].(map[string]any)
+			properties := schema["properties"].(map[string]any)
+			properties["arguments"] = operation.Arguments
+			properties["stream_input"] = streamReferenceSchema()
+			required := schema["required"].([]string)
+			schema["required"] = append(required, "stream_input")
+		}
+	}
+	return tools, nil
+}
+
+func streamReferenceSchema() map[string]any {
+	stringField := map[string]any{"type": "string", "minLength": 1, "maxLength": 255}
+	return map[string]any{"type": "object", "additionalProperties": false,
+		"required": []string{"id", "owner", "purpose", "request_key", "digest", "size", "media_type", "expires_at"},
+		"properties": map[string]any{
+			"id": stringField, "owner": stringField, "purpose": stringField, "request_key": stringField,
+			"digest": map[string]any{"type": "string", "pattern": "^[a-f0-9]{64}$"}, "size": map[string]any{"type": "integer", "minimum": 1},
+			"media_type": stringField, "expires_at": map[string]any{"type": "integer", "minimum": 1},
+		}}
 }
 
 //nolint:cyclop // The four-way exposure intersection is kept explicit and fail-closed.

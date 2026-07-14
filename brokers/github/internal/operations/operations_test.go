@@ -1,6 +1,7 @@
 package operations
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/sealedstore"
+	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 func TestGeneratedRegistryCoversAgentFacingRESTAndGraphQL(t *testing.T) {
@@ -241,6 +243,102 @@ func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
 	}
 }
 
+func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
+	const content = "release-asset-canary"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/brokerkit/releases/9/assets" ||
+			request.URL.Query().Get("name") != "artifact.bin" || request.Header.Get("Content-Type") != "application/octet-stream" {
+			t.Fatalf("request = %s %s query=%s headers=%v", request.Method, request.URL.Path, request.URL.RawQuery, request.Header)
+		}
+		body, _ := io.ReadAll(request.Body)
+		if string(body) != content {
+			t.Fatalf("body = %q", body)
+		}
+		_, _ = w.Write([]byte(`{"id":10,"node_id":"asset-10","name":"artifact.bin","state":"uploaded","url":"https://api.github.test/assets/10"}`))
+	}))
+	t.Cleanup(server.Close)
+	streams, _ := streamstore.Open(t.TempDir())
+	reference, err := streams.Put("bob", "release.repos_upload_release_asset", "asset-request", "application/octet-stream",
+		strings.NewReader(content), 1024, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := newAdapterOptions(t)
+	options.StreamStore = streams
+	adapters, err := NewGeneratedAdapters(newOperationsManager(t, server.URL), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := NewRegistry(adapters...)
+	adapter, _ := registry.Lookup("release.repos_upload_release_asset")
+	wrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"artifact.bin"}`), "stream_input": reference})
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","name":"brokerkit"}`), wrapper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "asset-request"); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Authorization.Client = "bob"
+	outcome, err := adapter.Execute(context.Background(), plan)
+	if err != nil || !outcome.Proven {
+		t.Fatalf("outcome = %+v err = %v", outcome, err)
+	}
+	if streams.Validate(reference) == nil {
+		t.Fatal("consumed upload stream was retained")
+	}
+}
+
+func TestStreamDownloadStoresBoundedResultForOwner(t *testing.T) {
+	content := bytes.Repeat([]byte("archive-canary"), 64)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/repos/osolmaz/brokerkit/zipball/main" || request.Header.Get("Accept") != "application/octet-stream" {
+			t.Fatalf("request = %s %s headers=%v", request.Method, request.URL.Path, request.Header)
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(content)
+	}))
+	t.Cleanup(server.Close)
+	streams, _ := streamstore.Open(t.TempDir())
+	options := newAdapterOptions(t)
+	options.StreamStore = streams
+	adapters, _ := NewGeneratedAdapters(newOperationsManager(t, server.URL), options)
+	registry, _ := NewRegistry(adapters...)
+	adapter, _ := registry.Lookup("repo.download_zipball_archive")
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"ref":"main"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Authorization.Client = "bob"
+	outcome, err := adapter.Execute(context.Background(), plan)
+	if err != nil || !outcome.Proven || bytes.Contains(outcome.Result, content[:32]) {
+		t.Fatalf("outcome = %s err = %v", outcome.Result, err)
+	}
+	var result struct {
+		Stream streamstore.Reference `json:"stream"`
+	}
+	if json.Unmarshal(outcome.Result, &result) != nil || result.Stream.Owner != "bob" || result.Stream.MediaType != "application/zip" {
+		t.Fatalf("stream result = %+v", result)
+	}
+	file, err := streams.OpenStream(result.Stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, _ := io.ReadAll(file)
+	_ = file.Close()
+	if !bytes.Equal(stored, content) {
+		t.Fatal("download stream content drifted")
+	}
+}
+
 func newOperationsManager(t *testing.T, base string) *githubauth.Manager {
 	t.Helper()
 	apiURL, err := url.Parse(base)
@@ -296,7 +394,11 @@ func newAdapterOptions(t *testing.T) Options {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Options{SealedStore: newSealedStore(t), CredentialStore: credentials}
+	streams, err := streamstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Options{SealedStore: newSealedStore(t), CredentialStore: credentials, StreamStore: streams}
 }
 
 func assertJSONEqual(t *testing.T, raw json.RawMessage, expected string) {

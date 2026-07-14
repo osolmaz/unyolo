@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 type mcpRequest struct {
@@ -185,16 +186,17 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 		return nil, errors.New("tool is not advertised for this client and deployment")
 	}
 	var input struct {
-		Target          json.RawMessage `json:"target"`
-		Arguments       json.RawMessage `json:"arguments"`
-		SealedArguments json.RawMessage `json:"sealed_arguments"`
-		CredentialSlot  string          `json:"credential_slot"`
-		Attrs           map[string]any  `json:"attrs"`
-		Minutes         int             `json:"minutes"`
-		MaxUses         json.RawMessage `json:"max_uses"`
-		Reason          string          `json:"reason"`
-		IdempotencyKey  string          `json:"idempotency_key"`
-		WaitSeconds     int             `json:"wait_seconds"`
+		Target          json.RawMessage        `json:"target"`
+		Arguments       json.RawMessage        `json:"arguments"`
+		SealedArguments json.RawMessage        `json:"sealed_arguments"`
+		CredentialSlot  string                 `json:"credential_slot"`
+		StreamInput     *streamstore.Reference `json:"stream_input"`
+		Attrs           map[string]any         `json:"attrs"`
+		Minutes         int                    `json:"minutes"`
+		MaxUses         json.RawMessage        `json:"max_uses"`
+		Reason          string                 `json:"reason"`
+		IdempotencyKey  string                 `json:"idempotency_key"`
+		WaitSeconds     int                    `json:"wait_seconds"`
 	}
 	if strictjson.Decode(call.Arguments, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 ||
 		input.IdempotencyKey == "" || input.WaitSeconds < 0 || input.WaitSeconds > 900 {
@@ -207,7 +209,18 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 	if err != nil {
 		return nil, err
 	}
-	if descriptor.Sealed {
+	if streamDirectionForOperation(descriptor.Name) == "upload" {
+		if input.StreamInput == nil || len(input.SealedArguments) != 0 || input.CredentialSlot != "" {
+			return nil, errors.New("stream_input is required")
+		}
+		if err := schemaregistry.ValidateStreamPublic(descriptor.Name, input.Target, input.Arguments); err != nil {
+			return nil, err
+		}
+		input.Arguments, err = json.Marshal(map[string]any{"public": input.Arguments, "stream_input": input.StreamInput})
+		if err != nil {
+			return nil, err
+		}
+	} else if descriptor.Sealed {
 		if descriptor.CredentialOutputKind != nil {
 			if len(input.SealedArguments) != 0 || !credentialstore.ValidSlot(input.CredentialSlot) {
 				return nil, errors.New("credential_slot is required and sealed_arguments are not accepted")
@@ -234,7 +247,7 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 			}
 		}
 	} else {
-		if len(input.SealedArguments) != 0 || input.CredentialSlot != "" {
+		if len(input.SealedArguments) != 0 || input.CredentialSlot != "" || input.StreamInput != nil {
 			return nil, errors.New("operation does not accept sealed_arguments")
 		}
 		if err := schemaregistry.ValidateSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {

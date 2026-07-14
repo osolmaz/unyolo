@@ -36,6 +36,7 @@ type Binding struct {
 	Pagination           string      `json:"pagination"`
 	ConditionalRequest   bool        `json:"conditional_request"`
 	RedirectPolicy       string      `json:"redirect_policy"`
+	StreamDirection      string      `json:"stream_direction,omitempty"`
 	Reconciliation       string      `json:"reconciliation"`
 }
 
@@ -88,6 +89,12 @@ func Validate(values []Binding) error {
 		}
 		if strings.Contains(strings.ToLower(value.PathTemplate), "http://") || strings.Contains(strings.ToLower(value.PathTemplate), "https://") {
 			return fmt.Errorf("GitHub REST binding %q contains a caller-selectable URL", value.ID)
+		}
+		if value.StreamDirection != "" && value.StreamDirection != "upload" && value.StreamDirection != "download" {
+			return fmt.Errorf("GitHub REST binding %q has an invalid stream direction", value.ID)
+		}
+		if (value.StreamDirection != "") != (value.RedirectPolicy == "github-download-host-allowlist") {
+			return fmt.Errorf("GitHub REST binding %q stream metadata drifted", value.ID)
 		}
 		for _, parameter := range value.ArgumentParameters {
 			if parameter.In != "query" || parameter.Name == "method" || parameter.Name == "graphql" || parameter.Name == "caller" || parameter.Name == "headers" {

@@ -51,13 +51,15 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		return runOperations(stdout, args[1:])
 	case "operation":
 		return runOperation(ctx, stdout, args[1:])
+	case "stream":
+		return runStream(ctx, stdout, args[1:])
 	case "mcp":
 		return runMCP(ctx, os.Getenv, os.Stdin, stdout, args[1:])
 	default:
 		if found, err := runGeneratedCLI(ctx, stdout, args); found {
 			return err
 		}
-		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|operations|operation|mcp]")
+		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|operations|operation|stream|mcp]")
 	}
 }
 

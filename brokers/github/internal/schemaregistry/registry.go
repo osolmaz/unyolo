@@ -217,6 +217,24 @@ func ValidateArguments(name string, argumentsRaw json.RawMessage) error {
 	return nil
 }
 
+func ValidateStreamPublic(name string, targetRaw, argumentsRaw json.RawMessage) error {
+	operation, found := ForOperation(name)
+	if !found {
+		return errors.New("unknown GitHub stream operation")
+	}
+	target, found := targetSchemaForID(operation.Target)
+	if !found {
+		return errors.New("missing GitHub target schema")
+	}
+	if err := validateRaw(targetRaw, target); err != nil {
+		return fmt.Errorf("target %w", err)
+	}
+	if err := validateRaw(argumentsRaw, operation.Arguments); err != nil {
+		return fmt.Errorf("public arguments %w", err)
+	}
+	return nil
+}
+
 func ValidateResult(name string, resultRaw json.RawMessage) error {
 	if len(resultRaw) > 1<<20 {
 		return errors.New("GitHub operation result is too large")

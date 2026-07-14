@@ -549,10 +549,10 @@
     "request_schema": "arguments.artifact.actions_delete_artifact.v1",
     "response_schema": "result.artifact.actions_delete_artifact.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "absence-proof"
   },
   {
@@ -849,10 +849,10 @@
     "request_schema": "arguments.action_run.actions_delete_workflow_run_logs.v1",
     "response_schema": "result.action_run.actions_delete_workflow_run_logs.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "absence-proof"
   },
   {
@@ -967,6 +967,7 @@
     "pagination": "none",
     "conditional_request": true,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "download",
     "reconciliation": "none"
   },
   {
@@ -990,6 +991,7 @@
     "pagination": "none",
     "conditional_request": true,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "download",
     "reconciliation": "none"
   },
   {
@@ -1014,6 +1016,7 @@
     "pagination": "none",
     "conditional_request": true,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "download",
     "reconciliation": "none"
   },
   {
@@ -1037,6 +1040,7 @@
     "pagination": "none",
     "conditional_request": true,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "download",
     "reconciliation": "none"
   },
   {
@@ -1515,10 +1519,10 @@
       "updated_at"
     ],
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": true,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "none"
   },
   {
@@ -8517,10 +8521,10 @@
     "request_schema": "arguments.code_scanning.code_scanning_delete_codeql_database.v1",
     "response_schema": "result.code_scanning.code_scanning_delete_codeql_database.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "absence-proof"
   },
   {
@@ -8631,10 +8635,10 @@
       "updated_at"
     ],
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": true,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "none"
   },
   {
@@ -8680,10 +8684,10 @@
     "request_schema": "arguments.code_scanning.code_scanning_get_sarif.v1",
     "response_schema": "result.code_scanning.code_scanning_get_sarif.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": true,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "none"
   },
   {
@@ -8940,10 +8944,10 @@
       "updated_at"
     ],
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": true,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "none"
   },
   {
@@ -9075,10 +9079,10 @@
       "url"
     ],
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "bounded-readback"
   },
   {
@@ -17246,10 +17250,10 @@
     "request_schema": "arguments.artifact.orgs_create_artifact_deployment_record.v1",
     "response_schema": "result.artifact.orgs_create_artifact_deployment_record.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "bounded-readback"
   },
   {
@@ -17267,10 +17271,10 @@
     "request_schema": "arguments.artifact.orgs_create_artifact_storage_record.v1",
     "response_schema": "result.artifact.orgs_create_artifact_storage_record.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "bounded-readback"
   },
   {
@@ -18087,10 +18091,10 @@
     "request_schema": "arguments.artifact.orgs_list_artifact_deployment_records.v1",
     "response_schema": "result.artifact.orgs_list_artifact_deployment_records.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": true,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "none"
   },
   {
@@ -18109,10 +18113,10 @@
     "request_schema": "arguments.artifact.orgs_list_artifact_storage_records.v1",
     "response_schema": "result.artifact.orgs_list_artifact_storage_records.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": true,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "none"
   },
   {
@@ -19246,10 +19250,10 @@
     "request_schema": "arguments.artifact.orgs_set_cluster_deployment_records.v1",
     "response_schema": "result.artifact.orgs_set_cluster_deployment_records.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "bounded-readback"
   },
   {
@@ -23715,10 +23719,10 @@
     "request_schema": "arguments.release.repos_delete_release_asset.v1",
     "response_schema": "result.release.repos_delete_release_asset.v1",
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "absence-proof"
   },
   {
@@ -23945,6 +23949,7 @@
     "pagination": "none",
     "conditional_request": true,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "download",
     "reconciliation": "none"
   },
   {
@@ -23968,6 +23973,7 @@
     "pagination": "none",
     "conditional_request": true,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "download",
     "reconciliation": "none"
   },
   {
@@ -25308,6 +25314,7 @@
     "pagination": "none",
     "conditional_request": true,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "download",
     "reconciliation": "none"
   },
   {
@@ -26783,10 +26790,10 @@
       "updated_at"
     ],
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "link",
     "conditional_request": true,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "none"
   },
   {
@@ -27673,10 +27680,10 @@
       "updated_at"
     ],
     "request_bytes_limit": 2097152,
-    "response_bytes_limit": 268435456,
+    "response_bytes_limit": 4194304,
     "pagination": "none",
     "conditional_request": false,
-    "redirect_policy": "github-download-host-allowlist",
+    "redirect_policy": "disabled",
     "reconciliation": "bounded-readback"
   },
   {
@@ -28127,11 +28134,12 @@
       "created_at",
       "updated_at"
     ],
-    "request_bytes_limit": 2097152,
+    "request_bytes_limit": 268435456,
     "response_bytes_limit": 268435456,
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "github-download-host-allowlist",
+    "stream_direction": "upload",
     "reconciliation": "bounded-readback"
   },
   {

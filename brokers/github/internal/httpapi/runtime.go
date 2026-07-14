@@ -42,8 +42,27 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 func (s *Server) Start(ctx context.Context) {
 	s.startOperationWorker(ctx)
 	s.sealedPayloads.Start(s.lifecycleContext)
+	s.startStreamSweeper(s.lifecycleContext)
 	s.startTelegram(ctx)
 	s.startNotificationSweeper(ctx)
+}
+
+func (s *Server) startStreamSweeper(ctx context.Context) {
+	s.backgroundWorkers.Add(1)
+	go func() {
+		defer s.backgroundWorkers.Done()
+		_, _ = s.streamStore.SweepExpired(time.Now())
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				_, _ = s.streamStore.SweepExpired(now)
+			}
+		}
+	}()
 }
 
 func (s *Server) startTelegram(ctx context.Context) {

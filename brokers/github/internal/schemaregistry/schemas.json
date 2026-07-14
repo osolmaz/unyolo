@@ -1413,20 +1413,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1441,20 +1428,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1469,20 +1443,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1497,20 +1458,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1525,26 +1473,74 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -1553,26 +1549,74 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -1581,26 +1625,74 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -1609,20 +1701,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1637,20 +1716,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1702,20 +1768,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1735,20 +1788,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1783,20 +1823,8 @@
           "exclude_pull_requests": {
             "default": false,
             "type": "boolean"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -1848,20 +1876,8 @@
           "exclude_pull_requests": {
             "default": false,
             "type": "boolean"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -1909,20 +1925,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -1945,20 +1948,8 @@
           "before": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -1982,20 +1973,8 @@
             ],
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -2010,20 +1989,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -2067,14 +2033,6 @@
             "maxLength": 1048576,
             "type": "string"
           },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "status": {
             "enum": [
               "completed",
@@ -2096,10 +2054,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -2194,20 +2148,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -2233,20 +2175,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -2272,20 +2202,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -2353,20 +2271,10 @@
                 "type": "object"
               }
             ]
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -2415,20 +2323,10 @@
               "comment"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -2525,20 +2423,10 @@
           "ghsa_id": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "ghsa_id",
-          "owner",
-          "repo"
+          "ghsa_id"
         ],
         "type": "object"
       },
@@ -2939,20 +2827,10 @@
           "ghsa_id": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "ghsa_id",
-          "owner",
-          "repo"
+          "ghsa_id"
         ],
         "type": "object"
       },
@@ -3008,20 +2886,10 @@
           "ghsa_id": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "ghsa_id",
-          "owner",
-          "repo"
+          "ghsa_id"
         ],
         "type": "object"
       },
@@ -3497,21 +3365,11 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
           "ghsa_id",
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -3649,10 +3507,20 @@
               "prompt"
             ],
             "type": "object"
+          },
+          "owner": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 1048576,
+            "type": "string"
           }
         },
         "required": [
-          "input"
+          "input",
+          "owner",
+          "repo"
         ],
         "type": "object"
       },
@@ -4086,12 +3954,22 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "owner": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "task_id": {
             "maxLength": 1048576,
             "type": "string"
           }
         },
         "required": [
+          "owner",
+          "repo",
           "task_id"
         ],
         "type": "object"
@@ -4527,6 +4405,14 @@
             "default": false,
             "type": "boolean"
           },
+          "owner": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "since": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -4546,6 +4432,10 @@
             "type": "string"
           }
         },
+        "required": [
+          "owner",
+          "repo"
+        ],
         "type": "object"
       },
       "result": {
@@ -7070,20 +6960,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -7102,27 +6979,78 @@
           "archive_format": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "archive_format",
-          "owner",
-          "repo"
+          "archive_format"
         ],
         "type": "object"
       },
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -7131,20 +7059,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -7249,20 +7164,8 @@
           "name": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -11087,20 +10990,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -12463,20 +12353,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -12497,20 +12375,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -12708,20 +12573,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -12814,20 +12666,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -13041,10 +12880,6 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "pr": {
             "type": "integer"
           },
@@ -13052,16 +12887,8 @@
             "description": "The Git reference, formatted as `refs/pull/\u003cnumber\u003e/merge`, `refs/pull/\u003cnumber\u003e/head`,\n`refs/heads/\u003cbranch name\u003e` or simply `\u003cbranch name\u003e`.",
             "maxLength": 1048576,
             "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -13528,20 +13355,10 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -16382,20 +16199,10 @@
               "body"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -16437,20 +16244,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -16465,20 +16259,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -16520,24 +16301,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "since": {
             "format": "date-time",
             "maxLength": 1048576,
             "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -16652,20 +16421,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -16706,20 +16462,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -16748,20 +16491,10 @@
               "body"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -16900,20 +16633,10 @@
               "content"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -16966,20 +16689,10 @@
               "content"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -17009,22 +16722,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "reaction_id": {
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "owner",
-          "reaction_id",
-          "repo"
+          "reaction_id"
         ],
         "type": "object"
       },
@@ -17041,22 +16744,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "reaction_id": {
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "owner",
-          "reaction_id",
-          "repo"
+          "reaction_id"
         ],
         "type": "object"
       },
@@ -17086,20 +16779,8 @@
             ],
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -17146,20 +16827,8 @@
             ],
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -17266,20 +16935,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -17294,20 +16950,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -17453,20 +17096,10 @@
               "body"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -18958,20 +18591,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -19839,20 +19459,10 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -20556,20 +20166,10 @@
               "state"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -20692,20 +20292,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -20720,20 +20307,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -20778,21 +20352,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "status_id": {
             "type": "integer"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "status_id"
         ],
         "type": "object"
@@ -20896,20 +20460,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -24989,20 +24540,10 @@
               "value"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -25040,14 +24581,6 @@
             ],
             "type": "object"
           },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "secret_name": {
             "maxLength": 1048576,
             "type": "string"
@@ -25055,8 +24588,6 @@
         },
         "required": [
           "input",
-          "owner",
-          "repo",
           "secret_name"
         ],
         "type": "object"
@@ -25074,22 +24605,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "secret_name": {
             "maxLength": 1048576,
             "type": "string"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "secret_name"
         ],
         "type": "object"
@@ -25110,20 +24631,10 @@
           "name": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "name",
-          "owner",
-          "repo"
+          "name"
         ],
         "type": "object"
       },
@@ -25139,20 +24650,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25180,22 +24678,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "secret_name": {
             "maxLength": 1048576,
             "type": "string"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "secret_name"
         ],
         "type": "object"
@@ -25232,20 +24720,10 @@
           "name": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "name",
-          "owner",
-          "repo"
+          "name"
         ],
         "type": "object"
       },
@@ -25279,20 +24757,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25307,20 +24772,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25355,21 +24807,11 @@
           "name": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
           "input",
-          "name",
-          "owner",
-          "repo"
+          "name"
         ],
         "type": "object"
       },
@@ -25409,20 +24851,10 @@
             ],
             "title": "Deployment branch and tag policy name pattern",
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -25462,20 +24894,10 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -25558,20 +24980,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -25617,20 +25027,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25648,20 +25045,10 @@
         "properties": {
           "branch_policy_id": {
             "type": "integer"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "branch_policy_id",
-          "owner",
-          "repo"
+          "branch_policy_id"
         ],
         "type": "object"
       },
@@ -25678,22 +25065,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "protection_rule_id": {
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "owner",
-          "protection_rule_id",
-          "repo"
+          "protection_rule_id"
         ],
         "type": "object"
       },
@@ -25709,20 +25086,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25753,22 +25117,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "protection_rule_id": {
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "owner",
-          "protection_rule_id",
-          "repo"
+          "protection_rule_id"
         ],
         "type": "object"
       },
@@ -25797,20 +25151,10 @@
         "properties": {
           "branch_policy_id": {
             "type": "integer"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "branch_policy_id",
-          "owner",
-          "repo"
+          "branch_policy_id"
         ],
         "type": "object"
       },
@@ -25840,20 +25184,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25899,20 +25230,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25927,20 +25245,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -25973,21 +25278,11 @@
             ],
             "title": "Deployment branch policy name pattern",
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
           "branch_policy_id",
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -29059,20 +28354,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -29134,20 +28417,10 @@
               "issue_id"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -29245,20 +28518,10 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -29302,20 +28565,10 @@
               "sub_issue_id"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -29392,20 +28645,10 @@
           "assignee": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "assignee",
-          "owner",
-          "repo"
+          "assignee"
         ],
         "type": "object"
       },
@@ -29602,20 +28845,10 @@
         "properties": {
           "issue_field_id": {
             "type": "integer"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "issue_field_id",
-          "owner",
-          "repo"
+          "issue_field_id"
         ],
         "type": "object"
       },
@@ -29631,20 +28864,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -29734,20 +28954,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -29952,20 +29159,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -30019,20 +29213,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -30086,20 +29267,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -38179,20 +37347,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -47745,20 +46900,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -47783,20 +46925,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -47867,20 +46996,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -47910,20 +47027,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -47972,20 +47077,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -48047,20 +47139,10 @@
               "sub_issue_id"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -48131,20 +47213,10 @@
               "sub_issue_id"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -48233,20 +47305,10 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -48273,20 +47335,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -48461,20 +47510,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -52769,20 +51806,8 @@
                 "type": "array"
               }
             ]
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -53036,20 +52061,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -53090,20 +52102,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -53122,20 +52121,10 @@
           "name": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "name",
-          "owner",
-          "repo"
+          "name"
         ],
         "type": "object"
       },
@@ -53252,20 +52241,8 @@
                 "type": "string"
               }
             ]
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -59562,7 +58539,20 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "owner": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 1048576,
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "repo"
+        ],
         "type": "object"
       },
       "result": {
@@ -76750,20 +75740,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -76897,20 +75874,10 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -77686,20 +76653,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -78009,20 +76963,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -78056,20 +76997,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -78107,20 +77035,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -78226,20 +77141,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -78344,22 +77247,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "reaction_id": {
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "owner",
-          "reaction_id",
-          "repo"
+          "reaction_id"
         ],
         "type": "object"
       },
@@ -78471,20 +77364,10 @@
               "reviewers"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -78686,20 +77569,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -79048,20 +77919,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -79124,20 +77983,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -79566,20 +78413,10 @@
               "content"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -79609,22 +78446,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "reaction_id": {
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "owner",
-          "reaction_id",
-          "repo"
+          "reaction_id"
         ],
         "type": "object"
       },
@@ -79654,20 +78481,8 @@
             ],
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -79952,20 +78767,10 @@
               "content"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -79995,22 +78800,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "reaction_id": {
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "owner",
-          "reaction_id",
-          "repo"
+          "reaction_id"
         ],
         "type": "object"
       },
@@ -80038,20 +78833,8 @@
             ],
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -80205,20 +78988,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -80381,20 +79151,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -80450,43 +79207,67 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "created_at": {
-            "format": "date-time",
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "id": {
-            "type": "integer"
-          },
-          "name": {
-            "description": "The file name of the asset.",
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "node_id": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "state": {
-            "description": "State of the release asset.",
-            "enum": [
-              "uploaded",
-              "open"
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
             ],
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "url": {
-            "format": "uri",
-            "maxLength": 1048576,
-            "type": "string"
+            "type": "object"
           }
         },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -80545,20 +79326,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -80712,20 +79480,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -80854,20 +79610,10 @@
           "name": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "name",
-          "owner",
-          "repo"
+          "name"
         ],
         "type": "object"
       },
@@ -87143,7 +85889,68 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -87166,7 +85973,68 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -96188,21 +95056,11 @@
               "body"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
           "comment_id",
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -96313,20 +95171,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -96429,20 +95275,10 @@
               "path"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -96485,21 +95321,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "review_id": {
             "type": "integer"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "review_id"
         ],
         "type": "object"
@@ -96530,20 +95356,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -96580,22 +95393,12 @@
             ],
             "type": "object"
           },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "review_id": {
             "type": "integer"
           }
         },
         "required": [
           "input",
-          "owner",
-          "repo",
           "review_id"
         ],
         "type": "object"
@@ -96627,21 +95430,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "review_id": {
             "type": "integer"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "review_id"
         ],
         "type": "object"
@@ -96672,20 +95465,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -96727,21 +95507,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "review_id": {
             "type": "integer"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "review_id"
         ],
         "type": "object"
@@ -96796,14 +95566,6 @@
             "maxLength": 1048576,
             "type": "string"
           },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "since": {
             "format": "date-time",
             "maxLength": 1048576,
@@ -96819,10 +95581,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -96937,20 +95695,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -97009,22 +95754,12 @@
             ],
             "type": "object"
           },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "review_id": {
             "type": "integer"
           }
         },
         "required": [
           "input",
-          "owner",
-          "repo",
           "review_id"
         ],
         "type": "object"
@@ -97070,22 +95805,12 @@
             ],
             "type": "object"
           },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "review_id": {
             "type": "integer"
           }
         },
         "required": [
           "input",
-          "owner",
-          "repo",
           "review_id"
         ],
         "type": "object"
@@ -97130,20 +95855,10 @@
               "body"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -97209,20 +95924,10 @@
               "content"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -97265,20 +95970,8 @@
             ],
             "maxLength": 1048576,
             "type": "string"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -99058,20 +97751,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -99379,20 +98059,8 @@
           "includes_parents": {
             "default": true,
             "type": "boolean"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -99431,20 +98099,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -99471,21 +98126,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "version_id": {
             "type": "integer"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "version_id"
         ],
         "type": "object"
@@ -101171,20 +99816,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -103471,20 +102104,8 @@
           "hide_secret": {
             "default": false,
             "type": "boolean"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -103834,20 +102455,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -103945,20 +102553,10 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -109163,20 +107761,10 @@
               "ref"
             ],
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "owner",
-          "repo"
+          "input"
         ],
         "type": "object"
       },
@@ -109238,20 +107826,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -109266,20 +107841,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -109552,20 +108114,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -109632,20 +108181,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {

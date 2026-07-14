@@ -107,7 +107,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "critical",
     "target_kind": "run",
     "max_uses": 1,
@@ -124,7 +124,7 @@
     "upstream_binding_ids": [
       "rest:actions/delete-workflow-run-logs"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "absence-proof",
     "required_github_permissions": {
       "actions": "write"
@@ -2889,7 +2889,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "critical",
     "target_kind": "artifact",
     "max_uses": 1,
@@ -2906,7 +2906,7 @@
     "upstream_binding_ids": [
       "rest:actions/delete-artifact"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "absence-proof",
     "required_github_permissions": {
       "actions": "write"
@@ -2955,7 +2955,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "artifact",
     "max_uses": 100,
@@ -2972,7 +2972,7 @@
     "upstream_binding_ids": [
       "rest:actions/get-artifact"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "read"
@@ -3184,7 +3184,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "high",
     "target_kind": "organization",
     "max_uses": 1,
@@ -3201,7 +3201,7 @@
     "upstream_binding_ids": [
       "rest:orgs/create-artifact-deployment-record"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "bounded-readback",
     "required_github_permissions": {
       "artifact_metadata": "write"
@@ -3216,7 +3216,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "high",
     "target_kind": "organization",
     "max_uses": 1,
@@ -3233,7 +3233,7 @@
     "upstream_binding_ids": [
       "rest:orgs/create-artifact-storage-record"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "bounded-readback",
     "required_github_permissions": {
       "artifact_metadata": "write"
@@ -3248,7 +3248,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "organization",
     "max_uses": 100,
@@ -3265,7 +3265,7 @@
     "upstream_binding_ids": [
       "rest:orgs/list-artifact-deployment-records"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
       "artifact_metadata": "read"
@@ -3280,7 +3280,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "organization",
     "max_uses": 100,
@@ -3297,7 +3297,7 @@
     "upstream_binding_ids": [
       "rest:orgs/list-artifact-storage-records"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
       "artifact_metadata": "read"
@@ -3312,7 +3312,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "high",
     "target_kind": "organization",
     "max_uses": 1,
@@ -3329,7 +3329,7 @@
     "upstream_binding_ids": [
       "rest:orgs/set-cluster-deployment-records"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "bounded-readback",
     "required_github_permissions": {
       "artifact_metadata": "write"
@@ -5599,7 +5599,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "critical",
     "target_kind": "repo",
     "max_uses": 1,
@@ -5616,7 +5616,7 @@
     "upstream_binding_ids": [
       "rest:code-scanning/delete-codeql-database"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "absence-proof",
     "required_github_permissions": {
       "contents": "write"
@@ -5731,7 +5731,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "repo",
     "max_uses": 100,
@@ -5748,7 +5748,7 @@
     "upstream_binding_ids": [
       "rest:code-scanning/get-codeql-database"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "read"
@@ -5797,7 +5797,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "repo",
     "max_uses": 100,
@@ -5814,7 +5814,7 @@
     "upstream_binding_ids": [
       "rest:code-scanning/get-sarif"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
       "security_events": "read"
@@ -5994,7 +5994,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "repo",
     "max_uses": 100,
@@ -6011,7 +6011,7 @@
     "upstream_binding_ids": [
       "rest:code-scanning/list-codeql-databases"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "read"
@@ -6126,7 +6126,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "medium",
     "target_kind": "repo",
     "max_uses": 1,
@@ -6143,7 +6143,7 @@
     "upstream_binding_ids": [
       "rest:code-scanning/upload-sarif"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "bounded-readback",
     "required_github_permissions": {
       "security_events": "write"
@@ -31319,7 +31319,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "critical",
     "target_kind": "repo",
     "max_uses": 1,
@@ -31336,7 +31336,7 @@
     "upstream_binding_ids": [
       "rest:repos/delete-release-asset"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "absence-proof",
     "required_github_permissions": {
       "contents": "write"
@@ -31583,7 +31583,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "release",
     "max_uses": 100,
@@ -31600,7 +31600,7 @@
     "upstream_binding_ids": [
       "rest:repos/list-release-assets"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "read"
@@ -31683,7 +31683,7 @@
     "explicit_only": true,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "medium",
     "target_kind": "repo",
     "max_uses": 1,
@@ -31700,7 +31700,7 @@
     "upstream_binding_ids": [
       "rest:repos/update-release-asset"
     ],
-    "executor_kind": "bounded-stream",
+    "executor_kind": "rest-binding",
     "reconciler_kind": "bounded-readback",
     "required_github_permissions": {
       "contents": "write"

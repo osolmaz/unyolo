@@ -60,7 +60,7 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 		if location == "header" || parameterName == "per_page" || parameterName == "page" {
 			continue
 		}
-		if location == "path" && pathParameterComesFromTarget(parameterName, targetKind) {
+		if location == "path" && pathParameterComesFromTarget(parameterName, targetKind, path) {
 			continue
 		}
 		schema, _ := parameter["schema"].(map[string]any)
@@ -93,7 +93,30 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 			"required": []string{"stored", "slot", "kind"},
 		}
 	}
+	if streamDirection(operation.OperationID) == "download" {
+		result = streamResultSchema()
+	}
 	return operationSchemas{Target: "target." + targetKind + ".v1", Arguments: arguments, Result: result}
+}
+
+func streamResultSchema() map[string]any {
+	return map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+		"properties": map[string]any{
+			"stream": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"properties": map[string]any{
+					"id": nameSchema(), "owner": nameSchema(), "purpose": nameSchema(), "request_key": nameSchema(),
+					"digest":     map[string]any{"type": "string", "pattern": "^[a-f0-9]{64}$"},
+					"size":       map[string]any{"type": "integer", "minimum": 1},
+					"media_type": map[string]any{"type": "string", "minLength": 1, "maxLength": 255},
+					"expires_at": map[string]any{"type": "integer", "minimum": 1},
+				},
+				"required": []string{"id", "owner", "purpose", "request_key", "digest", "size", "media_type", "expires_at"},
+			},
+		},
+		"required": []string{"stream"},
+	}
 }
 
 func projectedResponseSchema(schema map[string]any, projection []string) map[string]any {
@@ -291,8 +314,12 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		conditional = true
 	}
 	responseLimit := int64(4 << 20)
+	requestLimit := int64(2 << 20)
 	if descriptor.ExecutorKind == "bounded-stream" {
 		responseLimit = 256 << 20
+		if streamDirection(operation.OperationID) == "upload" {
+			requestLimit = 256 << 20
+		}
 	}
 	projection := responseProjection(operation)
 	projection = filterResponseProjection(responseSchema(operation, components), projection)
@@ -301,8 +328,9 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
 		MediaType: "application/vnd.github+json", TargetPathParameters: pathParameters, ArgumentParameters: arguments,
 		RequestSchema: descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
-		RequestBytesLimit: 2 << 20, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
+		RequestBytesLimit: requestLimit, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
 		RedirectPolicy: redirectPolicy(descriptor.ExecutorKind), Reconciliation: descriptor.ReconcilerKind,
+		StreamDirection: streamDirection(operation.OperationID),
 	}
 }
 
@@ -320,8 +348,11 @@ func filterResponseProjection(schema map[string]any, projection []string) []stri
 	return result
 }
 
-func pathParameterComesFromTarget(name, targetKind string) bool {
-	if targetKind == "repo" && (name == "owner" || name == "repo") {
+func pathParameterComesFromTarget(name, targetKind, path string) bool {
+	if strings.HasPrefix(path, "/repos/{owner}/{repo}") && (name == "owner" || name == "repo") {
+		return true
+	}
+	if strings.HasPrefix(path, "/orgs/{org}") && name == "org" {
 		return true
 	}
 	if (targetKind == "organization" && name == "org") || (targetKind == "enterprise" && name == "enterprise") ||

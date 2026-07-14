@@ -461,8 +461,27 @@ func camelToSnake(value string) string {
 }
 
 func isStreamingOperation(method, path string, operation restOperation) bool {
-	text := strings.ToLower(operation.OperationID + " " + path + " " + operation.Summary)
-	return containsAny(text, []string{"/zipball", "/tarball", "/logs", "/artifacts/", "release asset", "codeql database", "sarif"})
+	return streamDirection(operation.OperationID) != ""
+}
+
+func streamDirection(operationID string) string {
+	if operationID == "repos/upload-release-asset" {
+		return "upload"
+	}
+	for _, id := range []string{
+		"actions/download-artifact",
+		"actions/download-job-logs-for-workflow-run",
+		"actions/download-workflow-run-attempt-logs",
+		"actions/download-workflow-run-logs",
+		"repos/download-tarball-archive",
+		"repos/download-zipball-archive",
+		"repos/get-release-asset",
+	} {
+		if operationID == id {
+			return "download"
+		}
+	}
+	return ""
 }
 
 func executorKind(disposition string) string {

@@ -189,6 +189,134 @@ func (m *Manager) ExecuteGraphQL(ctx context.Context, selector Metadata, documen
 	return decodeGraphQLResponse(response, document)
 }
 
+func (m *Manager) ExecuteRESTUpload(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any,
+	source io.Reader, size int64, mediaType string) (ExecutionResult, error) {
+	if m == nil || source == nil || size <= 0 || size > binding.RequestBytesLimit || strings.TrimSpace(mediaType) == "" {
+		return ExecutionResult{}, errors.New("GitHub stream upload is invalid")
+	}
+	path, err := restPath(binding, target, arguments)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	query, err := restQuery(binding, arguments)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	requestURL, err := m.restURL(path, query)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	request, err := http.NewRequestWithContext(ctx, binding.Method, requestURL, source)
+	if err != nil {
+		return ExecutionResult{}, errors.New("create GitHub stream upload request")
+	}
+	request.ContentLength = size
+	request.Header.Set("Accept", binding.MediaType)
+	request.Header.Set("Content-Type", mediaType)
+	response, err := m.doAPI(ctx, selector, request)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	return decodeRESTResponse(response, binding)
+}
+
+func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (*http.Response, error) {
+	if m == nil || binding.StreamDirection != "download" {
+		return nil, errors.New("GitHub stream download is invalid")
+	}
+	path, err := restPath(binding, target, arguments)
+	if err != nil {
+		return nil, err
+	}
+	query, err := restQuery(binding, arguments)
+	if err != nil {
+		return nil, err
+	}
+	requestURL, err := m.restURL(path, query)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, binding.Method, requestURL, http.NoBody)
+	if err != nil {
+		return nil, errors.New("create GitHub stream download request")
+	}
+	request.Header.Set("Accept", "application/octet-stream")
+	response, err := m.doAPIRequest(ctx, selector, request)
+	if err != nil {
+		return nil, err
+	}
+	return m.followDownloadRedirects(ctx, request.URL, response)
+}
+
+func (m *Manager) restURL(path string, query url.Values) (string, error) {
+	unescapedPath, err := url.PathUnescape(path)
+	if err != nil {
+		return "", errors.New("GitHub API path is invalid")
+	}
+	return m.apiURL.ResolveReference(&url.URL{Path: unescapedPath, RawPath: path, RawQuery: query.Encode()}).String(), nil
+}
+
+func (m *Manager) doAPIRequest(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
+	client, credential, err := m.clientForMetadata(ctx, selector)
+	if err != nil {
+		return nil, err
+	}
+	if credential != nil {
+		accept := request.Header.Get("Accept")
+		if err := credential.AuthorizeAPI(request); err != nil {
+			return nil, err
+		}
+		if accept != "" {
+			request.Header.Set("Accept", accept)
+		}
+	}
+	request.Header.Set("X-GitHub-Api-Version", APIVersion)
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, APIError{Code: "unavailable"}
+	}
+	return response, nil
+}
+
+func (m *Manager) followDownloadRedirects(ctx context.Context, origin *url.URL, response *http.Response) (*http.Response, error) {
+	for redirects := 0; response.StatusCode >= 300 && response.StatusCode < 400; redirects++ {
+		if redirects >= 3 {
+			_ = response.Body.Close()
+			return nil, APIError{Code: "redirect_not_allowed", StatusCode: response.StatusCode}
+		}
+		location, err := response.Location()
+		_ = response.Body.Close()
+		if err != nil || !allowedDownloadURL(origin, location) {
+			return nil, APIError{Code: "redirect_not_allowed", StatusCode: response.StatusCode}
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, location.String(), http.NoBody)
+		if err != nil {
+			return nil, APIError{Code: "redirect_not_allowed", StatusCode: response.StatusCode}
+		}
+		response, err = m.client.Do(request)
+		if err != nil {
+			return nil, APIError{Code: "unavailable"}
+		}
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		defer func() { _ = response.Body.Close() }()
+		return nil, classifyHTTPError(response)
+	}
+	return response, nil
+}
+
+func allowedDownloadURL(origin, target *url.URL) bool {
+	if target == nil || target.User != nil || target.Hostname() == "" {
+		return false
+	}
+	if target.Scheme != "https" && !(target.Scheme == origin.Scheme && strings.EqualFold(target.Host, origin.Host)) {
+		return false
+	}
+	host := strings.ToLower(target.Hostname())
+	return strings.EqualFold(target.Host, origin.Host) || strings.HasSuffix(host, ".githubusercontent.com") ||
+		strings.HasSuffix(host, ".github.com") || strings.HasSuffix(host, ".blob.core.windows.net")
+}
+
 func (m *Manager) doAPI(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
 	client, credential, err := m.clientForMetadata(ctx, selector)
 	if err != nil {
@@ -398,18 +526,18 @@ func addQueryValue(values url.Values, name string, value any) error {
 }
 
 func targetPathValue(name string, target map[string]any) (string, error) {
-	candidates := map[string][]string{
-		"owner":            {"owner"},
-		"repo":             {"name"},
-		"org":              {"owner", "name"},
-		"enterprise":       {"name"},
-		"username":         {"name"},
-		"team_slug":        {"name"},
-		"environment_name": {"name"},
-		"package_name":     {"name"},
-		"codespace_name":   {"name"},
-		"ghsa_id":          {"name"},
-		"ref":              {"name"},
+	kind := stringField(target, "kind")
+	candidates := map[string][]string{"owner": {"owner"}, "repo": {"name"}, "org": {"owner"}}
+	if name == "org" && kind == "organization" {
+		candidates[name] = append(candidates[name], "name")
+	}
+	kindNames := map[string]string{
+		"enterprise": "enterprise", "username": "user", "user": "user", "team_slug": "team",
+		"environment_name": "environment", "package_name": "package", "codespace_name": "codespace",
+		"ghsa_id": "advisory", "ref": "ref",
+	}
+	if kindNames[name] == kind {
+		candidates[name] = append(candidates[name], "name")
 	}
 	if keys, ok := candidates[name]; ok {
 		for _, key := range keys {

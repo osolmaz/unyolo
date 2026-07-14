@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
@@ -19,6 +22,7 @@ import (
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operationruntime"
 	"github.com/osolmaz/brokerkit/sealedstore"
+	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 type Input struct {
@@ -69,6 +73,7 @@ type Options struct {
 	RequestingUserID int64
 	SealedStore      sealedPayloadStore
 	CredentialStore  credentialOutputStore
+	StreamStore      streamStore
 }
 
 type sealedPayloadStore interface {
@@ -81,10 +86,22 @@ type credentialOutputStore interface {
 	Put(string, string, []byte) (credentialstore.Metadata, error)
 }
 
+type streamStore interface {
+	Validate(streamstore.Reference) error
+	OpenStream(streamstore.Reference) (*os.File, error)
+	Put(string, string, string, string, io.Reader, int64, time.Time) (streamstore.Reference, error)
+	Delete(streamstore.Reference) error
+}
+
 type sealedArguments struct {
 	Public         json.RawMessage        `json:"public"`
 	SealedPayload  *sealedstore.Reference `json:"sealed_payload,omitempty"`
 	CredentialSlot string                 `json:"credential_slot,omitempty"`
+}
+
+type streamArguments struct {
+	Public      json.RawMessage        `json:"public"`
+	StreamInput *streamstore.Reference `json:"stream_input"`
 }
 
 type Registry struct {
@@ -123,6 +140,9 @@ func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapt
 		}
 		if descriptor.CredentialOutputKind != nil && options.CredentialStore == nil {
 			return nil, fmt.Errorf("GitHub credential output operation %q requires a credential store", descriptor.Name)
+		}
+		if descriptor.ExecutorKind == "bounded-stream" && options.StreamStore == nil {
+			return nil, fmt.Errorf("GitHub stream operation %q requires a stream store", descriptor.Name)
 		}
 		switch descriptor.ExecutorKind {
 		case "rest-binding", "bounded-stream":
@@ -169,8 +189,13 @@ func (a generatedAdapter) Decode(target, arguments json.RawMessage) (Input, erro
 			return Input{}, errors.New("GitHub operation target is invalid")
 		}
 		for _, name := range a.binding.TargetPathParameters {
-			if _, found := argumentMap[name]; found && targetSuppliesPathParameter(name, targetMap) {
+			_, argumentFound := argumentMap[name]
+			targetFound := targetSuppliesPathParameter(name, targetMap)
+			if argumentFound && targetFound {
 				return Input{}, fmt.Errorf("GitHub path parameter %q must come from the validated target", name)
+			}
+			if !argumentFound && !targetFound {
+				return Input{}, fmt.Errorf("GitHub path parameter %q is missing", name)
 			}
 		}
 	}
@@ -178,11 +203,19 @@ func (a generatedAdapter) Decode(target, arguments json.RawMessage) (Input, erro
 }
 
 func targetSuppliesPathParameter(name string, target map[string]any) bool {
+	kind := stringValue(target, "kind")
 	switch name {
 	case "owner":
 		return stringValue(target, "owner") != ""
-	case "repo", "org", "enterprise", "username", "user", "team_slug", "environment_name", "package_name", "codespace_name", "ghsa_id", "ref":
-		return stringValue(target, "name") != "" || name == "org" && stringValue(target, "owner") != ""
+	case "repo":
+		return stringValue(target, "name") != ""
+	case "org":
+		return stringValue(target, "owner") != "" || kind == "organization" && stringValue(target, "name") != ""
+	}
+	kindNames := map[string]string{"enterprise": "enterprise", "username": "user", "user": "user", "team_slug": "team",
+		"environment_name": "environment", "package_name": "package", "codespace_name": "codespace", "ghsa_id": "advisory", "ref": "ref"}
+	if kindNames[name] == kind && stringValue(target, "name") != "" {
+		return true
 	}
 	if strings.HasSuffix(name, "_id") {
 		return integerString(target, "id") != ""
@@ -191,6 +224,17 @@ func targetSuppliesPathParameter(name string, target map[string]any) bool {
 }
 
 func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
+	if a.streamDirection() == "upload" {
+		var stream streamArguments
+		if strictjson.Decode(arguments, &stream, true) != nil || len(stream.Public) == 0 || stream.StreamInput == nil {
+			return nil, nil, errors.New("GitHub stream upload arguments are invalid")
+		}
+		if err := schemaregistry.ValidateStreamPublic(a.descriptor.Name, target, stream.Public); err != nil {
+			return nil, nil, err
+		}
+		encoded, _ := json.Marshal(stream)
+		return encoded, stream.Public, nil
+	}
 	if !a.descriptor.Sealed {
 		if err := schemaregistry.ValidateSubmission(a.descriptor.Name, target, arguments); err != nil {
 			return nil, nil, err
@@ -219,6 +263,17 @@ func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (js
 }
 
 func (a generatedAdapter) ValidateClient(input Input, client, requestKey string) error {
+	if a.streamDirection() == "upload" {
+		stream, err := decodeStreamArguments(input.Arguments)
+		if err != nil {
+			return err
+		}
+		reference := stream.StreamInput
+		if reference.Owner != client || reference.Purpose != a.descriptor.Name || reference.RequestKey != requestKey {
+			return errors.New("stream input does not belong to this client, operation, and request")
+		}
+		return a.options.StreamStore.Validate(*reference)
+	}
 	if !a.descriptor.Sealed {
 		return nil
 	}
@@ -302,6 +357,9 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 	if err != nil {
 		return Outcome{}, errors.New("GitHub operation target is invalid")
 	}
+	if a.streamDirection() == "upload" {
+		return a.executeStreamUpload(ctx, plan, targetMap)
+	}
 	executionArguments, err := a.materializeArguments(plan.Arguments)
 	if err != nil {
 		return Outcome{}, err
@@ -312,6 +370,9 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 	}
 	switch {
 	case a.binding != nil:
+		if a.streamDirection() == "download" {
+			return a.executeStreamDownload(ctx, plan, targetMap, argumentsMap)
+		}
 		if a.descriptor.CredentialOutputKind != nil {
 			return a.executeCredentialOutput(ctx, plan, targetMap, argumentsMap)
 		}
@@ -345,6 +406,13 @@ func (a generatedAdapter) Reconcile(context.Context, Plan) (Outcome, error) {
 }
 
 func (a generatedAdapter) Cleanup(plan Plan) error {
+	if a.streamDirection() == "upload" {
+		stream, err := decodeStreamArguments(plan.Arguments)
+		if err != nil {
+			return err
+		}
+		return a.options.StreamStore.Delete(*stream.StreamInput)
+	}
 	if !a.descriptor.Sealed {
 		return nil
 	}
@@ -356,6 +424,13 @@ func (a generatedAdapter) Cleanup(plan Plan) error {
 }
 
 func (a generatedAdapter) publicArguments(arguments json.RawMessage) (json.RawMessage, error) {
+	if a.streamDirection() == "upload" {
+		stream, err := decodeStreamArguments(arguments)
+		if err != nil {
+			return nil, err
+		}
+		return stream.Public, nil
+	}
 	if !a.descriptor.Sealed {
 		return arguments, nil
 	}
@@ -364,6 +439,72 @@ func (a generatedAdapter) publicArguments(arguments json.RawMessage) (json.RawMe
 		return nil, err
 	}
 	return protected.Public, nil
+}
+
+func (a generatedAdapter) streamDirection() string {
+	if a.binding == nil {
+		return ""
+	}
+	return a.binding.StreamDirection
+}
+
+func decodeStreamArguments(raw json.RawMessage) (streamArguments, error) {
+	var arguments streamArguments
+	if strictjson.Decode(raw, &arguments, true) != nil || len(arguments.Public) == 0 || arguments.StreamInput == nil {
+		return streamArguments{}, errors.New("GitHub stream upload arguments are invalid")
+	}
+	return arguments, nil
+}
+
+func (a generatedAdapter) executeStreamUpload(ctx context.Context, plan Plan, target map[string]any) (Outcome, error) {
+	arguments, err := decodeStreamArguments(plan.Arguments)
+	if err != nil || a.binding == nil {
+		return Outcome{}, errors.New("GitHub stream upload plan is invalid")
+	}
+	public, err := decodeObject(arguments.Public)
+	if err != nil {
+		return Outcome{}, errors.New("GitHub stream upload arguments are invalid")
+	}
+	file, err := a.options.StreamStore.OpenStream(*arguments.StreamInput)
+	if err != nil {
+		return Outcome{}, err
+	}
+	defer func() { _ = file.Close() }()
+	result, err := a.manager.ExecuteRESTUpload(ctx, plan.Credential, *a.binding, target, public, file, arguments.StreamInput.Size, arguments.StreamInput.MediaType)
+	if err != nil {
+		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+	}
+	if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
+		return Outcome{}, err
+	}
+	_ = a.options.StreamStore.Delete(*arguments.StreamInput)
+	return Outcome{Proven: true, Result: result.Body}, nil
+}
+
+func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
+	if a.binding == nil || plan.Authorization.Client == "" {
+		return Outcome{}, errors.New("GitHub stream download plan is invalid")
+	}
+	response, err := a.manager.ExecuteRESTDownload(ctx, plan.Credential, *a.binding, target, arguments)
+	if err != nil {
+		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	mediaType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
+	reference, err := a.options.StreamStore.Put(plan.Authorization.Client, a.descriptor.Name, a.descriptor.Name+"-result", mediaType,
+		response.Body, a.binding.ResponseBytesLimit, time.Now().Add(15*time.Minute))
+	if err != nil {
+		return Outcome{}, err
+	}
+	encoded, _ := json.Marshal(map[string]any{"stream": reference})
+	if err := schemaregistry.ValidateResult(a.descriptor.Name, encoded); err != nil {
+		_ = a.options.StreamStore.Delete(reference)
+		return Outcome{}, err
+	}
+	return Outcome{Proven: true, Result: encoded}, nil
 }
 
 func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.RawMessage, error) {

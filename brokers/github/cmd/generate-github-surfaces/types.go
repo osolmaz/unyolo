@@ -79,6 +79,7 @@ type restBinding struct {
 	Pagination           string             `json:"pagination"`
 	ConditionalRequest   bool               `json:"conditional_request"`
 	RedirectPolicy       string             `json:"redirect_policy"`
+	StreamDirection      string             `json:"stream_direction,omitempty"`
 	Reconciliation       string             `json:"reconciliation"`
 }
 

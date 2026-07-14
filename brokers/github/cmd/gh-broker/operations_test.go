@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/sealedstore"
+	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 const operationTestSecret = "0123456789abcdef0123456789abcdef"
@@ -194,6 +198,61 @@ func TestCredentialOutputSubmissionRequiresEncryptedSlot(t *testing.T) {
 	}
 	if !bytes.Contains(submitted, []byte(`"credential_slot":"ci-runner"`)) || bytes.Contains(submitted, []byte(`"sealed_payload"`)) {
 		t.Fatalf("submitted = %s", submitted)
+	}
+}
+
+func TestStreamUploadSubmissionAndDownloadCLI(t *testing.T) {
+	const operation = "release.repos_upload_release_asset"
+	const content = "asset-canary"
+	var submitted []byte
+	streamID := "stream_012345678901234567890123"
+	digest := sha256.Sum256([]byte(content))
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/api/agent/v1/streams":
+			body, _ := io.ReadAll(request.Body)
+			if string(body) != content || request.Header.Get("X-Broker-Operation") != operation {
+				t.Errorf("upload body = %q headers = %v", body, request.Header)
+			}
+			writer.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(writer).Encode(streamstore.Reference{ID: streamID, Owner: "bob", Purpose: operation, RequestKey: "asset-request",
+				Digest: hex.EncodeToString(digest[:]), Size: int64(len(content)), MediaType: "application/octet-stream", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+		case request.Method == http.MethodPost && request.URL.Path == "/api/agent/v1/operations":
+			submitted, _ = io.ReadAll(request.Body)
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StatePending))
+		case request.Method == http.MethodGet && request.URL.Path == "/api/agent/v1/streams/"+streamID:
+			writer.Header().Set("Content-Type", "application/octet-stream")
+			writer.Header().Set("Content-Length", fmt.Sprint(len(content)))
+			writer.Header().Set("X-Broker-Content-SHA256", hex.EncodeToString(digest[:]))
+			_, _ = writer.Write([]byte(content))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	input := filepath.Join(t.TempDir(), "asset.bin")
+	if err := os.WriteFile(input, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	descriptor, _ := opcatalog.ByName(operation)
+	var output bytes.Buffer
+	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
+		"--target-json", `{"kind":"release","id":9,"owner":"osolmaz","name":"brokerkit"}`,
+		"--arguments-json", `{"name":"asset.bin"}`, "--stream-file", input, "--stream-media-type", "application/octet-stream",
+		"--idempotency-key", "asset-request", "--reason", "upload release asset",
+	})
+	if err != nil || !bytes.Contains(submitted, []byte(`"stream_input"`)) || bytes.Contains(submitted, []byte(content)) {
+		t.Fatalf("submitted = %s err = %v", submitted, err)
+	}
+	destination := filepath.Join(t.TempDir(), "download.bin")
+	if err := runStream(t.Context(), &output, []string{"download", streamID, "--output", destination}); err != nil {
+		t.Fatal(err)
+	}
+	downloaded, _ := os.ReadFile(destination)
+	if string(downloaded) != content {
+		t.Fatalf("downloaded = %q", downloaded)
 	}
 }
 

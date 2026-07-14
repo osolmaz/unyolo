@@ -100,6 +100,45 @@ func TestExecuteRESTEnforcesLimitsAndClassifiesErrors(t *testing.T) {
 	})
 }
 
+func TestExecuteRESTDownloadFollowsOnlyCredentialFreeAllowedRedirects(t *testing.T) {
+	var redirectedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/acme/demo/zipball/main":
+			http.Redirect(w, request, "/download/archive.zip", http.StatusFound)
+		case "/download/archive.zip":
+			redirectedAuth = request.Header.Get("Authorization")
+			_, _ = w.Write([]byte("archive"))
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	manager := newDevelopmentManager(t, server.URL)
+	binding := opbinding.Binding{Method: http.MethodGet, PathTemplate: "/repos/{owner}/{repo}/zipball/{ref}",
+		TargetPathParameters: []string{"owner", "repo", "ref"}, StreamDirection: "download", ResponseBytesLimit: 1024}
+	response, err := manager.ExecuteRESTDownload(t.Context(), manager.development.Metadata(), binding,
+		map[string]any{"kind": "repo", "owner": "acme", "name": "demo"}, map[string]any{"ref": "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if redirectedAuth != "" {
+		t.Fatalf("credential leaked to redirect: %q", redirectedAuth)
+	}
+
+	blocked := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Location", "https://example.invalid/archive.zip")
+		w.WriteHeader(http.StatusFound)
+	}))
+	t.Cleanup(blocked.Close)
+	manager = newDevelopmentManager(t, blocked.URL)
+	if _, err := manager.ExecuteRESTDownload(t.Context(), manager.development.Metadata(), binding,
+		map[string]any{"kind": "repo", "owner": "acme", "name": "demo"}, map[string]any{"ref": "main"}); err == nil {
+		t.Fatal("disallowed redirect was followed")
+	}
+}
+
 func TestExecuteGraphQLUsesPersistedDocumentAndFixedEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/graphql" {

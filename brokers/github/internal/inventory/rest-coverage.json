@@ -433,7 +433,7 @@
     "method": "DELETE",
     "path": "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}",
     "summary": "Delete an artifact",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "artifact.actions_delete_artifact"
     ],
@@ -441,7 +441,7 @@
     "required_github_permissions": {
       "actions": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive"
     ],
@@ -709,7 +709,7 @@
     "method": "DELETE",
     "path": "/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
     "summary": "Delete workflow run logs",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "action_run.actions_delete_workflow_run_logs"
     ],
@@ -717,7 +717,7 @@
     "required_github_permissions": {
       "actions": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive"
     ],
@@ -1145,7 +1145,7 @@
     "method": "GET",
     "path": "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}",
     "summary": "Get an artifact",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "artifact.actions_get_artifact"
     ],
@@ -1153,7 +1153,7 @@
     "required_github_permissions": {
       "actions": "read"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -5660,7 +5660,7 @@
     "method": "DELETE",
     "path": "/repos/{owner}/{repo}/code-scanning/codeql/databases/{language}",
     "summary": "Delete a CodeQL database",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "code_scanning.code_scanning_delete_codeql_database"
     ],
@@ -5668,7 +5668,7 @@
     "required_github_permissions": {
       "contents": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive"
     ],
@@ -5727,7 +5727,7 @@
     "method": "GET",
     "path": "/repos/{owner}/{repo}/code-scanning/codeql/databases/{language}",
     "summary": "Get a CodeQL database for a repository",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "code_scanning.code_scanning_get_codeql_database"
     ],
@@ -5735,7 +5735,7 @@
     "required_github_permissions": {
       "contents": "read"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -5759,7 +5759,7 @@
     "method": "GET",
     "path": "/repos/{owner}/{repo}/code-scanning/sarifs/{sarif_id}",
     "summary": "Get information about a SARIF upload",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "code_scanning.code_scanning_get_sarif"
     ],
@@ -5767,7 +5767,7 @@
     "required_github_permissions": {
       "security_events": "read"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -5855,7 +5855,7 @@
     "method": "GET",
     "path": "/repos/{owner}/{repo}/code-scanning/codeql/databases",
     "summary": "List CodeQL databases for a repository",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "code_scanning.code_scanning_list_codeql_databases"
     ],
@@ -5863,7 +5863,7 @@
     "required_github_permissions": {
       "contents": "read"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -5919,7 +5919,7 @@
     "method": "POST",
     "path": "/repos/{owner}/{repo}/code-scanning/sarifs",
     "summary": "Upload an analysis as SARIF data",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "code_scanning.code_scanning_upload_sarif"
     ],
@@ -5927,7 +5927,7 @@
     "required_github_permissions": {
       "security_events": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -11475,7 +11475,7 @@
     "method": "POST",
     "path": "/orgs/{org}/artifacts/metadata/deployment-record",
     "summary": "Create an artifact deployment record",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "artifact.orgs_create_artifact_deployment_record"
     ],
@@ -11483,7 +11483,7 @@
     "required_github_permissions": {
       "artifact_metadata": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "organization"
     ],
@@ -11494,7 +11494,7 @@
     "method": "POST",
     "path": "/orgs/{org}/artifacts/metadata/storage-record",
     "summary": "Create artifact metadata storage record",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "artifact.orgs_create_artifact_storage_record"
     ],
@@ -11502,7 +11502,7 @@
     "required_github_permissions": {
       "artifact_metadata": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "organization"
     ],
@@ -12113,7 +12113,7 @@
     "method": "GET",
     "path": "/orgs/{org}/artifacts/{subject_digest}/metadata/deployment-records",
     "summary": "List artifact deployment records",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "artifact.orgs_list_artifact_deployment_records"
     ],
@@ -12121,7 +12121,7 @@
     "required_github_permissions": {
       "artifact_metadata": "read"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -12129,7 +12129,7 @@
     "method": "GET",
     "path": "/orgs/{org}/artifacts/{subject_digest}/metadata/storage-records",
     "summary": "List artifact storage records",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "artifact.orgs_list_artifact_storage_records"
     ],
@@ -12137,7 +12137,7 @@
     "required_github_permissions": {
       "artifact_metadata": "read"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -12801,7 +12801,7 @@
     "method": "POST",
     "path": "/orgs/{org}/artifacts/metadata/deployment-record/cluster/{cluster}",
     "summary": "Set cluster deployment records",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "artifact.orgs_set_cluster_deployment_records"
     ],
@@ -12809,7 +12809,7 @@
     "required_github_permissions": {
       "artifact_metadata": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "organization"
     ],
@@ -15631,7 +15631,7 @@
     "method": "DELETE",
     "path": "/repos/{owner}/{repo}/releases/assets/{asset_id}",
     "summary": "Delete a release asset",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "release.repos_delete_release_asset"
     ],
@@ -15639,7 +15639,7 @@
     "required_github_permissions": {
       "contents": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive"
     ],
@@ -17322,7 +17322,7 @@
     "method": "GET",
     "path": "/repos/{owner}/{repo}/releases/{release_id}/assets",
     "summary": "List release assets",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "release.repos_list_release_assets"
     ],
@@ -17330,7 +17330,7 @@
     "required_github_permissions": {
       "contents": "read"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
@@ -17929,7 +17929,7 @@
     "method": "PATCH",
     "path": "/repos/{owner}/{repo}/releases/assets/{asset_id}",
     "summary": "Update a release asset",
-    "disposition": "protocol",
+    "disposition": "implemented",
     "catalog_operations": [
       "release.repos_update_release_asset"
     ],
@@ -17937,7 +17937,7 @@
     "required_github_permissions": {
       "contents": "write"
     },
-    "reason": "named bounded binary or redirect-validated stream adapter",
+    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
   {
