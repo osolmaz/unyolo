@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,7 +43,7 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 	if opts.DryRun {
 		return printSystemdDryRun(stdout, plan)
 	}
-	if err := requirePolicyReplacement(plan); err != nil {
+	if err := checkPolicyReplacement(stdout, plan); err != nil {
 		return err
 	}
 	installPlan, err := brokerkitSystemdInstallPlan(plan)
@@ -155,13 +156,15 @@ type setupPolicyFiles struct {
 	scope         []byte
 	profile       []byte
 	manifest      []byte
+	counts        *policypreset.OperationCounts
+	policyDigest  string
 	managedPreset bool
 }
 
 func renderSetupPolicy(plan systemdPlan) (setupPolicyFiles, error) {
 	if plan.opts.Repo != "" {
 		scope, err := renderScopeJSON(plan.opts.Repo, plan.opts.RepoType)
-		return setupPolicyFiles{scope: scope}, err
+		return setupPolicyFiles{scope: scope, policyDigest: setupPolicyDigest(scope)}, err
 	}
 	deniedOperations, err := setupDeniedOperations(plan)
 	if err != nil {
@@ -174,9 +177,11 @@ func renderSetupPolicy(plan systemdPlan) (setupPolicyFiles, error) {
 	if err != nil {
 		return setupPolicyFiles{}, err
 	}
+	counts := artifacts.Manifest.OperationCounts
 	return setupPolicyFiles{
 		scope: artifacts.PolicyJSON, profile: artifacts.ProfileJSON,
-		manifest: artifacts.ManifestJSON, managedPreset: true,
+		manifest: artifacts.ManifestJSON, counts: &counts,
+		policyDigest: artifacts.Manifest.PolicyDigest, managedPreset: true,
 	}, nil
 }
 
@@ -209,22 +214,44 @@ type installedSetupPolicy struct {
 }
 
 func installedPolicyArtifacts(plan systemdPlan) (*installedSetupPolicy, error) {
-	profile, err := os.ReadFile(plan.policyProfilePath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read installed policy profile: %w", err)
-	}
-	manifest, err := os.ReadFile(plan.policyManifestPath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
-	if err != nil {
-		return nil, fmt.Errorf("read installed policy manifest: %w", err)
+	profile, manifest, found, err := readInstalledPolicyPair(plan)
+	if err != nil || !found {
+		return nil, err
 	}
 	scope, err := os.ReadFile(plan.scopePath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
 	if err != nil {
 		return nil, fmt.Errorf("read installed policy scope: %w", err)
 	}
 	return &installedSetupPolicy{profile: profile, manifest: manifest, scope: scope}, nil
+}
+
+func readInstalledPolicyPair(plan systemdPlan) ([]byte, []byte, bool, error) {
+	profile, profileFound, err := readOptionalSetupPolicyArtifact(plan.policyProfilePath, "profile")
+	if err != nil {
+		return nil, nil, false, err
+	}
+	manifest, manifestFound, err := readOptionalSetupPolicyArtifact(plan.policyManifestPath, "manifest")
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if !profileFound && !manifestFound {
+		return nil, nil, false, nil
+	}
+	if !profileFound || !manifestFound {
+		return nil, nil, false, errors.New("installed managed policy artifacts are incomplete; restore both profile and manifest or use --reset-denied-operations")
+	}
+	return profile, manifest, true, nil
+}
+
+func readOptionalSetupPolicyArtifact(path, name string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read installed policy %s: %w", name, err)
+	}
+	return data, true, nil
 }
 
 func mergeDeniedOperations(installed, requested []string) []string {
@@ -252,6 +279,17 @@ func requirePolicyReplacement(plan systemdPlan) error {
 		return exitError{code: 64, message: "managed policy already exists; inspect it first or rerun with --replace-policy"}
 	}
 	return nil
+}
+
+func checkPolicyReplacement(stdout io.Writer, plan systemdPlan) error {
+	err := requirePolicyReplacement(plan)
+	if err == nil || plan.opts.ReplacePolicy {
+		return err
+	}
+	if previewErr := printPolicyReplacementPreview(stdout, plan); previewErr != nil {
+		return exitError{code: 64, message: previewErr.Error()}
+	}
+	return err
 }
 
 func readHFTokenFile(path string) ([]byte, error) {
@@ -380,7 +418,79 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   unit file:    %s
   broker URL:   %s
 `, plan.opts.User, plan.opts.Group, plan.tokenPath, plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, policyDescription, plan.envPath, plan.opts.StateDir, plan.unitPath, setupBrokerURL(plan.opts))
+	if err != nil {
+		return err
+	}
+	return printPolicyReplacementPreview(stdout, plan)
+}
+
+func printPolicyReplacementPreview(stdout io.Writer, plan systemdPlan) error {
+	preview, err := buildPolicyReplacementPreview(plan)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(stdout, preview)
 	return err
+}
+
+func buildPolicyReplacementPreview(plan systemdPlan) (string, error) {
+	candidate, err := renderSetupPolicy(plan)
+	if err != nil {
+		return "", err
+	}
+	currentDigest, currentCounts, err := currentPolicyPreview(plan)
+	if err != nil {
+		return "", err
+	}
+	var output strings.Builder
+	output.WriteString("\nPolicy replacement preview:\n")
+	fmt.Fprintf(&output, "  current digest:   %s\n", currentDigest)
+	fmt.Fprintf(&output, "  candidate digest: %s\n", candidate.policyDigest)
+	writeOperationCountPreview(&output, currentCounts, candidate.counts)
+	return output.String(), nil
+}
+
+func currentPolicyPreview(plan systemdPlan) (string, *policypreset.OperationCounts, error) {
+	scope, err := os.ReadFile(plan.scopePath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if errors.Is(err, os.ErrNotExist) {
+		return "(none)", nil, nil
+	}
+	if err != nil {
+		return "", nil, fmt.Errorf("read installed policy scope: %w", err)
+	}
+	installed, err := installedPolicyArtifacts(plan)
+	if err != nil {
+		return "", nil, err
+	}
+	if installed == nil {
+		return setupPolicyDigest(scope), nil, nil
+	}
+	manifest, err := policypreset.ParseManifest(installed.manifest)
+	if err != nil {
+		return "", nil, fmt.Errorf("parse installed policy manifest: %w", err)
+	}
+	counts := manifest.OperationCounts
+	return setupPolicyDigest(scope), &counts, nil
+}
+
+func writeOperationCountPreview(output *strings.Builder, current, candidate *policypreset.OperationCounts) {
+	if candidate == nil {
+		output.WriteString("  operation counts: custom policy\n")
+		return
+	}
+	if current == nil {
+		fmt.Fprintf(output, "  candidate counts: allow=%d request=%d deny=%d total=%d\n",
+			candidate.Allow, candidate.Request, candidate.Deny, candidate.Total)
+		return
+	}
+	fmt.Fprintf(output, "  operation counts: allow %d -> %d; request %d -> %d; deny %d -> %d; total %d -> %d\n",
+		current.Allow, candidate.Allow, current.Request, candidate.Request,
+		current.Deny, candidate.Deny, current.Total, candidate.Total)
+}
+
+func setupPolicyDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("sha256:%x", sum)
 }
 
 func printSystemdSummary(stdout io.Writer, opts setupSystemdOptions) {

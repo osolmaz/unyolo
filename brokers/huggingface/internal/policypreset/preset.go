@@ -128,6 +128,11 @@ func ParseProfile(data []byte) (Profile, error) {
 	return normalizeProfile(profile)
 }
 
+// ParseManifest strictly decodes and validates one generated manifest.
+func ParseManifest(data []byte) (Manifest, error) {
+	return parseManifest(data)
+}
+
 // ParseInstalledProfile decodes an installed profile for a safe catalog
 // upgrade. Deny overrides for operations retired from the current catalog are
 // dropped because they can no longer appear in a newly rendered policy.
@@ -473,8 +478,14 @@ func validateManifest(manifest Manifest) error {
 	if manifest.Version != ManifestVersion || manifest.Preset != RequestAllAgentOperations {
 		return errors.New("policy manifest version or preset is invalid")
 	}
-	if manifest.CatalogDigest == "" || manifest.ProfileDigest == "" || manifest.PolicyDigest == "" {
-		return errors.New("policy manifest is missing digests")
+	for name, value := range map[string]string{
+		"catalog": manifest.CatalogDigest,
+		"profile": manifest.ProfileDigest,
+		"policy":  manifest.PolicyDigest,
+	} {
+		if !validDigest(value) {
+			return fmt.Errorf("policy manifest %s digest is invalid", name)
+		}
 	}
 	counts, err := countManifestOperations(manifest.Operations)
 	if err != nil {
@@ -484,6 +495,15 @@ func validateManifest(manifest Manifest) error {
 		return errors.New("policy manifest operation count is inconsistent")
 	}
 	return nil
+}
+
+func validDigest(value string) bool {
+	const prefix = "sha256:"
+	if len(value) != len(prefix)+sha256.Size*2 || !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	_, err := hex.DecodeString(value[len(prefix):])
+	return err == nil
 }
 
 func countManifestOperations(operations []OperationFingerprint) (OperationCounts, error) {

@@ -164,7 +164,7 @@ func TestCheckReportsCatalogAndManifestDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	stale := artifacts.Manifest
-	stale.CatalogDigest = "sha256:stale"
+	stale.CatalogDigest = "sha256:" + strings.Repeat("0", 64)
 	staleJSON, _ := marshalCanonical(stale)
 	if report := Check(artifacts.ProfileJSON, staleJSON, artifacts.PolicyJSON); report.Status != DriftStale {
 		t.Fatalf("stale report = %+v", report)
@@ -206,7 +206,7 @@ func TestCheckReportsRemovedCatalogOperationBeforeCurrentPolicyValidation(t *tes
 	manifest.Operations = append(manifest.Operations, retired)
 	manifest.OperationCounts.Total++
 	manifest.OperationCounts.Deny++
-	manifest.CatalogDigest = "sha256:previous-catalog"
+	manifest.CatalogDigest = "sha256:" + strings.Repeat("0", 64)
 	manifest.PolicyDigest = digest(oldPolicy)
 	profileJSON, err := marshalCanonical(Profile{
 		Version: ProfileVersion, Preset: RequestAllAgentOperations,
@@ -235,6 +235,12 @@ func TestParseManifestRejectsMalformedArtifacts(t *testing.T) {
 	wrongVersion.Version = 2
 	missingDigest := artifacts.Manifest
 	missingDigest.PolicyDigest = ""
+	malformedCatalogDigest := artifacts.Manifest
+	malformedCatalogDigest.CatalogDigest = "corrupt"
+	malformedProfileDigest := artifacts.Manifest
+	malformedProfileDigest.ProfileDigest = "sha256:1234"
+	malformedPolicyDigest := artifacts.Manifest
+	malformedPolicyDigest.PolicyDigest = "sha256:" + strings.Repeat("z", 64)
 	wrongCount := artifacts.Manifest
 	wrongCount.OperationCounts.Total--
 	wrongEffectCount := artifacts.Manifest
@@ -260,7 +266,8 @@ func TestParseManifestRejectsMalformedArtifacts(t *testing.T) {
 	impossibleOverride.Operations[0].Effect = opcatalog.DefaultEffectAllow
 	tests := [][]byte{[]byte("{"), append(append([]byte(nil), artifacts.ManifestJSON...), []byte("{}")...)}
 	for _, manifest := range []Manifest{
-		wrongVersion, missingDigest, wrongCount, wrongEffectCount, negativeCount,
+		wrongVersion, missingDigest, malformedCatalogDigest, malformedProfileDigest,
+		malformedPolicyDigest, wrongCount, wrongEffectCount, negativeCount,
 		invalidEffect, invalidDefaultEffect, duplicateOperation, emptyOperation, impossibleOverride,
 	} {
 		data, _ := marshalCanonical(manifest)

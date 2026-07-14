@@ -118,6 +118,11 @@ Replacement verifies the installed profile, manifest, and scope before
 carrying forward hard-denies. Inconsistent artifacts stop setup and require a
 Doctor check or an explicit `--reset-denied-operations`.
 
+Before refusing an unconfirmed replacement, setup prints the current and
+candidate policy digests and the allow, request, deny, and total operation-count
+changes. `--dry-run` prints the same preview without writing files. Review that
+output before rerunning with `--replace-policy`.
+
 For a deliberately narrow installation, supply `--repo` and `--repo-type`.
 That explicit mode retains the single-repository policy and does not install a
 preset profile or manifest.

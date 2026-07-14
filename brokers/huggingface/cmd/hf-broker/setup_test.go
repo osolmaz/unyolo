@@ -247,10 +247,11 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 
 func TestSetupSystemdDryRun(t *testing.T) {
 	var stdout bytes.Buffer
+	configDir := t.TempDir()
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{
 		SystemdOptions: bksetup.SystemdOptions{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
-			ConfigDir: "/etc/hf-broker", StateDir: "/var/lib/hf-broker",
+			ConfigDir: configDir, StateDir: "/var/lib/hf-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker",
 			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, DryRun: true,
 		},
@@ -313,7 +314,8 @@ func TestSystemdSetupPreflightDoesNotRequireExistingServiceAccount(t *testing.T)
 }
 
 func TestRunSetupSystemdDryRunFromArgs(t *testing.T) {
-	tokenFile := filepath.Join(t.TempDir(), "hf-token")
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "hf-token")
 	if err := os.WriteFile(tokenFile, []byte("hf_xxx\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -323,6 +325,7 @@ func TestRunSetupSystemdDryRunFromArgs(t *testing.T) {
 		"--hf-token-file", tokenFile,
 		"--repo", "osolmaz/scraped-news",
 		"--repo-type", "dataset",
+		"--config-dir", filepath.Join(dir, "config"),
 		"--dry-run",
 	})
 	if err != nil {
@@ -601,6 +604,47 @@ func TestBrokerkitSystemdInstallPlanRejectsModifiedInstalledPolicy(t *testing.T)
 	opts.ResetDeniedOperations = true
 	if _, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts)); err != nil {
 		t.Fatalf("explicit deny reset did not recover from modified artifacts: %v", err)
+	}
+}
+
+func TestBrokerkitSystemdInstallPlanRejectsPartialInstalledPolicy(t *testing.T) {
+	for _, missing := range []string{policyProfileFileName, policyManifestFileName} {
+		t.Run(missing, func(t *testing.T) {
+			dir := t.TempDir()
+			configDir := filepath.Join(dir, "etc")
+			writeInstalledPolicy(t, configDir, []string{"repo.delete"}, false)
+			if err := os.Remove(filepath.Join(configDir, missing)); err != nil {
+				t.Fatal(err)
+			}
+			opts := presetSetupOptions(dir, configDir, writeSetupToken(t, dir))
+			if _, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts)); err == nil || !strings.Contains(err.Error(), "artifacts are incomplete") {
+				t.Fatalf("partial installed policy error = %v", err)
+			}
+		})
+	}
+}
+
+func TestRunSetupSystemdPreviewsPolicyDeltaBeforeReplacement(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "etc")
+	writeInstalledPolicy(t, configDir, []string{"repo.delete"}, false)
+	opts := presetSetupOptions(dir, configDir, writeSetupToken(t, dir))
+	opts.ReplacePolicy = false
+	opts.AllowNonRoot = true
+	opts.DeniedOperations = []string{"repo.create"}
+	var stdout bytes.Buffer
+	err := runSetupSystemd(context.Background(), &stdout, opts)
+	if err == nil || !strings.Contains(err.Error(), "--replace-policy") {
+		t.Fatalf("replacement error = %v", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"Policy replacement preview:", "current digest:   sha256:",
+		"candidate digest: sha256:", "operation counts: allow ", " -> ",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("replacement preview missing %q:\n%s", want, output)
+		}
 	}
 }
 

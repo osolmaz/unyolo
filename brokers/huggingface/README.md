@@ -247,6 +247,8 @@ denies internal and credential-output operations. Add repeatable
 to overwrite an existing policy unless `--replace-policy` is supplied, so a
 binary upgrade cannot silently widen an installation. See
 [Policy presets](docs/POLICY_PRESETS.md) for rendering and drift checks.
+Before replacement, setup previews the current and candidate policy digests and
+operation-count changes; `--dry-run` shows the same information without writes.
 Existing deny overrides remain in effect during replacement unless the operator
 also supplies `--reset-denied-operations`.
 
