@@ -133,3 +133,82 @@ func TestPolicyRenderRejectsEquivalentAndSymlinkedOutputPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestPolicyRenderStagesEveryArtifactBeforeCreatingOutputs(t *testing.T) {
+	dir := t.TempDir()
+	blockedParent := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(blockedParent, []byte("block"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	profilePath := filepath.Join(dir, "profile.json")
+	policyPath := filepath.Join(dir, "scope.json")
+	err := runWithArgs(context.Background(), nil, ioDiscard{}, ioDiscard{}, []string{
+		"policy", "render", "--profile-out", profilePath, "--output", policyPath,
+		"--manifest-out", filepath.Join(blockedParent, "manifest.json"),
+	})
+	if err == nil {
+		t.Fatal("render with an unstaged manifest unexpectedly succeeded")
+	}
+	for _, path := range []string{profilePath, policyPath} {
+		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("failed render created %s: %v", path, statErr)
+		}
+	}
+}
+
+func TestPolicyRenderNoReplacePreservesAllExistingArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.json")
+	policyPath := filepath.Join(dir, "scope.json")
+	manifestPath := filepath.Join(dir, "manifest.json")
+	if err := os.WriteFile(manifestPath, []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := runWithArgs(context.Background(), nil, ioDiscard{}, ioDiscard{}, []string{
+		"policy", "render", "--profile-out", profilePath, "--output", policyPath,
+		"--manifest-out", manifestPath,
+	})
+	if err == nil || !strings.Contains(err.Error(), "--replace") {
+		t.Fatalf("no-replace render error = %v", err)
+	}
+	for _, path := range []string{profilePath, policyPath} {
+		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("rolled-back render retained %s: %v", path, statErr)
+		}
+	}
+	data, readErr := os.ReadFile(manifestPath)
+	if readErr != nil || string(data) != "existing" {
+		t.Fatalf("existing artifact = %q, error = %v", data, readErr)
+	}
+}
+
+func TestPolicyRenderReplaceRollsBackBeforeCommitFailure(t *testing.T) {
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.json")
+	policyPath := filepath.Join(dir, "scope.json")
+	manifestPath := filepath.Join(dir, "manifest.json")
+	for _, path := range []string{profilePath, policyPath} {
+		if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(manifestPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := runWithArgs(context.Background(), nil, ioDiscard{}, ioDiscard{}, []string{
+		"policy", "render", "--replace", "--profile-out", profilePath,
+		"--output", policyPath, "--manifest-out", manifestPath,
+	})
+	if err == nil || !strings.Contains(err.Error(), "directory") {
+		t.Fatalf("replace render error = %v", err)
+	}
+	for _, path := range []string{profilePath, policyPath} {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil || string(data) != "existing" {
+			t.Fatalf("rolled-back artifact %s = %q, error = %v", path, data, readErr)
+		}
+	}
+	if info, statErr := os.Stat(manifestPath); statErr != nil || !info.IsDir() {
+		t.Fatalf("manifest directory changed: info=%v error=%v", info, statErr)
+	}
+}

@@ -536,6 +536,10 @@ func TestBrokerkitSystemdInstallPlanIncludesPresetArtifacts(t *testing.T) {
 			t.Fatalf("preset plan missing %s: %+v", name, plan.Files)
 		}
 	}
+	if managedFileIndex(plan.Files, policyProfileFileName) > managedFileIndex(plan.Files, scopeFileName) ||
+		managedFileIndex(plan.Files, policyManifestFileName) > managedFileIndex(plan.Files, scopeFileName) {
+		t.Fatalf("runtime scope is not the final policy artifact: %+v", plan.Files)
+	}
 	if managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
 		t.Fatalf("preset plan retires its artifacts: %+v", plan.RemoveFiles)
 	}
@@ -566,6 +570,15 @@ func managedFileNamed(files []bkservice.ManagedFile, name string) bool {
 		}
 	}
 	return false
+}
+
+func managedFileIndex(files []bkservice.ManagedFile, name string) int {
+	for index, file := range files {
+		if file.Name == name {
+			return index
+		}
+	}
+	return -1
 }
 
 func managedFileRefNamed(files []bkservice.ManagedFileRef, name string) bool {

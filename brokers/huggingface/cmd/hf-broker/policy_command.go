@@ -12,7 +12,6 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
-	"github.com/osolmaz/brokerkit/store"
 )
 
 const policyUsage = `usage:
@@ -163,31 +162,282 @@ type policyArtifactOutput struct {
 func policyArtifactOutputs(command policyRenderCommand, artifacts policypreset.Artifacts) []policyArtifactOutput {
 	return []policyArtifactOutput{
 		{command.profileOutput, artifacts.ProfileJSON},
-		{command.policyOutput, artifacts.PolicyJSON},
 		{command.manifestOutput, artifacts.ManifestJSON},
+		{command.policyOutput, artifacts.PolicyJSON},
 	}
 }
 
 func writePolicyArtifactOutputs(outputs []policyArtifactOutput, replace bool) error {
-	if !replace {
-		if err := ensurePolicyOutputsAbsent(outputs); err != nil {
-			return err
-		}
+	staged, err := stagePolicyArtifactOutputs(outputs)
+	if err != nil {
+		return err
 	}
-	for _, item := range outputs {
-		if err := store.WriteFileAtomic(item.path, item.data, 0o644); err != nil {
+	defer cleanupPolicyArtifactTransaction(staged)
+	err = commitPolicyArtifactOutputs(staged, replace)
+	if err != nil {
+		return policyArtifactTransactionError(staged, err)
+	}
+	if err := syncPolicyArtifactDirectories(staged); err != nil {
+		return policyArtifactTransactionError(staged, err)
+	}
+	removePolicyArtifactBackups(staged)
+	return nil
+}
+
+func commitPolicyArtifactOutputs(staged []*stagedPolicyArtifact, replace bool) error {
+	if replace {
+		return replacePolicyArtifactOutputs(staged)
+	}
+	return createPolicyArtifactOutputs(staged)
+}
+
+func policyArtifactTransactionError(staged []*stagedPolicyArtifact, commitErr error) error {
+	return errors.Join(commitErr, rollbackPolicyArtifactOutputs(staged))
+}
+
+type stagedPolicyArtifact struct {
+	output    policyArtifactOutput
+	temporary string
+	backup    string
+	info      os.FileInfo
+	committed bool
+}
+
+func stagePolicyArtifactOutputs(outputs []policyArtifactOutput) ([]*stagedPolicyArtifact, error) {
+	staged := make([]*stagedPolicyArtifact, 0, len(outputs))
+	for _, output := range outputs {
+		artifact, err := stagePolicyArtifact(output)
+		if err != nil {
+			cleanupPolicyArtifactTransaction(staged)
+			return nil, err
+		}
+		staged = append(staged, artifact)
+	}
+	return staged, nil
+}
+
+func stagePolicyArtifact(output policyArtifactOutput) (*stagedPolicyArtifact, error) {
+	directory := filepath.Dir(output.path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return nil, fmt.Errorf("create policy output directory %s: %w", directory, err)
+	}
+	file, err := os.CreateTemp(directory, "."+filepath.Base(output.path)+".*.stage")
+	if err != nil {
+		return nil, fmt.Errorf("stage policy output %s: %w", output.path, err)
+	}
+	temporary := file.Name()
+	if err := writeStagedPolicyArtifact(file, output); err != nil {
+		_ = os.Remove(temporary)
+		return nil, err
+	}
+	info, err := os.Stat(temporary)
+	if err != nil {
+		_ = os.Remove(temporary)
+		return nil, fmt.Errorf("inspect staged policy output %s: %w", output.path, err)
+	}
+	return &stagedPolicyArtifact{output: output, temporary: temporary, info: info}, nil
+}
+
+func writeStagedPolicyArtifact(file *os.File, output policyArtifactOutput) error {
+	steps := []func() error{
+		func() error { return stagedPolicyChmod(file, output.path) },
+		func() error { return stagedPolicyWrite(file, output) },
+		func() error { return stagedPolicySync(file, output.path) },
+		func() error { return stagedPolicyClose(file, output.path) },
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			_ = file.Close()
 			return err
 		}
 	}
 	return nil
 }
 
-func ensurePolicyOutputsAbsent(outputs []policyArtifactOutput) error {
-	for _, item := range outputs {
-		if _, err := os.Stat(item.path); err == nil {
-			return exitError{code: 64, message: fmt.Sprintf("refusing to replace existing file %s; use --replace", item.path)}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("inspect %s: %w", item.path, err)
+func stagedPolicyChmod(file *os.File, path string) error {
+	if err := file.Chmod(0o644); err != nil {
+		return fmt.Errorf("chmod staged policy output %s: %w", path, err)
+	}
+	return nil
+}
+
+func stagedPolicyWrite(file *os.File, output policyArtifactOutput) error {
+	if _, err := file.Write(output.data); err != nil {
+		return fmt.Errorf("write staged policy output %s: %w", output.path, err)
+	}
+	return nil
+}
+
+func stagedPolicySync(file *os.File, path string) error {
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync staged policy output %s: %w", path, err)
+	}
+	return nil
+}
+
+func stagedPolicyClose(file *os.File, path string) error {
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close staged policy output %s: %w", path, err)
+	}
+	return nil
+}
+
+func createPolicyArtifactOutputs(staged []*stagedPolicyArtifact) error {
+	for _, artifact := range staged {
+		if err := os.Link(artifact.temporary, artifact.output.path); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				return exitError{code: 64, message: fmt.Sprintf("refusing to replace existing file %s; use --replace", artifact.output.path)}
+			}
+			return fmt.Errorf("create policy output %s: %w", artifact.output.path, err)
+		}
+		artifact.committed = true
+	}
+	return nil
+}
+
+func replacePolicyArtifactOutputs(staged []*stagedPolicyArtifact) error {
+	for _, artifact := range staged {
+		if err := backupPolicyArtifact(artifact); err != nil {
+			return err
+		}
+	}
+	for _, artifact := range staged {
+		if err := os.Rename(artifact.temporary, artifact.output.path); err != nil {
+			return fmt.Errorf("replace policy output %s: %w", artifact.output.path, err)
+		}
+		artifact.committed = true
+	}
+	return nil
+}
+
+func backupPolicyArtifact(artifact *stagedPolicyArtifact) error {
+	info, err := os.Lstat(artifact.output.path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect policy output %s: %w", artifact.output.path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("refusing to replace policy output directory %s", artifact.output.path)
+	}
+	backup, err := unusedPolicyBackupPath(artifact.output.path)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(artifact.output.path, backup); err != nil {
+		return fmt.Errorf("backup policy output %s: %w", artifact.output.path, err)
+	}
+	artifact.backup = backup
+	return nil
+}
+
+func unusedPolicyBackupPath(path string) (string, error) {
+	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.backup")
+	if err != nil {
+		return "", fmt.Errorf("reserve backup for policy output %s: %w", path, err)
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", fmt.Errorf("close backup reservation for policy output %s: %w", path, err)
+	}
+	if err := os.Remove(name); err != nil {
+		return "", fmt.Errorf("release backup reservation for policy output %s: %w", path, err)
+	}
+	return name, nil
+}
+
+func rollbackPolicyArtifactOutputs(staged []*stagedPolicyArtifact) error {
+	var rollbackErrors []error
+	for index := len(staged) - 1; index >= 0; index-- {
+		if err := rollbackPolicyArtifact(staged[index]); err != nil {
+			rollbackErrors = append(rollbackErrors, err)
+		}
+	}
+	if err := syncPolicyArtifactDirectories(staged); err != nil {
+		rollbackErrors = append(rollbackErrors, err)
+	}
+	return errors.Join(rollbackErrors...)
+}
+
+func rollbackPolicyArtifact(artifact *stagedPolicyArtifact) error {
+	if err := rollbackCommittedPolicyArtifact(artifact); err != nil {
+		return err
+	}
+	return restorePolicyArtifactBackup(artifact)
+}
+
+func rollbackCommittedPolicyArtifact(artifact *stagedPolicyArtifact) error {
+	if !artifact.committed {
+		return nil
+	}
+	if err := removeCommittedPolicyArtifact(artifact); err != nil {
+		return err
+	}
+	artifact.committed = false
+	return nil
+}
+
+func restorePolicyArtifactBackup(artifact *stagedPolicyArtifact) error {
+	if artifact.backup == "" {
+		return nil
+	}
+	if err := os.Rename(artifact.backup, artifact.output.path); err != nil {
+		return fmt.Errorf("restore policy output %s: %w", artifact.output.path, err)
+	}
+	artifact.backup = ""
+	return nil
+}
+
+func removeCommittedPolicyArtifact(artifact *stagedPolicyArtifact) error {
+	info, err := os.Stat(artifact.output.path)
+	if err != nil {
+		return fmt.Errorf("inspect committed policy output %s: %w", artifact.output.path, err)
+	}
+	if !os.SameFile(info, artifact.info) {
+		return fmt.Errorf("refusing to roll back policy output %s changed by another process", artifact.output.path)
+	}
+	if err := os.Remove(artifact.output.path); err != nil {
+		return fmt.Errorf("remove committed policy output %s: %w", artifact.output.path, err)
+	}
+	return nil
+}
+
+func removePolicyArtifactBackups(staged []*stagedPolicyArtifact) {
+	for _, artifact := range staged {
+		if artifact.backup != "" {
+			_ = os.Remove(artifact.backup)
+			artifact.backup = ""
+		}
+	}
+}
+
+func cleanupPolicyArtifactTransaction(staged []*stagedPolicyArtifact) {
+	for _, artifact := range staged {
+		if artifact.temporary != "" {
+			_ = os.Remove(artifact.temporary)
+		}
+	}
+}
+
+func syncPolicyArtifactDirectories(staged []*stagedPolicyArtifact) error {
+	seen := make(map[string]bool, len(staged))
+	for _, artifact := range staged {
+		directory := filepath.Dir(artifact.output.path)
+		if seen[directory] {
+			continue
+		}
+		seen[directory] = true
+		handle, err := os.Open(directory) // #nosec G304 -- operator-supplied policy output directory.
+		if err != nil {
+			return fmt.Errorf("open policy output directory %s: %w", directory, err)
+		}
+		if err := handle.Sync(); err != nil {
+			_ = handle.Close()
+			return fmt.Errorf("sync policy output directory %s: %w", directory, err)
+		}
+		if err := handle.Close(); err != nil {
+			return fmt.Errorf("close policy output directory %s: %w", directory, err)
 		}
 	}
 	return nil

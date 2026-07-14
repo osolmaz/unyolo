@@ -49,9 +49,11 @@ hf-broker policy render \
   --manifest-out policy-manifest.json
 ```
 
-The command refuses to replace any output unless `--replace` is present. All
-three files use deterministic, newline-terminated JSON. `policy check` validates
-any concrete policy with the broker's startup parser:
+The command refuses to replace any output unless `--replace` is present. It
+stages all three artifacts before committing them, creates without clobbering,
+and rolls back a partial replacement; `scope.json` is the final commit point.
+All three files use deterministic, newline-terminated JSON. `policy check`
+validates any concrete policy with the broker's startup parser:
 
 ```sh
 hf-broker policy check --file scope.json
@@ -90,7 +92,9 @@ Status values are:
 
 Use `--json` for automation. Catalog drift reports added, removed, and changed
 operation names when available. Doctor never edits policy files or contacts a
-live broker.
+live broker. Exact deny overrides for retired operations remain valid
+diagnostic input when they are present in the installed manifest, allowing
+Doctor to report the removal instead of treating the profile as malformed.
 
 ## Replacement and upgrades
 

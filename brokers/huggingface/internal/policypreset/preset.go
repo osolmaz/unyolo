@@ -120,6 +120,14 @@ func NewProfile(clients, deniedOperations []string) Profile {
 
 // ParseProfile strictly decodes and normalizes one profile.
 func ParseProfile(data []byte) (Profile, error) {
+	profile, err := decodeProfile(data)
+	if err != nil {
+		return Profile{}, err
+	}
+	return normalizeProfile(profile)
+}
+
+func decodeProfile(data []byte) (Profile, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var profile Profile
@@ -130,7 +138,7 @@ func ParseProfile(data []byte) (Profile, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return Profile{}, errors.New("parse policy profile: trailing content")
 	}
-	return normalizeProfile(profile)
+	return profile, nil
 }
 
 // Check reports drift without changing any operator-owned files.
@@ -155,15 +163,23 @@ func Check(profileData, manifestData, policyData []byte) DriftReport {
 }
 
 func checkInputs(profileData, manifestData []byte) (Manifest, Artifacts, error) {
-	profile, err := ParseProfile(profileData)
-	if err != nil {
-		return Manifest{}, Artifacts{}, err
-	}
 	manifest, err := parseManifest(manifestData)
 	if err != nil {
 		return Manifest{}, Artifacts{}, err
 	}
-	current, err := Render(profile)
+	profile, err := decodeProfile(profileData)
+	if err != nil {
+		return Manifest{}, Artifacts{}, err
+	}
+	profile, err = normalizeProfileFields(profile)
+	if err != nil {
+		return Manifest{}, Artifacts{}, err
+	}
+	currentProfile, err := currentCatalogProfile(profile, manifest)
+	if err != nil {
+		return Manifest{}, Artifacts{}, err
+	}
+	current, err := Render(currentProfile)
 	if err != nil {
 		return Manifest{}, Artifacts{}, err
 	}
@@ -279,6 +295,19 @@ func deniedOperationSet(operations []string) map[string]bool {
 }
 
 func normalizeProfile(profile Profile) (Profile, error) {
+	profile, err := normalizeProfileFields(profile)
+	if err != nil {
+		return Profile{}, err
+	}
+	for _, operation := range profile.DeniedOperations {
+		if _, found := opcatalog.ByName(operation); !found {
+			return Profile{}, fmt.Errorf("denied_operations contains unknown operation %q", operation)
+		}
+	}
+	return profile, nil
+}
+
+func normalizeProfileFields(profile Profile) (Profile, error) {
 	if profile.Version != ProfileVersion {
 		return Profile{}, fmt.Errorf("policy profile version must be %d", ProfileVersion)
 	}
@@ -293,13 +322,27 @@ func normalizeProfile(profile Profile) (Profile, error) {
 	if err != nil && len(profile.DeniedOperations) > 0 {
 		return Profile{}, err
 	}
-	for _, operation := range denied {
-		if _, found := opcatalog.ByName(operation); !found {
-			return Profile{}, fmt.Errorf("denied_operations contains unknown operation %q", operation)
-		}
-	}
 	profile.Clients = clients
 	profile.DeniedOperations = nonNil(denied)
+	return profile, nil
+}
+
+func currentCatalogProfile(profile Profile, manifest Manifest) (Profile, error) {
+	manifestOperations := make(map[string]bool, len(manifest.Operations))
+	for _, operation := range manifest.Operations {
+		manifestOperations[operation.Name] = true
+	}
+	currentDenied := make([]string, 0, len(profile.DeniedOperations))
+	for _, operation := range profile.DeniedOperations {
+		if _, found := opcatalog.ByName(operation); found {
+			currentDenied = append(currentDenied, operation)
+			continue
+		}
+		if !manifestOperations[operation] {
+			return Profile{}, fmt.Errorf("denied_operations contains operation %q absent from the policy manifest", operation)
+		}
+	}
+	profile.DeniedOperations = currentDenied
 	return profile, nil
 }
 
