@@ -11,16 +11,31 @@ import (
 )
 
 func activationListeners(expected []string) (map[string]interfaceListener, error) {
-	rawPID, rawCount := os.Getenv("LISTEN_PID"), os.Getenv("LISTEN_FDS")
-	pid, pidErr := strconv.Atoi(rawPID)
-	count, countErr := strconv.Atoi(rawCount)
-	if pidErr != nil || countErr != nil || pid != os.Getpid() || count < 1 {
-		return nil, errors.New("systemd activation environment is invalid")
+	count, err := systemdActivationCount()
+	if err != nil {
+		return nil, err
 	}
 	names := strings.Split(os.Getenv("LISTEN_FDNAMES"), ":")
 	if len(names) != count || count != len(expected) {
 		return nil, errors.New("systemd activation listener names are incomplete")
 	}
+	wanted, err := expectedActivationNames(expected)
+	if err != nil {
+		return nil, err
+	}
+	return acquireSystemdListeners(names, wanted)
+}
+
+func systemdActivationCount() (int, error) {
+	pid, pidErr := strconv.Atoi(os.Getenv("LISTEN_PID"))
+	count, countErr := strconv.Atoi(os.Getenv("LISTEN_FDS"))
+	if pidErr != nil || countErr != nil || pid != os.Getpid() || count < 1 {
+		return 0, errors.New("systemd activation environment is invalid")
+	}
+	return count, nil
+}
+
+func expectedActivationNames(expected []string) (map[string]struct{}, error) {
 	wanted := make(map[string]struct{}, len(expected))
 	for _, name := range expected {
 		if _, exists := wanted[name]; exists {
@@ -28,6 +43,10 @@ func activationListeners(expected []string) (map[string]interfaceListener, error
 		}
 		wanted[name] = struct{}{}
 	}
+	return wanted, nil
+}
+
+func acquireSystemdListeners(names []string, wanted map[string]struct{}) (map[string]interfaceListener, error) {
 	listeners := make(map[string]interfaceListener, len(names))
 	for index, name := range names {
 		if _, exists := wanted[name]; !exists {

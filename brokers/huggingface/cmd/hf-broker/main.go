@@ -95,45 +95,14 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
-	pol, err := policy.LoadFile(cfg.ScopeFile)
-	if err != nil {
-		return err
-	}
-	auditRecorder := audit.New(stdout)
-	handler, err := httpapi.New(httpapi.Options{
-		Config:                cfg,
-		Scope:                 pol,
-		Audit:                 auditRecorder,
-		Context:               ctx,
-		UpstreamBaseURL:       cfg.UpstreamHubURL,
-		UpstreamRouterBaseURL: cfg.UpstreamRouterURL,
-		OperatorAudit:         auditRecorder,
-	})
+	handler, err := buildHTTPHandler(ctx, stdout, cfg)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = handler.Close() }()
-	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
-	if len(cfg.Operators) > 0 {
-		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
-	}
-	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+	bindings, err := buildServerBindings(handler, cfg)
 	if err != nil {
 		return err
-	}
-	agentServer, err := serverhttp.New(handler, serverhttp.ProfileStreaming)
-	if err != nil {
-		_ = endpoint.CloseSet(listeners)
-		return err
-	}
-	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
-	if len(cfg.Operators) > 0 {
-		operatorServer, serverErr := serverhttp.New(handler.OperatorHandler(), serverhttp.ProfileOperator)
-		if serverErr != nil {
-			_ = endpoint.CloseSet(listeners)
-			return serverErr
-		}
-		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
 	}
 	if cfg.Development {
 		if err := writeReadiness(stdout, cfg, bindings); err != nil {
@@ -146,6 +115,42 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 		_, _ = fmt.Fprintln(stderr, "hf-broker stopped")
 	}
 	return err
+}
+
+func buildHTTPHandler(ctx context.Context, stdout io.Writer, cfg config.Config) (*httpapi.Server, error) {
+	pol, err := policy.LoadFile(cfg.ScopeFile)
+	if err != nil {
+		return nil, err
+	}
+	auditRecorder := audit.New(stdout)
+	return httpapi.New(httpapi.Options{Config: cfg, Scope: pol, Audit: auditRecorder, Context: ctx,
+		UpstreamBaseURL: cfg.UpstreamHubURL, UpstreamRouterBaseURL: cfg.UpstreamRouterURL, OperatorAudit: auditRecorder})
+}
+
+func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverhttp.Binding, error) {
+	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
+	if len(cfg.Operators) > 0 {
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
+	}
+	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+	if err != nil {
+		return nil, err
+	}
+	agentServer, err := serverhttp.New(handler, serverhttp.ProfileStreaming)
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		return nil, err
+	}
+	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if len(cfg.Operators) > 0 {
+		operatorServer, serverErr := serverhttp.New(handler.OperatorHandler(), serverhttp.ProfileOperator)
+		if serverErr != nil {
+			_ = endpoint.CloseSet(listeners)
+			return nil, serverErr
+		}
+		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
+	}
+	return bindings, nil
 }
 
 func writeReadiness(stdout io.Writer, cfg config.Config, bindings []serverhttp.Binding) error {

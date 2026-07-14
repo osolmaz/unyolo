@@ -12,16 +12,31 @@ import (
 // HTTPS. Development may use plaintext only with a literal loopback address.
 func ValidateHTTPOrigin(raw string, development bool) error {
 	value, err := url.Parse(raw)
-	if err != nil || value.Scheme == "" || value.Host == "" || value.User != nil || value.RawQuery != "" || value.Fragment != "" || value.Opaque != "" {
+	if err != nil || !validHTTPOriginShape(value) {
 		return errors.New("upstream URL must be an absolute credential-free HTTP origin")
 	}
-	normalizedPath := strings.TrimSuffix(value.Path, "/")
-	if normalizedPath == "" && value.Path != "" {
+	if err := validateHTTPOriginPath(value.Path); err != nil {
+		return err
+	}
+	return validateHTTPOriginScheme(value, development)
+}
+
+func validHTTPOriginShape(value *url.URL) bool {
+	return value.Scheme != "" && value.Host != "" && value.User == nil && value.RawQuery == "" && value.Fragment == "" && value.Opaque == ""
+}
+
+func validateHTTPOriginPath(value string) error {
+	normalizedPath := strings.TrimSuffix(value, "/")
+	if normalizedPath == "" && value != "" {
 		normalizedPath = "/"
 	}
-	if value.Path != "" && path.Clean(value.Path) != normalizedPath {
+	if value != "" && path.Clean(value) != normalizedPath {
 		return errors.New("upstream URL path must be normalized")
 	}
+	return nil
+}
+
+func validateHTTPOriginScheme(value *url.URL, development bool) error {
 	switch value.Scheme {
 	case "https":
 		return nil

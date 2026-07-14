@@ -28,45 +28,67 @@ type Named struct {
 // validated as one set so missing, duplicate, and unexpected descriptors fail
 // startup before any server begins accepting requests.
 func ListenSet(values []Named, options ListenOptions) (map[string]net.Listener, error) {
+	listeners, activationNames, activationKeys, err := prepareListenerSet(values)
+	if err != nil {
+		return nil, err
+	}
+	if err := acquireActivatedSet(listeners, activationNames, activationKeys); err != nil {
+		return nil, err
+	}
+	if err := acquireDirectSet(listeners, values, options); err != nil {
+		return nil, err
+	}
+	return listeners, nil
+}
+
+func prepareListenerSet(values []Named) (map[string]net.Listener, []string, map[string]string, error) {
 	listeners := make(map[string]net.Listener, len(values))
 	activationNames := make([]string, 0, len(values))
 	activationKeys := make(map[string]string, len(values))
 	for _, value := range values {
 		if !validName(value.Name) {
-			return nil, closeListeners(listeners, errors.New("logical listener name is invalid"))
+			return nil, nil, nil, closeListeners(listeners, errors.New("logical listener name is invalid"))
 		}
 		if _, exists := listeners[value.Name]; exists {
-			return nil, closeListeners(listeners, fmt.Errorf("logical listener %q is duplicated", value.Name))
+			return nil, nil, nil, closeListeners(listeners, fmt.Errorf("logical listener %q is duplicated", value.Name))
 		}
 		listeners[value.Name] = nil
 		if value.Endpoint.scheme == SchemeActivation {
 			if _, exists := activationKeys[value.Endpoint.name]; exists {
-				return nil, closeListeners(listeners, fmt.Errorf("activation listener %q is duplicated", value.Endpoint.name))
+				return nil, nil, nil, closeListeners(listeners, fmt.Errorf("activation listener %q is duplicated", value.Endpoint.name))
 			}
 			activationNames = append(activationNames, value.Endpoint.name)
 			activationKeys[value.Endpoint.name] = value.Name
 		}
 	}
-	if len(activationNames) > 0 {
-		activated, err := activationListeners(activationNames)
+	return listeners, activationNames, activationKeys, nil
+}
+
+func acquireActivatedSet(listeners map[string]net.Listener, names []string, keys map[string]string) error {
+	if len(names) > 0 {
+		activated, err := activationListeners(names)
 		if err != nil {
-			return nil, closeListeners(listeners, err)
+			return closeListeners(listeners, err)
 		}
 		for name, listener := range activated {
-			listeners[activationKeys[name]] = listener
+			listeners[keys[name]] = listener
 		}
 	}
+	return nil
+}
+
+func acquireDirectSet(listeners map[string]net.Listener, values []Named, options ListenOptions) error {
 	for _, value := range values {
 		if value.Endpoint.scheme == SchemeActivation {
 			continue
 		}
 		listener, err := Listen(value.Endpoint, options)
 		if err != nil {
-			return nil, closeListeners(listeners, err)
+			return closeListeners(listeners, err)
 		}
 		listeners[value.Name] = listener
 	}
-	return listeners, nil
+	return nil
 }
 
 func closeListeners(listeners map[string]net.Listener, cause error) error {
