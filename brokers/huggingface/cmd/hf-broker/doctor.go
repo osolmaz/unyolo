@@ -37,7 +37,14 @@ func runDoctorPolicy(stdout, stderr io.Writer, args []string) error {
 	}
 	artifacts, err := readDoctorPolicyArtifacts(command)
 	if err != nil {
-		return err
+		report := policypreset.DriftReport{
+			Status: policypreset.DriftInvalid, Details: []string{err.Error()},
+			AddedOperations: []string{}, RemovedOperations: []string{}, ChangedOperations: []string{},
+		}
+		if writeErr := writeDoctorPolicyReport(stdout, report, command.jsonOutput); writeErr != nil {
+			return writeErr
+		}
+		return doctorPolicyStatusError(report.Status)
 	}
 	report := policypreset.Check(artifacts.profile, artifacts.manifest, artifacts.policy)
 	if err := writeDoctorPolicyReport(stdout, report, command.jsonOutput); err != nil {

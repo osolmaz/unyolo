@@ -135,20 +135,26 @@ func ParseProfile(data []byte) (Profile, error) {
 
 // Check reports drift without changing any operator-owned files.
 func Check(profileData, manifestData, policyData []byte) DriftReport {
-	manifest, current, err := checkInputs(profileData, manifestData, policyData)
+	manifest, current, err := checkInputs(profileData, manifestData)
 	if err != nil {
 		return invalidReport(err)
 	}
 	report := DriftReport{Status: DriftCurrent, Details: []string{}}
 	checkArtifactDigests(&report, profileData, policyData, manifest)
 	checkCatalogDrift(&report, manifest, current.Manifest)
+	if manifest.CatalogDigest == current.Manifest.CatalogDigest {
+		if _, err := policy.Parse(policyData); err != nil {
+			return invalidReport(fmt.Errorf("parse policy: %w", err))
+		}
+		checkDeterministicPolicy(&report, policyData, current.PolicyJSON)
+	}
 	if report.Status == DriftCurrent {
 		report.Details = append(report.Details, "profile, policy, manifest, and operation catalog match")
 	}
 	return report
 }
 
-func checkInputs(profileData, manifestData, policyData []byte) (Manifest, Artifacts, error) {
+func checkInputs(profileData, manifestData []byte) (Manifest, Artifacts, error) {
 	profile, err := ParseProfile(profileData)
 	if err != nil {
 		return Manifest{}, Artifacts{}, err
@@ -157,14 +163,19 @@ func checkInputs(profileData, manifestData, policyData []byte) (Manifest, Artifa
 	if err != nil {
 		return Manifest{}, Artifacts{}, err
 	}
-	if _, err := policy.Parse(policyData); err != nil {
-		return Manifest{}, Artifacts{}, fmt.Errorf("parse policy: %w", err)
-	}
 	current, err := Render(profile)
 	if err != nil {
 		return Manifest{}, Artifacts{}, err
 	}
 	return manifest, current, nil
+}
+
+func checkDeterministicPolicy(report *DriftReport, policyData, renderedPolicy []byte) {
+	if bytes.Equal(policyData, renderedPolicy) {
+		return
+	}
+	report.Status = DriftModified
+	report.Details = append(report.Details, "policy does not match the deterministic render of its profile")
 }
 
 func checkArtifactDigests(report *DriftReport, profileData, policyData []byte, manifest Manifest) {

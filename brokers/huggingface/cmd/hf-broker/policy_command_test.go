@@ -78,6 +78,21 @@ func TestDoctorPolicyReportsModifiedPolicyAsJSON(t *testing.T) {
 	}
 }
 
+func TestDoctorPolicyReportsMissingArtifactAsInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	var stdout bytes.Buffer
+	err := runWithArgs(context.Background(), nil, &stdout, ioDiscard{}, []string{
+		"doctor", "policy", "--profile", filepath.Join(dir, "missing-profile.json"),
+		"--scope", filepath.Join(dir, "missing-scope.json"),
+		"--manifest", filepath.Join(dir, "missing-manifest.json"), "--json",
+	})
+	var exitErr exitError
+	if err == nil || !errors.As(err, &exitErr) || exitErr.code != 2 ||
+		!strings.Contains(stdout.String(), `"status": "invalid"`) || !strings.Contains(stdout.String(), "missing-profile.json") {
+		t.Fatalf("doctor missing result: output=%q error=%v", stdout.String(), err)
+	}
+}
+
 func TestPolicyRenderRejectsDuplicateOutputPaths(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "artifact.json")
 	err := runWithArgs(context.Background(), nil, ioDiscard{}, ioDiscard{}, []string{
@@ -85,5 +100,36 @@ func TestPolicyRenderRejectsDuplicateOutputPaths(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "must be distinct") {
 		t.Fatalf("duplicate output error = %v", err)
+	}
+}
+
+func TestPolicyRenderRejectsEquivalentAndSymlinkedOutputPaths(t *testing.T) {
+	dir := t.TempDir()
+	realDir := filepath.Join(dir, "real")
+	if err := os.Mkdir(realDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	aliasDir := filepath.Join(dir, "alias")
+	if err := os.Symlink(realDir, aliasDir); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		policy  string
+		profile string
+	}{
+		{name: "cleaned", policy: realDir + "/scope.json", profile: realDir + "/./scope.json"},
+		{name: "symlinked parent", policy: filepath.Join(realDir, "scope.json"), profile: filepath.Join(aliasDir, "scope.json")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := runWithArgs(context.Background(), nil, ioDiscard{}, ioDiscard{}, []string{
+				"policy", "render", "--profile-out", test.profile, "--output", test.policy,
+				"--manifest-out", filepath.Join(dir, test.name+"-manifest.json"),
+			})
+			if err == nil || !strings.Contains(err.Error(), "must be distinct") {
+				t.Fatalf("aliased output error = %v", err)
+			}
+		})
 	}
 }

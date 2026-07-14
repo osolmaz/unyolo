@@ -445,8 +445,42 @@ func TestBrokerkitSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
 	if !found || !strings.Contains(renderEnvFile(systemdSetupPlan(opts)), "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=") {
 		t.Fatalf("telegram token was not installed: %+v", plan.Files)
 	}
-	if len(plan.RemoveFiles) != 2 || plan.ReadyCheck != nil || !managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || !managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
+	if len(plan.RemoveFiles) != 2 || plan.ReadyCheck == nil || !managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || !managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
 		t.Fatalf("configured Telegram plan retires files: %+v", plan.RemoveFiles)
+	}
+}
+
+func TestBrokerkitSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T) {
+	dir := t.TempDir()
+	hfToken := filepath.Join(dir, "hf-token-source")
+	telegramToken := filepath.Join(dir, "telegram-token-source")
+	if err := os.WriteFile(hfToken, []byte("hf_xxx\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(telegramToken, []byte("123:telegram\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
+			ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"),
+			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/hf-broker",
+			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080,
+		},
+		HFTokenFile: hfToken, TelegramBotTokenFile: telegramToken, TelegramChatID: 123,
+		Repo: "osolmaz/repo", RepoType: "model", SharedSecret: strings.Repeat("s", 32),
+		OperatorName: "operator", OperatorSecret: strings.Repeat("o", 32),
+		OperatorBindAddr: "127.0.0.1", OperatorPort: 8081,
+	}
+	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ReadyCheck == nil {
+		t.Fatal("narrow policy retirement has no readiness check")
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("narrow policy with Telegram install plan is invalid: %v", err)
 	}
 }
 

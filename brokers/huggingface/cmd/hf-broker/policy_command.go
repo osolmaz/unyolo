@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
@@ -91,7 +92,11 @@ func validatePolicyRenderCommand(fs *flag.FlagSet, command policyRenderCommand) 
 	if policyRenderOutputsMissing(fs, command) {
 		return exitError{code: 64, message: "policy render requires --output, --profile-out, and --manifest-out"}
 	}
-	if policyRenderOutputsOverlap(command) {
+	overlap, err := policyRenderOutputsOverlap(command)
+	if err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
+	if overlap {
 		return exitError{code: 64, message: "policy render output paths must be distinct"}
 	}
 	return nil
@@ -101,8 +106,46 @@ func policyRenderOutputsMissing(fs *flag.FlagSet, command policyRenderCommand) b
 	return fs.NArg() != 0 || command.policyOutput == "" || command.profileOutput == "" || command.manifestOutput == ""
 }
 
-func policyRenderOutputsOverlap(command policyRenderCommand) bool {
-	return command.policyOutput == command.profileOutput || command.policyOutput == command.manifestOutput || command.profileOutput == command.manifestOutput
+func policyRenderOutputsOverlap(command policyRenderCommand) (bool, error) {
+	seen := make(map[string]bool, 3)
+	for _, path := range []string{command.policyOutput, command.profileOutput, command.manifestOutput} {
+		identity, err := canonicalOutputPath(path)
+		if err != nil {
+			return false, fmt.Errorf("resolve policy output path %s: %w", path, err)
+		}
+		if seen[identity] {
+			return true, nil
+		}
+		seen[identity] = true
+	}
+	return false, nil
+}
+
+func canonicalOutputPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return resolveExistingPathPrefix(filepath.Clean(absolute))
+}
+
+func resolveExistingPathPrefix(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path, nil
+	}
+	resolvedParent, err := resolveExistingPathPrefix(parent)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(resolvedParent, filepath.Base(path)), nil
 }
 
 func defaultPolicyClients(clients stringListFlag) stringListFlag {
