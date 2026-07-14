@@ -94,6 +94,48 @@ func TestStoreExistsAndDelete(t *testing.T) {
 	}
 }
 
+func TestStoreNamespacesIsolateIdenticalSlots(t *testing.T) {
+	t.Parallel()
+	state := t.TempDir()
+	users, err := OpenNamespace(state, "github-users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := OpenNamespace(state, "github-outputs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := users.Put("github-user-7", "github-app-user-token", []byte("user-secret")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := outputs.Put("github-user-7", "github-output-token", []byte("output-secret")); err != nil {
+		t.Fatal(err)
+	}
+	userValue, _, userErr := users.Get("github-user-7", "github-app-user-token")
+	outputValue, _, outputErr := outputs.Get("github-user-7", "github-output-token")
+	if userErr != nil || outputErr != nil || string(userValue) != "user-secret" || string(outputValue) != "output-secret" {
+		t.Fatalf("namespaced values = %q, %q; errors = %v, %v", userValue, outputValue, userErr, outputErr)
+	}
+	userPath, _ := NamespacePath(state, "github-users")
+	outputPath, _ := NamespacePath(state, "github-outputs")
+	if userPath == outputPath || !strings.HasPrefix(userPath, state+string(filepath.Separator)) || !strings.HasPrefix(outputPath, state+string(filepath.Separator)) {
+		t.Fatalf("namespace paths = %q, %q", userPath, outputPath)
+	}
+}
+
+func TestStoreRejectsUnsafeNamespaces(t *testing.T) {
+	t.Parallel()
+	state := t.TempDir()
+	for _, namespace := range []string{"", "../escape", "GitHub", "contains/slash"} {
+		if _, err := OpenNamespace(state, namespace); err == nil {
+			t.Fatalf("OpenNamespace accepted %q", namespace)
+		}
+	}
+	if _, err := NamespacePath("", "github-users"); err == nil {
+		t.Fatal("NamespacePath accepted an empty state directory")
+	}
+}
+
 func TestStorePersistsKeyAndRejectsTampering(t *testing.T) {
 	state := t.TempDir()
 	first, err := Open(state)

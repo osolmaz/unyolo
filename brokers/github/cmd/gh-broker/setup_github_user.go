@@ -127,7 +127,7 @@ func newGitHubUserSetupManager(opts githubUserSetupOptions) (*githubauth.Manager
 }
 
 func openGitHubUserCredentialStore(stateDir string) (*credentialstore.Store, error) {
-	store, err := credentialstore.Open(stateDir)
+	store, err := githubauth.OpenUserCredentialStore(stateDir)
 	if err != nil {
 		return nil, err
 	}

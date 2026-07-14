@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 )
 
 type githubUserStateOwner struct {
@@ -20,13 +22,18 @@ func preserveGitHubUserStateOwnership(stateDir string) error {
 	if err != nil {
 		return err
 	}
-	paths := []string{filepath.Join(stateDir, "credential-slots.key"), filepath.Join(stateDir, "credential-slots")}
-	entries, readErr := os.ReadDir(paths[1])
+	storeRoot, err := githubauth.UserCredentialStorePath(stateDir)
+	if err != nil {
+		return err
+	}
+	slotsPath := filepath.Join(storeRoot, "credential-slots")
+	paths := []string{filepath.Dir(storeRoot), storeRoot, filepath.Join(storeRoot, "credential-slots.key"), slotsPath}
+	entries, readErr := os.ReadDir(slotsPath)
 	if readErr != nil && !os.IsNotExist(readErr) {
 		return errors.New("inspect GitHub user credential store")
 	}
 	for _, entry := range entries {
-		paths = append(paths, filepath.Join(paths[1], entry.Name()))
+		paths = append(paths, filepath.Join(slotsPath, entry.Name()))
 	}
 	for _, path := range paths {
 		if err := preserveGitHubUserPathOwnership(path, owner); err != nil {

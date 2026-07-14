@@ -766,7 +766,13 @@ func collectAuthorizationAttrs(value any, fields map[string][]string) {
 	case map[string]any:
 		for name, child := range typed {
 			if attribute, found := authorizationAttributeName(name); found {
-				fields[attribute] = append(fields[attribute], scalarStrings(child)...)
+				values := scalarStrings(child)
+				if name == "branch" {
+					for index, value := range values {
+						values[index] = canonicalBranchRef(value)
+					}
+				}
+				fields[attribute] = append(fields[attribute], values...)
 			}
 			collectAuthorizationAttrs(child, fields)
 		}
@@ -783,7 +789,7 @@ func authorizationAttributeName(name string) (string, bool) {
 		"base": "base_ref", "base_ref": "base_ref", "baseRef": "base_ref", "environment": "environment",
 		"environment_name": "environment", "environmentName": "environment", "head": "head_ref", "head_ref": "head_ref",
 		"headRef": "head_ref", "label": "label", "labels": "label", "merge_method": "merge_method", "mergeMethod": "merge_method",
-		"path": "path", "paths": "path", "permission": "permission", "ref": "ref", "release_state": "release_state",
+		"branch": "ref", "path": "path", "paths": "path", "permission": "permission", "ref": "ref", "release_state": "release_state",
 		"releaseState": "release_state", "resource_id": "resource_id", "resourceId": "resource_id", "role": "role",
 		"visibility": "visibility", "workflow": "workflow", "workflow_ref": "workflow_ref", "workflowRef": "workflow_ref",
 		"name": "resource_name", "owner": "resource_owner",

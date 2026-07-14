@@ -221,7 +221,7 @@ func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client,
 		return nil, nil, nil, nil, nil, err
 	}
 	client := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
-	encryptedStore, err := credentialstore.Open(stateDir(cfg.StateDir))
+	userStore, err := githubauth.OpenUserCredentialStore(stateDir(cfg.StateDir))
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
@@ -229,9 +229,13 @@ func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client,
 		AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey, AppClientID: cfg.GitHubAppClientID,
 		AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
 		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: apiBaseURL, WebBaseURL: gitBaseURL,
-		HTTPClient: client, StreamTimeout: defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute), Store: encryptedStore,
+		HTTPClient: client, StreamTimeout: defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute), Store: userStore,
 	})
-	return gitBaseURL, apiBaseURL, client, manager, encryptedStore, err
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	outputStore, err := credentialstore.OpenNamespace(stateDir(cfg.StateDir), "github-operation-outputs")
+	return gitBaseURL, apiBaseURL, client, manager, outputStore, err
 }
 
 func githubCredentialMode(cfg config.Config) string {

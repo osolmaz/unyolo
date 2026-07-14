@@ -17,9 +17,22 @@ import (
 )
 
 const (
-	userCredentialKind = "github-app-user-token" // #nosec G101 -- encrypted credential record kind, not a credential.
-	maxOAuthBodyBytes  = 64 * 1024
+	userCredentialKind      = "github-app-user-token" // #nosec G101 -- encrypted credential record kind, not a credential.
+	maxOAuthBodyBytes       = 64 * 1024
+	userCredentialNamespace = "github-users"
 )
+
+// OpenUserCredentialStore opens the broker-owned namespace reserved for
+// internal GitHub App user credentials.
+func OpenUserCredentialStore(stateDir string) (*credentialstore.Store, error) {
+	return credentialstore.OpenNamespace(stateDir, userCredentialNamespace)
+}
+
+// UserCredentialStorePath returns the state subtree whose ownership the local
+// setup command must preserve for the broker service account.
+func UserCredentialStorePath(stateDir string) (string, error) {
+	return credentialstore.NamespacePath(stateDir, userCredentialNamespace)
+}
 
 type UserEnrollment struct {
 	UserID           int64     `json:"user_id"`
@@ -208,7 +221,7 @@ func (p *userProvider) revoke(ctx context.Context, userID int64) error {
 	if err := p.revokeToken(ctx, record.AccessToken); err != nil && !IsNotFound(err) {
 		return err
 	}
-	return p.invalidate(userID)
+	return p.invalidateLocked(userID)
 }
 
 func (p *userProvider) revokeToken(ctx context.Context, token []byte) error {
@@ -228,6 +241,12 @@ func (p *userProvider) invalidate(userID int64) error {
 	if userID <= 0 {
 		return errors.New("GitHub user id is invalid")
 	}
+	unlock := p.lockUser(userID)
+	defer unlock()
+	return p.invalidateLocked(userID)
+}
+
+func (p *userProvider) invalidateLocked(userID int64) error {
 	p.mu.Lock()
 	p.generation[userID]++
 	p.clearActiveLocked(userID)

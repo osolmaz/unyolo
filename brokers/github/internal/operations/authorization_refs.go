@@ -28,5 +28,13 @@ func canonicalPullRequestRef(value string) string {
 	if owner, branch, found := strings.Cut(value, ":"); found {
 		return owner + ":refs/heads/" + branch
 	}
+	return canonicalBranchRef(value)
+}
+
+func canonicalBranchRef(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.HasPrefix(value, "refs/") {
+		return value
+	}
 	return "refs/heads/" + value
 }

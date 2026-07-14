@@ -423,6 +423,20 @@ func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	if _, err := restPath(binding, map[string]any{"owner": "acme", "name": "demo"}, map[string]any{"issue_number": 1.5}); err == nil {
 		t.Fatal("fractional path value accepted")
 	}
+	dotBinding := opbinding.Binding{PathTemplate: "/repos/{owner}/{repo}/contents/{path}", PathParameters: []string{"owner", "repo", "path"},
+		TargetPathParameters: []opbinding.TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "name"}}}
+	for value, want := range map[string]string{".": "/repos/acme/demo/contents/%2E", "..": "/repos/acme/demo/contents/%2E%2E"} {
+		path, err = restPath(dotBinding, map[string]any{"owner": "acme", "name": "demo"}, map[string]any{"path": value})
+		if err != nil || path != want {
+			t.Fatalf("dot-segment path %q = %q, %v; want %q", value, path, err, want)
+		}
+		apiURL, _ := url.Parse("https://api.github.com/")
+		manager := &Manager{apiURL: apiURL}
+		resolved, resolveErr := manager.bindingRESTURL(dotBinding, path, nil)
+		if resolveErr != nil || resolved != "https://api.github.com"+want {
+			t.Fatalf("resolved dot-segment path %q = %q, %v", value, resolved, resolveErr)
+		}
+	}
 
 	value := map[string]any{"repository": map[string]any{"id": 7, "owner": map[string]any{"login": "acme"}}, "secret": "hidden"}
 	projected, ok := projectJSON(value, []string{"repository.id", "repository.owner.login"})

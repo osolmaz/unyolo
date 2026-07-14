@@ -268,7 +268,7 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	attrs := authorizationAttrs(map[string]any{"input": map[string]any{
 		"actorId": json.Number("1"), "actorLogin": "alice", "base": "main", "environmentName": "production", "head": "feature",
-		"name": "brokerkit-next", "owner": "osolmaz",
+		"branch": "release", "name": "brokerkit-next", "owner": "osolmaz",
 		"labels": []any{"bug", "urgent"}, "mergeMethod": "squash", "paths": []any{"README.md", "docs/guide.md"},
 		"permission": "maintain", "ref": "refs/heads/main", "releaseState": "draft", "resourceId": "R_1", "role": "admin",
 		"visibility": "private", "workflow": "ci", "workflowRef": "ci.yml@main",
@@ -276,7 +276,7 @@ func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	want := map[string][]string{
 		"actor_id": {"1"}, "actor_login": {"alice"}, "base_ref": {"main"}, "environment": {"production"},
 		"head_ref": {"feature"}, "label": {"bug", "urgent"}, "merge_method": {"squash"},
-		"path": {"README.md", "docs/guide.md"}, "permission": {"maintain"}, "ref": {"refs/heads/main"},
+		"path": {"README.md", "docs/guide.md"}, "permission": {"maintain"}, "ref": {"refs/heads/main", "refs/heads/release"},
 		"release_state": {"draft"}, "resource_id": {"R_1"}, "role": {"admin"}, "visibility": {"private"},
 		"workflow": {"ci"}, "workflow_ref": {"ci.yml@main"}, "resource_name": {"brokerkit-next"}, "resource_owner": {"osolmaz"},
 	}
@@ -285,6 +285,24 @@ func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	}
 	if values := scalarStrings(map[string]any{"not": "scalar"}); values != nil {
 		t.Fatalf("object scalar values = %+v", values)
+	}
+}
+
+func TestGeneratedFileWriteAuthorizationBindsBranch(t *testing.T) {
+	descriptor, found := opcatalog.ByName("repo.create_or_update_file_contents")
+	if !found {
+		t.Fatal("file-write descriptor is unavailable")
+	}
+	bindings := opbinding.ByOperation(descriptor.Name)
+	if len(bindings) != 1 {
+		t.Fatalf("file-write bindings = %d", len(bindings))
+	}
+	authorization := authorizeDescriptor(descriptor, &bindings[0], map[string]any{
+		"kind": "repo", "owner": "osolmaz", "name": "brokerkit",
+	}, map[string]any{"path": "README.md", "input": map[string]any{"branch": "main"}}, githubauth.Metadata{})
+	if !slices.Equal(authorization.Attrs["ref"], []string{"refs/heads/main"}) ||
+		!slices.Equal(authorization.Attrs["path"], []string{"README.md"}) {
+		t.Fatalf("file-write authorization = %+v", authorization)
 	}
 }
 

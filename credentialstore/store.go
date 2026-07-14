@@ -29,11 +29,13 @@ const (
 	maxCredentialBytes  = 1 << 20
 	credentialFileMode  = 0o600
 	credentialDirectory = 0o700
+	namespaceDirectory  = "credential-namespaces"
 )
 
 var (
-	slotPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,127}$`)
-	kindPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+	slotPattern      = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]{0,127}$`)
+	kindPattern      = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+	namespacePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 )
 
 type Metadata struct {
@@ -85,6 +87,48 @@ func (s *Store) Delete(slot string) error {
 }
 
 func ValidSlot(value string) bool { return slotPattern.MatchString(value) }
+
+// NamespacePath returns the isolated state directory for a credential
+// namespace. Namespaces use the same conservative vocabulary as credential
+// kinds and cannot escape the broker state directory.
+func NamespacePath(stateDir, namespace string) (string, error) {
+	if stateDir == "" {
+		return "", errors.New("credential store state directory is required")
+	}
+	if !namespacePattern.MatchString(namespace) {
+		return "", errors.New("credential store namespace is invalid")
+	}
+	return filepath.Join(stateDir, namespaceDirectory, namespace), nil
+}
+
+// OpenNamespace opens an encrypted store whose keys and slots are isolated
+// from every other namespace in the same broker state directory.
+func OpenNamespace(stateDir, namespace string) (*Store, error) {
+	root, err := NamespacePath(stateDir, namespace)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range []string{filepath.Dir(root), root} {
+		if err := secureStoreDirectory(path); err != nil {
+			return nil, err
+		}
+	}
+	return Open(root)
+}
+
+func secureStoreDirectory(path string) error {
+	if err := os.MkdirAll(path, credentialDirectory); err != nil {
+		return errors.New("create credential namespace directory")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("credential namespace directory is unsafe")
+	}
+	if err := os.Chmod(path, credentialDirectory); err != nil {
+		return errors.New("secure credential namespace directory")
+	}
+	return nil
+}
 
 func Open(stateDir string) (*Store, error) {
 	if stateDir == "" {

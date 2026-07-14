@@ -485,21 +485,36 @@ func TestUserInvalidationWinsAgainstConcurrentRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(59 * time.Minute)
-	result := make(chan error, 1)
+	type credentialResult struct {
+		credential *Credential
+		err        error
+	}
+	result := make(chan credentialResult, 1)
 	go func() {
-		_, credentialErr := manager.UserCredential(t.Context(), 7)
-		result <- credentialErr
+		credential, credentialErr := manager.UserCredential(t.Context(), 7)
+		result <- credentialResult{credential: credential, err: credentialErr}
 	}()
 	<-refreshStarted
-	if err := manager.InvalidateUser(7); err != nil {
-		t.Fatal(err)
+	invalidated := make(chan error, 1)
+	go func() { invalidated <- manager.InvalidateUser(7) }()
+	select {
+	case err := <-invalidated:
+		t.Fatalf("invalidation did not serialize with credential refresh: %v", err)
+	case <-time.After(50 * time.Millisecond):
 	}
 	close(releaseRefresh)
-	if err := <-result; err == nil {
-		t.Fatal("refreshed user credential survived concurrent invalidation")
+	loaded := <-result
+	if loaded.err != nil {
+		t.Fatalf("serialized credential refresh failed: %v", loaded.err)
+	}
+	if err := <-invalidated; err != nil {
+		t.Fatal(err)
 	}
 	if store.Exists(userSlot(7)) {
 		t.Fatal("concurrent refresh resurrected invalidated user credential")
+	}
+	if loaded.credential.AuthorizeAPI(&http.Request{Header: make(http.Header)}) == nil {
+		t.Fatal("credential loaded before invalidation remained active")
 	}
 }
 

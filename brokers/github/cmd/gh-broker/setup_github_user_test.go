@@ -56,7 +56,8 @@ func TestSetupGitHubUserEnrollAndRevokeHaveNoReadback(t *testing.T) {
 	if strings.Contains(output.String(), "canary") || !strings.Contains(output.String(), "user 7") {
 		t.Fatalf("enrollment output = %q", output.String())
 	}
-	files, _ := filepath.Glob(filepath.Join(stateDir, "credential-slots", "*.json"))
+	storeRoot := filepath.Join(stateDir, "credential-namespaces", "github-users")
+	files, _ := filepath.Glob(filepath.Join(storeRoot, "credential-slots", "*.json"))
 	if len(files) != 1 {
 		t.Fatalf("encrypted credential files = %v", files)
 	}
@@ -64,7 +65,8 @@ func TestSetupGitHubUserEnrollAndRevokeHaveNoReadback(t *testing.T) {
 	if bytes.Contains(stored, []byte("access-setup-canary")) || bytes.Contains(stored, []byte("refresh-setup-canary")) {
 		t.Fatal("setup stored a user credential in plaintext")
 	}
-	assertSetupStateOwnership(t, stateDir, append(files, filepath.Join(stateDir, "credential-slots.key"), filepath.Join(stateDir, "credential-slots"))...)
+	assertSetupStateOwnership(t, stateDir, append(files, filepath.Join(stateDir, "credential-namespaces"), storeRoot,
+		filepath.Join(storeRoot, "credential-slots.key"), filepath.Join(storeRoot, "credential-slots"))...)
 
 	output.Reset()
 	revokeArgs := append([]string{"revoke"}, common...)
