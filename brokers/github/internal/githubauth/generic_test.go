@@ -558,6 +558,9 @@ func TestGenericExecutionRejectsMalformedRequestsBeforeUpstream(t *testing.T) {
 	if err := addQueryValue(url.Values{}, "empty", nil); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := formatQueryNumber(json.Number("not-a-number")); err == nil {
+		t.Fatal("invalid JSON number was accepted")
+	}
 }
 
 func responseForTest(status int, body string) *http.Response {

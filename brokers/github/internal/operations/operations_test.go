@@ -199,7 +199,7 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 
 func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	attrs := authorizationAttrs(map[string]any{"input": map[string]any{
-		"actorId": "1", "actorLogin": "alice", "base": "main", "environmentName": "production", "head": "feature",
+		"actorId": json.Number("1"), "actorLogin": "alice", "base": "main", "environmentName": "production", "head": "feature",
 		"labels": []any{"bug", "urgent"}, "mergeMethod": "squash", "paths": []any{"README.md", "docs/guide.md"},
 		"permission": "maintain", "ref": "refs/heads/main", "releaseState": "draft", "resourceId": "R_1", "role": "admin",
 		"visibility": "private", "workflow": "ci", "workflowRef": "ci.yml@main",
@@ -213,6 +213,9 @@ func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	}
 	if !maps.EqualFunc(attrs, want, slices.Equal) {
 		t.Fatalf("authorization attrs = %+v, want %+v", attrs, want)
+	}
+	if values := scalarStrings(map[string]any{"not": "scalar"}); values != nil {
+		t.Fatalf("object scalar values = %+v", values)
 	}
 }
 

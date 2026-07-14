@@ -17,11 +17,10 @@ brokers/github/internal/githubauth/manager.go	githubauth:(*Manager).Installation
 brokers/github/cmd/gh-broker/operations.go	main:(operationConnection).downloadStream	crap	18.5
 brokers/github/cmd/gh-broker/operations.go	main:(operationConnection).uploadStream	crap	17.6
 brokers/github/cmd/gh-broker/operations.go	main:validateOperationInput	crap	17.4
-brokers/github/internal/operations/operations.go	operations:NewGeneratedAdapters	crap	17.2
 brokers/github/internal/httpapi/agent_operations.go	httpapi:(*Server).loadRuntimePlan	crap	16.2
-brokers/github/internal/operations/operations.go	operations:(generatedAdapter).Execute	crap	15.4
 brokers/github/internal/githubauth/user.go	githubauth:(*userProvider).enroll	crap	15.1
 brokers/github/internal/operations/operations.go	operations:(generatedAdapter).Decode	crap	14.6
+brokers/github/internal/operations/operations.go	operations:NewGeneratedAdapters	crap	14.5
 brokers/github/internal/httpapi/streams.go	httpapi:(*Server).uploadStream	crap	14.1
 brokers/github/internal/operations/operations.go	operations:(generatedAdapter).materializeArguments	crap	14.1
 brokers/github/internal/policy/registry.go	policy:expandFamilyOperation	crap	13.6
@@ -34,6 +33,7 @@ brokers/github/cmd/gh-broker/main.go	main:runWithArgs	crap	12.3
 brokers/github/internal/schemaregistry/registry.go	schemaregistry:load	crap	12.0
 brokers/github/cmd/gh-broker/mcp.go	main:handleMCP	crap	11.6
 brokers/github/internal/httpapi/runtime.go	httpapi:(*Server).reserveGrantUse	crap	11.5
+brokers/github/internal/operations/operations.go	operations:(generatedAdapter).Execute	crap	11.5
 brokers/github/internal/githubauth/app.go	githubauth:(*appProvider).repositoryInstallation	crap	11.4
 brokers/github/internal/githubauth/installation.go	githubauth:(*installationProvider).mintCredential	crap	11.4
 brokers/github/internal/githubauth/generic.go	githubauth:(*Manager).executeREST	crap	11.3
@@ -71,5 +71,4 @@ brokers/github/internal/operations/operations.go	operations:(generatedAdapter).R
 brokers/github/internal/httpapi/grants.go	httpapi:(*Server).planGrantCreate	crap	8.4
 brokers/github/cmd/gh-broker/operations.go	main:runStream	crap	8.3
 brokers/github/internal/ghplan/plan.go	ghplan:hasRawSecret	crap	8.1
-brokers/github/internal/githubauth/generic.go	githubauth:addQueryValue	crap	8.1
 brokers/github/internal/operations/operations.go	operations:(generatedAdapter).executeStreamUpload	crap	8.1

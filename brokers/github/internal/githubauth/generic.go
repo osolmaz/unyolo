@@ -588,29 +588,38 @@ func restQuery(binding opbinding.Binding, arguments map[string]any) (url.Values,
 }
 
 func addQueryValue(values url.Values, name string, value any) error {
-	switch typed := value.(type) {
-	case string:
-		values.Add(name, typed)
-	case float64, json.Number:
-		encoded, err := formatQueryNumber(typed)
-		if err != nil {
-			return err
-		}
-		values.Add(name, encoded)
-	case bool:
-		values.Add(name, strconv.FormatBool(typed))
-	case nil:
-		return nil
-	case []any:
+	if typed, ok := value.([]any); ok {
 		for _, item := range typed {
 			if err := addQueryValue(values, name, item); err != nil {
 				return err
 			}
 		}
-	default:
-		return errors.New("unsupported query value")
+		return nil
+	}
+	encoded, include, err := scalarQueryValue(value)
+	if err != nil {
+		return err
+	}
+	if include {
+		values.Add(name, encoded)
 	}
 	return nil
+}
+
+func scalarQueryValue(value any) (string, bool, error) {
+	switch typed := value.(type) {
+	case string:
+		return typed, true, nil
+	case float64, json.Number:
+		encoded, err := formatQueryNumber(typed)
+		return encoded, true, err
+	case bool:
+		return strconv.FormatBool(typed), true, nil
+	case nil:
+		return "", false, nil
+	default:
+		return "", false, errors.New("unsupported query value")
+	}
 }
 
 func formatQueryNumber(value any) (string, error) {

@@ -14,7 +14,6 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/graphqlmanifest"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
@@ -162,12 +161,6 @@ func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapt
 				reconciliation = &readback
 			}
 			adapters = append(adapters, generatedAdapter{descriptor: descriptor, binding: &bindings[0], reconciliation: reconciliation, manager: manager, options: options})
-		case "persisted-graphql":
-			document, found := graphqlmanifest.ByOperation(descriptor.Name)
-			if !found {
-				return nil, fmt.Errorf("GitHub GraphQL operation %q is missing its persisted document", descriptor.Name)
-			}
-			adapters = append(adapters, generatedAdapter{descriptor: descriptor, document: &document, manager: manager, options: options})
 		default:
 			return nil, fmt.Errorf("GitHub operation %q has unsupported executor %q", descriptor.Name, descriptor.ExecutorKind)
 		}
@@ -179,7 +172,6 @@ type generatedAdapter struct {
 	descriptor     opcatalog.Descriptor
 	binding        *opbinding.Binding
 	reconciliation *opbinding.Binding
-	document       *graphqlmanifest.Document
 	manager        *githubauth.Manager
 	options        Options
 }
@@ -401,15 +393,6 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 		}
 		if result.StatusCode == 202 {
 			return Outcome{}, &PossiblePartialError{Err: githubauth.APIError{Code: "accepted", StatusCode: result.StatusCode}}
-		}
-		if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
-			return Outcome{}, err
-		}
-		return Outcome{Proven: true, Result: result.Body}, nil
-	case a.document != nil:
-		result, err := a.manager.ExecuteGraphQL(ctx, plan.Credential, *a.document, argumentsMap)
-		if err != nil {
-			return Outcome{}, classifyExecutionError("POST", err)
 		}
 		if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
 			return Outcome{}, err
@@ -655,8 +638,6 @@ func shouldHaveAdapter(descriptor opcatalog.Descriptor) bool {
 	switch descriptor.ExecutorKind {
 	case "rest-binding":
 		return descriptor.Implementation == capability.StatusImplemented
-	case "persisted-graphql":
-		return descriptor.Implementation == capability.StatusGraphQL
 	case "bounded-stream":
 		return descriptor.Implementation == capability.StatusProtocol
 	default:
@@ -804,10 +785,6 @@ func scalarStrings(value any) []string {
 		}
 	case json.Number:
 		return []string{typed.String()}
-	case float64:
-		return []string{fmt.Sprintf("%g", typed)}
-	case bool:
-		return []string{fmt.Sprintf("%t", typed)}
 	case []any:
 		values := []string{}
 		for _, child := range typed {
