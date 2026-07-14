@@ -101,6 +101,11 @@ func New[I, P, A any](options Options[I, P, A]) (*Runtime[I, P, A], error) {
 }
 
 func defaultOptions[I, P, A any](options Options[I, P, A]) Options[I, P, A] {
+	options = defaultRuntimeTiming(options)
+	return defaultRuntimeCallbacks(options)
+}
+
+func defaultRuntimeTiming[I, P, A any](options Options[I, P, A]) Options[I, P, A] {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
@@ -113,6 +118,10 @@ func defaultOptions[I, P, A any](options Options[I, P, A]) Options[I, P, A] {
 	if options.NotificationLease <= 0 {
 		options.NotificationLease = defaultNotificationLease
 	}
+	return options
+}
+
+func defaultRuntimeCallbacks[I, P, A any](options Options[I, P, A]) Options[I, P, A] {
 	if options.MapSubmissionError == nil {
 		options.MapSubmissionError = func(err error) error {
 			return operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
@@ -255,15 +264,10 @@ func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentop
 	plan P, auth A, core policy.Request) (agentv1.Operation, bool, error) {
 	lock := r.authorizationLock(submission.ID)
 	lock.Lock()
-	operation, created, err := r.options.Operations.Submit(submission)
-	if err != nil {
+	operation, created, err := r.createPending(submission, adapter, plan)
+	if err != nil || !created {
 		lock.Unlock()
-		r.cleanup(adapter, plan)
 		return operation, created, err
-	}
-	if !created {
-		lock.Unlock()
-		return operation, false, nil
 	}
 	var prepared grants.ImmutablePlan
 	result, authErr := r.options.Authorization.RequestApproval(core, func(decision policy.Decision) (authorization.GrantIntent, error) {
@@ -295,6 +299,15 @@ func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentop
 	}
 	lock.Unlock()
 	return r.bindApproval(ctx, bound, result.Request.Grant), true, nil
+}
+
+func (r *Runtime[I, P, A]) createPending(submission agentops.Submit, adapter Adapter[I, P, A], plan P) (agentv1.Operation, bool, error) {
+	operation, created, err := r.options.Operations.Submit(submission)
+	if err != nil {
+		r.cleanup(adapter, plan)
+		return operation, created, err
+	}
+	return operation, created, nil
 }
 
 func (r *Runtime[I, P, A]) finishRefused(operation agentv1.Operation, plan P, result authorization.Result, err error) agentv1.Operation {
@@ -401,22 +414,37 @@ func (r *Runtime[I, P, A]) bindApproval(ctx context.Context, operation agentv1.O
 }
 
 func (r *Runtime[I, P, A]) notifyApproval(ctx context.Context, grant grants.Grant) error {
-	claim, claimed, err := r.options.Grants.ClaimNotification(grant.ID, r.options.NotificationLease)
-	if err != nil {
+	claim, done, err := r.claimNotification(grant)
+	if err != nil || done {
 		return err
 	}
-	if !claimed {
-		current, getErr := r.options.Grants.Get(grant.ID)
-		if getErr == nil && current.Notification != nil {
-			return nil
-		}
-		return errApprovalNotificationClaimed
-	}
 	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(claim.Grant, claim.DecisionToken))
-	err = validateNotificationReference(ref, err)
-	if err != nil {
+	if err = validateNotificationReference(ref, err); err != nil {
 		return r.settleNotificationFailure(claim, err)
 	}
+	return r.recordNotification(claim, ref)
+}
+
+func (r *Runtime[I, P, A]) claimNotification(grant grants.Grant) (grants.NotificationClaim, bool, error) {
+	claim, claimed, err := r.options.Grants.ClaimNotification(grant.ID, r.options.NotificationLease)
+	if err != nil {
+		return grants.NotificationClaim{}, false, err
+	}
+	if !claimed {
+		if r.notificationRecorded(grant.ID) {
+			return grants.NotificationClaim{}, true, nil
+		}
+		return grants.NotificationClaim{}, false, errApprovalNotificationClaimed
+	}
+	return claim, false, nil
+}
+
+func (r *Runtime[I, P, A]) notificationRecorded(grantID string) bool {
+	current, err := r.options.Grants.Get(grantID)
+	return err == nil && current.Notification != nil
+}
+
+func (r *Runtime[I, P, A]) recordNotification(claim grants.NotificationClaim, ref notify.MessageRef) error {
 	current, recorded, err := r.options.Grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
 	if err != nil || !recorded && current.Notification == nil {
 		return r.settleNotificationFailure(claim, err)
@@ -558,8 +586,6 @@ func (r *Runtime[I, P, A]) syncApproval(operation agentv1.Operation) agentv1.Ope
 }
 
 // Execute consumes authority, executes once, and reconciles ambiguity.
-//
-//nolint:cyclop // Execution, authority settlement, and ambiguity branches stay explicit at the shared security boundary.
 func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operation) {
 	adapter, plan, err := r.Load(operation)
 	if err != nil {
@@ -570,6 +596,10 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 	if !ok {
 		return
 	}
+	r.executeReserved(ctx, operation, adapter, plan, reserved)
+}
+
+func (r *Runtime[I, P, A]) executeReserved(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P, reserved bool) {
 	execution, executionErr := adapter.Execute(ctx, plan)
 	if executionErr == nil && execution.Proven {
 		r.succeed(operation, plan, execution.Result, reserved, "")
@@ -581,6 +611,11 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 		}
 		return
 	}
+	r.reconcileExecution(ctx, operation, adapter, plan, reserved, execution, executionErr)
+}
+
+func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P,
+	reserved bool, execution Outcome, executionErr error) {
 	outcome, reconcileErr := adapter.Reconcile(ctx, plan)
 	if reconcileErr == nil && outcome.Proven {
 		if len(outcome.Result) == 0 {

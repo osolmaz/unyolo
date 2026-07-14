@@ -14,8 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
+
+	"github.com/osolmaz/brokerkit/internal/securefile"
 )
 
 var idPattern = regexp.MustCompile(`^stream_[A-Za-z0-9_-]{24}$`)
@@ -49,9 +52,8 @@ func Open(stateDir string) (*Store, error) {
 	return &Store{dir: dir, now: time.Now}, nil
 }
 
-//nolint:cyclop // Metadata, byte bounds, digest, and atomic cleanup remain explicit at the stream boundary.
 func (s *Store) Put(owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) (Reference, error) {
-	if s == nil || source == nil || owner == "" || purpose == "" || requestKey == "" || mediaType == "" || limit <= 0 || !expires.After(s.now()) {
+	if !validPut(s, owner, purpose, requestKey, mediaType, source, limit, expires) {
 		return Reference{}, errors.New("stream metadata is invalid")
 	}
 	id, err := newID()
@@ -60,25 +62,47 @@ func (s *Store) Put(owner, purpose, requestKey, mediaType string, source io.Read
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	size, digest, err := s.writeStream(id, source, limit)
+	if err != nil {
+		return Reference{}, err
+	}
+	reference := Reference{ID: id, Owner: owner, Purpose: purpose, RequestKey: requestKey, Digest: digest,
+		Size: size, MediaType: mediaType, ExpiresAt: expires.UTC().Unix()}
+	if err := s.writeReference(reference); err != nil {
+		_ = os.Remove(s.dataPath(id))
+		return Reference{}, err
+	}
+	return reference, nil
+}
+
+func validPut(store *Store, owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) bool {
+	if store == nil || source == nil {
+		return false
+	}
+	return !slices.Contains([]string{owner, purpose, requestKey, mediaType}, "") && limit > 0 && expires.After(store.now())
+}
+
+func (s *Store) writeStream(id string, source io.Reader, limit int64) (int64, string, error) {
 	file, err := os.OpenFile(s.dataPath(id), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- random ID under private state.
 	if err != nil {
-		return Reference{}, errors.New("create stream")
+		return 0, "", errors.New("create stream")
 	}
 	hash := sha256.New()
 	size, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(source, limit+1))
 	closeErr := file.Close()
 	if copyErr != nil || closeErr != nil || size <= 0 || size > limit {
 		_ = os.Remove(s.dataPath(id))
-		return Reference{}, errors.New("stream exceeds its bounded size")
+		return 0, "", errors.New("stream exceeds its bounded size")
 	}
-	reference := Reference{ID: id, Owner: owner, Purpose: purpose, RequestKey: requestKey, Digest: hex.EncodeToString(hash.Sum(nil)),
-		Size: size, MediaType: mediaType, ExpiresAt: expires.UTC().Unix()}
+	return size, hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func (s *Store) writeReference(reference Reference) error {
 	encoded, _ := json.Marshal(reference)
-	if err := writeMetadata(s.metaPath(id), encoded); err != nil {
-		_ = os.Remove(s.dataPath(id))
-		return Reference{}, errors.New("write stream metadata")
+	if err := writeMetadata(s.metaPath(reference.ID), encoded); err != nil {
+		return errors.New("write stream metadata")
 	}
-	return reference, nil
+	return nil
 }
 
 func (s *Store) Validate(reference Reference) error {
@@ -94,15 +118,7 @@ func (s *Store) OpenStream(reference Reference) (*os.File, error) {
 	if _, err := s.validateLocked(reference); err != nil {
 		return nil, err
 	}
-	file, err := os.Open(s.dataPath(reference.ID)) // #nosec G304 -- validated ID under private state.
-	if err != nil {
-		return nil, errors.New("stream is unavailable")
-	}
-	if err := verifyFile(file, reference); err != nil {
-		_ = file.Close()
-		return nil, err
-	}
-	return file, nil
+	return s.openVerified(reference)
 }
 
 func (s *Store) Consume(owner, id string) (*os.File, Reference, error) {
@@ -115,19 +131,34 @@ func (s *Store) Consume(owner, id string) (*os.File, Reference, error) {
 	if _, err := s.validateLocked(reference); err != nil {
 		return nil, Reference{}, err
 	}
-	file, err := os.Open(s.dataPath(id)) // #nosec G304 -- validated ID under private state.
+	file, err := s.openVerified(reference)
 	if err != nil {
-		return nil, Reference{}, errors.New("stream is unavailable")
+		return nil, Reference{}, err
 	}
-	if err := verifyFile(file, reference); err != nil {
+	if err := s.removeConsumed(id); err != nil {
 		_ = file.Close()
 		return nil, Reference{}, err
 	}
-	if os.Remove(s.metaPath(id)) != nil || os.Remove(s.dataPath(id)) != nil {
-		_ = file.Close()
-		return nil, Reference{}, errors.New("consume stream")
-	}
 	return file, reference, nil
+}
+
+func (s *Store) openVerified(reference Reference) (*os.File, error) {
+	file, err := os.Open(s.dataPath(reference.ID)) // #nosec G304 -- validated ID under private state.
+	if err != nil {
+		return nil, errors.New("stream is unavailable")
+	}
+	if err := verifyFile(file, reference); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return file, nil
+}
+
+func (s *Store) removeConsumed(id string) error {
+	if os.Remove(s.metaPath(id)) != nil || os.Remove(s.dataPath(id)) != nil {
+		return errors.New("consume stream")
+	}
+	return nil
 }
 
 func (s *Store) Delete(reference Reference) error {
@@ -174,10 +205,14 @@ func (s *Store) validateLocked(reference Reference) (Reference, error) {
 		return Reference{}, errors.New("stream reference is invalid")
 	}
 	info, err := os.Lstat(s.dataPath(reference.ID))
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || info.Size() != reference.Size {
+	if err != nil || !validStreamFile(info, reference) {
 		return Reference{}, errors.New("stream is unavailable")
 	}
 	return stored, nil
+}
+
+func validStreamFile(info os.FileInfo, reference Reference) bool {
+	return !slices.Contains([]bool{info.Mode().IsRegular(), info.Mode().Perm()&0o077 == 0, info.Size() == reference.Size}, false)
 }
 
 func (s *Store) loadLocked(id string) (Reference, error) {
@@ -216,29 +251,5 @@ func verifyFile(file *os.File, reference Reference) error {
 }
 
 func writeMetadata(path string, data []byte) error {
-	file, err := os.CreateTemp(filepath.Dir(path), ".stream-metadata-*")
-	if err != nil {
-		return errors.New("create stream metadata")
-	}
-	temporary := file.Name()
-	defer func() { _ = os.Remove(temporary) }()
-	if file.Chmod(0o600) != nil {
-		_ = file.Close()
-		return errors.New("secure stream metadata")
-	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		return errors.New("write stream metadata")
-	}
-	if file.Sync() != nil {
-		_ = file.Close()
-		return errors.New("write stream metadata")
-	}
-	if file.Close() != nil {
-		return errors.New("write stream metadata")
-	}
-	if err := os.Rename(temporary, path); err != nil {
-		return errors.New("commit stream metadata")
-	}
-	return nil
+	return securefile.AtomicWrite(path, data, 0o600, "stream metadata")
 }

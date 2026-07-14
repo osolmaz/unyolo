@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+var exactSensitiveFields = []string{"encrypted_value", "password", "private_key", "secret", "token"}
+var sensitiveSuffixes = []string{"_password", "_private_key", "_secret", "_token"}
+
 // SensitiveTopLevelFields returns sorted top-level fields that contain a
 // write-only credential or secret value.
 func SensitiveTopLevelFields(schema map[string]any) []string {
@@ -21,12 +24,14 @@ func SensitiveTopLevelFields(schema map[string]any) []string {
 }
 
 // ContainsSensitiveField recursively checks supported JSON Schema containers.
-//
-//nolint:cyclop // Recursive schema composition must inspect every supported container form.
 func ContainsSensitiveField(schema map[string]any) bool {
 	if schema == nil {
 		return false
 	}
+	return containsSensitiveProperty(schema) || containsSensitiveItems(schema) || containsSensitiveBranch(schema)
+}
+
+func containsSensitiveProperty(schema map[string]any) bool {
 	if properties, ok := schema["properties"].(map[string]any); ok {
 		for name, value := range properties {
 			child, _ := value.(map[string]any)
@@ -35,9 +40,17 @@ func ContainsSensitiveField(schema map[string]any) bool {
 			}
 		}
 	}
+	return false
+}
+
+func containsSensitiveItems(schema map[string]any) bool {
 	if items, ok := schema["items"].(map[string]any); ok && ContainsSensitiveField(items) {
 		return true
 	}
+	return false
+}
+
+func containsSensitiveBranch(schema map[string]any) bool {
 	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
 		if branches, ok := schema[keyword].([]any); ok {
 			for _, branch := range branches {
@@ -57,7 +70,8 @@ func IsSensitiveField(name string, schema map[string]any) bool {
 		return false
 	}
 	normalized := strings.ToLower(name)
-	return normalized == "password" || normalized == "secret" || normalized == "token" || normalized == "private_key" ||
-		normalized == "encrypted_value" || strings.HasSuffix(normalized, "_password") || strings.HasSuffix(normalized, "_secret") ||
-		strings.HasSuffix(normalized, "_token") || strings.HasSuffix(normalized, "_private_key")
+	if slices.Contains(exactSensitiveFields, normalized) {
+		return true
+	}
+	return slices.ContainsFunc(sensitiveSuffixes, func(suffix string) bool { return strings.HasSuffix(normalized, suffix) })
 }

@@ -30,3 +30,17 @@ func TestWriteAndSync(t *testing.T) {
 		t.Fatal("WriteAndSync accepted a closed file")
 	}
 }
+
+func TestAtomicWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "value")
+	if err := AtomicWrite(path, []byte("first"), 0o600, "test value"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AtomicWrite(path, []byte("second"), 0o600, "test value"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "second" {
+		t.Fatalf("AtomicWrite() = %q, %v", data, err)
+	}
+}

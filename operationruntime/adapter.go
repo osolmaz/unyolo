@@ -83,28 +83,36 @@ func NewRegistry[I, P, A any](options RegistryOptions, adapters ...Adapter[I, P,
 	}
 	requiresAdapter := options.RequiresAdapter
 	if requiresAdapter == nil {
-		requiresAdapter = func(descriptor capability.Descriptor) bool {
-			return descriptor.AuthorizationMode == capability.ModeExecution && descriptor.Implementation == capability.StatusImplemented
-		}
+		requiresAdapter = defaultRequiresAdapter
 	}
 	registry := &Registry[I, P, A]{byName: make(map[string]Adapter[I, P, A], len(adapters)), requiresAdapter: requiresAdapter}
 	for _, adapter := range adapters {
-		if adapter == nil {
-			return nil, fmt.Errorf("nil %s operation adapter", options.Provider)
+		if err := registry.register(options, adapter); err != nil {
+			return nil, err
 		}
-		descriptor := adapter.Descriptor()
-		canonical, found := options.Descriptor(descriptor.Name)
-		if !found || !reflect.DeepEqual(canonical, descriptor) {
-			return nil, fmt.Errorf("adapter %q does not match the capability catalog", descriptor.Name)
-		}
-		if _, exists := registry.byName[descriptor.Name]; exists {
-			return nil, fmt.Errorf("duplicate adapter %q", descriptor.Name)
-		}
-		registry.byName[descriptor.Name] = adapter
-		registry.names = append(registry.names, descriptor.Name)
 	}
 	slices.Sort(registry.names)
 	return registry, nil
+}
+
+func defaultRequiresAdapter(descriptor capability.Descriptor) bool {
+	return descriptor.AuthorizationMode == capability.ModeExecution && descriptor.Implementation == capability.StatusImplemented
+}
+
+func (r *Registry[I, P, A]) register(options RegistryOptions, adapter Adapter[I, P, A]) error {
+	if adapter == nil {
+		return fmt.Errorf("nil %s operation adapter", options.Provider)
+	}
+	descriptor := adapter.Descriptor()
+	canonical, found := options.Descriptor(descriptor.Name)
+	if !found || !reflect.DeepEqual(canonical, descriptor) {
+		return fmt.Errorf("adapter %q does not match the capability catalog", descriptor.Name)
+	}
+	if _, exists := r.byName[descriptor.Name]; exists {
+		return fmt.Errorf("duplicate adapter %q", descriptor.Name)
+	}
+	r.byName[descriptor.Name], r.names = adapter, append(r.names, descriptor.Name)
+	return nil
 }
 
 // Lookup returns the adapter for one exact operation name.

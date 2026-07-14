@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/osolmaz/brokerkit/internal/keyfile"
 	"github.com/osolmaz/brokerkit/internal/securefile"
 )
 
@@ -68,7 +69,19 @@ func Open(stateDir string) (*Store, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, errors.New("create sealed payload state directory")
 	}
-	key, err := loadOrCreateKey(filepath.Join(stateDir, "sealed-payload.key"))
+	aead, err := openAEAD(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := preparePayloadDirectory(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return openStore(dir, aead)
+}
+
+func openAEAD(stateDir string) (cipher.AEAD, error) {
+	key, err := keyfile.LoadOrCreate(filepath.Join(stateDir, "sealed-payload.key"), keyBytes, "sealed payload", keyfile.Base64)
 	if err != nil {
 		return nil, err
 	}
@@ -80,14 +93,18 @@ func Open(stateDir string) (*Store, error) {
 	if err != nil {
 		return nil, errors.New("initialize sealed payload encryption")
 	}
+	return aead, nil
+}
+
+func preparePayloadDirectory(stateDir string) (string, error) {
 	dir := filepath.Join(stateDir, "sealed-payloads")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, errors.New("create sealed payload directory")
+		return "", errors.New("create sealed payload directory")
 	}
 	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- directories require execute permission and remain owner-only.
-		return nil, errors.New("secure sealed payload directory")
+		return "", errors.New("secure sealed payload directory")
 	}
-	return openStore(dir, aead)
+	return dir, nil
 }
 
 func openStore(dir string, aead cipher.AEAD) (*Store, error) {
@@ -301,41 +318,16 @@ func (s *Store) encodeConsumed(reference Reference) ([]byte, error) {
 }
 
 func (s *Store) replaceLocked(path string, encoded []byte) error {
-	file, temporary, err := s.replacementFile()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.Remove(temporary) }()
-	if err := securefile.WriteAndSync(file, encoded, "sealed payload replacement"); err != nil {
-		return err
-	}
-	if err := os.Rename(temporary, path); err != nil {
-		return errors.New("replace sealed payload")
-	}
-	return nil
-}
-
-func (s *Store) replacementFile() (*os.File, string, error) {
-	file, err := os.CreateTemp(s.dir, ".sealed-payload-*")
-	if err != nil {
-		return nil, "", errors.New("create sealed payload replacement")
-	}
-	temporary := file.Name()
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		_ = os.Remove(temporary)
-		return nil, "", errors.New("secure sealed payload replacement")
-	}
-	return file, temporary, nil
+	return securefile.AtomicWrite(path, encoded, 0o600, "sealed payload replacement")
 }
 
 func (s *Store) read(reference Reference, path string) ([]byte, error) {
 	if time.Now().Unix() >= reference.ExpiresAt {
 		return nil, errors.New("sealed payload is expired")
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- path is derived from a validated random reference.
-	if err != nil || len(data) == 0 || len(data) > maxFileBytes {
-		return nil, errors.New("sealed payload is unavailable")
+	data, err := readPayloadFile(path)
+	if err != nil {
+		return nil, err
 	}
 	envelope, err := decodeBoundEnvelope(data, reference, s.aead)
 	if err != nil {
@@ -349,6 +341,14 @@ func (s *Store) read(reference Reference, path string) ([]byte, error) {
 		return nil, errors.New("sealed payload binding failed")
 	}
 	return plaintext, nil
+}
+
+func readPayloadFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is derived from a validated random reference.
+	if err != nil || len(data) == 0 || len(data) > maxFileBytes {
+		return nil, errors.New("sealed payload is unavailable")
+	}
+	return data, nil
 }
 
 func decodeBoundEnvelope(data []byte, reference Reference, aead cipher.AEAD) (diskEnvelope, error) {
@@ -512,38 +512,6 @@ func readDiskEnvelope(path string) (diskEnvelope, error) {
 }
 
 func (s *Store) path(reference string) string { return filepath.Join(s.dir, reference+".bin") }
-
-//nolint:cyclop // Key integrity checks are explicit and tracked by the exact HF CRAP baseline.
-func loadOrCreateKey(path string) ([]byte, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- installation-owned fixed path.
-	if err == nil {
-		info, statErr := os.Lstat(path)
-		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-			return nil, errors.New("sealed payload key permissions are unsafe")
-		}
-		decoded, decodeErr := base64.RawStdEncoding.DecodeString(string(data))
-		if decodeErr != nil || len(decoded) != keyBytes {
-			return nil, errors.New("sealed payload key is invalid")
-		}
-		return decoded, nil
-	}
-	if !os.IsNotExist(err) {
-		return nil, errors.New("read sealed payload key")
-	}
-	key := make([]byte, keyBytes)
-	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return nil, errors.New("generate sealed payload key")
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- fixed installation-owned key path.
-	if err != nil {
-		return nil, errors.New("create sealed payload key")
-	}
-	if err := securefile.WriteAndSync(file, []byte(base64.RawStdEncoding.EncodeToString(key)), "sealed payload"); err != nil {
-		_ = os.Remove(path)
-		return nil, err
-	}
-	return key, nil
-}
 
 func randomReference() (string, error) {
 	data := make([]byte, 18)

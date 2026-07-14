@@ -110,27 +110,36 @@ func Validate(values []Descriptor, options ValidationOptions) error {
 	if len(values) != options.ExpectedCount {
 		return fmt.Errorf("%s operation catalog has %d entries, want %d", options.Provider, len(values), options.ExpectedCount)
 	}
-	seenNames := make(map[string]bool, len(values))
-	seenTools := make(map[string]bool, len(values))
-	seenCommands := make(map[string]bool, len(values))
-	previous := ""
+	registry := newCatalogIndex(len(values))
 	for index, value := range values {
-		if err := validateDescriptor(value, options); err != nil {
-			return fmt.Errorf("catalog entry %d: %w", index, err)
-		}
-		if seenNames[value.Name] || previous >= value.Name {
-			return fmt.Errorf("operation %q is duplicated or out of order", value.Name)
-		}
-		seenNames[value.Name] = true
-		previous = value.Name
-		if err := registerOptional("MCP tool", value.MCPTool, seenTools); err != nil {
-			return err
-		}
-		if err := registerOptional("CLI command", value.CLICommand, seenCommands); err != nil {
+		if err := registry.add(index, value, options); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+type catalogIndex struct {
+	names, tools, commands map[string]bool
+	previous               string
+}
+
+func newCatalogIndex(size int) *catalogIndex {
+	return &catalogIndex{names: make(map[string]bool, size), tools: make(map[string]bool, size), commands: make(map[string]bool, size)}
+}
+
+func (c *catalogIndex) add(position int, value Descriptor, options ValidationOptions) error {
+	if err := validateDescriptor(value, options); err != nil {
+		return fmt.Errorf("catalog entry %d: %w", position, err)
+	}
+	if c.names[value.Name] || c.previous >= value.Name {
+		return fmt.Errorf("operation %q is duplicated or out of order", value.Name)
+	}
+	c.names[value.Name], c.previous = true, value.Name
+	if err := registerOptional("MCP tool", value.MCPTool, c.tools); err != nil {
+		return err
+	}
+	return registerOptional("CLI command", value.CLICommand, c.commands)
 }
 
 func validateOptions(options ValidationOptions) error {
@@ -155,10 +164,10 @@ func registerOptional(kind string, value *string, seen map[string]bool) error {
 }
 
 func validateDescriptor(value Descriptor, options ValidationOptions) error {
-	if !operationPattern.MatchString(value.Name) || value.OperationRevision != 1 || !targetPattern.MatchString(value.TargetKind) {
+	if !validIdentity(value) {
 		return errors.New("operation identity is invalid")
 	}
-	if !validStatus(value.Implementation) || !validRisk(value.Risk) || value.RequestTTLSeconds <= 0 || value.ApprovalTTLSeconds <= 0 {
+	if !validLifecycle(value) {
 		return fmt.Errorf("operation %q has invalid lifecycle metadata", value.Name)
 	}
 	if options.RequireDefaultPolicyEffect {
@@ -173,6 +182,14 @@ func validateDescriptor(value Descriptor, options ValidationOptions) error {
 		return err
 	}
 	return validateSurface(value, options.MCPToolPrefix)
+}
+
+func validIdentity(value Descriptor) bool {
+	return !slices.Contains([]bool{operationPattern.MatchString(value.Name), value.OperationRevision == 1, targetPattern.MatchString(value.TargetKind)}, false)
+}
+
+func validLifecycle(value Descriptor) bool {
+	return !slices.Contains([]bool{validStatus(value.Implementation), validRisk(value.Risk), value.RequestTTLSeconds > 0, value.ApprovalTTLSeconds > 0}, false)
 }
 
 func validateAuthorization(value Descriptor) error {
@@ -200,10 +217,17 @@ func validateSecretDisposition(value Descriptor) error {
 	if value.Sealed && value.AuthorizationMode != ModeExecution {
 		return fmt.Errorf("sealed operation %q is not execution-scoped", value.Name)
 	}
-	if value.CredentialOutputKind != nil && (!value.Sealed || !value.ExplicitOnly || !credentialKindPattern.MatchString(*value.CredentialOutputKind)) {
+	if invalidCredentialOutput(value) {
 		return fmt.Errorf("credential output operation %q is invalid", value.Name)
 	}
 	return nil
+}
+
+func invalidCredentialOutput(value Descriptor) bool {
+	if value.CredentialOutputKind == nil {
+		return false
+	}
+	return !value.Sealed || !value.ExplicitOnly || !credentialKindPattern.MatchString(*value.CredentialOutputKind)
 }
 
 func validateSurface(value Descriptor, toolPrefix string) error {

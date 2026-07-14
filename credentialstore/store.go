@@ -16,9 +16,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/osolmaz/brokerkit/internal/keyfile"
 	"github.com/osolmaz/brokerkit/internal/securefile"
 )
 
@@ -92,7 +94,7 @@ func Open(stateDir string) (*Store, error) {
 	if err := os.MkdirAll(dir, credentialDirectory); err != nil || os.Chmod(dir, credentialDirectory) != nil {
 		return nil, errors.New("secure credential slot directory")
 	}
-	key, err := loadOrCreateKey(filepath.Join(stateDir, "credential-slots.key"))
+	key, err := keyfile.LoadOrCreate(filepath.Join(stateDir, "credential-slots.key"), keySize, "credential slot", keyfile.Raw)
 	if err != nil {
 		return nil, err
 	}
@@ -108,17 +110,15 @@ func Open(stateDir string) (*Store, error) {
 }
 
 func (s *Store) Put(slot, kind string, plaintext []byte) (Metadata, error) {
-	if s == nil || s.aead == nil || !slotPattern.MatchString(slot) || !kindPattern.MatchString(kind) || len(plaintext) == 0 || len(plaintext) > maxCredentialBytes {
+	if !validPut(s, slot, kind, plaintext) {
 		return Metadata{}, errors.New("credential slot value is invalid")
 	}
 	digest := sha256.Sum256(plaintext)
 	metadata := Metadata{Slot: slot, Kind: kind, Digest: hex.EncodeToString(digest[:]), Size: len(plaintext), UpdatedAt: s.now().UTC()}
-	nonce := make([]byte, s.aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return Metadata{}, errors.New("generate credential slot nonce")
+	record, err := s.encrypt(metadata, plaintext)
+	if err != nil {
+		return Metadata{}, err
 	}
-	ciphertext := s.aead.Seal(nil, nonce, plaintext, associatedData(metadata))
-	record := encryptedRecord{Metadata: metadata, Nonce: base64.RawStdEncoding.EncodeToString(nonce), Ciphertext: base64.RawStdEncoding.EncodeToString(ciphertext)}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return Metadata{}, errors.New("encode credential slot")
@@ -131,36 +131,74 @@ func (s *Store) Put(slot, kind string, plaintext []byte) (Metadata, error) {
 	return metadata, nil
 }
 
-//nolint:cyclop // Credential integrity checks are explicit and tracked by the exact HF CRAP baseline.
+func validPut(store *Store, slot, kind string, plaintext []byte) bool {
+	return !slices.Contains([]bool{store != nil, store != nil && store.aead != nil, slotPattern.MatchString(slot), kindPattern.MatchString(kind),
+		len(plaintext) > 0, len(plaintext) <= maxCredentialBytes}, false)
+}
+
+func (s *Store) encrypt(metadata Metadata, plaintext []byte) (encryptedRecord, error) {
+	nonce := make([]byte, s.aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return encryptedRecord{}, errors.New("generate credential slot nonce")
+	}
+	ciphertext := s.aead.Seal(nil, nonce, plaintext, associatedData(metadata))
+	return encryptedRecord{Metadata: metadata, Nonce: base64.RawStdEncoding.EncodeToString(nonce),
+		Ciphertext: base64.RawStdEncoding.EncodeToString(ciphertext)}, nil
+}
+
 func (s *Store) Get(slot, kind string) ([]byte, Metadata, error) {
-	if s == nil || s.aead == nil || !slotPattern.MatchString(slot) || !kindPattern.MatchString(kind) {
+	if !validGet(s, slot, kind) {
 		return nil, Metadata{}, errors.New("credential slot is invalid")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	record, err := s.readRecord(slot, kind)
+	if err != nil {
+		return nil, Metadata{}, err
+	}
+	plaintext, err := s.decrypt(record)
+	if err != nil {
+		return nil, Metadata{}, err
+	}
+	return plaintext, record.Metadata, nil
+}
+
+func validGet(store *Store, slot, kind string) bool {
+	return !slices.Contains([]bool{store != nil, store != nil && store.aead != nil, slotPattern.MatchString(slot), kindPattern.MatchString(kind)}, false)
+}
+
+func (s *Store) readRecord(slot, kind string) (encryptedRecord, error) {
 	data, err := os.ReadFile(s.path(slot)) // #nosec G304 -- path is a digest under the private store directory.
 	if err != nil || len(data) > 2*maxCredentialBytes {
-		return nil, Metadata{}, errors.New("credential slot is unavailable")
+		return encryptedRecord{}, errors.New("credential slot is unavailable")
 	}
 	var record encryptedRecord
-	if json.Unmarshal(data, &record) != nil || record.Slot != slot || record.Kind != kind || record.Size <= 0 || record.Size > maxCredentialBytes {
-		return nil, Metadata{}, errors.New("credential slot is invalid")
+	if json.Unmarshal(data, &record) != nil || !validRecord(record, slot, kind) {
+		return encryptedRecord{}, errors.New("credential slot is invalid")
 	}
+	return record, nil
+}
+
+func validRecord(record encryptedRecord, slot, kind string) bool {
+	return !slices.Contains([]bool{record.Slot == slot, record.Kind == kind, record.Size > 0, record.Size <= maxCredentialBytes}, false)
+}
+
+func (s *Store) decrypt(record encryptedRecord) ([]byte, error) {
 	nonce, nonceErr := base64.RawStdEncoding.DecodeString(record.Nonce)
 	ciphertext, ciphertextErr := base64.RawStdEncoding.DecodeString(record.Ciphertext)
 	if nonceErr != nil || ciphertextErr != nil || len(nonce) != s.aead.NonceSize() {
-		return nil, Metadata{}, errors.New("credential slot is invalid")
+		return nil, errors.New("credential slot is invalid")
 	}
 	plaintext, err := s.aead.Open(nil, nonce, ciphertext, associatedData(record.Metadata))
 	if err != nil || len(plaintext) != record.Size {
-		return nil, Metadata{}, errors.New("credential slot is invalid")
+		return nil, errors.New("credential slot is invalid")
 	}
 	digest := sha256.Sum256(plaintext)
 	if hex.EncodeToString(digest[:]) != record.Digest {
 		zero(plaintext)
-		return nil, Metadata{}, errors.New("credential slot is invalid")
+		return nil, errors.New("credential slot is invalid")
 	}
-	return plaintext, record.Metadata, nil
+	return plaintext, nil
 }
 
 func (s *Store) path(slot string) string {
@@ -172,53 +210,8 @@ func associatedData(metadata Metadata) []byte {
 	return []byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d\x00%s", metadata.Slot, metadata.Kind, metadata.Digest, metadata.Size, metadata.UpdatedAt.UTC().Format(time.RFC3339Nano)))
 }
 
-func loadOrCreateKey(path string) ([]byte, error) {
-	key, err := os.ReadFile(path) // #nosec G304 -- fixed path under the configured state directory.
-	if err == nil {
-		info, statErr := os.Lstat(path)
-		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || len(key) != keySize {
-			return nil, errors.New("credential slot key is invalid")
-		}
-		return key, nil
-	}
-	if !os.IsNotExist(err) {
-		return nil, errors.New("read credential slot key")
-	}
-	key = make([]byte, keySize)
-	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return nil, errors.New("generate credential slot key")
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, credentialFileMode) // #nosec G304 -- fixed installation-owned key path.
-	if err != nil {
-		return nil, errors.New("create credential slot key")
-	}
-	if err := securefile.WriteAndSync(file, key, "credential slot"); err != nil {
-		_ = os.Remove(path)
-		return nil, err
-	}
-	return key, nil
-}
-
 func atomicWrite(path string, data []byte) error {
-	file, err := os.CreateTemp(filepath.Dir(path), ".credential-slot-*")
-	if err != nil {
-		return errors.New("create credential slot")
-	}
-	temporary := file.Name()
-	if err := file.Chmod(credentialFileMode); err != nil {
-		_ = file.Close()
-		_ = os.Remove(temporary)
-		return errors.New("secure credential slot")
-	}
-	if err := securefile.WriteAndSync(file, data, "credential slot"); err != nil {
-		_ = os.Remove(temporary)
-		return err
-	}
-	if err := os.Rename(temporary, path); err != nil {
-		_ = os.Remove(temporary)
-		return errors.New("replace credential slot")
-	}
-	return nil
+	return securefile.AtomicWrite(path, data, credentialFileMode, "credential slot")
 }
 
 func zero(value []byte) {
