@@ -2,7 +2,7 @@
 
 Date: 2026-07-14
 
-Status: ready for implementation
+Status: implemented and validated
 
 ## Objective
 
@@ -778,10 +778,44 @@ The cutover is complete only when:
     and GH Broker contains no copied provider-neutral lifecycle implementation.
 13. All required local and CI gates are green before merge.
 
-## Implementation Readiness
+## Implementation Result
 
-The architecture and completion rules are settled. Implementation can start
-without further product decisions. The first code slice must freeze the exact
-upstream snapshots and produce the reviewed machine-readable operation mapping;
-that mapping determines the final catalog count and is the gate for every later
-slice.
+The cutover shipped as one catalog-driven platform with 1,436 GitHub
+capabilities, of which 1,410 are agent-facing. The reviewed catalog contains
+1,121 REST-backed operations, 281 persisted GraphQL operations, eight protocol
+operations, 19 operator-only operations, and seven internal operations. The
+credential split is 1,035 installation-token operations, 380 user-token
+operations, 20 app-JWT operations, and one explicit development-token mode.
+
+The implementation now provides:
+
+- generated closed schemas, CLI commands, MCP tools, capability documents, and
+  runtime bindings from one provider-owned catalog;
+- the shared BrokerKit operation lifecycle for GH and HF, including SQLite
+  durability, Telegram and operator-inbox decisions, use budgets, sealed
+  inputs, credential outputs, streams, restart recovery, and reconciliation;
+- narrowed `ghinstallation` transports and typed `go-github` operations with
+  bounded projections, no raw REST or GraphQL caller surface, and strict target
+  binding for repository, organization, installation, and authenticated-user
+  credentials;
+- 110 absence-proof reconcilers, bounded upload and download handling, and
+  generated pagination for 277 bindings; and
+- architecture, generated-artifact, coverage, secret, DRY, and exact
+  non-regression complexity gates in CI.
+
+Live validation used the globally installed broker and Bob's client identity.
+An in-scope repository metadata read succeeded with a bounded result, while an
+out-of-scope read was denied before GitHub. A destructive repository request
+was delivered through Telegram, approved for one use, consumed once, and
+returned GitHub's permission denial without exposing the credential. Repeating
+the same client idempotency key returned the original terminal operation and
+did not create another grant or upstream call. Authenticated-user operations
+also reject a target that does not match the selected credential's GitHub
+identity before mutation.
+
+The complete local Go, race, aggregate coverage, static analysis,
+vulnerability, secret, Slophammer, OpenClaw unit, build, packed-install, and
+cross-browser Playwright gates pass. Successful destructive-operation testing
+still requires a deployment credential that GitHub has granted the
+corresponding destructive permission; BrokerKit correctly treats that
+upstream permission as a ceiling rather than bypassing it.
