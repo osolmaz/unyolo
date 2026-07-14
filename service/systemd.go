@@ -106,9 +106,24 @@ func (unit SystemdSocketUnit) validate() error {
 	}); err != nil {
 		return err
 	}
-	if err := validateDescription(unit.Description); err != nil {
-		return err
+	validators := []func() error{
+		func() error { return validateDescription(unit.Description) },
+		func() error { return validateSystemdSocketAddress(unit) },
+		func() error {
+			return validatex.AccountNames(map[string]string{"socket user": unit.SocketUser, "socket group": unit.SocketGroup})
+		},
+		func() error { return validateSocketMode(unit.SocketMode, "socket") },
+		func() error { return validateSocketMode(unit.DirectoryMode, "socket directory") },
 	}
+	for _, validate := range validators {
+		if err := validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSystemdSocketAddress(unit SystemdSocketUnit) error {
 	if !filepath.IsAbs(unit.ListenStream) || filepath.Clean(unit.ListenStream) != unit.ListenStream || unit.ListenStream == string(filepath.Separator) {
 		return errors.New("systemd socket listen path must be absolute and normalized")
 	}
@@ -118,13 +133,7 @@ func (unit SystemdSocketUnit) validate() error {
 	if !validName(unit.FileDescriptorName) {
 		return errors.New("systemd socket descriptor name is invalid")
 	}
-	if err := validatex.AccountNames(map[string]string{"socket user": unit.SocketUser, "socket group": unit.SocketGroup}); err != nil {
-		return err
-	}
-	if err := validateSocketMode(unit.SocketMode, "socket"); err != nil {
-		return err
-	}
-	return validateSocketMode(unit.DirectoryMode, "socket directory")
+	return nil
 }
 
 func validateSocketMode(mode os.FileMode, label string) error {

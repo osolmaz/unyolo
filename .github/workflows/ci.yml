@@ -9,6 +9,18 @@ permissions:
   contents: read
 
 jobs:
+  go-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - run: go mod download
+      - run: go vet ./...
+      - run: go test -race ./...
+
   go:
     runs-on: ubuntu-latest
     steps:
