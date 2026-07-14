@@ -19,7 +19,11 @@ func (s *Server) enforceReceivePackBackstops(c echo.Context, authorized []author
 	if err != nil {
 		return err
 	}
-	api, err := s.githubCredentials.API(credential)
+	inspectionCredential, err := s.githubInspectionCredential(c, credential)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub repository safety state is unavailable")
+	}
+	api, err := s.githubCredentials.API(inspectionCredential)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub repository safety state is unavailable")
 	}
@@ -33,6 +37,15 @@ func (s *Server) enforceReceivePackBackstops(c echo.Context, authorized []author
 		}
 	}
 	return nil
+}
+
+func (s *Server) githubInspectionCredential(c echo.Context, repositoryCredential *githubauth.Credential) (*githubauth.Credential, error) {
+	metadata := repositoryCredential.Metadata()
+	if metadata.Kind != githubauth.KindInstallation {
+		return repositoryCredential, nil
+	}
+	return s.githubCredentials.InstallationCredential(c.Request().Context(), metadata.InstallationID, metadata.RepositoryIDs,
+		map[string]string{"administration": "read", "metadata": "read"})
 }
 
 func receivePackBranches(authorized []authorizedReceivePackRequest) map[string]bool {

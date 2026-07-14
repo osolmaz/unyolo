@@ -450,6 +450,7 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 		s.releaseGrantUses(reserved)
 		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
 	}
+	c.Set(githubOperationContextKey, string(authorized[0].Request.Operation))
 	if err := s.enforceReceivePackBackstops(c, authorized); err != nil {
 		s.releaseGrantUses(reserved)
 		s.auditAuthorizedReceivePack(c, authorized, errorOutcome(err), errorString(err), errorStatus(c, err))

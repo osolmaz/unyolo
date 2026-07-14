@@ -345,6 +345,17 @@ func TestResponseAndRedirectFailureModes(t *testing.T) {
 	if result, err := decodeRESTResponse(response(http.StatusNoContent, ""), opbinding.Binding{ResponseBytesLimit: 8}); err != nil || string(result.Body) != `{}` {
 		t.Fatalf("empty REST response = %s, %v", result.Body, err)
 	}
+	if result, err := decodeRESTResponse(response(http.StatusNoContent, ""), opbinding.Binding{ResponseBytesLimit: 8, ResponseRootType: "array"}); err != nil || string(result.Body) != `[]` {
+		t.Fatalf("empty REST array response = %s, %v", result.Body, err)
+	}
+	for body, want := range map[string]string{`["one","two"]`: `["one","two"]`, `[{"secret":"hidden"}]`: `[{}]`} {
+		result, err := decodeRESTResponse(response(http.StatusOK, body), opbinding.Binding{
+			ResponseBytesLimit: 64, ResponseProjection: []string{"$none"}, ResponseRootType: "array",
+		})
+		if err != nil || string(result.Body) != want {
+			t.Fatalf("redacted REST array = %s, %v; want %s", result.Body, err, want)
+		}
+	}
 
 	origin, _ := url.Parse("https://api.github.com/archive")
 	for raw, allowed := range map[string]bool{
@@ -433,6 +444,71 @@ func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	encoded, _ = json.Marshal(projected)
 	if !ok || string(encoded) != `{"artifacts":[{"id":7}]}` {
 		t.Fatalf("REST container projection = %s, %t", encoded, ok)
+	}
+	for _, test := range []struct {
+		value any
+		want  string
+	}{
+		{[]any{"one", "two"}, `["one","two"]`},
+		{[]any{map[string]any{"secret": "hidden"}}, `[{}]`},
+		{[]any{[]any{float64(1), float64(2)}}, `[[1,2]]`},
+	} {
+		projected, ok = projectJSON(test.value, []string{"$none"})
+		if ok {
+			t.Fatal("$none unexpectedly retained a projected field")
+		}
+		encoded, _ = json.Marshal(emptyProjection(test.value))
+		if string(encoded) != test.want {
+			t.Fatalf("empty projection = %s, want %s", encoded, test.want)
+		}
+	}
+}
+
+func TestRESTURLsPreserveEnterprisePrefixAndUseUploadOrigin(t *testing.T) {
+	enterprise, _ := url.Parse("https://ghe.example/api/v3/")
+	manager := &Manager{apiURL: enterprise}
+	got, err := manager.bindingRESTURL(opbinding.Binding{ServerRole: "api"}, "/repos/acme/demo", url.Values{"page": {"2"}})
+	if err != nil || got != "https://ghe.example/api/v3/repos/acme/demo?page=2" {
+		t.Fatalf("enterprise URL = %q, %v", got, err)
+	}
+	got, err = manager.bindingRESTURL(opbinding.Binding{ServerRole: "uploads"}, "/repos/acme/demo/releases/1/assets", nil)
+	if err != nil || got != "https://ghe.example/api/v3/repos/acme/demo/releases/1/assets" {
+		t.Fatalf("enterprise upload URL = %q, %v", got, err)
+	}
+	manager.apiURL, _ = url.Parse("https://api.github.com/")
+	got, err = manager.bindingRESTURL(opbinding.Binding{ServerRole: "uploads"}, "/repos/acme/demo/releases/1/assets", nil)
+	if err != nil || got != "https://uploads.github.com/repos/acme/demo/releases/1/assets" {
+		t.Fatalf("GitHub.com upload URL = %q, %v", got, err)
+	}
+}
+
+func TestExecuteRESTPollsAcceptedReadsWithoutReplayingMutations(t *testing.T) {
+	var reads, writes int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			reads++
+			if reads < 3 {
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+			_, _ = io.WriteString(w, `{"id":7}`)
+			return
+		}
+		writes++
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(server.Close)
+	manager := newDevelopmentManager(t, server.URL)
+	binding := opbinding.Binding{Method: http.MethodGet, PathTemplate: "/stats", MediaType: "application/json", ServerRole: "api",
+		RequestBytesLimit: 32, ResponseBytesLimit: 32, ResponseProjection: []string{"id"}, ResponseRootType: "object"}
+	result, err := manager.ExecuteREST(t.Context(), manager.development.Metadata(), binding, nil, nil)
+	if err != nil || reads != 3 || string(result.Body) != `{"id":7}` {
+		t.Fatalf("accepted read = %s, reads=%d, err=%v", result.Body, reads, err)
+	}
+	binding.Method = http.MethodPost
+	result, err = manager.ExecuteREST(t.Context(), manager.development.Metadata(), binding, nil, nil)
+	if err != nil || writes != 1 || result.StatusCode != http.StatusAccepted {
+		t.Fatalf("accepted mutation = %+v, writes=%d, err=%v", result, writes, err)
 	}
 }
 

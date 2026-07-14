@@ -27,6 +27,11 @@ type restOperation struct {
 	RequestBody map[string]any   `json:"requestBody"`
 	Responses   map[string]any   `json:"responses"`
 	GitHub      map[string]any   `json:"x-github"`
+	Servers     []server         `json:"servers"`
+}
+
+type server struct {
+	URL string `json:"url"`
 }
 
 type permissionGroup struct {
@@ -75,6 +80,8 @@ type restBinding struct {
 	RequestSchema           string             `json:"request_schema"`
 	ResponseSchema          string             `json:"response_schema"`
 	ResponseProjection      []string           `json:"response_projection,omitempty"`
+	ResponseRootType        string             `json:"response_root_type"`
+	ServerRole              string             `json:"server_role"`
 	RequestBytesLimit       int64              `json:"request_bytes_limit"`
 	ResponseBytesLimit      int64              `json:"response_bytes_limit"`
 	Pagination              string             `json:"pagination"`

@@ -446,15 +446,48 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		}
 	}
 	projection := responseProjection(responseSchema(operation, components))
+	rootType := responseRootType(responseSchema(operation, components))
 	return restBinding{
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
 		MediaType: "application/vnd.github+json", PathParameters: pathParameters, TargetPathParameters: targetParameters, ArgumentParameters: arguments,
 		RequestSchema: descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
+		ResponseRootType: rootType, ServerRole: serverRole(operation),
 		RequestBytesLimit: requestLimit, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
 		RedirectPolicy: redirectPolicy(descriptor.ExecutorKind), Reconciliation: descriptor.ReconcilerKind,
 		StreamDirection: streamDirection(operation.OperationID),
 	}
+}
+
+func responseRootType(schema map[string]any) string {
+	if value, _ := schema["type"].(string); value == "object" || value == "array" {
+		return value
+	}
+	for _, keyword := range []string{"anyOf", "oneOf", "allOf"} {
+		branches, _ := schema[keyword].([]any)
+		root := ""
+		for _, value := range branches {
+			branch, _ := value.(map[string]any)
+			kind := responseRootType(branch)
+			if kind == "" || root != "" && root != kind {
+				return "object"
+			}
+			root = kind
+		}
+		if root != "" {
+			return root
+		}
+	}
+	return "object"
+}
+
+func serverRole(operation restOperation) string {
+	for _, server := range operation.Servers {
+		if server.URL == "https://uploads.github.com" {
+			return "uploads"
+		}
+	}
+	return "api"
 }
 
 //nolint:cyclop // Target ownership is an explicit closed mapping from official path templates.

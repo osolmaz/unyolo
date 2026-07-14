@@ -1655,6 +1655,49 @@ func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 	}
 }
 
+func TestReceivePackUsesWriteAndInspectionInstallationTokens(t *testing.T) {
+	t.Parallel()
+	var tokenRequests []string
+	var gitAuthorization string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/dutifuldev/gh-broker/installation":
+			writeRawJSON(w, `{"id":42}`)
+		case "/app/installations/42/access_tokens":
+			body, _ := io.ReadAll(r.Body)
+			tokenRequests = append(tokenRequests, string(body))
+			writeRawJSON(w, fmt.Sprintf(`{"token":"ghs_token_%d","expires_at":"2099-07-09T18:00:00Z"}`, len(tokenRequests)))
+		case "/repos/dutifuldev/gh-broker":
+			writeRawJSON(w, `{"id":99,"name":"gh-broker","default_branch":"main","owner":{"login":"dutifuldev"}}`)
+		case "/installation/token":
+			w.WriteHeader(http.StatusNoContent)
+		case "/repos/dutifuldev/gh-broker/rules/branches/bob/work":
+			writeRawJSON(w, `[]`)
+		case "/repos/dutifuldev/gh-broker/branches/bob/work/protection":
+			http.NotFound(w, r)
+		case "/dutifuldev/gh-broker.git/git-receive-pack":
+			gitAuthorization = r.Header.Get("Authorization")
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	})
+	server.githubCredentials = newTestGitHubAppManager(t, server)
+	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(),
+		receivePackCreate("refs/heads/bob/work"))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if len(tokenRequests) != 3 || !strings.Contains(tokenRequests[0], `"contents":"write"`) ||
+		!strings.Contains(tokenRequests[1], `"contents":"write"`) ||
+		!strings.Contains(tokenRequests[2], `"administration":"read"`) || !strings.Contains(tokenRequests[2], `"metadata":"read"`) {
+		t.Fatalf("installation token requests = %#v", tokenRequests)
+	}
+	if gitAuthorization != githubGitAuthorization("ghs_token_2") {
+		t.Fatalf("git authorization = %q, want repository-scoped write token", gitAuthorization)
+	}
+}
+
 func TestProxyDoesNotForwardClientCredentialHeaders(t *testing.T) {
 	t.Parallel()
 	var gotAuthorization string

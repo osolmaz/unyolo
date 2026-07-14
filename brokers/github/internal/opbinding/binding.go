@@ -40,6 +40,8 @@ type Binding struct {
 	RequestSchema           string            `json:"request_schema"`
 	ResponseSchema          string            `json:"response_schema"`
 	ResponseProjection      []string          `json:"response_projection,omitempty"`
+	ResponseRootType        string            `json:"response_root_type"`
+	ServerRole              string            `json:"server_role"`
 	RequestBytesLimit       int64             `json:"request_bytes_limit"`
 	ResponseBytesLimit      int64             `json:"response_bytes_limit"`
 	Pagination              string            `json:"pagination"`
@@ -99,8 +101,11 @@ func Validate(values []Binding) error {
 			return errors.New("GitHub REST bindings are duplicated or unsorted")
 		}
 		previous, seenIDs[value.ID], seenOperations[value.Operation] = value.ID, true, true
-		if !slices.Contains([]string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete, http.MethodPatch, http.MethodHead}, value.Method) || !strings.HasPrefix(value.PathTemplate, "/") || value.APIVersion != "2026-03-10" || value.CredentialKind == "" || value.RequestSchema == "" || value.ResponseSchema == "" || value.RequestBytesLimit <= 0 || value.ResponseBytesLimit <= 0 || value.RedirectPolicy == "" || value.Reconciliation == "" {
+		if !slices.Contains([]string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete, http.MethodPatch, http.MethodHead}, value.Method) || !strings.HasPrefix(value.PathTemplate, "/") || value.APIVersion != "2026-03-10" || value.CredentialKind == "" || value.RequestSchema == "" || value.ResponseSchema == "" || value.RequestBytesLimit <= 0 || value.ResponseBytesLimit <= 0 || value.RedirectPolicy == "" || value.Reconciliation == "" || !slices.Contains([]string{"object", "array"}, value.ResponseRootType) || !slices.Contains([]string{"api", "uploads"}, value.ServerRole) {
 			return fmt.Errorf("GitHub REST binding %q is incomplete", value.ID)
+		}
+		if value.ServerRole == "uploads" && value.StreamDirection != "upload" {
+			return fmt.Errorf("GitHub REST binding %q has an invalid server role", value.ID)
 		}
 		if strings.Contains(strings.ToLower(value.PathTemplate), "http://") || strings.Contains(strings.ToLower(value.PathTemplate), "https://") {
 			return fmt.Errorf("GitHub REST binding %q contains a caller-selectable URL", value.ID)

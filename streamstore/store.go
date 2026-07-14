@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,11 @@ import (
 )
 
 var idPattern = regexp.MustCompile(`^stream_[A-Za-z0-9_-]{24}$`)
+
+const (
+	maxStoredFiles = 64
+	maxStoredBytes = int64(1 << 30)
+)
 
 type Reference struct {
 	ID         string `json:"id"`
@@ -35,9 +41,11 @@ type Reference struct {
 }
 
 type Store struct {
-	dir string
-	mu  sync.Mutex
-	now func() time.Time
+	dir      string
+	mu       sync.Mutex
+	now      func() time.Time
+	maxFiles int
+	maxBytes int64
 }
 
 func Open(stateDir string) (*Store, error) {
@@ -49,19 +57,34 @@ func Open(stateDir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil || os.Chmod(dir, 0o700) != nil {
 		return nil, errors.New("secure stream directory")
 	}
-	return &Store{dir: dir, now: time.Now}, nil
+	return &Store{dir: dir, now: time.Now, maxFiles: maxStoredFiles, maxBytes: maxStoredBytes}, nil
 }
 
 func (s *Store) Put(owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) (Reference, error) {
 	if !validPut(s, owner, purpose, requestKey, mediaType, source, limit, expires) {
 		return Reference{}, errors.New("stream metadata is invalid")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.sweepExpiredLocked(s.now()); err != nil {
+		return Reference{}, err
+	}
+	if existing, found, err := s.findRequestLocked(owner, purpose, requestKey); err != nil {
+		return Reference{}, err
+	} else if found {
+		size, digest, digestErr := digestStream(source, limit)
+		if digestErr != nil || existing.Digest != digest || existing.Size != size || existing.MediaType != mediaType {
+			return Reference{}, errors.New("stream idempotency conflict")
+		}
+		return existing, nil
+	}
+	if err := s.checkQuotaLocked(limit); err != nil {
+		return Reference{}, err
+	}
 	id, err := newID()
 	if err != nil {
 		return Reference{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	size, digest, err := s.writeStream(id, source, limit)
 	if err != nil {
 		return Reference{}, err
@@ -73,6 +96,15 @@ func (s *Store) Put(owner, purpose, requestKey, mediaType string, source io.Read
 		return Reference{}, err
 	}
 	return reference, nil
+}
+
+func digestStream(source io.Reader, limit int64) (int64, string, error) {
+	hash := sha256.New()
+	size, err := io.Copy(hash, io.LimitReader(source, limit+1))
+	if err != nil || size <= 0 || size > limit {
+		return 0, "", errors.New("stream exceeds its bounded size")
+	}
+	return size, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func validPut(store *Store, owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) bool {
@@ -178,6 +210,10 @@ func (s *Store) Delete(reference Reference) error {
 func (s *Store) SweepExpired(now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.sweepExpiredLocked(now)
+}
+
+func (s *Store) sweepExpiredLocked(now time.Time) (int, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return 0, errors.New("inspect streams")
@@ -197,6 +233,49 @@ func (s *Store) SweepExpired(now time.Time) (int, error) {
 		removed++
 	}
 	return removed, nil
+}
+
+func (s *Store) findRequestLocked(owner, purpose, requestKey string) (Reference, bool, error) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return Reference{}, false, errors.New("inspect stream idempotency")
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		id := strings.TrimSuffix(entry.Name(), ".json")
+		existing, loadErr := s.loadLocked(id)
+		if loadErr != nil || existing.Owner != owner || existing.Purpose != purpose || existing.RequestKey != requestKey {
+			continue
+		}
+		return existing, true, nil
+	}
+	return Reference{}, false, nil
+}
+
+func (s *Store) checkQuotaLocked(additionalBytes int64) error {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return errors.New("inspect stream quota")
+	}
+	count := 0
+	var total int64
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".bin" {
+			continue
+		}
+		info, statErr := entry.Info()
+		if statErr != nil {
+			return errors.New("inspect stream quota")
+		}
+		count++
+		total += info.Size()
+	}
+	if count >= s.maxFiles || additionalBytes <= 0 || additionalBytes > s.maxBytes-total {
+		return errors.New("stream quota exceeded")
+	}
+	return nil
 }
 
 func (s *Store) validateLocked(reference Reference) (Reference, error) {

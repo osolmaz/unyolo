@@ -31,8 +31,11 @@ func (m *Manager) ValidateAuthenticatedUserTarget(ctx context.Context, selector 
 	if targetregistry.String(target, "kind") != "user" {
 		return errors.New("GitHub authenticated-user target is invalid")
 	}
-	requestURL := m.apiURL.ResolveReference(&url.URL{Path: "/user"})
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), http.NoBody)
+	requestURL, err := m.restURL("/user", nil)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, http.NoBody)
 	if err != nil {
 		return errors.New("create GitHub authenticated-user request")
 	}
@@ -134,12 +137,37 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 }
 
 func (m *Manager) ExecuteREST(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (ExecutionResult, error) {
-	//nolint:bodyclose // decodeRESTResponse consumes and closes the returned body on every path.
-	response, err := m.executeREST(ctx, selector, binding, target, arguments)
-	if err != nil {
-		return ExecutionResult{}, err
+	for attempt := 0; ; attempt++ {
+		//nolint:bodyclose // decodeRESTResponse consumes the final body; accepted reads are closed before retry.
+		response, err := m.executeREST(ctx, selector, binding, target, arguments)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		if response.StatusCode != http.StatusAccepted || !safeRESTMethod(binding.Method) {
+			return decodeRESTResponse(response, binding)
+		}
+		_ = response.Body.Close()
+		if attempt >= 5 {
+			return ExecutionResult{}, APIError{Code: "accepted", StatusCode: http.StatusAccepted}
+		}
+		if err := waitForAcceptedRead(ctx, attempt); err != nil {
+			return ExecutionResult{}, err
+		}
 	}
-	return decodeRESTResponse(response, binding)
+}
+
+func safeRESTMethod(method string) bool { return method == http.MethodGet || method == http.MethodHead }
+
+func waitForAcceptedRead(ctx context.Context, attempt int) error {
+	delay := 100 * time.Millisecond * time.Duration(1<<attempt)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return APIError{Code: "unavailable"}
+	case <-timer.C:
+		return nil
+	}
 }
 
 // ExecuteRESTRaw returns one bounded upstream JSON result before projection.
@@ -189,8 +217,11 @@ func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding op
 	if err != nil {
 		return nil, errors.New("GitHub API path is invalid")
 	}
-	requestURL := m.apiURL.ResolveReference(&url.URL{Path: unescapedPath, RawPath: path, RawQuery: query.Encode()})
-	request, err := http.NewRequestWithContext(ctx, binding.Method, requestURL.String(), bytes.NewReader(body))
+	requestURL, err := m.bindingURL(binding, unescapedPath, path, query)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, binding.Method, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, errors.New("create GitHub API request")
 	}
@@ -218,8 +249,11 @@ func (m *Manager) ExecuteGraphQL(ctx context.Context, selector Metadata, documen
 	if err != nil {
 		return ExecutionResult{}, errors.New("encode GitHub GraphQL request")
 	}
-	requestURL := m.apiURL.ResolveReference(&url.URL{Path: "/graphql"})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
+	requestURL, err := m.restURL("/graphql", nil)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return ExecutionResult{}, errors.New("create GitHub GraphQL request")
 	}
@@ -247,7 +281,7 @@ func (m *Manager) ExecuteRESTUpload(ctx context.Context, selector Metadata, bind
 	if err != nil {
 		return ExecutionResult{}, err
 	}
-	requestURL, err := m.restURL(path, query)
+	requestURL, err := m.bindingRESTURL(binding, path, query)
 	if err != nil {
 		return ExecutionResult{}, err
 	}
@@ -278,7 +312,7 @@ func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, bi
 	if err != nil {
 		return nil, err
 	}
-	requestURL, err := m.restURL(path, query)
+	requestURL, err := m.bindingRESTURL(binding, path, query)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +333,35 @@ func (m *Manager) restURL(path string, query url.Values) (string, error) {
 	if err != nil {
 		return "", errors.New("GitHub API path is invalid")
 	}
-	return m.apiURL.ResolveReference(&url.URL{Path: unescapedPath, RawPath: path, RawQuery: query.Encode()}).String(), nil
+	return m.relativeAPIURL(m.apiURL, unescapedPath, path, query), nil
+}
+
+func (m *Manager) bindingRESTURL(binding opbinding.Binding, path string, query url.Values) (string, error) {
+	unescapedPath, err := url.PathUnescape(path)
+	if err != nil {
+		return "", errors.New("GitHub API path is invalid")
+	}
+	return m.bindingURL(binding, unescapedPath, path, query)
+}
+
+func (m *Manager) bindingURL(binding opbinding.Binding, unescapedPath, escapedPath string, query url.Values) (string, error) {
+	base := m.apiURL
+	role := binding.ServerRole
+	if role == "" {
+		role = "api"
+	}
+	if role == "uploads" && strings.EqualFold(m.apiURL.Hostname(), "api.github.com") {
+		base = &url.URL{Scheme: "https", Host: "uploads.github.com", Path: "/"}
+	}
+	if role != "api" && role != "uploads" {
+		return "", errors.New("GitHub API server role is invalid")
+	}
+	return m.relativeAPIURL(base, unescapedPath, escapedPath, query), nil
+}
+
+func (m *Manager) relativeAPIURL(base *url.URL, unescapedPath, escapedPath string, query url.Values) string {
+	relative := &url.URL{Path: strings.TrimPrefix(unescapedPath, "/"), RawPath: strings.TrimPrefix(escapedPath, "/"), RawQuery: query.Encode()}
+	return base.ResolveReference(relative).String()
 }
 
 func (m *Manager) doAPIRequest(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
@@ -415,7 +477,7 @@ func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (Exe
 		return ExecutionResult{}, err
 	}
 	if response.StatusCode == http.StatusNoContent || len(bytes.TrimSpace(body)) == 0 {
-		return ExecutionResult{StatusCode: response.StatusCode, Body: json.RawMessage(`{}`)}, nil
+		return ExecutionResult{StatusCode: response.StatusCode, Body: emptyRESTResult(binding.ResponseRootType)}, nil
 	}
 	var value any
 	if err := strictjson.Decode(body, &value, false); err != nil {
@@ -423,13 +485,35 @@ func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (Exe
 	}
 	projected, ok := projectJSON(value, binding.ResponseProjection)
 	if !ok {
-		projected = map[string]any{}
+		projected = emptyProjection(value)
 	}
 	encoded, err := json.Marshal(projected)
 	if err != nil {
 		return ExecutionResult{}, errors.New("encode projected GitHub response")
 	}
 	return ExecutionResult{StatusCode: response.StatusCode, Body: encoded}, nil
+}
+
+func emptyRESTResult(rootType string) json.RawMessage {
+	if rootType == "array" {
+		return json.RawMessage(`[]`)
+	}
+	return json.RawMessage(`{}`)
+}
+
+func emptyProjection(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return map[string]any{}
+	case []any:
+		result := make([]any, len(typed))
+		for index, child := range typed {
+			result[index] = emptyProjection(child)
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 func projectRESTResponse(value any, projection []string) (any, bool) {

@@ -62,3 +62,45 @@ func TestStoreRejectsContentTampering(t *testing.T) {
 		t.Fatal("tampered stream opened")
 	}
 }
+
+func TestStoreIdempotentlyReusesMatchingUpload(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	expires := time.Now().Add(time.Hour)
+	first, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("canary"), 32, expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("canary"), 32, expires.Add(time.Minute))
+	if err != nil || replayed != first {
+		t.Fatalf("replayed = %+v, %v; want %+v", replayed, err, first)
+	}
+	if _, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("different"), 32, expires); err == nil {
+		t.Fatal("idempotency key accepted different bytes")
+	}
+	if _, err := store.Put("bob", "release.upload", "request-1", "text/plain", strings.NewReader("canary"), 32, expires); err == nil {
+		t.Fatal("idempotency key accepted different media type")
+	}
+}
+
+func TestStoreEnforcesAggregateQuotaAfterSweeping(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	store.maxFiles = 2
+	store.maxBytes = 8
+	store.now = func() time.Time { return time.Unix(100, 0) }
+	if _, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("1234"), 4, time.Unix(101, 0)); err != nil {
+		t.Fatal(err)
+	}
+	store.now = func() time.Time { return time.Unix(102, 0) }
+	if _, err := store.Put("bob", "release.upload", "request-2", "application/octet-stream", strings.NewReader("12345"), 5, time.Unix(200, 0)); err != nil {
+		t.Fatalf("expired upload was not swept before quota check: %v", err)
+	}
+	if _, err := store.Put("bob", "release.upload", "request-3", "application/octet-stream", strings.NewReader("1234"), 4, time.Unix(200, 0)); err == nil {
+		t.Fatal("aggregate byte quota was not enforced")
+	}
+	if _, err := store.Put("bob", "release.upload", "request-4", "application/octet-stream", strings.NewReader("1"), 1, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put("bob", "release.upload", "request-5", "application/octet-stream", strings.NewReader("1"), 1, time.Unix(200, 0)); err == nil {
+		t.Fatal("aggregate file quota was not enforced")
+	}
+}
