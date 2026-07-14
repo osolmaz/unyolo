@@ -1,0 +1,208 @@
+{
+  "source": {
+    "package": "openclaw",
+    "version": "2026.7.1-beta.5",
+    "integrity": "sha512-ejdttiBZwk5RJmZdGD3gQPW1+4819pb0gyw4ZbGg/NcEAdozk6UQWq4n3P2XfDBgOn2k7D8fSKLcN+YDdJ77TA==",
+    "entrypoint": "openclaw/plugin-sdk/text-runtime"
+  },
+  "cases": [
+    {
+      "name": "access_token",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "api_key",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "api_token",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "armored_public_key",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "armored_public_material",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "authorization",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "cache_identifier",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "card_number",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "client_secret",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "commit_signature",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "cookie",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "credential",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "deploy_key",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "document_name",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "hide_secret",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "hide_sensitive_value",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "idempotency_key",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "key",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "object_path",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "operation_id",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "password",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "private_key",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "public_material",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "refresh_token",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "request_id",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "request_key",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "secret",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "secret_name",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "session",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "signature",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "token",
+      "sensitive": true,
+      "short_value": "***",
+      "long_value": "abcdef…rstu"
+    },
+    {
+      "name": "transfer_id",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    },
+    {
+      "name": "variable_name",
+      "sensitive": false,
+      "short_value": "hunter2",
+      "long_value": "abcdefghijklmnopqrstu"
+    }
+  ]
+}
