@@ -294,3 +294,12 @@ if grep -R -n --include='*.ts' --include='*.tsx' -E '(huggingface|github|sudo)-b
   echo 'OpenClaw production code contains a provider-specific branch' >&2
   exit 1
 fi
+
+if [ ! -f .github/workflows/github-capability-drift.yml ] ||
+  [ ! -f brokers/github/cmd/check-github-drift/main.go ] ||
+  ! grep -q 'issues: write' .github/workflows/github-capability-drift.yml ||
+  grep -q 'generate-github-surfaces' .github/workflows/github-capability-drift.yml
+then
+  echo 'GitHub capability drift monitoring must remain scheduled, issue-only, and separate from generation' >&2
+  exit 1
+fi

@@ -57,7 +57,7 @@ func Validate() error {
 	if err != nil {
 		return err
 	}
-	if provenance.Version != 1 || len(provenance.Artifacts) != 11 || provenance.RetrievedAt == "" {
+	if provenance.Version != 1 || len(provenance.Artifacts) != 12 || provenance.RetrievedAt == "" {
 		return errors.New("GitHub upstream provenance is incomplete")
 	}
 	seen := map[string]bool{}
@@ -78,7 +78,8 @@ func Validate() error {
 			return fmt.Errorf("GitHub upstream snapshot %q license notice: %w", artifact.Path, err)
 		}
 	}
-	if !seen["rest-api-2026-03-10.json"] || !seen["graphql-introspection-2026-07-14.json"] || !seen["github-app-permissions-2026-03-10.json"] {
+	if !seen["rest-api-2026-03-10.json"] || !seen["graphql-introspection-2026-07-14.json"] ||
+		!seen["github-app-permissions-2026-03-10.json"] || !seen["rest-api-versions-2026-07-15.yml"] {
 		return errors.New("required GitHub upstream snapshots are missing")
 	}
 	return nil
