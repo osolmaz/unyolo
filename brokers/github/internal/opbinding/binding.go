@@ -96,6 +96,14 @@ func Validate(values []Binding) error {
 		if (value.StreamDirection != "") != (value.RedirectPolicy == "github-download-host-allowlist") {
 			return fmt.Errorf("GitHub REST binding %q stream metadata drifted", value.ID)
 		}
+		if len(value.ResponseProjection) == 0 {
+			return fmt.Errorf("GitHub REST binding %q has no safe response projection", value.ID)
+		}
+		for _, field := range value.ResponseProjection {
+			if !safeResponseField(field) {
+				return fmt.Errorf("GitHub REST binding %q exposes unsafe response field %q", value.ID, field)
+			}
+		}
 		for _, parameter := range value.ArgumentParameters {
 			if parameter.In != "query" || parameter.Name == "method" || parameter.Name == "graphql" || parameter.Name == "caller" || parameter.Name == "headers" {
 				return fmt.Errorf("GitHub REST binding %q exposes unsafe parameters", value.ID)
@@ -103,4 +111,13 @@ func Validate(values []Binding) error {
 		}
 	}
 	return nil
+}
+
+func safeResponseField(field string) bool {
+	switch field {
+	case "id", "node_id", "name", "number", "state", "status", "sha", "url", "created_at", "updated_at":
+		return true
+	default:
+		return false
+	}
 }

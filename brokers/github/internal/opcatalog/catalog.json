@@ -2243,10 +2243,10 @@
     "name": "app.apps_check_token",
     "operation_revision": 1,
     "summary": "Check a token",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "critical",
@@ -2262,6 +2262,9 @@
     "argument_schema": "arguments.app.apps_check_token.v1",
     "result_schema": "result.app.apps_check_token.v1",
     "credential_kind": "app-jwt",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:apps/check-token"
     ],
@@ -2301,10 +2304,10 @@
     "name": "app.apps_delete_authorization",
     "operation_revision": 1,
     "summary": "Delete an app authorization",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "critical",
@@ -2320,6 +2323,9 @@
     "argument_schema": "arguments.app.apps_delete_authorization.v1",
     "result_schema": "result.app.apps_delete_authorization.v1",
     "credential_kind": "app-jwt",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:apps/delete-authorization"
     ],
@@ -2330,10 +2336,10 @@
     "name": "app.apps_delete_token",
     "operation_revision": 1,
     "summary": "Delete an app token",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "critical",
@@ -2349,6 +2355,9 @@
     "argument_schema": "arguments.app.apps_delete_token.v1",
     "result_schema": "result.app.apps_delete_token.v1",
     "credential_kind": "app-jwt",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:apps/delete-token"
     ],
@@ -2681,10 +2690,10 @@
     "name": "app.apps_scope_token",
     "operation_revision": 1,
     "summary": "Create a scoped access token",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "critical",
@@ -2700,6 +2709,9 @@
     "argument_schema": "arguments.app.apps_scope_token.v1",
     "result_schema": "result.app.apps_scope_token.v1",
     "credential_kind": "app-jwt",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:apps/scope-token"
     ],
@@ -9094,10 +9106,10 @@
     "name": "credential.credentials_revoke",
     "operation_revision": 1,
     "summary": "Revoke a list of credentials",
-    "disposition": "E/X/I",
+    "disposition": "E/X/S/I",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": true,
     "implementation_status": "internal",
     "risk": "critical",
@@ -9113,6 +9125,9 @@
     "argument_schema": "arguments.credential.credentials_revoke.v1",
     "result_schema": "result.credential.credentials_revoke.v1",
     "credential_kind": "development-token",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:credentials/revoke"
     ],
@@ -10279,10 +10294,10 @@
     "name": "deployment.repos_create_pages_deployment",
     "operation_revision": 1,
     "summary": "Create a GitHub Pages deployment",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "medium",
@@ -10298,6 +10313,9 @@
     "argument_schema": "arguments.deployment.repos_create_pages_deployment.v1",
     "result_schema": "result.deployment.repos_create_pages_deployment.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:repos/create-pages-deployment"
     ],
@@ -11508,15 +11526,15 @@
     "name": "enterprise.read_enterprise",
     "operation_revision": 1,
     "summary": "Look up an enterprise by URL slug.",
-    "disposition": "W",
-    "authorization_mode": "window",
+    "disposition": "E/S",
+    "authorization_mode": "execution",
     "explicit_only": false,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "graphql",
     "risk": "low",
     "target_kind": "enterprise",
-    "max_uses": 100,
+    "max_uses": 1,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
     "family_glob_allowed": true,
@@ -11527,6 +11545,9 @@
     "argument_schema": "arguments.enterprise.read_enterprise.v1",
     "result_schema": "result.enterprise.read_enterprise.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "invitation_token"
+    ],
     "upstream_binding_ids": [
       "graphql:c33ab73bebfd60ce2aa3dfdda1520b657e6875f7f6cd9a659920d32cb77ae64e"
     ],
@@ -11566,15 +11587,15 @@
     "name": "enterprise.read_enterprise_administrator_invitation_by_token",
     "operation_revision": 1,
     "summary": "Look up a pending enterprise administrator invitation by invitation token.",
-    "disposition": "W",
-    "authorization_mode": "window",
+    "disposition": "E/S",
+    "authorization_mode": "execution",
     "explicit_only": false,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "graphql",
     "risk": "low",
     "target_kind": "enterprise",
-    "max_uses": 100,
+    "max_uses": 1,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
     "family_glob_allowed": true,
@@ -11585,6 +11606,9 @@
     "argument_schema": "arguments.enterprise.read_enterprise_administrator_invitation_by_token.v1",
     "result_schema": "result.enterprise.read_enterprise_administrator_invitation_by_token.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "invitation_token"
+    ],
     "upstream_binding_ids": [
       "graphql:e352f3403f7a1aa4671d3378373cd548e4116a418378c3b1ed49265370feec1a"
     ],
@@ -11624,15 +11648,15 @@
     "name": "enterprise.read_enterprise_member_invitation_by_token",
     "operation_revision": 1,
     "summary": "Look up a pending enterprise unaffiliated member invitation by invitation token.",
-    "disposition": "W",
-    "authorization_mode": "window",
+    "disposition": "E/S",
+    "authorization_mode": "execution",
     "explicit_only": false,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "graphql",
     "risk": "low",
     "target_kind": "enterprise",
-    "max_uses": 100,
+    "max_uses": 1,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
     "family_glob_allowed": true,
@@ -11643,6 +11667,9 @@
     "argument_schema": "arguments.enterprise.read_enterprise_member_invitation_by_token.v1",
     "result_schema": "result.enterprise.read_enterprise_member_invitation_by_token.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "invitation_token"
+    ],
     "upstream_binding_ids": [
       "graphql:27a71e0c225d19d649df25f029ede6abf9639bdcb8f373c87f8d8b021adca2f9"
     ],
@@ -12001,10 +12028,10 @@
     "name": "enterprise.update_enterprise_deploy_key_setting",
     "operation_revision": 1,
     "summary": "Sets whether deploy keys are allowed to be created and used for an enterprise.",
-    "disposition": "E/X/S",
+    "disposition": "E/X",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": true,
+    "sealed": false,
     "internal": false,
     "implementation_status": "graphql",
     "risk": "critical",
@@ -12020,9 +12047,6 @@
     "argument_schema": "arguments.enterprise.update_enterprise_deploy_key_setting.v1",
     "result_schema": "result.enterprise.update_enterprise_deploy_key_setting.v1",
     "credential_kind": "user",
-    "sealed_input_paths": [
-      "input"
-    ],
     "upstream_binding_ids": [
       "graphql:74d0a8594a12bc18c487829316f0442c76884324fa9149e7045a0d71fcd796b8"
     ],
@@ -19774,10 +19798,10 @@
     "name": "migration.migrations_start_import",
     "operation_revision": 1,
     "summary": "Start an import",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "medium",
@@ -19793,6 +19817,9 @@
     "argument_schema": "arguments.migration.migrations_start_import.v1",
     "result_schema": "result.migration.migrations_start_import.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:migrations/start-import"
     ],
@@ -19807,10 +19834,10 @@
     "name": "migration.migrations_update_import",
     "operation_revision": 1,
     "summary": "Update an import",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "medium",
@@ -19826,6 +19853,9 @@
     "argument_schema": "arguments.migration.migrations_update_import.v1",
     "result_schema": "result.migration.migrations_update_import.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:migrations/update-import"
     ],
@@ -24230,10 +24260,10 @@
     "name": "organization.create_webhook",
     "operation_revision": 1,
     "summary": "Create an organization webhook",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "high",
@@ -24249,6 +24279,9 @@
     "argument_schema": "arguments.organization.create_webhook.v1",
     "result_schema": "result.organization.create_webhook.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:orgs/create-webhook"
     ],
@@ -26457,10 +26490,10 @@
     "name": "organization.private_registries_create_org_private_registry",
     "operation_revision": 1,
     "summary": "Create a private registry for an organization",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "high",
@@ -26476,6 +26509,9 @@
     "argument_schema": "arguments.organization.private_registries_create_org_private_registry.v1",
     "result_schema": "result.organization.private_registries_create_org_private_registry.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:private-registries/create-org-private-registry"
     ],
@@ -26777,10 +26813,10 @@
     "name": "organization.review_pat_grant_request",
     "operation_revision": 1,
     "summary": "Review a request to access organization resources with a fine-grained personal access token",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "critical",
@@ -26796,6 +26832,9 @@
     "argument_schema": "arguments.organization.review_pat_grant_request.v1",
     "result_schema": "result.organization.review_pat_grant_request.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:orgs/review-pat-grant-request"
     ],
@@ -26809,10 +26848,10 @@
     "name": "organization.review_pat_grant_requests_in_bulk",
     "operation_revision": 1,
     "summary": "Review requests to access organization resources with fine-grained personal access tokens",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "critical",
@@ -26828,6 +26867,9 @@
     "argument_schema": "arguments.organization.review_pat_grant_requests_in_bulk.v1",
     "result_schema": "result.organization.review_pat_grant_requests_in_bulk.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:orgs/review-pat-grant-requests-in-bulk"
     ],
@@ -27216,10 +27258,10 @@
     "name": "organization.update_webhook",
     "operation_revision": 1,
     "summary": "Update an organization webhook",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "high",
@@ -27235,6 +27277,9 @@
     "argument_schema": "arguments.organization.update_webhook.v1",
     "result_schema": "result.organization.update_webhook.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:orgs/update-webhook"
     ],
@@ -27248,10 +27293,10 @@
     "name": "organization.update_webhook_config_for_org",
     "operation_revision": 1,
     "summary": "Update a webhook configuration for an organization",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "high",
@@ -27267,6 +27312,9 @@
     "argument_schema": "arguments.organization.update_webhook_config_for_org.v1",
     "result_schema": "result.organization.update_webhook_config_for_org.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:orgs/update-webhook-config-for-org"
     ],
@@ -43633,10 +43681,10 @@
     "name": "webhook.apps_update_webhook_config_for_app",
     "operation_revision": 1,
     "summary": "Update a webhook configuration for an app",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "medium",
@@ -43652,6 +43700,9 @@
     "argument_schema": "arguments.webhook.apps_update_webhook_config_for_app.v1",
     "result_schema": "result.webhook.apps_update_webhook_config_for_app.v1",
     "credential_kind": "app-jwt",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:apps/update-webhook-config-for-app"
     ],
@@ -43662,10 +43713,10 @@
     "name": "webhook.repos_create_webhook",
     "operation_revision": 1,
     "summary": "Create a repository webhook",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "medium",
@@ -43681,6 +43732,9 @@
     "argument_schema": "arguments.webhook.repos_create_webhook.v1",
     "result_schema": "result.webhook.repos_create_webhook.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:repos/create-webhook"
     ],
@@ -43992,10 +44046,10 @@
     "name": "webhook.repos_update_webhook",
     "operation_revision": 1,
     "summary": "Update a repository webhook",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "medium",
@@ -44011,6 +44065,9 @@
     "argument_schema": "arguments.webhook.repos_update_webhook.v1",
     "result_schema": "result.webhook.repos_update_webhook.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:repos/update-webhook"
     ],
@@ -44025,10 +44082,10 @@
     "name": "webhook.repos_update_webhook_config_for_repo",
     "operation_revision": 1,
     "summary": "Update a webhook configuration for a repository",
-    "disposition": "E/X",
+    "disposition": "E/X/S",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "implemented",
     "risk": "medium",
@@ -44044,6 +44101,9 @@
     "argument_schema": "arguments.webhook.repos_update_webhook_config_for_repo.v1",
     "result_schema": "result.webhook.repos_update_webhook_config_for_repo.v1",
     "credential_kind": "installation",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "rest:repos/update-webhook-config-for-repo"
     ],

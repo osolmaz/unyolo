@@ -104,7 +104,7 @@ func generateRESTOperation(state *generatedState, method, path string, operation
 		operations = nil
 	}
 	for _, name := range operations {
-		descriptor := descriptorForREST(name, method, path, operation, disposition, credential, requiredPermissions, riskClasses)
+		descriptor := descriptorForREST(name, method, path, operation, disposition, credential, requiredPermissions, riskClasses, components)
 		state.descriptors = append(state.descriptors, descriptor)
 		coverage.CatalogOperations = append(coverage.CatalogOperations, name)
 		state.schemas.Operations[name] = schemasForREST(name, method, path, operation, descriptor.TargetKind, components)
@@ -204,16 +204,25 @@ func categoryName(family string) string {
 }
 
 //nolint:cyclop // Security metadata is derived in one auditable classification path.
-func descriptorForREST(name, method, path string, operation restOperation, disposition, credential string, permissions map[string]string, classes []string) opcatalog.Descriptor {
+func descriptorForREST(name, method, path string, operation restOperation, disposition, credential string, permissions map[string]string, classes []string, components map[string]any) opcatalog.Descriptor {
 	mutation := method != http.MethodGet && method != http.MethodHead
 	credentialOutput := runnerCredentialOutput(operation.OperationID)
+	target := targetKindFromPath(path)
+	sealedInputPaths := sensitiveTopLevelPaths(argumentsSchemaForREST(method, path, operation, target, components))
+	if mutation && slices.Contains(classes, "secret") && len(operation.RequestBody) > 0 && !slices.Contains(sealedInputPaths, "input") {
+		sealedInputPaths = append(sealedInputPaths, "input")
+	}
+	slices.Sort(sealedInputPaths)
 	mode, dispositionFlags, maxUses := capability.ModeWindow, "W", 100
 	if mutation {
 		mode, dispositionFlags, maxUses = capability.ModeExecution, "E", 1
 	}
 	risk := operationRisk(name, classes, method)
 	explicit := mutation && (len(classes) > 0 || risk >= capability.RiskHigh) || credentialOutput != nil
-	sealed := mutation && len(operation.RequestBody) > 0 && slices.Contains(classes, "secret") && containsAny(strings.ToLower(operation.OperationID), []string{"create", "update", "set", "add", "put"}) || credentialOutput != nil
+	sealed := len(sealedInputPaths) > 0 || credentialOutput != nil
+	if sealed {
+		mode, dispositionFlags, maxUses = capability.ModeExecution, "E", 1
+	}
 	internal := disposition == "internal"
 	if explicit {
 		dispositionFlags += "/X"
@@ -235,7 +244,6 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		tool = &toolName
 		command = &commandName
 	}
-	target := targetKindFromPath(path)
 	return opcatalog.Descriptor{Descriptor: capability.Descriptor{
 		Name: name, OperationRevision: 1, Summary: operation.Summary, Disposition: dispositionFlags,
 		AuthorizationMode: mode, ExplicitOnly: explicit, Sealed: sealed, Internal: internal,
@@ -244,7 +252,7 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		AgentFacing: agentFacing, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
 		CredentialKind: credential, CredentialOutputKind: credentialOutput,
-		SealedInputPaths: sealedPaths(operation, sealed && credentialOutput == nil), UpstreamBindingIDs: []string{"rest:" + operation.OperationID},
+		SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"rest:" + operation.OperationID},
 		ExecutorKind: executorKind(disposition), ReconcilerKind: reconcilerKind(method, disposition),
 	}, RequiredGitHubPermissions: permissions, RequiredRepositorySelection: strings.Contains(path, "/repos/{owner}/{repo}")}
 }
@@ -505,11 +513,4 @@ func reconcilerKind(method, disposition string) string {
 		return "absence-proof"
 	}
 	return "bounded-readback"
-}
-
-func sealedPaths(operation restOperation, sealed bool) []string {
-	if !sealed {
-		return nil
-	}
-	return []string{"input"}
 }

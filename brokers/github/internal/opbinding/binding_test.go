@@ -54,6 +54,8 @@ func TestBindingValidationFailsClosed(t *testing.T) {
 		{"version", func(value *Binding) { value.APIVersion = "latest" }},
 		{"limit", func(value *Binding) { value.RequestBytesLimit = 0 }},
 		{"url", func(value *Binding) { value.PathTemplate = "https://example.invalid" }},
+		{"missing response projection", func(value *Binding) { value.ResponseProjection = nil }},
+		{"unsafe response projection", func(value *Binding) { value.ResponseProjection = []string{"token"} }},
 		{"parameter location", func(value *Binding) { value.ArgumentParameters = []Parameter{{Name: "page", In: "header"}} }},
 		{"raw parameter", func(value *Binding) { value.ArgumentParameters = []Parameter{{Name: "method", In: "query"}} }},
 	}

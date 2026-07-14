@@ -51,6 +51,25 @@ func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 
 //nolint:cyclop // OpenAPI projection branches are intentionally visible for audit.
 func schemasForREST(name, method, path string, operation restOperation, targetKind string, components map[string]any) operationSchemas {
+	arguments := argumentsSchemaForREST(method, path, operation, targetKind, components)
+	result := projectedResponseSchema(responseSchema(operation, components), responseProjection(operation))
+	if runnerCredentialOutput(operation.OperationID) != nil {
+		result = map[string]any{
+			"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+			"properties": map[string]any{
+				"stored": map[string]any{"const": true}, "slot": nameSchema(), "kind": map[string]any{"const": "github-runner-token"},
+			},
+			"required": []string{"stored", "slot", "kind"},
+		}
+	}
+	if streamDirection(operation.OperationID) == "download" {
+		result = streamResultSchema()
+	}
+	return operationSchemas{Target: "target." + targetKind + ".v1", Arguments: arguments, Result: result}
+}
+
+//nolint:cyclop // OpenAPI parameter and request-body forms require explicit handling.
+func argumentsSchemaForREST(_ string, path string, operation restOperation, targetKind string, components map[string]any) map[string]any {
 	properties := map[string]any{}
 	required := []string{}
 	for _, parameter := range operation.Parameters {
@@ -83,20 +102,58 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 	if len(required) > 0 {
 		arguments["required"] = required
 	}
-	result := projectedResponseSchema(responseSchema(operation, components), responseProjection(operation))
-	if runnerCredentialOutput(operation.OperationID) != nil {
-		result = map[string]any{
-			"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
-			"properties": map[string]any{
-				"stored": map[string]any{"const": true}, "slot": nameSchema(), "kind": map[string]any{"const": "github-runner-token"},
-			},
-			"required": []string{"stored", "slot", "kind"},
+	return arguments
+}
+
+func sensitiveTopLevelPaths(schema map[string]any) []string {
+	properties, _ := schema["properties"].(map[string]any)
+	result := []string{}
+	for name, value := range properties {
+		child, _ := value.(map[string]any)
+		if sensitiveField(name, child) || schemaContainsSensitiveField(child) {
+			result = append(result, name)
 		}
 	}
-	if streamDirection(operation.OperationID) == "download" {
-		result = streamResultSchema()
+	slices.Sort(result)
+	return result
+}
+
+func schemaContainsSensitiveField(schema map[string]any) bool {
+	if schema == nil {
+		return false
 	}
-	return operationSchemas{Target: "target." + targetKind + ".v1", Arguments: arguments, Result: result}
+	if properties, ok := schema["properties"].(map[string]any); ok {
+		for name, value := range properties {
+			child, _ := value.(map[string]any)
+			if sensitiveField(name, child) || schemaContainsSensitiveField(child) {
+				return true
+			}
+		}
+	}
+	if items, ok := schema["items"].(map[string]any); ok && schemaContainsSensitiveField(items) {
+		return true
+	}
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		if branches, ok := schema[keyword].([]any); ok {
+			for _, branch := range branches {
+				child, _ := branch.(map[string]any)
+				if schemaContainsSensitiveField(child) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func sensitiveField(name string, schema map[string]any) bool {
+	normalized := strings.ToLower(name)
+	if schema["type"] == "boolean" {
+		return false
+	}
+	return normalized == "password" || normalized == "secret" || normalized == "token" || normalized == "private_key" ||
+		normalized == "encrypted_value" || strings.HasSuffix(normalized, "_password") || strings.HasSuffix(normalized, "_secret") ||
+		strings.HasSuffix(normalized, "_token") || strings.HasSuffix(normalized, "_private_key")
 }
 
 func streamResultSchema() map[string]any {
@@ -120,28 +177,44 @@ func streamResultSchema() map[string]any {
 }
 
 func projectedResponseSchema(schema map[string]any, projection []string) map[string]any {
-	if len(projection) == 0 {
-		return schema
-	}
-	if schema["type"] == "array" {
-		if items, ok := schema["items"].(map[string]any); ok {
-			copy := cloneSchema(schema)
-			copy["items"] = projectedResponseSchema(items, projection)
-			return copy
-		}
-		return schema
-	}
-	properties, ok := schema["properties"].(map[string]any)
-	if !ok {
-		return schema
-	}
-	selected := map[string]any{}
+	allowed := make(map[string]bool, len(projection))
 	for _, name := range projection {
-		if value, found := properties[name]; found {
-			selected[name] = value
+		allowed[name] = true
+	}
+	return projectResponseSchema(schema, allowed, true)
+}
+
+//nolint:cyclop // JSON Schema composition and container forms require explicit recursion.
+func projectResponseSchema(schema map[string]any, allowed map[string]bool, root bool) map[string]any {
+	result := cloneSchema(schema)
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		if alternatives, ok := result[keyword].([]any); ok {
+			for index, alternative := range alternatives {
+				if child, childOK := alternative.(map[string]any); childOK {
+					alternatives[index] = projectResponseSchema(child, allowed, false)
+				}
+			}
 		}
 	}
-	return map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": selected, "additionalProperties": false}
+	if items, ok := result["items"].(map[string]any); ok {
+		result["items"] = projectResponseSchema(items, allowed, false)
+	}
+	properties, object := result["properties"].(map[string]any)
+	if object {
+		selected := map[string]any{}
+		for name, value := range properties {
+			if allowed[name] {
+				selected[name] = value
+			}
+		}
+		result["properties"] = selected
+		result["additionalProperties"] = false
+		delete(result, "required")
+	}
+	if root {
+		result["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+	}
+	return result
 }
 
 func cloneSchema(value map[string]any) map[string]any {
@@ -322,7 +395,6 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		}
 	}
 	projection := responseProjection(operation)
-	projection = filterResponseProjection(responseSchema(operation, components), projection)
 	return restBinding{
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
@@ -332,20 +404,6 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		RedirectPolicy: redirectPolicy(descriptor.ExecutorKind), Reconciliation: descriptor.ReconcilerKind,
 		StreamDirection: streamDirection(operation.OperationID),
 	}
-}
-
-func filterResponseProjection(schema map[string]any, projection []string) []string {
-	if schema["type"] == "array" {
-		schema, _ = schema["items"].(map[string]any)
-	}
-	properties, _ := schema["properties"].(map[string]any)
-	result := make([]string, 0, len(projection))
-	for _, name := range projection {
-		if _, found := properties[name]; found {
-			result = append(result, name)
-		}
-	}
-	return result
 }
 
 func pathParameterComesFromTarget(name, targetKind, path string) bool {

@@ -48,7 +48,7 @@ func generateGraphQL(state *generatedState, response graphqlResponse, fingerprin
 			disposition := graphqlRootDisposition(field.Name)
 			state.graphqlCoverage = append(state.graphqlCoverage, graphqlCoverage{RootType: root.name, Field: field.Name,
 				Disposition: disposition, CatalogOperation: operation, RequiredCredential: credential, PersistedDigest: digestString, Reviewed: true})
-			descriptor := descriptorForGraphQL(operation, root.name, field, digestString, disposition)
+			descriptor := descriptorForGraphQL(operation, root.name, field, digestString, disposition, variables)
 			state.descriptors = append(state.descriptors, descriptor)
 			state.schemas.Operations[operation] = operationSchemas{Target: descriptor.TargetSchema, Arguments: variables, Result: resultSchema}
 		}
@@ -60,15 +60,19 @@ func generateGraphQL(state *generatedState, response graphqlResponse, fingerprin
 	return nil
 }
 
-func descriptorForGraphQL(name, root string, field introspectionField, digest, disposition string) opcatalog.Descriptor {
+func descriptorForGraphQL(name, root string, field introspectionField, digest, disposition string, variables map[string]any) opcatalog.Descriptor {
 	mutation := root == "mutation"
+	sealedInputPaths := sensitiveTopLevelPaths(variables)
 	mode, flags, maxUses := capability.ModeWindow, "W", 100
 	if mutation {
 		mode, flags, maxUses = capability.ModeExecution, "E", 1
 	}
 	classes := classifyGraphQLRiskClasses(root, field.Name)
 	explicit := mutation && len(classes) > 0
-	sealed := mutation && slices.Contains(classes, "secret") && containsAny(strings.ToLower(field.Name), []string{"create", "update", "set", "add"})
+	sealed := len(sealedInputPaths) > 0
+	if sealed {
+		mode, flags, maxUses = capability.ModeExecution, "E", 1
+	}
 	if explicit {
 		flags += "/X"
 	}
@@ -92,7 +96,7 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 		TargetKind: target, MaxUses: maxUses, RequestTTLSeconds: 300, ApprovalTTLSeconds: 600,
 		Internal: internal, FamilyGlobAllowed: !explicit, AgentFacing: !internal, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
-		CredentialKind: "user", SealedInputPaths: graphqlSealedPaths(field, sealed), UpstreamBindingIDs: []string{"graphql:" + digest},
+		CredentialKind: "user", SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"graphql:" + digest},
 		ExecutorKind: "persisted-graphql", ReconcilerKind: map[bool]string{true: "bounded-readback", false: "none"}[mutation]}}
 }
 
@@ -303,18 +307,6 @@ func classifyGraphQLRiskClasses(root, field string) []string {
 	}
 	slices.Sort(result)
 	return result
-}
-
-func graphqlSealedPaths(field introspectionField, sealed bool) []string {
-	if !sealed {
-		return nil
-	}
-	for _, argument := range field.Args {
-		if argument.Name == "input" {
-			return []string{"input"}
-		}
-	}
-	return nil
 }
 
 func nonEmpty(value, fallback string) string {
