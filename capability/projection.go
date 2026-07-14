@@ -24,25 +24,40 @@ func NewProjection(fields []FieldProjection) (Projection, error) {
 	projection := Projection{fields: slices.Clone(fields)}
 	canonical, mcp := map[string]bool{}, map[string]bool{}
 	for _, field := range projection.fields {
-		canonicalTokens, err := pointerTokens(field.Canonical)
-		if err != nil {
-			return Projection{}, fmt.Errorf("canonical projection path: %w", err)
-		}
-		mcpTokens, err := pointerTokens(field.MCP)
-		if err != nil {
-			return Projection{}, fmt.Errorf("MCP projection path: %w", err)
-		}
-		if slices.Contains(canonicalTokens, "*") || slices.Contains(mcpTokens, "*") {
-			if len(canonicalTokens) != len(mcpTokens) || !slices.Equal(canonicalTokens[:len(canonicalTokens)-1], mcpTokens[:len(mcpTokens)-1]) {
-				return Projection{}, errors.New("array projection paths must use the same parent pattern")
-			}
-		}
-		if field.Canonical == field.MCP || canonical[field.Canonical] || mcp[field.MCP] {
-			return Projection{}, errors.New("projection paths are duplicated or unchanged")
+		if err := validateFieldProjection(field, canonical, mcp); err != nil {
+			return Projection{}, err
 		}
 		canonical[field.Canonical], mcp[field.MCP] = true, true
 	}
 	return projection, nil
+}
+
+func validateFieldProjection(field FieldProjection, canonical, mcp map[string]bool) error {
+	canonicalTokens, err := pointerTokens(field.Canonical)
+	if err != nil {
+		return fmt.Errorf("canonical projection path: %w", err)
+	}
+	mcpTokens, err := pointerTokens(field.MCP)
+	if err != nil {
+		return fmt.Errorf("MCP projection path: %w", err)
+	}
+	if err := validateWildcardProjection(canonicalTokens, mcpTokens); err != nil {
+		return err
+	}
+	if field.Canonical == field.MCP || canonical[field.Canonical] || mcp[field.MCP] {
+		return errors.New("projection paths are duplicated or unchanged")
+	}
+	return nil
+}
+
+func validateWildcardProjection(canonical, mcp []string) error {
+	if !slices.Contains(canonical, "*") && !slices.Contains(mcp, "*") {
+		return nil
+	}
+	if len(canonical) != len(mcp) || !slices.Equal(canonical[:len(canonical)-1], mcp[:len(mcp)-1]) {
+		return errors.New("array projection paths must use the same parent pattern")
+	}
+	return nil
 }
 
 func MustProjection(fields ...FieldProjection) Projection {
@@ -195,32 +210,10 @@ func moveJSONWildcardValue(root map[string]any, source, destination []string) er
 
 func renameJSONAt(current any, path []string, source, destination string) error {
 	if len(path) == 0 {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return errors.New("projection parent is not an object")
-		}
-		value, present := object[source]
-		if !present {
-			return nil
-		}
-		if _, collision := object[destination]; collision {
-			return fmt.Errorf("projection destination %s collides", destination)
-		}
-		delete(object, source)
-		object[destination] = value
-		return nil
+		return renameJSONObjectField(current, source, destination)
 	}
 	if path[0] == "*" {
-		items, ok := current.([]any)
-		if !ok {
-			return errors.New("projection wildcard crosses a non-array value")
-		}
-		for _, item := range items {
-			if err := renameJSONAt(item, path[1:], source, destination); err != nil {
-				return err
-			}
-		}
-		return nil
+		return renameJSONItems(current, path[1:], source, destination)
 	}
 	object, ok := current.(map[string]any)
 	if !ok {
@@ -231,6 +224,36 @@ func renameJSONAt(current any, path []string, source, destination string) error 
 		return nil
 	}
 	return renameJSONAt(next, path[1:], source, destination)
+}
+
+func renameJSONObjectField(current any, source, destination string) error {
+	object, ok := current.(map[string]any)
+	if !ok {
+		return errors.New("projection parent is not an object")
+	}
+	value, present := object[source]
+	if !present {
+		return nil
+	}
+	if _, collision := object[destination]; collision {
+		return fmt.Errorf("projection destination %s collides", destination)
+	}
+	delete(object, source)
+	object[destination] = value
+	return nil
+}
+
+func renameJSONItems(current any, path []string, source, destination string) error {
+	items, ok := current.([]any)
+	if !ok {
+		return errors.New("projection wildcard crosses a non-array value")
+	}
+	for _, item := range items {
+		if err := renameJSONAt(item, path, source, destination); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func jsonParent(root map[string]any, tokens []string) (map[string]any, string, bool) {

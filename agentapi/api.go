@@ -240,12 +240,27 @@ func listOptions(params agentwire.ListAgentOperationsParams) (agentv1.ListOption
 	if params.Cursor != nil {
 		options.Cursor = strings.TrimSpace(*params.Cursor)
 	}
-	if (params.IdempotencyKey != nil && options.IdempotencyKey == "") || len(options.IdempotencyKey) > 128 ||
-		(params.Cursor != nil && options.Cursor == "") || len(options.Cursor) > 128 || options.Limit < 1 || options.Limit > 50 ||
-		!validStateFilter(options.State) {
-		return agentv1.ListOptions{}, &Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: "Invalid operation list query"}
+	if invalidOptionalListValue(params.IdempotencyKey, options.IdempotencyKey) {
+		return agentv1.ListOptions{}, invalidListQueryError()
+	}
+	if invalidOptionalListValue(params.Cursor, options.Cursor) {
+		return agentv1.ListOptions{}, invalidListQueryError()
+	}
+	if options.Limit < 1 || options.Limit > 50 {
+		return agentv1.ListOptions{}, invalidListQueryError()
+	}
+	if !validStateFilter(options.State) {
+		return agentv1.ListOptions{}, invalidListQueryError()
 	}
 	return options, nil
+}
+
+func invalidOptionalListValue(provided *string, normalized string) bool {
+	return (provided != nil && normalized == "") || len(normalized) > 128
+}
+
+func invalidListQueryError() *Error {
+	return &Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: "Invalid operation list query"}
 }
 
 func validStateFilter(state agentv1.State) bool {

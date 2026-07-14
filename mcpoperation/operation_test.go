@@ -85,7 +85,7 @@ func TestConflictProjection(t *testing.T) {
 		t.Fatalf("conflict = %#v", value)
 	}
 	original := errors.New("other")
-	if Conflict(t.Context(), client, "req", original) != original {
+	if !errors.Is(Conflict(t.Context(), client, "req", original), original) {
 		t.Fatal("unrelated error changed")
 	}
 }

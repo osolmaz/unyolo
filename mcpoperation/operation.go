@@ -164,18 +164,15 @@ func Get(ctx context.Context, client Client, input GetInput, projector ResultPro
 }
 
 func Wait(ctx context.Context, client Client, input WaitInput, projector ResultProjector) (Operation, error) {
-	seconds := DefaultWaitSeconds
-	if input.TimeoutSeconds != nil {
-		seconds = *input.TimeoutSeconds
+	operationID, seconds, err := waitParameters(input)
+	if err != nil {
+		return Operation{}, err
 	}
-	if strings.TrimSpace(input.OperationID) == "" || len(input.OperationID) > 128 || seconds < 0 || seconds > MaxWaitSeconds {
-		return Operation{}, errors.New("operation wait input is invalid")
+	operation, err := client.Get(ctx, operationID)
+	if err != nil {
+		return Operation{}, err
 	}
-	operation, err := client.Get(ctx, input.OperationID)
-	if err != nil || operation.State.Terminal() || seconds == 0 {
-		if err != nil {
-			return Operation{}, err
-		}
+	if operation.State.Terminal() || seconds == 0 {
 		return Project(operation, projector)
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
@@ -188,6 +185,18 @@ func Wait(ctx context.Context, client Client, input WaitInput, projector ResultP
 		return Operation{}, waitErr
 	}
 	return Project(updated, projector)
+}
+
+func waitParameters(input WaitInput) (string, int, error) {
+	seconds := DefaultWaitSeconds
+	if input.TimeoutSeconds != nil {
+		seconds = *input.TimeoutSeconds
+	}
+	operationID := strings.TrimSpace(input.OperationID)
+	if operationID == "" || len(operationID) > 128 || seconds < 0 || seconds > MaxWaitSeconds {
+		return "", 0, errors.New("operation wait input is invalid")
+	}
+	return operationID, seconds, nil
 }
 
 func List(ctx context.Context, client Client, input ListInput) (Page, error) {

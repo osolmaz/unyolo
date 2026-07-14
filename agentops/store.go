@@ -204,15 +204,9 @@ func (s *Store) GetByIdempotency(clientID, key string) (agentv1.Operation, error
 
 // List returns one bounded, deterministic page owned by clientID.
 func (s *Store) List(clientID string, options agentv1.ListOptions) (agentv1.OperationPage, error) {
-	clientID = strings.TrimSpace(clientID)
-	options.IdempotencyKey = strings.TrimSpace(options.IdempotencyKey)
-	options.Cursor = strings.TrimSpace(options.Cursor)
-	if options.Limit == 0 {
-		options.Limit = defaultListLimit
-	}
-	if clientID == "" || len(options.IdempotencyKey) > 128 || len(options.Cursor) > 128 ||
-		options.Limit < 1 || options.Limit > maxListLimit || !validListState(options.State) {
-		return agentv1.OperationPage{}, errors.New("operation list options are invalid")
+	clientID, options, err := normalizeListOptions(clientID, options)
+	if err != nil {
+		return agentv1.OperationPage{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -223,15 +217,35 @@ func (s *Store) List(clientID string, options agentv1.ListOptions) (agentv1.Oper
 	if err != nil {
 		return agentv1.OperationPage{}, mapStateError(err)
 	}
-	page := agentv1.OperationPage{APIVersion: agentv1.APIVersion, Operations: make([]agentv1.OperationSummary, 0, min(len(records), options.Limit))}
-	for _, record := range records[:min(len(records), options.Limit)] {
+	return operationPage(records, options.Limit)
+}
+
+func normalizeListOptions(clientID string, options agentv1.ListOptions) (string, agentv1.ListOptions, error) {
+	clientID = strings.TrimSpace(clientID)
+	options.IdempotencyKey = strings.TrimSpace(options.IdempotencyKey)
+	options.Cursor = strings.TrimSpace(options.Cursor)
+	if options.Limit == 0 {
+		options.Limit = defaultListLimit
+	}
+	if clientID == "" || len(options.IdempotencyKey) > 128 || len(options.Cursor) > 128 {
+		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
+	}
+	if options.Limit < 1 || options.Limit > maxListLimit || !validListState(options.State) {
+		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
+	}
+	return clientID, options, nil
+}
+
+func operationPage(records []state.OperationRecord, limit int) (agentv1.OperationPage, error) {
+	page := agentv1.OperationPage{APIVersion: agentv1.APIVersion, Operations: make([]agentv1.OperationSummary, 0, min(len(records), limit))}
+	for _, record := range records[:min(len(records), limit)] {
 		operation, convertErr := operationFromRecord(record)
 		if convertErr != nil {
 			return agentv1.OperationPage{}, convertErr
 		}
 		page.Operations = append(page.Operations, operationSummary(operation))
 	}
-	if len(records) > options.Limit {
+	if len(records) > limit {
 		cursor := page.Operations[len(page.Operations)-1].ID
 		page.NextCursor = &cursor
 	}
