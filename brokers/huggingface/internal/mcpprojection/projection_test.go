@@ -77,6 +77,10 @@ func TestProjectionPayloadHelpers(t *testing.T) {
 	if _, err := AttrsToCanonical(descriptor, cyclic); err == nil {
 		t.Fatal("cyclic attributes accepted")
 	}
+	empty, err := AttrsToCanonical(descriptor, nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("omitted attrs = %#v, %v", empty, err)
+	}
 	raw := json.RawMessage(`{"ok":true}`)
 	if projected, err := ResultToMCP(descriptor.Name, raw); err != nil || string(projected) != string(raw) {
 		t.Fatalf("result = %s, %v", projected, err)

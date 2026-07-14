@@ -196,12 +196,12 @@ func moveJSONValue(root map[string]any, source, destination string) error {
 	if !destinationFound {
 		return fmt.Errorf("projection destination parent %s is absent", destination)
 	}
+	if _, collision := destinationParent[destinationName]; collision {
+		return fmt.Errorf("projection destination %s collides", destination)
+	}
 	value, present := sourceParent[sourceName]
 	if !present {
 		return nil
-	}
-	if _, collision := destinationParent[destinationName]; collision {
-		return fmt.Errorf("projection destination %s collides", destination)
 	}
 	delete(sourceParent, sourceName)
 	destinationParent[destinationName] = value
@@ -238,12 +238,12 @@ func renameJSONObjectField(current any, source, destination string) error {
 	if !ok {
 		return errors.New("projection parent is not an object")
 	}
+	if _, collision := object[destination]; collision {
+		return fmt.Errorf("projection destination %s collides", destination)
+	}
 	value, present := object[source]
 	if !present {
 		return nil
-	}
-	if _, collision := object[destination]; collision {
-		return fmt.Errorf("projection destination %s collides", destination)
 	}
 	delete(object, source)
 	object[destination] = value

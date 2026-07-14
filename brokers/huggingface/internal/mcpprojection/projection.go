@@ -37,6 +37,9 @@ func ArgumentsToCanonical(descriptor capability.Descriptor, raw json.RawMessage)
 }
 
 func AttrsToCanonical(descriptor capability.Descriptor, value map[string]any) (map[string]any, error) {
+	if value == nil {
+		value = map[string]any{}
+	}
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return nil, err

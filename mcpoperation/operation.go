@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -121,12 +122,15 @@ func resolveRequestID(value string, entropy io.Reader) (string, error) {
 }
 
 func Project(operation agentv1.Operation, projector ResultProjector) (Operation, error) {
-	projected := projectSummary(agentv1.OperationSummary{
+	projected, err := projectSummary(agentv1.OperationSummary{
 		APIVersion: operation.APIVersion, ID: operation.ID, Broker: operation.Broker, ClientID: operation.ClientID,
 		IdempotencyKey: operation.IdempotencyKey, Operation: operation.Operation, State: operation.State,
 		Revision: operation.Revision, CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt,
 		TerminalAt: operation.TerminalAt, Presentation: operation.Presentation,
 	})
+	if err != nil {
+		return Operation{}, err
+	}
 	if len(operation.Result) > 0 {
 		if projector == nil {
 			return Operation{}, errors.New("MCP result projector is required")
@@ -143,20 +147,23 @@ func Project(operation agentv1.Operation, projector ResultProjector) (Operation,
 	return projected, nil
 }
 
-func projectSummary(operation agentv1.OperationSummary) Operation {
+func projectSummary(operation agentv1.OperationSummary) (Operation, error) {
+	if !requestIDPattern.MatchString(operation.IdempotencyKey) {
+		return Operation{}, errors.New("operation request_id is invalid")
+	}
 	return Operation{
 		APIVersion: OperationAPIVersion, ID: operation.ID, RequestID: operation.IdempotencyKey,
 		Operation: operation.Operation, State: operation.State, Revision: operation.Revision,
 		CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt, TerminalAt: operation.TerminalAt,
 		Presentation: Presentation{Title: operation.Presentation.Title, Summary: operation.Presentation.Summary},
-	}
+	}, nil
 }
 
 func Get(ctx context.Context, client Client, input GetInput, projector ResultProjector) (Operation, error) {
 	if strings.TrimSpace(input.OperationID) == "" || len(input.OperationID) > 128 {
 		return Operation{}, errors.New("operation_id is invalid")
 	}
-	operation, err := client.Get(ctx, input.OperationID)
+	operation, err := client.Get(ctx, strings.TrimSpace(input.OperationID))
 	if err != nil {
 		return Operation{}, err
 	}
@@ -216,7 +223,7 @@ func List(ctx context.Context, client Client, input ListInput) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	return projectPage(page), nil
+	return projectPage(page)
 }
 
 func listParameters(input ListInput) (agentv1.ListOptions, error) {
@@ -244,12 +251,16 @@ func validListParameters(requestID, cursor string, limit int) bool {
 	return limit >= 1 && limit <= MaxListLimit
 }
 
-func projectPage(page agentv1.OperationPage) Page {
+func projectPage(page agentv1.OperationPage) (Page, error) {
 	result := Page{APIVersion: PageAPIVersion, Operations: make([]Operation, 0, len(page.Operations)), NextCursor: page.NextCursor}
 	for _, operation := range page.Operations {
-		result.Operations = append(result.Operations, projectSummary(operation))
+		projected, err := projectSummary(operation)
+		if err != nil {
+			return Page{}, err
+		}
+		result.Operations = append(result.Operations, projected)
 	}
-	return result
+	return result, nil
 }
 
 // Conflict converts Agent V1 idempotency conflicts into the bounded MCP
@@ -261,9 +272,13 @@ func Conflict(ctx context.Context, client Client, requestID string, cause error)
 	}
 	page, err := client.List(ctx, agentv1.ListOptions{IdempotencyKey: requestID, Limit: 1})
 	if err != nil || len(page.Operations) != 1 {
-		return &RequestIDConflictError{}
+		return fmt.Errorf("could not recover request_id conflict: %w", cause)
 	}
 	existing := page.Operations[0]
+	if !requestIDPattern.MatchString(existing.IdempotencyKey) || existing.ID == "" || existing.Operation == "" ||
+		existing.Revision < 1 || !existing.State.Valid() {
+		return fmt.Errorf("could not recover request_id conflict: %w", cause)
+	}
 	return &RequestIDConflictError{Existing: ConflictExisting{
 		ID: existing.ID, RequestID: existing.IdempotencyKey, Operation: existing.Operation,
 		State: existing.State, Revision: existing.Revision,

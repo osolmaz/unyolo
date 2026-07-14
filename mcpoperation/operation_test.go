@@ -20,9 +20,11 @@ type fakeClient struct {
 	listErr   error
 	waitErr   error
 	wait      func(context.Context, agentv1.Operation) (agentv1.Operation, error)
+	getID     string
 }
 
-func (f *fakeClient) Get(context.Context, string) (agentv1.Operation, error) {
+func (f *fakeClient) Get(_ context.Context, id string) (agentv1.Operation, error) {
+	f.getID = id
 	return f.operation, f.getErr
 }
 func (f *fakeClient) List(context.Context, agentv1.ListOptions) (agentv1.OperationPage, error) {
@@ -71,6 +73,9 @@ func TestProjectGetWaitAndList(t *testing.T) {
 	if err != nil || got.RequestID != "req" || !bytes.Contains(got.Result, []byte("document_name")) {
 		t.Fatalf("get = %+v, %v", got, err)
 	}
+	if _, err := Get(t.Context(), client, GetInput{OperationID: " op "}, project); err != nil || client.getID != "op" {
+		t.Fatalf("trimmed get ID = %q, %v", client.getID, err)
+	}
 	zero := 0
 	got, err = Wait(t.Context(), client, WaitInput{OperationID: "op", TimeoutSeconds: &zero}, project)
 	if err != nil || got.State != agentv1.StateSucceeded {
@@ -96,6 +101,24 @@ func TestConflictProjection(t *testing.T) {
 	original := errors.New("other")
 	if !errors.Is(Conflict(t.Context(), client, "req", original), original) {
 		t.Fatal("unrelated error changed")
+	}
+	conflict := &agentclient.Error{Status: 409, Code: "idempotency_conflict", Message: "conflict"}
+	client.page = agentv1.OperationPage{}
+	if value := ErrorValue(Conflict(t.Context(), client, "req", conflict)); value["code"] != nil || value["existing"] != nil {
+		t.Fatalf("incomplete conflict was structured: %#v", value)
+	}
+}
+
+func TestProjectionRejectsInvalidLegacyRequestIDs(t *testing.T) {
+	operation := agentv1.Operation{ID: "op", IdempotencyKey: "bad value", Operation: "repo.read", State: agentv1.StatePending, Revision: 1}
+	if _, err := Project(operation, nil); err == nil {
+		t.Fatal("invalid operation request ID accepted")
+	}
+	client := &fakeClient{page: agentv1.OperationPage{Operations: []agentv1.OperationSummary{{
+		ID: "op", IdempotencyKey: "bad value", Operation: "repo.read", State: agentv1.StatePending, Revision: 1,
+	}}}}
+	if _, err := List(t.Context(), client, ListInput{}); err == nil {
+		t.Fatal("invalid page request ID accepted")
 	}
 }
 

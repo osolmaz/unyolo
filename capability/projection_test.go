@@ -100,6 +100,23 @@ func TestProjectionSchemaAndJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestProjectionRejectsDestinationNamesAtInputBoundary(t *testing.T) {
+	projection := MustProjection(FieldProjection{Canonical: "/key", MCP: "/variable_name"})
+	for _, raw := range []string{
+		`{"key":"MODE"}`,
+		`{"key":"MODE","variable_name":"MODE"}`,
+	} {
+		if _, err := projection.ToCanonical(json.RawMessage(raw)); err == nil {
+			t.Fatalf("canonical destination accepted: %s", raw)
+		}
+	}
+
+	arrayProjection := MustProjection(FieldProjection{Canonical: "/entries/*/key", MCP: "/entries/*/variable_name"})
+	if _, err := arrayProjection.ToCanonical(json.RawMessage(`{"entries":[{"key":"MODE"}]}`)); err == nil {
+		t.Fatal("canonical wildcard destination accepted")
+	}
+}
+
 func TestProjectionRejectsInvalidMappings(t *testing.T) {
 	for _, fields := range [][]FieldProjection{
 		{{Canonical: "key", MCP: "/name"}},
