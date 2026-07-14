@@ -39,3 +39,14 @@ func executePlan(value plan.Plan) error {
 	argv := append([]string{value.Executable}, value.Arguments...)
 	return syscall.Exec(value.Executable, argv, append([]string(nil), value.Environment...))
 }
+
+func validateExecutableDescriptor(fd int) error {
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		return errors.New("inspect executable descriptor")
+	}
+	if stat.Uid != 0 || stat.Mode&syscall.S_IFMT != syscall.S_IFREG || stat.Mode&0o022 != 0 || stat.Mode&0o111 == 0 {
+		return errors.New("executable descriptor is not trusted")
+	}
+	return nil
+}
