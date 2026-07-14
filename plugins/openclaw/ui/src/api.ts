@@ -9,6 +9,10 @@ import type {
   Snapshot,
   SnapshotEvent,
 } from "../../src/types.js";
+import {
+  BROWSER_SESSION_HEADER,
+  validBrowserSession,
+} from "../../src/browser-session.js";
 
 type DirectBootstrap = {
   version: 1;
@@ -103,10 +107,7 @@ export class BrokerKitUiApi {
       ...init,
       credentials: "omit",
       cache: "no-store",
-      headers: {
-        ...init.headers,
-        authorization: `Bearer ${auth.token}`,
-      },
+      headers: browserSessionHeaders(init.headers, auth.token),
     });
     if (!response.ok) throw await safeError(response);
     return JSON.parse(
@@ -153,8 +154,7 @@ export class BrokerKitUiApi {
       keys !== "access,api_version,expires_at,renewal_transport,token" ||
       value.api_version !== "brokerkit.io/delegated-web/v1" ||
       typeof value.token !== "string" ||
-      value.token.length < 32 ||
-      value.token.length > 4096 ||
+      !validBrowserSession(value.token) ||
       (value.access !== "read" && value.access !== "decide") ||
       (value.renewal_transport !== "direct" &&
         value.renewal_transport !== "parent") ||
@@ -185,7 +185,7 @@ async function delegatedSessionPayload(
       method: "POST",
       credentials: "omit",
       cache: "no-store",
-      headers: { authorization: `Bearer ${current.token}` },
+      headers: browserSessionHeaders(undefined, current.token),
     });
     if (!response.ok) throw await safeError(response);
     return JSON.parse(await boundedResponseText(response, 16_384)) as Record<
@@ -194,20 +194,21 @@ async function delegatedSessionPayload(
     >;
   }
   if (current) return delegatedSessionFromParent();
-  if (!framed()) {
-    const response = await fetch(`${basePath}/session`, {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-      headers: { accept: "application/json" },
-    });
-    if (!response.ok) throw await safeError(response);
-    return JSON.parse(await boundedResponseText(response, 16_384)) as Record<
-      string,
-      unknown
-    >;
-  }
+  if (!framed()) throw new Error("Approval authorization expired");
   return delegatedSessionFromParent();
+}
+
+export function browserSessionHeaders(
+  input: HeadersInit | undefined,
+  session: string,
+): Headers {
+  if (!validBrowserSession(session))
+    throw new Error("Approval authorization expired");
+  const headers = new Headers(input);
+  headers.delete("authorization");
+  headers.delete(BROWSER_SESSION_HEADER);
+  headers.set(BROWSER_SESSION_HEADER, session);
+  return headers;
 }
 
 export function takeDelegatedTopLevelLauncher(): boolean {
@@ -311,6 +312,7 @@ export function parseUiBootstrap(hash: string): UiBootstrap {
     value.mode === "direct" &&
     keys === "capability,mode,version" &&
     typeof value.capability === "string" &&
+    validBrowserSession(value.capability) &&
     value.capability.length >= 32 &&
     value.capability.length <= 256
   ) {

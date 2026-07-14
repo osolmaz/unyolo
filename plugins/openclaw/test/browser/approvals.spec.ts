@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { BROWSER_SESSION_HEADER } from "../../src/browser-session.js";
 
 const snapshot = {
   sources: [
@@ -89,9 +90,10 @@ test.beforeEach(async ({ page }) => {
   await page.route(
     "**/plugins/brokerkit/api/v1/requests/*/approve",
     async (route) => {
-      expect(route.request().headers().authorization).toBe(
-        "Bearer test-capability-that-is-long-enough-1234",
-      );
+      expect(
+        route.request().headers()[BROWSER_SESSION_HEADER.toLowerCase()],
+      ).toBe("test-capability-that-is-long-enough-1234");
+      expect(route.request().headers().authorization).toBeUndefined();
       expect(route.request().postDataJSON()).toEqual({
         expectedRevision: 1,
         constraints: { durationSeconds: 300, maxUses: 1 },
@@ -206,19 +208,9 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   page,
 }) => {
   const token = "delegated-decision-token-that-is-long-enough";
-  await page.route("**/trusted-host/api/brokerkit/session", (route) =>
-    route.fulfill({
-      json: {
-        api_version: "brokerkit.io/delegated-web/v1",
-        token,
-        expires_at: new Date(Date.now() + 60_000).toISOString(),
-        access: "decide",
-        renewal_transport: "direct",
-      },
-    }),
-  );
+  await injectDelegatedSession(page, delegatedSession(token, "decide"));
   await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
-    expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+    expectBrowserSession(route.request().headers(), token);
     await route.fulfill({ json: snapshot });
   });
   await page.goto(
@@ -226,6 +218,201 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   );
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page).not.toHaveURL(/#/);
+});
+
+test("crosses an identity-aware delegated edge and recovers live updates", async ({
+  context,
+  page,
+}) => {
+  const initialToken = "initial-delegated-session-that-is-long-enough";
+  const renewedToken = "renewed-delegated-session-that-is-long-enough";
+  const initialSession = {
+    ...delegatedSession(initialToken, "decide"),
+    expires_at: new Date(Date.now() + 5_000).toISOString(),
+  };
+  const encodedSession = bootstrap(initialSession);
+  const observedUrls: string[] = [];
+  const observedAuthorization: string[] = [];
+  const browserLogs: string[] = [];
+  let snapshotCalls = 0;
+  let eventCalls = 0;
+  let renewalCalls = 0;
+  let decisionReceived = false;
+  const streamed = structuredClone(snapshot);
+  const added = structuredClone(pendingRequest);
+  added.handle = "streamed-pending-request-1";
+  added.request.id = "streamed-request-1";
+  added.request.presentation.title = "Streamed protected request";
+  streamed.cursor = "browser-epoch.2";
+  streamed.requests.push(added);
+
+  page.on("request", (request) => observedUrls.push(request.url()));
+  page.on("console", (message) => browserLogs.push(message.text()));
+  await page.route("**/plugins/brokerkit/ui/**", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        "access-control-allow-private-network": "true",
+        "content-security-policy": delegatedSandboxPolicy,
+        "cross-origin-resource-policy": "cross-origin",
+      },
+    });
+  });
+  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      "<head>",
+      `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+    );
+    await route.fulfill({
+      response,
+      body,
+      headers: {
+        ...response.headers(),
+        "access-control-allow-origin": "null",
+        "access-control-allow-private-network": "true",
+        "content-security-policy": delegatedSandboxPolicy,
+      },
+    });
+  });
+  await page.route("**/trusted-host/api/brokerkit/**", async (route) => {
+    const request = route.request();
+    const headers = request.headers();
+    if (headers.authorization) {
+      observedAuthorization.push(headers.authorization);
+      await route.fulfill({ status: 404, body: "reserved by identity edge" });
+      return;
+    }
+    if (request.method() === "OPTIONS") {
+      expect(headers.origin).toBe("null");
+      expect(headers["access-control-request-headers"]).toContain(
+        BROWSER_SESSION_HEADER.toLowerCase(),
+      );
+      await route.fulfill({
+        status: 204,
+        headers: delegatedCorsHeaders,
+      });
+      return;
+    }
+    expect(headers.origin).toBe("null");
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/session")) {
+      expectBrowserSession(headers, initialToken);
+      renewalCalls += 1;
+      await route.fulfill({
+        json: delegatedSession(renewedToken, "decide"),
+        headers: delegatedCorsHeaders,
+      });
+      return;
+    }
+    expectBrowserSession(
+      headers,
+      snapshotCalls === 0 ? initialToken : renewedToken,
+    );
+    if (path.endsWith("/snapshot")) {
+      snapshotCalls += 1;
+      await route.fulfill({
+        json: snapshotCalls === 1 ? snapshot : streamed,
+        headers: delegatedCorsHeaders,
+      });
+      return;
+    }
+    if (path.endsWith("/events")) {
+      eventCalls += 1;
+      if (eventCalls > 1)
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.fulfill({
+        json: {
+          api_version: "brokerkit.io/operator-ui/v1",
+          cursor: eventCalls === 1 ? streamed.cursor : snapshot.cursor,
+          changed: eventCalls === 1,
+        },
+        headers: delegatedCorsHeaders,
+      });
+      return;
+    }
+    if (path.endsWith("/deny")) {
+      decisionReceived = true;
+      await route.fulfill({
+        json: {
+          ...pendingRequest,
+          request: { ...pendingRequest.request, status: "denied" },
+        },
+        headers: delegatedCorsHeaders,
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, headers: delegatedCorsHeaders });
+  });
+
+  await page.goto(
+    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
+  );
+  await expect(page.getByText("Streamed protected request")).toBeVisible();
+  await page.getByRole("button", { name: "Deny" }).first().click();
+  await page
+    .getByRole("dialog", { name: "Deny request" })
+    .getByRole("button", { name: "Deny" })
+    .click();
+  await expect.poll(() => decisionReceived).toBe(true);
+  expect(renewalCalls).toBe(1);
+  expect(observedAuthorization).toEqual([]);
+  expect(observedUrls.every((url) => !url.includes(initialToken))).toBe(true);
+  expect(observedUrls.every((url) => !url.includes(renewedToken))).toBe(true);
+  expect(browserLogs.join("\n")).not.toContain(initialToken);
+  expect(browserLogs.join("\n")).not.toContain(renewedToken);
+  expect(
+    await page.locator('meta[name="brokerkit-delegated-session"]').count(),
+  ).toBe(0);
+  expect(await page.content()).not.toContain(initialToken);
+  expect(await page.content()).not.toContain(renewedToken);
+  expect(
+    (await context.cookies()).every(
+      (cookie) =>
+        !cookie.value.includes(initialToken) &&
+        !cookie.value.includes(renewedToken),
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      (tokens) => {
+        const stored: string[] = [];
+        for (const name of ["localStorage", "sessionStorage"] as const) {
+          try {
+            const storage = globalThis[name];
+            for (let index = 0; index < storage.length; index += 1) {
+              const key = storage.key(index);
+              if (key) stored.push(key, storage.getItem(key) ?? "");
+            }
+          } catch {
+            // Opaque sandbox origins intentionally deny storage access.
+          }
+        }
+        return stored.every(
+          (value) => !tokens.some((token) => value.includes(token)),
+        );
+      },
+      [initialToken, renewedToken],
+    ),
+  ).toBe(true);
+});
+
+test("keeps a delegated popover read-only", async ({ page }) => {
+  const token = "delegated-read-session-that-is-long-enough";
+  await injectDelegatedSession(page, delegatedSession(token, "read"));
+  await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
+    expectBrowserSession(route.request().headers(), token);
+    await route.fulfill({ json: snapshot });
+  });
+  await page.goto(
+    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
+  );
+  const reviewButtons = page.getByRole("button", { name: "Review securely" });
+  await expect(reviewButtons).toHaveCount(2);
+  await expect(reviewButtons.first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve" })).not.toBeVisible();
 });
 
 test("reconciles cursor changes without resetting an open decision", async ({
@@ -350,7 +537,7 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
     });
   });
   await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
-    expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+    expectBrowserSession(route.request().headers(), token);
     await route.fulfill({
       json: snapshot,
       headers: { "access-control-allow-origin": "null" },
@@ -360,7 +547,7 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
   await page.route(
     "**/trusted-host/api/brokerkit/requests/*/deny",
     async (route) => {
-      expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+      expectBrowserSession(route.request().headers(), token);
       expect(route.request().postDataJSON()).toEqual({ expectedRevision: 1 });
       decisionReceived = true;
       await route.fulfill({
@@ -442,3 +629,47 @@ test("keeps framed delegated UI authority-free until top-level navigation", asyn
 function bootstrap(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
+
+function delegatedSession(token: string, access: "read" | "decide") {
+  return {
+    api_version: "brokerkit.io/delegated-web/v1",
+    token,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+    access,
+    renewal_transport: "direct",
+  };
+}
+
+async function injectDelegatedSession(
+  page: Page,
+  session: ReturnType<typeof delegatedSession>,
+): Promise<void> {
+  const encodedSession = bootstrap(session);
+  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      "<head>",
+      `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+    );
+    await route.fulfill({ response, body });
+  });
+}
+
+function expectBrowserSession(
+  headers: Record<string, string>,
+  token: string,
+): void {
+  expect(headers[BROWSER_SESSION_HEADER.toLowerCase()]).toBe(token);
+  expect(headers.authorization).toBeUndefined();
+}
+
+const delegatedCorsHeaders = {
+  "access-control-allow-origin": "null",
+  "access-control-allow-headers": `${BROWSER_SESSION_HEADER}, Content-Type`,
+  "access-control-allow-methods": "GET, POST",
+  "cache-control": "no-store",
+  vary: "Origin",
+};
+
+const delegatedSandboxPolicy =
+  "sandbox allow-scripts; default-src 'self'; script-src 'self' http://127.0.0.1:4179; style-src 'self' 'unsafe-inline' http://127.0.0.1:4179; connect-src http://127.0.0.1:4179; img-src 'self' data:";

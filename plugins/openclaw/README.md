@@ -141,7 +141,7 @@ closed payload:
 ```json
 {
   "api_version": "brokerkit.io/delegated-web/v1",
-  "token": "opaque-short-lived-bearer-token",
+  "token": "opaque-short-lived-browser-session",
   "expires_at": "2026-07-12T13:30:00Z",
   "access": "read",
   "renewal_transport": "direct"
@@ -150,9 +150,50 @@ closed payload:
 
 `access` is `read` or `decide`; the host enforces it on every endpoint.
 `renewal_transport` is `direct` or `parent`. Direct renewal posts to
-`<basePath>/session` with the current token as a bearer credential and omits
+`<basePath>/session` with the current token in `BrokerKit-Session` and omits
 cookies. Parent renewal uses the nonce-bound bridge below. The host preserves
 the token's access when it returns a replacement session.
+
+### Browser session transport
+
+Every direct and delegated-web browser API call carries its raw session in one
+fixed HTTP field:
+
+```http
+GET /trusted-host/api/brokerkit/snapshot HTTP/1.1
+Origin: null
+BrokerKit-Session: eyJ2ZXJzaW9uIjoxLCJhdWRpZW5jZSI6Ii4uLiJ9.signature
+Accept: application/json
+```
+
+`BrokerKit-Session` has no authentication-scheme prefix. The field is
+case-insensitive under HTTP rules, but hosts and generated examples use this
+spelling. A host must reject empty, repeated, combined, malformed, or
+oversized values; the maximum token size is 4096 bytes. The same field protects
+`POST /session`, `GET /snapshot`, `GET /events`, request detail, approval,
+denial, and revocation. Direct-mode capabilities use it on
+`/plugins/brokerkit/api/v1` as well.
+
+Standard `Authorization` is reserved for the hosting edge and for
+server-to-server Operator V1 clients. Browser clients never use it. They also
+never put a delegated session in cookies, query parameters, local storage, or
+session storage. Tokens must not be logged, traced, reflected in errors, copied
+into an Operator V1 request, or persisted by the host or UI.
+
+For `renewal_transport: "direct"`, the UI posts the current session to
+`<basePath>/session` through `BrokerKit-Session`, with `credentials: "omit"`
+and `cache: "no-store"`. For `renewal_transport: "parent"`, the nonce-bound
+bridge below returns the replacement session in memory. The initial session is
+injected through the one-shot meta element or supplied through that bridge;
+there is no cookie-authenticated browser fallback.
+
+The packaged UI has an opaque origin under the required scripts-only sandbox.
+A delegated host must therefore accept only the expected `Origin: null`, return
+`Access-Control-Allow-Origin: null`, allow `BrokerKit-Session` and
+`Content-Type` in preflight responses, allow only its fixed route methods, and
+set `Vary: Origin` plus `Cache-Control: no-store`. It must not return
+`Access-Control-Allow-Credentials: true`; delegated API requests deliberately
+omit cookies.
 
 When the parent application is trusted, a sandboxed tab that cannot call the
 delegated session endpoint directly may instead use this host-neutral bridge:

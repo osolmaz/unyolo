@@ -57,6 +57,7 @@ export function useBrokerSnapshot(api: BrokerKitUiApi) {
           wait.current = controller;
           const event = await api.events(available.cursor, controller.signal);
           if (wait.current === controller) wait.current = undefined;
+          setError("");
           if (event.changed && !stopped) await reconcile();
           retryMs = 250;
         } catch (value) {
@@ -72,7 +73,12 @@ export function useBrokerSnapshot(api: BrokerKitUiApi) {
             }
           }
           setError(publicError(value));
-          await delay(retryMs, lifecycle.signal);
+          try {
+            await delay(retryMs, lifecycle.signal);
+          } catch (delayError) {
+            if (stopped || aborted(delayError)) return;
+            throw delayError;
+          }
           retryMs = Math.min(retryMs * 2, 30_000);
         }
       }

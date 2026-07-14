@@ -16,6 +16,10 @@ describe("BrokerClient", () => {
         res.statusCode = 401;
         return res.end();
       }
+      if (req.headers["brokerkit-session"] !== undefined) {
+        res.statusCode = 400;
+        return res.end();
+      }
       res.setHeader("content-type", "application/json");
       if (req.url === "/.well-known/brokerkit-operator")
         return res.end('{"api_version":"brokerkit.io/operator/v1"}');

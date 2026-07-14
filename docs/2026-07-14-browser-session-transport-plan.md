@@ -2,7 +2,7 @@
 
 Date: 2026-07-14
 
-Status: ready to implement
+Status: implemented
 
 ## Contract At A Glance
 

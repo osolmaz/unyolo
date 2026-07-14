@@ -1,10 +1,11 @@
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHttpHandler } from "./http.js";
 import { BrokerError } from "./client.js";
+import { BROWSER_SESSION_HEADER } from "./browser-session.js";
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 const capability = "c".repeat(43);
@@ -24,7 +25,18 @@ describe("OpenClaw HTTP boundary", () => {
       decide,
     });
     expect(
-      (await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`)).status,
+      (
+        await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+          headers: { origin: "null" },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+          headers: { authorization: `Bearer ${capability}`, origin: "null" },
+        })
+      ).status,
     ).toBe(401);
     expect(
       (
@@ -57,6 +69,68 @@ describe("OpenClaw HTTP boundary", () => {
     );
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("accepts one bounded browser session field and rejects ambiguous values", async () => {
+    const base = await serve({ snapshot, decide: vi.fn() });
+    expect((await apiFetch(base, "/snapshot")).status).toBe(200);
+    for (const value of [
+      "",
+      "short",
+      `Bearer ${capability}`,
+      `${capability},${capability}`,
+      "x".repeat(4097),
+      `${capability} invalid`,
+    ]) {
+      expect(
+        (
+          await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+            headers: { [BROWSER_SESSION_HEADER]: value, origin: "null" },
+          })
+        ).status,
+      ).toBe(401);
+    }
+    expect([400, 401]).toContain(
+      await rawStatus(base, [
+        BROWSER_SESSION_HEADER,
+        capability,
+        BROWSER_SESSION_HEADER,
+        capability,
+        "Origin",
+        "null",
+      ]),
+    );
+  });
+
+  it("answers strict opaque-origin preflights without cookies", async () => {
+    const base = await serve({ snapshot, decide: vi.fn() });
+    const response = await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "null",
+        "access-control-request-method": "GET",
+        "access-control-request-headers": BROWSER_SESSION_HEADER,
+      },
+    });
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("null");
+    expect(response.headers.get("access-control-allow-headers")).toContain(
+      BROWSER_SESSION_HEADER,
+    );
+    expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(response.headers.get("vary")).toBe("Origin");
+    expect(
+      (
+        await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+          method: "OPTIONS",
+          headers: {
+            origin: "null",
+            "access-control-request-method": "DELETE",
+            "access-control-request-headers": BROWSER_SESSION_HEADER,
+          },
+        })
+      ).status,
+    ).toBe(403);
   });
 
   it("rejects malformed decision requests without leaking diagnostics", async () => {
@@ -227,10 +301,31 @@ function apiFetch(base: string, route: string, init: RequestInit = {}) {
   return fetch(`${base}/plugins/brokerkit/api/v1${route}`, {
     ...init,
     headers: {
-      authorization: `Bearer ${capability}`,
+      [BROWSER_SESSION_HEADER]: capability,
       origin: "null",
       ...init.headers,
     },
+  });
+}
+
+function rawStatus(base: string, rawHeaders: string[]): Promise<number> {
+  const url = new URL(`${base}/plugins/brokerkit/api/v1/snapshot`);
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: "GET",
+        headers: rawHeaders,
+      },
+      (response) => {
+        response.resume();
+        response.once("end", () => resolve(response.statusCode ?? 0));
+      },
+    );
+    request.once("error", reject);
+    request.end();
   });
 }
 
