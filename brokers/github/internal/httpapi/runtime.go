@@ -43,8 +43,8 @@ func (s *Server) Start(ctx context.Context) {
 	s.startOperationWorker(ctx)
 	s.sealedPayloads.Start(s.lifecycleContext)
 	s.startStreamSweeper(s.lifecycleContext)
-	s.startTelegram(ctx)
-	s.startNotificationSweeper(ctx)
+	s.startTelegram(s.lifecycleContext)
+	s.startNotificationSweeper(s.lifecycleContext)
 }
 
 func (s *Server) startStreamSweeper(ctx context.Context) {
@@ -67,13 +67,21 @@ func (s *Server) startStreamSweeper(ctx context.Context) {
 
 func (s *Server) startTelegram(ctx context.Context) {
 	if s.telegram != nil {
-		go s.telegram.Poll(ctx, s.control.HandleDecision)
+		s.backgroundWorkers.Add(1)
+		go func() {
+			defer s.backgroundWorkers.Done()
+			s.telegram.Poll(ctx, s.control.HandleDecision)
+		}()
 	}
 }
 
 func (s *Server) startNotificationSweeper(ctx context.Context) {
 	if s.notifier != nil {
-		go s.runGrantNotificationSweeper(ctx)
+		s.backgroundWorkers.Add(1)
+		go func() {
+			defer s.backgroundWorkers.Done()
+			s.runGrantNotificationSweeper(ctx)
+		}()
 	}
 }
 

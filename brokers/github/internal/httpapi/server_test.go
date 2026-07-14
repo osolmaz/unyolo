@@ -925,6 +925,22 @@ func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestServerCloseStopsOwnedWorkersWithLiveStartContext(t *testing.T) {
+	server := newTestServer(t)
+	server.notifier = &captureNotifier{}
+	server.Start(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not join lifecycle-owned workers")
+	}
+}
+
 func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)

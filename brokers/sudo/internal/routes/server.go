@@ -141,7 +141,11 @@ func (s *Server) Close() error {
 func (s *Server) Start(ctx context.Context) {
 	s.startOperationWorker(ctx)
 	if s.poller != nil {
-		go s.poller.Poll(ctx, s.control.HandleDecision)
+		s.backgroundWorkers.Add(1)
+		go func() {
+			defer s.backgroundWorkers.Done()
+			s.poller.Poll(s.lifecycleContext, s.control.HandleDecision)
+		}()
 	}
 }
 

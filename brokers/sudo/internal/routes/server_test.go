@@ -438,6 +438,34 @@ func TestServerStartPollsDecisions(t *testing.T) {
 	cancel()
 }
 
+func TestServerCloseStopsPollerWithLiveStartContext(t *testing.T) {
+	server, _, closeServer := testServer(t)
+	defer closeServer()
+	poller := &fakePoller{called: make(chan struct{}, 1), stopped: make(chan struct{})}
+	server.poller = poller
+	server.Start(context.Background())
+	select {
+	case <-poller.called:
+	case <-time.After(time.Second):
+		t.Fatal("decision poller did not start")
+	}
+	done := make(chan error, 1)
+	go func() { done <- server.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not join the decision poller")
+	}
+	select {
+	case <-poller.stopped:
+	default:
+		t.Fatal("decision poller remained active after Close")
+	}
+}
+
 func approvedOperation(t *testing.T, server *Server, key string) (agentv1.Operation, grants.Grant) {
 	t.Helper()
 	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission(key))
@@ -564,9 +592,15 @@ func (errorNotifier) SendApproval(context.Context, notify.ApprovalMessage) (noti
 }
 func (errorNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error { return nil }
 
-type fakePoller struct{ called chan struct{} }
+type fakePoller struct {
+	called  chan struct{}
+	stopped chan struct{}
+}
 
 func (p *fakePoller) Poll(ctx context.Context, _ func(context.Context, notify.Decision) notify.DecisionResult) {
 	p.called <- struct{}{}
 	<-ctx.Done()
+	if p.stopped != nil {
+		close(p.stopped)
+	}
 }
