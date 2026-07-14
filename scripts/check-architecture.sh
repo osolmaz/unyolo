@@ -4,6 +4,21 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
+if grep -R -n -E 'uses:[[:space:]]+[^[:space:]]+@[^0-9a-f]|uses:[[:space:]]+[^[:space:]]+@[0-9a-f]{1,39}([^0-9a-f]|$)' .github/workflows 2>/dev/null; then
+	echo 'GitHub Actions must be pinned to full commit SHAs' >&2
+	exit 1
+fi
+
+if grep -R -n -E 'npm@latest|node-version:[[:space:]]+"?[0-9]+"?[[:space:]]*$' .github/workflows 2>/dev/null; then
+	echo 'release and CI runtimes must use exact tool versions' >&2
+	exit 1
+fi
+
+if grep -R -n -E '(^|[[:space:]])sudo([[:space:]]|$)' installer/*.sh 2>/dev/null; then
+	echo 'convenience installers must never invoke sudo' >&2
+	exit 1
+fi
+
 if find . -path './brokers' -prune -o -path './.git' -prune -o -name '*.go' -type f -print0 |
   xargs -0 grep -n 'github.com/osolmaz/brokerkit/brokers/'
 then

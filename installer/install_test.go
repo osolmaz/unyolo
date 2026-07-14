@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -112,6 +113,30 @@ func TestInstallerVerifiesInstalledBinaryInsteadOfEarlierPATHEntry(t *testing.T)
 	output, err := command.CombinedOutput()
 	if err != nil || !strings.Contains(string(output), "installed-v1.2.3") || strings.Contains(string(output), "stale-path-version") {
 		t.Fatalf("installer err=%v output=%s", err, output)
+	}
+}
+
+func TestInstallerNeverInvokesSudoForUnwritableDestination(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAsset(t, filepath.Join(releaseDir, asset), "test-broker", "#!/bin/sh\necho v1.2.3\n")
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	marker := filepath.Join(t.TempDir(), "sudo-called")
+	binDir := t.TempDir()
+	fakeSudo := filepath.Join(binDir, "sudo")
+	if err := os.WriteFile(fakeSudo, []byte("#!/bin/sh\ntouch '"+marker+"'\nexit 99\n"), 0o755); err != nil { // #nosec G306 -- executable fixture requires execute bits.
+		t.Fatal(err)
+	}
+	command := installerCommand(t, "/proc/brokerkit-installer-test", server.URL, "v1.2.3")
+	command.Env = append(command.Env, "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := command.CombinedOutput()
+	if err == nil || strings.Contains(string(output), "sudo") {
+		t.Fatalf("unwritable install err=%v output=%s", err, output)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sudo marker error = %v", err)
 	}
 }
 

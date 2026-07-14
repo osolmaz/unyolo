@@ -521,6 +521,16 @@ tools. Remove `npm@latest` from the release path. Use the same supported Node
 major in CI, package tests, and release unless a declared matrix proves more
 than one major. Add package `engines` metadata matching that matrix.
 
+Implemented on the production-readiness branch: every workflow action is pinned
+to a full commit SHA, Go and pnpm remain exact, CI and npm publication use exact
+Node 24.18.0, package engines require that Node 24 line, and the release uses
+Node's bundled npm 11.16.0 instead of installing `npm@latest`. The architecture
+gate rejects mutable action refs, major-only Node selectors, and `npm@latest`.
+The canonical installer now defaults to `$HOME/.local/bin`, never invokes
+`sudo`, and fails with explicit privileged-shell guidance for an unwritable
+operator-selected destination. Immutable bootstrap/provenance verification and
+post-publication artifact verification remain to finish this section.
+
 Build release artifacts from a clean checkout, verify generated artifacts and
 module integrity, produce SBOMs and provenance, smoke-test the packed artifacts,
 and verify the published artifact after release.

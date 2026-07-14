@@ -109,14 +109,6 @@ choose_install_dir() {
     echo "$INSTALL_DIR"
     return
   fi
-  if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
-    echo /usr/local/bin
-    return
-  fi
-  if command -v sudo >/dev/null 2>&1; then
-    echo /usr/local/bin
-    return
-  fi
   echo "$HOME/.local/bin"
 }
 
@@ -146,17 +138,12 @@ install_binary() {
   source_path="$1"
   dest_dir="$2"
   binary_name="$3"
-  mkdir -p "$dest_dir" 2>/dev/null || true
-  if [ -w "$dest_dir" ]; then
-    install -m 0755 "$source_path" "$dest_dir/${binary_name}"
-    return
-  fi
-  if command -v sudo >/dev/null 2>&1; then
-    sudo install -d -m 0755 "$dest_dir"
-    sudo install -m 0755 "$source_path" "$dest_dir/${binary_name}"
-    return
-  fi
-  fail "cannot write to ${dest_dir}; rerun with INSTALL_DIR set to a writable directory"
+  mkdir -p "$dest_dir" 2>/dev/null ||
+    fail "cannot create ${dest_dir}; choose a writable INSTALL_DIR or rerun from an operator-controlled privileged shell"
+  [ -w "$dest_dir" ] ||
+    fail "cannot write to ${dest_dir}; choose a writable INSTALL_DIR or rerun from an operator-controlled privileged shell"
+  install -m 0755 "$source_path" "$dest_dir/${binary_name}" ||
+    fail "could not install ${binary_name} in ${dest_dir}"
 }
 
 choose_libexec_dir() {
