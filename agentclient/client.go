@@ -129,19 +129,20 @@ func (c *Client) Wait(ctx context.Context, operation agentv1.Operation) (agentv1
 }
 
 func decodeHTTPResponse(response *http.Response, err error) (agentv1.Operation, error) {
-	status, data, err := readResponse(response, err)
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	return decodeResponse(status, data)
+	return decodeAgentResponse(response, err, decodeResponse)
 }
 
 func decodePageResponse(response *http.Response, err error) (agentv1.OperationPage, error) {
-	status, data, err := readResponse(response, err)
+	return decodeAgentResponse(response, err, decodePage)
+}
+
+func decodeAgentResponse[T any](response *http.Response, responseErr error, decode func(int, []byte) (T, error)) (T, error) {
+	var zero T
+	status, data, err := readResponse(response, responseErr)
 	if err != nil {
-		return agentv1.OperationPage{}, err
+		return zero, err
 	}
-	return decodePage(status, data)
+	return decode(status, data)
 }
 
 func readResponse(response *http.Response, err error) (int, []byte, error) {
