@@ -76,7 +76,7 @@ func argumentsSchemaForREST(_ string, path string, operation restOperation, targ
 		parameter = resolveOpenAPIObject(parameter, components, map[string]bool{})
 		location, _ := parameter["in"].(string)
 		parameterName, _ := parameter["name"].(string)
-		if location == "header" || parameterName == "per_page" || parameterName == "page" {
+		if location == "header" {
 			continue
 		}
 		if location == "path" {
@@ -85,7 +85,14 @@ func argumentsSchemaForREST(_ string, path string, operation restOperation, targ
 			}
 		}
 		schema, _ := parameter["schema"].(map[string]any)
-		properties[parameterName] = closeOpenAPISchema(schema, components, map[string]bool{}, 0)
+		closedParameter := closeOpenAPISchema(schema, components, map[string]bool{}, 0)
+		switch parameterName {
+		case "page":
+			closedParameter["minimum"], closedParameter["maximum"] = 1, 10_000
+		case "per_page":
+			closedParameter["minimum"], closedParameter["maximum"] = 1, 100
+		}
+		properties[parameterName] = closedParameter
 		if value, _ := parameter["required"].(bool); value {
 			required = append(required, parameterName)
 		}
@@ -413,7 +420,6 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		}
 		if parameterName == "page" || parameterName == "per_page" {
 			pagination = "link"
-			continue
 		}
 		arguments = append(arguments, parameterBinding{Name: parameterName, In: location})
 	}

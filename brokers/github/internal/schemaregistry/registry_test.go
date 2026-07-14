@@ -67,6 +67,18 @@ func TestSubmissionValidationRejectsRawAndUnknownFields(t *testing.T) {
 	}
 }
 
+func TestPaginatedOperationsExposeBoundedPageControls(t *testing.T) {
+	target := []byte(`{"kind":"user","name":"osolmaz"}`)
+	if err := ValidateSubmission("repo.list_for_authenticated_user", target, []byte(`{"page":2,"per_page":100}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, arguments := range [][]byte{[]byte(`{"page":0}`), []byte(`{"page":10001}`), []byte(`{"per_page":0}`), []byte(`{"per_page":101}`)} {
+		if err := ValidateSubmission("repo.list_for_authenticated_user", target, arguments); err == nil {
+			t.Fatalf("accepted unbounded pagination %s", arguments)
+		}
+	}
+}
+
 func TestSchemaHelpersFailClosed(t *testing.T) {
 	for _, schema := range []any{
 		map[string]any{"$ref": "https://example.invalid/schema"},

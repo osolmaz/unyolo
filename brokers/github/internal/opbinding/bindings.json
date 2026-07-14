@@ -2289,6 +2289,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
         "name": "ref",
         "in": "query"
       },
@@ -2574,6 +2582,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.cache.actions_get_actions_cache_usage_by_repo_for_org.v1",
@@ -4682,6 +4700,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
         "name": "name",
         "in": "query"
       }
@@ -4731,6 +4757,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "after",
         "in": "query"
@@ -4786,6 +4816,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "before",
         "in": "query"
@@ -4923,6 +4957,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.environment.actions_list_environment_secrets.v1",
     "response_schema": "result.environment.actions_list_environment_secrets.v1",
     "response_projection": [
@@ -4972,6 +5016,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.environment.actions_list_environment_variables.v1",
     "response_schema": "result.environment.actions_list_environment_variables.v1",
     "response_projection": [
@@ -5012,6 +5066,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.runner.actions_list_github_hosted_runners_in_group_for_org.v1",
     "response_schema": "result.runner.actions_list_github_hosted_runners_in_group_for_org.v1",
     "response_projection": [
@@ -5049,6 +5113,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.runner.actions_list_hosted_runners_for_org.v1",
@@ -5099,6 +5173,16 @@
       {
         "name": "run_id",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.action_run.actions_list_jobs_for_workflow_run_attempt.v1",
@@ -5153,6 +5237,14 @@
     "argument_parameters": [
       {
         "name": "filter",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -5280,6 +5372,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.actions_list_org_secrets.v1",
     "response_schema": "result.organization.actions_list_org_secrets.v1",
     "response_projection": [
@@ -5317,6 +5419,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.actions_list_org_variables.v1",
@@ -5357,6 +5469,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.runner.actions_list_repo_access_to_self_hosted_runner_group_in_org.v1",
@@ -5403,6 +5525,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.actions_list_repo_organization_secrets.v1",
     "response_schema": "result.organization.actions_list_repo_organization_secrets.v1",
     "response_projection": [
@@ -5445,6 +5577,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.actions_list_repo_organization_variables.v1",
@@ -5491,6 +5633,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.workflow.actions_list_repo_secrets.v1",
     "response_schema": "result.workflow.actions_list_repo_secrets.v1",
     "response_projection": [
@@ -5535,6 +5687,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.workflow.actions_list_repo_variables.v1",
     "response_schema": "result.workflow.actions_list_repo_variables.v1",
     "response_projection": [
@@ -5577,6 +5739,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.workflow.actions_list_repo_workflows.v1",
@@ -5702,6 +5874,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.actions_list_selected_repos_for_org_secret.v1",
     "response_schema": "result.organization.actions_list_selected_repos_for_org_secret.v1",
     "response_projection": [
@@ -5740,6 +5922,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.actions_list_selected_repos_for_org_variable.v1",
@@ -5781,6 +5973,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.actions_list_selected_repositories_enabled_github_actions_organization.v1",
     "response_schema": "result.organization.actions_list_selected_repositories_enabled_github_actions_organization.v1",
     "response_projection": [
@@ -5818,6 +6020,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.runner.actions_list_selected_repositories_self_hosted_runners_organization.v1",
@@ -5860,6 +6072,14 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "visible_to_repository",
         "in": "query"
@@ -5907,6 +6127,14 @@
     "argument_parameters": [
       {
         "name": "name",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -5958,6 +6186,14 @@
       {
         "name": "name",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.runner.actions_list_self_hosted_runners_for_repo.v1",
@@ -5998,6 +6234,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.runner.actions_list_self_hosted_runners_in_group_for_org.v1",
@@ -6050,6 +6296,14 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "name",
         "in": "query"
@@ -6118,6 +6372,14 @@
       },
       {
         "name": "status",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       },
       {
@@ -6201,6 +6463,14 @@
       },
       {
         "name": "status",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       },
       {
@@ -8409,6 +8679,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.notification.activity_list_events_for_authenticated_user.v1",
     "response_schema": "result.notification.activity_list_events_for_authenticated_user.v1",
     "response_projection": [
@@ -8455,6 +8735,14 @@
       {
         "name": "before",
         "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.notification.activity_list_notifications_for_authenticated_user.v1",
@@ -8491,6 +8779,16 @@
       "username",
       "org"
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.activity_list_org_events_for_authenticated_user.v1",
     "response_schema": "result.organization.activity_list_org_events_for_authenticated_user.v1",
     "response_projection": [
@@ -8524,6 +8822,16 @@
     "path_parameters": [
       "owner",
       "repo"
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
     ],
     "request_schema": "arguments.notification.activity_list_public_events_for_repo_network.v1",
     "response_schema": "result.notification.activity_list_public_events_for_repo_network.v1",
@@ -8564,6 +8872,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.notification.activity_list_public_events_for_user.v1",
     "response_schema": "result.notification.activity_list_public_events_for_user.v1",
     "response_projection": [
@@ -8594,6 +8912,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.notification.activity_list_public_events.v1",
     "response_schema": "result.notification.activity_list_public_events.v1",
     "response_projection": [
@@ -8631,6 +8959,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.activity_list_public_org_events.v1",
@@ -8672,6 +9010,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.notification.activity_list_received_events_for_user.v1",
     "response_schema": "result.notification.activity_list_received_events_for_user.v1",
     "response_projection": [
@@ -8709,6 +9057,16 @@
       {
         "name": "username",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.notification.activity_list_received_public_events_for_user.v1",
@@ -8753,6 +9111,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.notification.activity_list_repo_events.v1",
@@ -8815,6 +9183,14 @@
       {
         "name": "before",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.notification.activity_list_repo_notifications_for_authenticated_user.v1",
@@ -8854,6 +9230,14 @@
       },
       {
         "name": "direction",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -8904,6 +9288,14 @@
       {
         "name": "direction",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.notification.activity_list_repos_starred_by_user.v1",
@@ -8943,6 +9335,16 @@
       {
         "name": "username",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.notification.activity_list_repos_watched_by_user.v1",
@@ -8989,6 +9391,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.notification.activity_list_stargazers_for_repo.v1",
     "response_schema": "result.notification.activity_list_stargazers_for_repo.v1",
     "response_projection": [
@@ -9019,6 +9431,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.notification.activity_list_watched_repos_for_authenticated_user.v1",
     "response_schema": "result.notification.activity_list_watched_repos_for_authenticated_user.v1",
     "response_projection": [
@@ -9061,6 +9483,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.notification.activity_list_watchers_for_repo.v1",
@@ -9299,6 +9731,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
         "name": "sort",
         "in": "query"
       },
@@ -9354,6 +9794,14 @@
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "sort",
         "in": "query"
@@ -10087,6 +10535,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.agent_task.list_org_secrets.v1",
     "response_schema": "result.agent_task.list_org_secrets.v1",
     "response_projection": [
@@ -10124,6 +10582,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.agent_task.list_org_variables.v1",
@@ -10170,6 +10638,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.agent_task.list_repo_organization_secrets.v1",
     "response_schema": "result.agent_task.list_repo_organization_secrets.v1",
     "response_projection": [
@@ -10212,6 +10690,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.agent_task.list_repo_organization_variables.v1",
@@ -10258,6 +10746,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.agent_task.list_repo_secrets.v1",
     "response_schema": "result.agent_task.list_repo_secrets.v1",
     "response_projection": [
@@ -10302,6 +10800,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.agent_task.list_repo_variables.v1",
     "response_schema": "result.agent_task.list_repo_variables.v1",
     "response_projection": [
@@ -10342,6 +10850,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.agent_task.list_selected_repos_for_org_secret.v1",
     "response_schema": "result.agent_task.list_selected_repos_for_org_secret.v1",
     "response_projection": [
@@ -10380,6 +10898,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.agent_task.list_selected_repos_for_org_variable.v1",
@@ -10680,6 +11208,14 @@
         "in": "query"
       },
       {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "direction",
         "in": "query"
       },
@@ -10738,6 +11274,14 @@
       },
       {
         "name": "max_timestamp",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -11112,6 +11656,14 @@
       },
       {
         "name": "max_timestamp",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -11731,6 +12283,14 @@
       {
         "name": "direction",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.app.apps_list_accounts_for_plan_stubbed.v1",
@@ -11774,6 +12334,14 @@
       {
         "name": "direction",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.app.apps_list_accounts_for_plan.v1",
@@ -11815,6 +12383,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.installation.apps_list_installation_repos_for_authenticated_user.v1",
     "response_schema": "result.installation.apps_list_installation_repos_for_authenticated_user.v1",
     "response_projection": [
@@ -11845,6 +12423,16 @@
     "credential_kind": "app-jwt",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.installation.apps_list_installation_requests_for_authenticated_app.v1",
     "response_schema": "result.installation.apps_list_installation_requests_for_authenticated_app.v1",
     "response_projection": [
@@ -11875,6 +12463,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.installation.apps_list_installations_for_authenticated_user.v1",
     "response_schema": "result.installation.apps_list_installations_for_authenticated_user.v1",
     "response_projection": [
@@ -11906,6 +12504,14 @@
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "since",
         "in": "query"
@@ -11945,6 +12551,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.app.apps_list_plans_stubbed.v1",
     "response_schema": "result.app.apps_list_plans_stubbed.v1",
     "response_projection": [
@@ -11975,6 +12591,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.app.apps_list_plans.v1",
     "response_schema": "result.app.apps_list_plans.v1",
     "response_projection": [
@@ -12005,6 +12631,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.installation.repo.list.v1",
     "response_schema": "result.installation.repo.list.v1",
     "response_projection": [
@@ -12035,6 +12671,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.app.apps_list_subscriptions_for_authenticated_user_stubbed.v1",
     "response_schema": "result.app.apps_list_subscriptions_for_authenticated_user_stubbed.v1",
     "response_projection": [
@@ -12065,6 +12711,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.app.apps_list_subscriptions_for_authenticated_user.v1",
     "response_schema": "result.app.apps_list_subscriptions_for_authenticated_user.v1",
     "response_projection": [
@@ -12096,6 +12752,10 @@
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "cursor",
         "in": "query"
@@ -12443,6 +13103,14 @@
       "org"
     ],
     "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "scope",
         "in": "query"
@@ -13144,6 +13812,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "direction",
         "in": "query"
       },
@@ -13419,6 +14095,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.check.checks_list_annotations.v1",
     "response_schema": "result.check.checks_list_annotations.v1",
     "response_projection": [
@@ -13475,6 +14161,14 @@
       },
       {
         "name": "filter",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       },
       {
@@ -13539,6 +14233,14 @@
       {
         "name": "filter",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.check.checks_list_for_suite.v1",
@@ -13593,6 +14295,14 @@
       },
       {
         "name": "check_name",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -13907,6 +14617,16 @@
     "path_parameters": [
       "assignment_id"
     ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.classroom_list_accepted_assignments_for_an_assignment.v1",
     "response_schema": "result.organization.classroom_list_accepted_assignments_for_an_assignment.v1",
     "response_projection": [
@@ -13940,6 +14660,16 @@
     "path_parameters": [
       "classroom_id"
     ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.classroom_list_assignments_for_a_classroom.v1",
     "response_schema": "result.organization.classroom_list_assignments_for_a_classroom.v1",
     "response_projection": [
@@ -13970,6 +14700,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.classroom_list_classrooms.v1",
     "response_schema": "result.organization.classroom_list_classrooms.v1",
     "response_projection": [
@@ -14104,6 +14844,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "direction",
         "in": "query"
@@ -14823,6 +15567,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "ref",
         "in": "query"
       },
@@ -14885,6 +15637,14 @@
       },
       {
         "name": "after",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -14959,6 +15719,14 @@
       },
       {
         "name": "tool_guid",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -15093,6 +15861,14 @@
       },
       {
         "name": "tool_guid",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -15576,6 +16352,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -15626,6 +16406,10 @@
     "argument_parameters": [
       {
         "name": "target_type",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -15757,6 +16541,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -15810,6 +16598,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "before",
         "in": "query"
@@ -16708,6 +17500,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.codespaces_get_codespaces_for_user_in_org.v1",
     "response_schema": "result.member.codespaces_get_codespaces_for_user_in_org.v1",
     "response_projection": [
@@ -17062,6 +17864,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.codespace.codespaces_list_devcontainers_in_repository_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_list_devcontainers_in_repository_for_authenticated_user.v1",
     "response_projection": [
@@ -17093,6 +17905,14 @@
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "repository_id",
         "in": "query"
@@ -17135,6 +17955,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.codespaces_list_in_organization.v1",
@@ -17181,6 +18011,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.codespace.codespaces_list_in_repository_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_list_in_repository_for_authenticated_user.v1",
     "response_projection": [
@@ -17218,6 +18058,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.codespaces_list_org_secrets.v1",
@@ -17262,6 +18112,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.codespace.codespaces_list_repo_secrets.v1",
@@ -17327,6 +18187,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.codespace.codespaces_list_secrets_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_list_secrets_for_authenticated_user.v1",
     "response_projection": [
@@ -17365,6 +18235,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.codespaces_list_selected_repos_for_org_secret.v1",
@@ -18385,6 +19265,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -18433,6 +19317,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "before",
         "in": "query"
@@ -19629,6 +20517,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.copilot_list_copilot_coding_agent_selected_repositories_for_organization.v1",
     "response_schema": "result.organization.copilot_list_copilot_coding_agent_selected_repositories_for_organization.v1",
     "response_projection": [
@@ -19666,6 +20564,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.copilot_list_copilot_seats.v1",
@@ -20334,6 +21242,10 @@
       {
         "name": "after",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.dependabot.list_alerts_for_enterprise.v1",
@@ -20439,6 +21351,10 @@
       {
         "name": "after",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.dependabot.list_alerts_for_org.v1",
@@ -20541,6 +21457,10 @@
       {
         "name": "after",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.dependabot.list_alerts_for_repo.v1",
@@ -20580,6 +21500,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.dependabot.list_org_secrets.v1",
@@ -20626,6 +21556,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.dependabot.list_repo_secrets.v1",
     "response_schema": "result.dependabot.list_repo_secrets.v1",
     "response_projection": [
@@ -20664,6 +21604,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.dependabot.list_selected_repos_for_org_secret.v1",
@@ -20746,6 +21696,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.dependabot.repository_access_for_enterprise.v1",
     "response_schema": "result.dependabot.repository_access_for_enterprise.v1",
     "response_projection": [
@@ -20783,6 +21743,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.dependabot.repository_access_for_org.v1",
@@ -21382,6 +22352,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.enterprise_team_memberships_list.v1",
     "response_schema": "result.team.enterprise_team_memberships_list.v1",
     "response_projection": [
@@ -21666,6 +22646,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.enterprise_team_organizations_get_assignments.v1",
     "response_schema": "result.team.enterprise_team_organizations_get_assignments.v1",
     "response_projection": [
@@ -21822,6 +22812,16 @@
       {
         "name": "enterprise",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.team.enterprise_teams_list.v1",
@@ -22248,6 +23248,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.comment.gists_list_comments.v1",
     "response_schema": "result.comment.gists_list_comments.v1",
     "response_projection": [
@@ -22285,6 +23295,16 @@
       {
         "name": "gist_id",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.gist.gists_list_commits.v1",
@@ -22330,6 +23350,14 @@
       {
         "name": "since",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.gist.gists_list_for_user.v1",
@@ -22371,6 +23399,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.gist.gists_list_forks.v1",
     "response_schema": "result.gist.gists_list_forks.v1",
     "response_projection": [
@@ -22404,6 +23442,14 @@
     "argument_parameters": [
       {
         "name": "since",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -22441,6 +23487,14 @@
       {
         "name": "since",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.gist.gists_list_starred.v1",
@@ -22476,6 +23530,14 @@
     "argument_parameters": [
       {
         "name": "since",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -23418,6 +24480,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.runner.hosted_compute_list_network_configurations_for_org.v1",
@@ -25055,6 +26127,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.issue.issues_list_assignees.v1",
     "response_schema": "result.issue.issues_list_assignees.v1",
     "response_projection": [
@@ -25111,6 +26193,14 @@
       {
         "name": "since",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.comment.issues_list_comments_for_repo.v1",
@@ -25166,6 +26256,14 @@
       {
         "name": "since",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.comment.issues_list_comments.v1",
@@ -25217,6 +26315,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.issue.issues_list_dependencies_blocked_by.v1",
     "response_schema": "result.issue.issues_list_dependencies_blocked_by.v1",
     "response_projection": [
@@ -25266,6 +26374,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.issue.issues_list_dependencies_blocking.v1",
     "response_schema": "result.issue.issues_list_dependencies_blocking.v1",
     "response_projection": [
@@ -25308,6 +26426,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.issue.issues_list_events_for_repo.v1",
@@ -25359,6 +26487,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.issue.issues_list_events_for_timeline.v1",
     "response_schema": "result.issue.issues_list_events_for_timeline.v1",
     "response_projection": [
@@ -25406,6 +26544,16 @@
       {
         "name": "issue_number",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.issue.issues_list_events.v1",
@@ -25461,6 +26609,14 @@
       },
       {
         "name": "since",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -25530,6 +26686,14 @@
       },
       {
         "name": "since",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -25621,6 +26785,14 @@
       {
         "name": "since",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.issue.issues_list_for_repo.v1",
@@ -25672,6 +26844,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.issue.issues_list_issue_field_values_for_issue.v1",
     "response_schema": "result.issue.issues_list_issue_field_values_for_issue.v1",
     "response_projection": [
@@ -25717,6 +26899,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.label.issues_list_labels_for_milestone.v1",
     "response_schema": "result.label.issues_list_labels_for_milestone.v1",
     "response_projection": [
@@ -25759,6 +26951,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.label.issues_list_labels_for_repo.v1",
@@ -25808,6 +27010,16 @@
       {
         "name": "issue_number",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.label.issues_list_labels_on_issue.v1",
@@ -25866,6 +27078,14 @@
       {
         "name": "direction",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.milestone.issues_list_milestones.v1",
@@ -25915,6 +27135,16 @@
       {
         "name": "issue_number",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.issue.issues_list_sub_issues.v1",
@@ -25986,6 +27216,14 @@
       },
       {
         "name": "pulls",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -26805,6 +28043,14 @@
       {
         "name": "featured",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.licenses_get_all_commonly_used.v1",
@@ -27416,6 +28662,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.migration.migrations_list_for_authenticated_user.v1",
     "response_schema": "result.migration.migrations_list_for_authenticated_user.v1",
     "response_projection": [
@@ -27457,6 +28713,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
         "name": "exclude",
         "in": "query"
       }
@@ -27493,6 +28757,16 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "migration_id"
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
     ],
     "request_schema": "arguments.migration.migrations_list_repos_for_authenticated_user.v1",
     "response_schema": "result.migration.migrations_list_repos_for_authenticated_user.v1",
@@ -27532,6 +28806,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.migrations_list_repos_for_org.v1",
@@ -28899,6 +30183,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
         "name": "repository_query",
         "in": "query"
       }
@@ -29341,6 +30633,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.release.orgs_get_immutable_releases_settings_repositories.v1",
     "response_schema": "result.release.orgs_get_immutable_releases_settings_repositories.v1",
     "response_projection": [
@@ -29531,6 +30833,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.ruleset.orgs_get_org_ruleset_history.v1",
@@ -29773,6 +31085,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.list_app_installations.v1",
     "response_schema": "result.organization.list_app_installations.v1",
     "response_projection": [
@@ -29894,6 +31216,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -29947,6 +31273,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -29996,6 +31326,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "before",
         "in": "query"
@@ -30048,6 +31382,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.list_blocked_users.v1",
     "response_schema": "result.organization.list_blocked_users.v1",
     "response_projection": [
@@ -30087,6 +31431,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.list_failed_invitations.v1",
     "response_schema": "result.organization.list_failed_invitations.v1",
     "response_projection": [
@@ -30117,6 +31471,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.list_for_authenticated_user.v1",
     "response_schema": "result.organization.list_for_authenticated_user.v1",
     "response_projection": [
@@ -30154,6 +31518,16 @@
       {
         "name": "username",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.list_for_user.v1",
@@ -30194,6 +31568,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.team.orgs_list_invitation_teams.v1",
@@ -30321,6 +31705,14 @@
       {
         "name": "role",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.member.orgs_list_members.v1",
@@ -30356,6 +31748,14 @@
     "argument_parameters": [
       {
         "name": "state",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -30399,6 +31799,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.orgs_list_org_role_teams.v1",
     "response_schema": "result.team.orgs_list_org_role_teams.v1",
     "response_projection": [
@@ -30437,6 +31847,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.list_org_role_users.v1",
@@ -30521,6 +31941,14 @@
       {
         "name": "filter",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.collaborator.orgs_list_outside_collaborators.v1",
@@ -30563,6 +31991,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.list_pat_grant_repositories.v1",
     "response_schema": "result.organization.list_pat_grant_repositories.v1",
     "response_projection": [
@@ -30601,6 +32039,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.list_pat_grant_request_repositories.v1",
@@ -30643,6 +32091,14 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "sort",
         "in": "query"
@@ -30717,6 +32173,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
         "name": "sort",
         "in": "query"
       },
@@ -30790,6 +32254,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
         "name": "role",
         "in": "query"
       },
@@ -30835,6 +32307,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.member.orgs_list_public_members.v1",
@@ -30918,6 +32400,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "cursor",
         "in": "query"
       },
@@ -30965,6 +32451,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.organization.list_webhooks.v1",
     "response_schema": "result.organization.list_webhooks.v1",
     "response_projection": [
@@ -30998,6 +32494,10 @@
     "argument_parameters": [
       {
         "name": "since",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       }
     ],
@@ -32114,6 +33614,14 @@
     ],
     "argument_parameters": [
       {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "state",
         "in": "query"
       }
@@ -32160,6 +33668,14 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "state",
         "in": "query"
@@ -32599,6 +34115,14 @@
       {
         "name": "visibility",
         "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.package.packages_list_packages_for_authenticated_user.v1",
@@ -32648,6 +34172,14 @@
       {
         "name": "visibility",
         "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.packages_list_packages_for_organization.v1",
@@ -32696,6 +34228,14 @@
       },
       {
         "name": "visibility",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       }
     ],
@@ -32894,6 +34434,16 @@
       {
         "name": "org",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.private_registries_list_org_private_registries.v1",
@@ -33596,6 +35146,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -33645,6 +35199,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "before",
         "in": "query"
@@ -33705,6 +35263,10 @@
       {
         "name": "after",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.project.projects_list_for_org.v1",
@@ -33757,6 +35319,10 @@
       },
       {
         "name": "after",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       }
     ],
@@ -33816,6 +35382,10 @@
       {
         "name": "after",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.project.projects_list_items_for_org.v1",
@@ -33865,6 +35435,10 @@
       },
       {
         "name": "after",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -33929,6 +35503,10 @@
       {
         "name": "after",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.project.projects_list_view_items_for_org.v1",
@@ -33983,6 +35561,10 @@
       },
       {
         "name": "after",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       }
     ],
@@ -34656,6 +36238,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.review.pulls_list_comments_for_review.v1",
     "response_schema": "result.review.pulls_list_comments_for_review.v1",
     "response_projection": [
@@ -34705,6 +36297,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.pull_request.list_commits.v1",
     "response_schema": "result.pull_request.list_commits.v1",
     "response_projection": [
@@ -34752,6 +36354,16 @@
       {
         "name": "pull_number",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.pull_request.list_files.v1",
@@ -34859,6 +36471,14 @@
       {
         "name": "since",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.review.pulls_list_review_comments_for_repo.v1",
@@ -34922,6 +36542,14 @@
       {
         "name": "since",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.review.pulls_list_review_comments.v1",
@@ -34971,6 +36599,16 @@
       {
         "name": "pull_number",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.review.pulls_list_reviews.v1",
@@ -35036,6 +36674,14 @@
       },
       {
         "name": "direction",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -36011,6 +37657,14 @@
       {
         "name": "content",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.comment.reactions_list_for_commit_comment.v1",
@@ -36065,6 +37719,14 @@
     "argument_parameters": [
       {
         "name": "content",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -36121,6 +37783,14 @@
       {
         "name": "content",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.reaction.reactions_list_for_issue.v1",
@@ -36176,6 +37846,14 @@
       {
         "name": "content",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.review.reactions_list_for_pull_request_review_comment.v1",
@@ -36230,6 +37908,14 @@
     "argument_parameters": [
       {
         "name": "content",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -36850,6 +38536,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.commit.repos_compare_commits.v1",
@@ -39614,6 +41310,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.environment.repos_get_all_environments.v1",
     "response_schema": "result.environment.repos_get_all_environments.v1",
     "response_projection": [
@@ -39701,6 +41407,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.get_all_topics.v1",
@@ -39881,6 +41597,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.branch.repos_get_branch_rules.v1",
@@ -40112,6 +41838,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.commit.repos_get_combined_status_for_ref.v1",
     "response_schema": "result.commit.repos_get_combined_status_for_ref.v1",
     "response_projection": [
@@ -40293,6 +42029,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.commit.repos_get_commit.v1",
@@ -40962,6 +42708,14 @@
       {
         "name": "evaluate_status",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.ruleset.repos_get_org_rule_suites.v1",
@@ -41044,6 +42798,14 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "targets",
         "in": "query"
@@ -41710,6 +43472,14 @@
       {
         "name": "evaluate_status",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.ruleset.repos_get_repo_rule_suites.v1",
@@ -41759,6 +43529,16 @@
       {
         "name": "ruleset_id",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.ruleset.repos_get_repo_ruleset_history.v1",
@@ -41911,6 +43691,14 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "includes_parents",
         "in": "query"
@@ -42423,6 +44211,10 @@
         "in": "query"
       },
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -42493,6 +44285,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "before",
         "in": "query"
@@ -42643,6 +44439,14 @@
       {
         "name": "protected",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.branch.repos_list_branches.v1",
@@ -42697,6 +44501,14 @@
       {
         "name": "permission",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.collaborator.repos_list_collaborators.v1",
@@ -42744,6 +44556,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.comment.repos_list_comments_for_commit.v1",
     "response_schema": "result.comment.repos_list_comments_for_commit.v1",
     "response_projection": [
@@ -42786,6 +44608,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.comment.repos_list_commit_comments_for_repo.v1",
@@ -42831,6 +44663,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.commit.repos_list_commit_statuses_for_ref.v1",
@@ -42901,6 +44743,14 @@
       {
         "name": "until",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.commit.repos_list_commits.v1",
@@ -42950,6 +44800,14 @@
     "argument_parameters": [
       {
         "name": "anon",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -43002,6 +44860,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.environment.repos_list_custom_deployment_rule_integrations.v1",
     "response_schema": "result.environment.repos_list_custom_deployment_rule_integrations.v1",
     "response_projection": [
@@ -43044,6 +44912,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.list_deploy_keys.v1",
@@ -43095,6 +44973,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.environment.repos_list_deployment_branch_policies.v1",
     "response_schema": "result.environment.repos_list_deployment_branch_policies.v1",
     "response_projection": [
@@ -43142,6 +45030,16 @@
       {
         "name": "deployment_id",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.deployment.repos_list_deployment_statuses.v1",
@@ -43204,6 +45102,14 @@
       {
         "name": "environment",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.deployment.repos_list_deployments.v1",
@@ -43255,6 +45161,14 @@
       },
       {
         "name": "direction",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       },
       {
@@ -43317,6 +45231,14 @@
       {
         "name": "direction",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.organization.repos_list_for_org.v1",
@@ -43370,6 +45292,14 @@
       {
         "name": "direction",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.list_for_user.v1",
@@ -43420,6 +45350,14 @@
       {
         "name": "sort",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.list_forks.v1",
@@ -43452,6 +45390,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.repo.list_invitations_for_authenticated_user.v1",
     "response_schema": "result.repo.list_invitations_for_authenticated_user.v1",
     "response_projection": [
@@ -43494,6 +45442,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.list_invitations.v1",
@@ -43628,6 +45586,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.pages.repos_list_pages_builds.v1",
     "response_schema": "result.pages.repos_list_pages_builds.v1",
     "response_projection": [
@@ -43709,6 +45677,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.pull_request.repos_list_pull_requests_associated_with_commit.v1",
     "response_schema": "result.pull_request.repos_list_pull_requests_associated_with_commit.v1",
     "response_projection": [
@@ -43758,6 +45736,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.release.repos_list_release_assets.v1",
     "response_schema": "result.release.repos_list_release_assets.v1",
     "response_projection": [
@@ -43800,6 +45788,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.release.repos_list_releases.v1",
@@ -43846,6 +45844,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.tag.repos_list_tags.v1",
     "response_schema": "result.tag.repos_list_tags.v1",
     "response_projection": [
@@ -43888,6 +45896,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.team.repos_list_teams.v1",
@@ -43936,6 +45954,10 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
       {
         "name": "cursor",
         "in": "query"
@@ -43987,6 +46009,16 @@
       {
         "name": "repo",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.webhook.repos_list_webhooks.v1",
@@ -45979,6 +48011,14 @@
       {
         "name": "order",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.search_code.v1",
@@ -46023,6 +48063,14 @@
       {
         "name": "order",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.commit.search_commits.v1",
@@ -46066,6 +48114,14 @@
       },
       {
         "name": "order",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       },
       {
@@ -46123,6 +48179,14 @@
       {
         "name": "order",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.label.search_labels.v1",
@@ -46167,6 +48231,14 @@
       {
         "name": "order",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.repo.search_repos.v1",
@@ -46202,6 +48274,14 @@
     "argument_parameters": [
       {
         "name": "q",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -46246,6 +48326,14 @@
       },
       {
         "name": "order",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -46469,6 +48557,14 @@
         "in": "query"
       },
       {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -46587,6 +48683,14 @@
         "in": "query"
       },
       {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -46670,6 +48774,16 @@
       {
         "name": "alert_number",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "page",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.secret_scanning.secret_scanning_list_locations_for_alert.v1",
@@ -47169,6 +49283,10 @@
         "in": "query"
       },
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "sort",
         "in": "query"
       }
@@ -47227,6 +49345,10 @@
       },
       {
         "name": "after",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -47293,6 +49415,10 @@
       },
       {
         "name": "after",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       },
       {
@@ -47994,6 +50120,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.teams_list_child_in_org.v1",
     "response_schema": "result.team.teams_list_child_in_org.v1",
     "response_projection": [
@@ -48033,6 +50169,16 @@
         "field": "id"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.teams_list_child_legacy.v1",
     "response_schema": "result.team.teams_list_child_legacy.v1",
     "response_projection": [
@@ -48063,6 +50209,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.teams_list_for_authenticated_user.v1",
     "response_schema": "result.team.teams_list_for_authenticated_user.v1",
     "response_projection": [
@@ -48106,6 +50262,14 @@
     "argument_parameters": [
       {
         "name": "role",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
         "in": "query"
       }
     ],
@@ -48152,6 +50316,14 @@
       {
         "name": "role",
         "in": "query"
+      },
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.team.teams_list_members_legacy.v1",
@@ -48194,6 +50366,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.teams_list_pending_invitations_in_org.v1",
     "response_schema": "result.team.teams_list_pending_invitations_in_org.v1",
     "response_projection": [
@@ -48231,6 +50413,16 @@
       {
         "name": "team_id",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.team.teams_list_pending_invitations_legacy.v1",
@@ -48273,6 +50465,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.team.teams_list_repos_in_org.v1",
     "response_schema": "result.team.teams_list_repos_in_org.v1",
     "response_projection": [
@@ -48310,6 +50512,16 @@
       {
         "name": "team_id",
         "field": "id"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.team.teams_list_repos_legacy.v1",
@@ -48352,6 +50564,14 @@
       }
     ],
     "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      },
       {
         "name": "team_type",
         "in": "query"
@@ -49555,6 +51775,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -49605,6 +51829,10 @@
     ],
     "argument_parameters": [
       {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
         "name": "before",
         "in": "query"
       },
@@ -49647,6 +51875,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_blocked_by_authenticated_user.v1",
     "response_schema": "result.member.users_list_blocked_by_authenticated_user.v1",
     "response_projection": [
@@ -49677,6 +51915,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_emails_for_authenticated_user.v1",
     "response_schema": "result.member.users_list_emails_for_authenticated_user.v1",
     "response_projection": [
@@ -49707,6 +51955,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_followed_by_authenticated_user.v1",
     "response_schema": "result.member.users_list_followed_by_authenticated_user.v1",
     "response_projection": [
@@ -49737,6 +51995,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_followers_for_authenticated_user.v1",
     "response_schema": "result.member.users_list_followers_for_authenticated_user.v1",
     "response_projection": [
@@ -49774,6 +52042,16 @@
       {
         "name": "username",
         "field": "name"
+      }
+    ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
       }
     ],
     "request_schema": "arguments.member.users_list_followers_for_user.v1",
@@ -49815,6 +52093,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_following_for_user.v1",
     "response_schema": "result.member.users_list_following_for_user.v1",
     "response_projection": [
@@ -49845,6 +52133,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_gpg_keys_for_authenticated_user.v1",
     "response_schema": "result.member.users_list_gpg_keys_for_authenticated_user.v1",
     "response_projection": [
@@ -49884,6 +52182,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_gpg_keys_for_user.v1",
     "response_schema": "result.member.users_list_gpg_keys_for_user.v1",
     "response_projection": [
@@ -49914,6 +52222,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_public_emails_for_authenticated_user.v1",
     "response_schema": "result.member.users_list_public_emails_for_authenticated_user.v1",
     "response_projection": [
@@ -49953,6 +52271,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_public_keys_for_user.v1",
     "response_schema": "result.member.users_list_public_keys_for_user.v1",
     "response_projection": [
@@ -49983,6 +52311,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_public_ssh_keys_for_authenticated_user.v1",
     "response_schema": "result.member.users_list_public_ssh_keys_for_authenticated_user.v1",
     "response_projection": [
@@ -50013,6 +52351,16 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_social_accounts_for_authenticated_user.v1",
     "response_schema": "result.member.users_list_social_accounts_for_authenticated_user.v1",
     "response_projection": [
@@ -50052,6 +52400,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_social_accounts_for_user.v1",
     "response_schema": "result.member.users_list_social_accounts_for_user.v1",
     "response_projection": [
@@ -50082,6 +52440,16 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_ssh_signing_keys_for_authenticated_user.v1",
     "response_schema": "result.member.users_list_ssh_signing_keys_for_authenticated_user.v1",
     "response_projection": [
@@ -50121,6 +52489,16 @@
         "field": "name"
       }
     ],
+    "argument_parameters": [
+      {
+        "name": "per_page",
+        "in": "query"
+      },
+      {
+        "name": "page",
+        "in": "query"
+      }
+    ],
     "request_schema": "arguments.member.users_list_ssh_signing_keys_for_user.v1",
     "response_schema": "result.member.users_list_ssh_signing_keys_for_user.v1",
     "response_projection": [
@@ -50154,6 +52532,10 @@
     "argument_parameters": [
       {
         "name": "since",
+        "in": "query"
+      },
+      {
+        "name": "per_page",
         "in": "query"
       }
     ],
