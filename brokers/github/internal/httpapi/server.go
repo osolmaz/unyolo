@@ -270,12 +270,9 @@ func (s *Server) registerRoutes(auth security.TokenAuth) {
 	protected := s.echo.Group("")
 	protected.Use(auth.Middleware)
 	protected.Use(validateRouteParams)
-	protected.GET("/api/repos", s.listRepos)
 	protected.POST("/api/grants", s.createGrant)
 	protected.GET("/api/grants", s.listGrants)
 	protected.GET("/api/grants/:id", s.getGrant)
-	protected.GET("/api/repos/:owner/:repo/contents", s.readContents)
-	protected.GET("/api/repos/:owner/:repo/contents/*", s.readContents)
 	protected.GET("/:owner/:repoGit/info/refs", s.gitInfoRefs)
 	protected.POST("/:owner/:repoGit/git-upload-pack", s.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", s.gitReceivePack)
@@ -482,28 +479,6 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 	}
 	s.auditAuthorizedReceivePack(c, authorized, "proxied", "", responseStatus(c))
 	return nil
-}
-
-func (s *Server) listRepos(c echo.Context) error {
-	request := policy.Request{
-		Client:    security.ClientFromContext(c),
-		Operation: policy.OperationInstallationReposList,
-		Target:    policy.Target{Kind: "installation"},
-	}
-	return s.authorizeBrokerRequest(c, request, s.fetchAndFilterRepos)
-}
-
-func (s *Server) readContents(c echo.Context) error {
-	contentPath, err := contentPathParam(c)
-	if err != nil {
-		return err
-	}
-	attrs := map[string]string{"path": contentPath}
-	if ref := c.QueryParam("ref"); ref != "" {
-		attrs["ref"] = ref
-	}
-	request := s.repoRequest(c, policy.OperationContentsRead, attrs)
-	return s.authorizeBrokerRequest(c, request, s.proxyContents)
 }
 
 func (s *Server) authorizeBrokerRequest(
@@ -735,163 +710,10 @@ func validateBranchChars(branch string) error {
 	return nil
 }
 
-func contentPathParam(c echo.Context) (string, error) {
-	contentPath := c.Param("*")
-	if contentPath == "" {
-		return ".", nil
-	}
-	if err := validateContentPath(contentPath); err != nil {
-		return "", echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	return contentPath, nil
-}
-
-func validateContentPath(contentPath string) error {
-	for _, rawSegment := range strings.Split(contentPath, "/") {
-		segment, err := url.PathUnescape(rawSegment)
-		if err != nil {
-			segment = rawSegment
-		}
-		if escapedPathSeparator(rawSegment) || strings.Contains(segment, "/") {
-			return errors.New("content path contains escaped path separator")
-		}
-		if segment == "" || segment == "." || segment == ".." {
-			return errors.New("content path contains unsupported path segment")
-		}
-	}
-	return nil
-}
-
-func escapedPathSeparator(segment string) bool {
-	return strings.Contains(strings.ToLower(segment), "%2f")
-}
-
-func (s *Server) proxyContents(c echo.Context) error {
-	segments := []string{"repos", c.Param("owner"), c.Param("repo"), "contents"}
-	contentPath, err := contentPathParam(c)
-	if err != nil {
-		return err
-	}
-	if contentPath != "." {
-		segments = append(segments, escapedJoinPathSegments(contentPath)...)
-	}
-	upstreamURL := s.githubAPIBaseURL.JoinPath(segments...)
-	query := url.Values{}
-	if ref := c.QueryParam("ref"); ref != "" {
-		query.Set("ref", ref)
-	}
-	upstreamURL.RawQuery = query.Encode()
-	return s.proxyTo(c, upstreamURL, func(request *http.Request) error {
-		return s.configureGitHubAPIRequest(c, request, c.Param("owner"), c.Param("repo"))
-	})
-}
-
-func escapedJoinPathSegments(pathValue string) []string {
-	segments := strings.Split(pathValue, "/")
-	for index, segment := range segments {
-		segments[index] = strings.ReplaceAll(segment, "%", "%25")
-	}
-	return segments
-}
-
-func (s *Server) fetchAndFilterRepos(c echo.Context) error {
-	response, err := s.fetchRepoList(c)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-	if !successfulStatus(response.StatusCode) {
-		httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
-		return copyUpstreamResponse(c, response)
-	}
-	httpx.CopyHeaders(c.Response().Header(), response.Header, githubFilteredResponseHeader)
-	return s.writeFilteredRepoList(c, response)
-}
-
-func (s *Server) fetchRepoList(c echo.Context) (*http.Response, error) {
-	return s.fetchCredentialRepoList(c)
-}
-
-func successfulStatus(status int) bool {
-	return status >= http.StatusOK && status < http.StatusMultipleChoices
-}
-
 func copyUpstreamResponse(c echo.Context, response *http.Response) error {
 	c.Response().WriteHeader(response.StatusCode)
 	_, err := io.Copy(c.Response(), response.Body)
 	return err
-}
-
-func (s *Server) writeFilteredRepoList(c echo.Context, response *http.Response) error {
-	body, err := httpx.ReadLimited(response.Body, 10*1024*1024)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "github repo list response is too large")
-	}
-	filtered, err := s.filterRepos(c, body)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "decode github repo list")
-	}
-	return c.JSONBlob(response.StatusCode, filtered)
-}
-
-func (s *Server) filterRepos(c echo.Context, body []byte) ([]byte, error) {
-	var repos []json.RawMessage
-	if err := json.Unmarshal(body, &repos); err != nil {
-		var installationPayload struct {
-			Repositories []json.RawMessage `json:"repositories"`
-		}
-		if objectErr := json.Unmarshal(body, &installationPayload); objectErr != nil || installationPayload.Repositories == nil {
-			return nil, err
-		}
-		repos = installationPayload.Repositories
-		filtered := s.filterRepoArray(c, repos)
-		return json.Marshal(map[string][]json.RawMessage{"repositories": filtered})
-	}
-	return json.Marshal(s.filterRepoArray(c, repos))
-}
-
-func (s *Server) filterRepoArray(c echo.Context, repos []json.RawMessage) []json.RawMessage {
-	filtered := make([]json.RawMessage, 0, len(repos))
-	for _, raw := range repos {
-		owner, name, ok := repoIdentity(raw)
-		if !ok {
-			continue
-		}
-		request := policy.Request{
-			Client:    security.ClientFromContext(c),
-			Operation: policy.OperationRepoMetadataRead,
-			Target:    policy.Target{Kind: "repo", Owner: owner, Name: name},
-		}
-		if s.policy.Allows(request) {
-			filtered = append(filtered, raw)
-		}
-	}
-	return filtered
-}
-
-func repoIdentity(raw json.RawMessage) (string, string, bool) {
-	var repo struct {
-		Name     string `json:"name"`
-		FullName string `json:"full_name"`
-		Owner    struct {
-			Login string `json:"login"`
-		} `json:"owner"`
-	}
-	if err := json.Unmarshal(raw, &repo); err != nil {
-		return "", "", false
-	}
-	owner := strings.TrimSpace(repo.Owner.Login)
-	name := strings.TrimSpace(repo.Name)
-	if owner == "" || name == "" {
-		fullOwner, fullName, ok := strings.Cut(repo.FullName, "/")
-		if ok {
-			owner = strings.TrimSpace(fullOwner)
-			name = strings.TrimSpace(fullName)
-		}
-	}
-	return owner, name, owner != "" && name != ""
 }
 
 func (s *Server) audit(c echo.Context, request policy.Request, outcome string, reason string, status int, matchedRuleIDs []string) {

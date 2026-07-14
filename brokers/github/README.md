@@ -224,18 +224,22 @@ git -c http.extraHeader="Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
   ls-remote http://localhost:8080/osolmaz/gh-broker.git
 ```
 
-List policy-visible repositories:
+List repositories visible to the selected GitHub user credential:
 
 ```sh
-curl -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  http://localhost:8080/api/repos
+gh-broker operation submit repo.list_for_authenticated_user \
+  --target-json '{"kind":"user","name":"osolmaz"}' \
+  --arguments-json '{}' \
+  --wait
 ```
 
 Read repository contents:
 
 ```sh
-curl -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  http://localhost:8080/api/repos/osolmaz/gh-broker/contents/README.md?ref=main
+gh-broker operation submit repo.contents.read \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --arguments-json '{"path":"README.md","ref":"main"}' \
+  --wait
 ```
 
 Open a pull request:
@@ -285,16 +289,18 @@ Example direct-main exception:
 ```text
 GET  /healthz
 
-GET  /api/repos
-POST /api/grants
-GET  /api/grants
-GET  /api/grants/{id}
-GET  /api/repos/{owner}/{repo}/contents/{path}
+POST /api/grants                         Git smart-HTTP protocol grant request
+GET  /api/grants                         Git smart-HTTP protocol grants
+GET  /api/grants/{id}                    Git smart-HTTP protocol grant
 
 GET  /.well-known/brokerkit-agent
 POST /api/agent/v1/operations
 GET  /api/agent/v1/operations/{id}
 GET  /api/agent/v1/operations/{id}/events
+POST /api/agent/v1/operations/{id}/cancel
+POST /api/agent/v1/sealed-payloads
+POST /api/agent/v1/streams
+GET  /api/agent/v1/streams/{id}
 
 GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
 POST /{owner}/{repo}.git/git-upload-pack
@@ -303,7 +309,10 @@ GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
 POST /{owner}/{repo}.git/git-receive-pack
 ```
 
-The long-term route shape is `/api/*` for JSON APIs and Git smart-HTTP routes for Git. Compatibility aliases are not part of the production plan.
+All discrete GitHub JSON operations use Agent V1. The `/api/grants` surface is
+reserved for approval requests created while handling Git smart-HTTP protocol
+traffic. Direct repository-list and contents proxy routes are not supported.
+Compatibility aliases are not part of the production surface.
 
 ## Operator Inbox
 
@@ -389,8 +398,10 @@ Deployment safety defaults:
 
 ## Grants
 
-Request rules do not execute directly. An authenticated client creates a
-pending grant with `POST /api/grants`; every request must include a unique
+Request rules do not execute directly. Discrete GitHub operations use Agent V1,
+which creates the durable approval request as part of the submitted operation.
+Git smart-HTTP protocol handling creates a pending grant through
+`POST /api/grants`; every such request must include a unique
 `client_request_id`, and retries must reuse that value. gh-broker sends the
 approval request to Telegram when Telegram is configured, but the durable
 operator inbox remains authoritative and works without Telegram. Approval

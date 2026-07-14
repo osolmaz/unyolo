@@ -122,6 +122,9 @@ func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {
 	if err != nil {
 		return grantCreatePlan{}, err
 	}
+	if !protocolGrantOperation(payload.Operation) {
+		return grantCreatePlan{}, echo.NewHTTPError(http.StatusBadRequest, "Agent V1 is required for non-protocol operations")
+	}
 	request := grantPolicyRequest(c, payload)
 	decision := s.policy.EvaluateGrantRequest(request)
 	if decision.Effect != policy.EffectRequest || decision.GrantPolicy == nil {
@@ -133,6 +136,16 @@ func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {
 		return grantCreatePlan{}, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	return grantCreatePlan{payload: payload, request: request, decision: decision, duration: duration, pendingTimeout: pendingTimeout, maxUses: maxUses}, nil
+}
+
+func protocolGrantOperation(operation policy.Operation) bool {
+	switch operation {
+	case policy.OperationGitPushBranchCreate, policy.OperationGitPushFastForward, policy.OperationGitPushForce,
+		policy.OperationGitRefDelete, policy.OperationGitTagUpdate:
+		return true
+	default:
+		return false
+	}
 }
 
 func grantPolicyRequest(c echo.Context, payload grantCreateRequest) policy.Request {

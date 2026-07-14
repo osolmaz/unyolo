@@ -1,10 +1,7 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 
@@ -14,27 +11,6 @@ import (
 )
 
 const githubOperationContextKey = "gh_broker_operation"
-
-func (s *Server) fetchCredentialRepoList(c echo.Context) (*http.Response, error) {
-	repositories, err := s.githubCredentials.ListRepositories(c.Request().Context())
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "GitHub repository listing failed")
-	}
-	body, err := json.Marshal(repositories)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "encode GitHub repository list")
-	}
-	markUpstreamDispatched(c)
-	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(body))}, nil
-}
-
-func (s *Server) configureGitHubAPIRequest(c echo.Context, request *http.Request, owner, repo string) error {
-	credential, err := s.githubCredentialForRepo(c, owner, repo)
-	if err != nil {
-		return err
-	}
-	return credential.AuthorizeAPI(request)
-}
 
 func (s *Server) configureGitHubGitRequest(c echo.Context, request *http.Request, owner, repo string) error {
 	credential, err := s.githubCredentialForRepo(c, owner, repo)
