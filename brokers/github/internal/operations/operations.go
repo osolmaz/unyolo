@@ -339,7 +339,7 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 		return Plan{}, err
 	}
 	presentation := presentDescriptor(a.descriptor, targetMap)
-	authorization := authorizeDescriptor(a.descriptor, a.binding, targetMap, argumentsMap)
+	authorization := authorizeDescriptor(a.descriptor, a.binding, targetMap, argumentsMap, credential)
 	if a.descriptor.CredentialOutputKind != nil {
 		protected, _ := decodeSealedArguments(input.Arguments)
 		if authorization.Attrs == nil {
@@ -368,7 +368,7 @@ func (a generatedAdapter) Authorize(plan Plan) Authorization {
 	targetMap, _ := decodeObject(plan.Target)
 	publicArguments, _ := a.publicArguments(plan.Arguments)
 	argumentsMap, _ := decodeObject(publicArguments)
-	return authorizeDescriptor(a.descriptor, a.binding, targetMap, argumentsMap)
+	return authorizeDescriptor(a.descriptor, a.binding, targetMap, argumentsMap, plan.Credential)
 }
 
 func (a generatedAdapter) Present(plan Plan) agentv1.Presentation {
@@ -710,7 +710,8 @@ func targetSummary(kind string, target map[string]any) string {
 	return kind
 }
 
-func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Binding, target, arguments map[string]any) Authorization {
+func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Binding, target, arguments map[string]any,
+	credential githubauth.Metadata) Authorization {
 	attrs := authorizationAttrs(arguments)
 	selectors := authorizationSelectorAttrs(binding, arguments)
 	if attrs == nil && len(selectors) > 0 {
@@ -722,7 +723,7 @@ func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Bin
 	return Authorization{
 		Operation:      descriptor.Name,
 		TargetKind:     descriptor.TargetKind,
-		TargetFields:   authorizationTargetFields(target),
+		TargetFields:   authorizationTargetFields(binding, target, credential),
 		Attrs:          attrs,
 		CredentialKind: descriptor.CredentialKind,
 	}
@@ -739,24 +740,6 @@ func authorizationSelectorAttrs(binding *opbinding.Binding, arguments map[string
 		}
 	}
 	return result
-}
-
-func authorizationTargetFields(target map[string]any) map[string][]string {
-	fields := map[string][]string{}
-	for _, key := range []string{"owner", "repo", "name", "node_id", "installation_account"} {
-		if value := stringValue(target, key); value != "" {
-			fields[key] = []string{value}
-		}
-	}
-	for _, key := range []string{"id", "number", "installation_id"} {
-		if value := integerString(target, key); value != "" {
-			fields[key] = []string{value}
-		}
-	}
-	if len(fields) == 0 {
-		return nil
-	}
-	return fields
 }
 
 func authorizationAttrs(arguments map[string]any) map[string][]string {

@@ -347,7 +347,8 @@ func TestRuntimeRestartCommitsReservedApproval(t *testing.T) {
 }
 
 func TestRuntimeRecoversUnboundApprovalAndPlan(t *testing.T) {
-	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, nil, true)
+	notifier := &captureNotifier{}
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
 	defer closeRuntime()
 	id, err := operations.NewID()
 	if err != nil {
@@ -381,6 +382,11 @@ func TestRuntimeRecoversUnboundApprovalAndPlan(t *testing.T) {
 	bound := runtime.RecoverApproval(operation)
 	if bound.ApprovalID != requested.Grant.ID || bound.PlanDigest != intent.Plan.Digest {
 		t.Fatalf("recovered = %+v", bound)
+	}
+	runtime.Advance(t.Context(), bound)
+	storedGrant, err := grantStore.Get(bound.ApprovalID)
+	if err != nil || notifier.message.DecisionToken == "" || storedGrant.Notification == nil {
+		t.Fatalf("recovered notification = %+v, grant = %+v, %v", notifier.message, storedGrant, err)
 	}
 	canceled, err := runtime.Cancel(t.Context(), "agent", bound.ID)
 	if err != nil || canceled.State != agentv1.StateCanceled {

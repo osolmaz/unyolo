@@ -216,7 +216,7 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 	presentation := presentDescriptor(descriptor, map[string]any{"number": float64(7)})
 	authorization := authorizeDescriptor(descriptor, nil, map[string]any{"owner": "osolmaz", "name": "brokerkit", "id": float64(3)},
 		map[string]any{"ref": "main", "input": map[string]any{"base": "main", "head": "feature", "merge_method": "squash",
-			"labels": []any{"bug", "urgent"}, "permission": "maintain"}})
+			"labels": []any{"bug", "urgent"}, "permission": "maintain"}}, githubauth.Metadata{})
 	if presentation.Title != "Test operation" || !slices.Equal(authorization.TargetFields["id"], []string{"3"}) ||
 		!slices.Equal(authorization.Attrs["base_ref"], []string{"main"}) {
 		t.Fatalf("presentation = %+v authorization = %+v", presentation, authorization)
@@ -226,7 +226,7 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 		!slices.Equal(authorization.Attrs["permission"], []string{"maintain"}) {
 		t.Fatalf("nested authorization attrs = %+v", authorization.Attrs)
 	}
-	if fields := authorizationTargetFields(map[string]any{}); fields != nil {
+	if fields := authorizationTargetFields(nil, map[string]any{}, githubauth.Metadata{}); fields != nil {
 		t.Fatalf("empty target fields = %+v", fields)
 	}
 	if attrs := authorizationAttrs(map[string]any{}); attrs != nil {
@@ -295,9 +295,26 @@ func TestAuthorizationBindsConcretePathSelectors(t *testing.T) {
 	if !found {
 		t.Fatal("descriptor not found")
 	}
-	authorization := authorizeDescriptor(descriptor, &binding[0], map[string]any{"name": "acme"}, map[string]any{"username": "octocat"})
+	authorization := authorizeDescriptor(descriptor, &binding[0], map[string]any{"name": "acme"}, map[string]any{"username": "octocat"}, githubauth.Metadata{})
 	if !slices.Equal(authorization.Attrs["selector_username"], []string{"octocat"}) {
 		t.Fatalf("authorization = %+v", authorization)
+	}
+}
+
+func TestAuthorizationUsesOnlyExecutionBoundTargetFields(t *testing.T) {
+	binding := opbinding.ByOperation("issue.issues_lock")
+	descriptor, found := opcatalog.ByName("issue.issues_lock")
+	if len(binding) != 1 || !found {
+		t.Fatal("issue lock binding is unavailable")
+	}
+	authorization := authorizeDescriptor(descriptor, &binding[0], map[string]any{
+		"owner": "osolmaz", "repo": "brokerkit", "number": json.Number("7"), "name": "spoofed",
+	}, map[string]any{}, githubauth.Metadata{InstallationID: 42})
+	if authorization.TargetFields["name"] != nil || !slices.Equal(authorization.TargetFields["owner"], []string{"osolmaz"}) ||
+		!slices.Equal(authorization.TargetFields["repo"], []string{"brokerkit"}) ||
+		!slices.Equal(authorization.TargetFields["number"], []string{"7"}) ||
+		!slices.Equal(authorization.TargetFields["installation_id"], []string{"42"}) {
+		t.Fatalf("authorization target fields = %+v", authorization.TargetFields)
 	}
 }
 

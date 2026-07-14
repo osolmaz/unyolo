@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 
@@ -14,6 +15,52 @@ import (
 )
 
 var immutableTargetFields = []string{"id", "node_id"}
+
+func authorizationTargetFields(binding *opbinding.Binding, target map[string]any, credential githubauth.Metadata) map[string][]string {
+	trusted := trustedAuthorizationTargetFields(binding, target)
+	fields := projectedAuthorizationTargetFields(target, trusted)
+	addCredentialTargetFields(fields, target, credential)
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
+}
+
+func trustedAuthorizationTargetFields(binding *opbinding.Binding, target map[string]any) map[string]bool {
+	trusted := map[string]bool{"id": targetFieldPresent("id", target), "node_id": targetFieldPresent("node_id", target)}
+	if binding == nil {
+		return trusted
+	}
+	for _, parameter := range binding.TargetPathParameters {
+		trusted[parameter.Field] = true
+	}
+	trusted["name"] = trusted["name"] || binding.AuthenticatedUserTarget
+	return trusted
+}
+
+func projectedAuthorizationTargetFields(target map[string]any, trusted map[string]bool) map[string][]string {
+	fields := map[string][]string{}
+	for _, key := range []string{"owner", "repo", "name", "node_id"} {
+		if value := stringValue(target, key); trusted[key] && value != "" {
+			fields[key] = []string{value}
+		}
+	}
+	for _, key := range []string{"id", "number"} {
+		if value := integerString(target, key); trusted[key] && value != "" {
+			fields[key] = []string{value}
+		}
+	}
+	return fields
+}
+
+func addCredentialTargetFields(fields map[string][]string, target map[string]any, credential githubauth.Metadata) {
+	if credential.InstallationID > 0 {
+		fields["installation_id"] = []string{fmt.Sprint(credential.InstallationID)}
+	}
+	if credential.UserID > 0 && stringValue(target, "kind") == "user" {
+		fields["id"] = []string{fmt.Sprint(credential.UserID)}
+	}
+}
 
 func (a generatedAdapter) resolveCredential(ctx context.Context, target map[string]any) (githubauth.Metadata, error) {
 	credential, err := a.manager.SelectMetadata(ctx, a.descriptor, target, a.options.RequestingUserID)

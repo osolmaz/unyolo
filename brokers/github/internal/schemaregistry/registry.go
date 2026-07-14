@@ -300,6 +300,7 @@ func targetSchemaForOperation(name string, operation Operation) (map[string]any,
 			required[field] = true
 		}
 	}
+	addInstallationSelectorRequirement(operation, target, required)
 	values := make([]string, 0, len(required))
 	for field := range required {
 		values = append(values, field)
@@ -311,6 +312,20 @@ func targetSchemaForOperation(name string, operation Operation) (map[string]any,
 	}
 	target["required"] = encoded
 	return target, true
+}
+
+func addInstallationSelectorRequirement(operation Operation, target map[string]any, required map[string]bool) {
+	if operation.Target == "target.installation.v1" && len(required) == 1 {
+		target["anyOf"] = requiredInstallationSelector()
+	}
+}
+
+func requiredInstallationSelector() []any {
+	result := make([]any, 0, 4)
+	for _, field := range []string{"id", "installation_id", "installation_account", "name"} {
+		result = append(result, map[string]any{"required": []any{field}})
+	}
+	return result
 }
 
 var defaultTargetFieldsByKind = map[string][]string{

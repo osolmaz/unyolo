@@ -545,12 +545,7 @@ func (r *Runtime[I, P, A]) Advance(ctx context.Context, operation agentv1.Operat
 	if err != nil {
 		return
 	}
-	if current.State == agentv1.StatePending && current.ApprovalID == "" {
-		current = r.RecoverApproval(current)
-	}
-	if current.State == agentv1.StatePending && current.ApprovalID != "" {
-		current = r.syncApproval(current)
-	}
+	current = r.advancePendingApproval(ctx, current)
 	if current.State != agentv1.StateApproved {
 		return
 	}

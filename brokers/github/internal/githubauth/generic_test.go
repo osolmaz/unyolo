@@ -229,6 +229,12 @@ func TestCredentialMetadataSelectionFailsClosed(t *testing.T) {
 	if err != nil || metadata.InstallationID != 42 || len(metadata.RepositoryIDs) != 2 || metadata.Permissions["contents"] != "read" {
 		t.Fatalf("installation metadata = %+v, %v", metadata, err)
 	}
+	metadata, err = manager.SelectMetadata(t.Context(), descriptor(string(KindInstallation)), map[string]any{
+		"kind": "installation", "id": float64(43),
+	}, 0)
+	if err != nil || metadata.InstallationID != 43 {
+		t.Fatalf("canonical installation target metadata = %+v, %v", metadata, err)
+	}
 	for name, operation := range map[string]func() error{
 		"missing installation": func() error {
 			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindInstallation)), map[string]any{}, 0)

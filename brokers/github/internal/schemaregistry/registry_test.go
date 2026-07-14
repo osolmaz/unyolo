@@ -90,6 +90,23 @@ func TestGlobalAndNestedOperationsUseRealTargets(t *testing.T) {
 	}
 }
 
+func TestInstallationTargetsRequireExecutableSelector(t *testing.T) {
+	arguments := json.RawMessage(`{}`)
+	if err := ValidateSubmission("repo.list_public", json.RawMessage(`{"kind":"installation"}`), arguments); err == nil {
+		t.Fatal("installation target without a selector was accepted")
+	}
+	for _, target := range []json.RawMessage{
+		json.RawMessage(`{"kind":"installation","id":42}`),
+		json.RawMessage(`{"kind":"installation","installation_id":42}`),
+		json.RawMessage(`{"kind":"installation","installation_account":"osolmaz"}`),
+		json.RawMessage(`{"kind":"installation","name":"osolmaz"}`),
+	} {
+		if err := ValidateSubmission("repo.list_public", target, arguments); err != nil {
+			t.Fatalf("executable installation selector %s was rejected: %v", target, err)
+		}
+	}
+}
+
 func TestSubmissionValidationRejectsRawAndUnknownFields(t *testing.T) {
 	validTarget := []byte(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`)
 	if err := ValidateSubmission("pull_request.create", validTarget, []byte(`{"input":{"title":"Coverage","head":"feature","base":"main"}}`)); err != nil {

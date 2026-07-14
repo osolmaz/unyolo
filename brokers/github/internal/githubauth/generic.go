@@ -82,7 +82,7 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 		if owner, repo, ok := targetregistry.RepositoryIdentity(target); ok {
 			return m.ResolveRepository(ctx, descriptor.Name, owner, repo)
 		}
-		installationID := int64Field(target, "installation_id")
+		installationID := installationTargetID(target)
 		if installationID <= 0 {
 			account := installationAccount(target)
 			if account != "" {
