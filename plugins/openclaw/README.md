@@ -169,7 +169,9 @@ Accept: application/json
 `BrokerKit-Session` has no authentication-scheme prefix. The field is
 case-insensitive under HTTP rules, but hosts and generated examples use this
 spelling. A host must reject empty, repeated, combined, malformed, or
-oversized values; the maximum token size is 4096 bytes. The same field protects
+oversized values. Tokens are 32 to 4096 bytes of visible ASCII excluding comma
+and whitespace; the comma exclusion keeps combined field values unambiguous.
+The same field protects
 `POST /session`, `GET /snapshot`, `GET /events`, request detail, approval,
 denial, and revocation. Direct-mode capabilities use it on
 `/plugins/brokerkit/api/v1` as well.

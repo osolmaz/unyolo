@@ -5,6 +5,6 @@ export function validBrowserSession(value: string): boolean {
   return (
     value.length >= 32 &&
     value.length <= MAX_BROWSER_SESSION_BYTES &&
-    /^[A-Za-z0-9._~-]+$/u.test(value)
+    /^[\x21-\x2B\x2D-\x7E]+$/u.test(value)
   );
 }

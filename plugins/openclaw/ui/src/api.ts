@@ -107,6 +107,7 @@ export class BrokerKitUiApi {
       ...init,
       credentials: "omit",
       cache: "no-store",
+      redirect: "error",
       headers: browserSessionHeaders(init.headers, auth.token),
     });
     if (!response.ok) throw await safeError(response);
@@ -185,6 +186,7 @@ async function delegatedSessionPayload(
       method: "POST",
       credentials: "omit",
       cache: "no-store",
+      redirect: "error",
       headers: browserSessionHeaders(undefined, current.token),
     });
     if (!response.ok) throw await safeError(response);

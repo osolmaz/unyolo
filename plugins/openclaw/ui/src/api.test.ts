@@ -85,7 +85,7 @@ describe("BrokerKitUiApi", () => {
   });
 
   it("uses the dedicated session field on every direct and delegated route", async () => {
-    const delegatedToken = "d".repeat(48);
+    const delegatedToken = `${"d".repeat(40)}:v1+/=`;
     const meta = {
       getAttribute: vi.fn(() =>
         encoded({
@@ -602,6 +602,7 @@ function expectBrowserSession(init: unknown, session: string): void {
   const request = init as RequestInit;
   expect(request.credentials).toBe("omit");
   expect(request.cache).toBe("no-store");
+  expect(request.redirect).toBe("error");
   const headers = new Headers(request.headers);
   expect(headers.get(BROWSER_SESSION_HEADER)).toBe(session);
   expect(headers.get("authorization")).toBeNull();
