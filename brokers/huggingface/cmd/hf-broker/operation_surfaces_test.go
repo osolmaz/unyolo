@@ -15,6 +15,8 @@ import (
 
 	"github.com/dlclark/regexp2"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/mcpoperation"
@@ -64,6 +66,30 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 		}
 		if sealed, found := properties["sealed_arguments"]; found {
 			assertClosedSchema(t, descriptor.Name+" sealed arguments", sealed)
+		}
+	}
+}
+
+func TestCapturedResultsAreTranscriptSafe(t *testing.T) {
+	for _, descriptor := range agentFacingDescriptors() {
+		binding, found := opbinding.ByName(descriptor.Name)
+		if !found || !binding.CaptureResult {
+			continue
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(binding.ResultSchema, &schema); err != nil {
+			t.Fatalf("%s result schema: %v", descriptor.Name, err)
+		}
+		projection := mcpprojection.ForOperation(descriptor).Result
+		if !projection.Empty() {
+			var err error
+			schema, err = projection.MCPSchema(schema)
+			if err != nil {
+				t.Fatalf("%s result projection: %v", descriptor.Name, err)
+			}
+		}
+		if issues := capability.AuditMCPPublicSchema(schema); len(issues) != 0 {
+			t.Fatalf("%s result schema has unresolved compatibility issue: %v", descriptor.Name, issues[0])
 		}
 	}
 }
