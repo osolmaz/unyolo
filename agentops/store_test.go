@@ -329,7 +329,7 @@ func TestStoreBoundsAndPrunesOperations(t *testing.T) {
 	if _, _, err := store.Submit(validSubmit("full")); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("full store error = %v", err)
 	}
-	operations[0] = validOperationForStore("op_0", agentv1.StateSucceeded, now.Add(-terminalRetention-time.Hour))
+	operations[0] = validOperationForStore("op_0", agentv1.StateSucceeded, now.Add(-TerminalRetention-time.Hour))
 	terminalAt := operations[0].UpdatedAt
 	operations[0].TerminalAt = &terminalAt
 	operations[0].Result = json.RawMessage(`{"repo_id":"alice/old"}`)

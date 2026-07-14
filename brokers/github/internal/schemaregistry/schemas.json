@@ -3599,7 +3599,7 @@
       }
     },
     "advisory.security_advisories_list_global_advisories": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -4311,7 +4311,7 @@
       }
     },
     "agent_task.agent_tasks_get_task_by_id": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -4443,7 +4443,7 @@
       }
     },
     "agent_task.agent_tasks_list_tasks": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7273,7 +7273,7 @@
       }
     },
     "app.meta_get": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7290,7 +7290,7 @@
       }
     },
     "app.meta_get_all_versions": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7309,7 +7309,7 @@
       }
     },
     "app.meta_get_octocat": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7330,7 +7330,7 @@
       }
     },
     "app.meta_get_zen": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7346,7 +7346,7 @@
       }
     },
     "app.meta_root": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7361,7 +7361,7 @@
       }
     },
     "app.rate_limit_get": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -18626,7 +18626,7 @@
       }
     },
     "commit.search_commits": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -42515,7 +42515,7 @@
       }
     },
     "notification.activity_get_feeds": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -42885,7 +42885,7 @@
       }
     },
     "notification.activity_list_public_events": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -46446,7 +46446,7 @@
       }
     },
     "organization.classroom_get_a_classroom": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -46485,7 +46485,7 @@
       }
     },
     "organization.classroom_get_an_assignment": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -46523,7 +46523,7 @@
       }
     },
     "organization.classroom_get_assignment_grades": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -46551,7 +46551,7 @@
       }
     },
     "organization.classroom_list_accepted_assignments_for_an_assignment": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -46596,7 +46596,7 @@
       }
     },
     "organization.classroom_list_assignments_for_a_classroom": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -46650,7 +46650,7 @@
       }
     },
     "organization.classroom_list_classrooms": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -51641,7 +51641,7 @@
       }
     },
     "organization.list": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -63125,7 +63125,7 @@
       }
     },
     "pull_request.search_issues_and_pull_requests": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -71484,7 +71484,7 @@
       }
     },
     "repo.licenses_get": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -71526,7 +71526,7 @@
       }
     },
     "repo.licenses_get_all_commonly_used": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -75014,7 +75014,7 @@
       }
     },
     "repo.search_code": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -75091,7 +75091,7 @@
       }
     },
     "repo.search_repos": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -75184,7 +75184,7 @@
       }
     },
     "repo.search_topics": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -75246,7 +75246,7 @@
       }
     },
     "repo.search_users": {
-      "target": "target.installation.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,

@@ -187,17 +187,18 @@ func appDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo 
 }
 
 func permissionCheck(permissions map[string]string) bkdoctor.Check {
-	if len(permissions) != 1 || permissions["contents"] != "read" {
-		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_app_permissions", Message: "repository inspection credential was not narrowed to contents read"}
-	}
-	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_app_permissions", Message: "repository inspection credential is narrowed to contents read"}
+	return exactPermissionCheck(permissions, "contents", "github_app_permissions", "repository inspection credential", "contents read")
 }
 
 func protectionPermissionCheck(permissions map[string]string) bkdoctor.Check {
-	if len(permissions) != 1 || permissions["administration"] != "read" {
-		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_protection_permissions", Message: "protection inspection credential was not narrowed to administration read"}
+	return exactPermissionCheck(permissions, "administration", "github_protection_permissions", "protection inspection credential", "administration read")
+}
+
+func exactPermissionCheck(permissions map[string]string, permission, name, subject, scope string) bkdoctor.Check {
+	if len(permissions) != 1 || permissions[permission] != "read" {
+		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: name, Message: subject + " was not narrowed to " + scope}
 	}
-	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_protection_permissions", Message: "protection inspection credential is narrowed to administration read"}
+	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: name, Message: subject + " is narrowed to " + scope}
 }
 
 func protectionCheck(required bool, protected bool, err error) bkdoctor.Check {

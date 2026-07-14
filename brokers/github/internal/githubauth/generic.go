@@ -102,11 +102,12 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 			return Metadata{}, errors.New("GitHub installation selector is incomplete")
 		}
 		return Metadata{
-			Kind:           KindInstallation,
-			InstallationID: installationID,
-			RepositoryIDs:  repositoryIDs(target),
-			Permissions:    clonePermissions(descriptor.RequiredGitHubPermissions),
-			APIHost:        m.apiURL.Host,
+			Kind:                  KindInstallation,
+			InstallationID:        installationID,
+			RepositoryIDs:         repositoryIDs(target),
+			Permissions:           clonePermissions(descriptor.RequiredGitHubPermissions),
+			AllowEmptyPermissions: descriptor.AllowEmptyInstallationPermissions,
+			APIHost:               m.apiURL.Host,
 		}, nil
 	case string(KindUser):
 		if userID <= 0 {
@@ -455,7 +456,7 @@ func (m *Manager) clientForMetadata(ctx context.Context, selector Metadata) (*ht
 		}
 		return cloneHTTPClient(m.client, versionTransport{base: m.app.round}), nil, nil
 	case KindInstallation:
-		credential, err := m.InstallationCredential(ctx, selector.InstallationID, selector.RepositoryIDs, selector.Permissions)
+		credential, err := m.installationCredential(ctx, selector.InstallationID, selector.RepositoryIDs, selector.Permissions, selector.AllowEmptyPermissions)
 		return m.client, credential, err
 	case KindUser:
 		credential, err := m.UserCredential(ctx, selector.UserID)

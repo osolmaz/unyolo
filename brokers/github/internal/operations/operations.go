@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
@@ -93,6 +94,7 @@ type streamStore interface {
 	OpenStream(streamstore.Reference) (*os.File, error)
 	Put(string, string, string, string, io.Reader, int64, time.Time) (streamstore.Reference, error)
 	Delete(streamstore.Reference) error
+	Retire(streamstore.Reference, time.Time) error
 }
 
 type sealedArguments struct {
@@ -451,7 +453,7 @@ func (a generatedAdapter) Cleanup(plan Plan) error {
 		if err != nil {
 			return err
 		}
-		return a.options.StreamStore.Delete(*stream.StreamInput)
+		return a.options.StreamStore.Retire(*stream.StreamInput, time.Now().Add(agentops.TerminalRetention))
 	}
 	if !a.descriptor.Sealed {
 		return nil
@@ -517,7 +519,6 @@ func (a generatedAdapter) executeStreamUpload(ctx context.Context, plan Plan, ta
 	if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
 		return Outcome{}, err
 	}
-	_ = a.options.StreamStore.Delete(*arguments.StreamInput)
 	return Outcome{Proven: true, Result: result.Body}, nil
 }
 

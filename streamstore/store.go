@@ -40,6 +40,11 @@ type Reference struct {
 	ExpiresAt  int64  `json:"expires_at"`
 }
 
+type replayMarker struct {
+	Reference   Reference `json:"reference"`
+	RetainUntil int64     `json:"retain_until"`
+}
+
 type Store struct {
 	dir      string
 	mu       sync.Mutex
@@ -211,9 +216,56 @@ func (s *Store) Delete(reference Reference) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, path := range []string{s.metaPath(reference.ID), s.dataPath(reference.ID)} {
+	return removeFiles([]string{s.metaPath(reference.ID), s.dataPath(reference.ID), s.replayPath(reference.ID)}, "delete stream")
+}
+
+// Retire removes stream bytes while retaining enough metadata to replay the
+// original upload request for the caller's idempotency window.
+func (s *Store) Retire(reference Reference, retainUntil time.Time) error {
+	if !idPattern.MatchString(reference.ID) || !retainUntil.After(s.now()) {
+		return errors.New("stream retirement is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.retireLocked(reference, retainUntil)
+}
+
+func (s *Store) retireLocked(reference Reference, retainUntil time.Time) error {
+	if replayed, err := s.retirementReplay(reference); replayed || err != nil {
+		return err
+	}
+	stored, err := s.loadLocked(reference.ID)
+	if err != nil || stored != reference {
+		return errors.New("stream reference is invalid")
+	}
+	marker := replayMarker{Reference: reference, RetainUntil: retainUntil.UTC().Unix()}
+	encoded, _ := json.Marshal(marker)
+	if err := writeMetadata(s.replayPath(reference.ID), encoded); err != nil {
+		return errors.New("write stream replay metadata")
+	}
+	return removeFiles([]string{s.metaPath(reference.ID), s.dataPath(reference.ID)}, "retire stream")
+}
+
+func (s *Store) retirementReplay(reference Reference) (bool, error) {
+	if _, err := os.Lstat(s.replayPath(reference.ID)); os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return true, errors.New("inspect stream replay metadata")
+	}
+	marker, err := s.loadReplayLocked(reference.ID)
+	if err != nil {
+		return true, err
+	}
+	if marker.Reference != reference {
+		return true, errors.New("stream retirement conflicts with existing replay metadata")
+	}
+	return true, nil
+}
+
+func removeFiles(paths []string, noun string) error {
+	for _, path := range paths {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return errors.New("delete stream")
+			return errors.New(noun)
 		}
 	}
 	return nil
@@ -232,19 +284,49 @@ func (s *Store) sweepExpiredLocked(now time.Time) (int, error) {
 	}
 	removed := 0
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-			continue
+		if s.sweepEntryLocked(entry, now) {
+			removed++
 		}
-		id := entry.Name()[:len(entry.Name())-len(".json")]
-		reference, loadErr := s.loadLocked(id)
-		if loadErr == nil && now.Unix() < reference.ExpiresAt {
-			continue
-		}
-		_ = os.Remove(s.metaPath(id))
-		_ = os.Remove(s.dataPath(id))
-		removed++
 	}
 	return removed, nil
+}
+
+func (s *Store) sweepEntryLocked(entry os.DirEntry, now time.Time) bool {
+	extension := filepath.Ext(entry.Name())
+	id, ok := streamEntryID(entry, extension)
+	if !ok || !streamMetadataExtension(extension) {
+		return false
+	}
+	expiresAt := s.entryExpiryLocked(id, extension)
+	if now.Unix() < expiresAt {
+		return false
+	}
+	s.removeExpiredEntry(id, entry.Name(), extension)
+	return true
+}
+
+func streamMetadataExtension(extension string) bool {
+	return extension == ".json" || extension == ".replay"
+}
+
+func (s *Store) removeExpiredEntry(id, name, extension string) {
+	_ = os.Remove(filepath.Join(s.dir, name))
+	if extension == ".json" {
+		_ = os.Remove(s.dataPath(id))
+	}
+}
+
+func (s *Store) entryExpiryLocked(id, extension string) int64 {
+	if extension == ".json" {
+		if reference, err := s.loadLocked(id); err == nil {
+			return reference.ExpiresAt
+		}
+		return 0
+	}
+	if marker, err := s.loadReplayLocked(id); err == nil {
+		return marker.RetainUntil
+	}
+	return 0
 }
 
 func (s *Store) findRequestLocked(owner, purpose, requestKey string) (Reference, bool, error) {
@@ -253,17 +335,23 @@ func (s *Store) findRequestLocked(owner, purpose, requestKey string) (Reference,
 		return Reference{}, false, errors.New("inspect stream idempotency")
 	}
 	for _, entry := range entries {
-		id, ok := streamEntryID(entry, ".json")
-		if !ok {
-			continue
+		if reference, ok := s.referenceForEntryLocked(entry); ok && sameStreamRequest(reference, owner, purpose, requestKey) {
+			return reference, true, nil
 		}
-		existing, loadErr := s.loadLocked(id)
-		if loadErr != nil || !sameStreamRequest(existing, owner, purpose, requestKey) {
-			continue
-		}
-		return existing, true, nil
 	}
 	return Reference{}, false, nil
+}
+
+func (s *Store) referenceForEntryLocked(entry os.DirEntry) (Reference, bool) {
+	if id, ok := streamEntryID(entry, ".json"); ok {
+		reference, err := s.loadLocked(id)
+		return reference, err == nil
+	}
+	if id, ok := streamEntryID(entry, ".replay"); ok {
+		marker, err := s.loadReplayLocked(id)
+		return marker.Reference, err == nil
+	}
+	return Reference{}, false
 }
 
 func (s *Store) checkQuotaLocked(additionalBytes int64) error {
@@ -342,8 +430,21 @@ func (s *Store) loadLocked(id string) (Reference, error) {
 	return reference, nil
 }
 
-func (s *Store) dataPath(id string) string { return filepath.Join(s.dir, id+".bin") }
-func (s *Store) metaPath(id string) string { return filepath.Join(s.dir, id+".json") }
+func (s *Store) loadReplayLocked(id string) (replayMarker, error) {
+	if !idPattern.MatchString(id) {
+		return replayMarker{}, errors.New("stream reference is invalid")
+	}
+	data, err := os.ReadFile(s.replayPath(id)) // #nosec G304 -- validated ID under private state.
+	var marker replayMarker
+	if err != nil || len(data) > 8192 || json.Unmarshal(data, &marker) != nil || marker.Reference.ID != id || marker.Reference.Size <= 0 || marker.RetainUntil <= 0 {
+		return replayMarker{}, errors.New("stream replay metadata is unavailable")
+	}
+	return marker, nil
+}
+
+func (s *Store) dataPath(id string) string   { return filepath.Join(s.dir, id+".bin") }
+func (s *Store) metaPath(id string) string   { return filepath.Join(s.dir, id+".json") }
+func (s *Store) replayPath(id string) string { return filepath.Join(s.dir, id+".replay") }
 
 func newID() (string, error) {
 	var data [18]byte

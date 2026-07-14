@@ -254,7 +254,8 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		CredentialKind: credential, CredentialOutputKind: credentialOutput,
 		SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"rest:" + operation.OperationID},
 		ExecutorKind: executorKind(disposition), ReconcilerKind: reconcilerKind(method, disposition),
-	}, RequiredGitHubPermissions: permissions, RequiredRepositorySelection: strings.Contains(path, "/repos/{owner}/{repo}")}
+	}, RequiredGitHubPermissions: permissions, RequiredRepositorySelection: strings.Contains(path, "/repos/{owner}/{repo}"),
+		AllowEmptyInstallationPermissions: slices.Contains(reviewedOverrides.PermissionlessInstallationOperations, operation.OperationID)}
 }
 
 func highOrCriticalRisk(risk capability.Risk) bool {
@@ -337,8 +338,8 @@ func restDisposition(method, path string, operation restOperation, credential st
 }
 
 func credentialKind(method, path string, operation restOperation, matches []permissionMatch) string {
-	if strings.HasPrefix(path, "/app") {
-		return "app-jwt"
+	if fixed := fixedCredentialKind(path, operation.OperationID); fixed != "" {
+		return fixed
 	}
 	server, user := false, false
 	for _, match := range matches {
@@ -352,12 +353,25 @@ func credentialKind(method, path string, operation restOperation, matches []perm
 		return "user"
 	}
 	if enabled, _ := operation.GitHub["enabledForGitHubApps"].(bool); enabled {
-		return "installation"
+		// Without a reviewed permission route, an installation token cannot be
+		// narrowed safely. An enrolled GitHub App user credential remains
+		// operation-gated and can serve GitHub-App-compatible endpoints.
+		return "user"
 	}
 	if method == http.MethodGet || method == http.MethodHead {
 		return "user"
 	}
 	return "unavailable"
+}
+
+func fixedCredentialKind(path, operationID string) string {
+	if strings.HasPrefix(path, "/app") {
+		return "app-jwt"
+	}
+	if slices.Contains(reviewedOverrides.PermissionlessInstallationOperations, operationID) {
+		return "installation"
+	}
+	return ""
 }
 
 func requiredPermissionMap(matches []permissionMatch) map[string]string {

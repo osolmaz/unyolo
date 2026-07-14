@@ -30,13 +30,14 @@ const (
 )
 
 type Metadata struct {
-	Kind           Kind
-	InstallationID int64
-	RepositoryIDs  []int64
-	Permissions    map[string]string
-	UserID         int64
-	APIHost        string
-	ExpiresAt      time.Time
+	Kind                  Kind
+	InstallationID        int64
+	RepositoryIDs         []int64
+	Permissions           map[string]string
+	AllowEmptyPermissions bool
+	UserID                int64
+	APIHost               string
+	ExpiresAt             time.Time
 }
 
 // Credential can authorize an upstream request without exposing its value.

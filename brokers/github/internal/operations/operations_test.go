@@ -631,6 +631,10 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 	}
 	registry, _ := NewRegistry(adapters...)
 	adapter, _ := registry.Lookup("release.repos_upload_release_asset")
+	streamAdapter := adapter.(generatedAdapter)
+	if _, err := streamAdapter.executeStreamUpload(t.Context(), Plan{Arguments: json.RawMessage(`{}`)}, nil); err == nil {
+		t.Fatal("invalid stream upload plan executed")
+	}
 	wrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"artifact.bin"}`), "stream_input": reference})
 	input, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), wrapper)
 	if err != nil {
@@ -648,8 +652,16 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 	if err != nil || !outcome.Proven {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
-	if streams.Validate(reference) == nil {
-		t.Fatal("consumed upload stream was retained")
+	if streams.Validate(reference) != nil {
+		t.Fatal("upload stream was removed before terminal cleanup")
+	}
+	if err := adapter.(PlanCleaner).Cleanup(plan); err != nil || streams.Validate(reference) == nil {
+		t.Fatalf("terminal upload cleanup = %v", err)
+	}
+	replayed, err := streams.Put("bob", "release.repos_upload_release_asset", "asset-request", "application/octet-stream",
+		strings.NewReader(content), 1024, time.Now().Add(time.Hour))
+	if err != nil || replayed != reference {
+		t.Fatalf("terminal upload replay = %+v, %v; want %+v", replayed, err, reference)
 	}
 }
 

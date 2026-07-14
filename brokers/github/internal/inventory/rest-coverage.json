@@ -979,7 +979,7 @@
     "catalog_operations": [
       "cache.actions_get_actions_cache_retention_limit_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -1024,7 +1024,7 @@
     "catalog_operations": [
       "cache.actions_get_actions_cache_storage_limit_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -2621,7 +2621,7 @@
     "catalog_operations": [
       "cache.actions_set_actions_cache_retention_limit_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "enterprise"
@@ -2672,7 +2672,7 @@
     "catalog_operations": [
       "cache.actions_set_actions_cache_storage_limit_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "enterprise"
@@ -3298,7 +3298,7 @@
     "catalog_operations": [
       "notification.activity_get_feeds"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3350,7 +3350,7 @@
     "catalog_operations": [
       "notification.activity_list_events_for_authenticated_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3392,7 +3392,7 @@
     "catalog_operations": [
       "notification.activity_list_public_events"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3405,7 +3405,7 @@
     "catalog_operations": [
       "notification.activity_list_public_events_for_repo_network"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3418,7 +3418,7 @@
     "catalog_operations": [
       "notification.activity_list_public_events_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3431,7 +3431,7 @@
     "catalog_operations": [
       "organization.activity_list_public_org_events"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3444,7 +3444,7 @@
     "catalog_operations": [
       "notification.activity_list_received_events_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3457,7 +3457,7 @@
     "catalog_operations": [
       "notification.activity_list_received_public_events_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3693,7 +3693,7 @@
     "catalog_operations": [
       "agent_task.agent_tasks_create_task_in_repo"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3706,7 +3706,7 @@
     "catalog_operations": [
       "agent_task.agent_tasks_get_task_by_id"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3719,7 +3719,7 @@
     "catalog_operations": [
       "agent_task.agent_tasks_get_task_by_repo_and_id"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3732,7 +3732,7 @@
     "catalog_operations": [
       "agent_task.agent_tasks_list_tasks"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -3745,7 +3745,7 @@
     "catalog_operations": [
       "agent_task.agent_tasks_list_tasks_for_repo"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -4872,7 +4872,7 @@
     "catalog_operations": [
       "installation.apps_revoke_installation_access_token"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive",
@@ -5455,7 +5455,7 @@
     "catalog_operations": [
       "organization.classroom_get_a_classroom"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -5468,7 +5468,7 @@
     "catalog_operations": [
       "organization.classroom_get_an_assignment"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -5481,7 +5481,7 @@
     "catalog_operations": [
       "organization.classroom_get_assignment_grades"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -5494,7 +5494,7 @@
     "catalog_operations": [
       "organization.classroom_list_accepted_assignments_for_an_assignment"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -5507,7 +5507,7 @@
     "catalog_operations": [
       "organization.classroom_list_assignments_for_a_classroom"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -5520,7 +5520,7 @@
     "catalog_operations": [
       "organization.classroom_list_classrooms"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -5958,7 +5958,7 @@
     "catalog_operations": [
       "enterprise.code_security_attach_enterprise_configuration"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "enterprise"
@@ -6138,7 +6138,7 @@
     "catalog_operations": [
       "enterprise.code_security_get_default_configurations_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -6212,7 +6212,7 @@
     "catalog_operations": [
       "enterprise.code_security_set_configuration_as_default_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "enterprise"
@@ -6258,7 +6258,7 @@
     "path": "/codes_of_conduct",
     "summary": "Get all codes of conduct",
     "disposition": "local",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "equivalent behavior requires no broker authority",
     "reviewed": true
   },
@@ -6268,7 +6268,7 @@
     "path": "/codes_of_conduct/{key}",
     "summary": "Get a code of conduct",
     "disposition": "local",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "equivalent behavior requires no broker authority",
     "reviewed": true
   },
@@ -7520,7 +7520,7 @@
     "catalog_operations": [
       "copilot.copilot_spaces_update_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -8591,7 +8591,7 @@
     "path": "/emojis",
     "summary": "Get emojis",
     "disposition": "local",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "equivalent behavior requires no broker authority",
     "reviewed": true
   },
@@ -9425,7 +9425,7 @@
     "path": "/gitignore/templates",
     "summary": "Get all gitignore templates",
     "disposition": "local",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "equivalent behavior requires no broker authority",
     "reviewed": true
   },
@@ -9435,7 +9435,7 @@
     "path": "/gitignore/templates/{name}",
     "summary": "Get a gitignore template",
     "disposition": "local",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "equivalent behavior requires no broker authority",
     "reviewed": true
   },
@@ -10732,7 +10732,7 @@
     "catalog_operations": [
       "repo.licenses_get"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -10745,7 +10745,7 @@
     "catalog_operations": [
       "repo.licenses_get_all_commonly_used"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -10784,7 +10784,7 @@
     "path": "/markdown/raw",
     "summary": "Render a Markdown document in raw mode",
     "disposition": "local",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "equivalent behavior requires no broker authority",
     "reviewed": true
   },
@@ -10797,7 +10797,7 @@
     "catalog_operations": [
       "app.meta_get"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -10810,7 +10810,7 @@
     "catalog_operations": [
       "app.meta_get_all_versions"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -10823,7 +10823,7 @@
     "catalog_operations": [
       "app.meta_get_octocat"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -10836,7 +10836,7 @@
     "catalog_operations": [
       "app.meta_get_zen"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -10849,7 +10849,7 @@
     "catalog_operations": [
       "app.meta_root"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "broker credential, health, or control-plane machinery",
     "reviewed": true
   },
@@ -11176,7 +11176,7 @@
     "catalog_operations": [
       "enterprise.oidc_create_oidc_custom_property_inclusion_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "enterprise"
@@ -11211,7 +11211,7 @@
     "catalog_operations": [
       "enterprise.oidc_delete_oidc_custom_property_inclusion_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive",
@@ -11264,7 +11264,7 @@
     "catalog_operations": [
       "enterprise.oidc_list_oidc_custom_property_inclusions_for_enterprise"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -11915,7 +11915,7 @@
     "catalog_operations": [
       "organization.get"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -12088,7 +12088,7 @@
     "catalog_operations": [
       "organization.list"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -12165,7 +12165,7 @@
     "catalog_operations": [
       "organization.list_attestations"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -12178,7 +12178,7 @@
     "catalog_operations": [
       "organization.list_attestations_bulk"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "organization"
@@ -12239,7 +12239,7 @@
     "catalog_operations": [
       "organization.list_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -12316,7 +12316,7 @@
     "catalog_operations": [
       "member.orgs_list_memberships_for_authenticated_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13559,7 +13559,7 @@
     "catalog_operations": [
       "project.projects_add_field_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13591,7 +13591,7 @@
     "catalog_operations": [
       "project.projects_add_item_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13604,7 +13604,7 @@
     "catalog_operations": [
       "project.projects_create_draft_item_for_authenticated_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13686,7 +13686,7 @@
     "catalog_operations": [
       "project.projects_delete_item_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive"
@@ -13718,7 +13718,7 @@
     "catalog_operations": [
       "project.projects_get_field_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13747,7 +13747,7 @@
     "catalog_operations": [
       "project.projects_get_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13776,7 +13776,7 @@
     "catalog_operations": [
       "project.projects_get_user_item"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13805,7 +13805,7 @@
     "catalog_operations": [
       "project.projects_list_fields_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13834,7 +13834,7 @@
     "catalog_operations": [
       "project.projects_list_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13863,7 +13863,7 @@
     "catalog_operations": [
       "project.projects_list_items_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -13924,7 +13924,7 @@
     "catalog_operations": [
       "project.projects_update_item_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -14379,7 +14379,7 @@
     "catalog_operations": [
       "app.rate_limit_get"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "broker credential, health, or control-plane machinery",
     "reviewed": true
   },
@@ -14456,7 +14456,7 @@
     "catalog_operations": [
       "release.reactions_create_for_release"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -14545,7 +14545,7 @@
     "catalog_operations": [
       "release.reactions_delete_for_release"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive"
@@ -14625,7 +14625,7 @@
     "catalog_operations": [
       "release.reactions_list_for_release"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18013,7 +18013,7 @@
     "catalog_operations": [
       "release.repos_upload_release_asset"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "named bounded binary or redirect-validated stream adapter",
     "reviewed": true
   },
@@ -18026,7 +18026,7 @@
     "catalog_operations": [
       "repo.search_code"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18039,7 +18039,7 @@
     "catalog_operations": [
       "commit.search_commits"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18052,7 +18052,7 @@
     "catalog_operations": [
       "pull_request.search_issues_and_pull_requests"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18081,7 +18081,7 @@
     "catalog_operations": [
       "repo.search_repos"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18094,7 +18094,7 @@
     "catalog_operations": [
       "repo.search_topics"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18107,7 +18107,7 @@
     "catalog_operations": [
       "repo.search_users"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18335,7 +18335,7 @@
     "catalog_operations": [
       "advisory.security_advisories_get_global_advisory"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -18364,7 +18364,7 @@
     "catalog_operations": [
       "advisory.security_advisories_list_global_advisories"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19055,7 +19055,7 @@
     "catalog_operations": [
       "member.users_check_following_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19313,7 +19313,7 @@
     "catalog_operations": [
       "member.users_get_by_id"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19326,7 +19326,7 @@
     "catalog_operations": [
       "member.users_get_by_username"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19400,7 +19400,7 @@
     "catalog_operations": [
       "member.users_list"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19413,7 +19413,7 @@
     "catalog_operations": [
       "member.users_list_attestations"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19426,7 +19426,7 @@
     "catalog_operations": [
       "member.users_list_attestations_bulk"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19503,7 +19503,7 @@
     "catalog_operations": [
       "member.users_list_followers_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19516,7 +19516,7 @@
     "catalog_operations": [
       "member.users_list_following_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19545,7 +19545,7 @@
     "catalog_operations": [
       "member.users_list_gpg_keys_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19619,7 +19619,7 @@
     "catalog_operations": [
       "member.users_list_social_accounts_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },
@@ -19648,7 +19648,7 @@
     "catalog_operations": [
       "member.users_list_ssh_signing_keys_for_user"
     ],
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "reviewed": true
   },

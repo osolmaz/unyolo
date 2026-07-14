@@ -82,6 +82,76 @@ func TestStoreIdempotentlyReusesMatchingUpload(t *testing.T) {
 	}
 }
 
+func TestStoreRetainsReplayIdentityWithoutStreamBytes(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	store.now = func() time.Time { return time.Unix(100, 0) }
+	first, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("canary"), 32, time.Unix(110, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Retire(first, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Retire(first, time.Unix(210, 0)); err != nil {
+		t.Fatalf("repeated retirement = %v", err)
+	}
+	conflict := first
+	conflict.Digest = strings.Repeat("0", len(first.Digest))
+	if err := store.Retire(conflict, time.Unix(210, 0)); err == nil {
+		t.Fatal("conflicting retirement was accepted")
+	}
+	if store.Validate(first) == nil {
+		t.Fatal("retired stream bytes remain available")
+	}
+	store.now = func() time.Time { return time.Unix(150, 0) }
+	if _, err := store.Put("bob", "release.upload", "request-2", "application/octet-stream", strings.NewReader("other"), 32, time.Unix(160, 0)); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("canary"), 32, time.Unix(160, 0))
+	if err != nil || replayed != first {
+		t.Fatalf("retired replay = %+v, %v; want %+v", replayed, err, first)
+	}
+	if _, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("different"), 32, time.Unix(160, 0)); err == nil {
+		t.Fatal("retired request key accepted different bytes")
+	}
+	store.now = func() time.Time { return time.Unix(201, 0) }
+	replacement, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("canary"), 32, time.Unix(220, 0))
+	if err != nil || replacement.ID == first.ID {
+		t.Fatalf("expired replay marker replacement = %+v, %v", replacement, err)
+	}
+}
+
+func TestStoreDeleteRemovesAllStreamState(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	reference, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("canary"), 32, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(reference); err != nil || store.Validate(reference) == nil {
+		t.Fatalf("delete = %v", err)
+	}
+	if err := store.Delete(reference); err != nil {
+		t.Fatalf("repeated delete = %v", err)
+	}
+	if err := store.Delete(Reference{ID: "invalid"}); err == nil {
+		t.Fatal("invalid delete was accepted")
+	}
+}
+
+func TestStoreRejectsInvalidReplayMetadata(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	if _, err := store.loadReplayLocked("invalid"); err == nil {
+		t.Fatal("invalid replay id was accepted")
+	}
+	id := "stream_abcdefghijklmnopqrstuvwx"
+	if err := os.WriteFile(store.replayPath(id), []byte(`{"reference":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.loadReplayLocked(id); err == nil {
+		t.Fatal("corrupt replay metadata was accepted")
+	}
+}
+
 func TestStoreEnforcesAggregateQuotaAfterSweeping(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	store.maxFiles = 2

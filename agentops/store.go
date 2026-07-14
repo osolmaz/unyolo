@@ -25,7 +25,9 @@ const (
 	maxArgumentsBytes = 1024 * 1024
 	maxResultBytes    = 2 * 1024 * 1024
 	maxOperations     = 2048
-	terminalRetention = 30 * 24 * time.Hour
+	// TerminalRetention is the period during which completed operation keys
+	// remain replayable.
+	TerminalRetention = 30 * 24 * time.Hour
 )
 
 var (
@@ -109,7 +111,7 @@ func (s *Store) submit(input Submit, plan *state.PlanRecord, initialState agentv
 func (s *Store) submitLocked(input Submit, plan *state.PlanRecord, initialState agentv1.State) (agentv1.Operation, bool, error) {
 	ctx := context.Background()
 	now := s.now().UTC()
-	if _, err := s.db.DeleteTerminalOperationsBefore(ctx, now.Add(-terminalRetention)); err != nil {
+	if _, err := s.db.DeleteTerminalOperationsBefore(ctx, now.Add(-TerminalRetention)); err != nil {
 		return agentv1.Operation{}, false, err
 	}
 	if existing, found, err := s.findSubmission(ctx, input); err != nil || found {

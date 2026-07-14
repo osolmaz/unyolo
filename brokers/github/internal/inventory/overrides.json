@@ -30,6 +30,9 @@
     "repo.visibility.update": ["private", "visibility"],
     "repo.website.update": ["homepage"]
   },
+  "permissionless_installation_operations": [
+    "apps/list-repos-accessible-to-installation"
+  ],
   "high_risk_operations": [
     "pull_request.merge",
     "repo.archival.update",

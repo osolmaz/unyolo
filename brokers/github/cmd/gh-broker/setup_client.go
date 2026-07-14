@@ -181,10 +181,6 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return errors.New("--telegram-bot-token-file and --telegram-chat-id must be set together")
 	}
-	return validateSetupSystemdOperatorOptions(opts)
-}
-
-func validateSetupSystemdOperatorOptions(opts setupSystemdOptions) error {
 	if err := validateSetupOperatorCredentials(opts); err != nil {
 		return err
 	}

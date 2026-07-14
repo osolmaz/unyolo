@@ -51,6 +51,21 @@ func TestGeneratedRESTCredentialAndRiskClassification(t *testing.T) {
 	if !found || descriptor.Risk != RiskMedium || descriptor.ExplicitOnly || descriptor.FamilyGlobAllowed == false {
 		t.Fatalf("ordinary mutation classification = %+v", descriptor)
 	}
+	for _, descriptor := range MustAll() {
+		if descriptor.AgentFacing && descriptor.CredentialKind == "installation" && len(descriptor.RequiredGitHubPermissions) == 0 && !descriptor.AllowEmptyInstallationPermissions {
+			t.Fatalf("agent-facing installation operation %q has no reviewed permissions", descriptor.Name)
+		}
+	}
+	for _, name := range []string{"app.meta_get", "release.repos_upload_release_asset"} {
+		descriptor, found := ByName(name)
+		if !found || descriptor.CredentialKind != "user" {
+			t.Fatalf("%s credential = %q, want user", name, descriptor.CredentialKind)
+		}
+	}
+	installation, found := ByName("installation.repo.list")
+	if !found || installation.CredentialKind != "installation" || !installation.AllowEmptyInstallationPermissions {
+		t.Fatalf("permissionless installation credential = %+v", installation)
+	}
 }
 
 func TestPersistedGraphQLRequiresReviewedTargetBindings(t *testing.T) {
@@ -104,7 +119,9 @@ func TestGitHubCatalogValidationFailsClosed(t *testing.T) {
 		mutate func([]Descriptor)
 	}{
 		{"summary", func(values []Descriptor) { values[0].Summary = "" }},
+		{"schema", func(values []Descriptor) { values[0].TargetSchema = "" }},
 		{"credential", func(values []Descriptor) { values[0].CredentialKind = "raw-token" }},
+		{"permissionless installation", func(values []Descriptor) { values[0].AllowEmptyInstallationPermissions = true }},
 		{"binding", func(values []Descriptor) { values[0].UpstreamBindingIDs = nil }},
 		{"sealed paths", func(values []Descriptor) {
 			for index := range values {

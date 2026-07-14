@@ -73,18 +73,18 @@ func newInstallationProvider(app *appProvider, apiURL *url.URL, client *http.Cli
 		cache: map[string]cacheEntry{}, repositories: map[string]repositoryResolution{}, disabled: map[int64]bool{}, generation: map[int64]uint64{}}
 }
 
-func (p *installationProvider) credential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (*Credential, error) {
+func (p *installationProvider) credential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool) (*Credential, error) {
 	repositoryIDs = canonicalRepositoryIDs(repositoryIDs)
 	if installationID <= 0 {
 		return nil, errors.New("exact GitHub installation id is required")
 	}
-	validatedPermissions, err := installationPermissions(permissions)
+	validatedPermissions, err := installationPermissions(permissions, allowEmpty)
 	if err != nil {
 		return nil, err
 	}
-	key := credentialCacheKey(installationID, repositoryIDs, permissions, p.apiURL.Host, p.refreshBefore)
+	key := credentialCacheKey(installationID, repositoryIDs, permissions, allowEmpty, p.apiURL.Host, p.refreshBefore)
 	value, err, _ := p.flight.Do(key, func() (any, error) {
-		return p.mintCredential(ctx, key, installationID, repositoryIDs, validatedPermissions)
+		return p.mintCredential(ctx, key, installationID, repositoryIDs, validatedPermissions, allowEmpty)
 	})
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (p *installationProvider) credential(ctx context.Context, installationID in
 	return credential, nil
 }
 
-func (p *installationProvider) mintCredential(ctx context.Context, key string, installationID int64, repositoryIDs []int64, permissions map[string]string) (*Credential, error) {
+func (p *installationProvider) mintCredential(ctx context.Context, key string, installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool) (*Credential, error) {
 	p.mu.Lock()
 	if p.disabled[installationID] {
 		p.mu.Unlock()
@@ -123,7 +123,8 @@ func (p *installationProvider) mintCredential(ctx context.Context, key string, i
 		return nil, errors.New("GitHub installation token response is invalid")
 	}
 	credential := &Credential{metadata: Metadata{Kind: KindInstallation, InstallationID: installationID,
-		RepositoryIDs: slices.Clone(repositoryIDs), Permissions: clonePermissions(permissions), APIHost: p.apiURL.Host, ExpiresAt: expiresAt}, token: value}
+		RepositoryIDs: slices.Clone(repositoryIDs), Permissions: clonePermissions(permissions), AllowEmptyPermissions: allowEmpty,
+		APIHost: p.apiURL.Host, ExpiresAt: expiresAt}, token: value}
 	p.mu.Lock()
 	if p.disabled[installationID] || p.generation[installationID] != generation {
 		p.mu.Unlock()
@@ -165,7 +166,7 @@ func (p *installationProvider) repositoryCredential(ctx context.Context, operati
 	if err != nil {
 		return nil, repositoryResolution{}, err
 	}
-	credential, err := p.credential(ctx, resolution.InstallationID, []int64{resolution.ID}, permissions)
+	credential, err := p.credential(ctx, resolution.InstallationID, []int64{resolution.ID}, permissions, false)
 	return credential, resolution, err
 }
 
@@ -185,7 +186,7 @@ func (p *installationProvider) resolveRepository(ctx context.Context, owner, rep
 	if p.installationDisabled(installation.GetID()) {
 		return repositoryResolution{}, errors.New("GitHub installation is suspended or deleted")
 	}
-	validatedPermissions, err := installationPermissions(permissions)
+	validatedPermissions, err := installationPermissions(permissions, false)
 	if err != nil {
 		return repositoryResolution{}, err
 	}
@@ -301,8 +302,8 @@ func (p *installationProvider) evictOldest() {
 	}
 }
 
-func credentialCacheKey(installationID int64, repositoryIDs []int64, permissions map[string]string, host string, refreshBefore time.Duration) string {
-	parts := []string{strconv.FormatInt(installationID, 10), host, refreshBefore.String()}
+func credentialCacheKey(installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool, host string, refreshBefore time.Duration) string {
+	parts := []string{strconv.FormatInt(installationID, 10), host, refreshBefore.String(), strconv.FormatBool(allowEmpty)}
 	for _, id := range canonicalRepositoryIDs(repositoryIDs) {
 		parts = append(parts, strconv.FormatInt(id, 10))
 	}
@@ -344,8 +345,8 @@ func (p *installationProvider) createInstallationToken(ctx context.Context, inst
 	return token, nil
 }
 
-func installationPermissions(value map[string]string) (map[string]string, error) {
-	if len(value) == 0 {
+func installationPermissions(value map[string]string, allowEmpty bool) (map[string]string, error) {
+	if len(value) == 0 && !allowEmpty {
 		return nil, errors.New("GitHub installation permission map is invalid")
 	}
 	result := make(map[string]string, len(value))

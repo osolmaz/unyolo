@@ -178,15 +178,39 @@ func TestInstallationCredentialExpiryAndErrorsAreDeterministicAndRedacted(t *tes
 }
 
 func TestInstallationPermissionsSupportPinnedCatalogBeyondSDK(t *testing.T) {
-	permissions, err := installationPermissions(map[string]string{"agent_secrets": "write", "issue_fields": "read"})
+	permissions, err := installationPermissions(map[string]string{"agent_secrets": "write", "issue_fields": "read"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if permissions["agent_secrets"] != "write" || permissions["issue_fields"] != "read" {
 		t.Fatalf("permissions = %+v", permissions)
 	}
-	if _, err := installationPermissions(map[string]string{"not_pinned": "read"}); err == nil {
+	if _, err := installationPermissions(map[string]string{"not_pinned": "read"}, false); err == nil {
 		t.Fatal("unknown permission accepted")
+	}
+	if permissions, err := installationPermissions(nil, true); err != nil || len(permissions) != 0 {
+		t.Fatalf("reviewed empty permissions = %v, %v", permissions, err)
+	}
+}
+
+func TestReviewedPermissionlessInstallationCredentialSendsExplicitEmptyMap(t *testing.T) {
+	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		var body map[string]any
+		if json.NewDecoder(request.Body).Decode(&body) != nil {
+			t.Fatal("installation token request was not JSON")
+		}
+		permissions, found := body["permissions"].(map[string]any)
+		if !found || len(permissions) != 0 {
+			t.Fatalf("permissions = %#v, want explicit empty object", body["permissions"])
+		}
+		_, _ = io.WriteString(w, `{"token":"permissionless-canary","expires_at":"2026-07-14T02:00:00Z"}`)
+	}))
+	t.Cleanup(server.Close)
+	manager := newAppTestManager(t, server, func() time.Time { return now })
+	credential, err := manager.installationCredential(t.Context(), 42, nil, nil, true)
+	if err != nil || !credential.Metadata().AllowEmptyPermissions {
+		t.Fatalf("permissionless credential = %+v, %v", credential, err)
 	}
 }
 

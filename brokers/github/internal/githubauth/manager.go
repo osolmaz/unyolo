@@ -152,10 +152,14 @@ func (m *Manager) ResolveRepository(ctx context.Context, operation, owner, repo 
 }
 
 func (m *Manager) InstallationCredential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (*Credential, error) {
+	return m.installationCredential(ctx, installationID, repositoryIDs, permissions, false)
+}
+
+func (m *Manager) installationCredential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool) (*Credential, error) {
 	if m == nil || m.installation == nil {
 		return nil, errors.New("GitHub App credential is unavailable")
 	}
-	return m.installation.credential(ctx, installationID, repositoryIDs, permissions)
+	return m.installation.credential(ctx, installationID, repositoryIDs, permissions, allowEmpty)
 }
 
 func (m *Manager) InstallationForAccount(ctx context.Context, account string) (Metadata, error) {

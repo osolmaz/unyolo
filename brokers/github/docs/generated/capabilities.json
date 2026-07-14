@@ -975,7 +975,7 @@
     "target_schema": "target.advisory.v1",
     "argument_schema": "arguments.advisory.security_advisories_get_global_advisory.v1",
     "result_schema": "result.advisory.security_advisories_get_global_advisory.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:security-advisories/get-global-advisory"
     ],
@@ -1026,7 +1026,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -1034,10 +1034,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_advisory_security_advisories_list_global_advisories",
     "cli_command": "advisory security_advisories_list_global_advisories",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.advisory.security_advisories_list_global_advisories.v1",
     "result_schema": "result.advisory.security_advisories_list_global_advisories.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:security-advisories/list-global-advisories"
     ],
@@ -1196,7 +1196,7 @@
     "target_schema": "target.repo.v1",
     "argument_schema": "arguments.agent_task.agent_tasks_create_task_in_repo.v1",
     "result_schema": "result.agent_task.agent_tasks_create_task_in_repo.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:agent-tasks/create-task-in-repo"
     ],
@@ -1215,7 +1215,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -1223,10 +1223,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_agent_task_agent_tasks_get_task_by_id",
     "cli_command": "agent_task agent_tasks_get_task_by_id",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.agent_task.agent_tasks_get_task_by_id.v1",
     "result_schema": "result.agent_task.agent_tasks_get_task_by_id.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:agent-tasks/get-task-by-id"
     ],
@@ -1255,7 +1255,7 @@
     "target_schema": "target.repo.v1",
     "argument_schema": "arguments.agent_task.agent_tasks_get_task_by_repo_and_id.v1",
     "result_schema": "result.agent_task.agent_tasks_get_task_by_repo_and_id.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:agent-tasks/get-task-by-repo-and-id"
     ],
@@ -1274,7 +1274,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -1282,10 +1282,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_agent_task_agent_tasks_list_tasks",
     "cli_command": "agent_task agent_tasks_list_tasks",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.agent_task.agent_tasks_list_tasks.v1",
     "result_schema": "result.agent_task.agent_tasks_list_tasks.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:agent-tasks/list-tasks"
     ],
@@ -1314,7 +1314,7 @@
     "target_schema": "target.repo.v1",
     "argument_schema": "arguments.agent_task.agent_tasks_list_tasks_for_repo.v1",
     "result_schema": "result.agent_task.agent_tasks_list_tasks_for_repo.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:agent-tasks/list-tasks-for-repo"
     ],
@@ -2729,7 +2729,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -2737,10 +2737,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_app_meta_get",
     "cli_command": "app meta_get",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.app.meta_get.v1",
     "result_schema": "result.app.meta_get.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:meta/get"
     ],
@@ -2758,7 +2758,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -2766,10 +2766,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_app_meta_get_all_versions",
     "cli_command": "app meta_get_all_versions",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.app.meta_get_all_versions.v1",
     "result_schema": "result.app.meta_get_all_versions.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:meta/get-all-versions"
     ],
@@ -2787,7 +2787,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -2795,10 +2795,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_app_meta_get_octocat",
     "cli_command": "app meta_get_octocat",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.app.meta_get_octocat.v1",
     "result_schema": "result.app.meta_get_octocat.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:meta/get-octocat"
     ],
@@ -2816,7 +2816,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -2824,10 +2824,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_app_meta_get_zen",
     "cli_command": "app meta_get_zen",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.app.meta_get_zen.v1",
     "result_schema": "result.app.meta_get_zen.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:meta/get-zen"
     ],
@@ -2845,7 +2845,7 @@
     "internal": true,
     "implementation_status": "internal",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -2853,10 +2853,10 @@
     "agent_facing": false,
     "mcp_tool": null,
     "cli_command": null,
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.app.meta_root.v1",
     "result_schema": "result.app.meta_root.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:meta/root"
     ],
@@ -2874,7 +2874,7 @@
     "internal": true,
     "implementation_status": "internal",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -2882,10 +2882,10 @@
     "agent_facing": false,
     "mcp_tool": null,
     "cli_command": null,
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.app.rate_limit_get.v1",
     "result_schema": "result.app.rate_limit_get.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:rate-limit/get"
     ],
@@ -4689,7 +4689,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.cache.actions_get_actions_cache_retention_limit_for_enterprise.v1",
     "result_schema": "result.cache.actions_get_actions_cache_retention_limit_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:actions/get-actions-cache-retention-limit-for-enterprise"
     ],
@@ -4783,7 +4783,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.cache.actions_get_actions_cache_storage_limit_for_enterprise.v1",
     "result_schema": "result.cache.actions_get_actions_cache_storage_limit_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:actions/get-actions-cache-storage-limit-for-enterprise"
     ],
@@ -4974,7 +4974,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.cache.actions_set_actions_cache_retention_limit_for_enterprise.v1",
     "result_schema": "result.cache.actions_set_actions_cache_retention_limit_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:actions/set-actions-cache-retention-limit-for-enterprise"
     ],
@@ -5068,7 +5068,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.cache.actions_set_actions_cache_storage_limit_for_enterprise.v1",
     "result_schema": "result.cache.actions_set_actions_cache_storage_limit_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:actions/set-actions-cache-storage-limit-for-enterprise"
     ],
@@ -8906,7 +8906,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -8914,10 +8914,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_commit_search_commits",
     "cli_command": "commit search_commits",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.commit.search_commits.v1",
     "result_schema": "result.commit.search_commits.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:search/commits"
     ],
@@ -9062,7 +9062,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.copilot.copilot_spaces_update_for_user.v1",
     "result_schema": "result.copilot.copilot_spaces_update_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:copilot-spaces/update-for-user"
     ],
@@ -11039,7 +11039,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.enterprise.code_security_attach_enterprise_configuration.v1",
     "result_schema": "result.enterprise.code_security_attach_enterprise_configuration.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:code-security/attach-enterprise-configuration"
     ],
@@ -11097,7 +11097,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.enterprise.code_security_get_default_configurations_for_enterprise.v1",
     "result_schema": "result.enterprise.code_security_get_default_configurations_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:code-security/get-default-configurations-for-enterprise"
     ],
@@ -11184,7 +11184,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.enterprise.code_security_set_configuration_as_default_for_enterprise.v1",
     "result_schema": "result.enterprise.code_security_set_configuration_as_default_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:code-security/set-configuration-as-default-for-enterprise"
     ],
@@ -11457,7 +11457,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.enterprise.oidc_create_oidc_custom_property_inclusion_for_enterprise.v1",
     "result_schema": "result.enterprise.oidc_create_oidc_custom_property_inclusion_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:oidc/create-oidc-custom-property-inclusion-for-enterprise"
     ],
@@ -11486,7 +11486,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.enterprise.oidc_delete_oidc_custom_property_inclusion_for_enterprise.v1",
     "result_schema": "result.enterprise.oidc_delete_oidc_custom_property_inclusion_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:oidc/delete-oidc-custom-property-inclusion-for-enterprise"
     ],
@@ -11515,7 +11515,7 @@
     "target_schema": "target.enterprise.v1",
     "argument_schema": "arguments.enterprise.oidc_list_oidc_custom_property_inclusions_for_enterprise.v1",
     "result_schema": "result.enterprise.oidc_list_oidc_custom_property_inclusions_for_enterprise.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:oidc/list-oidc-custom-property-inclusions-for-enterprise"
     ],
@@ -14296,7 +14296,7 @@
     "target_schema": "target.installation.v1",
     "argument_schema": "arguments.installation.apps_revoke_installation_access_token.v1",
     "result_schema": "result.installation.apps_revoke_installation_access_token.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:apps/revoke-installation-access-token"
     ],
@@ -14388,7 +14388,8 @@
       "rest:apps/list-repos-accessible-to-installation"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "none"
+    "reconciler_kind": "none",
+    "allow_empty_installation_permissions": true
   },
   {
     "name": "issue.add_project_v2_draft_issue",
@@ -17642,7 +17643,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.orgs_list_memberships_for_authenticated_user.v1",
     "result_schema": "result.member.orgs_list_memberships_for_authenticated_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:orgs/list-memberships-for-authenticated-user"
     ],
@@ -18168,7 +18169,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_check_following_for_user.v1",
     "result_schema": "result.member.users_check_following_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/check-following-for-user"
     ],
@@ -18642,7 +18643,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_get_by_id.v1",
     "result_schema": "result.member.users_get_by_id.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/get-by-id"
     ],
@@ -18671,7 +18672,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_get_by_username.v1",
     "result_schema": "result.member.users_get_by_username.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/get-by-username"
     ],
@@ -18825,7 +18826,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list.v1",
     "result_schema": "result.member.users_list.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list"
     ],
@@ -18854,7 +18855,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list_attestations.v1",
     "result_schema": "result.member.users_list_attestations.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list-attestations"
     ],
@@ -18883,7 +18884,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list_attestations_bulk.v1",
     "result_schema": "result.member.users_list_attestations_bulk.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list-attestations-bulk"
     ],
@@ -19040,7 +19041,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list_followers_for_user.v1",
     "result_schema": "result.member.users_list_followers_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list-followers-for-user"
     ],
@@ -19069,7 +19070,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list_following_for_user.v1",
     "result_schema": "result.member.users_list_following_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list-following-for-user"
     ],
@@ -19130,7 +19131,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list_gpg_keys_for_user.v1",
     "result_schema": "result.member.users_list_gpg_keys_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list-gpg-keys-for-user"
     ],
@@ -19284,7 +19285,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list_social_accounts_for_user.v1",
     "result_schema": "result.member.users_list_social_accounts_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list-social-accounts-for-user"
     ],
@@ -19345,7 +19346,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.member.users_list_ssh_signing_keys_for_user.v1",
     "result_schema": "result.member.users_list_ssh_signing_keys_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:users/list-ssh-signing-keys-for-user"
     ],
@@ -20079,7 +20080,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -20087,10 +20088,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_notification_activity_get_feeds",
     "cli_command": "notification activity_get_feeds",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.notification.activity_get_feeds.v1",
     "result_schema": "result.notification.activity_get_feeds.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/get-feeds"
     ],
@@ -20207,7 +20208,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.notification.activity_list_events_for_authenticated_user.v1",
     "result_schema": "result.notification.activity_list_events_for_authenticated_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/list-events-for-authenticated-user"
     ],
@@ -20254,7 +20255,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -20262,10 +20263,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_notification_activity_list_public_events",
     "cli_command": "notification activity_list_public_events",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.notification.activity_list_public_events.v1",
     "result_schema": "result.notification.activity_list_public_events.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/list-public-events"
     ],
@@ -20294,7 +20295,7 @@
     "target_schema": "target.repo.v1",
     "argument_schema": "arguments.notification.activity_list_public_events_for_repo_network.v1",
     "result_schema": "result.notification.activity_list_public_events_for_repo_network.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/list-public-events-for-repo-network"
     ],
@@ -20323,7 +20324,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.notification.activity_list_public_events_for_user.v1",
     "result_schema": "result.notification.activity_list_public_events_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/list-public-events-for-user"
     ],
@@ -20352,7 +20353,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.notification.activity_list_received_events_for_user.v1",
     "result_schema": "result.notification.activity_list_received_events_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/list-received-events-for-user"
     ],
@@ -20381,7 +20382,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.notification.activity_list_received_public_events_for_user.v1",
     "result_schema": "result.notification.activity_list_received_public_events_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/list-received-public-events-for-user"
     ],
@@ -21731,7 +21732,7 @@
     "target_schema": "target.organization.v1",
     "argument_schema": "arguments.organization.activity_list_public_org_events.v1",
     "result_schema": "result.organization.activity_list_public_org_events.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:activity/list-public-org-events"
     ],
@@ -22482,7 +22483,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -22490,10 +22491,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_organization_classroom_get_a_classroom",
     "cli_command": "organization classroom_get_a_classroom",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.classroom_get_a_classroom.v1",
     "result_schema": "result.organization.classroom_get_a_classroom.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:classroom/get-a-classroom"
     ],
@@ -22511,7 +22512,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -22519,10 +22520,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_organization_classroom_get_an_assignment",
     "cli_command": "organization classroom_get_an_assignment",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.classroom_get_an_assignment.v1",
     "result_schema": "result.organization.classroom_get_an_assignment.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:classroom/get-an-assignment"
     ],
@@ -22540,7 +22541,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -22548,10 +22549,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_organization_classroom_get_assignment_grades",
     "cli_command": "organization classroom_get_assignment_grades",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.classroom_get_assignment_grades.v1",
     "result_schema": "result.organization.classroom_get_assignment_grades.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:classroom/get-assignment-grades"
     ],
@@ -22569,7 +22570,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -22577,10 +22578,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_organization_classroom_list_accepted_assignments_for_an_assignment",
     "cli_command": "organization classroom_list_accepted_assignments_for_an_assignment",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.classroom_list_accepted_assignments_for_an_assignment.v1",
     "result_schema": "result.organization.classroom_list_accepted_assignments_for_an_assignment.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:classroom/list-accepted-assignments-for-an-assignment"
     ],
@@ -22598,7 +22599,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -22606,10 +22607,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_organization_classroom_list_assignments_for_a_classroom",
     "cli_command": "organization classroom_list_assignments_for_a_classroom",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.classroom_list_assignments_for_a_classroom.v1",
     "result_schema": "result.organization.classroom_list_assignments_for_a_classroom.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:classroom/list-assignments-for-a-classroom"
     ],
@@ -22627,7 +22628,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -22635,10 +22636,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_organization_classroom_list_classrooms",
     "cli_command": "organization classroom_list_classrooms",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.classroom_list_classrooms.v1",
     "result_schema": "result.organization.classroom_list_classrooms.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:classroom/list-classrooms"
     ],
@@ -24758,7 +24759,7 @@
     "target_schema": "target.organization.v1",
     "argument_schema": "arguments.organization.get.v1",
     "result_schema": "result.organization.get.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:orgs/get"
     ],
@@ -25483,7 +25484,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -25491,10 +25492,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_organization_list",
     "cli_command": "organization list",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.list.v1",
     "result_schema": "result.organization.list.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:orgs/list"
     ],
@@ -25587,7 +25588,7 @@
     "target_schema": "target.organization.v1",
     "argument_schema": "arguments.organization.list_attestations.v1",
     "result_schema": "result.organization.list_attestations.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:orgs/list-attestations"
     ],
@@ -25616,7 +25617,7 @@
     "target_schema": "target.organization.v1",
     "argument_schema": "arguments.organization.list_attestations_bulk.v1",
     "result_schema": "result.organization.list_attestations_bulk.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:orgs/list-attestations-bulk"
     ],
@@ -25738,7 +25739,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.organization.list_for_user.v1",
     "result_schema": "result.organization.list_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:orgs/list-for-user"
     ],
@@ -28375,7 +28376,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_add_field_for_user.v1",
     "result_schema": "result.project.projects_add_field_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/add-field-for-user"
     ],
@@ -28436,7 +28437,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_add_item_for_user.v1",
     "result_schema": "result.project.projects_add_item_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/add-item-for-user"
     ],
@@ -28465,7 +28466,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_create_draft_item_for_authenticated_user.v1",
     "result_schema": "result.project.projects_create_draft_item_for_authenticated_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/create-draft-item-for-authenticated-user"
     ],
@@ -28590,7 +28591,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_delete_item_for_user.v1",
     "result_schema": "result.project.projects_delete_item_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/delete-item-for-user"
     ],
@@ -28651,7 +28652,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_get_field_for_user.v1",
     "result_schema": "result.project.projects_get_field_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/get-field-for-user"
     ],
@@ -28712,7 +28713,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_get_for_user.v1",
     "result_schema": "result.project.projects_get_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/get-for-user"
     ],
@@ -28773,7 +28774,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_get_user_item.v1",
     "result_schema": "result.project.projects_get_user_item.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/get-user-item"
     ],
@@ -28834,7 +28835,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_list_fields_for_user.v1",
     "result_schema": "result.project.projects_list_fields_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/list-fields-for-user"
     ],
@@ -28895,7 +28896,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_list_for_user.v1",
     "result_schema": "result.project.projects_list_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/list-for-user"
     ],
@@ -28956,7 +28957,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_list_items_for_user.v1",
     "result_schema": "result.project.projects_list_items_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/list-items-for-user"
     ],
@@ -29078,7 +29079,7 @@
     "target_schema": "target.user.v1",
     "argument_schema": "arguments.project.projects_update_item_for_user.v1",
     "result_schema": "result.project.projects_update_item_for_user.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:projects/update-item-for-user"
     ],
@@ -30561,7 +30562,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -30569,10 +30570,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_pull_request_search_issues_and_pull_requests",
     "cli_command": "pull_request search_issues_and_pull_requests",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.pull_request.search_issues_and_pull_requests.v1",
     "result_schema": "result.pull_request.search_issues_and_pull_requests.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:search/issues-and-pull-requests"
     ],
@@ -31190,7 +31191,7 @@
     "target_schema": "target.release.v1",
     "argument_schema": "arguments.release.reactions_create_for_release.v1",
     "result_schema": "result.release.reactions_create_for_release.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:reactions/create-for-release"
     ],
@@ -31220,7 +31221,7 @@
     "target_schema": "target.release.v1",
     "argument_schema": "arguments.release.reactions_delete_for_release.v1",
     "result_schema": "result.release.reactions_delete_for_release.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:reactions/delete-for-release"
     ],
@@ -31250,7 +31251,7 @@
     "target_schema": "target.release.v1",
     "argument_schema": "arguments.release.reactions_list_for_release.v1",
     "result_schema": "result.release.reactions_list_for_release.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:reactions/list-for-release"
     ],
@@ -31777,7 +31778,7 @@
     "target_schema": "target.release.v1",
     "argument_schema": "arguments.release.repos_upload_release_asset.v1",
     "result_schema": "result.release.repos_upload_release_asset.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:repos/upload-release-asset"
     ],
@@ -34489,7 +34490,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -34497,10 +34498,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_repo_licenses_get",
     "cli_command": "repo licenses_get",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.repo.licenses_get.v1",
     "result_schema": "result.repo.licenses_get.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:licenses/get"
     ],
@@ -34518,7 +34519,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -34526,10 +34527,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_repo_licenses_get_all_commonly_used",
     "cli_command": "repo licenses_get_all_commonly_used",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.repo.licenses_get_all_commonly_used.v1",
     "result_schema": "result.repo.licenses_get_all_commonly_used.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:licenses/get-all-commonly-used"
     ],
@@ -36331,7 +36332,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -36339,10 +36340,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_repo_search_code",
     "cli_command": "repo search_code",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.repo.search_code.v1",
     "result_schema": "result.repo.search_code.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:search/code"
     ],
@@ -36360,7 +36361,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -36368,10 +36369,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_repo_search_repos",
     "cli_command": "repo search_repos",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.repo.search_repos.v1",
     "result_schema": "result.repo.search_repos.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:search/repos"
     ],
@@ -36389,7 +36390,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -36397,10 +36398,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_repo_search_topics",
     "cli_command": "repo search_topics",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.repo.search_topics.v1",
     "result_schema": "result.repo.search_topics.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:search/topics"
     ],
@@ -36418,7 +36419,7 @@
     "internal": false,
     "implementation_status": "implemented",
     "risk": "low",
-    "target_kind": "installation",
+    "target_kind": "user",
     "max_uses": 100,
     "request_ttl_seconds": 300,
     "approval_ttl_seconds": 600,
@@ -36426,10 +36427,10 @@
     "agent_facing": true,
     "mcp_tool": "gh_repo_search_users",
     "cli_command": "repo search_users",
-    "target_schema": "target.installation.v1",
+    "target_schema": "target.user.v1",
     "argument_schema": "arguments.repo.search_users.v1",
     "result_schema": "result.repo.search_users.v1",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "upstream_binding_ids": [
       "rest:search/users"
     ],

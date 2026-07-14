@@ -69,7 +69,7 @@ func TestRepositoryUpdateSchemasRemainFieldSplit(t *testing.T) {
 
 func TestGlobalAndNestedOperationsUseRealTargets(t *testing.T) {
 	for name, want := range map[string]string{
-		"gist.gists_create": "user", "repo.search_code": "installation",
+		"gist.gists_create": "user", "repo.search_code": "user",
 		"member.orgs_update_membership_for_authenticated_user": "organization",
 		"environment.repos_create_or_update_environment":       "environment",
 	} {
