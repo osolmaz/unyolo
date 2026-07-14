@@ -234,10 +234,17 @@ func TestParseManifestRejectsMalformedArtifacts(t *testing.T) {
 	duplicateOperation := artifacts.Manifest
 	duplicateOperation.Operations = slices.Clone(artifacts.Manifest.Operations)
 	duplicateOperation.Operations[0] = duplicateOperation.Operations[1]
+	emptyOperation := artifacts.Manifest
+	emptyOperation.Operations = slices.Clone(artifacts.Manifest.Operations)
+	emptyOperation.Operations[0].Name = ""
+	impossibleOverride := artifacts.Manifest
+	impossibleOverride.Operations = slices.Clone(artifacts.Manifest.Operations)
+	impossibleOverride.Operations[0].DefaultEffect = opcatalog.DefaultEffectDeny
+	impossibleOverride.Operations[0].Effect = opcatalog.DefaultEffectAllow
 	tests := [][]byte{[]byte("{"), append(append([]byte(nil), artifacts.ManifestJSON...), []byte("{}")...)}
 	for _, manifest := range []Manifest{
 		wrongVersion, missingDigest, wrongCount, wrongEffectCount, negativeCount,
-		invalidEffect, invalidDefaultEffect, duplicateOperation,
+		invalidEffect, invalidDefaultEffect, duplicateOperation, emptyOperation, impossibleOverride,
 	} {
 		data, _ := marshalCanonical(manifest)
 		tests = append(tests, data)
