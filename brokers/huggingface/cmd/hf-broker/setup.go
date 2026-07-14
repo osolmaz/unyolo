@@ -29,22 +29,23 @@ var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type setupSystemdOptions struct {
 	bksetup.SystemdOptions
-	HFTokenFile          string
-	TelegramBotTokenFile string
-	TelegramChatID       int64
-	Repo                 string
-	RepoType             string
-	PolicyPreset         string
-	DeniedOperations     stringListFlag
-	PolicyPresetExplicit bool
-	ReplacePolicy        bool
-	SharedSecret         string
-	OperatorName         string
-	OperatorSecretFile   string
-	OperatorSecret       string
-	OperatorBindAddr     string
-	OperatorPort         int
-	CommandRunner        bkservice.CommandRunner
+	HFTokenFile           string
+	TelegramBotTokenFile  string
+	TelegramChatID        int64
+	Repo                  string
+	RepoType              string
+	PolicyPreset          string
+	DeniedOperations      stringListFlag
+	ResetDeniedOperations bool
+	PolicyPresetExplicit  bool
+	ReplacePolicy         bool
+	SharedSecret          string
+	OperatorName          string
+	OperatorSecretFile    string
+	OperatorSecret        string
+	OperatorBindAddr      string
+	OperatorPort          int
+	CommandRunner         bkservice.CommandRunner
 }
 
 func runSetup(ctx context.Context, stdout, stderr io.Writer, args []string) error {
@@ -93,6 +94,7 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.StringVar(&opts.RepoType, "repo-type", "", "Hub repo type: model, dataset, or space")
 	fs.StringVar(&opts.PolicyPreset, "policy-preset", policypreset.RequestAllAgentOperations, "provider-owned policy preset")
 	fs.Var(&opts.DeniedOperations, "deny-operation", "exact operation to deny in the preset; repeatable")
+	fs.BoolVar(&opts.ResetDeniedOperations, "reset-denied-operations", false, "discard installed deny overrides before applying --deny-operation flags")
 	fs.BoolVar(&opts.ReplacePolicy, "replace-policy", false, "replace an existing managed policy")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
@@ -201,6 +203,9 @@ func validateSetupPreset(opts setupSystemdOptions) error {
 	if opts.PolicyPreset != policypreset.RequestAllAgentOperations {
 		return exitError{code: 64, message: fmt.Sprintf("unknown --policy-preset %q", opts.PolicyPreset)}
 	}
+	if opts.ResetDeniedOperations && !opts.ReplacePolicy {
+		return exitError{code: 64, message: "--reset-denied-operations requires --replace-policy"}
+	}
 	if _, err := policypreset.Render(policypreset.Profile{
 		Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
 		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
@@ -216,6 +221,9 @@ func validateSetupNarrowRepo(opts setupSystemdOptions) error {
 	}
 	if len(opts.DeniedOperations) > 0 {
 		return exitError{code: 64, message: "--deny-operation requires preset policy mode without --repo"}
+	}
+	if opts.ResetDeniedOperations {
+		return exitError{code: 64, message: "--reset-denied-operations requires preset policy mode without --repo"}
 	}
 	if !validRepo(opts.Repo) {
 		return exitError{code: 64, message: "--repo must be owner/name"}

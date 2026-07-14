@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -95,7 +96,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
-	policyFiles, err := renderSetupPolicy(plan.opts)
+	policyFiles, err := renderSetupPolicy(plan)
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
@@ -157,14 +158,18 @@ type setupPolicyFiles struct {
 	managedPreset bool
 }
 
-func renderSetupPolicy(opts setupSystemdOptions) (setupPolicyFiles, error) {
-	if opts.Repo != "" {
-		scope, err := renderScopeJSON(opts.Repo, opts.RepoType)
+func renderSetupPolicy(plan systemdPlan) (setupPolicyFiles, error) {
+	if plan.opts.Repo != "" {
+		scope, err := renderScopeJSON(plan.opts.Repo, plan.opts.RepoType)
 		return setupPolicyFiles{scope: scope}, err
 	}
+	deniedOperations, err := setupDeniedOperations(plan)
+	if err != nil {
+		return setupPolicyFiles{}, err
+	}
 	artifacts, err := policypreset.Render(policypreset.Profile{
-		Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
-		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
+		Version: policypreset.ProfileVersion, Preset: plan.opts.PolicyPreset,
+		Clients: []string{plan.opts.ClientName}, DeniedOperations: deniedOperations,
 	})
 	if err != nil {
 		return setupPolicyFiles{}, err
@@ -173,6 +178,66 @@ func renderSetupPolicy(opts setupSystemdOptions) (setupPolicyFiles, error) {
 		scope: artifacts.PolicyJSON, profile: artifacts.ProfileJSON,
 		manifest: artifacts.ManifestJSON, managedPreset: true,
 	}, nil
+}
+
+func setupDeniedOperations(plan systemdPlan) ([]string, error) {
+	if plan.opts.ResetDeniedOperations {
+		return slices.Clone(plan.opts.DeniedOperations), nil
+	}
+	installed, err := installedPolicyArtifacts(plan)
+	if err != nil {
+		return nil, err
+	}
+	if installed == nil {
+		return slices.Clone(plan.opts.DeniedOperations), nil
+	}
+	report := policypreset.Check(installed.profile, installed.manifest, installed.scope)
+	if report.Status != policypreset.DriftCurrent && report.Status != policypreset.DriftStale {
+		return nil, fmt.Errorf("installed policy artifacts are %s; run hf-broker doctor policy or use --reset-denied-operations", report.Status)
+	}
+	profile, err := policypreset.ParseInstalledProfile(installed.profile)
+	if err != nil {
+		return nil, fmt.Errorf("parse installed policy profile: %w", err)
+	}
+	return mergeDeniedOperations(profile.DeniedOperations, plan.opts.DeniedOperations), nil
+}
+
+type installedSetupPolicy struct {
+	profile  []byte
+	manifest []byte
+	scope    []byte
+}
+
+func installedPolicyArtifacts(plan systemdPlan) (*installedSetupPolicy, error) {
+	profile, err := os.ReadFile(plan.policyProfilePath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read installed policy profile: %w", err)
+	}
+	manifest, err := os.ReadFile(plan.policyManifestPath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if err != nil {
+		return nil, fmt.Errorf("read installed policy manifest: %w", err)
+	}
+	scope, err := os.ReadFile(plan.scopePath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if err != nil {
+		return nil, fmt.Errorf("read installed policy scope: %w", err)
+	}
+	return &installedSetupPolicy{profile: profile, manifest: manifest, scope: scope}, nil
+}
+
+func mergeDeniedOperations(installed, requested []string) []string {
+	unique := make(map[string]struct{}, len(installed)+len(requested))
+	for _, operation := range append(slices.Clone(installed), requested...) {
+		unique[operation] = struct{}{}
+	}
+	merged := make([]string, 0, len(unique))
+	for operation := range unique {
+		merged = append(merged, operation)
+	}
+	slices.Sort(merged)
+	return merged
 }
 
 func requirePolicyReplacement(plan systemdPlan) error {

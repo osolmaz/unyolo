@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -81,6 +83,15 @@ func TestParseSetupSystemdDefaultsToRequestAllPreset(t *testing.T) {
 	}
 	if _, err := parseSetupSystemd(ioDiscard{}, []string{"--hf-token-file", "/tmp/hf-token", "--deny-operation", "repo.unknown"}); err == nil || !strings.Contains(err.Error(), "unknown operation") {
 		t.Fatalf("unknown deny override error = %v", err)
+	}
+	if _, err := parseSetupSystemd(ioDiscard{}, []string{"--hf-token-file", "/tmp/hf-token", "--reset-denied-operations"}); err == nil || !strings.Contains(err.Error(), "requires --replace-policy") {
+		t.Fatalf("unconfirmed deny reset error = %v", err)
+	}
+	if _, err := parseSetupSystemd(ioDiscard{}, []string{
+		"--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/repo", "--repo-type", "model",
+		"--replace-policy", "--reset-denied-operations",
+	}); err == nil || !strings.Contains(err.Error(), "requires preset policy mode") {
+		t.Fatalf("narrow policy deny reset error = %v", err)
 	}
 }
 
@@ -543,6 +554,111 @@ func TestBrokerkitSystemdInstallPlanIncludesPresetArtifacts(t *testing.T) {
 	if managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
 		t.Fatalf("preset plan retires its artifacts: %+v", plan.RemoveFiles)
 	}
+}
+
+func TestBrokerkitSystemdInstallPlanPreservesInstalledDenies(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "etc")
+	writeInstalledPolicy(t, configDir, []string{"repo.delete"}, false)
+	tokenPath := writeSetupToken(t, dir)
+	opts := presetSetupOptions(dir, configDir, tokenPath)
+	opts.DeniedOperations = []string{"repo.create"}
+	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := policypreset.ParseProfile(managedFileData(t, plan.Files, policyProfileFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(profile.DeniedOperations, []string{"repo.create", "repo.delete"}) {
+		t.Fatalf("preserved deny operations = %v", profile.DeniedOperations)
+	}
+
+	opts.ResetDeniedOperations = true
+	opts.DeniedOperations = nil
+	resetPlan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetProfile, err := policypreset.ParseProfile(managedFileData(t, resetPlan.Files, policyProfileFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resetProfile.DeniedOperations) != 0 {
+		t.Fatalf("reset deny operations = %v", resetProfile.DeniedOperations)
+	}
+}
+
+func TestBrokerkitSystemdInstallPlanRejectsModifiedInstalledPolicy(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "etc")
+	writeInstalledPolicy(t, configDir, []string{"repo.delete"}, true)
+	opts := presetSetupOptions(dir, configDir, writeSetupToken(t, dir))
+	if _, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts)); err == nil || !strings.Contains(err.Error(), "installed policy artifacts are modified") {
+		t.Fatalf("modified installed policy error = %v", err)
+	}
+	opts.ResetDeniedOperations = true
+	if _, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts)); err != nil {
+		t.Fatalf("explicit deny reset did not recover from modified artifacts: %v", err)
+	}
+}
+
+func writeInstalledPolicy(t *testing.T, configDir string, denied []string, modifyScope bool) {
+	t.Helper()
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := policypreset.Render(policypreset.NewProfile([]string{"agent"}, denied))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modifyScope {
+		installed.PolicyJSON = append(installed.PolicyJSON, '\n')
+	}
+	for path, data := range map[string][]byte{
+		filepath.Join(configDir, policyProfileFileName):  installed.ProfileJSON,
+		filepath.Join(configDir, policyManifestFileName): installed.ManifestJSON,
+		filepath.Join(configDir, scopeFileName):          installed.PolicyJSON,
+	} {
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func writeSetupToken(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "token")
+	if err := os.WriteFile(path, []byte("hf_example\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func presetSetupOptions(dir, configDir, tokenPath string) setupSystemdOptions {
+	return setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: configDir,
+			StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"),
+			BinaryPath: "/usr/bin/hf-broker", ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080, NoStart: true,
+		},
+		HFTokenFile: tokenPath, PolicyPreset: policypreset.RequestAllAgentOperations,
+		ReplacePolicy: true, SharedSecret: strings.Repeat("s", 32),
+		OperatorName: "operator", OperatorSecret: strings.Repeat("o", 32),
+		OperatorBindAddr: "127.0.0.1", OperatorPort: 8081,
+	}
+}
+
+func managedFileData(t *testing.T, files []bkservice.ManagedFile, name string) []byte {
+	t.Helper()
+	for _, file := range files {
+		if file.Name == name {
+			return file.Data
+		}
+	}
+	t.Fatalf("managed file %s missing", name)
+	return nil
 }
 
 func TestRequirePolicyReplacement(t *testing.T) {

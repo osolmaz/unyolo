@@ -88,6 +88,23 @@ func TestProfileRejectsInvalidAndAmbiguousInputs(t *testing.T) {
 	}
 }
 
+func TestParseInstalledProfileDropsRetiredDenyOperations(t *testing.T) {
+	data, err := marshalCanonical(Profile{
+		Version: ProfileVersion, Preset: RequestAllAgentOperations, Clients: []string{"agent"},
+		DeniedOperations: []string{"repo.delete", "repo.retired"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := ParseInstalledProfile(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(profile.DeniedOperations, []string{"repo.delete"}) {
+		t.Fatalf("current installed denies = %v", profile.DeniedOperations)
+	}
+}
+
 func TestCatalogNeverDefaultsDangerousOperationsToAllow(t *testing.T) {
 	for _, descriptor := range opcatalog.MustAll() {
 		if descriptor.DefaultPolicyEffect != opcatalog.DefaultEffectAllow {

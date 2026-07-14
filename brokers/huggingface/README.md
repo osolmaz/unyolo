@@ -247,6 +247,8 @@ denies internal and credential-output operations. Add repeatable
 to overwrite an existing policy unless `--replace-policy` is supplied, so a
 binary upgrade cannot silently widen an installation. See
 [Policy presets](docs/POLICY_PRESETS.md) for rendering and drift checks.
+Existing deny overrides remain in effect during replacement unless the operator
+also supplies `--reset-denied-operations`.
 
 To create an intentionally narrow policy for one repository instead, supply
 both `--repo owner/name` and `--repo-type model|dataset|space`. This is an

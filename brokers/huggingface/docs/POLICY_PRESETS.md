@@ -34,6 +34,10 @@ sudo hf-broker setup systemd \
 ```
 
 Unknown and duplicate deny overrides are rejected.
+On later setup runs, installed deny overrides are preserved and new
+`--deny-operation` values are added to them. Clear all installed overrides only
+with the explicit pair `--replace-policy --reset-denied-operations`; any new
+`--deny-operation` values on that invocation become the replacement set.
 
 ## Render without installing
 
@@ -109,6 +113,10 @@ sudo hf-broker setup systemd \
   --client agent \
   --replace-policy
 ```
+
+Replacement verifies the installed profile, manifest, and scope before
+carrying forward hard-denies. Inconsistent artifacts stop setup and require a
+Doctor check or an explicit `--reset-denied-operations`.
 
 For a deliberately narrow installation, supply `--repo` and `--repo-type`.
 That explicit mode retains the single-repository policy and does not install a

@@ -89,6 +89,8 @@ exist in the broker but receive `no_match` instead of creating an approval.
 10. Policy generation, diagnostics, manifests, and errors never contain the
     Hugging Face token, broker client secrets, sealed payloads, or credential
     output.
+11. Setup reconfiguration preserves installed deny overrides. Clearing them
+    requires both explicit policy replacement and an explicit deny-reset flag.
 
 ## Catalog Classification
 
@@ -248,6 +250,11 @@ Credential-output and explicitly denied operations are unavailable.
 Setup must not silently replace an existing scope. Reconfiguration renders a
 candidate, shows the affected operation counts and digest change, and requires
 an explicit replace action.
+
+When replacing a preset-managed scope, setup validates the installed profile,
+manifest, and scope, then merges installed deny overrides with newly requested
+overrides. `--reset-denied-operations` is the only path that discards the
+installed deny set, and it is valid only with `--replace-policy`.
 
 The current single-repository setup remains available only as an explicitly
 selected restrictive preset or as a custom policy. It is no longer the default

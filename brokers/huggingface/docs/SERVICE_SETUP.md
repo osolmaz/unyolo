@@ -76,6 +76,8 @@ set both `--repo owner/name` and `--repo-type model|dataset|space`.
 
 Setup refuses to replace an existing `scope.json` unless the operator supplies
 `--replace-policy`. A binary update therefore cannot silently expand policy.
+Preset deny overrides are preserved during replacement. Clearing them requires
+the additional explicit `--reset-denied-operations` flag.
 See [Policy presets](POLICY_PRESETS.md) for standalone rendering and drift
 diagnostics.
 

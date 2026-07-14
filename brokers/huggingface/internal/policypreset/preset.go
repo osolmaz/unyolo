@@ -128,6 +128,28 @@ func ParseProfile(data []byte) (Profile, error) {
 	return normalizeProfile(profile)
 }
 
+// ParseInstalledProfile decodes an installed profile for a safe catalog
+// upgrade. Deny overrides for operations retired from the current catalog are
+// dropped because they can no longer appear in a newly rendered policy.
+func ParseInstalledProfile(data []byte) (Profile, error) {
+	profile, err := decodeProfile(data)
+	if err != nil {
+		return Profile{}, err
+	}
+	profile, err = normalizeProfileFields(profile)
+	if err != nil {
+		return Profile{}, err
+	}
+	current := profile.DeniedOperations[:0]
+	for _, operation := range profile.DeniedOperations {
+		if _, found := opcatalog.ByName(operation); found {
+			current = append(current, operation)
+		}
+	}
+	profile.DeniedOperations = current
+	return profile, nil
+}
+
 func decodeProfile(data []byte) (Profile, error) {
 	return decodeStrictArtifact[Profile](data, "policy profile")
 }
