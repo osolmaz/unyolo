@@ -8,6 +8,17 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 )
 
+func escapePathParameter(value string) string {
+	switch value {
+	case ".":
+		return "%2E"
+	case "..":
+		return "%2E%2E"
+	default:
+		return url.PathEscape(value)
+	}
+}
+
 func (m *Manager) restURL(path string, query url.Values) (string, error) {
 	unescapedPath, err := url.PathUnescape(path)
 	if err != nil {

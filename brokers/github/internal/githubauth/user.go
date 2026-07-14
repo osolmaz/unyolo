@@ -19,7 +19,7 @@ import (
 const (
 	userCredentialKind      = "github-app-user-token" // #nosec G101 -- encrypted credential record kind, not a credential.
 	maxOAuthBodyBytes       = 64 * 1024
-	userCredentialNamespace = "github-users"
+	userCredentialNamespace = "github-users" // #nosec G101 -- storage namespace, not a credential.
 )
 
 // OpenUserCredentialStore opens the broker-owned namespace reserved for

@@ -634,17 +634,6 @@ func restPath(binding opbinding.Binding, target, arguments map[string]any) (stri
 	return replacer.Replace(binding.PathTemplate), nil
 }
 
-func escapePathParameter(value string) string {
-	switch value {
-	case ".":
-		return "%2E"
-	case "..":
-		return "%2E%2E"
-	default:
-		return url.PathEscape(value)
-	}
-}
-
 func argumentPathValue(name string, arguments map[string]any) (string, error) {
 	value, found := arguments[name]
 	if !found {
