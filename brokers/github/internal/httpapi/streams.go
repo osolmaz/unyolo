@@ -14,6 +14,7 @@ import (
 	"github.com/osolmaz/brokerkit/sealedpayload"
 )
 
+//nolint:cyclop // Authentication, descriptor binding, media, and size checks stay explicit at the upload boundary.
 func (s *Server) uploadStream(c echo.Context) error {
 	client, ok := s.authenticateAgentUpload(c.Response(), c.Request())
 	if !ok {
@@ -25,21 +26,23 @@ func (s *Server) uploadStream(c echo.Context) error {
 	bindings := opbinding.ByOperation(operation)
 	if !found || !descriptor.AgentFacing || descriptor.ExecutorKind != "bounded-stream" || len(bindings) != 1 || bindings[0].StreamDirection != "upload" ||
 		!sealedpayload.ValidRequestKey(requestKey) || c.Request().ContentLength <= 0 || c.Request().ContentLength > bindings[0].RequestBytesLimit {
-		writeSealedPayloadFailure(c.Response(), http.StatusBadRequest, "stream_input_invalid", "A bounded stream upload operation is required")
-		return nil
+		return rejectStreamInput(c, "A bounded stream upload operation is required")
 	}
 	mediaType := strings.TrimSpace(strings.Split(c.Request().Header.Get("Content-Type"), ";")[0])
 	if mediaType == "" || mediaType == "application/json" {
-		writeSealedPayloadFailure(c.Response(), http.StatusBadRequest, "stream_input_invalid", "A binary content type is required")
-		return nil
+		return rejectStreamInput(c, "A binary content type is required")
 	}
 	reference, err := s.streamStore.Put(client, operation, requestKey, mediaType, c.Request().Body, bindings[0].RequestBytesLimit,
 		time.Now().Add(time.Duration(descriptor.RequestTTLSeconds+descriptor.ApprovalTTLSeconds+300)*time.Second))
 	if err != nil {
-		writeSealedPayloadFailure(c.Response(), http.StatusBadRequest, "stream_input_invalid", "The stream is empty or exceeds its limit")
-		return nil
+		return rejectStreamInput(c, "The stream is empty or exceeds its limit")
 	}
 	return c.JSON(http.StatusCreated, reference)
+}
+
+func rejectStreamInput(c echo.Context, message string) error {
+	writeSealedPayloadFailure(c.Response(), http.StatusBadRequest, "stream_input_invalid", message)
+	return nil
 }
 
 func (s *Server) downloadStream(c echo.Context) error {

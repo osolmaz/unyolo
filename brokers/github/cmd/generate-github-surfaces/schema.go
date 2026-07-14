@@ -49,7 +49,6 @@ func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 	return result
 }
 
-//nolint:cyclop // OpenAPI projection branches are intentionally visible for audit.
 func schemasForREST(name, method, path string, operation restOperation, targetKind string, components map[string]any) operationSchemas {
 	arguments := argumentsSchemaForREST(method, path, operation, targetKind, components)
 	result := projectedResponseSchema(responseSchema(operation, components), responseProjection(operation))
@@ -127,6 +126,7 @@ func sensitiveTopLevelPaths(schema map[string]any) []string {
 	return result
 }
 
+//nolint:cyclop // Recursive schema composition must inspect every supported container form.
 func schemaContainsSensitiveField(schema map[string]any) bool {
 	if schema == nil {
 		return false
@@ -193,7 +193,6 @@ func projectedResponseSchema(schema map[string]any, projection []string) map[str
 	return projectResponseSchema(schema, allowed, true)
 }
 
-//nolint:cyclop // JSON Schema composition and container forms require explicit recursion.
 func projectResponseSchema(schema map[string]any, allowed map[string]bool, root bool) map[string]any {
 	result := cloneSchema(schema)
 	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
@@ -366,7 +365,6 @@ func normalizeComposedObjectProperties(schema map[string]any) {
 	schema["properties"] = properties
 }
 
-//nolint:cyclop // Closed-schema hardening is clearer as explicit keyword checks.
 func closeSchema(schema map[string]any, depth int) map[string]any {
 	if schema == nil {
 		return map[string]any{"type": "string", "maxLength": 4096}
@@ -400,6 +398,7 @@ func closeSchema(schema map[string]any, depth int) map[string]any {
 	return result
 }
 
+//nolint:cyclop // Binding projection keeps transport, pagination, and streaming decisions auditable together.
 func bindingForREST(name, method, path string, operation restOperation, descriptor capability.Descriptor, components map[string]any) restBinding {
 	pathParameters := pathParameterNames(path)
 	targetParameters := []targetParameter{}
@@ -446,6 +445,7 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 	}
 }
 
+//nolint:cyclop // Target ownership is an explicit closed mapping from official path templates.
 func targetPathField(name, targetKind, path string) (string, bool) {
 	if strings.HasPrefix(path, "/repos/{owner}/{repo}") || strings.HasPrefix(path, "/agents/repos/{owner}/{repo}") {
 		switch name {

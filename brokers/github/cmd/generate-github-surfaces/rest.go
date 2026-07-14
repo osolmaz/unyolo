@@ -265,6 +265,7 @@ func runnerCredentialOutput(operationID string) *string {
 	return &kind
 }
 
+//nolint:cyclop // Every coverage disposition maps explicitly to one public implementation status.
 func implementationStatus(disposition, executor string, agentFacing bool) capability.ImplementationStatus {
 	switch disposition {
 	case "internal":

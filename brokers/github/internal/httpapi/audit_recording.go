@@ -75,6 +75,7 @@ func (s *Server) recordOperationPolicyDecision(client, operation, target, decisi
 		event.MatchedRequestRuleIDs = append([]string(nil), policyDecision.MatchedRuleIDs...)
 	case policy.EffectDeny:
 		event.MatchedDenyRuleIDs = append([]string(nil), policyDecision.MatchedRuleIDs...)
+	case policy.EffectNoMatch:
 	}
 	s.recordOperationAudit(event)
 }

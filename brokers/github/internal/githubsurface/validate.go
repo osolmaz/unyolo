@@ -109,6 +109,7 @@ func sensitiveTopLevelFields(schema map[string]any) []string {
 	return result
 }
 
+//nolint:cyclop // Recursive startup validation must inspect every supported schema container.
 func containsSensitiveField(schema map[string]any) bool {
 	if schema == nil {
 		return false

@@ -24,6 +24,7 @@ type ExecutionResult struct {
 	Body       json.RawMessage
 }
 
+//nolint:cyclop // Credential-domain selection remains explicit at the provider trust boundary.
 func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descriptor, target map[string]any, userID int64) (Metadata, error) {
 	if m == nil {
 		return Metadata{}, errors.New("GitHub credential provider is unavailable")
@@ -93,6 +94,7 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 }
 
 func (m *Manager) ExecuteREST(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (ExecutionResult, error) {
+	//nolint:bodyclose // decodeRESTResponse consumes and closes the returned body on every path.
 	response, err := m.executeREST(ctx, selector, binding, target, arguments)
 	if err != nil {
 		return ExecutionResult{}, err
@@ -120,6 +122,7 @@ func (m *Manager) ExecuteRESTRaw(ctx context.Context, selector Metadata, binding
 	return ExecutionResult{StatusCode: response.StatusCode, Body: body}, nil
 }
 
+//nolint:cyclop // Request projection and bounds remain visible in one audited transport path.
 func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (*http.Response, error) {
 	if m == nil {
 		return nil, errors.New("GitHub credential provider is unavailable")
@@ -182,6 +185,7 @@ func (m *Manager) ExecuteGraphQL(ctx context.Context, selector Metadata, documen
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", "application/json")
+	//nolint:bodyclose // decodeGraphQLResponse consumes and closes the returned body on every path.
 	response, err := m.doAPI(ctx, selector, request)
 	if err != nil {
 		return ExecutionResult{}, err
@@ -189,6 +193,7 @@ func (m *Manager) ExecuteGraphQL(ctx context.Context, selector Metadata, documen
 	return decodeGraphQLResponse(response, document)
 }
 
+//nolint:cyclop // Upload bounds and immutable binding projection remain explicit at the stream boundary.
 func (m *Manager) ExecuteRESTUpload(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any,
 	source io.Reader, size int64, mediaType string) (ExecutionResult, error) {
 	if m == nil || source == nil || size <= 0 || size > binding.RequestBytesLimit || strings.TrimSpace(mediaType) == "" {
@@ -213,6 +218,7 @@ func (m *Manager) ExecuteRESTUpload(ctx context.Context, selector Metadata, bind
 	request.ContentLength = size
 	request.Header.Set("Accept", binding.MediaType)
 	request.Header.Set("Content-Type", mediaType)
+	//nolint:bodyclose // decodeRESTResponse consumes and closes the returned body on every path.
 	response, err := m.doAPI(ctx, selector, request)
 	if err != nil {
 		return ExecutionResult{}, err
@@ -309,7 +315,7 @@ func allowedDownloadURL(origin, target *url.URL) bool {
 	if target == nil || target.User != nil || target.Hostname() == "" {
 		return false
 	}
-	if target.Scheme != "https" && !(target.Scheme == origin.Scheme && strings.EqualFold(target.Host, origin.Host)) {
+	if target.Scheme != "https" && (target.Scheme != origin.Scheme || !strings.EqualFold(target.Host, origin.Host)) {
 		return false
 	}
 	host := strings.ToLower(target.Hostname())

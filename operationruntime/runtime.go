@@ -413,15 +413,23 @@ func (r *Runtime[I, P, A]) notifyApproval(ctx context.Context, grant grants.Gran
 		return errApprovalNotificationClaimed
 	}
 	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(claim.Grant, claim.DecisionToken))
-	if err == nil && ref.MessageID <= 0 {
-		err = errors.New("approval notification reference is invalid")
-	}
+	err = validateNotificationReference(ref, err)
 	if err != nil {
 		return r.settleNotificationFailure(claim, err)
 	}
 	current, recorded, err := r.options.Grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
 	if err != nil || !recorded && current.Notification == nil {
 		return r.settleNotificationFailure(claim, err)
+	}
+	return nil
+}
+
+func validateNotificationReference(ref notify.MessageRef, err error) error {
+	if err != nil {
+		return err
+	}
+	if ref.MessageID <= 0 {
+		return errors.New("approval notification reference is invalid")
 	}
 	return nil
 }

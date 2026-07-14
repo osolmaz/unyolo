@@ -129,6 +129,7 @@ func (r *Registry) ValidateCoverage() error {
 	return r.Registry.ValidateCoverage("GitHub", opcatalog.CapabilityDescriptors(opcatalog.MustAll()))
 }
 
+//nolint:cyclop // Catalog-to-adapter construction validates every executor dependency in one startup pass.
 func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapter, error) {
 	descriptors := opcatalog.MustAll()
 	adapters := make([]Adapter, 0, len(descriptors))
@@ -184,6 +185,7 @@ type generatedAdapter struct {
 
 func (a generatedAdapter) Descriptor() capability.Descriptor { return a.descriptor.Descriptor }
 
+//nolint:cyclop // Closed schemas and target-owned path parameters are enforced together at decode time.
 func (a generatedAdapter) Decode(target, arguments json.RawMessage) (Input, error) {
 	decodedArguments, validationArguments, err := a.decodeArguments(target, arguments)
 	if err != nil {
@@ -228,6 +230,7 @@ func targetFieldPresent(field string, target map[string]any) bool {
 	return stringValue(target, field) != ""
 }
 
+//nolint:cyclop // Public, sealed, credential-output, and stream envelopes are mutually exclusive trust forms.
 func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
 	if a.streamDirection() == "upload" {
 		var stream streamArguments
@@ -267,6 +270,7 @@ func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (js
 	return encoded, protected.Public, nil
 }
 
+//nolint:cyclop // Stored sealed and stream references must match every client-owned binding.
 func (a generatedAdapter) ValidateClient(input Input, client, requestKey string) error {
 	if a.streamDirection() == "upload" {
 		stream, err := decodeStreamArguments(input.Arguments)
@@ -357,6 +361,7 @@ func (a generatedAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentDescriptor(a.descriptor, targetMap)
 }
 
+//nolint:cyclop // Executor dispatch stays closed over catalog-declared REST, GraphQL, and stream kinds.
 func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	targetMap, err := decodeObject(plan.Target)
 	if err != nil {
@@ -538,6 +543,7 @@ func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, 
 	return Outcome{Proven: true, Result: encoded}, nil
 }
 
+//nolint:cyclop // Sealed payload consumption, zeroing, merge, and schema checks form one security boundary.
 func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.RawMessage, error) {
 	if !a.descriptor.Sealed {
 		return arguments, nil
@@ -586,6 +592,7 @@ func decodeSealedArguments(raw json.RawMessage) (sealedArguments, error) {
 	return arguments, nil
 }
 
+//nolint:cyclop // Credential extraction, encrypted storage, zeroing, and redacted result checks stay atomic.
 func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
 	protected, err := decodeSealedArguments(plan.Arguments)
 	if err != nil || !credentialstore.ValidSlot(protected.CredentialSlot) || a.binding == nil || a.descriptor.CredentialOutputKind == nil {

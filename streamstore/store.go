@@ -42,12 +42,14 @@ func Open(stateDir string) (*Store, error) {
 		return nil, errors.New("stream state directory is required")
 	}
 	dir := filepath.Join(stateDir, "streams")
+	// #nosec G302 -- this is a directory and 0700 is the least-permissive usable mode.
 	if err := os.MkdirAll(dir, 0o700); err != nil || os.Chmod(dir, 0o700) != nil {
 		return nil, errors.New("secure stream directory")
 	}
 	return &Store{dir: dir, now: time.Now}, nil
 }
 
+//nolint:cyclop // Metadata, byte bounds, digest, and atomic cleanup remain explicit at the stream boundary.
 func (s *Store) Put(owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) (Reference, error) {
 	if s == nil || source == nil || owner == "" || purpose == "" || requestKey == "" || mediaType == "" || limit <= 0 || !expires.After(s.now()) {
 		return Reference{}, errors.New("stream metadata is invalid")

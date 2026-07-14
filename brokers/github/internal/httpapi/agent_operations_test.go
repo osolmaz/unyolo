@@ -22,6 +22,8 @@ import (
 	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
+type lifecycleContextKey struct{}
+
 func TestGeneratedAgentV1Conformance(t *testing.T) {
 	stateDirectory := filepath.Join(t.TempDir(), "state")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -211,7 +213,7 @@ func TestGeneratedRuntimeErrorMapping(t *testing.T) {
 	if server.agentLifecycleContext(fallback) != fallback {
 		t.Fatal("fallback lifecycle context changed")
 	}
-	ctx := context.WithValue(t.Context(), struct{}{}, "lifecycle")
+	ctx := context.WithValue(t.Context(), lifecycleContextKey{}, "lifecycle")
 	server.lifecycleContext = ctx
 	if server.agentLifecycleContext(t.Context()) != ctx {
 		t.Fatal("configured lifecycle context ignored")

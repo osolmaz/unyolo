@@ -35,6 +35,7 @@ func run(ctx context.Context) error {
 	return runServer(ctx)
 }
 
+//nolint:cyclop // Top-level CLI dispatch keeps every supported command explicit.
 func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {
 		return runServer(ctx)

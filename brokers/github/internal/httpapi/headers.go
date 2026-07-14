@@ -13,8 +13,6 @@ var githubProxyResponseHeader = httpx.DropAny(
 	githubCredentialMetadataHeader,
 )
 
-var githubFilteredResponseHeader = httpx.DropAny(githubProxyResponseHeader, httpx.RewrittenBodyHeader)
-
 func githubCredentialMetadataHeader(key string) bool {
 	switch strings.ToLower(key) {
 	case "authentication-info",

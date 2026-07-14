@@ -35,11 +35,11 @@ func TestEveryAdvertisedOperationAcceptsConstructibleInput(t *testing.T) {
 		arguments := public
 		switch {
 		case streamDirection(descriptor.Name) == "upload":
-			arguments = mustJSON(t, map[string]any{"public": json.RawMessage(public), "stream_input": streamReference(descriptor.Name)})
+			arguments = mustJSON(t, map[string]any{"public": public, "stream_input": streamReference(descriptor.Name)})
 		case descriptor.CredentialOutputKind != nil:
-			arguments = mustJSON(t, map[string]any{"public": json.RawMessage(public), "credential_slot": "generated-contract"})
+			arguments = mustJSON(t, map[string]any{"public": public, "credential_slot": "generated-contract"})
 		case descriptor.Sealed:
-			arguments = mustJSON(t, map[string]any{"public": json.RawMessage(public), "sealed_payload": sealedReference(descriptor.Name)})
+			arguments = mustJSON(t, map[string]any{"public": public, "sealed_payload": sealedReference(descriptor.Name)})
 		}
 		if _, err := adapter.Decode(target, arguments); err != nil {
 			t.Errorf("%s rejected generated target=%s arguments=%s: %v", descriptor.Name, target, arguments, err)
@@ -74,7 +74,6 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 	return encoded
 }
 
-//nolint:cyclop,gocognit // The test synthesizer covers the closed JSON Schema forms emitted by the generator.
 func schemaExample(schema map[string]any) any {
 	if value, found := schema["const"]; found {
 		return value

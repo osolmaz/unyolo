@@ -86,6 +86,7 @@ func (p *installationProvider) credential(ctx context.Context, installationID in
 	return credential, nil
 }
 
+//nolint:cyclop // Token scope, cache identity, expiry, and response checks form one credential boundary.
 func (p *installationProvider) mintCredential(ctx context.Context, key string, installationID int64, repositoryIDs []int64, permissions map[string]string, permissionObject *github.InstallationPermissions) (*Credential, error) {
 	p.mu.Lock()
 	if p.disabled[installationID] {

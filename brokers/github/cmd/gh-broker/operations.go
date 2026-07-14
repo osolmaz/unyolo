@@ -245,17 +245,20 @@ func runStream(ctx context.Context, stdout io.Writer, args []string) error {
 	return err
 }
 
+//nolint:cyclop // Download integrity and atomic replacement checks remain explicit at the file boundary.
 func (connection operationConnection) downloadStream(ctx context.Context, id, output string) error {
 	base, err := clienthttp.ParseBaseURL(connection.baseURL)
 	if err != nil {
 		return err
 	}
+	// #nosec G704 -- ParseBaseURL accepted an explicit HTTP(S) broker origin and the path is fixed.
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base.String(), "/")+"/api/agent/v1/streams/"+url.PathEscape(id), http.NoBody)
 	if err != nil {
 		return errors.New("create stream download request")
 	}
 	request.Header.Set("Authorization", "Bearer "+connection.secret)
-	response, err := (&http.Client{Timeout: 10 * time.Minute}).Do(request)
+	// #nosec G704 -- the validated broker origin is intentional; Secure disables credential-forwarding redirects.
+	response, err := clienthttp.Secure(&http.Client{Timeout: 10 * time.Minute}).Do(request)
 	if err != nil {
 		return errors.New("download stream")
 	}
@@ -323,6 +326,7 @@ func (connection operationConnection) client() (*agentclient.Client, error) {
 	return agentclient.New(agentclient.Options{BaseURL: connection.baseURL, Credential: connection.secret})
 }
 
+//nolint:cyclop // Mutually exclusive sealed, credential, and stream input forms fail closed in one boundary.
 func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
 	if streamDirectionForOperation(descriptor.Name) == "upload" {
 		if streamFile == "" || strings.TrimSpace(streamMediaType) == "" || sealedFile != "" || credentialSlot != "" {
@@ -397,7 +401,7 @@ func (connection operationConnection) uploadSealedPayload(ctx context.Context, o
 	request.Header.Set("Content-Type", "application/octet-stream")
 	request.Header.Set("X-Broker-Operation", operation)
 	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	response, err := clienthttp.Secure(&http.Client{Timeout: 30 * time.Second}).Do(request)
 	if err != nil {
 		return sealedstore.Reference{}, errors.New("upload sealed payload")
 	}
@@ -413,6 +417,7 @@ func (connection operationConnection) uploadSealedPayload(ctx context.Context, o
 	return reference, nil
 }
 
+//nolint:cyclop // Upload file, size, response, and reference integrity checks stay together at the boundary.
 func (connection operationConnection) uploadStream(ctx context.Context, operation, requestKey, path, mediaType string) (streamstore.Reference, error) {
 	bindings := opbinding.ByOperation(operation)
 	if len(bindings) != 1 || bindings[0].StreamDirection != "upload" {
@@ -440,7 +445,7 @@ func (connection operationConnection) uploadStream(ctx context.Context, operatio
 	request.Header.Set("Content-Type", mediaType)
 	request.Header.Set("X-Broker-Operation", operation)
 	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	response, err := (&http.Client{Timeout: 10 * time.Minute}).Do(request)
+	response, err := clienthttp.Secure(&http.Client{Timeout: 10 * time.Minute}).Do(request)
 	if err != nil {
 		return streamstore.Reference{}, errors.New("upload stream")
 	}

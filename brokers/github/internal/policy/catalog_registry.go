@@ -13,6 +13,8 @@ var catalogAttributeNames = []string{
 
 // CatalogRegistry is the generated stage-3 policy vocabulary. The current
 // executor cutover continues to use registry() until the later lifecycle stage.
+//
+//nolint:cyclop // Descriptor policy metadata is translated through one fail-closed registry boundary.
 func CatalogRegistry() (corepolicy.Registry, error) {
 	descriptors, err := opcatalog.All()
 	if err != nil {

@@ -349,7 +349,8 @@ func TestResponseAndRedirectFailureModes(t *testing.T) {
 	}
 	secondary := response(http.StatusForbidden, "error")
 	secondary.Header.Set("Retry-After", "1")
-	if err := classifyHTTPError(secondary); err.(APIError).Code != "secondary_rate_limited" {
+	var apiErr APIError
+	if err := classifyHTTPError(secondary); !errors.As(err, &apiErr) || apiErr.Code != "secondary_rate_limited" {
 		t.Fatalf("secondary rate limit = %v", err)
 	}
 }

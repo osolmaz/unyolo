@@ -200,6 +200,7 @@ func graphqlSelection(ref typeRef, types map[string]introspectionType) string {
 	return " { __typename }"
 }
 
+//nolint:cyclop // GraphQL result kinds and nullability are converted through one exhaustive schema path.
 func graphqlResultSchema(ref typeRef, types map[string]introspectionType) map[string]any {
 	base := ref
 	nullable := true

@@ -78,6 +78,7 @@ type Server struct {
 	backgroundWorkers   sync.WaitGroup
 }
 
+//nolint:cyclop // Startup constructs and validates every security-sensitive dependency in one fail-closed boundary.
 func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if brokerPolicy == nil {
 		return nil, errors.New("policy is required")
