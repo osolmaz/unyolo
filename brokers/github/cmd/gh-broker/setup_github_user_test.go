@@ -37,6 +37,9 @@ func TestSetupGitHubUserEnrollAndRevokeHaveNoReadback(t *testing.T) {
 	t.Cleanup(server.Close)
 	dir := t.TempDir()
 	stateDir := filepath.Join(dir, "state")
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	clientID := writeProtectedTestFile(t, dir, "client-id", `client-id`)
 	clientSecret := writeProtectedTestFile(t, dir, "client-secret", `client-secret-canary`)
 	enrollment := writeProtectedTestFile(t, dir, "enrollment.json", `{
@@ -61,6 +64,7 @@ func TestSetupGitHubUserEnrollAndRevokeHaveNoReadback(t *testing.T) {
 	if bytes.Contains(stored, []byte("access-setup-canary")) || bytes.Contains(stored, []byte("refresh-setup-canary")) {
 		t.Fatal("setup stored a user credential in plaintext")
 	}
+	assertSetupStateOwnership(t, stateDir, append(files, filepath.Join(stateDir, "credential-slots.key"), filepath.Join(stateDir, "credential-slots"))...)
 
 	output.Reset()
 	revokeArgs := append([]string{"revoke"}, common...)

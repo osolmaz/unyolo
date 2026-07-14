@@ -81,9 +81,9 @@ func TestDevelopmentTokenDoctorIsUnsafeInProduction(t *testing.T) {
 		}
 	}))
 	t.Cleanup(api.Close)
-	client, checks := githubDoctorAPI(t.Context(), config.Config{Environment: "production", GitHubToken: "dev-canary", GitHubTokenFile: "/protected/token"},
-		mustURL(t, api.URL), api.Client(), "acme", "repo")
-	if client == nil {
+	apis, checks := githubDoctorAPI(t.Context(), config.Config{Environment: "production", GitHubToken: "dev-canary", GitHubTokenFile: "/protected/token"},
+		mustURL(t, api.URL), api.Client(), "acme", "repo", true)
+	if apis.repository == nil || apis.protection == nil {
 		t.Fatal("development API unavailable")
 	}
 	assertCheck(t, checks, "github_development_token", bkdoctor.CheckFail)
@@ -123,10 +123,13 @@ func TestGitHubDoctorAPIMintsAppCredential(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id":42}`))
 		case "/app/installations/42/access_tokens":
 			tokenMints++
-			if tokenMints == 1 {
+			switch tokenMints {
+			case 1:
 				_, _ = w.Write([]byte(`{"token":"bootstrap-token","expires_at":"2099-07-09T18:00:00Z"}`))
-			} else {
+			case 2:
 				_, _ = w.Write([]byte(`{"token":"installation-token","expires_at":"2099-07-09T18:00:00Z","permissions":{"contents":"read"}}`))
+			default:
+				_, _ = w.Write([]byte(`{"token":"protection-token","expires_at":"2099-07-09T18:00:00Z","permissions":{"administration":"read"}}`))
 			}
 		case "/repos/osolmaz/repo":
 			_, _ = w.Write([]byte(`{"id":99,"name":"repo","owner":{"login":"osolmaz"}}`))
@@ -137,29 +140,34 @@ func TestGitHubDoctorAPIMintsAppCredential(t *testing.T) {
 		}
 	}))
 	defer api.Close()
-	client, checks := githubDoctorAPI(context.Background(), config.Config{
+	apis, checks := githubDoctorAPI(context.Background(), config.Config{
 		GitHubAppID: "12345", GitHubAppPrivateKey: doctorPrivateKey(t),
-	}, mustURL(t, api.URL), api.Client(), "osolmaz", "repo")
-	if client == nil {
+	}, mustURL(t, api.URL), api.Client(), "osolmaz", "repo", true)
+	if apis.repository == nil || apis.protection == nil {
 		t.Fatal("GitHub doctor API is nil")
 	}
 	assertCheck(t, checks, "github_app_jwt", bkdoctor.CheckPass)
 	assertCheck(t, checks, "github_installation_token", bkdoctor.CheckPass)
 	assertCheck(t, checks, "github_app_permissions", bkdoctor.CheckPass)
+	assertCheck(t, checks, "github_protection_token", bkdoctor.CheckPass)
+	assertCheck(t, checks, "github_protection_permissions", bkdoctor.CheckPass)
+	if tokenMints != 3 {
+		t.Fatalf("installation token mints = %d", tokenMints)
+	}
 }
 
 func TestGitHubDoctorAPIReportsCredentialFailures(t *testing.T) {
-	if api, checks := githubDoctorAPI(context.Background(), config.Config{}, mustURL(t, "https://api.github.com"), http.DefaultClient, "owner", "repo"); api != nil || checks[0].Status != bkdoctor.CheckFail {
-		t.Fatalf("invalid app credential result = %v, %+v", api, checks)
+	if apis, checks := githubDoctorAPI(context.Background(), config.Config{}, mustURL(t, "https://api.github.com"), http.DefaultClient, "owner", "repo", true); apis.repository != nil || checks[0].Status != bkdoctor.CheckFail {
+		t.Fatalf("invalid app credential result = %v, %+v", apis, checks)
 	}
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "denied", http.StatusForbidden)
 	}))
 	defer api.Close()
-	client, checks := githubDoctorAPI(context.Background(), config.Config{
+	apis, checks := githubDoctorAPI(context.Background(), config.Config{
 		GitHubAppID: "12345", GitHubAppPrivateKey: doctorPrivateKey(t),
-	}, mustURL(t, api.URL), api.Client(), "owner", "repo")
-	if client != nil {
+	}, mustURL(t, api.URL), api.Client(), "owner", "repo", true)
+	if apis.repository != nil {
 		t.Fatal("failed GitHub App returned an API client")
 	}
 	assertCheck(t, checks, "github_app_jwt", bkdoctor.CheckFail)

@@ -78,11 +78,16 @@ func validateGitHubUserAction(opts githubUserSetupOptions) error {
 	return nil
 }
 
-func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUserSetupOptions) error {
+func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUserSetupOptions) (resultErr error) {
 	manager, err := newGitHubUserSetupManager(opts)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if ownershipErr := preserveGitHubUserStateOwnership(opts.stateDir); resultErr == nil && ownershipErr != nil {
+			resultErr = ownershipErr
+		}
+	}()
 	if opts.action == "revoke" {
 		if err := manager.RevokeUser(ctx, opts.userID); err != nil {
 			return err
@@ -109,7 +114,7 @@ func newGitHubUserSetupManager(opts githubUserSetupOptions) (*githubauth.Manager
 	if apiErr != nil || webErr != nil {
 		return nil, errors.New("GitHub base URL is invalid")
 	}
-	store, err := credentialstore.Open(opts.stateDir)
+	store, err := openGitHubUserCredentialStore(opts.stateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +124,17 @@ func newGitHubUserSetupManager(opts githubUserSetupOptions) (*githubauth.Manager
 		return nil, err
 	}
 	return manager, nil
+}
+
+func openGitHubUserCredentialStore(stateDir string) (*credentialstore.Store, error) {
+	store, err := credentialstore.Open(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := preserveGitHubUserStateOwnership(stateDir); err != nil {
+		return nil, err
+	}
+	return store, nil
 }
 
 func storeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUserSetupOptions, manager *githubauth.Manager) error {

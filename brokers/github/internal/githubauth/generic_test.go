@@ -35,7 +35,7 @@ func TestExecuteRESTBindsPathQueryBodyAndHeaders(t *testing.T) {
 		if _, found := body["ignored"]; found || body["title"] != "Agent cutover" {
 			t.Fatalf("body = %#v", body)
 		}
-		_, _ = w.Write([]byte(`{"id":7,"state":"open","url":"https://example.test/pull/7","token":"redacted"}`))
+		_, _ = w.Write([]byte(`{"id":7,"state":"open","url":"https://example.test/pull/7","token":"redacted","user":{"id":8,"url":"https://example.test/users/8"}}`))
 	}))
 	t.Cleanup(server.Close)
 	manager := newDevelopmentManager(t, server.URL)
@@ -439,6 +439,11 @@ func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	encoded, _ = json.Marshal(projected)
 	if !ok || string(encoded) != `[{"id":7}]` {
 		t.Fatalf("REST list projection = %s, %t", encoded, ok)
+	}
+	projected, ok = projectRESTResponse(value, []string{"repository.id", "repository.owner.login"})
+	encoded, _ = json.Marshal(projected)
+	if !ok || string(encoded) != `{"repository":{"id":7,"owner":{"login":"acme"}}}` {
+		t.Fatalf("REST path projection = %s, %t", encoded, ok)
 	}
 	projected, ok = projectJSON(map[string]any{"total_count": 1, "artifacts": []any{map[string]any{"id": 7, "secret": "hidden"}}}, []string{"id"})
 	encoded, _ = json.Marshal(projected)

@@ -88,44 +88,53 @@ func githubChecks(ctx context.Context, cfg config.Config, opts Options, owner st
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	api, installationChecks := githubDoctorAPI(ctx, cfg, baseURL, client, owner, repo)
+	apis, installationChecks := githubDoctorAPI(ctx, cfg, baseURL, client, owner, repo, opts.RequireProtection)
 	checks := append([]bkdoctor.Check(nil), installationChecks...)
-	if api == nil {
+	if apis.repository == nil {
 		return checks
 	}
-	defaultBranch, err := api.DefaultBranch(ctx, owner, repo)
+	defaultBranch, err := apis.repository.DefaultBranch(ctx, owner, repo)
 	checks = append(checks, resultCheck("github_repo_visible", "configured repository is visible", "configured repository is not visible", err))
 	if err != nil {
 		return checks
 	}
 	checks = append(checks, bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_default_branch", Message: "default branch is " + defaultBranch})
-	protected, protectionErr := api.BranchProtected(ctx, owner, repo, defaultBranch)
+	if apis.protection == nil {
+		checks = append(checks, protectionCheck(opts.RequireProtection, false, errors.New("GitHub protection inspection credential is unavailable")))
+		return checks
+	}
+	protected, protectionErr := apis.protection.BranchProtected(ctx, owner, repo, defaultBranch)
 	checks = append(checks, protectionCheck(opts.RequireProtection, protected, protectionErr))
 	return checks
 }
 
-func githubDoctorAPI(ctx context.Context, cfg config.Config, baseURL *url.URL, client *http.Client, owner string, repo string) (*githubauth.API, []bkdoctor.Check) {
+type doctorAPIs struct {
+	repository *githubauth.API
+	protection *githubauth.API
+}
+
+func githubDoctorAPI(ctx context.Context, cfg config.Config, baseURL *url.URL, client *http.Client, owner string, repo string, requireProtection bool) (doctorAPIs, []bkdoctor.Check) {
 	var webURL *url.URL
 	if strings.TrimSpace(cfg.GitHubWebBaseURL) != "" {
 		var err error
 		webURL, err = url.Parse(cfg.GitHubWebBaseURL)
 		if err != nil {
-			return nil, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
+			return doctorAPIs{}, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
 		}
 	}
 	manager, err := githubauth.New(githubauth.Config{AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey,
 		AppClientID: cfg.GitHubAppClientID, AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
 		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: baseURL, WebBaseURL: webURL, HTTPClient: client})
 	if err != nil {
-		return nil, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
+		return doctorAPIs{}, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
 	}
 	if manager.CredentialKind() == githubauth.KindDevelopmentToken {
 		return developmentDoctorAPI(ctx, cfg.Environment, manager, owner, repo)
 	}
-	return appDoctorAPI(ctx, manager, owner, repo)
+	return appDoctorAPI(ctx, manager, owner, repo, requireProtection)
 }
 
-func developmentDoctorAPI(ctx context.Context, environment string, manager *githubauth.Manager, owner, repo string) (*githubauth.API, []bkdoctor.Check) {
+func developmentDoctorAPI(ctx context.Context, environment string, manager *githubauth.Manager, owner, repo string) (doctorAPIs, []bkdoctor.Check) {
 	status := bkdoctor.CheckWarn
 	message := "development-token fallback is non-production and cannot prove GitHub App permission narrowing"
 	if strings.EqualFold(environment, "production") || strings.EqualFold(environment, "prod") {
@@ -135,32 +144,46 @@ func developmentDoctorAPI(ctx context.Context, environment string, manager *gith
 	check := bkdoctor.Check{Status: status, Name: "github_development_token", Message: message}
 	credential, err := manager.RepositoryCredential(ctx, "repo.contents.read", owner, repo)
 	if err != nil {
-		return nil, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
+		return doctorAPIs{}, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
 	}
 	api, err := manager.API(credential)
 	if err != nil {
-		return nil, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
+		return doctorAPIs{}, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
 	}
-	return api, []bkdoctor.Check{check}
+	return doctorAPIs{repository: api, protection: api}, []bkdoctor.Check{check}
 }
 
-func appDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo string) (*githubauth.API, []bkdoctor.Check) {
+func appDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo string, requireProtection bool) (doctorAPIs, []bkdoctor.Check) {
 	jwtErr := manager.CheckApp(ctx)
 	checks := []bkdoctor.Check{resultCheck("github_app_jwt", "GitHub App authenticated transport works", "GitHub App authenticated transport failed", jwtErr)}
 	if jwtErr != nil {
-		return nil, checks
+		return doctorAPIs{}, checks
 	}
 	credential, tokenErr := manager.RepositoryCredential(ctx, "repo.contents.read", owner, repo)
 	checks = append(checks, resultCheck("github_installation_token", "exact repository installation token can be minted", "exact repository installation token cannot be minted", tokenErr))
 	if tokenErr != nil {
-		return nil, checks
+		return doctorAPIs{}, checks
 	}
 	checks = append(checks, permissionCheck(credential.Metadata().Permissions))
 	api, apiErr := manager.API(credential)
 	if apiErr != nil {
-		return nil, append(checks, resultCheck("github_api_client", "GitHub API client is ready", "GitHub API client is unavailable", apiErr))
+		return doctorAPIs{}, append(checks, resultCheck("github_api_client", "GitHub API client is ready", "GitHub API client is unavailable", apiErr))
 	}
-	return api, checks
+	if !requireProtection {
+		return doctorAPIs{repository: api}, checks
+	}
+	protectionCredential, protectionTokenErr := manager.RepositoryCredential(ctx, "branch_protection.repos_get_branch_protection", owner, repo)
+	checks = append(checks, resultCheck("github_protection_token", "exact repository protection token can be minted", "exact repository protection token cannot be minted", protectionTokenErr))
+	if protectionTokenErr != nil {
+		return doctorAPIs{repository: api}, checks
+	}
+	checks = append(checks, protectionPermissionCheck(protectionCredential.Metadata().Permissions))
+	protectionAPI, protectionAPIErr := manager.API(protectionCredential)
+	if protectionAPIErr != nil {
+		checks = append(checks, resultCheck("github_protection_api_client", "GitHub protection API client is ready", "GitHub protection API client is unavailable", protectionAPIErr))
+		return doctorAPIs{repository: api}, checks
+	}
+	return doctorAPIs{repository: api, protection: protectionAPI}, checks
 }
 
 func permissionCheck(permissions map[string]string) bkdoctor.Check {
@@ -168,6 +191,13 @@ func permissionCheck(permissions map[string]string) bkdoctor.Check {
 		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_app_permissions", Message: "repository inspection credential was not narrowed to contents read"}
 	}
 	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_app_permissions", Message: "repository inspection credential is narrowed to contents read"}
+}
+
+func protectionPermissionCheck(permissions map[string]string) bkdoctor.Check {
+	if len(permissions) != 1 || permissions["administration"] != "read" {
+		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_protection_permissions", Message: "protection inspection credential was not narrowed to administration read"}
+	}
+	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_protection_permissions", Message: "protection inspection credential is narrowed to administration read"}
 }
 
 func protectionCheck(required bool, protected bool, err error) bkdoctor.Check {

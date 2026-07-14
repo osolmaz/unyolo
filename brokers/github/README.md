@@ -142,8 +142,10 @@ returns an unsafe result if it is selected with
 `GH_BROKER_ENVIRONMENT=production`.
 
 Enroll an expiring GitHub App user credential from a local operator shell while
-the broker is stopped. The input is a mode `0600` JSON file and is deleted by
-the operator after a successful enrollment:
+the broker is stopped. The state directory must already exist with the broker
+service user's ownership; setup preserves that owner across key and slot
+writes. The input is a mode `0600` JSON file and is deleted by the operator
+after a successful enrollment:
 
 ```json
 {

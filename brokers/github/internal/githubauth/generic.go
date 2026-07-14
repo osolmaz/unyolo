@@ -483,7 +483,7 @@ func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (Exe
 	if err := strictjson.Decode(body, &value, false); err != nil {
 		return ExecutionResult{}, errors.New("GitHub API response is invalid")
 	}
-	projected, ok := projectJSON(value, binding.ResponseProjection)
+	projected, ok := projectRESTResponse(value, binding.ResponseProjection)
 	if !ok {
 		projected = emptyProjection(value)
 	}
@@ -521,33 +521,10 @@ func projectRESTResponse(value any, projection []string) (any, bool) {
 		return value, true
 	}
 	allowed := make(map[string]bool, len(projection))
-	for _, name := range projection {
-		allowed[name] = true
+	for _, path := range projection {
+		allowed[path] = true
 	}
-	return projectTopLevel(value, allowed)
-}
-
-func projectTopLevel(value any, allowed map[string]bool) (any, bool) {
-	switch typed := value.(type) {
-	case map[string]any:
-		result := map[string]any{}
-		for key, child := range typed {
-			if allowed[key] {
-				result[key] = child
-			}
-		}
-		return result, len(result) > 0
-	case []any:
-		result := make([]any, 0, len(typed))
-		for _, child := range typed {
-			if projected, keep := projectTopLevel(child, allowed); keep {
-				result = append(result, projected)
-			}
-		}
-		return result, len(result) > 0
-	default:
-		return nil, false
-	}
+	return projectByPath(value, allowed, "")
 }
 
 func decodeGraphQLResponse(response *http.Response, document graphqlmanifest.Document) (ExecutionResult, error) {
