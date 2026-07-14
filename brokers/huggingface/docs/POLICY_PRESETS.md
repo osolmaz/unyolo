@@ -70,7 +70,8 @@ Default systemd setup installs these root-owned, non-secret files:
 ```
 
 The manifest binds the profile, policy, and embedded operation catalog by
-SHA-256 digest. It also records each operation's revision, effect, risk,
+SHA-256 digest. It also records each operation's revision, catalog default
+effect, final policy effect after operator overrides, risk,
 authorization mode, and grant lifecycle. Check the installed artifacts without
 changing them:
 

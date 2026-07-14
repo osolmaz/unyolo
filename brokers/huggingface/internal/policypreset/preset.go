@@ -52,6 +52,7 @@ type OperationCounts struct {
 type OperationFingerprint struct {
 	Name               string                        `json:"name"`
 	OperationRevision  int                           `json:"operation_revision"`
+	DefaultEffect      opcatalog.DefaultPolicyEffect `json:"default_effect"`
 	Effect             opcatalog.DefaultPolicyEffect `json:"effect"`
 	Risk               opcatalog.Risk                `json:"risk"`
 	AuthorizationMode  opcatalog.AuthorizationMode   `json:"authorization_mode"`
@@ -403,7 +404,8 @@ func grantPolicy(descriptor opcatalog.Descriptor) *ruleGrantPolicy {
 func fingerprint(descriptor opcatalog.Descriptor, effect opcatalog.DefaultPolicyEffect) OperationFingerprint {
 	return OperationFingerprint{
 		Name: descriptor.Name, OperationRevision: descriptor.OperationRevision,
-		Effect: effect, Risk: descriptor.Risk, AuthorizationMode: descriptor.AuthorizationMode,
+		DefaultEffect: descriptor.DefaultPolicyEffect, Effect: effect,
+		Risk: descriptor.Risk, AuthorizationMode: descriptor.AuthorizationMode,
 		MaxUses: descriptor.MaxUses, RequestTTLSeconds: descriptor.RequestTTLSeconds,
 		ApprovalTTLSeconds: descriptor.ApprovalTTLSeconds,
 	}
@@ -465,10 +467,43 @@ func validateManifest(manifest Manifest) error {
 	if manifest.CatalogDigest == "" || manifest.ProfileDigest == "" || manifest.PolicyDigest == "" {
 		return errors.New("policy manifest is missing digests")
 	}
-	if manifest.OperationCounts.Total != len(manifest.Operations) {
+	counts, err := countManifestOperations(manifest.Operations)
+	if err != nil {
+		return err
+	}
+	if manifest.OperationCounts != counts {
 		return errors.New("policy manifest operation count is inconsistent")
 	}
 	return nil
+}
+
+func countManifestOperations(operations []OperationFingerprint) (OperationCounts, error) {
+	counts := OperationCounts{Total: len(operations)}
+	names := make(map[string]struct{}, len(operations))
+	for _, operation := range operations {
+		if operation.Name == "" {
+			return OperationCounts{}, errors.New("policy manifest contains an operation with an empty name")
+		}
+		if _, exists := names[operation.Name]; exists {
+			return OperationCounts{}, fmt.Errorf("policy manifest contains duplicate operation %q", operation.Name)
+		}
+		names[operation.Name] = struct{}{}
+		if !validPolicyEffect(operation.DefaultEffect) {
+			return OperationCounts{}, fmt.Errorf("policy manifest operation %q has invalid default effect %q", operation.Name, operation.DefaultEffect)
+		}
+		if !validPolicyEffect(operation.Effect) {
+			return OperationCounts{}, fmt.Errorf("policy manifest operation %q has invalid effect %q", operation.Name, operation.Effect)
+		}
+		if operation.Effect != operation.DefaultEffect && operation.Effect != opcatalog.DefaultEffectDeny {
+			return OperationCounts{}, fmt.Errorf("policy manifest operation %q has impossible effect override", operation.Name)
+		}
+		counts.add(operation.Effect)
+	}
+	return counts, nil
+}
+
+func validPolicyEffect(effect opcatalog.DefaultPolicyEffect) bool {
+	return effect == opcatalog.DefaultEffectAllow || effect == opcatalog.DefaultEffectRequest || effect == opcatalog.DefaultEffectDeny
 }
 
 func invalidReport(err error) DriftReport {

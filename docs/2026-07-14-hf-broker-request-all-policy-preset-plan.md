@@ -205,7 +205,10 @@ Store a secret-free manifest beside generated policies:
 }
 ```
 
-The real counts are generated from the current catalog. The manifest contains
+The real counts are generated from the current catalog and validated against
+the per-operation final effects when read. Each operation records both the
+catalog default effect and the final effect after operator deny overrides, so
+catalog effect changes remain visible in drift reports. The manifest contains
 no targets proposed by agents, approval records, arguments, credentials, or
 token metadata.
 

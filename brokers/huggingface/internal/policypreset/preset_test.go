@@ -47,6 +47,26 @@ func TestRenderIsDeterministicAndNormalizesInputs(t *testing.T) {
 	assertRuleEffect(t, first.PolicyJSON, "repo.create", "deny")
 }
 
+func TestFingerprintPreservesCatalogEffectUnderOperatorOverride(t *testing.T) {
+	descriptor, found := opcatalog.ByName("repo.delete")
+	if !found {
+		t.Fatal("repo.delete missing from operation catalog")
+	}
+	_, overridden := renderCatalog(NewProfile([]string{"agent"}, []string{descriptor.Name}), []opcatalog.Descriptor{descriptor})
+	fingerprint := overridden.Operations[0]
+	if fingerprint.DefaultEffect != descriptor.DefaultPolicyEffect || fingerprint.Effect != opcatalog.DefaultEffectDeny {
+		t.Fatalf("overridden fingerprint = %+v", fingerprint)
+	}
+
+	changedDescriptor := descriptor
+	changedDescriptor.DefaultPolicyEffect = opcatalog.DefaultEffectAllow
+	_, changed := renderCatalog(NewProfile([]string{"agent"}, []string{descriptor.Name}), []opcatalog.Descriptor{changedDescriptor})
+	_, _, changedOperations := compareOperations(overridden.Operations, changed.Operations)
+	if !slices.Equal(changedOperations, []string{descriptor.Name}) {
+		t.Fatalf("changed operations = %v", changedOperations)
+	}
+}
+
 func TestProfileRejectsInvalidAndAmbiguousInputs(t *testing.T) {
 	tests := []Profile{
 		{},
@@ -133,7 +153,8 @@ func TestCheckReportsCatalogAndManifestDrift(t *testing.T) {
 		t.Fatalf("stale report = %+v", report)
 	}
 	modified := artifacts.Manifest
-	modified.Operations[0].Effect = opcatalog.DefaultEffectRequest
+	modified.Operations = slices.Clone(artifacts.Manifest.Operations)
+	modified.Operations[0].OperationRevision++
 	modifiedJSON, _ := marshalCanonical(modified)
 	report := Check(artifacts.ProfileJSON, modifiedJSON, artifacts.PolicyJSON)
 	if report.Status != DriftModified || len(report.ChangedOperations) != 1 {
@@ -199,8 +220,25 @@ func TestParseManifestRejectsMalformedArtifacts(t *testing.T) {
 	missingDigest.PolicyDigest = ""
 	wrongCount := artifacts.Manifest
 	wrongCount.OperationCounts.Total--
+	wrongEffectCount := artifacts.Manifest
+	wrongEffectCount.OperationCounts.Allow--
+	wrongEffectCount.OperationCounts.Request++
+	negativeCount := artifacts.Manifest
+	negativeCount.OperationCounts.Allow = -1
+	invalidEffect := artifacts.Manifest
+	invalidEffect.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidEffect.Operations[0].Effect = "invalid"
+	invalidDefaultEffect := artifacts.Manifest
+	invalidDefaultEffect.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidDefaultEffect.Operations[0].DefaultEffect = "invalid"
+	duplicateOperation := artifacts.Manifest
+	duplicateOperation.Operations = slices.Clone(artifacts.Manifest.Operations)
+	duplicateOperation.Operations[0] = duplicateOperation.Operations[1]
 	tests := [][]byte{[]byte("{"), append(append([]byte(nil), artifacts.ManifestJSON...), []byte("{}")...)}
-	for _, manifest := range []Manifest{wrongVersion, missingDigest, wrongCount} {
+	for _, manifest := range []Manifest{
+		wrongVersion, missingDigest, wrongCount, wrongEffectCount, negativeCount,
+		invalidEffect, invalidDefaultEffect, duplicateOperation,
+	} {
 		data, _ := marshalCanonical(manifest)
 		tests = append(tests, data)
 	}
