@@ -418,7 +418,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 	runtime, err := controlplane.New(controlplane.Options{
 		Broker: "hf-broker", Store: store, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
-		ActivationValidator: planValidator,
+		ActivationValidator: planValidator, State: database,
 	})
 	if err != nil {
 		_ = database.Close()

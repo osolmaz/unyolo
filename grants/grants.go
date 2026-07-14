@@ -178,6 +178,14 @@ func NewDatabase(database *state.Database, opts Options) *Store {
 // grant creation in one database transaction.
 func (s *Store) SupportsPlanTransactions() bool { return s != nil && s.database != nil }
 
+// Database returns the shared state database when this store is SQLite-backed.
+func (s *Store) Database() *state.Database {
+	if s == nil {
+		return nil
+	}
+	return s.database
+}
+
 func newStore(path string, database *state.Database, opts Options) *Store {
 	opts = defaultStoreBounds(opts)
 	opts = defaultStoreDependencies(opts)

@@ -2,6 +2,7 @@
 package observability
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,7 +10,16 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/osolmaz/brokerkit/state"
 )
+
+const stateCollectionTimeout = 2 * time.Second
+
+// StateSource provides secret-free durable state counts at scrape time.
+type StateSource interface {
+	OperationalStats(context.Context) (state.OperationalStats, error)
+}
 
 // Metrics is one broker-local Prometheus registry. Labels are selected only
 // from closed sets and never contain targets, reasons, paths, URLs, or clients.
@@ -24,7 +34,7 @@ type Metrics struct {
 }
 
 // New creates an isolated registry with one controlled broker label.
-func New(broker string) (*Metrics, error) {
+func New(broker string, source StateSource) (*Metrics, error) {
 	broker = strings.TrimSpace(broker)
 	if broker == "" {
 		return nil, errors.New("metrics broker name is required")
@@ -48,6 +58,9 @@ func New(broker string) (*Metrics, error) {
 	}
 	metrics.registry.MustRegister(metrics.admissions, metrics.submissions, metrics.executions,
 		metrics.executionTime, metrics.decisions, metrics.notifications)
+	if source != nil {
+		metrics.registry.MustRegister(newStateCollector(labels, source))
+	}
 	return metrics, nil
 }
 
@@ -104,4 +117,43 @@ func closedValue(value string, allowed map[string]struct{}) string {
 		return value
 	}
 	return "other"
+}
+
+type stateCollector struct {
+	source  StateSource
+	healthy *prometheus.Desc
+	depth   *prometheus.Desc
+}
+
+func newStateCollector(labels prometheus.Labels, source StateSource) *stateCollector {
+	return &stateCollector{
+		source:  source,
+		healthy: prometheus.NewDesc("brokerkit_database_healthy", "Whether the durable state database answered the bounded scrape probe.", nil, labels),
+		depth:   prometheus.NewDesc("brokerkit_queue_depth", "Durable work depth by fixed queue class.", []string{"queue"}, labels),
+	}
+}
+
+func (c *stateCollector) Describe(output chan<- *prometheus.Desc) {
+	output <- c.healthy
+	output <- c.depth
+}
+
+func (c *stateCollector) Collect(output chan<- prometheus.Metric) {
+	ctx, cancel := context.WithTimeout(context.Background(), stateCollectionTimeout)
+	defer cancel()
+	stats, err := c.source.OperationalStats(ctx)
+	if err != nil {
+		output <- prometheus.MustNewConstMetric(c.healthy, prometheus.GaugeValue, 0)
+		return
+	}
+	output <- prometheus.MustNewConstMetric(c.healthy, prometheus.GaugeValue, 1)
+	for queue, value := range map[string]int64{
+		"approvals_pending":        stats.PendingApprovals,
+		"operations_queued":        stats.QueuedOperations,
+		"operations_executing":     stats.ExecutingOperations,
+		"notifications_pending":    stats.PendingNotifications,
+		"notifications_unresolved": stats.UnresolvedNotifications,
+	} {
+		output <- prometheus.MustNewConstMetric(c.depth, prometheus.GaugeValue, float64(value), queue)
+	}
 }

@@ -262,7 +262,7 @@ func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator 
 	control, err := controlplane.New(controlplane.Options{
 		Broker: "gh-broker", Store: grantStore,
 		ClientSecrets: map[string]string{cfg.ClientID: cfg.SharedSecret}, OperatorSecrets: operatorSecrets,
-		Presenter: approval.Presenter{}, ActivationValidator: planValidator, Audit: auditWriter,
+		Presenter: approval.Presenter{}, ActivationValidator: planValidator, Audit: auditWriter, State: grantStore.Database(),
 	})
 	if err != nil {
 		return nil, security.TokenAuth{}, err

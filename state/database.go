@@ -210,6 +210,34 @@ func (d *Database) SQL() *sql.DB { return d.sql }
 
 func (d *Database) Queries() *dbsql.Queries { return d.queries }
 
+// OperationalStats returns bounded aggregate state for health and metrics.
+// It never reads operation arguments, targets, reasons, or notification payloads.
+func (d *Database) OperationalStats(ctx context.Context) (OperationalStats, error) {
+	if d == nil || d.queries == nil {
+		return OperationalStats{}, errors.New("state database is unavailable")
+	}
+	stats, err := d.queries.OperationalStats(ctx)
+	if err != nil {
+		return OperationalStats{}, err
+	}
+	return OperationalStats{
+		PendingApprovals:        stats.PendingApprovals,
+		QueuedOperations:        stats.QueuedOperations,
+		ExecutingOperations:     stats.ExecutingOperations,
+		PendingNotifications:    stats.PendingNotifications,
+		UnresolvedNotifications: stats.UnresolvedNotifications,
+	}, nil
+}
+
+// OperationalStats contains only fixed-cardinality durable-state counts.
+type OperationalStats struct {
+	PendingApprovals        int64
+	QueuedOperations        int64
+	ExecutingOperations     int64
+	PendingNotifications    int64
+	UnresolvedNotifications int64
+}
+
 // IntegrityCheck runs SQLite's operational consistency check. PRAGMA queries
 // are intentionally kept outside sqlc because sqlc does not generate them.
 func (d *Database) IntegrityCheck(ctx context.Context) (string, error) {

@@ -36,6 +36,59 @@ func TestOpenConfiguresAndMigratesDatabase(t *testing.T) {
 	}
 }
 
+func TestOperationalStatsReportOnlyDurableQueueCounts(t *testing.T) {
+	database, err := Open(t.Context(), t.TempDir(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)
+	empty, err := database.GrantSnapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	maxUses := 1
+	created := GrantSnapshot{
+		Grants: []GrantRecord{{
+			ID: "grant-1", DecisionTokenVerifier: "verifier", Client: "agent-a", Operation: "repo.delete",
+			TargetJSON: []byte(`{}`), AttrsJSON: []byte(`{}`), MetadataJSON: []byte(`{}`), Status: "pending",
+			Revision: 1, CreatedAt: now, PendingExpiresAt: now.Add(time.Minute), Duration: time.Minute,
+			RequestedDuration: time.Minute, PendingTimeout: time.Minute, MaxUses: &maxUses, RequestedMaxUses: &maxUses,
+		}},
+		Outbox: []NotificationOutboxRecord{{
+			GrantID: "grant-1", Kind: "approval", PayloadJSON: []byte(`{}`), IdempotencyKey: "grant-1:approval",
+			Status: "ambiguous", AvailableAt: now, CreatedAt: now, UpdatedAt: now,
+		}},
+	}
+	if err := database.SaveGrantSnapshot(t.Context(), empty, created); err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range []OperationRecord{
+		testOperationalRecord("queued", "pending", now),
+		testOperationalRecord("running", "executing", now),
+	} {
+		if err := database.InsertOperation(t.Context(), record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err := database.OperationalStats(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := OperationalStats{PendingApprovals: 1, QueuedOperations: 1, ExecutingOperations: 1, UnresolvedNotifications: 1}
+	if stats != want {
+		t.Fatalf("OperationalStats() = %+v, want %+v", stats, want)
+	}
+}
+
+func testOperationalRecord(id, operationState string, now time.Time) OperationRecord {
+	return OperationRecord{
+		ID: id, APIVersion: "brokerkit.io/agent/v1", Broker: "test", ClientID: "agent-a", IdempotencyKey: id,
+		Operation: "repo.delete", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), State: operationState,
+		Revision: 1, CreatedAt: now, UpdatedAt: now, PresentationJSON: []byte(`{}`),
+	}
+}
+
 func TestOpenTightensStateFilePermissions(t *testing.T) {
 	directory := t.TempDir()
 	databasePath := filepath.Join(directory, databaseFile)

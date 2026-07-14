@@ -436,9 +436,11 @@ isolated Prometheus registry and exposes it only through the authenticated
 operator listener. Shared admission, operation lifecycle, decision, and
 notification code records bounded outcome counters and execution latency. The
 only identity label is the setup-controlled broker name; all other labels use
-closed enums and unknown values collapse to `other`. Dependency degradation,
-database health, durable queue-depth gauges, and one shared structured logging
-boundary remain.
+closed enums and unknown values collapse to `other`. Scrapes also report a
+bounded database-health probe and durable queue-depth gauges for approvals,
+operations, execution, and notification delivery. Dependency degradation,
+worker-capacity gauges, upstream failure/rate-limit counters, and one shared
+structured logging boundary remain.
 
 ### Failure drills
 

@@ -885,6 +885,44 @@ func (q *Queries) ListUnfinishedOperations(ctx context.Context) ([]Operation, er
 	return items, nil
 }
 
+const operationalStats = `-- name: OperationalStats :one
+SELECT
+    CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
+    CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
+    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
+    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
+    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications
+`
+
+type OperationalStatsRow struct {
+	PendingApprovals        int64
+	QueuedOperations        int64
+	ExecutingOperations     int64
+	PendingNotifications    int64
+	UnresolvedNotifications int64
+}
+
+// OperationalStats
+//
+//	SELECT
+//	    CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
+//	    CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
+//	    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
+//	    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
+//	    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications
+func (q *Queries) OperationalStats(ctx context.Context) (OperationalStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, operationalStats)
+	var i OperationalStatsRow
+	err := row.Scan(
+		&i.PendingApprovals,
+		&i.QueuedOperations,
+		&i.ExecutingOperations,
+		&i.PendingNotifications,
+		&i.UnresolvedNotifications,
+	)
+	return i, err
+}
+
 const putPlan = `-- name: PutPlan :exec
 INSERT INTO plans (digest, schema_name, canonical, created_at)
 VALUES (?, ?, ?, ?)

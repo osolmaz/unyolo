@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/osolmaz/brokerkit/approval"
 	"github.com/osolmaz/brokerkit/auth"
@@ -16,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/operatorauth"
 	"github.com/osolmaz/brokerkit/operatorinbox"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 // Options provides broker-owned policy vocabulary and presentation to the shared runtime.
@@ -28,6 +28,7 @@ type Options struct {
 	Audit               operatorapi.AuditRecorder
 	ActivationValidator decision.ActivationValidator
 	NewCorrelationID    func() (string, error)
+	State               *state.Database
 }
 
 // HandleDecision applies one approval-channel callback through the configured decider.
@@ -47,9 +48,6 @@ type Runtime struct {
 
 // New validates and assembles one broker control plane.
 func New(options Options) (*Runtime, error) {
-	if strings.TrimSpace(options.Broker) == "" {
-		return nil, errors.New("broker name is required")
-	}
 	if options.Store == nil {
 		return nil, errors.New("grant store is required")
 	}
@@ -60,7 +58,7 @@ func New(options Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	metrics, err := observability.New(options.Broker)
+	metrics, err := observability.New(options.Broker, options.State)
 	if err != nil {
 		return nil, err
 	}

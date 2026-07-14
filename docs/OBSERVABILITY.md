@@ -13,7 +13,14 @@ The current registry reports:
 - successful, failed, reconciled, and ambiguous provider executions;
 - provider execution and reconciliation latency;
 - committed, replayed, and rejected approve/deny decisions; and
-- delivered, failed, claimed, and already-recorded approval notifications.
+- delivered, failed, claimed, and already-recorded approval notifications;
+- durable pending-approval, queued-operation, executing-operation,
+  pending-notification, and unresolved-notification depths; and
+- a bounded durable-database health probe at scrape time.
+
+When the database probe fails, `brokerkit_database_healthy` is `0` and queue
+gauges are omitted. BrokerKit does not report unknown durable state as zero or
+retain stale queue values between scrapes.
 
 Each registry has one setup-controlled `broker` label. Other labels come from
 closed BrokerKit enums. Client names, repository names, target users, reasons,
