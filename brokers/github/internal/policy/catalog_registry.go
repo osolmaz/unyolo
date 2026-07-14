@@ -36,11 +36,11 @@ func CatalogRegistry() (corepolicy.Registry, error) {
 	}
 	operations := make(map[string]corepolicy.OperationSpec, len(descriptors))
 	for _, descriptor := range descriptors {
-		if !descriptor.AgentFacing {
-			continue
+		spec := corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name), Grantable: descriptor.AgentFacing}
+		if spec.Grantable {
+			spec.GrantMode = map[bool]corepolicy.GrantMode{true: corepolicy.GrantModeExecution, false: corepolicy.GrantModeWindow}[descriptor.AuthorizationMode == opcatalog.ModeExecution]
 		}
-		operations[descriptor.Name] = corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name),
-			Grantable: true, GrantMode: map[bool]corepolicy.GrantMode{true: corepolicy.GrantModeExecution, false: corepolicy.GrantModeWindow}[descriptor.AuthorizationMode == opcatalog.ModeExecution]}
+		operations[descriptor.Name] = spec
 	}
 	for name, spec := range protocolOperationSpecs() {
 		operations[string(name)] = spec

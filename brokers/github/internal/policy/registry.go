@@ -3,6 +3,7 @@ package policy
 import (
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
@@ -14,6 +15,9 @@ type operationInfo struct {
 	globalGlobAllowed bool
 }
 
+var operationInfosOnce sync.Once
+var operationInfoValues map[Operation]operationInfo
+
 func registry() corepolicy.Registry {
 	value, err := CatalogRegistry()
 	if err != nil {
@@ -22,40 +26,28 @@ func registry() corepolicy.Registry {
 	return value
 }
 
-func operationSpecs() map[Operation]corepolicy.OperationSpec {
-	result := make(map[Operation]corepolicy.OperationSpec, len(opcatalog.MustAll()))
-	for op, info := range operationInfos() {
-		result[op] = info.spec
-	}
-	return result
-}
-
 func operationInfos() map[Operation]operationInfo {
-	descriptors := opcatalog.MustAll()
-	result := make(map[Operation]operationInfo, len(descriptors))
-	for _, descriptor := range descriptors {
-		if !descriptor.AgentFacing {
-			continue
+	operationInfosOnce.Do(func() {
+		descriptors := opcatalog.MustAll()
+		operationInfoValues = make(map[Operation]operationInfo, len(descriptors)+len(protocolOperationSpecs()))
+		for _, descriptor := range descriptors {
+			spec := corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name), Grantable: descriptor.AgentFacing}
+			if spec.Grantable {
+				spec.GrantMode = corepolicy.GrantModeWindow
+				if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+					spec.GrantMode = corepolicy.GrantModeExecution
+				}
+			}
+			operationInfoValues[Operation(descriptor.Name)] = operationInfo{
+				spec: spec, familyGlobAllowed: descriptor.AgentFacing && descriptor.FamilyGlobAllowed,
+				globalGlobAllowed: descriptor.AgentFacing && !descriptor.ExplicitOnly,
+			}
 		}
-		mode := corepolicy.GrantModeWindow
-		if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-			mode = corepolicy.GrantModeExecution
+		for operation, spec := range protocolOperationSpecs() {
+			operationInfoValues[operation] = operationInfo{spec: spec, familyGlobAllowed: true, globalGlobAllowed: true}
 		}
-		result[Operation(descriptor.Name)] = operationInfo{
-			spec: corepolicy.OperationSpec{
-				TargetKinds: []string{descriptor.TargetKind},
-				Attrs:       catalogAttributesForOperation(descriptor.Name),
-				Grantable:   true,
-				GrantMode:   mode,
-			},
-			familyGlobAllowed: descriptor.FamilyGlobAllowed,
-			globalGlobAllowed: !descriptor.ExplicitOnly,
-		}
-	}
-	for operation, spec := range protocolOperationSpecs() {
-		result[operation] = operationInfo{spec: spec, familyGlobAllowed: true, globalGlobAllowed: true}
-	}
-	return result
+	})
+	return operationInfoValues
 }
 
 func allOperations() []Operation {

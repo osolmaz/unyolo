@@ -7,25 +7,22 @@ import (
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
-func TestGeneratedPolicyRegistryCoversAgentCatalog(t *testing.T) {
+func TestGeneratedPolicyRegistryCoversCatalog(t *testing.T) {
 	registry, err := CatalogRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentCount := 0
 	for _, descriptor := range opcatalog.MustAll() {
-		_, registered := registry.Operations[descriptor.Name]
-		if descriptor.AgentFacing {
-			agentCount++
-			if !registered {
-				t.Fatalf("agent operation %q missing", descriptor.Name)
-			}
-		} else if registered {
-			t.Fatalf("non-agent operation %q registered", descriptor.Name)
+		spec, registered := registry.Operations[descriptor.Name]
+		if !registered {
+			t.Fatalf("catalog operation %q missing", descriptor.Name)
+		}
+		if spec.Grantable != descriptor.AgentFacing {
+			t.Fatalf("operation %q grantable=%t, want %t", descriptor.Name, spec.Grantable, descriptor.AgentFacing)
 		}
 	}
-	if len(registry.Operations) != agentCount+len(protocolOperationSpecs()) || len(registry.Operations) > 1420 {
-		t.Fatalf("registry=%d agent=%d", len(registry.Operations), agentCount)
+	if len(registry.Operations) != opcatalog.ExpectedCount+len(protocolOperationSpecs()) {
+		t.Fatalf("registry=%d catalog=%d", len(registry.Operations), opcatalog.ExpectedCount)
 	}
 	for _, forbidden := range []string{"method", "url", "body", "graphql", "caller", "headers", "credential"} {
 		if _, found := registry.Attrs[forbidden]; found {
