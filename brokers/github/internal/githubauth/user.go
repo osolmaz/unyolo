@@ -140,16 +140,8 @@ func (p *userProvider) credential(ctx context.Context, userID int64) (*Credentia
 		}
 	}
 	if !record.AccessExpiresAt.After(now.Add(p.refreshBefore)) {
-		old := record
-		refreshed, refreshErr := p.refresh(ctx, old)
-		zeroStored(&old)
-		record, err = refreshed, refreshErr
+		record, err = p.refreshAndStore(ctx, record, generation)
 		if err != nil {
-			return nil, err
-		}
-		if err := p.storeRecordIfCurrent(record, generation); err != nil {
-			_ = p.revokeToken(context.WithoutCancel(ctx), record.AccessToken)
-			zeroStored(&record)
 			return nil, err
 		}
 	}
@@ -161,6 +153,20 @@ func (p *userProvider) credential(ctx context.Context, userID int64) (*Credentia
 		return nil, err
 	}
 	return credential, nil
+}
+
+func (p *userProvider) refreshAndStore(ctx context.Context, record storedUserCredential, generation uint64) (storedUserCredential, error) {
+	refreshed, err := p.refresh(ctx, record)
+	zeroStored(&record)
+	if err != nil {
+		return storedUserCredential{}, err
+	}
+	if err := p.storeRecordIfCurrent(refreshed, generation); err != nil {
+		_ = p.revokeToken(context.WithoutCancel(ctx), refreshed.AccessToken)
+		zeroStored(&refreshed)
+		return storedUserCredential{}, err
+	}
+	return refreshed, nil
 }
 
 func (p *userProvider) refresh(ctx context.Context, old storedUserCredential) (storedUserCredential, error) {

@@ -22,18 +22,9 @@ func preserveGitHubUserStateOwnership(stateDir string) error {
 	if err != nil {
 		return err
 	}
-	storeRoot, err := githubauth.UserCredentialStorePath(stateDir)
+	paths, err := githubUserCredentialStorePaths(stateDir)
 	if err != nil {
 		return err
-	}
-	slotsPath := filepath.Join(storeRoot, "credential-slots")
-	paths := []string{filepath.Dir(storeRoot), storeRoot, filepath.Join(storeRoot, "credential-slots.key"), slotsPath}
-	entries, readErr := os.ReadDir(slotsPath)
-	if readErr != nil && !os.IsNotExist(readErr) {
-		return errors.New("inspect GitHub user credential store")
-	}
-	for _, entry := range entries {
-		paths = append(paths, filepath.Join(slotsPath, entry.Name()))
 	}
 	for _, path := range paths {
 		if err := preserveGitHubUserPathOwnership(path, owner); err != nil {
@@ -41,6 +32,23 @@ func preserveGitHubUserStateOwnership(stateDir string) error {
 		}
 	}
 	return nil
+}
+
+func githubUserCredentialStorePaths(stateDir string) ([]string, error) {
+	storeRoot, err := githubauth.UserCredentialStorePath(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	slotsPath := filepath.Join(storeRoot, "credential-slots")
+	paths := []string{filepath.Dir(storeRoot), storeRoot, filepath.Join(storeRoot, "credential-slots.key"), slotsPath}
+	entries, readErr := os.ReadDir(slotsPath)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, errors.New("inspect GitHub user credential store")
+	}
+	for _, entry := range entries {
+		paths = append(paths, filepath.Join(slotsPath, entry.Name()))
+	}
+	return paths, nil
 }
 
 func githubUserSetupStateOwner(stateDir string) (githubUserStateOwner, error) {
