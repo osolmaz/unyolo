@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -157,6 +158,62 @@ func TestMCPTypedToolSubmission(t *testing.T) {
 	response := handleMCP(t.Context(), mcpTestEnv(env), mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: json.RawMessage(`{"name":"gh_repo_metadata_read","arguments":{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","request_id":"request-2"}}`)})
 	if response.Error != nil || response.Result.(map[string]any)["isError"] != false {
 		t.Fatalf("response=%#v", response)
+	}
+}
+
+func TestMCPRequestConflictAndRecoveryTools(t *testing.T) {
+	operation := githubTestOperation(agentv1.StatePending)
+	operation.IdempotencyKey = "same-request"
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/api/agent/v1/operations":
+			writer.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(writer).Encode(map[string]any{"error": map[string]any{
+				"code": "idempotency_conflict", "message": "request identity conflicts",
+			}})
+		case request.Method == http.MethodGet && request.URL.Path == "/api/agent/v1/operations":
+			if request.URL.Query().Get("idempotency_key") != operation.IdempotencyKey {
+				t.Errorf("recovery query = %q", request.URL.RawQuery)
+			}
+			_ = json.NewEncoder(writer).Encode(githubOperationSummaryPage(operation))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_MCP_EXACT_OPERATIONS": "repo.metadata.read", "GH_BROKER_MCP_CLIENT_OPERATIONS": "repo.metadata.read",
+		"GH_BROKER_MCP_POLICY_OPERATIONS": "repo.metadata.read", "GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read",
+	}
+	_, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
+		Name:      "gh_repo_metadata_read",
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect","request_id":"same-request"}`),
+	})
+	var conflict *mcpoperation.RequestIDConflictError
+	if !errors.As(err, &conflict) || conflict.Existing.ID != operation.ID || conflict.Existing.RequestID != "same-request" {
+		t.Fatalf("conflict = %#v, %v", conflict, err)
+	}
+	value, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
+		Name: "gh_operation_list", Arguments: json.RawMessage(`{"request_id":"same-request","limit":1}`),
+	})
+	page, ok := value.(mcpoperation.Page)
+	if err != nil || !ok || len(page.Operations) != 1 || page.Operations[0].ID != operation.ID {
+		t.Fatalf("recovery = %#v, %v", value, err)
+	}
+}
+
+func githubOperationSummaryPage(operation agentv1.Operation) map[string]any {
+	return map[string]any{
+		"api_version": agentv1.APIVersion,
+		"operations": []map[string]any{{
+			"api_version": operation.APIVersion, "id": operation.ID, "broker": operation.Broker,
+			"client_id": operation.ClientID, "idempotency_key": operation.IdempotencyKey,
+			"operation": operation.Operation, "state": operation.State, "revision": operation.Revision,
+			"created_at": operation.CreatedAt, "updated_at": operation.UpdatedAt, "presentation": operation.Presentation,
+		}},
+		"next_cursor": nil,
 	}
 }
 
