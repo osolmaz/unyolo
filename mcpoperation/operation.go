@@ -268,18 +268,27 @@ func Conflict(ctx context.Context, client Client, requestID string, cause error)
 		return cause
 	}
 	page, err := client.List(ctx, agentv1.ListOptions{IdempotencyKey: requestID, Limit: 1})
-	if err != nil || len(page.Operations) != 1 {
-		return fmt.Errorf("could not recover request_id conflict: %w", cause)
-	}
-	existing := page.Operations[0]
-	if !agentv1.ValidIdempotencyKey(existing.IdempotencyKey) || existing.ID == "" || existing.Operation == "" ||
-		existing.Revision < 1 || !existing.State.Valid() {
+	existing, recovered := recoveredConflict(page, err)
+	if !recovered {
 		return fmt.Errorf("could not recover request_id conflict: %w", cause)
 	}
 	return &RequestIDConflictError{Existing: ConflictExisting{
 		ID: existing.ID, RequestID: existing.IdempotencyKey, Operation: existing.Operation,
 		State: existing.State, Revision: existing.Revision,
 	}}
+}
+
+func recoveredConflict(page agentv1.OperationPage, err error) (agentv1.OperationSummary, bool) {
+	if err != nil || len(page.Operations) != 1 {
+		return agentv1.OperationSummary{}, false
+	}
+	existing := page.Operations[0]
+	return existing, validConflictSummary(existing)
+}
+
+func validConflictSummary(existing agentv1.OperationSummary) bool {
+	return agentv1.ValidIdempotencyKey(existing.IdempotencyKey) && existing.ID != "" && existing.Operation != "" &&
+		existing.Revision >= 1 && existing.State.Valid()
 }
 
 func ErrorValue(err error) map[string]any {

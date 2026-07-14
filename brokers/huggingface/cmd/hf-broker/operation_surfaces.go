@@ -208,16 +208,9 @@ func validateOperationClientOptions(descriptor opcatalog.Descriptor, options ope
 }
 
 func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, target, arguments json.RawMessage, sealedFile string, sealed json.RawMessage, credentialSlot, reason, idempotencyKey string) (agentv1.SubmitRequest, error) {
-	idempotencyKey = strings.TrimSpace(idempotencyKey)
-	if idempotencyKey == "" {
-		var err error
-		idempotencyKey, err = randomClientID()
-		if err != nil {
-			return agentv1.SubmitRequest{}, err
-		}
-	}
-	if !agentv1.ValidIdempotencyKey(idempotencyKey) {
-		return agentv1.SubmitRequest{}, errors.New("request-id is invalid")
+	idempotencyKey, err := resolveClientRequestID(idempotencyKey)
+	if err != nil {
+		return agentv1.SubmitRequest{}, err
 	}
 	if descriptor.Sealed {
 		if sealedFile != "" {
@@ -311,18 +304,10 @@ func runCatalogGrant(ctx context.Context, client *hfGrantClient, stdout, stderr 
 	if err := strictjson.Decode(options.target, &target, true); err != nil {
 		return exitError{code: 64, message: "target does not match the closed grant target schema"}
 	}
-	idempotencyKey := options.idempotencyKey
-	if idempotencyKey == "" {
-		var err error
-		idempotencyKey, err = randomClientID()
-		if err != nil {
-			return err
-		}
+	idempotencyKey, err := resolveClientRequestID(options.idempotencyKey)
+	if err != nil {
+		return err
 	}
-	if !agentv1.ValidIdempotencyKey(strings.TrimSpace(idempotencyKey)) {
-		return errors.New("request-id is invalid")
-	}
-	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	request := hfGrantRequest{Operation: policy.Operation(descriptor.Name), Target: target, Attrs: options.attrs,
 		Minutes: options.minutes, Reason: strings.TrimSpace(options.reason), ClientRequestID: idempotencyKey}
 	if options.maxUses.set {
@@ -337,6 +322,21 @@ func runCatalogGrant(ctx context.Context, client *hfGrantClient, stdout, stderr 
 		_, _ = fmt.Fprintf(stderr, "HF Broker grant %s: %s\n", grant.ID, grant.Status)
 	}
 	return printHFClientGrant(stdout, grant, options.jsonOutput)
+}
+
+func resolveClientRequestID(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		generated, err := randomClientID()
+		if err != nil {
+			return "", err
+		}
+		value = generated
+	}
+	if !agentv1.ValidIdempotencyKey(value) {
+		return "", errors.New("request-id is invalid")
+	}
+	return value, nil
 }
 
 func catalogMCPTools() []map[string]any {

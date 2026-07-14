@@ -269,22 +269,20 @@ func listOptionsFromParams(params agentwire.ListAgentOperationsParams) agentv1.L
 }
 
 func validateListOptions(params agentwire.ListAgentOperationsParams, options agentv1.ListOptions) *Error {
-	if invalidOptionalListValue(params.IdempotencyKey, options.IdempotencyKey) {
-		return invalidListQueryError()
-	}
-	if options.IdempotencyKey != "" && !agentv1.ValidIdempotencyKey(options.IdempotencyKey) {
-		return invalidListQueryError()
-	}
-	if invalidOptionalListValue(params.Cursor, options.Cursor) {
-		return invalidListQueryError()
-	}
-	if options.Limit < 1 || options.Limit > 50 {
-		return invalidListQueryError()
-	}
-	if options.State != "" && !options.State.Valid() {
+	if !validListOptions(params, options) {
 		return invalidListQueryError()
 	}
 	return nil
+}
+
+func validListOptions(params agentwire.ListAgentOperationsParams, options agentv1.ListOptions) bool {
+	return !invalidOptionalListValue(params.IdempotencyKey, options.IdempotencyKey) && validOptionalIdempotencyKey(options.IdempotencyKey) &&
+		!invalidOptionalListValue(params.Cursor, options.Cursor) && options.Limit >= 1 && options.Limit <= 50 &&
+		(options.State == "" || options.State.Valid())
+}
+
+func validOptionalIdempotencyKey(value string) bool {
+	return value == "" || agentv1.ValidIdempotencyKey(value)
 }
 
 func invalidOptionalListValue(provided *string, normalized string) bool {
