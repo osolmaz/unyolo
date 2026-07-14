@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/osolmaz/brokerkit/audit"
@@ -35,6 +36,14 @@ func TestRuntimeSeparatesClientAndOperatorCredentials(t *testing.T) {
 	runtime.OperatorHandler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("operator credential status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+	runtime.Metrics.AdmissionAccepted()
+	request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
+	request.Header.Set("Authorization", "Bearer operator-secret-abcdefghijklmnopqrstuvwxyz")
+	response = httptest.NewRecorder()
+	runtime.OperatorHandler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "brokerkit_admission_requests_total") {
+		t.Fatalf("operator metrics status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

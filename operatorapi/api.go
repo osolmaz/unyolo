@@ -46,6 +46,7 @@ type Options struct {
 	Authorize        Authorizer
 	Broker           string
 	Audit            AuditRecorder
+	Metrics          http.Handler
 	NewCorrelationID func() (string, error)
 }
 
@@ -71,8 +72,17 @@ func New(options Options) (http.Handler, error) {
 	router.HidePort = true
 	router.Use(h.requestMetadata)
 	router.HTTPErrorHandler = h.echoError
+	if options.Metrics != nil {
+		router.GET("/metrics", h.metrics(options.Metrics))
+	}
 	operatorwire.RegisterHandlers(router, h)
 	return router, nil
+}
+
+func (h *handler) metrics(handler http.Handler) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		return h.authorized(c, func(string) { handler.ServeHTTP(c.Response(), c.Request()) })
+	}
 }
 
 func validateOptions(options Options) error {

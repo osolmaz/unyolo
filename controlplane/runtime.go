@@ -12,6 +12,7 @@ import (
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/observability"
 	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/operatorauth"
 	"github.com/osolmaz/brokerkit/operatorinbox"
@@ -41,6 +42,7 @@ type Runtime struct {
 	OperatorHandler http.Handler
 	Decider         approval.Decider
 	Decisions       *decision.Service
+	Metrics         *observability.Metrics
 }
 
 // New validates and assembles one broker control plane.
@@ -58,21 +60,25 @@ func New(options Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	metrics, err := observability.New(options.Broker)
+	if err != nil {
+		return nil, err
+	}
 	decisions, err := decision.New(decision.Options{
-		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: options.Audit,
+		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: options.Audit, Observer: metrics,
 	})
 	if err != nil {
 		return nil, err
 	}
-	handler, err := operatorHandler(options, decisions)
+	handler, err := operatorHandler(options, decisions, metrics)
 	if err != nil {
 		return nil, err
 	}
 	decider := channelDecider{service: decisions}
-	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions}, nil
+	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions, Metrics: metrics}, nil
 }
 
-func operatorHandler(options Options, decisions *decision.Service) (http.Handler, error) {
+func operatorHandler(options Options, decisions *decision.Service, metrics *observability.Metrics) (http.Handler, error) {
 	if len(options.OperatorSecrets) == 0 {
 		return nil, nil
 	}
@@ -86,7 +92,7 @@ func operatorHandler(options Options, decisions *decision.Service) (http.Handler
 	}
 	return operatorapi.New(operatorapi.Options{
 		Inbox: inbox, Decisions: decisions, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: options.Audit,
-		NewCorrelationID: options.NewCorrelationID,
+		NewCorrelationID: options.NewCorrelationID, Metrics: metrics.Handler(),
 	})
 }
 

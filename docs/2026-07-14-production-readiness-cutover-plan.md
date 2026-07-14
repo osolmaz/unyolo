@@ -431,6 +431,15 @@ paths, command arguments, URLs, tokens, free-form upstream errors, or unbounded
 caller input. Logging, metrics, audit, and API error redaction share tested
 helpers rather than separate deny lists.
 
+Implemented on the production-readiness branch: each control plane creates an
+isolated Prometheus registry and exposes it only through the authenticated
+operator listener. Shared admission, operation lifecycle, decision, and
+notification code records bounded outcome counters and execution latency. The
+only identity label is the setup-controlled broker name; all other labels use
+closed enums and unknown values collapse to `other`. Dependency degradation,
+database health, durable queue-depth gauges, and one shared structured logging
+boundary remain.
+
 ### Failure drills
 
 Add deterministic automated drills for:

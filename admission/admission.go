@@ -62,6 +62,12 @@ type Usage struct {
 // UsageFunc reads current durable occupancy for one configured client.
 type UsageFunc func(context.Context, string) (Usage, error)
 
+// Observer receives bounded admission outcomes.
+type Observer interface {
+	AdmissionAccepted()
+	AdmissionRejected(code string)
+}
+
 // LimitError is a stable, provider-safe admission refusal.
 type LimitError struct {
 	Code       string
@@ -85,6 +91,7 @@ type Controller struct {
 	now            func() time.Time
 	clients        map[string]*clientState
 	globalReserved int64
+	observer       Observer
 }
 
 // New constructs a controller for a fixed set of authenticated client identities.
@@ -95,6 +102,13 @@ func New(clients []string, limits Limits, usage UsageFunc) (*Controller, error) 
 // NewConfigured constructs a controller with exact per-client overrides.
 func NewConfigured(clients []string, config Config, usage UsageFunc) (*Controller, error) {
 	return newConfiguredController(clients, config, usage, time.Now)
+}
+
+// SetObserver attaches operational metrics before the controller serves work.
+func (c *Controller) SetObserver(observer Observer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.observer = observer
 }
 
 func newController(clients []string, limits Limits, usage UsageFunc, now func() time.Time) (*Controller, error) {
@@ -191,23 +205,44 @@ func (c *Controller) Admit(ctx context.Context, client string) (*Permit, error) 
 	defer c.mu.Unlock()
 	state, ok := c.clients[client]
 	if !ok {
+		c.reject("client_unconfigured")
 		return nil, errors.New("admission client is not configured")
 	}
 	now := c.now().UTC()
 	limits := c.clientLimits[client]
 	if err := c.chargeRequest(state, limits, now); err != nil {
+		c.reject(admissionErrorCode(err))
 		return nil, err
 	}
 	usage, err := c.usage(ctx, client)
 	if err != nil {
+		c.reject("store_unavailable")
 		return nil, fmt.Errorf("read operation admission usage: %w", err)
 	}
 	if code := c.capacityCode(state, limits, usage); code != "" {
+		c.reject(code)
 		return nil, capacityError(code)
 	}
 	state.reserved++
 	c.globalReserved++
+	if c.observer != nil {
+		c.observer.AdmissionAccepted()
+	}
 	return &Permit{controller: c, client: client}, nil
+}
+
+func (c *Controller) reject(code string) {
+	if c.observer != nil {
+		c.observer.AdmissionRejected(code)
+	}
+}
+
+func admissionErrorCode(err error) string {
+	var limit *LimitError
+	if errors.As(err, &limit) {
+		return limit.Code
+	}
+	return "other"
 }
 
 func (c *Controller) chargeRequest(state *clientState, limits ClientLimits, now time.Time) error {

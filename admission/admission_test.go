@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+type admissionObserver struct {
+	accepted int
+	rejected []string
+}
+
+func (o *admissionObserver) AdmissionAccepted()            { o.accepted++ }
+func (o *admissionObserver) AdmissionRejected(code string) { o.rejected = append(o.rejected, code) }
+
 func TestControllerEnforcesDurableAndProvisionalLimits(t *testing.T) {
 	limits := Limits{RequestsPerWindow: 10, Window: time.Minute, ClientActive: 2, ClientPending: 2, GlobalActive: 3, GlobalExecuting: 2}
 	usage := Usage{}
@@ -49,6 +57,8 @@ func TestControllerRateLimitAndFixedClients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	observer := &admissionObserver{}
+	controller.SetObserver(observer)
 	permit, err := controller.Admit(t.Context(), "agent")
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +75,9 @@ func TestControllerRateLimitAndFixedClients(t *testing.T) {
 		t.Fatal(err)
 	}
 	permit.Release()
+	if observer.accepted != 2 || len(observer.rejected) != 2 || observer.rejected[0] != "submission_rate_limited" || observer.rejected[1] != "client_unconfigured" {
+		t.Fatalf("admission observations = %+v", observer)
+	}
 }
 
 func TestControllerSerializesConcurrentReservations(t *testing.T) {

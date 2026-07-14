@@ -121,6 +121,7 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	admissionController.SetObserver(control.Metrics)
 	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: grantStore, plans: plans,
 		identities: opts.Identities, helper: opts.Helper, validator: validator, notifier: opts.Notifier, poller: opts.Poller,
 		audit: opts.Audit, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,

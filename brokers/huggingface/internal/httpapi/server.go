@@ -430,6 +430,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	admissionController.SetObserver(runtime.Metrics)
 	server := &Server{
 		control:        runtime,
 		policy:         opts.Scope,

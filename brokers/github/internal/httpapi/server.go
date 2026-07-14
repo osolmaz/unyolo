@@ -106,6 +106,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		_ = core.database.Close()
 		return nil, err
 	}
+	admissionController.SetObserver(core.control.Metrics)
 	server := &Server{
 		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
 		database: core.database, operations: operationStore, admission: admissionController, notifier: core.notifier, telegram: core.telegram,

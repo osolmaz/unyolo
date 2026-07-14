@@ -58,6 +58,7 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		ApprovalMessage:     grantApprovalMessage,
 		OperatorConfigured:  s.operatorConfigured,
 		AuthorizationGrace:  operationAuthorizationGrace,
+		Observer:            s.control.Metrics,
 	})
 }
 

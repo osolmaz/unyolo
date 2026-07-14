@@ -52,6 +52,13 @@ type Failure struct {
 	Message string
 }
 
+// Observer receives bounded lifecycle outcomes without provider or target data.
+type Observer interface {
+	OperationSubmitted(result string)
+	OperationExecuted(result string, elapsed time.Duration)
+	NotificationDelivered(result string)
+}
+
 // Options supplies provider semantics and shared durable dependencies. The
 // callbacks encode provider plans and presentation; lifecycle transitions stay
 // inside Runtime.
@@ -85,6 +92,7 @@ type Options[I, P, A any] struct {
 	WorkerInterval      time.Duration
 	WorkerConcurrency   int
 	NotificationLease   time.Duration
+	Observer            Observer
 }
 
 // Runtime drives one provider's generic Agent V1 operation lifecycle.
@@ -182,7 +190,8 @@ func (r *Runtime[I, P, A]) Start(ctx context.Context) {
 func (r *Runtime[I, P, A]) Wait() { r.workers.Wait() }
 
 // Submit validates, resolves, authorizes, and durably submits an operation.
-func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
+func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request agentv1.SubmitRequest) (operation agentv1.Operation, created bool, returnErr error) {
+	defer func() { r.observeSubmission(created, returnErr) }()
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	request.Reason = strings.TrimSpace(request.Reason)
 	adapter, input, err := r.decode(request)
@@ -195,6 +204,11 @@ func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request ag
 	if existing, found, replayErr := r.replayed(client, request, input); replayErr != nil || found {
 		return existing, false, replayErr
 	}
+	return r.submitNew(ctx, client, request, adapter, input)
+}
+
+func (r *Runtime[I, P, A]) submitNew(ctx context.Context, client string, request agentv1.SubmitRequest,
+	adapter Adapter[I, P, A], input I) (agentv1.Operation, bool, error) {
 	if bound, ok := any(adapter).(ClientBoundAdapter[I]); ok {
 		if err := bound.ValidateClient(input, client, request.IdempotencyKey); err != nil {
 			return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
@@ -217,6 +231,19 @@ func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request ag
 		permit.Commit()
 	}
 	return operation, created, err
+}
+
+func (r *Runtime[I, P, A]) observeSubmission(created bool, err error) {
+	if r.options.Observer == nil {
+		return
+	}
+	result := "replayed"
+	if err != nil {
+		result = "rejected"
+	} else if created {
+		result = "created"
+	}
+	r.options.Observer.OperationSubmitted(result)
 }
 
 func (r *Runtime[I, P, A]) admit(ctx context.Context, client string) (*admission.Permit, error) {
@@ -384,23 +411,27 @@ func (r *Runtime[I, P, A]) Cancel(_ context.Context, client, id string) (agentv1
 }
 
 func (r *Runtime[I, P, A]) cancelApproval(operation agentv1.Operation, client string) error {
-	id := operation.ApprovalID
-	if id == "" {
-		values, err := r.options.Grants.ListForClient(client)
-		if err != nil {
-			return err
-		}
-		grant, found := r.operationApproval(values, operation)
-		if !found {
-			return nil
-		}
-		id = grant.ID
+	id, found, err := r.approvalID(operation, client)
+	if err != nil || !found {
+		return err
 	}
 	grant, err := r.options.Grants.Get(id)
 	if err != nil {
 		return err
 	}
 	return r.cancelGrant(grant, client)
+}
+
+func (r *Runtime[I, P, A]) approvalID(operation agentv1.Operation, client string) (string, bool, error) {
+	if operation.ApprovalID != "" {
+		return operation.ApprovalID, true, nil
+	}
+	values, err := r.options.Grants.ListForClient(client)
+	if err != nil {
+		return "", false, err
+	}
+	grant, found := r.operationApproval(values, operation)
+	return grant.ID, found, nil
 }
 
 func (r *Runtime[I, P, A]) cancelGrant(grant grants.Grant, client string) error {
@@ -450,14 +481,31 @@ func (r *Runtime[I, P, A]) bindApproval(ctx context.Context, operation agentv1.O
 
 func (r *Runtime[I, P, A]) notifyApproval(ctx context.Context, grant grants.Grant) error {
 	claim, done, err := r.claimNotification(grant)
-	if err != nil || done {
+	if err != nil {
+		r.observeNotification("claimed")
 		return err
+	}
+	if done {
+		r.observeNotification("already_recorded")
+		return nil
 	}
 	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(claim.Grant, claim.DecisionToken))
 	if err = validateNotificationReference(ref, err); err != nil {
+		r.observeNotification("failed")
 		return r.settleNotificationFailure(claim, err)
 	}
-	return r.recordNotification(claim, ref)
+	if err := r.recordNotification(claim, ref); err != nil {
+		r.observeNotification("failed")
+		return err
+	}
+	r.observeNotification("delivered")
+	return nil
+}
+
+func (r *Runtime[I, P, A]) observeNotification(result string) {
+	if r.options.Observer != nil {
+		r.options.Observer.NotificationDelivered(result)
+	}
 }
 
 func (r *Runtime[I, P, A]) claimNotification(grant grants.Grant) (grants.NotificationClaim, bool, error) {
@@ -653,36 +701,57 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 	if !ok {
 		return
 	}
-	if reserved {
-		if binder, bound := any(adapter).(ReservationBinder[P]); bound {
-			plan, err = binder.BindReservation(plan, grant)
-			if err != nil {
-				_, _ = r.options.Grants.ReleaseUse(grant.ID)
-				r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approved operation binding is invalid")
-				return
-			}
-		}
+	plan, ok = r.bindReservedPlan(operation, adapter, plan, grant, reserved)
+	if !ok {
+		return
 	}
 	r.executeReserved(ctx, operation, adapter, plan, reserved)
 }
 
+func (r *Runtime[I, P, A]) bindReservedPlan(operation agentv1.Operation, adapter Adapter[I, P, A], plan P,
+	grant grants.Grant, reserved bool) (P, bool) {
+	if !reserved {
+		return plan, true
+	}
+	binder, bound := any(adapter).(ReservationBinder[P])
+	if !bound {
+		return plan, true
+	}
+	boundPlan, err := binder.BindReservation(plan, grant)
+	if err == nil {
+		return boundPlan, true
+	}
+	_, _ = r.options.Grants.ReleaseUse(grant.ID)
+	r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approved operation binding is invalid")
+	return plan, false
+}
+
 func (r *Runtime[I, P, A]) executeReserved(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P, reserved bool) {
+	started := time.Now()
+	result := "ambiguous"
+	defer func() {
+		if r.options.Observer != nil {
+			r.options.Observer.OperationExecuted(result, time.Since(started))
+		}
+	}()
 	execution, executionErr := adapter.Execute(ctx, plan)
 	if executionErr == nil && execution.Proven {
+		result = "succeeded"
 		r.succeed(operation, plan, execution.Result, reserved, "", execution.UpstreamStatus)
 		return
 	}
 	if r.options.DefinitiveFailure(executionErr) {
+		result = "failed"
 		if r.settleApproval(operation, reserved, false) {
 			r.failExecution(operation, plan, executionErr, nil)
 		}
 		return
 	}
-	r.reconcileExecution(ctx, operation, adapter, plan, reserved, execution, executionErr)
+	result = r.reconcileExecution(ctx, operation, adapter, plan, reserved, execution, executionErr)
 }
 
 func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P,
-	reserved bool, execution Outcome, executionErr error) {
+	reserved bool, execution Outcome, executionErr error) string {
 	outcome, reconcileErr := adapter.Reconcile(ctx, plan)
 	if reconcileErr == nil && outcome.Proven {
 		if len(outcome.Result) == 0 {
@@ -692,11 +761,12 @@ func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation age
 			outcome.UpstreamStatus = execution.UpstreamStatus
 		}
 		r.succeed(operation, plan, outcome.Result, reserved, "", outcome.UpstreamStatus)
-		return
+		return "reconciled"
 	}
 	if r.settleApproval(operation, reserved, true) {
 		r.failExecution(operation, plan, executionErr, reconcileErr)
 	}
+	return "ambiguous"
 }
 
 func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string, upstreamStatus int) {

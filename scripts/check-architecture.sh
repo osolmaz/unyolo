@@ -44,6 +44,13 @@ do
   fi
 done
 
+if ! grep -q 'router.GET("/metrics"' operatorapi/api.go ||
+  grep -R -n --include='*.go' --exclude='*_test.go' '"/metrics"' brokers 2>/dev/null
+then
+  echo 'metrics must exist only on the shared authenticated operator surface' >&2
+  exit 1
+fi
+
 if find . -path './brokers' -prune -o -path './.git' -prune -o -name '*.go' -type f -print0 |
   xargs -0 grep -n 'github.com/osolmaz/brokerkit/brokers/'
 then

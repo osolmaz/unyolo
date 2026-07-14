@@ -60,6 +60,7 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		OperatorConfigured:  s.operatorConfigured,
 		Now:                 s.utcNow,
 		AuthorizationGrace:  operationAuthorizationGrace,
+		Observer:            s.control.Metrics,
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -31,6 +32,22 @@ type runtimePlan struct {
 	Target        json.RawMessage `json:"target"`
 	Arguments     json.RawMessage `json:"arguments"`
 	Authorization policy.Request  `json:"authorization"`
+}
+
+type runtimeObserver struct {
+	submissions   []string
+	executions    []string
+	notifications []string
+}
+
+func (o *runtimeObserver) OperationSubmitted(result string) {
+	o.submissions = append(o.submissions, result)
+}
+func (o *runtimeObserver) OperationExecuted(result string, _ time.Duration) {
+	o.executions = append(o.executions, result)
+}
+func (o *runtimeObserver) NotificationDelivered(result string) {
+	o.notifications = append(o.notifications, result)
 }
 
 type runtimeAdapter struct {
@@ -107,6 +124,8 @@ func (a *runtimeAdapter) Cleanup(runtimePlan) error {
 func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
 	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
 	defer closeRuntime()
+	observer := &runtimeObserver{}
+	runtime.options.Observer = observer
 	request := agentv1.SubmitRequest{IdempotencyKey: "request-1", Operation: "repo.create",
 		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{"private":true}`), Reason: "create demo"}
 	operation, created, err := runtime.Submit(t.Context(), "agent", request)
@@ -121,6 +140,9 @@ func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
 	completed, err := operations.Get("agent", operation.ID)
 	if err != nil || completed.State != agentv1.StateSucceeded || string(completed.Result) != `{"created":true}` || adapter.cleanupCount.Load() != 1 || adapter.recordedStatus.Load() != 201 {
 		t.Fatalf("completed = %+v cleanup=%d status=%d err=%v", completed, adapter.cleanupCount.Load(), adapter.recordedStatus.Load(), err)
+	}
+	if !slices.Equal(observer.submissions, []string{"created", "replayed"}) || !slices.Equal(observer.executions, []string{"succeeded"}) {
+		t.Fatalf("runtime observations = %+v", observer)
 	}
 }
 

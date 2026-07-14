@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
+
+type decisionObserver struct{ values []string }
+
+func (o *decisionObserver) OperatorDecision(action, result string) {
+	o.values = append(o.values, action+":"+result)
+}
 
 func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
 	t.Parallel()
@@ -42,6 +49,30 @@ func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
 	approved, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:onur", notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2})
 	if err != nil || approved.Status != grants.StatusActive || calls != 2 {
 		t.Fatalf("ApproveToken() = %+v, %v calls=%d", approved, err, calls)
+	}
+}
+
+func TestServiceReportsBoundedDecisionOutcomes(t *testing.T) {
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	observer := &decisionObserver{}
+	service, err := New(Options{Store: store, Observer: observer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := create(t, store, "observed")
+	command := operatorv1.Decision{ExpectedRevision: request.Grant.Revision, IdempotencyKey: "observed-decision"}
+	if _, err := service.Decide(t.Context(), request.Grant.ID, operatorv1.ActionDeny, "operator", command); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Decide(t.Context(), request.Grant.ID, operatorv1.ActionDeny, "operator", command); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Decide(t.Context(), "missing", operatorv1.ActionApprove, "operator", command); err == nil {
+		t.Fatal("missing decision unexpectedly succeeded")
+	}
+	want := []string{"deny:committed", "deny:replayed", "approve:rejected"}
+	if !slices.Equal(observer.values, want) {
+		t.Fatalf("decision observations = %v, want %v", observer.values, want)
 	}
 }
 
