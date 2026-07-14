@@ -38,21 +38,14 @@ const (
 type Operation string
 
 const (
-	OperationGitFetch              Operation = "git.fetch"
-	OperationGitPushAdvertise      Operation = "git.push.advertise"
-	OperationGitPushBranchCreate   Operation = "git.push.branch_create"
-	OperationGitPushFastForward    Operation = "git.push.fast_forward"
-	OperationGitPushForce          Operation = "git.push.force"
-	OperationGitRefDelete          Operation = "git.ref.delete"
-	OperationGitTagUpdate          Operation = "git.tag.update"
-	OperationPullRequestCreate     Operation = "pull_request.create"
-	OperationPullRequestUpdate     Operation = "pull_request.update"
-	OperationPullRequestMerge      Operation = "pull_request.merge"
-	OperationChecksRead            Operation = "checks.read"
-	OperationRepoMetadataRead      Operation = "repo.metadata.read"
-	OperationContentsRead          Operation = "repo.contents.read"
-	OperationInstallationReposList Operation = "installation.repo.list"
-	OperationWebhookGitHubReceive  Operation = "webhook.github.receive"
+	OperationGitFetch             Operation = "git.fetch"
+	OperationGitPushAdvertise     Operation = "git.push.advertise"
+	OperationGitPushBranchCreate  Operation = "git.push.branch_create"
+	OperationGitPushFastForward   Operation = "git.push.fast_forward"
+	OperationGitPushForce         Operation = "git.push.force"
+	OperationGitRefDelete         Operation = "git.ref.delete"
+	OperationGitTagUpdate         Operation = "git.tag.update"
+	OperationWebhookGitHubReceive Operation = "webhook.github.receive"
 )
 
 type Target struct {

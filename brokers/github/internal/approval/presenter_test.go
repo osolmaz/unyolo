@@ -23,10 +23,13 @@ func TestPresenter(t *testing.T) {
 	}
 }
 
-func TestRiskUsesExplicitOperationTable(t *testing.T) {
+func TestRiskUsesGeneratedCatalogAndProtocolTable(t *testing.T) {
 	t.Parallel()
 	if got := risk("git.push.force"); got != operatorinbox.RiskCritical {
-		t.Fatalf("known risk = %q", got)
+		t.Fatalf("protocol risk = %q", got)
+	}
+	if got := risk("repo.delete"); got != operatorinbox.RiskCritical {
+		t.Fatalf("catalog risk = %q", got)
 	}
 	if got := risk("custom.force"); got != operatorinbox.RiskUnknown {
 		t.Fatalf("unknown risk = %q", got)

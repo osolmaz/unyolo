@@ -3,7 +3,6 @@ package githubauth
 import (
 	"context"
 	"errors"
-	"net/http"
 	"reflect"
 
 	github "github.com/google/go-github/v88/github"
@@ -44,69 +43,4 @@ func (a *API) BranchProtected(ctx context.Context, owner, repo, branch string) (
 		return false, classifyAPIError(protectionErr)
 	}
 	return false, nil
-}
-
-type PullRequest struct {
-	Number int
-	URL    string
-}
-
-func (a *API) CreatePullRequest(ctx context.Context, owner, repo, title, head, base, body string) (PullRequest, bool, error) {
-	if a == nil || a.client == nil {
-		return PullRequest{}, false, errors.New("GitHub API client is unavailable")
-	}
-	created, response, err := a.client.PullRequests.Create(ctx, owner, repo, &github.NewPullRequest{
-		Title: &title, Head: &head, Base: &base, Body: &body,
-	})
-	if err != nil {
-		status := responseStatus(nil)
-		if response != nil {
-			status = response.StatusCode
-		}
-		return PullRequest{}, status >= http.StatusBadRequest && status < http.StatusInternalServerError, classifyAPIError(err)
-	}
-	if created.GetNumber() <= 0 || created.GetHTMLURL() == "" {
-		return PullRequest{}, false, errors.New("GitHub pull request response is invalid")
-	}
-	return PullRequest{Number: created.GetNumber(), URL: created.GetHTMLURL()}, true, nil
-}
-
-func (a *API) listUserRepositories(ctx context.Context) ([]*github.Repository, error) {
-	if a == nil || a.client == nil {
-		return nil, errors.New("GitHub API client is unavailable")
-	}
-	var result []*github.Repository
-	opts := &github.RepositoryListByAuthenticatedUserOptions{ListOptions: github.ListOptions{PerPage: 100}}
-	for page := 0; page < maxInstallationPages; page++ {
-		items, response, err := a.client.Repositories.ListByAuthenticatedUser(ctx, opts)
-		if err != nil {
-			return nil, classifyAPIError(err)
-		}
-		result = append(result, items...)
-		if response == nil || response.NextPage == 0 {
-			return result, nil
-		}
-		opts.Page = response.NextPage
-	}
-	return nil, errors.New("GitHub repository listing exceeded its page limit")
-}
-
-func (a *API) listInstallationRepositories(ctx context.Context) ([]*github.Repository, error) {
-	if a == nil || a.client == nil {
-		return nil, errors.New("GitHub API client is unavailable")
-	}
-	var result []*github.Repository
-	opts := &github.ListOptions{PerPage: 100}
-	for page := 0; page < maxInstallationPages; page++ {
-		items, response, err := a.client.Apps.ListRepos(ctx, opts)
-		if err != nil {
-			return nil, classifyAPIError(err)
-		}
-		result = append(result, items.Repositories...)
-		if response == nil || response.NextPage == 0 {
-			return result, nil
-		}
-		opts.Page = response.NextPage
-	}
-	return nil, errors.New("GitHub installation repository listing exceeded its page limit")
 }

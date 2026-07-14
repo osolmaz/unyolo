@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	github "github.com/google/go-github/v88/github"
 	"github.com/osolmaz/brokerkit/credentialstore"
 )
 
@@ -235,64 +234,6 @@ func (m *Manager) Installations(ctx context.Context) ([]int64, error) {
 		ids = append(ids, item.GetID())
 	}
 	return ids, nil
-}
-
-// ListRepositories uses typed SDK pagination. An App listing credential is
-// never cached and is revoked immediately after the installation is listed.
-func (m *Manager) ListRepositories(ctx context.Context) ([]*github.Repository, error) {
-	if m == nil {
-		return nil, errors.New("GitHub credential provider is unavailable")
-	}
-	if m.development != nil {
-		api, err := m.API(m.development)
-		if err != nil {
-			return nil, err
-		}
-		return api.listUserRepositories(ctx)
-	}
-	installations, err := m.app.installations(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var result []*github.Repository
-	for _, installation := range installations {
-		repositories, listErr := m.listInstallationRepositories(ctx, installation.GetID())
-		if listErr != nil {
-			return nil, listErr
-		}
-		result = append(result, repositories...)
-	}
-	return result, nil
-}
-
-func (m *Manager) listInstallationRepositories(ctx context.Context, installationID int64) ([]*github.Repository, error) {
-	permissions, _ := installationPermissions(map[string]string{"metadata": "read"})
-	token, _, err := m.app.client.Apps.CreateInstallationTokenListRepos(ctx, installationID, &github.InstallationTokenListRepoOptions{
-		RepositoryIDs: []int64{}, Permissions: permissions,
-	})
-	if err != nil {
-		return nil, classifyAPIError(err)
-	}
-	value := []byte(token.GetToken())
-	if len(value) == 0 {
-		return nil, errors.New("GitHub repository listing credential is invalid")
-	}
-	sdk, err := newGitHubClient(m.client, m.apiURL, value)
-	if err != nil {
-		zero(value)
-		return nil, errors.New("initialize GitHub repository listing client")
-	}
-	api := &API{client: sdk}
-	repositories, listErr := api.listInstallationRepositories(ctx)
-	_, revokeErr := sdk.Apps.RevokeInstallationToken(ctx)
-	zero(value)
-	if listErr != nil {
-		return nil, listErr
-	}
-	if revokeErr != nil {
-		return nil, classifyAPIError(revokeErr)
-	}
-	return repositories, nil
 }
 
 func normalizeWebURL(value *url.URL) (*url.URL, error) {

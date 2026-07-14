@@ -214,8 +214,7 @@ func TestAppInstallationPaginationUsesSDKResponseLinks(t *testing.T) {
 	}
 }
 
-func TestTypedAPIOperationsAndDevelopmentRepositoryListing(t *testing.T) {
-	var pullRequestBody map[string]any
+func TestTypedDoctorAPIAndDevelopmentCredential(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -231,24 +230,6 @@ func TestTypedAPIOperationsAndDevelopmentRepositoryListing(t *testing.T) {
 			http.Error(w, `{"message":"credential-canary"}`, http.StatusForbidden)
 		case "/repos/acme/denied/branches/main/protection":
 			http.NotFound(w, r)
-		case "/repos/acme/repo/pulls":
-			if err := json.NewDecoder(r.Body).Decode(&pullRequestBody); err != nil {
-				t.Fatal(err)
-			}
-			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `{"number":12,"html_url":"https://github.example/acme/repo/pull/12"}`)
-		case "/repos/acme/rejected/pulls":
-			http.Error(w, `{"message":"credential-canary"}`, http.StatusUnprocessableEntity)
-		case "/repos/acme/broken/pulls":
-			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `{}`)
-		case "/user/repos":
-			if r.URL.Query().Get("page") == "2" {
-				_, _ = io.WriteString(w, `[{"id":2,"full_name":"acme/two"}]`)
-				return
-			}
-			w.Header().Set("Link", `<`+serverURL(r)+`/user/repos?page=2>; rel="next"`)
-			_, _ = io.WriteString(w, `[{"id":1,"full_name":"acme/one"}]`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -286,57 +267,9 @@ func TestTypedAPIOperationsAndDevelopmentRepositoryListing(t *testing.T) {
 	if _, err := api.BranchProtected(t.Context(), "acme", "denied", "main"); err == nil || strings.Contains(err.Error(), "canary") {
 		t.Fatalf("branch error was not redacted: %v", err)
 	}
-	pullRequest, definitive, err := api.CreatePullRequest(t.Context(), "acme", "repo", "Title", "feature", "main", "Body")
-	if err != nil || !definitive || pullRequest.Number != 12 || pullRequest.URL == "" || pullRequestBody["head"] != "feature" {
-		t.Fatalf("pull request = %+v definitive=%t body=%v err=%v", pullRequest, definitive, pullRequestBody, err)
-	}
-	if _, definitive, err := api.CreatePullRequest(t.Context(), "acme", "rejected", "Title", "feature", "main", "Body"); err == nil || !definitive || strings.Contains(err.Error(), "canary") {
-		t.Fatalf("rejected pull request definitive=%t err=%v", definitive, err)
-	}
-	if _, definitive, err := api.CreatePullRequest(t.Context(), "acme", "broken", "Title", "feature", "main", "Body"); err == nil || definitive {
-		t.Fatalf("broken pull request definitive=%t err=%v", definitive, err)
-	}
-	repositories, err := manager.ListRepositories(t.Context())
-	if err != nil || len(repositories) != 2 || repositories[1].GetFullName() != "acme/two" {
-		t.Fatalf("repositories = %v, %v", repositories, err)
-	}
 	request := httptest.NewRequest(http.MethodGet, server.URL, http.NoBody)
 	if err := credential.AuthorizeGit(request); err != nil || !strings.HasPrefix(request.Header.Get("Authorization"), "Basic ") {
 		t.Fatalf("git authorization = %q, %v", request.Header.Get("Authorization"), err)
-	}
-}
-
-func TestAppRepositoryListingUsesTemporaryRevokedCredential(t *testing.T) {
-	revoked := false
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/app":
-			_, _ = io.WriteString(w, `{"id":12345,"slug":"broker"}`)
-		case "/app/installations":
-			_, _ = io.WriteString(w, `[{"id":42}]`)
-		case "/app/installations/42/access_tokens":
-			_, _ = io.WriteString(w, `{"token":"listing-canary","expires_at":"2026-07-14T02:00:00Z"}`)
-		case "/installation/repositories":
-			if r.Header.Get("Authorization") != "Bearer listing-canary" {
-				t.Fatalf("listing authorization = %q", r.Header.Get("Authorization"))
-			}
-			_, _ = io.WriteString(w, `{"total_count":1,"repositories":[{"id":99,"full_name":"acme/private"}]}`)
-		case "/installation/token":
-			revoked = true
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(server.Close)
-	manager := newAppTestManager(t, server, time.Now)
-	if err := manager.CheckApp(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	repositories, err := manager.ListRepositories(t.Context())
-	if err != nil || len(repositories) != 1 || repositories[0].GetID() != 99 || !revoked {
-		t.Fatalf("repositories = %v revoked=%t err=%v", repositories, revoked, err)
 	}
 }
 
@@ -621,7 +554,6 @@ func TestCredentialBoundaryHelpersFailClosed(t *testing.T) {
 		func() error { return manager.RevokeUser(t.Context(), 1) },
 		func() error { _, err := manager.API(nil); return err },
 		func() error { _, err := manager.Installations(t.Context()); return err },
-		func() error { _, err := manager.ListRepositories(t.Context()); return err },
 	} {
 		if err := call(); err == nil {
 			t.Fatal("nil manager operation succeeded")
@@ -682,15 +614,6 @@ func TestCredentialBoundaryHelpersFailClosed(t *testing.T) {
 	}
 	if _, err := api.BranchProtected(t.Context(), "owner", "repo", "main"); err == nil {
 		t.Fatal("nil API returned branch protection")
-	}
-	if _, _, err := api.CreatePullRequest(t.Context(), "owner", "repo", "title", "head", "base", "body"); err == nil {
-		t.Fatal("nil API created a pull request")
-	}
-	if _, err := api.listUserRepositories(t.Context()); err == nil {
-		t.Fatal("nil API listed user repositories")
-	}
-	if _, err := api.listInstallationRepositories(t.Context()); err == nil {
-		t.Fatal("nil API listed installation repositories")
 	}
 	for _, cfg := range []Config{
 		{},

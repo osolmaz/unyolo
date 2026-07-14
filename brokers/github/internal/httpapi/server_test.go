@@ -1224,7 +1224,7 @@ func TestGetGrantDirect(t *testing.T) {
 	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "get-direct",
-		Operation:       string(policy.OperationPullRequestCreate),
+		Operation:       string(policy.Operation("pull_request.create")),
 		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "get direct",
@@ -1342,25 +1342,6 @@ func TestDecodeGrantCreateDirect(t *testing.T) {
 	}
 }
 
-func TestPullRequestClassificationRejectsAmbiguousJSON(t *testing.T) {
-	valid := []byte(`{"title":"Change","head":"feature","base":"main"}`)
-	attrs, err := pullRequestAttrs(valid)
-	if err != nil || attrs["base_ref"] != "refs/heads/main" || attrs["head_ref"] != "refs/heads/feature" {
-		t.Fatalf("pullRequestAttrs(valid) = %+v, %v", attrs, err)
-	}
-	for name, body := range map[string][]byte{
-		"duplicate": []byte(`{"title":"Change","head":"feature","head":"other","base":"main"}`),
-		"trailing":  append(append([]byte(nil), valid...), []byte(` {}`)...),
-		"unknown":   []byte(`{"title":"Change","head":"feature","base":"main","future":true}`),
-	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := pullRequestAttrs(body); err == nil {
-				t.Fatal("pullRequestAttrs() accepted ambiguous JSON")
-			}
-		})
-	}
-}
-
 func TestPlanGrantCreateDirect(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
@@ -1393,7 +1374,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "deny-pr",
-		Operation:       string(policy.OperationPullRequestCreate),
+		Operation:       string(policy.Operation("pull_request.create")),
 		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "deny test",
@@ -1437,7 +1418,7 @@ func TestDenyTelegramGrantDirect(t *testing.T) {
 	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "deny-direct",
-		Operation:       string(policy.OperationPullRequestCreate),
+		Operation:       string(policy.Operation("pull_request.create")),
 		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "deny direct",
@@ -1902,7 +1883,7 @@ func requestPRPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-can-request-pr-create",
 			Effect:     policy.EffectRequest,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationPullRequestCreate},
+			Operations: []policy.Operation{policy.Operation("pull_request.create")},
 			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
 			Attrs: map[string][]string{
 				"refs":      {"refs/heads/bob/work"},
@@ -2162,7 +2143,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-repo-read",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationGitFetch, policy.OperationRepoMetadataRead},
+			Operations: []policy.Operation{policy.OperationGitFetch, policy.Operation("repo.metadata.read")},
 			Targets: []policy.Target{
 				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
 				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
@@ -2172,7 +2153,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-contents-read",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationContentsRead},
+			Operations: []policy.Operation{policy.Operation("repo.contents.read")},
 			Targets: []policy.Target{
 				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
 				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
@@ -2183,7 +2164,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-list-repos",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationInstallationReposList},
+			Operations: []policy.Operation{policy.Operation("installation.repo.list")},
 			Targets:    []policy.Target{{Kind: "installation"}},
 		},
 		{
@@ -2205,7 +2186,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-pr-create",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationPullRequestCreate},
+			Operations: []policy.Operation{policy.Operation("pull_request.create")},
 			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
 			Attrs: map[string][]string{
 				"refs":      {"refs/heads/bob/*", "refs/heads/agent/*"},

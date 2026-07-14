@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -36,7 +35,6 @@ import (
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/sealedpayload"
@@ -619,38 +617,6 @@ func isZeroOID(value string) bool {
 		}
 	}
 	return true
-}
-
-func pullRequestAttrs(body []byte) (map[string]string, error) {
-	var payload struct {
-		Title               string `json:"title"`
-		Body                string `json:"body"`
-		Head                string `json:"head"`
-		Base                string `json:"base"`
-		Draft               bool   `json:"draft"`
-		MaintainerCanModify *bool  `json:"maintainer_can_modify"`
-	}
-	if err := strictjson.Decode(body, &payload, true); err != nil {
-		return nil, errors.New("invalid pull request json")
-	}
-	if strings.TrimSpace(payload.Title) == "" {
-		return nil, errors.New("pull request title is required")
-	}
-	if len(payload.Title) > 256 {
-		return nil, errors.New("pull request title is too long")
-	}
-	if len(payload.Body) > 60000 {
-		return nil, errors.New("pull request body is too long")
-	}
-	baseRef, err := branchNameToRef(payload.Base)
-	if err != nil {
-		return nil, fmt.Errorf("invalid pull request base: %w", err)
-	}
-	headRef, err := headNameToRef(payload.Head)
-	if err != nil {
-		return nil, fmt.Errorf("invalid pull request head: %w", err)
-	}
-	return map[string]string{"base_ref": baseRef, "head_ref": headRef, "ref": headRef}, nil
 }
 
 func headNameToRef(head string) (string, error) {

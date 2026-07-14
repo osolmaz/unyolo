@@ -139,7 +139,7 @@ func generatedPolicy(t *testing.T, effect policy.Effect) *policy.Policy {
 	t.Helper()
 	value, err := policy.New(policy.Scope{Rules: []policy.Rule{{
 		ID: "generated-pull-request", Effect: effect, Clients: []string{"bob"},
-		Operations: []policy.Operation{policy.OperationPullRequestCreate},
+		Operations: []policy.Operation{policy.Operation("pull_request.create")},
 		Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
 	}}})
 	if err != nil {

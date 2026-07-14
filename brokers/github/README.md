@@ -22,7 +22,7 @@ The shared install, setup, policy, approval, and release contract is in
 - Rule-based `scope.json` with GitHub classification delegated to the shared
   brokerkit policy engine
 - Git smart HTTP fetch and push route shape
-- Narrow GitHub API routes for repository listing, content reads, and pull request creation
+- Exhaustive typed Agent V1 operations generated from pinned GitHub REST and GraphQL definitions
 - Opaque broker-owned `app-jwt`, exact installation, user, and protected-file
   development credential providers
 - Exact installation-token narrowing and cache isolation by installation,

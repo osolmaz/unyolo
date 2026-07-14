@@ -10,8 +10,8 @@ These instructions apply to this repository.
 - Secret material must be write-only inside gh-broker. Do not add APIs, repository methods, logs, errors, tests, or debug helpers that return original credentials.
 - `scope.json` is the authorization source of truth. Keep policy decisions inside `internal/policy`.
 - Handlers may reject malformed transport requests, but they must not independently authorize valid broker operations.
-- Keep broker routes compatible with Git smart HTTP and the narrow GitHub REST endpoints being brokered.
-- Do not add broad GitHub API proxying, arbitrary local shell execution, organization admin, workflow admin, member management, or repository deletion operations.
+- Keep broker routes compatible with Git smart HTTP and the generated typed Agent V1 operation surface.
+- Do not add broad GitHub API proxying or arbitrary local shell execution. High-risk operations must remain explicit, narrowly typed, policy-gated, and one-use.
 - Keep package APIs small and explicit. Keep interfaces near their consumers.
 - Do not add dependencies unless they remove real complexity.
 

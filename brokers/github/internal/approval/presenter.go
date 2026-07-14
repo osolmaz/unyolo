@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/policy"
@@ -45,6 +46,9 @@ func targetSummary(grant grants.Grant) string {
 }
 
 func risk(operation string) operatorinbox.Risk {
+	if descriptor, found := opcatalog.ByName(operation); found {
+		return operatorinbox.Risk(descriptor.Risk)
+	}
 	risks := map[string]operatorinbox.Risk{
 		"git.fetch":              operatorinbox.RiskLow,
 		"git.push.advertise":     operatorinbox.RiskMedium,
@@ -53,13 +57,6 @@ func risk(operation string) operatorinbox.Risk {
 		"git.push.force":         operatorinbox.RiskCritical,
 		"git.ref.delete":         operatorinbox.RiskCritical,
 		"git.tag.update":         operatorinbox.RiskHigh,
-		"pull_request.create":    operatorinbox.RiskHigh,
-		"pr.update":              operatorinbox.RiskHigh,
-		"pr.merge":               operatorinbox.RiskCritical,
-		"checks.read":            operatorinbox.RiskLow,
-		"repo.metadata.read":     operatorinbox.RiskLow,
-		"repo.contents.read":     operatorinbox.RiskLow,
-		"installation.repo.list": operatorinbox.RiskLow,
 		"webhook.github.receive": operatorinbox.RiskMedium,
 	}
 	if value, ok := risks[operation]; ok {

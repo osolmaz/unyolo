@@ -34,7 +34,7 @@ func (s *Server) githubCredentialForRepo(c echo.Context, owner, repo string) (*g
 
 func (s *Server) githubCredentialForRepoContext(ctx context.Context, operation string, owner, repo string) (*githubauth.Credential, error) {
 	if strings.TrimSpace(operation) == "" {
-		operation = string(policy.OperationContentsRead)
+		operation = string(policy.OperationGitFetch)
 	}
 	return s.githubCredentials.RepositoryCredential(ctx, operation, owner, repo)
 }
