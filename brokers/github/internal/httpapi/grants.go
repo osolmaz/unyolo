@@ -352,6 +352,9 @@ func grantStoreHTTPError(err error) error {
 	if errors.Is(err, grants.ErrIdempotencyConflict) {
 		return echo.NewHTTPError(http.StatusConflict, "idempotency conflict")
 	}
+	if errors.Is(err, grants.ErrCapacity) {
+		return echo.NewHTTPError(http.StatusTooManyRequests, "pending approval limit reached")
+	}
 	return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 }
 

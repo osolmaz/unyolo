@@ -48,6 +48,32 @@ func TestLifecycleIdempotencyAndUseBudget(t *testing.T) {
 	assertUseBudget(t, store, grant.ID)
 }
 
+func TestPendingCapacityPreservesReplayAndOtherClients(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{MaxPendingPerClient: 1, MaxPendingGlobal: 2})
+	request := Request{Client: "agent-a", ClientRequestID: "one", Operation: "repo.create",
+		Target: repoTarget("one"), Reason: "create one", MaxUses: 1}
+	first, created, err := store.Request(request)
+	if err != nil || !created {
+		t.Fatalf("first request = %+v, %v, %v", first, created, err)
+	}
+	replay, created, err := store.Request(request)
+	if err != nil || created || replay.Grant.ID != first.Grant.ID {
+		t.Fatalf("replay = %+v, %v, %v", replay, created, err)
+	}
+	request.ClientRequestID, request.Target = "two", repoTarget("two")
+	if _, _, err := store.Request(request); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("same-client capacity = %v", err)
+	}
+	request.Client, request.ClientRequestID = "agent-b", "three"
+	if _, created, err := store.Request(request); err != nil || !created {
+		t.Fatalf("second client = %v, %v", created, err)
+	}
+	request.Client, request.ClientRequestID = "agent-c", "four"
+	if _, _, err := store.Request(request); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("global capacity = %v", err)
+	}
+}
+
 func TestListForClientExpiresAndFiltersGrants(t *testing.T) {
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
 	ids := []string{"grant-1", "token-1", "grant-2", "token-2"}

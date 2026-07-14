@@ -124,7 +124,7 @@ SELECT count(*) FROM operations;
 -- name: GetOperationUsage :one
 SELECT
     CAST(COALESCE(SUM(CASE WHEN client_id = sqlc.arg(client_id) AND state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_active,
-    CAST(COALESCE(SUM(CASE WHEN client_id = sqlc.arg(client_id) AND state = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_pending,
+    CAST((SELECT COUNT(*) FROM grants WHERE client = sqlc.arg(client_id) AND status = 'pending') AS INTEGER) AS client_pending,
     CAST(COALESCE(SUM(CASE WHEN state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_active,
     CAST(COALESCE(SUM(CASE WHEN state = 'executing' THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_executing
 FROM operations;

@@ -126,22 +126,14 @@ func statusEventKinds(before Grant, after Grant) []EventKind {
 	if before.Status == after.Status {
 		return nil
 	}
-	switch after.Status {
-	case StatusActive:
-		return []EventKind{EventRequestApproved}
-	case StatusDenied:
-		return []EventKind{EventRequestDenied}
-	case StatusCanceled:
-		return []EventKind{EventRequestCanceled}
-	case StatusExpired:
-		return []EventKind{EventRequestExpired}
-	case StatusRevoked:
-		return []EventKind{EventGrantRevoked}
-	case StatusPending, StatusConsumed:
-		return nil
-	default:
+	kind, ok := map[Status]EventKind{
+		StatusActive: EventRequestApproved, StatusDenied: EventRequestDenied, StatusCanceled: EventRequestCanceled,
+		StatusExpired: EventRequestExpired, StatusRevoked: EventGrantRevoked,
+	}[after.Status]
+	if !ok {
 		return nil
 	}
+	return []EventKind{kind}
 }
 
 func (s *Store) appendLifecycleEvent(data *fileData, kind EventKind, grant Grant, previous Grant) {

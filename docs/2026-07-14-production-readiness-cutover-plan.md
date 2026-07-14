@@ -371,8 +371,15 @@ notification, and reserved recovery-capacity accounting.
 Stream and sealed-payload stores now enforce both global and per-client
 file/byte caps after expiry cleanup. Their idempotency lookup runs before
 quota accounting, so exact upload replays remain available at capacity. The
-remaining admission work is configuration overrides, notification-attempt
-bounds, and explicit recovery-capacity tests.
+remaining admission work is configuration overrides and explicit recovery
+capacity tests.
+
+The shared grant store also caps pending approvals per client and globally, so
+direct grant APIs cannot bypass Agent V1 admission. Exact grant replays are
+resolved before capacity checks. SQLite notification delivery stops automatic
+retry after five ambiguous attempts while the durable request remains available
+to the operator inbox. Direct Slophammer analysis for the shared grants package
+now passes at the repository maximum score of 8.
 
 ### Credential replacement and revocation
 

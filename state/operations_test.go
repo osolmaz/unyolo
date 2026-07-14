@@ -29,7 +29,7 @@ func TestOperationRepositoryLifecycle(t *testing.T) {
 	if count, err := database.CountOperations(t.Context()); err != nil || count != 1 {
 		t.Fatalf("CountOperations() = %d, %v", count, err)
 	}
-	if usage, err := database.OperationUsage(t.Context(), "agent"); err != nil || usage.ClientActive != 1 || usage.ClientPending != 1 || usage.GlobalActive != 1 || usage.GlobalExecuting != 0 {
+	if usage, err := database.OperationUsage(t.Context(), "agent"); err != nil || usage.ClientActive != 1 || usage.ClientPending != 0 || usage.GlobalActive != 1 || usage.GlobalExecuting != 0 {
 		t.Fatalf("OperationUsage() = %+v, %v", usage, err)
 	}
 	if err := database.InsertOperation(t.Context(), record); err == nil {

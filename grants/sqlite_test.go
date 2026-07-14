@@ -240,6 +240,30 @@ func TestSQLiteNotificationOutboxRecoversAmbiguousClaim(t *testing.T) {
 	}
 }
 
+func TestSQLiteNotificationOutboxStopsAfterBoundedAttempts(t *testing.T) {
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Date(2026, 7, 15, 4, 0, 0, 0, time.UTC)
+	store := NewDatabase(database, Options{Now: func() time.Time { return now }})
+	requested, _, err := store.Request(Request{Client: "agent", ClientRequestID: "request", Operation: "repo.create",
+		Target: policy.Target{Kind: "test", Fields: map[string][]string{"name": {"repo"}}}, Reason: "test", MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.SQL().ExecContext(t.Context(),
+		"UPDATE notification_outbox SET status = 'ambiguous', attempts = ?, available_at = ? WHERE grant_id = ?",
+		maxNotificationAttempts, now.Add(-time.Second).UTC().Format(time.RFC3339Nano), requested.Grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if due, err := store.ApprovalNotificationsDue(); err != nil || len(due) != 0 {
+		t.Fatalf("attempt-limited notifications = %+v, %v", due, err)
+	}
+}
+
 func sequenceIDs(values ...string) func(int) (string, error) {
 	index := 0
 	return func(int) (string, error) {

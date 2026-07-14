@@ -90,15 +90,7 @@ func (s *Store) decideAndNotify(ctx context.Context, id string, token string, ap
 	if err != nil {
 		return TokenDecisionResult{}, err
 	}
-	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
-		return TokenDecisionResult{Grant: grant, Previous: grant}, ErrInvalidDecisionToken
-	}
-	if err := s.validateTokenDecision(ctx, grant, status, validate); err != nil {
-		return TokenDecisionResult{Grant: grant, Previous: grant}, err
-	}
-	updated, changed, decisionErr := s.prepareDecision(grant, approver, status)
-	updated, notificationChanged := attachDecisionNotification(updated, ref)
-	changed = changed || notificationChanged
+	updated, changed, decisionErr := s.decisionCandidate(ctx, grant, token, approver, status, ref, validate)
 	if !changed {
 		return TokenDecisionResult{Grant: grant, Previous: grant}, decisionErr
 	}
@@ -109,6 +101,20 @@ func (s *Store) decideAndNotify(ctx context.Context, id string, token string, ap
 	}
 	s.signalNewEvents(eventSequence, data.NextEvent)
 	return TokenDecisionResult{Grant: data.Grants[index], Previous: grant, EventCursor: currentEventCursor(data), Changed: true}, decisionErr
+}
+
+func (s *Store) decisionCandidate(ctx context.Context, grant Grant, token, approver string, status Status,
+	ref *MessageRef, validate ActivationCheck) (Grant, bool, error) {
+	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
+		return grant, false, ErrInvalidDecisionToken
+	}
+	if err := s.validateTokenDecision(ctx, grant, status, validate); err != nil {
+		return grant, false, err
+	}
+	updated, changed, decisionErr := s.prepareDecision(grant, approver, status)
+	updated, notificationChanged := attachDecisionNotification(updated, ref)
+	changed = changed || notificationChanged
+	return updated, changed, decisionErr
 }
 
 func (s *Store) validateTokenDecision(ctx context.Context, grant Grant, status Status, validate ActivationCheck) error {

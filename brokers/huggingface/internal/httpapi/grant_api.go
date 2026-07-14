@@ -307,6 +307,9 @@ func grantRequestError(err error) (int, string, string) {
 	if errors.Is(err, grants.ErrIdempotencyConflict) {
 		return http.StatusConflict, "idempotency_conflict", "Idempotency key was reused with a different request"
 	}
+	if errors.Is(err, grants.ErrCapacity) {
+		return http.StatusTooManyRequests, "pending_approval_limit", "Pending approval limit reached"
+	}
 	if errors.Is(err, bkauthorization.ErrDenied) || errors.Is(err, bkauthorization.ErrNoMatch) {
 		return http.StatusForbidden, "not_requestable", "No policy rule allows requesting this operation"
 	}
