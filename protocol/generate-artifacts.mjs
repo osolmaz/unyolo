@@ -40,6 +40,7 @@ const specs = [
       Descriptor: "discovery.schema.json",
       ErrorEnvelope: "error.schema.json",
       Operation: "operation.schema.json",
+      OperationPage: "page.schema.json",
       SubmitRequest: "submit.schema.json",
     },
     idBase: "https://brokerkit.io/schema/agent/v1/",

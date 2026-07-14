@@ -61,7 +61,7 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 
 func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
 	files, err := filepath.Glob("agent-schema/*.schema.json")
-	if err != nil || len(files) != 4 {
+	if err != nil || len(files) != 5 {
 		t.Fatalf("agent schemas = %v, %v", files, err)
 	}
 	for _, path := range files {
