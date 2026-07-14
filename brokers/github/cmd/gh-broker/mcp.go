@@ -261,38 +261,28 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 func callMCPUtility(ctx context.Context, client *agentclient.Client, call mcpToolCall) (any, error) {
 	switch call.Name {
 	case "gh_operation_get":
-		return callMCPGet(ctx, client, call.Arguments)
+		return callMCPUtilityInput(call.Arguments, func(input mcpoperation.GetInput) (any, error) {
+			return mcpoperation.Get(ctx, client, input, mcpprojection.ResultToMCP)
+		})
 	case "gh_operation_wait":
-		return callMCPWait(ctx, client, call.Arguments)
+		return callMCPUtilityInput(call.Arguments, func(input mcpoperation.WaitInput) (any, error) {
+			return mcpoperation.Wait(ctx, client, input, mcpprojection.ResultToMCP)
+		})
 	case "gh_operation_list":
-		return callMCPList(ctx, client, call.Arguments)
+		return callMCPUtilityInput(call.Arguments, func(input mcpoperation.ListInput) (any, error) {
+			return mcpoperation.List(ctx, client, input)
+		})
 	default:
 		return nil, errors.New("unknown operation utility")
 	}
 }
 
-func callMCPGet(ctx context.Context, client *agentclient.Client, raw json.RawMessage) (any, error) {
-	var input mcpoperation.GetInput
+func callMCPUtilityInput[T any](raw json.RawMessage, execute func(T) (any, error)) (any, error) {
+	var input T
 	if strictjson.Decode(raw, &input, true) != nil {
 		return nil, errors.New("invalid tool arguments")
 	}
-	return mcpoperation.Get(ctx, client, input, mcpprojection.ResultToMCP)
-}
-
-func callMCPWait(ctx context.Context, client *agentclient.Client, raw json.RawMessage) (any, error) {
-	var input mcpoperation.WaitInput
-	if strictjson.Decode(raw, &input, true) != nil {
-		return nil, errors.New("invalid tool arguments")
-	}
-	return mcpoperation.Wait(ctx, client, input, mcpprojection.ResultToMCP)
-}
-
-func callMCPList(ctx context.Context, client *agentclient.Client, raw json.RawMessage) (any, error) {
-	var input mcpoperation.ListInput
-	if strictjson.Decode(raw, &input, true) != nil {
-		return nil, errors.New("invalid tool arguments")
-	}
-	return mcpoperation.List(ctx, client, input)
+	return execute(input)
 }
 
 func prepareMCPArguments(ctx context.Context, descriptor opcatalog.Descriptor, input *mcpOperationInput, connection operationConnection) error {
