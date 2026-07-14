@@ -122,6 +122,10 @@ func (client *agentClient) get(ctx context.Context, id string) (agentv1.Operatio
 	return client.operations.Get(ctx, id)
 }
 
+func (client *agentClient) list(ctx context.Context, options agentv1.ListOptions) (agentv1.OperationPage, error) {
+	return client.operations.List(ctx, options)
+}
+
 func (client *agentClient) cancel(ctx context.Context, id string) (agentv1.Operation, error) {
 	return client.operations.Cancel(ctx, id)
 }

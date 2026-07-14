@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
@@ -23,6 +24,7 @@ import (
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/mcpoperation"
 	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
@@ -51,10 +53,9 @@ type mcpCatalogOperationInput struct {
 	SealedArguments json.RawMessage    `json:"sealed_arguments"`
 	CredentialSlot  string             `json:"credential_slot"`
 	Reason          string             `json:"reason"`
-	IdempotencyKey  string             `json:"idempotency_key"`
+	RequestID       string             `json:"request_id"`
 	Minutes         int                `json:"minutes"`
 	MaxUses         usebudget.Optional `json:"max_uses"`
-	WaitSeconds     int                `json:"wait_seconds"`
 }
 
 func agentFacingDescriptors() []opcatalog.Descriptor {
@@ -346,6 +347,7 @@ func hfSurfaceOptions() capability.SurfaceOptions {
 	return capability.SurfaceOptions{
 		Descriptors: opcatalog.MustAll(), Schemas: catalogOperationInputSchemas,
 		AttributeNames: policy.KnownAttributeNames(),
+		MCPToolPrefix:  "hf_", Projections: mcpprojection.ForOperation,
 		ToolDescription: func(descriptor capability.Descriptor) string {
 			return fmt.Sprintf("Run %s through HF Broker policy and approval. Never request a Hugging Face token.", descriptor.Name)
 		},
@@ -411,11 +413,15 @@ func callMCPCatalogOperation(ctx context.Context, client *agentClient, descripto
 	if err := decodeMCPArguments(raw, &input); err != nil {
 		return nil, err
 	}
-	if input.WaitSeconds < 0 || input.WaitSeconds > 900 || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
-		return nil, errors.New("reason or wait_seconds is invalid")
+	if strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
+		return nil, errors.New("reason is invalid")
+	}
+	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	if err != nil {
+		return nil, err
 	}
 	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
-		return callMCPWindowOperation(ctx, client.grantClient, descriptor, input)
+		return callMCPWindowOperation(ctx, client.grantClient, descriptor, input, requestID)
 	}
 	if descriptor.CredentialOutputKind != nil && len(input.SealedArguments) != 0 {
 		return nil, errors.New("credential output operations do not accept sealed input")
@@ -429,18 +435,22 @@ func callMCPCatalogOperation(ctx context.Context, client *agentClient, descripto
 	if !descriptor.Sealed && len(input.SealedArguments) != 0 {
 		return nil, errors.New("this operation does not accept sealed arguments")
 	}
-	request, err := buildOperationSubmitRequest(ctx, client, descriptor, input.Target, input.Arguments, "", input.SealedArguments, input.CredentialSlot, input.Reason, input.IdempotencyKey)
+	input.Arguments, err = mcpprojection.ArgumentsToCanonical(descriptor, input.Arguments)
 	if err != nil {
 		return nil, err
 	}
-	operation, err := submitAndMaybeWait(ctx, client, request, input.WaitSeconds > 0, time.Duration(input.WaitSeconds)*time.Second)
-	if ctx.Err() != nil && operation.ID != "" {
-		return operation, nil
+	request, err := buildOperationSubmitRequest(ctx, client, descriptor, input.Target, input.Arguments, "", input.SealedArguments, input.CredentialSlot, input.Reason, requestID)
+	if err != nil {
+		return nil, err
 	}
-	return operation, err
+	operation, err := client.submit(ctx, request)
+	if err != nil {
+		return nil, mcpoperation.Conflict(ctx, client.operations, requestID, err)
+	}
+	return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
 }
 
-func callMCPWindowOperation(ctx context.Context, client *hfGrantClient, descriptor opcatalog.Descriptor, input mcpCatalogOperationInput) (hfClientGrant, error) {
+func callMCPWindowOperation(ctx context.Context, client *hfGrantClient, descriptor opcatalog.Descriptor, input mcpCatalogOperationInput, requestID string) (hfClientGrant, error) {
 	if len(input.Arguments) != 0 || len(input.SealedArguments) != 0 || input.CredentialSlot != "" || input.Minutes < 0 {
 		return hfClientGrant{}, errors.New("window operation arguments are invalid")
 	}
@@ -448,15 +458,15 @@ func callMCPWindowOperation(ctx context.Context, client *hfGrantClient, descript
 	if strictjson.Decode(input.Target, &target, true) != nil {
 		return hfClientGrant{}, errors.New("target does not match the closed grant target schema")
 	}
-	request := hfGrantRequest{Operation: policy.Operation(descriptor.Name), Target: target, Attrs: input.Attrs,
-		Minutes: input.Minutes, Reason: strings.TrimSpace(input.Reason), ClientRequestID: input.IdempotencyKey}
+	attrs, err := mcpprojection.AttrsToCanonical(descriptor, input.Attrs)
+	if err != nil {
+		return hfClientGrant{}, err
+	}
+	request := hfGrantRequest{Operation: policy.Operation(descriptor.Name), Target: target, Attrs: attrs,
+		Minutes: input.Minutes, Reason: strings.TrimSpace(input.Reason), ClientRequestID: requestID}
 	if input.MaxUses.Specified {
 		value := input.MaxUses.Limit
 		request.MaxUses = &value
 	}
-	grant, err := client.Request(ctx, request)
-	if err != nil || input.WaitSeconds == 0 || grant.Status != "pending" {
-		return grant, err
-	}
-	return waitForMCPGrant(ctx, client, grant.ID, time.Duration(input.WaitSeconds)*time.Second)
+	return client.Request(ctx, request)
 }

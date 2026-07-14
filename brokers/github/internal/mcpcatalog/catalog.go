@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
@@ -45,6 +46,8 @@ func Tools(exposure Exposure, enabled Enabled) ([]map[string]any, error) {
 	tools := capability.MCPTools(capability.SurfaceOptions{Descriptors: opcatalog.CapabilityDescriptors(descriptors), Schemas: schemaregistry.InputSchemas,
 		AttributeNames:         ghpolicy.CatalogAttributeNames(),
 		WindowSubmitsOperation: true,
+		MCPToolPrefix:          "gh_",
+		Projections:            mcpprojection.ForOperation,
 		ToolDescription: func(descriptor capability.Descriptor) string {
 			return descriptor.Summary + " GitHub credentials remain inside GH Broker."
 		}})
@@ -66,9 +69,9 @@ func Tools(exposure Exposure, enabled Enabled) ([]map[string]any, error) {
 func streamReferenceSchema() map[string]any {
 	stringField := map[string]any{"type": "string", "minLength": 1, "maxLength": 255}
 	return map[string]any{"type": "object", "additionalProperties": false,
-		"required": []string{"id", "owner", "purpose", "request_key", "digest", "size", "media_type", "expires_at"},
+		"required": []string{"id", "owner", "purpose", "transfer_id", "digest", "size", "media_type", "expires_at"},
 		"properties": map[string]any{
-			"id": stringField, "owner": stringField, "purpose": stringField, "request_key": stringField,
+			"id": stringField, "owner": stringField, "purpose": stringField, "transfer_id": stringField,
 			"digest": map[string]any{"type": "string", "pattern": "^[a-f0-9]{64}$"}, "size": map[string]any{"type": "integer", "minimum": 1},
 			"media_type": stringField, "expires_at": map[string]any{"type": "integer", "minimum": 1},
 		}}

@@ -45,6 +45,17 @@ const specs = [
     },
     idBase: "https://brokerkit.io/schema/agent/v1/",
   },
+  {
+    name: "mcp",
+    input: "protocol/openapi/mcp-v1.yaml",
+    outputDir: "protocol/mcp-schema",
+    schemas: {
+      Operation: "operation.schema.json",
+      OperationPage: "page.schema.json",
+      RequestIDConflict: "request-id-conflict.schema.json",
+    },
+    idBase: "https://brokerkit.io/schema/mcp/v1/",
+  },
 ];
 
 let stale = false;

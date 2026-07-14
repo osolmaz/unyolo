@@ -11,8 +11,8 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/mcpoperation"
 	"github.com/osolmaz/brokerkit/sealedstore"
-	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 func mcpTestEnv(values map[string]string) func(string) string {
@@ -22,7 +22,7 @@ func mcpTestEnv(values map[string]string) func(string) string {
 func TestMCPAdvertisesOnlyIntersectedDefaultTools(t *testing.T) {
 	all := "repo.metadata.read,repo.contents.read,pull_request.create,pull_request.update"
 	tools, err := configuredMCPTools(mcpTestEnv(map[string]string{"GH_BROKER_MCP_EXPOSURE_PROFILE": "default", "GH_BROKER_MCP_CLIENT_OPERATIONS": all, "GH_BROKER_MCP_POLICY_OPERATIONS": all, "GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read,pull_request.create"}))
-	if err != nil || len(tools) != 2 {
+	if err != nil || len(tools) != 5 {
 		t.Fatalf("tools=%d err=%v", len(tools), err)
 	}
 	for _, tool := range tools {
@@ -35,7 +35,7 @@ func TestMCPAdvertisesOnlyIntersectedDefaultTools(t *testing.T) {
 
 func TestMCPDiscoveryIsPagedAndExhaustiveWithoutAdvertisingCatalog(t *testing.T) {
 	response := handleMCP(t.Context(), mcpTestEnv(nil), mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/list"})
-	if response.Error != nil || len(response.Result.(map[string]any)["tools"].([]map[string]any)) != 0 {
+	if response.Error != nil || len(response.Result.(map[string]any)["tools"].([]map[string]any)) != 3 {
 		t.Fatalf("tools response=%#v", response)
 	}
 	resource, err := readMCPResource(json.RawMessage(`{"uri":"github://operations?limit=7"}`))
@@ -60,7 +60,7 @@ func TestPrepareMCPArgumentModes(t *testing.T) {
 	streamDescriptor, _ := opcatalog.ByName("release.repos_upload_release_asset")
 	streamInput := mcpOperationInput{
 		Target: json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), Arguments: json.RawMessage(`{"name":"asset.bin"}`),
-		StreamInput: &streamstore.Reference{ID: "stream_012345678901234567890123"},
+		StreamInput: &mcpStreamReference{ID: "stream_012345678901234567890123"},
 	}
 	if err := prepareMCPArguments(t.Context(), streamDescriptor, &streamInput, operationConnection{}); err != nil || !bytes.Contains(streamInput.Arguments, []byte("stream_input")) {
 		t.Fatalf("stream arguments = %s, %v", streamInput.Arguments, err)
@@ -96,7 +96,7 @@ func TestMCPToolSignatureChangesWithLivePolicyExposure(t *testing.T) {
 	}
 	values["GH_BROKER_MCP_POLICY_OPERATIONS"] = ""
 	after, err := mcpToolSignature(getenv)
-	if err != nil || after != "" || after == before {
+	if err != nil || after != "gh_operation_get\x00gh_operation_wait\x00gh_operation_list" || after == before {
 		t.Fatalf("after=%q before=%q err=%v", after, before, err)
 	}
 }
@@ -148,13 +148,13 @@ func TestMCPTypedToolSubmission(t *testing.T) {
 	}
 	value, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
 		Name:      "gh_repo_metadata_read",
-		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","idempotency_key":"request-1","wait_seconds":0}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","request_id":"request-1"}`),
 	})
-	operation, ok := value.(agentv1.Operation)
+	operation, ok := value.(mcpoperation.Operation)
 	if err != nil || !ok || operation.Operation != "repo.metadata.read" {
 		t.Fatalf("value=%#v err=%v", value, err)
 	}
-	response := handleMCP(t.Context(), mcpTestEnv(env), mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: json.RawMessage(`{"name":"gh_repo_metadata_read","arguments":{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","idempotency_key":"request-2","wait_seconds":0}}`)})
+	response := handleMCP(t.Context(), mcpTestEnv(env), mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: json.RawMessage(`{"name":"gh_repo_metadata_read","arguments":{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","request_id":"request-2"}}`)})
 	if response.Error != nil || response.Result.(map[string]any)["isError"] != false {
 		t.Fatalf("response=%#v", response)
 	}
@@ -190,7 +190,7 @@ func TestMCPSealedToolUsesOneTimePayloadBoundary(t *testing.T) {
 	}
 	_, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
 		Name:      "gh_workflow_actions_create_or_update_repo_secret",
-		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{"secret_name":"DEPLOY_TOKEN"},"sealed_arguments":{"input":{"encrypted_value":"Y2FuYXJ5","key_id":"key-1"}},"reason":"rotate secret","idempotency_key":"mcp-secret","wait_seconds":0}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{"secret_name":"DEPLOY_TOKEN"},"sealed_arguments":{"input":{"encrypted_value":"Y2FuYXJ5","key_id":"key-1"}},"reason":"rotate secret","request_id":"mcp-secret"}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func TestMCPOptionalSealedInputDoesNotCreatePayload(t *testing.T) {
 	}
 	_, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
 		Name:      "gh_organization_update_webhook",
-		Arguments: json.RawMessage(`{"target":{"kind":"organization","name":"osolmaz"},"arguments":{"hook_id":1},"reason":"leave unchanged","idempotency_key":"optional-secret","wait_seconds":0}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"organization","name":"osolmaz"},"arguments":{"hook_id":1},"reason":"leave unchanged","request_id":"optional-secret"}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestMCPCredentialOutputUsesNamedSlot(t *testing.T) {
 	}
 	_, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
 		Name:      "gh_runner_actions_create_registration_token_for_repo",
-		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"credential_slot":"ci-runner","reason":"enroll runner","idempotency_key":"runner-token","wait_seconds":0}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"credential_slot":"ci-runner","reason":"enroll runner","request_id":"runner-token"}`),
 	})
 	if err != nil {
 		t.Fatal(err)

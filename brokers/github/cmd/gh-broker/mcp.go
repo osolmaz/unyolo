@@ -9,14 +9,16 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/osolmaz/brokerkit/agentclient"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpcatalog"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/mcpoperation"
 	"github.com/osolmaz/brokerkit/streamstore"
 )
 
@@ -41,14 +43,30 @@ type mcpToolCall struct {
 	Arguments json.RawMessage `json:"arguments"`
 }
 type mcpOperationInput struct {
-	Target          json.RawMessage        `json:"target"`
-	Arguments       json.RawMessage        `json:"arguments"`
-	SealedArguments json.RawMessage        `json:"sealed_arguments"`
-	CredentialSlot  string                 `json:"credential_slot"`
-	StreamInput     *streamstore.Reference `json:"stream_input"`
-	Reason          string                 `json:"reason"`
-	IdempotencyKey  string                 `json:"idempotency_key"`
-	WaitSeconds     int                    `json:"wait_seconds"`
+	Target          json.RawMessage     `json:"target"`
+	Arguments       json.RawMessage     `json:"arguments"`
+	SealedArguments json.RawMessage     `json:"sealed_arguments"`
+	CredentialSlot  string              `json:"credential_slot"`
+	StreamInput     *mcpStreamReference `json:"stream_input"`
+	Reason          string              `json:"reason"`
+	RequestID       string              `json:"request_id"`
+}
+
+type mcpStreamReference struct {
+	ID         string `json:"id"`
+	Owner      string `json:"owner"`
+	Purpose    string `json:"purpose"`
+	TransferID string `json:"transfer_id"`
+	Digest     string `json:"digest"`
+	Size       int64  `json:"size"`
+	MediaType  string `json:"media_type"`
+	ExpiresAt  int64  `json:"expires_at"`
+}
+
+func (reference mcpStreamReference) canonical() streamstore.Reference {
+	return streamstore.Reference{ID: reference.ID, Owner: reference.Owner, Purpose: reference.Purpose,
+		RequestKey: reference.TransferID, Digest: reference.Digest, Size: reference.Size,
+		MediaType: reference.MediaType, ExpiresAt: reference.ExpiresAt}
 }
 
 func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout io.Writer, args []string) error {
@@ -119,10 +137,10 @@ func handleMCP(ctx context.Context, getenv func(string) string, request mcpReque
 			break
 		}
 		value, err := callMCP(ctx, getenv, call)
-		response.Result = mcpToolResult(value, err)
 		if err != nil {
-			response.Result = mcpToolResult(map[string]any{"error": err.Error()}, err)
+			value = mcpoperation.ErrorValue(err)
 		}
+		response.Result = mcpToolResult(value, err)
 	case "resources/list":
 		response.Result = map[string]any{"resources": []map[string]any{{"uri": "github://operations?limit=50", "name": "GitHub operation catalog", "description": "Paged exhaustive GitHub capability catalog", "mimeType": "application/json"}}}
 	case "resources/read":
@@ -179,6 +197,17 @@ func csvSet(value string) map[string]bool {
 
 //nolint:cyclop // Typed MCP validation and resumable submission fail closed at each boundary.
 func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) (any, error) {
+	if call.Name == "gh_operation_get" || call.Name == "gh_operation_wait" || call.Name == "gh_operation_list" {
+		connection, err := loadOperationConnection(getenv)
+		if err != nil {
+			return nil, err
+		}
+		client, err := connection.client()
+		if err != nil {
+			return nil, err
+		}
+		return callMCPUtility(ctx, client, call)
+	}
 	selected, err := mcpcatalog.Selected(mcpExposure(getenv), mcpEnabled(getenv))
 	if err != nil {
 		return nil, err
@@ -196,12 +225,20 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 		return nil, errors.New("tool is not advertised for this client and deployment")
 	}
 	var input mcpOperationInput
-	if strictjson.Decode(call.Arguments, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 ||
-		input.IdempotencyKey == "" || input.WaitSeconds < 0 || input.WaitSeconds > 900 {
+	if strictjson.Decode(call.Arguments, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
 		return nil, errors.New("invalid typed tool arguments")
+	}
+	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	if err != nil {
+		return nil, err
 	}
 	if len(input.Arguments) == 0 {
 		input.Arguments = json.RawMessage(`{}`)
+	}
+	input.RequestID = requestID
+	input.Arguments, err = mcpprojection.ArgumentsToCanonical(descriptor.Descriptor, input.Arguments)
+	if err != nil {
+		return nil, err
 	}
 	connection, err := loadOperationConnection(getenv)
 	if err != nil {
@@ -214,17 +251,36 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 	if err != nil {
 		return nil, err
 	}
-	operation, err := client.Submit(ctx, agentv1.SubmitRequest{IdempotencyKey: input.IdempotencyKey, Operation: descriptor.Name, Target: input.Target, Arguments: input.Arguments, Reason: input.Reason})
-	if err != nil || input.WaitSeconds == 0 || operation.State.Terminal() {
-		return operation, err
+	operation, err := client.Submit(ctx, agentv1.SubmitRequest{IdempotencyKey: requestID, Operation: descriptor.Name, Target: input.Target, Arguments: input.Arguments, Reason: input.Reason})
+	if err != nil {
+		return nil, mcpoperation.Conflict(ctx, client, requestID, err)
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
-	defer cancel()
-	updated, waitErr := client.Wait(waitCtx, operation)
-	if waitCtx.Err() != nil && updated.ID != "" {
-		return updated, nil
+	return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
+}
+
+func callMCPUtility(ctx context.Context, client *agentclient.Client, call mcpToolCall) (any, error) {
+	switch call.Name {
+	case "gh_operation_get":
+		var input mcpoperation.GetInput
+		if strictjson.Decode(call.Arguments, &input, true) != nil {
+			return nil, errors.New("invalid tool arguments")
+		}
+		return mcpoperation.Get(ctx, client, input, mcpprojection.ResultToMCP)
+	case "gh_operation_wait":
+		var input mcpoperation.WaitInput
+		if strictjson.Decode(call.Arguments, &input, true) != nil {
+			return nil, errors.New("invalid tool arguments")
+		}
+		return mcpoperation.Wait(ctx, client, input, mcpprojection.ResultToMCP)
+	case "gh_operation_list":
+		var input mcpoperation.ListInput
+		if strictjson.Decode(call.Arguments, &input, true) != nil {
+			return nil, errors.New("invalid tool arguments")
+		}
+		return mcpoperation.List(ctx, client, input)
+	default:
+		return nil, errors.New("unknown operation utility")
 	}
-	return updated, waitErr
 }
 
 func prepareMCPArguments(ctx context.Context, descriptor opcatalog.Descriptor, input *mcpOperationInput, connection operationConnection) error {
@@ -250,7 +306,7 @@ func prepareMCPStreamArguments(descriptor opcatalog.Descriptor, input *mcpOperat
 	if err := schemaregistry.ValidateStreamPublic(descriptor.Name, input.Target, input.Arguments); err != nil {
 		return err
 	}
-	encoded, err := json.Marshal(map[string]any{"public": input.Arguments, "stream_input": input.StreamInput})
+	encoded, err := json.Marshal(map[string]any{"public": input.Arguments, "stream_input": input.StreamInput.canonical()})
 	input.Arguments = encoded
 	return err
 }
@@ -285,7 +341,7 @@ func prepareMCPSealedArguments(ctx context.Context, descriptor opcatalog.Descrip
 	if err := schemaregistry.ValidateSealedArguments(descriptor.Name, input.SealedArguments); err != nil {
 		return err
 	}
-	input.Arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, input.IdempotencyKey, input.Arguments, input.SealedArguments)
+	input.Arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, input.RequestID, input.Arguments, input.SealedArguments)
 	return err
 }
 

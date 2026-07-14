@@ -19,6 +19,7 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 	}
 	options := SurfaceOptions{
 		Descriptors: descriptors, AttributeNames: []string{"ref"},
+		MCPToolPrefix: "test_",
 		Schemas: func(descriptor Descriptor) (map[string]any, map[string]any, map[string]any) {
 			sealed := map[string]any(nil)
 			if descriptor.Name == "secret.set" {
@@ -39,12 +40,16 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 		t.Fatal("unknown CLI command matched")
 	}
 	tools := MCPTools(options)
-	if len(tools) != 3 || tools[0]["description"] != "Run repo.read" {
+	if len(tools) != 6 || tools[0]["description"] != "Run repo.read" || tools[5]["name"] != "test_operation_list" {
 		t.Fatalf("MCP tools = %#v", tools)
 	}
 
 	window := MCPToolSchema(descriptors[0], options)
 	windowProperties := window["properties"].(map[string]any)
+	if windowProperties["request_id"] == nil || windowProperties["idempotency_key"] != nil || windowProperties["wait_seconds"] != nil ||
+		slices.Contains(RequiredPropertyNames(window), "request_id") {
+		t.Fatalf("request identity schema = %#v", window)
+	}
 	if windowProperties["attrs"] == nil || windowProperties["minutes"] == nil || windowProperties["max_uses"] == nil {
 		t.Fatalf("window schema = %#v", window)
 	}

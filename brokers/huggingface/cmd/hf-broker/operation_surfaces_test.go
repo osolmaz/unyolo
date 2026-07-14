@@ -16,13 +16,15 @@ import (
 	"github.com/dlclark/regexp2"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/mcpoperation"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 	descriptors := agentFacingDescriptors()
 	tools := catalogMCPTools()
-	if len(descriptors) != 257 || len(tools) != len(descriptors) {
+	if len(descriptors) != 257 || len(tools) != len(descriptors)+3 {
 		t.Fatalf("descriptors=%d tools=%d", len(descriptors), len(tools))
 	}
 	for index, descriptor := range descriptors {
@@ -37,6 +39,9 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 		schema, ok := tools[index]["inputSchema"].(map[string]any)
 		if !ok || schema["additionalProperties"] != false {
 			t.Fatalf("MCP schema %q is not closed", descriptor.Name)
+		}
+		if issues := capability.AuditMCPToolSchema(schema); len(issues) != 0 {
+			t.Fatalf("MCP schema %q has unresolved compatibility issue: %v", descriptor.Name, issues[0])
 		}
 		compiler := jsonschema.NewCompiler()
 		compiler.UseRegexpEngine(compileMCPTestRegexp)
@@ -140,8 +145,8 @@ func TestMCPDestructiveOperationUsesCatalogOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_delete", Arguments: json.RawMessage(
-		`{"target":{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"},"arguments":{},"reason":"remove test repository","idempotency_key":"delete-1","wait_seconds":0}`)})
-	operation, ok := value.(agentv1.Operation)
+		`{"target":{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"},"arguments":{},"reason":"remove test repository","request_id":"delete-1"}`)})
+	operation, ok := value.(mcpoperation.Operation)
 	if err != nil || !ok || operation.Operation != "repo.delete" || submitted["operation"] != "repo.delete" {
 		t.Fatalf("operation=%#v submitted=%#v err=%v", value, submitted, err)
 	}
@@ -201,7 +206,7 @@ func TestMCPWindowOperationRequestsExactGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_contents_read", Arguments: json.RawMessage(
-		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"attrs":{},"reason":"inspect data","idempotency_key":"read-1","minutes":5,"max_uses":1,"wait_seconds":0}`)})
+		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"attrs":{},"reason":"inspect data","request_id":"read-1","minutes":5,"max_uses":1}`)})
 	grant, ok := value.(hfClientGrant)
 	if err != nil || !ok || grant.Operation != "repo.contents.read" || submitted["operation"] != "repo.contents.read" {
 		t.Fatalf("grant=%#v submitted=%#v err=%v", value, submitted, err)
@@ -237,7 +242,7 @@ func TestMCPSealedOperationSeparatesSecretFromPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = callMCPTool(context.Background(), client, mcpToolCall{Name: "hf_space_secret_set", Arguments: json.RawMessage(
-		`{"target":{"namespace":"osolmaz","repo":"app"},"arguments":{"key":"TOKEN"},"sealed_arguments":{"value":"` + secret + `"},"reason":"set deployment secret","idempotency_key":"secret-1","wait_seconds":0}`)})
+		`{"target":{"namespace":"osolmaz","repo":"app"},"arguments":{"secret_name":"TOKEN"},"sealed_arguments":{"value":"` + secret + `"},"reason":"set deployment secret","request_id":"secret-1"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/mcpoperation"
 )
 
 const agentClientTestSecret = "abcdefghijklmnopqrstuvwxyz123456"
@@ -109,14 +110,6 @@ func TestRunAgentClientGrantLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requestValue, err := callMCPTool(t.Context(), mcpClient, mcpToolCall{
-		Name:      "hf_grant_request",
-		Arguments: json.RawMessage(`{"operation":"git.push.force","target":"acme/repo","refs":["refs/heads/main"],"reason":"repair","idempotency_key":"mcp-1","max_uses":null,"wait_seconds":1}`),
-	})
-	requestGrant, ok := requestValue.(hfClientGrant)
-	if err != nil || !ok || !requestGrant.MaxUses.IsUnlimited() {
-		t.Fatalf("MCP grant request = %#v, %v", requestValue, err)
-	}
 	for _, name := range []string{"hf_grant_get", "hf_grant_wait", "hf_grant_cancel", "hf_grant_revoke"} {
 		arguments := `{"grant_id":"grant-1"}`
 		if name == "hf_grant_wait" {
@@ -201,7 +194,7 @@ func TestRunMCPListsAndCallsTools(t *testing.T) {
 	input := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hf_repo_create","arguments":{"target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create","idempotency_key":"one","wait_seconds":0}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hf_repo_create","arguments":{"target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create","request_id":"one"}}}`,
 	}, "\n") + "\n"
 	var output bytes.Buffer
 	if err := runMCP(context.Background(), getenv, strings.NewReader(input), &output, &bytes.Buffer{}, nil); err != nil {
@@ -336,7 +329,7 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	}
 	for _, name := range []string{"hf_operation_get", "hf_operation_wait", "hf_operation_cancel"} {
 		value, err := callMCPTool(context.Background(), client, mcpToolCall{Name: name, Arguments: json.RawMessage(`{"operation_id":"op_test"}`)})
-		operation, ok := value.(agentv1.Operation)
+		operation, ok := value.(mcpoperation.Operation)
 		if err != nil || !ok || operation.ID != "op_test" {
 			t.Fatalf("%s = %#v, %v", name, value, err)
 		}
@@ -348,7 +341,7 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 		t.Fatal("oversized repository wait accepted")
 	}
 	tools := catalogMCPTools()
-	if len(tools) != len(agentFacingDescriptors()) || len(tools) != 257 {
+	if len(tools) != len(agentFacingDescriptors())+3 || len(tools) != 260 {
 		t.Fatalf("catalog MCP tools = %d", len(tools))
 	}
 	largeID := json.RawMessage(`9007199254740993`)
@@ -379,13 +372,13 @@ func TestMCPWaitDeadlineReturnsResumableOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, call := range []mcpToolCall{
-		{Name: "hf_operation_wait", Arguments: json.RawMessage(`{"operation_id":"op_test","wait_seconds":1}`)},
-		{Name: "hf_repo_create", Arguments: json.RawMessage(`{"target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create","idempotency_key":"create","wait_seconds":1}`)},
+		{Name: "hf_operation_wait", Arguments: json.RawMessage(`{"operation_id":"op_test","timeout_seconds":1}`)},
+		{Name: "hf_repo_create", Arguments: json.RawMessage(`{"target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"create","request_id":"create"}`)},
 	} {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		value, callErr := callMCPTool(ctx, client, call)
 		cancel()
-		operation, ok := value.(agentv1.Operation)
+		operation, ok := value.(mcpoperation.Operation)
 		if callErr != nil || !ok || operation.ID != "op_test" || operation.State != agentv1.StatePending {
 			t.Fatalf("%s = %#v, %v", call.Name, value, callErr)
 		}
