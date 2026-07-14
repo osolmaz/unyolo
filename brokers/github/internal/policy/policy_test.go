@@ -44,7 +44,7 @@ func TestPolicyCanAllowDirectMainPushForSpecificRepo(t *testing.T) {
 	}
 }
 
-func TestScopeExampleSupportsDefaultPRWorkflow(t *testing.T) {
+func TestScopeExampleSeparatesDirectAndApprovalOperations(t *testing.T) {
 	t.Parallel()
 	p, err := LoadFile(filepath.Join("..", "..", "scope.example.json"))
 	if err != nil {
@@ -52,12 +52,10 @@ func TestScopeExampleSupportsDefaultPRWorkflow(t *testing.T) {
 	}
 
 	allowed := []Request{
-		{Client: "bob", Operation: Operation("installation.repo.list"), Target: Target{Kind: "installation"}},
-		repoRequest(OperationGitFetch, "osolmaz", "gh-broker", nil),
-		repoRequest(OperationGitPushBranchCreate, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/bob/work"}),
-		repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/agent/work"}),
-		repoRequest(Operation("pull_request.create"), "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/bob/work", "base_ref": "refs/heads/main"}),
-		repoRequest(OperationGitPushForce, "osolmaz", "direct-main", map[string]string{"ref": "refs/heads/main"}),
+		repoRequest(OperationGitFetch, "osolmaz", "brokerkit", nil),
+		repoRequest(Operation("repo.contents.read"), "osolmaz", "brokerkit", nil),
+		repoRequest(OperationGitPushBranchCreate, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/bob/work"}),
+		repoRequest(OperationGitPushForce, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/agent/work"}),
 	}
 	for _, request := range allowed {
 		if decision := p.Evaluate(request); !decision.Allowed {
@@ -66,12 +64,25 @@ func TestScopeExampleSupportsDefaultPRWorkflow(t *testing.T) {
 	}
 
 	denied := []Request{
-		repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/main"}),
-		repoRequest(OperationGitRefDelete, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/bob/work"}),
+		repoRequest(OperationGitPushForce, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/main"}),
+		repoRequest(OperationGitRefDelete, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/bob/work"}),
+		repoRequest(OperationGitFetch, "osolmaz", "other", nil),
 	}
 	for _, request := range denied {
 		if decision := p.Evaluate(request); decision.Allowed {
 			t.Fatalf("%s decision = %+v, want denied", request.Operation, decision)
+		}
+	}
+
+	requested := []Request{
+		repoRequest(Operation("pull_request.create"), "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/bob/work", "base_ref": "refs/heads/main"}),
+		repoRequest(Operation("repo.delete"), "osolmaz", "brokerkit-e2e-123", nil),
+		repoRequest(Operation("agent_task.create_or_update_repo_secret"), "osolmaz", "brokerkit", nil),
+		repoRequest(Operation("collaborator.repos_add_collaborator"), "osolmaz", "brokerkit", nil),
+	}
+	for _, request := range requested {
+		if decision := p.Evaluate(request); decision.Effect != EffectRequest || decision.Allowed {
+			t.Fatalf("%s decision = %+v, want approval request", request.Operation, decision)
 		}
 	}
 }
