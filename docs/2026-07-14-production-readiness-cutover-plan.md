@@ -54,6 +54,16 @@ other production-readiness work discovered with it.
 18. Operators receive secret-safe health, metrics, and structured diagnostics.
 19. Crash, storage, clock, notification, upstream, and partial-setup failures
     have deterministic fail-closed behavior.
+20. Broker client and operator credentials share one minimum 32-byte secret
+    requirement across setup and runtime authentication.
+21. Every production control plane requires an explicit audit recorder; missing
+    wiring cannot silently discard security evidence.
+22. Every background poller, notification worker, and sweeper participates in
+    one cancellable lifecycle and finishes before durable state closes.
+23. Every broker's Slophammer configuration, including sudo's, is enforced in
+    CI rather than excluded or treated as documentation.
+24. Convenience installation never invokes `sudo` or otherwise escalates
+    privilege implicitly.
 
 ## Current Problems To Remove
 
@@ -149,6 +159,48 @@ instead of an unbounded blanket server timeout. Shared client constructors set
 safe defaults even when a caller supplies a transport, while explicit stream
 clients remain context-bounded.
 
+### Inconsistent authentication and optional audit evidence
+
+Shared client authentication currently accepts 16-byte secrets and operator
+authentication accepts 24-byte secrets, while HF and GH configuration require
+32 bytes. Sudo reaches the weaker shared defaults directly, and the shared
+secret-file parser does not enforce the production floor. The compatibility
+rationale for the weaker defaults conflicts with this fresh-state cutover.
+
+Define one provider-neutral 32-byte minimum for both client and operator
+secrets. Apply it in shared authentication, setup, secret-file loading, doctor,
+and every broker runtime. Delete provider-local minimum constants and tests for
+the weaker values. Generated secrets remain at least 256 bits, but runtime must
+also reject hand-edited or externally provisioned credentials below the shared
+floor.
+
+The control-plane and provider constructors also currently replace a nil audit
+recorder with `audit.New(io.Discard)`. That contradicts the maintained contract
+that audit is required and can turn one assembly error into an unaudited
+authorization and execution path.
+
+Require an explicit audit recorder at every production constructor boundary and
+fail startup when it is absent. Production code cannot select a discard sink;
+tests that do not inspect audit output pass an explicit test-only recorder.
+Preserve the existing post-commit behavior for external audit export failure:
+surface the failure through bounded diagnostics and audit-export status without
+rolling back an already committed decision or reporting it as uncommitted.
+
+### Untracked notification workers
+
+Some GH and sudo Telegram pollers and notification sweepers use the caller's
+outer context and bypass the server worker wait group. Calling `Close` without
+first cancelling that outer context can close SQLite while those goroutines are
+still reading or updating notification state.
+
+All background activity must derive from the server's owned lifecycle context,
+register before starting, and signal completion exactly once. Shutdown cancels
+that context, stops accepting work, waits for operation workers, pollers,
+sweepers, and notification delivery, and only then closes stores and the
+database. Tests must call `Close` while the original start context remains live
+and prove that no worker touches state after closure or loses an accepted
+decision callback.
+
 ## Platform Architecture
 
 ### Deployment-owned endpoints
@@ -213,7 +265,9 @@ Move their remaining lifecycle mechanics into shared packages:
 - execution reservation and use budgets;
 - worker start, recovery, cancellation, and terminal transitions;
 - partial-result reconciliation;
-- notification and operator-state transitions; and
+- notification and operator-state transitions;
+- lifecycle-owned Telegram polling, notification sweeping, and shutdown
+  joining before state closure; and
 - audit event sequencing.
 
 Providers retain only target/argument decoding, provider preconditions,
@@ -402,8 +456,12 @@ Eliminate every exception before the production release:
    conformance tests.
 6. Reject new exceptions and lower the exact baseline monotonically after every
    coherent commit.
-7. Remove the HF and GH CRAP baseline files and wrapper scripts when the normal
-   `max_score: 8` gate passes directly for the entire repository.
+7. Run each broker's complete local Slophammer configuration in CI. The sudo
+   configuration's `max_score: 8` gate must execute rather than being bypassed
+   by a root exclusion and a DRY-only broker invocation.
+8. Remove the HF and GH CRAP baseline files, wrapper scripts, and root
+   exclusions for broker code when the normal `max_score: 8` gate passes
+   directly for the entire repository, including sudo.
 
 Mutation tooling remains checked in, disabled, and non-blocking. It is not a
 completion gate unless separately requested.
@@ -423,6 +481,14 @@ mutable `main`. Replace that with a release-owned bootstrap:
   workflow identity before installation;
 - offline installation accepts an explicitly supplied verified bundle; and
 - setup remains separate from binary installation.
+
+The installer never invokes `sudo` automatically. Its unprivileged default is
+an explicit user-writable destination such as `$HOME/.local/bin`. A production
+or system-wide install requires an explicit absolute destination and an
+operator-initiated privileged invocation; if the selected destination is not
+writable, installation fails with a concrete rerun command rather than
+escalating. This also prevents a piped bootstrap from unexpectedly consuming a
+privilege prompt.
 
 Release documentation must distinguish convenience installation from a pinned,
 reproducible production installation.
@@ -539,6 +605,10 @@ slice.
 - Implement shared endpoint types, listeners, dialers, and strict origin rules.
 - Implement strict typed configuration and explicit development mode.
 - Require absolute production paths and explicit identities.
+- Replace the 16-byte and 24-byte authentication defaults with one shared
+  32-byte runtime and setup requirement.
+- Make audit recorders mandatory constructor dependencies and delete production
+  discard fallbacks.
 - Add shared HTTP server/client profiles.
 - Migrate every broker and delete old fields, defaults, and transports.
 
@@ -552,6 +622,8 @@ slice.
 ### 4. Finish shared runtime ownership
 
 - Move GH and sudo Agent lifecycle orchestration into shared packages.
+- Put Telegram pollers, notification sweepers, and all other background workers
+  under the owned lifecycle context and wait for them before closing state.
 - Delete provider-local copies and the temporary architecture allowlist.
 - Run all provider and OpenClaw conformance suites.
 
@@ -574,11 +646,15 @@ slice.
 
 - Refactor every HF and GH CRAP exception through small green commits.
 - Add missing failure-path tests.
-- Remove baseline files and wrapper scripts once direct gates pass.
+- Enforce sudo's complete local Slophammer configuration in CI immediately.
+- Remove baseline files, wrapper scripts, and broker exclusions once direct
+  root and broker-local gates pass.
 
 ### 8. Harden installation and release
 
 - Make installer selection and verification immutable.
+- Remove implicit `sudo`; require a writable user destination or an explicit
+  operator-initiated privileged installation.
 - Pin workflow actions and tools.
 - Align Node and Go matrices and verify release artifacts after publication.
 
@@ -650,3 +726,16 @@ The cutover is complete only when:
 20. Active documentation describes only the final supported architecture and
     the repository contains no obsolete worktree metadata or completed work
     mislabeled as active.
+21. Client and operator authentication, secret files, setup, and doctor reject
+    every secret shorter than the shared 32-byte minimum across HF, GH, and
+    sudo.
+22. A production broker cannot start without an explicit audit recorder, no
+    production path substitutes a discard sink, and audit-export failures are
+    visible without misreporting committed decisions.
+23. CI executes sudo's complete Slophammer configuration and direct CRAP limit;
+    no root exclusion or DRY-only invocation can bypass that gate.
+24. The installer never invokes `sudo` or another privilege escalator
+    implicitly, and unwritable destinations fail with explicit remediation.
+25. Server shutdown cancels and joins every poller, notification worker,
+    sweeper, and operation worker before closing SQLite or another shared
+    store, even when the original start context is still live.
