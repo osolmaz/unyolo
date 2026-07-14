@@ -26,3 +26,31 @@ func TestRequiredHFProjections(t *testing.T) {
 		}
 	}
 }
+
+func TestRequiredHFArrayProjections(t *testing.T) {
+	for operation, paths := range map[string][2]string{
+		"repo.duplicate":   {"variables", "variable_name"},
+		"sql_embed.create": {"views", "view_name"},
+	} {
+		descriptor, found := opcatalog.ByName(operation)
+		if !found {
+			t.Fatalf("missing descriptor %s", operation)
+		}
+		projection := ForOperation(descriptor).Arguments
+		schema, err := projection.MCPSchema(map[string]any{
+			"type": "object", "properties": map[string]any{paths[0]: map[string]any{
+				"type": "array", "items": map[string]any{
+					"type": "object", "additionalProperties": false, "required": []any{"key"},
+					"properties": map[string]any{"key": map[string]any{"type": "string"}},
+				},
+			}},
+		})
+		if err != nil {
+			t.Fatalf("%s projection: %v", operation, err)
+		}
+		item := schema["properties"].(map[string]any)[paths[0]].(map[string]any)["items"].(map[string]any)
+		if item["properties"].(map[string]any)[paths[1]] == nil || len(capability.AuditMCPPublicSchema(schema)) != 0 {
+			t.Fatalf("%s projection = %#v", operation, schema)
+		}
+	}
+}

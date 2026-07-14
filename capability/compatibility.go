@@ -36,7 +36,7 @@ var transcriptSafeExactNames = map[string]bool{
 	"request_id": true, "operation_id": true, "transfer_id": true, "commit_signature": true,
 	"public_material": true, "armored_public_material": true, "cache_identifier": true,
 	"document_name": true, "variable_name": true, "secret_name": true, "hide_sensitive_value": true,
-	"object_path": true,
+	"object_path": true, "view_name": true,
 }
 
 var sensitiveSuffixes = []string{

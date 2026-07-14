@@ -49,7 +49,7 @@ func TestRunAgentClientRepoCreateWaitsForApproval(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runAgentClient(context.Background(), getenv, &stdout, &stderr, []string{
 		"repo", "create", "--target-json", `{"kind":"repo","type":"dataset","owner":"alice","name":"data"}`,
-		"--arguments-json", `{"visibility":"private"}`, "--idempotency-key", "create-data",
+		"--arguments-json", `{"visibility":"private"}`, "--request-id", "create-data",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func TestRunAgentClientGrantLifecycle(t *testing.T) {
 	var stdout bytes.Buffer
 	if err := runClientCommand(t.Context(), env, &stdout, &bytes.Buffer{}, []string{
 		"grant", "request", "git.push.force", "acme/repo", "--ref", "refs/heads/main",
-		"--max-uses", "unlimited", "--idempotency-key", "request-1", "--json",
+		"--max-uses", "unlimited", "--request-id", "request-1", "--json",
 	}); err != nil || !strings.Contains(stdout.String(), `"max_uses":null`) {
 		t.Fatalf("grant request = %q, %v", stdout.String(), err)
 	}
@@ -299,7 +299,7 @@ func TestCatalogOperationOptionsAndTerminalOutput(t *testing.T) {
 	}
 	options, err := parseOperationClientOptions(descriptor, []string{
 		"--target-json", `{"kind":"repo","type":"dataset","owner":"alice","name":"data"}`,
-		"--arguments-json", `{"visibility":"private"}`, "--idempotency-key", "create-data",
+		"--arguments-json", `{"visibility":"private"}`, "--request-id", "create-data",
 	})
 	if err != nil || options.idempotencyKey != "create-data" {
 		t.Fatalf("catalog options = %#v, %v", options, err)

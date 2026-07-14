@@ -104,6 +104,12 @@ lifecycle tools. The same catalog generates the CLI command tree and policy
 vocabulary, so these surfaces cannot drift. Tool descriptions explicitly tell
 agents not to request a Hugging Face token.
 
+MCP operation submissions accept an optional `request_id`, return immediately,
+and never expose Agent V1's internal `idempotency_key`. Recover interrupted
+calls with `hf_operation_get`, `hf_operation_wait`, or `hf_operation_list`.
+Public variable and secret names are projected to transcript-safe fields; the
+secret value itself remains sealed.
+
 ## Temporary grants
 
 Request an exact temporary capability when the policy marks an operation as
@@ -116,7 +122,7 @@ hf-broker client grant request git.push.force osolmaz/model \
   --minutes 30 \
   --max-uses unlimited \
   --reason "Repair protected history" \
-  --idempotency-key repair-main
+  --request-id repair-main
 ```
 
 Omit `--minutes` or `--max-uses` to use the matched policy's finite default.

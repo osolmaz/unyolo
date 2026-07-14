@@ -52,6 +52,26 @@ process environment values take precedence. Broker doctor commands use this
 shared parser to inspect installed service configuration without inheriting the
 systemd process environment.
 
+## Agent MCP Operations
+
+MCP is a resumable adapter over Agent Operations V1, not a second lifecycle.
+A provider operation call durably submits one request and returns immediately.
+Its optional public `request_id` maps once to Agent V1's internal idempotency
+key. The MCP response is a closed `brokerkit.io/mcp-operation/v1` projection
+that excludes clients, canonical arguments, approval linkage, and plan data.
+
+Provider-prefixed get, wait, and list tools recover operations after transport
+loss or process restart. Wait defaults to 25 seconds, never exceeds 25 seconds,
+and returns the latest known state on timeout. List defaults to 20, is capped at
+50, uses validated opaque cursors, and supports exact request-ID recovery.
+
+`capability` owns host compatibility classification and bidirectional JSON
+Pointer projection mechanics. `mcpoperation` owns request-ID generation,
+operation/page projections, bounded recovery, and structured conflicts.
+Providers own semantic field aliases and canonical provider validation. Pinned
+OpenClaw redaction fixtures and full-catalog audits prevent a newly generated
+public field from silently becoming unreplayable.
+
 ## Service
 
 Package `service` renders the common hardened systemd baseline:

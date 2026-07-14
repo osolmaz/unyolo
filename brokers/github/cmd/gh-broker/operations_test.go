@@ -105,7 +105,7 @@ func TestOperationSubmissionAndLifecycleUseAgentV1(t *testing.T) {
 	var output bytes.Buffer
 	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
 		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`,
-		"--arguments-json", `{}`, "--idempotency-key", "request-1", "--reason", "test", "--wait",
+		"--arguments-json", `{}`, "--request-id", "request-1", "--reason", "test", "--wait",
 	})
 	if err != nil || submitted["operation"] != "repo.metadata.read" || !strings.Contains(output.String(), `"state": "succeeded"`) {
 		t.Fatalf("submitted=%#v output=%s err=%v", submitted, output.String(), err)
@@ -159,7 +159,7 @@ func TestSealedOperationUploadsSecretBeforeSubmission(t *testing.T) {
 		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`,
 		"--arguments-json", `{"secret_name":"DEPLOY_TOKEN"}`,
 		"--sealed-file", sealedFile,
-		"--idempotency-key", requestKey,
+		"--request-id", requestKey,
 		"--reason", "rotate deploy secret",
 	})
 	if err != nil {
@@ -193,7 +193,7 @@ func TestCredentialOutputSubmissionRequiresEncryptedSlot(t *testing.T) {
 		t.Fatal("credential output accepted without a slot")
 	}
 	err := submitCatalogOperation(t.Context(), &output, descriptor, append(withoutSlot,
-		"--credential-slot", "ci-runner", "--idempotency-key", "runner-token", "--reason", "enroll runner"))
+		"--credential-slot", "ci-runner", "--request-id", "runner-token", "--reason", "enroll runner"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestStreamUploadSubmissionAndDownloadCLI(t *testing.T) {
 	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
 		"--target-json", `{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`,
 		"--arguments-json", `{"name":"asset.bin"}`, "--stream-file", input, "--stream-media-type", "application/octet-stream",
-		"--idempotency-key", "asset-request", "--reason", "upload release asset",
+		"--request-id", "asset-request", "--reason", "upload release asset",
 	})
 	if err != nil || !bytes.Contains(submitted, []byte(`"stream_input"`)) || bytes.Contains(submitted, []byte(content)) {
 		t.Fatalf("submitted = %s err = %v", submitted, err)

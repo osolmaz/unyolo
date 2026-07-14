@@ -59,6 +59,13 @@ capabilities, and the operator exposure profile. With no configured
 intersection it advertises zero execution tools; it never publishes the full
 catalog as 1,000+ tools by default.
 
+MCP operation submissions accept an optional `request_id` and return a durable
+operation immediately. `gh_operation_get`, `gh_operation_wait`, and
+`gh_operation_list` provide bounded recovery after disconnects or restarts.
+GitHub-native public fields such as cache keys, public SSH material, commit
+signatures, and stream handles are projected to transcript-safe MCP names;
+tokens and other credentials remain sealed or slot-backed.
+
 Credential selection is immutable broker metadata. Callers choose an operation
 and target, never a credential kind, token scope, installation, or permission
 set. The generated operation catalog supplies the minimum GitHub App permission

@@ -24,11 +24,18 @@ func NewProjection(fields []FieldProjection) (Projection, error) {
 	projection := Projection{fields: slices.Clone(fields)}
 	canonical, mcp := map[string]bool{}, map[string]bool{}
 	for _, field := range projection.fields {
-		if _, err := pointerTokens(field.Canonical); err != nil {
+		canonicalTokens, err := pointerTokens(field.Canonical)
+		if err != nil {
 			return Projection{}, fmt.Errorf("canonical projection path: %w", err)
 		}
-		if _, err := pointerTokens(field.MCP); err != nil {
+		mcpTokens, err := pointerTokens(field.MCP)
+		if err != nil {
 			return Projection{}, fmt.Errorf("MCP projection path: %w", err)
+		}
+		if slices.Contains(canonicalTokens, "*") || slices.Contains(mcpTokens, "*") {
+			if len(canonicalTokens) != len(mcpTokens) || !slices.Equal(canonicalTokens[:len(canonicalTokens)-1], mcpTokens[:len(mcpTokens)-1]) {
+				return Projection{}, errors.New("array projection paths must use the same parent pattern")
+			}
 		}
 		if field.Canonical == field.MCP || canonical[field.Canonical] || mcp[field.MCP] {
 			return Projection{}, errors.New("projection paths are duplicated or unchanged")
@@ -129,6 +136,14 @@ func schemaParent(root map[string]any, tokens []string) (map[string]any, string,
 	}
 	current := root
 	for _, token := range tokens[:len(tokens)-1] {
+		if token == "*" {
+			next, ok := current["items"].(map[string]any)
+			if !ok {
+				return nil, "", errors.New("projection wildcard crosses a non-array schema")
+			}
+			current = next
+			continue
+		}
 		properties, ok := current["properties"].(map[string]any)
 		if !ok {
 			return nil, "", errors.New("projection path crosses a non-object schema")
@@ -148,6 +163,9 @@ func schemaParent(root map[string]any, tokens []string) (map[string]any, string,
 func moveJSONValue(root map[string]any, source, destination string) error {
 	sourceTokens, _ := pointerTokens(source)
 	destinationTokens, _ := pointerTokens(destination)
+	if slices.Contains(sourceTokens, "*") || slices.Contains(destinationTokens, "*") {
+		return moveJSONWildcardValue(root, sourceTokens, destinationTokens)
+	}
 	sourceParent, sourceName, found := jsonParent(root, sourceTokens)
 	if !found {
 		return nil
@@ -166,6 +184,53 @@ func moveJSONValue(root map[string]any, source, destination string) error {
 	delete(sourceParent, sourceName)
 	destinationParent[destinationName] = value
 	return nil
+}
+
+func moveJSONWildcardValue(root map[string]any, source, destination []string) error {
+	if len(source) != len(destination) || len(source) == 0 || !slices.Equal(source[:len(source)-1], destination[:len(destination)-1]) {
+		return errors.New("array projection paths must use the same parent pattern")
+	}
+	return renameJSONAt(root, source[:len(source)-1], source[len(source)-1], destination[len(destination)-1])
+}
+
+func renameJSONAt(current any, path []string, source, destination string) error {
+	if len(path) == 0 {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return errors.New("projection parent is not an object")
+		}
+		value, present := object[source]
+		if !present {
+			return nil
+		}
+		if _, collision := object[destination]; collision {
+			return fmt.Errorf("projection destination %s collides", destination)
+		}
+		delete(object, source)
+		object[destination] = value
+		return nil
+	}
+	if path[0] == "*" {
+		items, ok := current.([]any)
+		if !ok {
+			return errors.New("projection wildcard crosses a non-array value")
+		}
+		for _, item := range items {
+			if err := renameJSONAt(item, path[1:], source, destination); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	object, ok := current.(map[string]any)
+	if !ok {
+		return errors.New("projection path crosses a non-object value")
+	}
+	next, present := object[path[0]]
+	if !present {
+		return nil
+	}
+	return renameJSONAt(next, path[1:], source, destination)
 }
 
 func jsonParent(root map[string]any, tokens []string) (map[string]any, string, bool) {

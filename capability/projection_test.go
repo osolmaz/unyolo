@@ -105,9 +105,38 @@ func TestProjectionRejectsInvalidMappings(t *testing.T) {
 		{{Canonical: "key", MCP: "/name"}},
 		{{Canonical: "/key", MCP: "/key"}},
 		{{Canonical: "/key", MCP: "/name"}, {Canonical: "/other", MCP: "/name"}},
+		{{Canonical: "/entries/*/key", MCP: "/other/*/name"}},
 	} {
 		if _, err := NewProjection(fields); err == nil {
 			t.Fatalf("invalid projection accepted: %+v", fields)
 		}
+	}
+}
+
+func TestProjectionTraversesArrayItems(t *testing.T) {
+	projection := MustProjection(FieldProjection{Canonical: "/entries/*/key", MCP: "/entries/*/variable_name"})
+	canonical := map[string]any{
+		"type": "object", "properties": map[string]any{"entries": map[string]any{
+			"type": "array", "items": map[string]any{
+				"type": "object", "additionalProperties": false, "required": []any{"key"},
+				"properties": map[string]any{"key": map[string]any{"type": "string"}},
+			},
+		}},
+	}
+	mcp, err := projection.MCPSchema(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := mcp["properties"].(map[string]any)["entries"].(map[string]any)["items"].(map[string]any)
+	if item["properties"].(map[string]any)["variable_name"] == nil || !slices.Contains(RequiredPropertyNames(item), "variable_name") {
+		t.Fatalf("projected item schema = %#v", item)
+	}
+	inbound, err := projection.ToCanonical(json.RawMessage(`{"entries":[{"variable_name":"A"},{"variable_name":"B"}]}`))
+	if err != nil || string(inbound) != `{"entries":[{"key":"A"},{"key":"B"}]}` {
+		t.Fatalf("inbound = %s, %v", inbound, err)
+	}
+	outbound, err := projection.ToMCP(inbound)
+	if err != nil || string(outbound) != `{"entries":[{"variable_name":"A"},{"variable_name":"B"}]}` {
+		t.Fatalf("outbound = %s, %v", outbound, err)
 	}
 }

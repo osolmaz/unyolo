@@ -176,7 +176,7 @@ func parseGrantRequestOptions(args []string) (grantRequestOptions, error) {
 	flags.StringVar(&options.repoType, "type", options.repoType, "model, dataset, or space")
 	flags.Var(&options.refs, "ref", "exact repository ref; repeatable")
 	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
-	flags.StringVar(&options.idempotencyKey, "idempotency-key", "", "stable retry key")
+	flags.StringVar(&options.idempotencyKey, "request-id", "", "stable retry key")
 	flags.IntVar(&options.minutes, "minutes", 0, "requested duration; omit for policy default")
 	flags.Var(&options.maxUses, "max-uses", "positive count or unlimited; omit for policy default")
 	flags.BoolVar(&options.wait, "wait", options.wait, "wait for a decision")

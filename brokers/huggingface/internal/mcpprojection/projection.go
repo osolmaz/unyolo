@@ -10,6 +10,8 @@ import (
 var variableName = capability.MustProjection(capability.FieldProjection{Canonical: "/key", MCP: "/variable_name"})
 var secretName = capability.MustProjection(capability.FieldProjection{Canonical: "/key", MCP: "/secret_name"})
 var objectPath = capability.MustProjection(capability.FieldProjection{Canonical: "/key", MCP: "/object_path"})
+var duplicateVariables = capability.MustProjection(capability.FieldProjection{Canonical: "/variables/*/key", MCP: "/variables/*/variable_name"})
+var embedViews = capability.MustProjection(capability.FieldProjection{Canonical: "/views/*/key", MCP: "/views/*/view_name"})
 
 func ForOperation(descriptor capability.Descriptor) capability.SurfaceProjection {
 	projection := capability.SurfaceProjection{Attrs: objectPath}
@@ -18,6 +20,10 @@ func ForOperation(descriptor capability.Descriptor) capability.SurfaceProjection
 		projection.Arguments = variableName
 	case "space.secret.set", "space.secret.delete":
 		projection.Arguments = secretName
+	case "repo.duplicate":
+		projection.Arguments = duplicateVariables
+	case "sql_embed.create":
+		projection.Arguments = embedViews
 	}
 	return projection
 }
