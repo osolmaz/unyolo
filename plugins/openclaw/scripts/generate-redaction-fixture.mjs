@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import process from "node:process";
+import { fileURLToPath, URL } from "node:url";
 
 import {
   isSensitiveFieldKey,
@@ -7,11 +8,16 @@ import {
 } from "openclaw/plugin-sdk/text-runtime";
 
 const packageDocument = JSON.parse(
-  await readFile(new URL("../node_modules/openclaw/package.json", import.meta.url), "utf8"),
+  await readFile(
+    new URL("../node_modules/openclaw/package.json", import.meta.url),
+    "utf8",
+  ),
 );
 const expectedVersion = "2026.7.1-beta.5";
 if (packageDocument.version !== expectedVersion) {
-  throw new Error(`OpenClaw fixture requires ${expectedVersion}, got ${packageDocument.version}`);
+  throw new Error(
+    `OpenClaw fixture requires ${expectedVersion}, got ${packageDocument.version}`,
+  );
 }
 
 const names = [
@@ -66,12 +72,17 @@ const fixture = {
   })),
 };
 const output = `${JSON.stringify(fixture, null, 2)}\n`;
-const target = new URL("../../../capability/testdata/openclaw-redaction-v2026.7.1-beta.5.json", import.meta.url);
+const target = new URL(
+  "../../../capability/testdata/openclaw-redaction-v2026.7.1-beta.5.json",
+  import.meta.url,
+);
 
 if (process.argv.includes("--check")) {
   const current = await readFile(target, "utf8");
   if (current !== output) {
-    throw new Error(`${fileURLToPath(target)} is stale; run pnpm generate:redaction-fixture`);
+    throw new Error(
+      `${fileURLToPath(target)} is stale; run pnpm generate:redaction-fixture`,
+    );
   }
 } else {
   await writeFile(target, output);
