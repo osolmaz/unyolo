@@ -12,6 +12,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 var fixtureTime = time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
@@ -155,6 +156,99 @@ func TestStoreRejectsMissingCorruptAndInvalidCredentials(t *testing.T) {
 	}
 	if err := (*Store)(nil).Bind(&request); err == nil {
 		t.Fatal("nil store accepted binding")
+	}
+}
+
+func TestStoreWrapperAPIsPersistAndBindPlans(t *testing.T) {
+	database := testDatabase(t)
+	store, err := NewStoreWithClock(database, "installation", func() time.Time { return fixtureTime })
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := testAdapterPlan()
+	digest, err := store.Put(plan)
+	if err != nil || digest == "" {
+		t.Fatalf("Put() = %q, %v", digest, err)
+	}
+	loaded, err := store.Get(digest)
+	if err != nil || loaded.Operation != plan.Operation || loaded.ClientRequestID != plan.ClientRequestID {
+		t.Fatalf("Get() = %+v, %v", loaded, err)
+	}
+	request := testRequest()
+	prepared, err := store.PrepareBind(&request)
+	if err != nil || prepared.Digest == "" || request.Metadata[MetadataDigest] != prepared.Digest {
+		t.Fatalf("PrepareBind() = %+v metadata=%+v err=%v", prepared, request.Metadata, err)
+	}
+	if err := store.BindAt(&request, fixtureTime.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (*Store)(nil).Put(plan); err == nil {
+		t.Fatal("nil store persisted a plan")
+	}
+	if _, err := (*Store)(nil).Get(digest); err == nil {
+		t.Fatal("nil store loaded a plan")
+	}
+	if _, err := (*Store)(nil).PrepareBind(&request); err == nil {
+		t.Fatal("nil store prepared a grant")
+	}
+}
+
+func TestPlanProjectionAndFallbackBoundaries(t *testing.T) {
+	request := testRequest()
+	request.PendingTimeout = -request.Duration
+	plan := FromRequest(request, fixtureTime)
+	if !plan.ExpiresAt.Equal(fixtureTime.Add(request.Duration)) || plan.Authorization.Mode != "window" || plan.CredentialSelector.Kind != "" {
+		t.Fatalf("fallback plan = %+v", plan)
+	}
+	metadataRequest := grants.Request{}
+	BindPrepared(&metadataRequest, grants.ImmutablePlan{SchemaName: SchemaV1, Digest: "digest"})
+	BindPresentation(&metadataRequest, agentv1.Presentation{Title: strings.Repeat("t", 200), Summary: strings.Repeat("s", 600)})
+	if len(metadataRequest.Metadata[MetadataTitle]) != 160 || len(metadataRequest.Metadata[MetadataSummary]) != 500 || metadataRequest.Metadata[MetadataDigest] != "digest" {
+		t.Fatalf("bounded metadata = %+v", metadataRequest.Metadata)
+	}
+	multibyte := strings.Repeat("a", 159) + "é"
+	if got := truncateUTF8(multibyte, 160); !json.Valid([]byte(`"`+got+`"`)) || len(got) > 160 {
+		t.Fatalf("UTF-8 truncation = %q", got)
+	}
+	if modeForOperation("repo.delete", "") != "execution" || modeForOperation("repo.metadata.read", "execution") != "execution" {
+		t.Fatal("operation mode selection drifted")
+	}
+	if modeCredentialKind("repo.delete", "development-token") != "installation" || modeCredentialKind("git.fetch", "development-token") != "development-token" {
+		t.Fatal("credential kind selection drifted")
+	}
+	if useConstraintExceeds(grants.ApprovalConstraints{}, 1) || !useConstraintExceeds(grants.ApprovalConstraints{MaxUses: usebudget.Unlimited, MaxUsesSpecified: true}, 1) {
+		t.Fatal("use constraint boundary drifted")
+	}
+	duration, uses := requestedGrantBounds(grants.Grant{Duration: time.Minute, RequestedDuration: 0, MaxUses: 2, RequestedMaxUses: -1})
+	if duration != time.Minute || uses != 2 {
+		t.Fatalf("requested grant fallback = %s, %d", duration, uses)
+	}
+}
+
+func TestPlanValidationRejectsEachBoundary(t *testing.T) {
+	base := testAdapterPlan()
+	tests := map[string]func(*Plan){
+		"identity":      func(plan *Plan) { plan.ClientID = "" },
+		"presentation":  func(plan *Plan) { plan.Presentation.Title = "" },
+		"authorization": func(plan *Plan) { plan.Authorization.RequestedMaxUses = 2 },
+		"empty object":  func(plan *Plan) { plan.Target = nil },
+		"secret":        func(plan *Plan) { plan.Preconditions = json.RawMessage(`{"token":"secret"}`) },
+		"target values": func(plan *Plan) { plan.Authorization.Target.Fields = map[string][]string{"": {"bad"}} },
+		"attrs":         func(plan *Plan) { plan.Authorization.Attributes = map[string][]string{"ref": {""}} },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			plan := base
+			mutate(&plan)
+			if _, err := Prepare(plan); err == nil {
+				t.Fatal("invalid plan accepted")
+			}
+		})
+	}
+	for _, raw := range []json.RawMessage{json.RawMessage(`{`), json.RawMessage(`[]`), json.RawMessage(`{}`), json.RawMessage(strings.Repeat(" ", maxTargetBytes+1))} {
+		if _, err := canonicalObject(raw, maxTargetBytes); err == nil && string(raw) != `{}` {
+			t.Fatalf("invalid canonical object accepted: %q", raw[:min(len(raw), 20)])
+		}
 	}
 }
 

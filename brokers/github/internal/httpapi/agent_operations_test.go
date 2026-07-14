@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,10 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentconformance"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorv1"
 )
 
@@ -117,6 +122,118 @@ func TestGeneratedAgentRejectsUnknownAndInvalidOperations(t *testing.T) {
 	invalid.Arguments = json.RawMessage(`{"input":{"title":"work","head":"bob/work","base":"main","unexpected":true}}`)
 	if _, _, err := server.submitAgentOperation(t.Context(), "bob", invalid); err == nil {
 		t.Fatal("invalid generated arguments were accepted")
+	}
+}
+
+func TestGeneratedAgentCancellation(t *testing.T) {
+	server := newTestServerWithPolicyAndHandler(t, generatedPolicy(t, policy.EffectAllow), func(http.ResponseWriter, *http.Request) {
+		t.Fatal("canceled operation reached upstream")
+	})
+	operation, _, err := server.submitAgentOperation(t.Context(), "bob", generatedPullRequestSubmission("cancel"))
+	if err != nil || operation.State != agentv1.StateApproved {
+		t.Fatalf("submitted operation = %#v, %v", operation, err)
+	}
+	canceled, err := server.cancelAgentOperation(t.Context(), "bob", operation.ID)
+	if err != nil || canceled.State != agentv1.StateCanceled {
+		t.Fatalf("canceled operation = %#v, %v", canceled, err)
+	}
+	stored, err := server.operations.GetByID(operation.ID)
+	if err != nil || stored.State != agentv1.StateCanceled {
+		t.Fatalf("stored operation = %#v, %v", stored, err)
+	}
+
+	requestServer := newTestServerWithPolicyAndHandler(t, generatedRequestPolicy(t), func(http.ResponseWriter, *http.Request) {
+		t.Fatal("pending operation reached upstream")
+	})
+	requestServer.notifier = &captureNotifier{}
+	runtime, err := requestServer.newOperationRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestServer.operationRuntime = runtime
+	pending, _, err := requestServer.submitAgentOperation(t.Context(), "bob", generatedPullRequestSubmission("cancel-grant"))
+	if err != nil || pending.State != agentv1.StatePending || pending.ApprovalID == "" {
+		t.Fatalf("pending operation = %#v, %v", pending, err)
+	}
+	grant, err := requestServer.grants.Get(pending.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := requestServer.cancelGrantForClient(grant, "bob"); err != nil {
+		t.Fatal(err)
+	}
+	grant, err = requestServer.grants.Get(grant.ID)
+	if err != nil || grant.Status != grants.StatusCanceled {
+		t.Fatalf("canceled grant = %#v, %v", grant, err)
+	}
+}
+
+func TestGeneratedRuntimeErrorMapping(t *testing.T) {
+	partial := &operations.PossiblePartialError{Err: errors.New("uncertain")}
+	if definitiveExecutionFailure(nil) || definitiveExecutionFailure(partial) || !definitiveExecutionFailure(errors.New("rejected")) {
+		t.Fatal("definitive execution classification drifted")
+	}
+	for name, test := range map[string]struct {
+		execution   error
+		reconcile   error
+		wantCode    string
+		wantMessage string
+	}{
+		"upstream rejection": {execution: githubauth.APIError{Code: "validation_failed", StatusCode: http.StatusUnprocessableEntity}, wantCode: "validation_failed", wantMessage: "GitHub rejected"},
+		"reconciliation":     {reconcile: errors.New("offline"), wantCode: "operation_reconciliation_failed", wantMessage: "reconciliation failed"},
+		"unknown":            {execution: errors.New("offline"), wantCode: "upstream_result_unknown", wantMessage: "unknown"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			failure := operationExecutionFailure(test.execution, test.reconcile)
+			if failure.Code != test.wantCode || !strings.Contains(failure.Message, test.wantMessage) {
+				t.Fatalf("failure = %+v", failure)
+			}
+		})
+	}
+	for _, test := range []struct {
+		err        error
+		wantStatus int
+		wantCode   string
+	}{{githubauth.APIError{Code: "not_found", StatusCode: http.StatusNotFound}, http.StatusNotFound, "not_found"},
+		{githubauth.APIError{Code: "unavailable", StatusCode: http.StatusBadGateway}, http.StatusBadGateway, "unavailable"},
+		{errors.New("invalid target"), http.StatusBadRequest, "operation_input_invalid"}} {
+		var mapped *agentapi.Error
+		if err := mapOperationSubmissionError(test.err); !errors.As(err, &mapped) || mapped.Status != test.wantStatus || mapped.Code != test.wantCode {
+			t.Fatalf("mapped error = %#v", err)
+		}
+	}
+	operation := agentv1.Operation{Operation: "repo.delete", ID: "op_123"}
+	if operationDebugID(operation) != "repo.delete:op_123" {
+		t.Fatal("operation debug id drifted")
+	}
+	server := &Server{}
+	fallback := t.Context()
+	if server.agentLifecycleContext(fallback) != fallback {
+		t.Fatal("fallback lifecycle context changed")
+	}
+	ctx := context.WithValue(t.Context(), struct{}{}, "lifecycle")
+	server.lifecycleContext = ctx
+	if server.agentLifecycleContext(t.Context()) != ctx {
+		t.Fatal("configured lifecycle context ignored")
+	}
+}
+
+func TestGitGrantListRouteRemainsAuthenticated(t *testing.T) {
+	server := newTestServerWithPolicyAndHandler(t, generatedPolicy(t, policy.EffectAllow), func(http.ResponseWriter, *http.Request) {})
+	for name, token := range map[string]string{"authorized": testSharedSecret, "unauthorized": "wrong"} {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/api/grants", http.NoBody)
+			request.Header.Set("Authorization", "Bearer "+token)
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+			want := http.StatusOK
+			if name == "unauthorized" {
+				want = http.StatusForbidden
+			}
+			if response.Code != want {
+				t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+			}
+		})
 	}
 }
 

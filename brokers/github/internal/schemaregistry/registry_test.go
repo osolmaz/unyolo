@@ -132,6 +132,54 @@ func TestInputSchemasSplitSealedArguments(t *testing.T) {
 	}
 }
 
+func TestSpecializedValidationBoundaries(t *testing.T) {
+	target := json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`)
+	sealedOperation := "agent_task.create_or_update_repo_secret"
+	if err := ValidatePublicSubmission(sealedOperation, target, json.RawMessage(`{"secret_name":"DEPLOY_TOKEN"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSealedArguments(sealedOperation, json.RawMessage(`{"input":{"encrypted_value":"YWJjZA==","key_id":"key-1"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateArguments("repo.metadata.read", json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateStreamPublic("repo.download_zipball_archive", target, json.RawMessage(`{"ref":"main"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateResult("repo.metadata.read", json.RawMessage(`{"id":1,"name":"brokerkit"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, call := range map[string]func() error{
+		"public unknown": func() error { return ValidatePublicSubmission("repo.metadata.read", target, json.RawMessage(`{}`)) },
+		"public target": func() error {
+			return ValidatePublicSubmission(sealedOperation, json.RawMessage(`{}`), json.RawMessage(`{"secret_name":"x"}`))
+		},
+		"public arguments":  func() error { return ValidatePublicSubmission(sealedOperation, target, json.RawMessage(`{}`)) },
+		"sealed unknown":    func() error { return ValidateSealedArguments("repo.metadata.read", json.RawMessage(`{}`)) },
+		"sealed invalid":    func() error { return ValidateSealedArguments(sealedOperation, json.RawMessage(`{"input":{}}`)) },
+		"arguments unknown": func() error { return ValidateArguments("not.real", json.RawMessage(`{}`)) },
+		"arguments invalid": func() error { return ValidateArguments("repo.metadata.read", json.RawMessage(`{"extra":true}`)) },
+		"stream unknown":    func() error { return ValidateStreamPublic("not.real", target, json.RawMessage(`{}`)) },
+		"stream target": func() error {
+			return ValidateStreamPublic("repo.download_zipball_archive", json.RawMessage(`{}`), json.RawMessage(`{"ref":"main"}`))
+		},
+		"stream arguments": func() error {
+			return ValidateStreamPublic("repo.download_zipball_archive", target, json.RawMessage(`{}`))
+		},
+		"result unknown":   func() error { return ValidateResult("not.real", json.RawMessage(`{}`)) },
+		"result invalid":   func() error { return ValidateResult("repo.metadata.read", json.RawMessage(`{"private":true}`)) },
+		"result oversized": func() error { return ValidateResult("repo.metadata.read", bytes.Repeat([]byte(" "), (1<<20)+1)) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := call(); err == nil {
+				t.Fatal("invalid boundary input accepted")
+			}
+		})
+	}
+}
+
 func TestSchemaRegistryLoadFailsClosed(t *testing.T) {
 	original := append([]byte(nil), raw...)
 	t.Cleanup(func() {

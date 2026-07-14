@@ -17,6 +17,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/sealedpayload"
 	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/streamstore"
 )
@@ -311,6 +312,83 @@ func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 	}
 	if id, err := operationRequestID(); err != nil || !strings.HasPrefix(id, "cli_") {
 		t.Fatalf("request ID=%q err=%v", id, err)
+	}
+}
+
+func TestOperationSurfaceFailureBoundaries(t *testing.T) {
+	var output bytes.Buffer
+	for _, args := range [][]string{nil, {"describe"}, {"describe", "not.real"}, {"list", "--bad"}, {"unknown"}} {
+		if err := runOperations(&output, args); err == nil {
+			t.Fatalf("operations accepted %#v", args)
+		}
+	}
+	if err := runOperations(&output, []string{"list", "--family", "repo.*", "--json"}); err != nil || !strings.Contains(output.String(), "repo.delete") {
+		t.Fatalf("JSON operation list = %s, %v", output.String(), err)
+	}
+	for _, args := range [][]string{nil, {"download"}, {"upload", "id", "--output", "file"}, {"download", "id"}} {
+		if err := runStream(t.Context(), &output, args); err == nil {
+			t.Fatalf("stream command accepted %#v", args)
+		}
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing")
+	empty := filepath.Join(t.TempDir(), "empty")
+	invalid := filepath.Join(t.TempDir(), "invalid")
+	oversized := filepath.Join(t.TempDir(), "oversized")
+	if os.WriteFile(empty, nil, 0o600) != nil || os.WriteFile(invalid, []byte(`[]`), 0o600) != nil ||
+		os.WriteFile(oversized, bytes.Repeat([]byte("x"), sealedpayload.MaxPayloadBytes+1), 0o600) != nil {
+		t.Fatal("write sealed fixtures")
+	}
+	for _, path := range []string{missing, empty, invalid, oversized} {
+		if _, err := readSealedArguments(path); err == nil {
+			t.Fatalf("sealed arguments accepted %q", path)
+		}
+	}
+
+	connection := operationConnection{baseURL: "http://127.0.0.1:1", secret: operationTestSecret}
+	if _, err := connection.uploadStream(t.Context(), "repo.metadata.read", "request", missing, "application/octet-stream"); err == nil {
+		t.Fatal("non-stream operation accepted upload")
+	}
+	descriptor, _ := opcatalog.ByName("release.repos_upload_release_asset")
+	if _, err := connection.uploadStream(t.Context(), descriptor.Name, "request", missing, "application/octet-stream"); err == nil {
+		t.Fatal("missing stream file uploaded")
+	}
+	if _, err := connection.uploadSealedPayload(t.Context(), "repo.delete", "request", []byte(`{}`)); err == nil {
+		t.Fatal("offline sealed payload upload succeeded")
+	}
+}
+
+func TestStreamAndSealedResponsesRejectInvalidBrokerData(t *testing.T) {
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/agent/v1/sealed-payloads":
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = writer.Write([]byte(`{"id":"wrong","purpose":"other"}`))
+		case "/api/agent/v1/streams":
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = writer.Write([]byte(`{"id":"wrong","purpose":"other"}`))
+		case "/api/agent/v1/streams/stream_bad":
+			writer.Header().Set("Content-Length", "4")
+			writer.Header().Set("X-Broker-Content-SHA256", strings.Repeat("0", 64))
+			_, _ = writer.Write([]byte("data"))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	connection := operationConnection{baseURL: server.URL, secret: operationTestSecret}
+	if _, err := connection.uploadSealedPayload(t.Context(), "repo.delete", "request", []byte(`{}`)); err == nil {
+		t.Fatal("invalid sealed payload reference accepted")
+	}
+	file := filepath.Join(t.TempDir(), "asset")
+	if err := os.WriteFile(file, []byte("asset"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.uploadStream(t.Context(), "release.repos_upload_release_asset", "request", file, "application/octet-stream"); err == nil {
+		t.Fatal("invalid stream reference accepted")
+	}
+	if err := connection.downloadStream(t.Context(), "stream_bad", filepath.Join(t.TempDir(), "download")); err == nil {
+		t.Fatal("invalid stream digest accepted")
 	}
 }
 

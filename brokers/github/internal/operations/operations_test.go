@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/streamstore"
@@ -99,6 +101,180 @@ func TestGraphQLAdapterExecutesPersistedDocument(t *testing.T) {
 	outcome, err := adapter.Execute(context.Background(), plan)
 	if err != nil || !outcome.Proven || !strings.Contains(string(outcome.Result), "Repository") {
 		t.Fatalf("execute = %+v err=%v", outcome, err)
+	}
+}
+
+func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
+	adapter := mustLookupGenerated(t, newOperationsManager(t, "http://127.0.0.1"), "pull_request.create")
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),
+		json.RawMessage(`{"input":{"title":"Cutover","head":"agent/work","base":"main"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization := adapter.Authorize(plan)
+	presentation := adapter.Present(plan)
+	if authorization.Operation != "pull_request.create" || authorization.TargetFields["owner"] != "osolmaz" ||
+		authorization.Attrs["head_ref"] != "agent/work" || presentation.Title == "" {
+		t.Fatalf("authorization = %+v presentation = %+v", authorization, presentation)
+	}
+	if err := adapter.(PlanCleaner).Cleanup(plan); err != nil {
+		t.Fatal(err)
+	}
+
+	plan.Authorization = Authorization{}
+	plan.Presentation.Title = ""
+	if got := adapter.Authorize(plan); got.Operation != "pull_request.create" || got.CredentialKind != string(githubauth.KindInstallation) {
+		t.Fatalf("derived authorization = %+v", got)
+	}
+	if got := adapter.Present(plan); got.Title == "" || !strings.Contains(got.Summary, "osolmaz/brokerkit") {
+		t.Fatalf("derived presentation = %+v", got)
+	}
+	metadata, err := CredentialFromPreconditions(plan.Preconditions)
+	if err != nil || metadata.Kind != githubauth.KindDevelopmentToken {
+		t.Fatalf("credential preconditions = %+v, %v", metadata, err)
+	}
+	for _, invalid := range []json.RawMessage{json.RawMessage(`{}`), json.RawMessage(`{"kind":"development-token","kind":"user"}`), json.RawMessage(`{`)} {
+		if _, err := CredentialFromPreconditions(invalid); err == nil {
+			t.Fatalf("invalid credential preconditions accepted: %s", invalid)
+		}
+	}
+}
+
+func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
+	descriptor := opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: "test.operation", Summary: "Test operation", TargetKind: "issue",
+		CredentialKind: string(githubauth.KindInstallation), AgentFacing: true, Implementation: capability.StatusImplemented, ExecutorKind: "rest-binding"}}
+	if summary := targetSummary("repo", map[string]any{"owner": "osolmaz", "name": "brokerkit"}); summary != "osolmaz/brokerkit" {
+		t.Fatalf("repo summary = %q", summary)
+	}
+	for _, test := range []struct {
+		target map[string]any
+		want   string
+	}{{map[string]any{"name": "triage"}, "issue triage"}, {map[string]any{"number": float64(7)}, "issue #7"},
+		{map[string]any{"id": json.Number("9")}, "issue 9"}, {map[string]any{}, "issue"}} {
+		if got := targetSummary("issue", test.target); got != test.want {
+			t.Fatalf("target summary = %q, want %q", got, test.want)
+		}
+	}
+	presentation := presentDescriptor(descriptor, map[string]any{"number": float64(7)})
+	authorization := authorizeDescriptor(descriptor, map[string]any{"owner": "osolmaz", "name": "brokerkit", "id": float64(3)},
+		map[string]any{"ref": "main", "input": map[string]any{"base": "main", "head": "feature"}})
+	if presentation.Title != "Test operation" || authorization.TargetFields["id"] != "3" || authorization.Attrs["base_ref"] != "main" {
+		t.Fatalf("presentation = %+v authorization = %+v", presentation, authorization)
+	}
+	if fields := authorizationTargetFields(map[string]any{}); fields != nil {
+		t.Fatalf("empty target fields = %+v", fields)
+	}
+	if attrs := authorizationAttrs(map[string]any{}); attrs != nil {
+		t.Fatalf("empty attrs = %+v", attrs)
+	}
+	if object, err := decodeObject(json.RawMessage(`null`)); err != nil || len(object) != 0 {
+		t.Fatalf("null object = %+v, %v", object, err)
+	}
+	if _, err := decodeObject(json.RawMessage(`{`)); err == nil {
+		t.Fatal("invalid object accepted")
+	}
+	if cloneRaw(nil) != nil || string(cloneRaw(json.RawMessage(`{"a":1}`))) != `{"a":1}` {
+		t.Fatal("raw clone changed")
+	}
+
+	if !shouldHaveAdapter(descriptor) {
+		t.Fatal("implemented REST adapter excluded")
+	}
+	descriptor.AgentFacing = false
+	if shouldHaveAdapter(descriptor) {
+		t.Fatal("internal adapter included")
+	}
+	descriptor.AgentFacing = true
+	descriptor.ExecutorKind = "unknown"
+	if shouldHaveAdapter(descriptor) {
+		t.Fatal("unknown executor included")
+	}
+
+	for _, err := range []error{githubauth.APIError{Code: "validation_failed", StatusCode: 422}, githubauth.APIError{Code: "unavailable"}, context.Canceled} {
+		classified := classifyExecutionError(http.MethodPost, err)
+		if classified == nil {
+			t.Fatal("execution error disappeared")
+		}
+	}
+}
+
+func TestGeneratedAdapterConstructionRequiresProtectedStores(t *testing.T) {
+	if _, err := NewGeneratedAdapters(nil, Options{}); err == nil || !strings.Contains(err.Error(), "store") {
+		t.Fatalf("missing protected stores error = %v", err)
+	}
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if coverageErr := registry.ValidateCoverage(); coverageErr == nil {
+		t.Fatal("empty registry passed coverage validation")
+	}
+}
+
+func TestGeneratedAdapterCleanupAndInvalidStoredPlans(t *testing.T) {
+	options := newAdapterOptions(t)
+	manager := newOperationsManager(t, "http://127.0.0.1")
+	adapters, err := NewGeneratedAdapters(manager, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := NewRegistry(adapters...)
+
+	sealedReference, err := options.SealedStore.(*sealedstore.Store).PutForRequest("bob", "workflow.actions_create_or_update_repo_secret", "cleanup-secret",
+		[]byte(`{"input":{"encrypted_value":"Y2FuYXJ5","key_id":"key-1"}}`), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealedAdapter, _ := registry.Lookup("workflow.actions_create_or_update_repo_secret")
+	sealedWrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"secret_name":"TOKEN"}`), "sealed_payload": sealedReference})
+	sealedInput, err := sealedAdapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), sealedWrapper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealedPlan, err := sealedAdapter.Resolve(t.Context(), sealedInput)
+	if err != nil || sealedAdapter.(PlanCleaner).Cleanup(sealedPlan) != nil {
+		t.Fatalf("sealed cleanup plan = %+v, %v", sealedPlan, err)
+	}
+	if options.SealedStore.Validate(sealedReference) == nil {
+		t.Fatal("sealed cleanup retained payload")
+	}
+
+	streamReference, err := options.StreamStore.(*streamstore.Store).Put("bob", "release.repos_upload_release_asset", "cleanup-stream",
+		"application/octet-stream", strings.NewReader("asset"), 16, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamAdapter, _ := registry.Lookup("release.repos_upload_release_asset")
+	streamWrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"asset.bin"}`), "stream_input": streamReference})
+	streamInput, err := streamAdapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","name":"brokerkit"}`), streamWrapper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamPlan, err := streamAdapter.Resolve(t.Context(), streamInput)
+	if err != nil || streamAdapter.(PlanCleaner).Cleanup(streamPlan) != nil {
+		t.Fatalf("stream cleanup plan = %+v, %v", streamPlan, err)
+	}
+	if options.StreamStore.Validate(streamReference) == nil {
+		t.Fatal("stream cleanup retained input")
+	}
+
+	restAdapter := mustLookupGenerated(t, manager, "repo.metadata.read").(generatedAdapter)
+	if _, err := restAdapter.Execute(t.Context(), Plan{Target: json.RawMessage(`{`)}); err == nil {
+		t.Fatal("invalid stored target executed")
+	}
+	if _, err := restAdapter.Execute(t.Context(), Plan{Target: json.RawMessage(`{"owner":"o","name":"r"}`), Arguments: json.RawMessage(`{`)}); err == nil {
+		t.Fatal("invalid stored arguments executed")
+	}
+	deleteAdapter := mustLookupGenerated(t, manager, "repo.delete").(generatedAdapter)
+	if _, err := deleteAdapter.Reconcile(t.Context(), Plan{Target: json.RawMessage(`{`)}); err == nil {
+		t.Fatal("invalid reconciliation target accepted")
+	}
+	if _, err := sealedAdapter.(generatedAdapter).publicArguments(json.RawMessage(`{`)); err == nil {
+		t.Fatal("invalid public arguments accepted")
 	}
 }
 

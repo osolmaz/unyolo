@@ -1,8 +1,10 @@
 package githubauth
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +14,8 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/graphqlmanifest"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/capability"
 )
 
 func TestExecuteRESTBindsPathQueryBodyAndHeaders(t *testing.T) {
@@ -171,6 +175,349 @@ func TestExecuteGraphQLUsesPersistedDocumentAndFixedEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertJSONEqual(t, result.Body, `{"repository":{"__typename":"Repository"}}`)
+}
+
+func TestCredentialMetadataSelectionFailsClosed(t *testing.T) {
+	descriptor := func(kind string) opcatalog.Descriptor {
+		return opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: "test.operation", CredentialKind: kind},
+			RequiredGitHubPermissions: map[string]string{"contents": "read"}}
+	}
+	var nilManager *Manager
+	if _, err := nilManager.SelectMetadata(t.Context(), descriptor(string(KindInstallation)), nil, 0); err == nil {
+		t.Fatal("nil manager selected metadata")
+	}
+
+	development := newDevelopmentManager(t, "http://127.0.0.1")
+	metadata, err := development.SelectMetadata(t.Context(), descriptor(string(KindUser)), nil, 0)
+	if err != nil || metadata.Kind != KindDevelopmentToken {
+		t.Fatalf("development metadata = %+v, %v", metadata, err)
+	}
+
+	apiURL, _ := url.Parse("https://api.github.test/")
+	manager := &Manager{apiURL: apiURL, app: &appProvider{}}
+	metadata, err = manager.SelectMetadata(t.Context(), descriptor(string(KindAppJWT)), nil, 0)
+	if err != nil || metadata.Kind != KindAppJWT {
+		t.Fatalf("app metadata = %+v, %v", metadata, err)
+	}
+	metadata, err = manager.SelectMetadata(t.Context(), descriptor(string(KindInstallation)), map[string]any{
+		"installation_id": float64(42), "repository_ids": []any{float64(7), json.Number("8"), float64(-1)},
+	}, 0)
+	if err != nil || metadata.InstallationID != 42 || len(metadata.RepositoryIDs) != 2 || metadata.Permissions["contents"] != "read" {
+		t.Fatalf("installation metadata = %+v, %v", metadata, err)
+	}
+	for name, operation := range map[string]func() error{
+		"missing installation": func() error {
+			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindInstallation)), map[string]any{}, 0)
+			return callErr
+		},
+		"missing user": func() error {
+			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindUser)), map[string]any{"kind": "user"}, 0)
+			return callErr
+		},
+		"unavailable user": func() error {
+			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindUser)), nil, 7)
+			return callErr
+		},
+		"unavailable development": func() error {
+			_, callErr := manager.SelectMetadata(t.Context(), descriptor(string(KindDevelopmentToken)), nil, 0)
+			return callErr
+		},
+		"unsupported": func() error {
+			_, callErr := manager.SelectMetadata(t.Context(), descriptor("unknown"), nil, 0)
+			return callErr
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := operation(); err == nil {
+				t.Fatal("credential selection succeeded")
+			}
+		})
+	}
+}
+
+func TestRawAndStreamingRESTBoundaries(t *testing.T) {
+	var uploaded []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/raw":
+			_, _ = io.WriteString(w, `{"token":"one-use","id":7}`)
+		case "/invalid":
+			_, _ = io.WriteString(w, `{`)
+		case "/upload":
+			uploaded, _ = io.ReadAll(r.Body)
+			if r.Header.Get("Content-Type") != "application/octet-stream" || r.ContentLength != 7 {
+				t.Fatalf("upload metadata = %q, %d", r.Header.Get("Content-Type"), r.ContentLength)
+			}
+			_, _ = io.WriteString(w, `{"id":9}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	manager := newDevelopmentManager(t, server.URL)
+	binding := opbinding.Binding{Method: http.MethodPost, PathTemplate: "/raw", MediaType: "application/json",
+		RequestBytesLimit: 32, ResponseBytesLimit: 64, ResponseProjection: []string{"id"}}
+	result, err := manager.ExecuteRESTRaw(t.Context(), manager.development.Metadata(), binding, nil, nil)
+	if err != nil || !bytes.Contains(result.Body, []byte("one-use")) {
+		t.Fatalf("raw result = %s, %v", result.Body, err)
+	}
+	binding.PathTemplate = "/invalid"
+	if _, err := manager.ExecuteRESTRaw(t.Context(), manager.development.Metadata(), binding, nil, nil); err == nil {
+		t.Fatal("invalid raw response accepted")
+	}
+	binding.PathTemplate = "/upload"
+	binding.StreamDirection = "upload"
+	result, err = manager.ExecuteRESTUpload(t.Context(), manager.development.Metadata(), binding, nil, nil,
+		strings.NewReader("payload"), 7, "application/octet-stream")
+	if err != nil || string(uploaded) != "payload" || result.StatusCode != http.StatusOK {
+		t.Fatalf("upload = %q, %+v, %v", uploaded, result, err)
+	}
+	for _, invalid := range []struct {
+		source io.Reader
+		size   int64
+		media  string
+	}{{nil, 7, "application/octet-stream"}, {strings.NewReader("x"), 0, "application/octet-stream"},
+		{strings.NewReader("x"), 33, "application/octet-stream"}, {strings.NewReader("x"), 1, ""}} {
+		if _, err := manager.ExecuteRESTUpload(t.Context(), manager.development.Metadata(), binding, nil, nil, invalid.source, invalid.size, invalid.media); err == nil {
+			t.Fatal("invalid upload accepted")
+		}
+	}
+	var nilManager *Manager
+	if _, err := nilManager.ExecuteRESTRaw(t.Context(), Metadata{}, binding, nil, nil); err == nil {
+		t.Fatal("nil manager executed raw REST")
+	}
+}
+
+func TestResponseAndRedirectFailureModes(t *testing.T) {
+	response := func(status int, body string) *http.Response {
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
+	}
+	for name, call := range map[string]func() error{
+		"invalid rest json": func() error {
+			_, err := decodeRESTResponse(response(http.StatusOK, `{`), opbinding.Binding{ResponseBytesLimit: 8})
+			return err
+		},
+		"invalid graphql json": func() error {
+			_, err := decodeGraphQLResponse(response(http.StatusOK, `{`), graphqlmanifest.Document{})
+			return err
+		},
+		"graphql errors": func() error {
+			_, err := decodeGraphQLResponse(response(http.StatusOK, `{"errors":[{"message":"hidden"}]}`), graphqlmanifest.Document{})
+			return err
+		},
+		"missing graphql projection": func() error {
+			_, err := decodeGraphQLResponse(response(http.StatusOK, `{"data":{"repository":null}}`), graphqlmanifest.Document{ResponseProjection: []string{"organization"}})
+			return err
+		},
+		"invalid body limit": func() error { _, err := limitedBody(strings.NewReader("x"), 0); return err },
+		"oversized body":     func() error { _, err := limitedBody(strings.NewReader("xx"), 1); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := call(); err == nil {
+				t.Fatal("failure mode succeeded")
+			}
+		})
+	}
+	if result, err := decodeRESTResponse(response(http.StatusNoContent, ""), opbinding.Binding{ResponseBytesLimit: 8}); err != nil || string(result.Body) != `{}` {
+		t.Fatalf("empty REST response = %s, %v", result.Body, err)
+	}
+
+	origin, _ := url.Parse("https://api.github.com/archive")
+	for raw, allowed := range map[string]bool{
+		"https://api.github.com/file": true, "https://objects.githubusercontent.com/file": true,
+		"https://bucket.blob.core.windows.net/file": true, "https://example.test/file": false,
+		"http://objects.githubusercontent.com/file": false,
+	} {
+		target, _ := url.Parse(raw)
+		if got := allowedDownloadURL(origin, target); got != allowed {
+			t.Fatalf("allowedDownloadURL(%q) = %t", raw, got)
+		}
+	}
+	if allowedDownloadURL(origin, nil) {
+		t.Fatal("nil redirect allowed")
+	}
+
+	for status, code := range map[int]string{http.StatusFound: "redirect_not_allowed", http.StatusForbidden: "forbidden", http.StatusTooManyRequests: "rate_limited"} {
+		value := response(status, "error")
+		if status == http.StatusTooManyRequests {
+			value.Header.Set("X-RateLimit-Reset", "invalid")
+		}
+		var apiErr APIError
+		if err := classifyHTTPError(value); !errors.As(err, &apiErr) || apiErr.Code != code {
+			t.Fatalf("status %d error = %#v", status, err)
+		}
+	}
+	secondary := response(http.StatusForbidden, "error")
+	secondary.Header.Set("Retry-After", "1")
+	if err := classifyHTTPError(secondary); err.(APIError).Code != "secondary_rate_limited" {
+		t.Fatalf("secondary rate limit = %v", err)
+	}
+}
+
+func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
+	binding := opbinding.Binding{PathTemplate: "/repos/{owner}/{repo}/issues/{issue_number}",
+		PathParameters:       []string{"owner", "repo", "issue_number"},
+		TargetPathParameters: []opbinding.TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "name"}},
+		ArgumentParameters:   []opbinding.Parameter{{Name: "labels", In: "query"}, {Name: "page", In: "query"}, {Name: "active", In: "query"}, {Name: "body", In: "body"}}}
+	path, err := restPath(binding, map[string]any{"owner": "acme", "name": "demo"}, map[string]any{"issue_number": json.Number("12")})
+	if err != nil || path != "/repos/acme/demo/issues/12" {
+		t.Fatalf("path = %q, %v", path, err)
+	}
+	query, err := restQuery(binding, map[string]any{"labels": []any{"bug", "urgent"}, "page": float64(2), "active": true, "body": "ignored"})
+	if err != nil || query.Encode() != "active=true&labels=bug&labels=urgent&page=2" {
+		t.Fatalf("query = %q, %v", query.Encode(), err)
+	}
+	if _, err := restQuery(binding, map[string]any{"labels": map[string]any{"bad": true}}); err == nil {
+		t.Fatal("invalid query value accepted")
+	}
+	if _, err := restPath(binding, map[string]any{"owner": "acme", "name": "demo"}, map[string]any{"issue_number": 1.5}); err == nil {
+		t.Fatal("fractional path value accepted")
+	}
+
+	value := map[string]any{"repository": map[string]any{"id": 7, "owner": map[string]any{"login": "acme"}}, "secret": "hidden"}
+	projected, ok := projectJSON(value, []string{"repository.id", "repository.owner.login"})
+	encoded, _ := json.Marshal(projected)
+	if !ok || string(encoded) != `{"repository":{"id":7,"owner":{"login":"acme"}}}` {
+		t.Fatalf("path projection = %s, %t", encoded, ok)
+	}
+	projected, ok = projectJSON([]any{value}, []string{"id"})
+	if !ok {
+		t.Fatalf("name projection = %#v, %t", projected, ok)
+	}
+	if _, ok := projectJSON(value, []string{"missing.path"}); ok {
+		t.Fatal("missing projection was retained")
+	}
+	if projected, ok := projectJSON(value, nil); !ok || projected == nil {
+		t.Fatal("empty projection did not preserve value")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func TestCredentialClientsAndTransportFailures(t *testing.T) {
+	apiURL, _ := url.Parse("https://api.github.test/")
+	baseClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("offline")
+	})}
+	manager := &Manager{apiURL: apiURL, client: baseClient, app: &appProvider{round: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return responseForTest(http.StatusOK, `{}`), nil
+	})}}
+	if client, credential, err := manager.clientForMetadata(t.Context(), Metadata{Kind: KindAppJWT}); err != nil || client == nil || credential != nil {
+		t.Fatalf("app client = %v, %v, %v", client, credential, err)
+	}
+	for kind, selector := range map[Kind]Metadata{
+		KindInstallation:     {Kind: KindInstallation, InstallationID: 1},
+		KindUser:             {Kind: KindUser, UserID: 1},
+		KindDevelopmentToken: {Kind: KindDevelopmentToken},
+		Kind("unknown"):      {Kind: Kind("unknown")},
+	} {
+		if _, _, err := manager.clientForMetadata(t.Context(), selector); err == nil {
+			t.Fatalf("unavailable %s credential client succeeded", kind)
+		}
+	}
+	development := newDevelopmentManager(t, "http://127.0.0.1")
+	if client, credential, err := development.clientForMetadata(t.Context(), development.development.Metadata()); err != nil || client == nil || credential == nil {
+		t.Fatalf("development client = %v, %v, %v", client, credential, err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "https://api.github.test/repos", http.NoBody)
+	if _, err := manager.doAPIRequest(t.Context(), Metadata{Kind: KindAppJWT}, request); err == nil {
+		t.Fatal("transport failure was accepted")
+	}
+	if _, err := manager.doAPI(t.Context(), Metadata{Kind: KindAppJWT}, request.Clone(t.Context())); err == nil {
+		t.Fatal("API transport failure was accepted")
+	}
+}
+
+func TestRedirectAndHelperEdgeCases(t *testing.T) {
+	origin, _ := url.Parse("https://api.github.test/archive")
+	redirectClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		response := responseForTest(http.StatusFound, "")
+		response.Header.Set("Location", "https://api.github.test/archive")
+		return response, nil
+	})}
+	manager := &Manager{client: redirectClient}
+	initial := responseForTest(http.StatusFound, "")
+	initial.Header.Set("Location", "https://api.github.test/archive")
+	if _, err := manager.followDownloadRedirects(t.Context(), origin, initial); err == nil {
+		t.Fatal("redirect loop accepted")
+	}
+	missing := responseForTest(http.StatusFound, "")
+	if _, err := manager.followDownloadRedirects(t.Context(), origin, missing); err == nil {
+		t.Fatal("redirect without location accepted")
+	}
+	failure := &Manager{client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("offline")
+	})}}
+	initial = responseForTest(http.StatusFound, "")
+	initial.Header.Set("Location", "https://api.github.test/archive")
+	if _, err := failure.followDownloadRedirects(t.Context(), origin, initial); err == nil {
+		t.Fatal("redirect transport failure accepted")
+	}
+	if _, err := manager.followDownloadRedirects(t.Context(), origin, responseForTest(http.StatusForbidden, "")); err == nil {
+		t.Fatal("download error status accepted")
+	}
+
+	if value, err := targetPathValue("issue_number", "number", map[string]any{"number": float64(7)}); err != nil || value != "7" {
+		t.Fatalf("numeric target path = %q, %v", value, err)
+	}
+	if _, err := targetPathValue("owner", "owner", map[string]any{}); err == nil {
+		t.Fatal("missing target path accepted")
+	}
+	if value, ok := integerValue(int64(9)); !ok || value != 9 {
+		t.Fatalf("int64 value = %d, %t", value, ok)
+	}
+	if _, ok := integerValue(json.Number("bad")); ok {
+		t.Fatal("invalid JSON number accepted")
+	}
+	if ids := repositoryIDs(map[string]any{"repository_ids": "bad"}); ids != nil {
+		t.Fatalf("invalid repository ids = %v", ids)
+	}
+	if projected, ok := projectByPath([]any{map[string]any{"id": 1}, map[string]any{"hidden": true}}, map[string]bool{"id": true}, ""); !ok || len(projected.([]any)) != 1 {
+		t.Fatalf("array projection = %#v, %t", projected, ok)
+	}
+	if _, ok := projectByPath("value", map[string]bool{"other": true}, "id"); ok {
+		t.Fatal("unlisted scalar projected")
+	}
+}
+
+func TestGenericExecutionRejectsMalformedRequestsBeforeUpstream(t *testing.T) {
+	manager := newDevelopmentManager(t, "http://127.0.0.1")
+	binding := opbinding.Binding{Method: http.MethodPost, PathTemplate: "/repos/{owner}/{repo}", MediaType: "application/json",
+		PathParameters: []string{"owner", "repo"}, TargetPathParameters: []opbinding.TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "name"}},
+		RequestBytesLimit: 2, ResponseBytesLimit: 16, ResponseProjection: []string{"id"}}
+	if _, err := manager.ExecuteREST(t.Context(), manager.development.Metadata(), binding,
+		map[string]any{"owner": "acme", "name": "demo"}, map[string]any{"input": map[string]any{"value": "too large"}}); err == nil {
+		t.Fatal("oversized REST request accepted")
+	}
+	if _, err := manager.ExecuteREST(t.Context(), manager.development.Metadata(), binding,
+		map[string]any{"owner": "acme"}, map[string]any{}); err == nil {
+		t.Fatal("incomplete REST target accepted")
+	}
+	if _, err := manager.ExecuteRESTDownload(t.Context(), manager.development.Metadata(), binding, nil, nil); err == nil {
+		t.Fatal("non-download binding accepted")
+	}
+	var nilManager *Manager
+	if _, err := nilManager.ExecuteGraphQL(t.Context(), Metadata{}, graphqlmanifest.Document{}, nil); err == nil {
+		t.Fatal("nil manager executed GraphQL")
+	}
+	if _, err := nilManager.ExecuteRESTUpload(t.Context(), Metadata{}, binding, nil, nil, strings.NewReader("x"), 1, "application/octet-stream"); err == nil {
+		t.Fatal("nil manager uploaded a stream")
+	}
+	if _, err := manager.restURL("/%zz", nil); err == nil {
+		t.Fatal("invalid escaped path accepted")
+	}
+	if _, err := argumentPathValue("id", map[string]any{"id": json.Number("17")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := addQueryValue(url.Values{}, "empty", nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func responseForTest(status int, body string) *http.Response {
+	return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
 }
 
 func newDevelopmentManager(t *testing.T, base string) *Manager {
