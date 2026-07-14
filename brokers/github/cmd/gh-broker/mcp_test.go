@@ -177,6 +177,8 @@ func TestMCPRequestConflictAndRecoveryTools(t *testing.T) {
 				t.Errorf("recovery query = %q", request.URL.RawQuery)
 			}
 			_ = json.NewEncoder(writer).Encode(githubOperationSummaryPage(operation))
+		case request.Method == http.MethodGet && request.URL.Path == "/api/agent/v1/operations/"+operation.ID:
+			_ = json.NewEncoder(writer).Encode(operation)
 		default:
 			http.NotFound(writer, request)
 		}
@@ -201,6 +203,16 @@ func TestMCPRequestConflictAndRecoveryTools(t *testing.T) {
 	page, ok := value.(mcpoperation.Page)
 	if err != nil || !ok || len(page.Operations) != 1 || page.Operations[0].ID != operation.ID {
 		t.Fatalf("recovery = %#v, %v", value, err)
+	}
+	for _, call := range []mcpToolCall{
+		{Name: "gh_operation_get", Arguments: json.RawMessage(`{"operation_id":"op_test"}`)},
+		{Name: "gh_operation_wait", Arguments: json.RawMessage(`{"operation_id":"op_test","timeout_seconds":0}`)},
+	} {
+		value, err = callMCP(t.Context(), mcpTestEnv(env), call)
+		projected, projectedOK := value.(mcpoperation.Operation)
+		if err != nil || !projectedOK || projected.ID != operation.ID {
+			t.Fatalf("%s = %#v, %v", call.Name, value, err)
+		}
 	}
 }
 

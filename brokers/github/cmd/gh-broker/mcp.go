@@ -261,26 +261,38 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 func callMCPUtility(ctx context.Context, client *agentclient.Client, call mcpToolCall) (any, error) {
 	switch call.Name {
 	case "gh_operation_get":
-		var input mcpoperation.GetInput
-		if strictjson.Decode(call.Arguments, &input, true) != nil {
-			return nil, errors.New("invalid tool arguments")
-		}
-		return mcpoperation.Get(ctx, client, input, mcpprojection.ResultToMCP)
+		return callMCPGet(ctx, client, call.Arguments)
 	case "gh_operation_wait":
-		var input mcpoperation.WaitInput
-		if strictjson.Decode(call.Arguments, &input, true) != nil {
-			return nil, errors.New("invalid tool arguments")
-		}
-		return mcpoperation.Wait(ctx, client, input, mcpprojection.ResultToMCP)
+		return callMCPWait(ctx, client, call.Arguments)
 	case "gh_operation_list":
-		var input mcpoperation.ListInput
-		if strictjson.Decode(call.Arguments, &input, true) != nil {
-			return nil, errors.New("invalid tool arguments")
-		}
-		return mcpoperation.List(ctx, client, input)
+		return callMCPList(ctx, client, call.Arguments)
 	default:
 		return nil, errors.New("unknown operation utility")
 	}
+}
+
+func callMCPGet(ctx context.Context, client *agentclient.Client, raw json.RawMessage) (any, error) {
+	var input mcpoperation.GetInput
+	if strictjson.Decode(raw, &input, true) != nil {
+		return nil, errors.New("invalid tool arguments")
+	}
+	return mcpoperation.Get(ctx, client, input, mcpprojection.ResultToMCP)
+}
+
+func callMCPWait(ctx context.Context, client *agentclient.Client, raw json.RawMessage) (any, error) {
+	var input mcpoperation.WaitInput
+	if strictjson.Decode(raw, &input, true) != nil {
+		return nil, errors.New("invalid tool arguments")
+	}
+	return mcpoperation.Wait(ctx, client, input, mcpprojection.ResultToMCP)
+}
+
+func callMCPList(ctx context.Context, client *agentclient.Client, raw json.RawMessage) (any, error) {
+	var input mcpoperation.ListInput
+	if strictjson.Decode(raw, &input, true) != nil {
+		return nil, errors.New("invalid tool arguments")
+	}
+	return mcpoperation.List(ctx, client, input)
 }
 
 func prepareMCPArguments(ctx context.Context, descriptor opcatalog.Descriptor, input *mcpOperationInput, connection operationConnection) error {

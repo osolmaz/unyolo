@@ -99,29 +99,52 @@ func MCPToolSchema(descriptor Descriptor, options SurfaceOptions) map[string]any
 	}
 	required := []string{"target", "reason"}
 	if descriptor.AuthorizationMode == ModeExecution || options.WindowSubmitsOperation {
-		properties["arguments"] = argumentsSchema
-		required = append(required, "arguments")
-		if descriptor.Sealed {
-			if descriptor.CredentialOutputKind != nil {
-				pattern := options.CredentialSlotPattern
-				if pattern == "" {
-					pattern = "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
-				}
-				properties["credential_slot"] = map[string]any{"type": "string", "pattern": pattern}
-				required = append(required, "credential_slot")
-			} else if sealedSchema != nil {
-				properties["sealed_arguments"] = sealedSchema
-				if len(RequiredPropertyNames(sealedSchema)) > 0 {
-					required = append(required, "sealed_arguments")
-				}
-			}
-		}
+		required = addExecutionToolProperties(properties, required, descriptor, options, argumentsSchema, sealedSchema)
 	} else {
-		properties["attrs"] = projectedMCPSchema(attributeSchema(options.AttributeNames), projection.Attrs)
-		properties["minutes"] = map[string]any{"type": "integer", "minimum": 0}
-		properties["max_uses"] = map[string]any{"type": []string{"integer", "null"}, "minimum": 1}
+		addWindowToolProperties(properties, options.AttributeNames, projection.Attrs)
 	}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
+}
+
+func addExecutionToolProperties(
+	properties map[string]any,
+	required []string,
+	descriptor Descriptor,
+	options SurfaceOptions,
+	argumentsSchema map[string]any,
+	sealedSchema map[string]any,
+) []string {
+	properties["arguments"] = argumentsSchema
+	required = append(required, "arguments")
+	if !descriptor.Sealed {
+		return required
+	}
+	return addProtectedToolProperties(properties, required, descriptor, options, sealedSchema)
+}
+
+func addProtectedToolProperties(properties map[string]any, required []string, descriptor Descriptor, options SurfaceOptions, sealedSchema map[string]any) []string {
+	if descriptor.CredentialOutputKind != nil {
+		pattern := options.CredentialSlotPattern
+		if pattern == "" {
+			pattern = "^[A-Za-z][A-Za-z0-9._-]{0,127}$"
+		}
+		properties["credential_slot"] = map[string]any{"type": "string", "pattern": pattern}
+		return append(required, "credential_slot")
+	}
+	if sealedSchema == nil {
+		return required
+	}
+	properties["sealed_arguments"] = sealedSchema
+	if len(RequiredPropertyNames(sealedSchema)) > 0 {
+		return append(required, "sealed_arguments")
+	}
+	return required
+}
+
+func addWindowToolProperties(properties map[string]any, attributeNames []string, projection Projection) {
+	properties["attrs"] = projectedMCPSchema(attributeSchema(attributeNames), projection)
+	properties["minutes"] = map[string]any{"type": "integer", "minimum": 0}
+	properties["max_uses"] = map[string]any{"type": []string{"integer", "null"}, "minimum": 1}
 }
 
 func projectedMCPSchema(schema map[string]any, projection Projection) map[string]any {

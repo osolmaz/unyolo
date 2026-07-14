@@ -101,6 +101,12 @@ func AuditMCPToolSchema(schema map[string]any) []MCPCompatibilityIssue {
 }
 
 func auditSchemaProperties(schema map[string]any, path string, issues *[]MCPCompatibilityIssue) {
+	auditObjectProperties(schema, path, issues)
+	auditArraySchemas(schema, path, issues)
+	auditCompositionSchemas(schema, path, issues)
+}
+
+func auditObjectProperties(schema map[string]any, path string, issues *[]MCPCompatibilityIssue) {
 	properties, _ := schema["properties"].(map[string]any)
 	for name, raw := range properties {
 		childPath := path + "/" + escapeJSONPointerToken(name)
@@ -111,6 +117,9 @@ func auditSchemaProperties(schema map[string]any, path string, issues *[]MCPComp
 			auditSchemaProperties(child, childPath, issues)
 		}
 	}
+}
+
+func auditArraySchemas(schema map[string]any, path string, issues *[]MCPCompatibilityIssue) {
 	if items, ok := schema["items"].(map[string]any); ok {
 		auditSchemaProperties(items, path+"/*", issues)
 	}
@@ -120,6 +129,9 @@ func auditSchemaProperties(schema map[string]any, path string, issues *[]MCPComp
 	if additional, ok := schema["additionalProperties"].(map[string]any); ok {
 		auditSchemaProperties(additional, path+"/*", issues)
 	}
+}
+
+func auditCompositionSchemas(schema map[string]any, path string, issues *[]MCPCompatibilityIssue) {
 	for _, keyword := range []string{"allOf", "anyOf", "oneOf"} {
 		for _, branch := range schemaBranches(schema[keyword]) {
 			auditSchemaProperties(branch, path, issues)

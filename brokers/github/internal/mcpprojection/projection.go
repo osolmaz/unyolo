@@ -29,24 +29,23 @@ var streamResults = map[string]bool{
 	"repo.download_zipball_archive":                           true,
 }
 
+var argumentProjections = map[string]capability.Projection{
+	"cache.actions_delete_actions_cache_by_key":                  cacheIdentifier,
+	"cache.actions_get_actions_cache_list":                       cacheIdentifier,
+	"repo.read_code_of_conduct":                                  documentName,
+	"repo.read_license":                                          documentName,
+	"member.users_create_public_ssh_key_for_authenticated_user":  publicMaterial,
+	"member.users_create_ssh_signing_key_for_authenticated_user": publicMaterial,
+	"repo.create_deploy_key":                                     publicMaterial,
+	"member.users_create_gpg_key_for_authenticated_user":         armoredMaterial,
+	"commit.git_create_commit":                                   commitSignature,
+	"secret_scanning.secret_scanning_get_alert":                  hideSensitive,
+	"secret_scanning.secret_scanning_list_alerts_for_org":        hideSensitive,
+	"secret_scanning.secret_scanning_list_alerts_for_repo":       hideSensitive,
+}
+
 func ForOperation(descriptor capability.Descriptor) capability.SurfaceProjection {
-	projection := capability.SurfaceProjection{}
-	switch descriptor.Name {
-	case "cache.actions_delete_actions_cache_by_key", "cache.actions_get_actions_cache_list":
-		projection.Arguments = cacheIdentifier
-	case "repo.read_code_of_conduct", "repo.read_license":
-		projection.Arguments = documentName
-	case "member.users_create_public_ssh_key_for_authenticated_user", "member.users_create_ssh_signing_key_for_authenticated_user":
-		projection.Arguments = publicMaterial
-	case "repo.create_deploy_key":
-		projection.Arguments = publicMaterial
-	case "member.users_create_gpg_key_for_authenticated_user":
-		projection.Arguments = armoredMaterial
-	case "commit.git_create_commit":
-		projection.Arguments = commitSignature
-	case "secret_scanning.secret_scanning_get_alert", "secret_scanning.secret_scanning_list_alerts_for_org", "secret_scanning.secret_scanning_list_alerts_for_repo":
-		projection.Arguments = hideSensitive
-	}
+	projection := capability.SurfaceProjection{Arguments: argumentProjections[descriptor.Name]}
 	if streamResults[descriptor.Name] {
 		projection.Result = transferID
 	}

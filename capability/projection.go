@@ -151,21 +151,9 @@ func schemaParent(root map[string]any, tokens []string) (map[string]any, string,
 	}
 	current := root
 	for _, token := range tokens[:len(tokens)-1] {
-		if token == "*" {
-			next, ok := current["items"].(map[string]any)
-			if !ok {
-				return nil, "", errors.New("projection wildcard crosses a non-array schema")
-			}
-			current = next
-			continue
-		}
-		properties, ok := current["properties"].(map[string]any)
-		if !ok {
-			return nil, "", errors.New("projection path crosses a non-object schema")
-		}
-		next, ok := properties[token].(map[string]any)
-		if !ok {
-			return nil, "", errors.New("projection parent is absent from schema")
+		next, err := schemaChild(current, token)
+		if err != nil {
+			return nil, "", err
 		}
 		current = next
 	}
@@ -173,6 +161,25 @@ func schemaParent(root map[string]any, tokens []string) (map[string]any, string,
 		return nil, "", errors.New("projection parent is not an object schema")
 	}
 	return current, tokens[len(tokens)-1], nil
+}
+
+func schemaChild(current map[string]any, token string) (map[string]any, error) {
+	if token == "*" {
+		next, ok := current["items"].(map[string]any)
+		if !ok {
+			return nil, errors.New("projection wildcard crosses a non-array schema")
+		}
+		return next, nil
+	}
+	properties, ok := current["properties"].(map[string]any)
+	if !ok {
+		return nil, errors.New("projection path crosses a non-object schema")
+	}
+	next, ok := properties[token].(map[string]any)
+	if !ok {
+		return nil, errors.New("projection parent is absent from schema")
+	}
+	return next, nil
 }
 
 func moveJSONValue(root map[string]any, source, destination string) error {
@@ -277,16 +284,26 @@ func pointerTokens(pointer string) ([]string, error) {
 	}
 	parts := strings.Split(pointer[1:], "/")
 	for index, part := range parts {
-		if strings.Contains(part, "~") {
-			for offset := 0; offset < len(part); offset++ {
-				if part[offset] == '~' && (offset+1 >= len(part) || (part[offset+1] != '0' && part[offset+1] != '1')) {
-					return nil, errors.New("projection path contains invalid JSON Pointer escaping")
-				}
-			}
+		decoded, err := decodePointerToken(part)
+		if err != nil {
+			return nil, err
 		}
-		parts[index] = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
+		parts[index] = decoded
 	}
 	return parts, nil
+}
+
+func decodePointerToken(value string) (string, error) {
+	for offset := 0; offset < len(value); offset++ {
+		if invalidPointerEscape(value, offset) {
+			return "", errors.New("projection path contains invalid JSON Pointer escaping")
+		}
+	}
+	return strings.ReplaceAll(strings.ReplaceAll(value, "~1", "/"), "~0", "~"), nil
+}
+
+func invalidPointerEscape(value string, offset int) bool {
+	return value[offset] == '~' && (offset+1 >= len(value) || (value[offset+1] != '0' && value[offset+1] != '1'))
 }
 
 func removeRequiredProperty(schema map[string]any, name string) {
