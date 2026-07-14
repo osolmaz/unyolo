@@ -47,6 +47,7 @@ type Config struct {
 	TelegramBotTokenFile      string
 	TelegramChatID            int64
 	GitHubHTTPTimeout         time.Duration
+	GitHubStreamTimeout       time.Duration
 	MaxReceivePackBytes       int64
 	ReadHeaderTimeout         time.Duration
 	ReadTimeout               time.Duration
@@ -91,6 +92,7 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 		TelegramBotTokenFile:      getEnvFrom(getenv, "", "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"),
 		TelegramChatID:            telegramChatIDEnvFrom(getenv, "GH_BROKER_TELEGRAM_CHAT_ID"),
 		GitHubHTTPTimeout:         durationEnvFrom(getenv, 30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT"),
+		GitHubStreamTimeout:       durationEnvFrom(getenv, 10*time.Minute, "GH_BROKER_GITHUB_STREAM_TIMEOUT"),
 		MaxReceivePackBytes:       int64EnvFrom(getenv, 25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES"),
 		ReadHeaderTimeout:         durationEnvFrom(getenv, 5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT"),
 		ReadTimeout:               durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_READ_TIMEOUT"),
@@ -208,6 +210,7 @@ func (c Config) Validate() error {
 		required(c.StateDir, "GH_BROKER_STATE_DIR is required"),
 		telegramPair(c.TelegramBotToken, c.TelegramChatID),
 		positiveDuration(c.GitHubHTTPTimeout, "GH_BROKER_GITHUB_HTTP_TIMEOUT must be positive"),
+		optionalPositiveDuration(c.GitHubStreamTimeout, "GH_BROKER_GITHUB_STREAM_TIMEOUT must be positive"),
 		positiveInt64(c.MaxReceivePackBytes, "GH_BROKER_MAX_RECEIVE_PACK_BYTES must be positive"),
 	)
 }
@@ -291,6 +294,13 @@ func minimumBytes(value string, minimum int, name string) error {
 
 func positiveDuration(value time.Duration, message string) error {
 	if value <= 0 {
+		return errors.New(message)
+	}
+	return nil
+}
+
+func optionalPositiveDuration(value time.Duration, message string) error {
+	if value < 0 {
 		return errors.New(message)
 	}
 	return nil

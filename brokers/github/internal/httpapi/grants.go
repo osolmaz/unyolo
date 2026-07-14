@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	ghapproval "github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
@@ -402,7 +403,7 @@ func grantApprovalMessage(grant grants.Grant, decisionToken string) notify.Appro
 		Text:             grantApprovalText(grant),
 		Client:           grant.Client,
 		Operation:        grant.Operation,
-		Target:           targetSummary(grant.Target),
+		Target:           ghapproval.TargetSummary(grant.Target),
 		Reason:           grant.Reason,
 		RequestedMinutes: int(grant.Duration / time.Minute),
 		MaxUses:          grant.MaxUses,
@@ -415,28 +416,17 @@ func grantApprovalText(grant grants.Grant) string {
 		"Approval needed for gh-broker\n\n%s is asking to run %s on %s.\n\nReason: %s\nRequest expires: %s\n\nApprove only if this looks right.",
 		grant.Client,
 		grant.Operation,
-		targetSummary(grant.Target),
+		ghapproval.TargetSummary(grant.Target),
 		grant.Reason,
 		grant.PendingExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
 	)
 }
 
-func targetSummary(target corepolicy.Target) string {
-	if target.Kind == "repo" {
-		return corepolicy.FirstValue(target.Fields["owner"]) + "/" + corepolicy.FirstValue(target.Fields["name"])
-	}
-	return target.Kind
-}
-
 func approvalFields(grant grants.Grant) []notify.Field {
-	fields := []notify.Field{
-		{Name: "operation", Value: grant.Operation},
-		{Name: "target", Value: targetSummary(grant.Target)},
-	}
-	for _, key := range []string{"ref", "base_ref", "head_ref", "path"} {
-		if values := grant.Attrs[key]; len(values) > 0 {
-			fields = append(fields, notify.Field{Name: key, Value: strings.Join(values, ", ")})
-		}
+	presentationFields := ghapproval.DisplayFields(grant)
+	fields := make([]notify.Field, 0, len(presentationFields)+1)
+	for _, field := range presentationFields {
+		fields = append(fields, notify.Field{Name: field.Label, Value: field.Value})
 	}
 	if grant.MaxUses > 0 {
 		fields = append(fields, notify.Field{Name: "max_uses", Value: fmt.Sprintf("%d", grant.MaxUses)})

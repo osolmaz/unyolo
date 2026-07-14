@@ -36,6 +36,34 @@ func TestBindingNeverAcceptsRawTransportSelectors(t *testing.T) {
 	}
 }
 
+func TestBindingsSeparateSelfUsersFromExplicitUsersAndNumbersFromIDs(t *testing.T) {
+	t.Parallel()
+	for operation, want := range map[string]bool{
+		"member.users_get_authenticated":    true,
+		"member.users_update_authenticated": true,
+		"member.users_block":                false,
+		"member.users_get_by_username":      false,
+	} {
+		bindings := ByOperation(operation)
+		if len(bindings) != 1 || bindings[0].AuthenticatedUserTarget != want {
+			t.Fatalf("%s authenticated-user binding = %+v, want %t", operation, bindings, want)
+		}
+	}
+	for _, operation := range []string{"issue.issues_update", "code_scanning.code_scanning_get_alert"} {
+		bindings := ByOperation(operation)
+		if len(bindings) != 1 || !slices.Contains(bindings[0].TargetPathParameters, TargetParameter{Name: pathNumberParameter(operation), Field: "number"}) {
+			t.Fatalf("%s number binding = %+v", operation, bindings)
+		}
+	}
+}
+
+func pathNumberParameter(operation string) string {
+	if operation == "issue.issues_update" {
+		return "issue_number"
+	}
+	return "alert_number"
+}
+
 func TestBindingValidationFailsClosed(t *testing.T) {
 	valid, err := All()
 	if err != nil {
@@ -60,6 +88,7 @@ func TestBindingValidationFailsClosed(t *testing.T) {
 		{"unexpected proof", func(value *Binding) { value.Reconciliation = "none"; value.ReconciliationBindingID = valid[0].ID }},
 		{"parameter location", func(value *Binding) { value.ArgumentParameters = []Parameter{{Name: "page", In: "header"}} }},
 		{"raw parameter", func(value *Binding) { value.ArgumentParameters = []Parameter{{Name: "method", In: "query"}} }},
+		{"authenticated user ownership", func(value *Binding) { value.AuthenticatedUserTarget = true }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -338,7 +338,7 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 
 func (a generatedAdapter) resolveCredential(ctx context.Context, target map[string]any) (githubauth.Metadata, error) {
 	credential, err := a.manager.SelectMetadata(ctx, a.descriptor, target, a.options.RequestingUserID)
-	if err != nil || a.descriptor.TargetKind != "user" {
+	if err != nil || a.binding == nil || !a.binding.AuthenticatedUserTarget {
 		return credential, err
 	}
 	return credential, a.manager.ValidateAuthenticatedUserTarget(ctx, credential, target)

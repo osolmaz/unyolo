@@ -7419,6 +7419,7 @@
       "owner",
       "repo"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.notification.activity_check_repo_is_starred_by_authenticated_user.v1",
     "response_schema": "result.notification.activity_check_repo_is_starred_by_authenticated_user.v1",
     "response_projection": [
@@ -8065,6 +8066,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "sort",
@@ -8255,6 +8257,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -8348,6 +8351,7 @@
       "owner",
       "repo"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.notification.activity_star_repo_for_authenticated_user.v1",
     "response_schema": "result.notification.activity_star_repo_for_authenticated_user.v1",
     "response_projection": [
@@ -8375,6 +8379,7 @@
       "owner",
       "repo"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.notification.activity_unstar_repo_for_authenticated_user.v1",
     "response_schema": "result.notification.activity_unstar_repo_for_authenticated_user.v1",
     "response_projection": [
@@ -10930,6 +10935,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -11120,6 +11126,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -11153,6 +11160,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -13133,7 +13141,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.code_scanning.code_scanning_commit_autofix.v1",
@@ -13175,7 +13183,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.code_scanning.code_scanning_create_autofix.v1",
@@ -13341,7 +13349,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.code_scanning.code_scanning_get_alert.v1",
@@ -13427,7 +13435,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.code_scanning.code_scanning_get_autofix.v1",
@@ -13671,7 +13679,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -14026,7 +14034,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.code_scanning.code_scanning_update_alert.v1",
@@ -14803,6 +14811,7 @@
       "secret_name",
       "repository_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_add_repository_for_secret_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_add_repository_for_secret_for_authenticated_user.v1",
     "response_projection": [
@@ -14939,6 +14948,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_create_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_create_for_authenticated_user.v1",
     "response_projection": [
@@ -15041,6 +15051,7 @@
     "path_parameters": [
       "secret_name"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_create_or_update_secret_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_create_or_update_secret_for_authenticated_user.v1",
     "response_projection": [
@@ -15080,7 +15091,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.codespaces_create_with_pr_for_authenticated_user.v1",
@@ -15328,6 +15339,7 @@
     "path_parameters": [
       "secret_name"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_delete_secret_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_delete_secret_for_authenticated_user.v1",
     "response_projection": [
@@ -15575,6 +15587,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_get_public_key_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_get_public_key_for_authenticated_user.v1",
     "response_projection": [
@@ -15680,6 +15693,7 @@
     "path_parameters": [
       "secret_name"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_get_secret_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_get_secret_for_authenticated_user.v1",
     "response_projection": [
@@ -15752,6 +15766,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -15989,6 +16004,7 @@
     "path_parameters": [
       "secret_name"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_list_repositories_for_secret_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_list_repositories_for_secret_for_authenticated_user.v1",
     "response_projection": [
@@ -16017,6 +16033,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -16192,6 +16209,7 @@
       "secret_name",
       "repository_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_remove_repository_for_secret_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_remove_repository_for_secret_for_authenticated_user.v1",
     "response_projection": [
@@ -16367,6 +16385,7 @@
     "path_parameters": [
       "secret_name"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.codespace.codespaces_set_repositories_for_secret_for_authenticated_user.v1",
     "response_schema": "result.codespace.codespaces_set_repositories_for_secret_for_authenticated_user.v1",
     "response_projection": [
@@ -18444,7 +18463,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.dependabot.get_alert.v1",
@@ -19267,7 +19286,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.dependabot.update_alert.v1",
@@ -21720,6 +21739,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.organization.interactions_get_restrictions_for_authenticated_user.v1",
     "response_schema": "result.organization.interactions_get_restrictions_for_authenticated_user.v1",
     "response_projection": [
@@ -21850,6 +21870,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.organization.interactions_remove_restrictions_for_authenticated_user.v1",
     "response_schema": "result.organization.interactions_remove_restrictions_for_authenticated_user.v1",
     "response_projection": [
@@ -21982,6 +22003,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.organization.interactions_set_restrictions_for_authenticated_user.v1",
     "response_schema": "result.organization.interactions_set_restrictions_for_authenticated_user.v1",
     "response_projection": [
@@ -22127,7 +22149,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_add_assignees.v1",
@@ -22176,7 +22198,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_add_blocked_by_dependency.v1",
@@ -22225,7 +22247,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_add_issue_field_values.v1",
@@ -22267,7 +22289,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.label.issues_add_labels.v1",
@@ -22312,7 +22334,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_add_sub_issue.v1",
@@ -22362,7 +22384,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_check_user_can_be_assigned_to_issue.v1",
@@ -22442,7 +22464,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.comment.issues_create_comment.v1",
@@ -22659,7 +22681,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_delete_issue_field_value.v1",
@@ -22951,7 +22973,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_get_parent.v1",
@@ -23000,7 +23022,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_get.v1",
@@ -23163,7 +23185,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -23223,7 +23245,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -23282,7 +23304,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -23391,7 +23413,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -23449,7 +23471,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -23488,6 +23510,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "filter",
@@ -23743,7 +23766,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -23896,7 +23919,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -24016,7 +24039,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -24155,7 +24178,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_lock.v1",
@@ -24243,7 +24266,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.label.issues_remove_all_labels.v1",
@@ -24286,7 +24309,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_remove_assignees.v1",
@@ -24336,7 +24359,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       },
       {
         "name": "issue_id",
@@ -24390,7 +24413,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.label.issues_remove_label.v1",
@@ -24435,7 +24458,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_remove_sub_issue.v1",
@@ -24484,7 +24507,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_reprioritize_sub_issue.v1",
@@ -24533,7 +24556,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_set_issue_field_values.v1",
@@ -24575,7 +24598,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.label.issues_set_labels.v1",
@@ -24620,7 +24643,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_unlock.v1",
@@ -24835,7 +24858,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.issue.issues_update.v1",
@@ -25176,6 +25199,7 @@
     "path_parameters": [
       "migration_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.migration.migrations_get_archive_for_authenticated_user.v1",
     "response_schema": "result.migration.migrations_get_archive_for_authenticated_user.v1",
     "response_projection": [
@@ -25322,6 +25346,7 @@
     "path_parameters": [
       "migration_id"
     ],
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "exclude",
@@ -25400,6 +25425,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -25492,6 +25518,7 @@
     "path_parameters": [
       "migration_id"
     ],
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -27824,6 +27851,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -28076,6 +28104,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "state",
@@ -30081,6 +30110,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.package.packages_list_docker_migration_conflicting_packages_for_authenticated_user.v1",
     "response_schema": "result.package.packages_list_docker_migration_conflicting_packages_for_authenticated_user.v1",
     "response_projection": [
@@ -30180,6 +30210,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "package_type",
@@ -31640,7 +31671,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.check_if_merged.v1",
@@ -31683,7 +31714,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_create_reply_for_review_comment.v1",
@@ -31729,7 +31760,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_create_review_comment.v1",
@@ -31775,7 +31806,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_create_review.v1",
@@ -31863,7 +31894,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_delete_pending_review.v1",
@@ -31952,7 +31983,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_dismiss_review.v1",
@@ -32043,7 +32074,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_get_review.v1",
@@ -32087,7 +32118,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.get.v1",
@@ -32136,7 +32167,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -32192,7 +32223,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -32246,7 +32277,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -32299,7 +32330,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.list_requested_reviewers.v1",
@@ -32413,7 +32444,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -32481,7 +32512,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -32608,7 +32639,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.merge.v1",
@@ -32650,7 +32681,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.remove_requested_reviewers.v1",
@@ -32699,7 +32730,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.request_reviewers.v1",
@@ -32748,7 +32779,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_submit_review.v1",
@@ -32792,7 +32823,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.update_branch.v1",
@@ -32881,7 +32912,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.review.pulls_update_review.v1",
@@ -32925,7 +32956,7 @@
       },
       {
         "name": "pull_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.pull_request.update.v1",
@@ -33084,7 +33115,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.reaction.reactions_create_for_issue.v1",
@@ -33303,7 +33334,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.reaction.reactions_delete_for_issue.v1",
@@ -33547,7 +33578,7 @@
       },
       {
         "name": "issue_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -33708,6 +33739,7 @@
     "path_parameters": [
       "invitation_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.repo.accept_invitation_for_authenticated_user.v1",
     "response_schema": "result.repo.accept_invitation_for_authenticated_user.v1",
     "response_projection": [
@@ -34703,6 +34735,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.repo.create_for_authenticated_user.v1",
     "response_schema": "result.repo.create_for_authenticated_user.v1",
     "response_projection": [
@@ -35246,6 +35279,7 @@
     "path_parameters": [
       "invitation_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.repo.decline_invitation_for_authenticated_user.v1",
     "response_schema": "result.repo.decline_invitation_for_authenticated_user.v1",
     "response_projection": [
@@ -40127,6 +40161,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "visibility",
@@ -40367,6 +40402,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -43152,7 +43188,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -43491,7 +43527,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "argument_parameters": [
@@ -43575,7 +43611,7 @@
       },
       {
         "name": "alert_number",
-        "field": "id"
+        "field": "number"
       }
     ],
     "request_schema": "arguments.secret_scanning.secret_scanning_update_alert.v1",
@@ -44783,6 +44819,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -45408,6 +45445,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_add_email_for_authenticated_user.v1",
     "response_schema": "result.member.users_add_email_for_authenticated_user.v1",
     "response_projection": [
@@ -45431,6 +45469,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_add_social_account_for_authenticated_user.v1",
     "response_schema": "result.member.users_add_social_account_for_authenticated_user.v1",
     "response_projection": [
@@ -45583,6 +45622,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_create_gpg_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_create_gpg_key_for_authenticated_user.v1",
     "response_projection": [
@@ -45608,6 +45648,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_create_public_ssh_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_create_public_ssh_key_for_authenticated_user.v1",
     "response_projection": [
@@ -45633,6 +45674,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_create_ssh_signing_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_create_ssh_signing_key_for_authenticated_user.v1",
     "response_projection": [
@@ -45755,6 +45797,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_delete_email_for_authenticated_user.v1",
     "response_schema": "result.member.users_delete_email_for_authenticated_user.v1",
     "response_projection": [
@@ -45782,6 +45825,7 @@
     "path_parameters": [
       "gpg_key_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_delete_gpg_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_delete_gpg_key_for_authenticated_user.v1",
     "response_projection": [
@@ -45809,6 +45853,7 @@
     "path_parameters": [
       "key_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_delete_public_ssh_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_delete_public_ssh_key_for_authenticated_user.v1",
     "response_projection": [
@@ -45833,6 +45878,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_delete_social_account_for_authenticated_user.v1",
     "response_schema": "result.member.users_delete_social_account_for_authenticated_user.v1",
     "response_projection": [
@@ -45860,6 +45906,7 @@
     "path_parameters": [
       "ssh_signing_key_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_delete_ssh_signing_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_delete_ssh_signing_key_for_authenticated_user.v1",
     "response_projection": [
@@ -45916,6 +45963,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_get_authenticated.v1",
     "response_schema": "result.member.users_get_authenticated.v1",
     "response_projection": [
@@ -46060,6 +46108,7 @@
     "path_parameters": [
       "gpg_key_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_get_gpg_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_get_gpg_key_for_authenticated_user.v1",
     "response_projection": [
@@ -46088,6 +46137,7 @@
     "path_parameters": [
       "key_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_get_public_ssh_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_get_public_ssh_key_for_authenticated_user.v1",
     "response_projection": [
@@ -46116,6 +46166,7 @@
     "path_parameters": [
       "ssh_signing_key_id"
     ],
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_get_ssh_signing_key_for_authenticated_user.v1",
     "response_schema": "result.member.users_get_ssh_signing_key_for_authenticated_user.v1",
     "response_projection": [
@@ -46237,6 +46288,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46274,6 +46326,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46307,6 +46360,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46344,6 +46398,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46473,6 +46528,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46552,6 +46608,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46628,6 +46685,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46663,6 +46721,7 @@
     "credential_kind": "installation",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46738,6 +46797,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -46852,6 +46912,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_set_primary_email_visibility_for_authenticated_user.v1",
     "response_schema": "result.member.users_set_primary_email_visibility_for_authenticated_user.v1",
     "response_projection": [
@@ -46941,6 +47002,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.member.users_update_authenticated.v1",
     "response_schema": "result.member.users_update_authenticated.v1",
     "response_projection": [

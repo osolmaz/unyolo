@@ -29,6 +29,8 @@ func targetSchemas() map[string]map[string]any {
 			required = append(required, "owner", "name")
 		case "organization", "enterprise", "user":
 			required = append(required, "name")
+		case "issue", "pull_request", "alert":
+			required = append(required, "number")
 		default:
 			required = append(required, "id")
 		}
@@ -451,12 +453,21 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
 		MediaType: "application/vnd.github+json", PathParameters: pathParameters, TargetPathParameters: targetParameters, ArgumentParameters: arguments,
-		RequestSchema: descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
+		AuthenticatedUserTarget: authenticatedUserTarget(operation.OperationID, descriptor.TargetKind, path, targetParameters),
+		RequestSchema:           descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
 		ResponseRootType: rootType, ServerRole: serverRole(operation),
 		RequestBytesLimit: requestLimit, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
 		RedirectPolicy: redirectPolicy(descriptor.ExecutorKind), Reconciliation: descriptor.ReconcilerKind,
 		StreamDirection: streamDirection(operation.OperationID),
 	}
+}
+
+func authenticatedUserTarget(operationID, targetKind, path string, targetParameters []targetParameter) bool {
+	if targetKind != "user" || !strings.HasPrefix(path, "/user") || len(targetParameters) != 0 {
+		return false
+	}
+	normalized := strings.ReplaceAll(operationID, "_", "-")
+	return strings.Contains(normalized, "authenticated-user") || strings.HasSuffix(normalized, "authenticated")
 }
 
 func responseRootType(schema map[string]any) string {
@@ -514,11 +525,12 @@ func targetPathField(name, targetKind, path string) (string, bool) {
 	if nameParameters[targetKind] == name {
 		return "name", true
 	}
-	idParameters := map[string]string{"check": "check_run_id", "pull_request": "pull_number", "issue": "issue_number", "alert": "alert_number"}
+	idParameters := map[string]string{"check": "check_run_id"}
 	if name == targetKind+"_id" || idParameters[targetKind] == name {
 		return "id", true
 	}
-	numberParameters := map[string]string{"pull_request": "pull_number", "issue": "issue_number", "project": "project_number", "discussion": "discussion_number"}
+	numberParameters := map[string]string{"pull_request": "pull_number", "issue": "issue_number", "alert": "alert_number",
+		"project": "project_number", "discussion": "discussion_number"}
 	if name == targetKind+"_number" || numberParameters[targetKind] == name {
 		return "number", true
 	}

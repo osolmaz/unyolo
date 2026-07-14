@@ -92,6 +92,37 @@ func TestGraphQLOperationsRequireReviewedTargetBindings(t *testing.T) {
 	}
 }
 
+func TestGeneratedUserIdentityValidationAppliesOnlyToSelfTargets(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodGet || r.URL.Path != "/user" {
+			t.Fatalf("identity request = %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"id":7,"login":"osolmaz"}`))
+	}))
+	t.Cleanup(server.Close)
+	manager := newOperationsManager(t, server.URL)
+
+	block := mustLookupGenerated(t, manager, "member.users_block")
+	input, err := block.Decode(json.RawMessage(`{"kind":"user","name":"octocat"}`), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := block.Resolve(t.Context(), input); err != nil || requests != 0 {
+		t.Fatalf("explicit user Resolve() requests=%d err=%v", requests, err)
+	}
+
+	self := mustLookupGenerated(t, manager, "member.users_get_authenticated")
+	input, err = self.Decode(json.RawMessage(`{"kind":"user","name":"osolmaz"}`), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := self.Resolve(t.Context(), input); err != nil || requests != 1 {
+		t.Fatalf("self user Resolve() requests=%d err=%v", requests, err)
+	}
+}
+
 func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
 	adapter := mustLookupGenerated(t, newOperationsManager(t, "http://127.0.0.1"), "pull_request.create")
 	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),

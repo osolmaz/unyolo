@@ -22,19 +22,21 @@ type Config struct {
 	APIBaseURL           *url.URL
 	WebBaseURL           *url.URL
 	HTTPClient           *http.Client
+	StreamTimeout        time.Duration
 	Store                *credentialstore.Store
 	Now                  func() time.Time
 	RefreshBefore        time.Duration
 }
 
 type Manager struct {
-	apiURL       *url.URL
-	webURL       *url.URL
-	client       *http.Client
-	app          *appProvider
-	installation *installationProvider
-	user         *userProvider
-	development  *Credential
+	apiURL        *url.URL
+	webURL        *url.URL
+	client        *http.Client
+	streamTimeout time.Duration
+	app           *appProvider
+	installation  *installationProvider
+	user          *userProvider
+	development   *Credential
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -51,7 +53,7 @@ func New(cfg Config) (*Manager, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopRedirect}
 	}
-	manager := &Manager{apiURL: apiURL, webURL: webURL, client: client}
+	manager := &Manager{apiURL: apiURL, webURL: webURL, client: client, streamTimeout: defaultStreamTimeout(cfg.StreamTimeout)}
 	mode, err := configuredCredentialMode(cfg)
 	if err != nil {
 		return nil, err
@@ -77,6 +79,13 @@ func New(cfg Config) (*Manager, error) {
 		manager.user = manager.newUserProvider(cfg)
 	}
 	return manager, nil
+}
+
+func defaultStreamTimeout(value time.Duration) time.Duration {
+	if value <= 0 {
+		return 10 * time.Minute
+	}
+	return value
 }
 
 func configuredCredentialMode(cfg Config) (Kind, error) {

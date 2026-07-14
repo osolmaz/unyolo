@@ -229,7 +229,7 @@ func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client,
 		AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey, AppClientID: cfg.GitHubAppClientID,
 		AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
 		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: apiBaseURL, WebBaseURL: gitBaseURL,
-		HTTPClient: client, Store: encryptedStore,
+		HTTPClient: client, StreamTimeout: defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute), Store: encryptedStore,
 	})
 	return gitBaseURL, apiBaseURL, client, manager, encryptedStore, err
 }

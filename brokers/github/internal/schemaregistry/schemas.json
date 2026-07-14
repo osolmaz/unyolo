@@ -75,7 +75,7 @@
       },
       "required": [
         "kind",
-        "id"
+        "number"
       ],
       "type": "object"
     },
@@ -621,7 +621,7 @@
       },
       "required": [
         "kind",
-        "id"
+        "number"
       ],
       "type": "object"
     },
@@ -972,7 +972,7 @@
       },
       "required": [
         "kind",
-        "id"
+        "number"
       ],
       "type": "object"
     },

@@ -36,6 +36,7 @@ type Binding struct {
 	MediaType               string            `json:"media_type"`
 	PathParameters          []string          `json:"path_parameters,omitempty"`
 	TargetPathParameters    []TargetParameter `json:"target_path_parameters,omitempty"`
+	AuthenticatedUserTarget bool              `json:"authenticated_user_target,omitempty"`
 	ArgumentParameters      []Parameter       `json:"argument_parameters,omitempty"`
 	RequestSchema           string            `json:"request_schema"`
 	ResponseSchema          string            `json:"response_schema"`
@@ -164,7 +165,15 @@ func validSchemas(value Binding) bool {
 }
 
 func validExecution(value Binding) bool {
-	return value.RedirectPolicy != "" && value.Reconciliation != "" && slices.Contains([]string{"api", "uploads"}, value.ServerRole)
+	return value.RedirectPolicy != "" && value.Reconciliation != "" && slices.Contains([]string{"api", "uploads"}, value.ServerRole) &&
+		validAuthenticatedUserOwnership(value)
+}
+
+func validAuthenticatedUserOwnership(value Binding) bool {
+	if !value.AuthenticatedUserTarget {
+		return true
+	}
+	return strings.HasPrefix(value.PathTemplate, "/user") && len(value.TargetPathParameters) == 0
 }
 
 func bindingByID(values []Binding, id string) (Binding, bool) {

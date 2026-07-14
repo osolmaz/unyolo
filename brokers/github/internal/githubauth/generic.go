@@ -297,7 +297,7 @@ func (m *Manager) ExecuteRESTUpload(ctx context.Context, selector Metadata, bind
 	request.Header.Set("Accept", binding.MediaType)
 	request.Header.Set("Content-Type", mediaType)
 	//nolint:bodyclose // decodeRESTResponse consumes and closes the returned body on every path.
-	response, err := m.doAPI(ctx, selector, request)
+	response, err := m.doAPIStream(ctx, selector, request)
 	if err != nil {
 		return ExecutionResult{}, err
 	}
@@ -325,7 +325,7 @@ func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, bi
 		return nil, errors.New("create GitHub stream download request")
 	}
 	request.Header.Set("Accept", "application/octet-stream")
-	response, err := m.doAPIRequest(ctx, selector, request)
+	response, err := m.doAPIStreamRequest(ctx, selector, request)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +333,15 @@ func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, bi
 }
 
 func (m *Manager) doAPIRequest(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
-	client, credential, err := m.clientForMetadata(ctx, selector)
+	return m.doAPIRequestWithTimeout(ctx, selector, request, 0)
+}
+
+func (m *Manager) doAPIStreamRequest(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
+	return m.doAPIRequestWithTimeout(ctx, selector, request, m.streamTimeout)
+}
+
+func (m *Manager) doAPIRequestWithTimeout(ctx context.Context, selector Metadata, request *http.Request, timeout time.Duration) (*http.Response, error) {
+	client, credential, err := m.requestClient(ctx, selector, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +377,7 @@ func (m *Manager) followDownloadRedirects(ctx context.Context, origin *url.URL, 
 		if err != nil {
 			return nil, APIError{Code: "redirect_not_allowed", StatusCode: response.StatusCode}
 		}
-		response, err = m.client.Do(request)
+		response, err = m.streamClient().Do(request)
 		if err != nil {
 			return nil, APIError{Code: "unavailable"}
 		}
@@ -394,7 +402,15 @@ func allowedDownloadURL(origin, target *url.URL) bool {
 }
 
 func (m *Manager) doAPI(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
-	client, credential, err := m.clientForMetadata(ctx, selector)
+	return m.doAPIWithTimeout(ctx, selector, request, 0)
+}
+
+func (m *Manager) doAPIStream(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
+	return m.doAPIWithTimeout(ctx, selector, request, m.streamTimeout)
+}
+
+func (m *Manager) doAPIWithTimeout(ctx context.Context, selector Metadata, request *http.Request, timeout time.Duration) (*http.Response, error) {
+	client, credential, err := m.requestClient(ctx, selector, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -413,6 +429,22 @@ func (m *Manager) doAPI(ctx context.Context, selector Metadata, request *http.Re
 		return nil, classifyHTTPError(response)
 	}
 	return response, nil
+}
+
+func (m *Manager) requestClient(ctx context.Context, selector Metadata, timeout time.Duration) (*http.Client, *Credential, error) {
+	client, credential, err := m.clientForMetadata(ctx, selector)
+	if err != nil || timeout <= 0 {
+		return client, credential, err
+	}
+	clone := *client
+	clone.Timeout = timeout
+	return &clone, credential, nil
+}
+
+func (m *Manager) streamClient() *http.Client {
+	clone := *m.client
+	clone.Timeout = m.streamTimeout
+	return &clone
 }
 
 func (m *Manager) clientForMetadata(ctx context.Context, selector Metadata) (*http.Client, *Credential, error) {

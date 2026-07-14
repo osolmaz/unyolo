@@ -516,6 +516,21 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
 
+func TestStreamRequestsUseTransferTimeout(t *testing.T) {
+	t.Parallel()
+	manager := &Manager{
+		client: &http.Client{Timeout: time.Second}, streamTimeout: 10 * time.Minute,
+		development: &Credential{metadata: Metadata{Kind: KindDevelopmentToken}, token: []byte("token")},
+	}
+	client, credential, err := manager.requestClient(t.Context(), manager.development.Metadata(), manager.streamTimeout)
+	if err != nil || credential != manager.development || client.Timeout != 10*time.Minute || manager.client.Timeout != time.Second {
+		t.Fatalf("stream client = %+v credential=%p err=%v", client, credential, err)
+	}
+	if redirectClient := manager.streamClient(); redirectClient.Timeout != 10*time.Minute || manager.client.Timeout != time.Second {
+		t.Fatalf("redirect stream client timeout = %s", redirectClient.Timeout)
+	}
+}
+
 func TestCredentialClientsAndTransportFailures(t *testing.T) {
 	apiURL, _ := url.Parse("https://api.github.test/")
 	baseClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {

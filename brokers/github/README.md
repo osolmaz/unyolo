@@ -385,6 +385,7 @@ Deployment safety defaults:
 - `GH_BROKER_BIND_ADDR` defaults to `127.0.0.1`.
 - `GH_BROKER_STATE_DIR` defaults to `./state`.
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
+- `GH_BROKER_GITHUB_STREAM_TIMEOUT` defaults to 600 seconds for bounded uploads and downloads.
 - `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
 - `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
   Telegram notifications for requestable grants. Telegram tokens are loaded

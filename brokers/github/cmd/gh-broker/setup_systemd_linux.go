@@ -247,6 +247,7 @@ func renderEnvFile(plan systemdPlan) string {
 		"GH_BROKER_OPERATOR_BIND_ADDR=" + opts.OperatorBindAddr + "\n" +
 		"GH_BROKER_OPERATOR_PORT=" + strconv.Itoa(opts.OperatorPort) + "\n" +
 		"GH_BROKER_GITHUB_HTTP_TIMEOUT=30\n" +
+		"GH_BROKER_GITHUB_STREAM_TIMEOUT=600\n" +
 		"GH_BROKER_MAX_RECEIVE_PACK_BYTES=26214400\n"
 	if opts.TelegramBotTokenFile != "" {
 		body += "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +

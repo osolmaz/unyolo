@@ -26,6 +26,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", telegramTokenFile)
 	t.Setenv("GH_BROKER_TELEGRAM_CHAT_ID", "123456")
 	t.Setenv("GH_BROKER_GITHUB_HTTP_TIMEOUT", "11")
+	t.Setenv("GH_BROKER_GITHUB_STREAM_TIMEOUT", "601")
 	t.Setenv("GH_BROKER_MAX_RECEIVE_PACK_BYTES", "12345")
 	t.Setenv("GH_BROKER_READ_TIMEOUT", "3")
 	cfg, err := Load()
@@ -81,6 +82,9 @@ func assertLoadedConfigNumbers(t *testing.T, cfg Config) {
 	}
 	if cfg.GitHubHTTPTimeout != 11*time.Second {
 		t.Fatalf("GitHubHTTPTimeout = %s, want 11s", cfg.GitHubHTTPTimeout)
+	}
+	if cfg.GitHubStreamTimeout != 601*time.Second {
+		t.Fatalf("GitHubStreamTimeout = %s, want 601s", cfg.GitHubStreamTimeout)
 	}
 	if cfg.MaxReceivePackBytes != 12345 {
 		t.Fatalf("MaxReceivePackBytes = %d, want 12345", cfg.MaxReceivePackBytes)

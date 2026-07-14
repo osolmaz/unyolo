@@ -76,6 +76,7 @@ type restBinding struct {
 	MediaType               string             `json:"media_type"`
 	PathParameters          []string           `json:"path_parameters,omitempty"`
 	TargetPathParameters    []targetParameter  `json:"target_path_parameters,omitempty"`
+	AuthenticatedUserTarget bool               `json:"authenticated_user_target,omitempty"`
 	ArgumentParameters      []parameterBinding `json:"argument_parameters,omitempty"`
 	RequestSchema           string             `json:"request_schema"`
 	ResponseSchema          string             `json:"response_schema"`
