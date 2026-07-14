@@ -15,15 +15,7 @@ func (s *Server) enforceReceivePackBackstops(c echo.Context, authorized []author
 	}
 	owner := c.Param("owner")
 	repo := strings.TrimSuffix(c.Param("repoGit"), ".git")
-	credential, err := s.githubCredentialForRepo(c, owner, repo)
-	if err != nil {
-		return err
-	}
-	inspectionCredential, err := s.githubInspectionCredential(c, credential)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub repository safety state is unavailable")
-	}
-	api, err := s.githubCredentials.API(inspectionCredential)
+	api, err := s.githubInspectionAPI(c, owner, repo)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub repository safety state is unavailable")
 	}
@@ -37,6 +29,18 @@ func (s *Server) enforceReceivePackBackstops(c echo.Context, authorized []author
 		}
 	}
 	return nil
+}
+
+func (s *Server) githubInspectionAPI(c echo.Context, owner, repo string) (*githubauth.API, error) {
+	repositoryCredential, err := s.githubCredentialForRepo(c, owner, repo)
+	if err != nil {
+		return nil, err
+	}
+	inspectionCredential, err := s.githubInspectionCredential(c, repositoryCredential)
+	if err != nil {
+		return nil, err
+	}
+	return s.githubCredentials.API(inspectionCredential)
 }
 
 func (s *Server) githubInspectionCredential(c echo.Context, repositoryCredential *githubauth.Credential) (*githubauth.Credential, error) {

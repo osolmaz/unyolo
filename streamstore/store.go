@@ -253,12 +253,12 @@ func (s *Store) findRequestLocked(owner, purpose, requestKey string) (Reference,
 		return Reference{}, false, errors.New("inspect stream idempotency")
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+		id, ok := streamEntryID(entry, ".json")
+		if !ok {
 			continue
 		}
-		id := strings.TrimSuffix(entry.Name(), ".json")
 		existing, loadErr := s.loadLocked(id)
-		if loadErr != nil || existing.Owner != owner || existing.Purpose != purpose || existing.RequestKey != requestKey {
+		if loadErr != nil || !sameStreamRequest(existing, owner, purpose, requestKey) {
 			continue
 		}
 		return existing, true, nil
@@ -274,20 +274,44 @@ func (s *Store) checkQuotaLocked(additionalBytes int64) error {
 	count := 0
 	var total int64
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".bin" {
+		_, ok := streamEntryID(entry, ".bin")
+		if !ok {
 			continue
 		}
-		info, statErr := entry.Info()
+		size, statErr := streamEntrySize(entry)
 		if statErr != nil {
 			return errors.New("inspect stream quota")
 		}
 		count++
-		total += info.Size()
+		total += size
 	}
-	if count >= s.maxFiles || additionalBytes <= 0 || additionalBytes > s.maxBytes-total {
+	if !withinStreamQuota(count, total, additionalBytes, s.maxFiles, s.maxBytes) {
 		return errors.New("stream quota exceeded")
 	}
 	return nil
+}
+
+func withinStreamQuota(count int, total, additionalBytes int64, maxFiles int, maxBytes int64) bool {
+	return count < maxFiles && additionalBytes > 0 && additionalBytes <= maxBytes-total
+}
+
+func streamEntryID(entry os.DirEntry, extension string) (string, bool) {
+	if entry.IsDir() || filepath.Ext(entry.Name()) != extension {
+		return "", false
+	}
+	return strings.TrimSuffix(entry.Name(), extension), true
+}
+
+func sameStreamRequest(reference Reference, owner, purpose, requestKey string) bool {
+	return reference.Owner == owner && reference.Purpose == purpose && reference.RequestKey == requestKey
+}
+
+func streamEntrySize(entry os.DirEntry) (int64, error) {
+	info, err := entry.Info()
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
 }
 
 func (s *Store) validateLocked(reference Reference) (Reference, error) {

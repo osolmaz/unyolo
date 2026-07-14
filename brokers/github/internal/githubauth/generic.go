@@ -31,10 +31,7 @@ func (m *Manager) ValidateAuthenticatedUserTarget(ctx context.Context, selector 
 	if targetregistry.String(target, "kind") != "user" {
 		return errors.New("GitHub authenticated-user target is invalid")
 	}
-	requestURL, err := m.restURL("/user", nil)
-	if err != nil {
-		return err
-	}
+	requestURL := m.relativeAPIURL(m.apiURL, "user", "user", nil)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, http.NoBody)
 	if err != nil {
 		return errors.New("create GitHub authenticated-user request")
@@ -189,7 +186,6 @@ func (m *Manager) ExecuteRESTRaw(ctx context.Context, selector Metadata, binding
 	return ExecutionResult{StatusCode: response.StatusCode, Body: body}, nil
 }
 
-//nolint:cyclop // Request projection and bounds remain visible in one audited transport path.
 func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (*http.Response, error) {
 	if m == nil {
 		return nil, errors.New("GitHub credential provider is unavailable")
@@ -202,15 +198,9 @@ func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding op
 	if err != nil {
 		return nil, err
 	}
-	var body []byte
-	if input, ok := arguments["input"]; ok {
-		body, err = json.Marshal(input)
-		if err != nil {
-			return nil, errors.New("encode GitHub request body")
-		}
-		if int64(len(body)) > binding.RequestBytesLimit {
-			return nil, errors.New("GitHub request body exceeds its size limit")
-		}
+	body, err := restRequestBody(arguments, binding.RequestBytesLimit)
+	if err != nil {
+		return nil, err
 	}
 	unescapedPath, err := url.PathUnescape(path)
 	if err != nil {
@@ -233,6 +223,21 @@ func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding op
 		return nil, err
 	}
 	return response, nil
+}
+
+func restRequestBody(arguments map[string]any, limit int64) ([]byte, error) {
+	input, ok := arguments["input"]
+	if !ok {
+		return nil, nil
+	}
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, errors.New("encode GitHub request body")
+	}
+	if int64(len(body)) > limit {
+		return nil, errors.New("GitHub request body exceeds its size limit")
+	}
+	return body, nil
 }
 
 func (m *Manager) ExecuteGraphQL(ctx context.Context, selector Metadata, document graphqlmanifest.Document, variables map[string]any) (ExecutionResult, error) {
@@ -325,42 +330,6 @@ func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, bi
 		return nil, err
 	}
 	return m.followDownloadRedirects(ctx, request.URL, response)
-}
-
-func (m *Manager) restURL(path string, query url.Values) (string, error) {
-	unescapedPath, err := url.PathUnescape(path)
-	if err != nil {
-		return "", errors.New("GitHub API path is invalid")
-	}
-	return m.relativeAPIURL(m.apiURL, unescapedPath, path, query), nil
-}
-
-func (m *Manager) bindingRESTURL(binding opbinding.Binding, path string, query url.Values) (string, error) {
-	unescapedPath, err := url.PathUnescape(path)
-	if err != nil {
-		return "", errors.New("GitHub API path is invalid")
-	}
-	return m.bindingURL(binding, unescapedPath, path, query)
-}
-
-func (m *Manager) bindingURL(binding opbinding.Binding, unescapedPath, escapedPath string, query url.Values) (string, error) {
-	base := m.apiURL
-	role := binding.ServerRole
-	if role == "" {
-		role = "api"
-	}
-	if role == "uploads" && strings.EqualFold(m.apiURL.Hostname(), "api.github.com") {
-		base = &url.URL{Scheme: "https", Host: "uploads.github.com", Path: "/"}
-	}
-	if role != "api" && role != "uploads" {
-		return "", errors.New("GitHub API server role is invalid")
-	}
-	return m.relativeAPIURL(base, unescapedPath, escapedPath, query), nil
-}
-
-func (m *Manager) relativeAPIURL(base *url.URL, unescapedPath, escapedPath string, query url.Values) string {
-	relative := &url.URL{Path: strings.TrimPrefix(unescapedPath, "/"), RawPath: strings.TrimPrefix(escapedPath, "/"), RawQuery: query.Encode()}
-	return base.ResolveReference(relative).String()
 }
 
 func (m *Manager) doAPIRequest(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {

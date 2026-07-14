@@ -101,7 +101,7 @@ func Validate(values []Binding) error {
 			return errors.New("GitHub REST bindings are duplicated or unsorted")
 		}
 		previous, seenIDs[value.ID], seenOperations[value.Operation] = value.ID, true, true
-		if !slices.Contains([]string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete, http.MethodPatch, http.MethodHead}, value.Method) || !strings.HasPrefix(value.PathTemplate, "/") || value.APIVersion != "2026-03-10" || value.CredentialKind == "" || value.RequestSchema == "" || value.ResponseSchema == "" || value.RequestBytesLimit <= 0 || value.ResponseBytesLimit <= 0 || value.RedirectPolicy == "" || value.Reconciliation == "" || !slices.Contains([]string{"object", "array"}, value.ResponseRootType) || !slices.Contains([]string{"api", "uploads"}, value.ServerRole) {
+		if !validTransport(value) || !validSchemas(value) || !validExecution(value) {
 			return fmt.Errorf("GitHub REST binding %q is incomplete", value.ID)
 		}
 		if value.ServerRole == "uploads" && value.StreamDirection != "upload" {
@@ -151,6 +151,20 @@ func Validate(values []Binding) error {
 		}
 	}
 	return nil
+}
+
+func validTransport(value Binding) bool {
+	return slices.Contains([]string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete, http.MethodPatch, http.MethodHead}, value.Method) &&
+		strings.HasPrefix(value.PathTemplate, "/") && value.APIVersion == "2026-03-10" && value.CredentialKind != "" && value.ServerRole != ""
+}
+
+func validSchemas(value Binding) bool {
+	return value.RequestSchema != "" && value.ResponseSchema != "" && value.RequestBytesLimit > 0 && value.ResponseBytesLimit > 0 &&
+		slices.Contains([]string{"object", "array"}, value.ResponseRootType)
+}
+
+func validExecution(value Binding) bool {
+	return value.RedirectPolicy != "" && value.Reconciliation != "" && slices.Contains([]string{"api", "uploads"}, value.ServerRole)
 }
 
 func bindingByID(values []Binding, id string) (Binding, bool) {
