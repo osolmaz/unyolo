@@ -13,23 +13,33 @@ import (
 
 // LaunchdInstallPlan describes one complete system LaunchDaemon installation.
 type LaunchdInstallPlan struct {
-	User             string
-	Group            string
-	AdditionalGroups []string
-	GroupMembers     map[string][]string
-	ConfigDir        string
-	StateDir         string
-	LaunchdDir       string
-	PlistName        string
-	Files            []ManagedFile
-	RemoveFiles      []ManagedFileRef
-	ReadyCheck       ReadinessCheck
-	ReadyTimeout     time.Duration
-	ReadyInterval    time.Duration
-	Unit             LaunchdUnit
-	NoStart          bool
-	AllowNonRoot     bool
-	Runner           CommandRunner
+	User               string
+	Group              string
+	AdditionalGroups   []string
+	GroupMembers       map[string][]string
+	ConfigDir          string
+	StateDir           string
+	LaunchdDir         string
+	PlistName          string
+	Files              []ManagedFile
+	RemoveFiles        []ManagedFileRef
+	ReadyCheck         ReadinessCheck
+	ReadyTimeout       time.Duration
+	ReadyInterval      time.Duration
+	Unit               LaunchdUnit
+	RuntimeDirectories []LaunchdDirectory
+	NoStart            bool
+	AllowNonRoot       bool
+	Runner             CommandRunner
+}
+
+// LaunchdDirectory is one explicitly managed runtime directory required by a
+// LaunchDaemon outside its config and state roots.
+type LaunchdDirectory struct {
+	Path  string
+	Owner string
+	Group string
+	Mode  os.FileMode
 }
 
 // Validate validates a launchd installation without mutating the host.
@@ -39,11 +49,32 @@ func (plan LaunchdInstallPlan) Validate() error {
 		func() error { return validateLaunchdInstallPaths(plan) },
 		func() error { _, err := RenderLaunchd(plan.Unit); return err },
 		func() error { return validateLaunchdManagedFiles(plan) },
+		func() error { return validateLaunchdRuntimeDirectories(plan.RuntimeDirectories) },
 		func() error { return validateLaunchdReadiness(plan) },
 	}
 	for _, validate := range validators {
 		if err := validate(); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateLaunchdRuntimeDirectories(values []LaunchdDirectory) error {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if !filepath.IsAbs(value.Path) || filepath.Clean(value.Path) != value.Path || value.Path == string(filepath.Separator) {
+			return errors.New("launchd runtime directory must be absolute and normalized")
+		}
+		if _, exists := seen[value.Path]; exists {
+			return fmt.Errorf("launchd runtime directory %q is duplicated", value.Path)
+		}
+		seen[value.Path] = struct{}{}
+		if err := validatex.AccountNames(map[string]string{"runtime owner": value.Owner, "runtime group": value.Group}); err != nil {
+			return err
+		}
+		if value.Mode == 0 || value.Mode&^os.ModePerm != 0 || value.Mode.Perm()&0o007 != 0 {
+			return fmt.Errorf("launchd runtime directory %q has unsafe mode", value.Path)
 		}
 	}
 	return nil

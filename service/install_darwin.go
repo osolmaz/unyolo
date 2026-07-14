@@ -142,7 +142,36 @@ func prepareLaunchdDirectories(plan LaunchdInstallPlan, uid, gid int) error {
 			return err
 		}
 	}
+	for _, directory := range plan.RuntimeDirectories {
+		ownerID, groupID, err := launchdDirectoryIDs(directory, plan.AllowNonRoot)
+		if err != nil {
+			return err
+		}
+		if err := ensureLaunchdDirectory(directory.Path, directory.Mode, ownerID, groupID, plan.AllowNonRoot); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func launchdDirectoryIDs(directory LaunchdDirectory, preview bool) (int, int, error) {
+	if preview {
+		return os.Geteuid(), os.Getegid(), nil
+	}
+	account, err := user.Lookup(directory.Owner)
+	if err != nil {
+		return 0, 0, fmt.Errorf("look up launchd runtime owner %q: %w", directory.Owner, err)
+	}
+	group, err := user.LookupGroup(directory.Group)
+	if err != nil {
+		return 0, 0, fmt.Errorf("look up launchd runtime group %q: %w", directory.Group, err)
+	}
+	uid, uidErr := strconv.Atoi(account.Uid)
+	gid, gidErr := strconv.Atoi(group.Gid)
+	if uidErr != nil || gidErr != nil || uid < 0 || gid < 0 {
+		return 0, 0, errors.New("launchd runtime directory identity is invalid")
+	}
+	return uid, gid, nil
 }
 
 func launchdGroupID(groupName string, preview bool) (int, error) {

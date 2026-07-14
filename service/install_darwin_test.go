@@ -30,6 +30,8 @@ func TestInstallLaunchdPreview(t *testing.T) {
 	plan.Unit.ProgramArguments = []string{"/usr/bin/true"}
 	plan.Unit.Sockets[0].Owner, plan.Unit.Sockets[0].Group = account.Username, group.Name
 	plan.Unit.Sockets[0].Path = filepath.Join(root, "run", "agent.sock")
+	plan.RuntimeDirectories[0].Path = filepath.Join(root, "private-run")
+	plan.RuntimeDirectories[0].Owner, plan.RuntimeDirectories[0].Group = account.Username, group.Name
 	plan.ConfigDir, plan.StateDir = filepath.Join(root, "config"), filepath.Join(root, "state")
 	plan.LaunchdDir = filepath.Join(root, "launchd")
 	plan.AdditionalGroups, plan.GroupMembers = nil, nil
