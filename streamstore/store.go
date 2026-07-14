@@ -28,7 +28,7 @@ const (
 	maxStoredFiles         = 64
 	maxStoredBytes         = int64(1 << 30)
 	maxStoredFilesPerOwner = 16
-	maxStoredBytesPerOwner = int64(256 << 20)
+	maxStoredBytesPerOwner = int64(512 << 20)
 )
 
 type Reference struct {
