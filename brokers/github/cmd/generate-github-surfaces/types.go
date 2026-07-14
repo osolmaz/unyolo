@@ -225,8 +225,9 @@ type generatedState struct {
 }
 
 type overrideFile struct {
-	Version              int                 `json:"version"`
-	RESTOperationNames   map[string][]string `json:"rest_operation_names"`
-	HighRiskOperations   []string            `json:"high_risk_operations"`
-	InternalGraphQLRoots []string            `json:"internal_graphql_roots"`
+	Version                    int                 `json:"version"`
+	RESTOperationNames         map[string][]string `json:"rest_operation_names"`
+	RESTOperationRequestFields map[string][]string `json:"rest_operation_request_fields"`
+	HighRiskOperations         []string            `json:"high_risk_operations"`
+	InternalGraphQLRoots       []string            `json:"internal_graphql_roots"`
 }

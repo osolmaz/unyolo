@@ -229,6 +229,7 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 		GitHubAppPrivateKeyFile:   privateKeyFile,
 		GitHubAppClientIDFile:     clientIDFile,
 		GitHubAppClientSecretFile: clientSecretFile,
+		GitHubUserID:              1234,
 		GitHubWebhookSecretFile:   webhookSecretFile,
 		ScopeFile:                 writeFixture(t, dir, "scope.json", minimalScopeJSON()),
 		SharedSecret:              strings.Repeat("s", 32),
@@ -270,7 +271,7 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 			env = string(file.Data)
 		}
 	}
-	for _, want := range []string{"GH_BROKER_GITHUB_APP_CLIENT_ID_FILE=", "GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE="} {
+	for _, want := range []string{"GH_BROKER_GITHUB_USER_ID=1234", "GH_BROKER_GITHUB_APP_CLIENT_ID_FILE=", "GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE="} {
 		if !strings.Contains(env, want) {
 			t.Fatalf("env missing %q:\n%s", want, env)
 		}
@@ -307,6 +308,15 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 	if err := validateSetupSystemdOptions(validApp); err != nil {
 		t.Fatalf("validateSetupSystemdOptions(app) error = %v", err)
 	}
+	validApp.GitHubAppClientIDFile = "/tmp/client-id"
+	validApp.GitHubAppClientSecretFile = "/tmp/client-secret"
+	if err := validateSetupSystemdOptions(validApp); err == nil || !strings.Contains(err.Error(), "--github-user-id") {
+		t.Fatalf("OAuth app setup without user id error = %v", err)
+	}
+	validApp.GitHubUserID = 1234
+	if err := validateSetupSystemdOptions(validApp); err != nil {
+		t.Fatalf("validateSetupSystemdOptions(user credential) error = %v", err)
+	}
 	cases := []func(*setupSystemdOptions){
 		func(opts *setupSystemdOptions) { opts.ScopeFile = "" },
 		func(opts *setupSystemdOptions) { opts.GitHubTokenFile = "" },
@@ -326,6 +336,35 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		if err := validateSetupSystemdOptions(opts); err == nil {
 			t.Fatalf("validateSetupSystemdOptions(%+v) error = nil", opts)
 		}
+	}
+}
+
+func TestValidateGitHubAppSetupUserCredentialPair(t *testing.T) {
+	base := setupSystemdOptions{GitHubAppIDFile: "app-id", GitHubAppPrivateKeyFile: "key", GitHubWebhookSecretFile: "webhook"}
+	tests := []struct {
+		name    string
+		mutate  func(*setupSystemdOptions)
+		wantErr bool
+	}{
+		{"base app", func(*setupSystemdOptions) {}, false},
+		{"missing app", func(value *setupSystemdOptions) { value.GitHubAppIDFile = "" }, true},
+		{"unpaired client", func(value *setupSystemdOptions) { value.GitHubAppClientIDFile = "client" }, true},
+		{"missing user id", func(value *setupSystemdOptions) {
+			value.GitHubAppClientIDFile, value.GitHubAppClientSecretFile = "client", "secret"
+		}, true},
+		{"orphan user id", func(value *setupSystemdOptions) { value.GitHubUserID = 1234 }, true},
+		{"user credential", func(value *setupSystemdOptions) {
+			value.GitHubAppClientIDFile, value.GitHubAppClientSecretFile, value.GitHubUserID = "client", "secret", 1234
+		}, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			value := base
+			test.mutate(&value)
+			if err := validateGitHubAppSetup(value); (err != nil) != test.wantErr {
+				t.Fatalf("validateGitHubAppSetup() error = %v", err)
+			}
+		})
 	}
 }
 

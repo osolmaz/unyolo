@@ -74,8 +74,11 @@ func loadOverrides(path string) error {
 	if err := json.Unmarshal(data, &reviewedOverrides); err != nil {
 		return err
 	}
-	if reviewedOverrides.Version != 1 || len(reviewedOverrides.RESTOperationNames) == 0 || len(reviewedOverrides.HighRiskOperations) == 0 {
+	if reviewedOverrides.Version != 1 || len(reviewedOverrides.RESTOperationNames) == 0 || len(reviewedOverrides.RESTOperationRequestFields) == 0 || len(reviewedOverrides.HighRiskOperations) == 0 {
 		return errors.New("GitHub inventory overrides are incomplete")
+	}
+	for operation := range reviewedOverrides.RESTOperationRequestFields {
+		slices.Sort(reviewedOverrides.RESTOperationRequestFields[operation])
 	}
 	slices.Sort(reviewedOverrides.HighRiskOperations)
 	slices.Sort(reviewedOverrides.InternalGraphQLRoots)

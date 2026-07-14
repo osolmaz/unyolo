@@ -334,16 +334,35 @@ func developmentCredential(c Config) error {
 }
 
 func appCredential(c Config) error {
+	return firstError(appWebhookCredential(c), appClientCredential(c), appUserSelector(c),
+		required(c.GitHubAPIBaseURL, "GH_BROKER_GITHUB_API_URL is required"), required(c.GitHubWebBaseURL, "GH_BROKER_GITHUB_WEB_URL is required"))
+}
+
+func appWebhookCredential(c Config) error {
 	if strings.TrimSpace(c.GitHubWebhookSecret) == "" {
 		return errors.New("GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE is required with GitHub App credentials")
 	}
+	return nil
+}
+
+func appClientCredential(c Config) error {
 	if (strings.TrimSpace(c.GitHubAppClientID) == "") != (strings.TrimSpace(c.GitHubAppClientSecret) == "") {
 		return errors.New("GitHub App client id and client secret must be configured together")
 	}
 	if c.GitHubAppClientSecret != "" && c.GitHubAppClientSecretFile == "" {
 		return errors.New("GitHub App client secret must be loaded from GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE")
 	}
-	return firstError(required(c.GitHubAPIBaseURL, "GH_BROKER_GITHUB_API_URL is required"), required(c.GitHubWebBaseURL, "GH_BROKER_GITHUB_WEB_URL is required"))
+	return nil
+}
+
+func appUserSelector(c Config) error {
+	if c.GitHubAppClientID != "" && c.GitHubUserID <= 0 {
+		return errors.New("GH_BROKER_GITHUB_USER_ID is required with GitHub App user credentials")
+	}
+	if c.GitHubAppClientID == "" && c.GitHubUserID != 0 {
+		return errors.New("GH_BROKER_GITHUB_USER_ID requires GitHub App user credentials")
+	}
+	return nil
 }
 
 func telegramPair(token string, chatID int64) error {

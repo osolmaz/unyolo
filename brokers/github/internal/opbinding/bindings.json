@@ -7505,7 +7505,7 @@
     "upstream_operation_id": "activity/get-repo-subscription",
     "method": "GET",
     "path_template": "/repos/{owner}/{repo}/subscription",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -7543,7 +7543,7 @@
     "upstream_operation_id": "activity/get-thread-subscription-for-authenticated-user",
     "method": "GET",
     "path_template": "/notifications/threads/{thread_id}/subscription",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -7570,7 +7570,7 @@
     "upstream_operation_id": "activity/get-thread",
     "method": "GET",
     "path_template": "/notifications/threads/{thread_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -7642,9 +7642,10 @@
     "upstream_operation_id": "activity/list-notifications-for-authenticated-user",
     "method": "GET",
     "path_template": "/notifications",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "all",
@@ -8047,7 +8048,7 @@
     "upstream_operation_id": "activity/list-repo-notifications-for-authenticated-user",
     "method": "GET",
     "path_template": "/repos/{owner}/{repo}/notifications",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -10631,7 +10632,7 @@
     "upstream_operation_id": "apps/get-org-installation",
     "method": "GET",
     "path_template": "/orgs/{org}/installation",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -10665,7 +10666,7 @@
     "upstream_operation_id": "apps/get-repo-installation",
     "method": "GET",
     "path_template": "/repos/{owner}/{repo}/installation",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -10704,11 +10705,17 @@
     "upstream_operation_id": "apps/get-subscription-plan-for-account-stubbed",
     "method": "GET",
     "path_template": "/marketplace_listing/stubbed/accounts/{account_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "account_id"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "account_id",
+        "field": "id"
+      }
     ],
     "request_schema": "arguments.app.apps_get_subscription_plan_for_account_stubbed.v1",
     "response_schema": "result.app.apps_get_subscription_plan_for_account_stubbed.v1",
@@ -10732,11 +10739,17 @@
     "upstream_operation_id": "apps/get-subscription-plan-for-account",
     "method": "GET",
     "path_template": "/marketplace_listing/accounts/{account_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "account_id"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "account_id",
+        "field": "id"
+      }
     ],
     "request_schema": "arguments.app.apps_get_subscription_plan_for_account.v1",
     "response_schema": "result.app.apps_get_subscription_plan_for_account.v1",
@@ -10760,7 +10773,7 @@
     "upstream_operation_id": "apps/get-user-installation",
     "method": "GET",
     "path_template": "/users/{username}/installation",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -10845,7 +10858,7 @@
     "upstream_operation_id": "apps/list-accounts-for-plan-stubbed",
     "method": "GET",
     "path_template": "/marketplace_listing/stubbed/plans/{plan_id}/accounts",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -10891,7 +10904,7 @@
     "upstream_operation_id": "apps/list-accounts-for-plan",
     "method": "GET",
     "path_template": "/marketplace_listing/plans/{plan_id}/accounts",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -11019,7 +11032,7 @@
     "upstream_operation_id": "apps/list-installations-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/installations",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -11098,9 +11111,10 @@
     "upstream_operation_id": "apps/list-plans-stubbed",
     "method": "GET",
     "path_template": "/marketplace_listing/stubbed/plans",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -11135,9 +11149,10 @@
     "upstream_operation_id": "apps/list-plans",
     "method": "GET",
     "path_template": "/marketplace_listing/plans",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "per_page",
@@ -11210,7 +11225,7 @@
     "upstream_operation_id": "apps/list-subscriptions-for-authenticated-user-stubbed",
     "method": "GET",
     "path_template": "/user/marketplace_purchases/stubbed",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -11244,7 +11259,7 @@
     "upstream_operation_id": "apps/list-subscriptions-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/marketplace_purchases",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -14519,7 +14534,7 @@
     "upstream_operation_id": "code-security/get-configurations-for-enterprise",
     "method": "GET",
     "path_template": "/enterprises/{enterprise}/code-security/configurations",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -14746,7 +14761,7 @@
     "upstream_operation_id": "code-security/get-repositories-for-enterprise-configuration",
     "method": "GET",
     "path_template": "/enterprises/{enterprise}/code-security/configurations/{configuration_id}/repositories",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -14797,7 +14812,7 @@
     "upstream_operation_id": "code-security/get-single-configuration-for-enterprise",
     "method": "GET",
     "path_template": "/enterprises/{enterprise}/code-security/configurations/{configuration_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -16944,7 +16959,7 @@
     "upstream_operation_id": "copilot-spaces/get-for-user",
     "method": "GET",
     "path_template": "/users/{username}/copilot-spaces/{space_number}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -17017,7 +17032,7 @@
     "upstream_operation_id": "copilot-spaces/get-resource-for-user",
     "method": "GET",
     "path_template": "/users/{username}/copilot-spaces/{space_number}/resources/{space_resource_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -17090,7 +17105,7 @@
     "upstream_operation_id": "copilot-spaces/list-collaborators-for-user",
     "method": "GET",
     "path_template": "/users/{username}/copilot-spaces/{space_number}/collaborators",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -17177,7 +17192,7 @@
     "upstream_operation_id": "copilot-spaces/list-for-user",
     "method": "GET",
     "path_template": "/users/{username}/copilot-spaces",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -17262,7 +17277,7 @@
     "upstream_operation_id": "copilot-spaces/list-resources-for-user",
     "method": "GET",
     "path_template": "/users/{username}/copilot-spaces/{space_number}/resources",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -18775,7 +18790,7 @@
     "upstream_operation_id": "dependabot/list-alerts-for-enterprise",
     "method": "GET",
     "path_template": "/enterprises/{enterprise}/dependabot/alerts",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -19253,7 +19268,7 @@
     "upstream_operation_id": "dependabot/repository-access-for-enterprise",
     "method": "GET",
     "path_template": "/enterprises/{enterprise}/dependabot/repository-access",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20322,7 +20337,7 @@
     "upstream_operation_id": "gists/check-is-starred",
     "method": "GET",
     "path_template": "/gists/{gist_id}/star",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20521,7 +20536,7 @@
     "upstream_operation_id": "gists/get-comment",
     "method": "GET",
     "path_template": "/gists/{gist_id}/comments/{comment_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20558,7 +20573,7 @@
     "upstream_operation_id": "gists/get-revision",
     "method": "GET",
     "path_template": "/gists/{gist_id}/{sha}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20595,7 +20610,7 @@
     "upstream_operation_id": "gists/get",
     "method": "GET",
     "path_template": "/gists/{gist_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20631,7 +20646,7 @@
     "upstream_operation_id": "gists/list-comments",
     "method": "GET",
     "path_template": "/gists/{gist_id}/comments",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20677,7 +20692,7 @@
     "upstream_operation_id": "gists/list-commits",
     "method": "GET",
     "path_template": "/gists/{gist_id}/commits",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20719,7 +20734,7 @@
     "upstream_operation_id": "gists/list-for-user",
     "method": "GET",
     "path_template": "/users/{username}/gists",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20769,7 +20784,7 @@
     "upstream_operation_id": "gists/list-forks",
     "method": "GET",
     "path_template": "/gists/{gist_id}/forks",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -20815,9 +20830,10 @@
     "upstream_operation_id": "gists/list-public",
     "method": "GET",
     "path_template": "/gists/public",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "since",
@@ -20856,9 +20872,10 @@
     "upstream_operation_id": "gists/list-starred",
     "method": "GET",
     "path_template": "/gists/starred",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "since",
@@ -20897,9 +20914,10 @@
     "upstream_operation_id": "gists/list",
     "method": "GET",
     "path_template": "/gists",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "since",
@@ -23649,7 +23667,7 @@
     "upstream_operation_id": "issues/list-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/issues",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -23714,7 +23732,7 @@
     "upstream_operation_id": "issues/list-for-org",
     "method": "GET",
     "path_template": "/orgs/{org}/issues",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -24221,9 +24239,10 @@
     "upstream_operation_id": "issues/list",
     "method": "GET",
     "path_template": "/issues",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "argument_parameters": [
       {
         "name": "filter",
@@ -25302,7 +25321,7 @@
     "upstream_operation_id": "migrations/download-archive-for-org",
     "method": "GET",
     "path_template": "/orgs/{org}/migrations/{migration_id}/archive",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -25335,7 +25354,7 @@
     "upstream_operation_id": "migrations/get-archive-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/migrations/{migration_id}/archive",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -25482,7 +25501,7 @@
     "upstream_operation_id": "migrations/get-status-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/migrations/{migration_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -25520,7 +25539,7 @@
     "upstream_operation_id": "migrations/get-status-for-org",
     "method": "GET",
     "path_template": "/orgs/{org}/migrations/{migration_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -25564,7 +25583,7 @@
     "upstream_operation_id": "migrations/list-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/migrations",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -25603,7 +25622,7 @@
     "upstream_operation_id": "migrations/list-for-org",
     "method": "GET",
     "path_template": "/orgs/{org}/migrations",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -25654,7 +25673,7 @@
     "upstream_operation_id": "migrations/list-repos-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/migrations/{migration_id}/repositories",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -25694,7 +25713,7 @@
     "upstream_operation_id": "migrations/list-repos-for-org",
     "method": "GET",
     "path_template": "/orgs/{org}/migrations/{migration_id}/repositories",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -27996,7 +28015,7 @@
     "upstream_operation_id": "orgs/list-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/orgs",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -29891,7 +29910,7 @@
     "upstream_operation_id": "packages/get-all-package-versions-for-package-owned-by-authenticated-user",
     "method": "GET",
     "path_template": "/user/packages/{package_type}/{package_name}/versions",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -29942,7 +29961,7 @@
     "upstream_operation_id": "packages/get-all-package-versions-for-package-owned-by-org",
     "method": "GET",
     "path_template": "/orgs/{org}/packages/{package_type}/{package_name}/versions",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -29994,7 +30013,7 @@
     "upstream_operation_id": "packages/get-all-package-versions-for-package-owned-by-user",
     "method": "GET",
     "path_template": "/users/{username}/packages/{package_type}/{package_name}/versions",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30032,7 +30051,7 @@
     "upstream_operation_id": "packages/get-package-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/packages/{package_type}/{package_name}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30069,7 +30088,7 @@
     "upstream_operation_id": "packages/get-package-for-organization",
     "method": "GET",
     "path_template": "/orgs/{org}/packages/{package_type}/{package_name}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30107,7 +30126,7 @@
     "upstream_operation_id": "packages/get-package-for-user",
     "method": "GET",
     "path_template": "/users/{username}/packages/{package_type}/{package_name}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30145,7 +30164,7 @@
     "upstream_operation_id": "packages/get-package-version-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/packages/{package_type}/{package_name}/versions/{package_version_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30183,7 +30202,7 @@
     "upstream_operation_id": "packages/get-package-version-for-organization",
     "method": "GET",
     "path_template": "/orgs/{org}/packages/{package_type}/{package_name}/versions/{package_version_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30222,7 +30241,7 @@
     "upstream_operation_id": "packages/get-package-version-for-user",
     "method": "GET",
     "path_template": "/users/{username}/packages/{package_type}/{package_name}/versions/{package_version_id}",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30261,7 +30280,7 @@
     "upstream_operation_id": "packages/list-docker-migration-conflicting-packages-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/docker/conflicts",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -30289,7 +30308,7 @@
     "upstream_operation_id": "packages/list-docker-migration-conflicting-packages-for-organization",
     "method": "GET",
     "path_template": "/orgs/{org}/docker/conflicts",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30325,7 +30344,7 @@
     "upstream_operation_id": "packages/list-docker-migration-conflicting-packages-for-user",
     "method": "GET",
     "path_template": "/users/{username}/docker/conflicts",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30361,7 +30380,7 @@
     "upstream_operation_id": "packages/list-packages-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/packages",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -30407,7 +30426,7 @@
     "upstream_operation_id": "packages/list-packages-for-organization",
     "method": "GET",
     "path_template": "/orgs/{org}/packages",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -30461,7 +30480,7 @@
     "upstream_operation_id": "packages/list-packages-for-user",
     "method": "GET",
     "path_template": "/users/{username}/packages",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -31677,7 +31696,7 @@
     "upstream_operation_id": "projects/list-view-items-for-user",
     "method": "GET",
     "path_template": "/users/{username}/projectsV2/{project_number}/views/{view_number}/items",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -45005,7 +45024,7 @@
     "upstream_operation_id": "teams/list-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/teams",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -46165,7 +46184,7 @@
     "upstream_operation_id": "users/get-authenticated",
     "method": "GET",
     "path_template": "/user",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,
@@ -46271,7 +46290,7 @@
     "upstream_operation_id": "users/get-context-for-user",
     "method": "GET",
     "path_template": "/users/{username}/hovercard",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "path_parameters": [
@@ -46929,7 +46948,7 @@
     "upstream_operation_id": "users/list-social-accounts-for-authenticated-user",
     "method": "GET",
     "path_template": "/user/social_accounts",
-    "credential_kind": "installation",
+    "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
     "authenticated_user_target": true,

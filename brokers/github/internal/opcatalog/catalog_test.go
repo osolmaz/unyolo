@@ -36,6 +36,23 @@ func TestCatalogValidatesAndContainsCanonicalOperations(t *testing.T) {
 	}
 }
 
+func TestGeneratedRESTCredentialAndRiskClassification(t *testing.T) {
+	for _, name := range []string{
+		"installation.apps_list_installations_for_authenticated_user",
+		"notification.activity_list_notifications_for_authenticated_user",
+		"issue.issues_list_for_authenticated_user",
+	} {
+		descriptor, found := ByName(name)
+		if !found || descriptor.CredentialKind != "user" {
+			t.Fatalf("%s credential = %q, want user", name, descriptor.CredentialKind)
+		}
+	}
+	descriptor, found := ByName("issue.issues_create")
+	if !found || descriptor.Risk != RiskMedium || descriptor.ExplicitOnly || descriptor.FamilyGlobAllowed == false {
+		t.Fatalf("ordinary mutation classification = %+v", descriptor)
+	}
+}
+
 func TestPersistedGraphQLRequiresReviewedTargetBindings(t *testing.T) {
 	count := 0
 	for _, descriptor := range MustAll() {

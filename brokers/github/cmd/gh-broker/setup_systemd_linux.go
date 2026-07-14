@@ -267,7 +267,8 @@ func optionalAppClientEnv(plan systemdPlan) string {
 	if plan.opts.GitHubAppClientIDFile == "" {
 		return ""
 	}
-	return "GH_BROKER_GITHUB_APP_CLIENT_ID_FILE=" + plan.appClientIDPath + "\n" +
+	return "GH_BROKER_GITHUB_USER_ID=" + strconv.FormatInt(plan.opts.GitHubUserID, 10) + "\n" +
+		"GH_BROKER_GITHUB_APP_CLIENT_ID_FILE=" + plan.appClientIDPath + "\n" +
 		"GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE=" + plan.appClientSecretPath + "\n"
 }
 

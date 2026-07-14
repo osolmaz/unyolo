@@ -30,6 +30,7 @@ type setupSystemdOptions struct {
 	GitHubAppPrivateKeyFile   string
 	GitHubAppClientIDFile     string
 	GitHubAppClientSecretFile string
+	GitHubUserID              int64
 	GitHubWebhookSecretFile   string
 	ScopeFile                 string
 	SharedSecret              string
@@ -129,6 +130,7 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	fs.StringVar(&opts.GitHubAppPrivateKeyFile, "github-app-private-key-file", "", "file containing the GitHub App private key")
 	fs.StringVar(&opts.GitHubAppClientIDFile, "github-app-client-id-file", "", "file containing the GitHub App OAuth client id for user credentials")
 	fs.StringVar(&opts.GitHubAppClientSecretFile, "github-app-client-secret-file", "", "file containing the GitHub App OAuth client secret for user credentials")
+	fs.Int64Var(&opts.GitHubUserID, "github-user-id", 0, "immutable GitHub user id for user credential operations")
 	fs.StringVar(&opts.GitHubWebhookSecretFile, "github-webhook-secret-file", "", "file containing the GitHub webhook secret")
 	fs.StringVar(&opts.ScopeFile, "scope-file", "", "policy scope JSON file")
 	fs.BoolVar(&opts.DevTokenFallback, "dev-token-fallback", false, "configure the current GitHub token fallback runtime")
@@ -230,11 +232,28 @@ func validateDevTokenSetup(opts setupSystemdOptions) error {
 }
 
 func validateGitHubAppSetup(opts setupSystemdOptions) error {
+	if err := validateGitHubAppCoreSetup(opts); err != nil {
+		return err
+	}
+	return validateGitHubAppUserSetup(opts)
+}
+
+func validateGitHubAppCoreSetup(opts setupSystemdOptions) error {
 	if opts.GitHubAppIDFile == "" || opts.GitHubAppPrivateKeyFile == "" || opts.GitHubWebhookSecretFile == "" {
 		return errors.New("GitHub App credential files are required unless --dev-token-fallback is set")
 	}
+	return nil
+}
+
+func validateGitHubAppUserSetup(opts setupSystemdOptions) error {
 	if (opts.GitHubAppClientIDFile == "") != (opts.GitHubAppClientSecretFile == "") {
 		return errors.New("--github-app-client-id-file and --github-app-client-secret-file must be set together")
+	}
+	if opts.GitHubAppClientIDFile != "" && opts.GitHubUserID <= 0 {
+		return errors.New("--github-user-id is required with GitHub App OAuth client credentials")
+	}
+	if opts.GitHubAppClientIDFile == "" && opts.GitHubUserID != 0 {
+		return errors.New("--github-user-id requires GitHub App OAuth client credentials")
 	}
 	return nil
 }

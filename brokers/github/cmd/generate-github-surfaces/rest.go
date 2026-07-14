@@ -218,7 +218,7 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		mode, dispositionFlags, maxUses = capability.ModeExecution, "E", 1
 	}
 	risk := operationRisk(name, classes, method)
-	explicit := mutation && (len(classes) > 0 || risk >= capability.RiskHigh) || credentialOutput != nil
+	explicit := mutation && (len(classes) > 0 || highOrCriticalRisk(risk)) || credentialOutput != nil
 	sealed := len(sealedInputPaths) > 0 || credentialOutput != nil
 	if sealed {
 		mode, dispositionFlags, maxUses = capability.ModeExecution, "E", 1
@@ -255,6 +255,10 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"rest:" + operation.OperationID},
 		ExecutorKind: executorKind(disposition), ReconcilerKind: reconcilerKind(method, disposition),
 	}, RequiredGitHubPermissions: permissions, RequiredRepositorySelection: strings.Contains(path, "/repos/{owner}/{repo}")}
+}
+
+func highOrCriticalRisk(risk capability.Risk) bool {
+	return risk == capability.RiskHigh || risk == capability.RiskCritical
 }
 
 func runnerCredentialOutput(operationID string) *string {
@@ -350,8 +354,8 @@ func credentialKind(method, path string, operation restOperation, matches []perm
 	if enabled, _ := operation.GitHub["enabledForGitHubApps"].(bool); enabled {
 		return "installation"
 	}
-	if method == http.MethodGet {
-		return "installation"
+	if method == http.MethodGet || method == http.MethodHead {
+		return "user"
 	}
 	return "unavailable"
 }

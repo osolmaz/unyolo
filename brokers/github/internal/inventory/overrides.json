@@ -19,6 +19,17 @@
       "repo.website.update"
     ]
   },
+  "rest_operation_request_fields": {
+    "repo.archival.update": ["archived"],
+    "repo.default_branch.update": ["default_branch"],
+    "repo.description.update": ["description"],
+    "repo.feature.update": ["allow_forking", "has_issues", "has_projects", "has_pull_requests", "has_wiki", "is_template", "web_commit_signoff_required"],
+    "repo.merge_policy.update": ["allow_auto_merge", "allow_merge_commit", "allow_rebase_merge", "allow_squash_merge", "allow_update_branch", "delete_branch_on_merge", "merge_commit_message", "merge_commit_title", "pull_request_creation_policy", "squash_merge_commit_message", "squash_merge_commit_title", "use_squash_pr_title_as_default"],
+    "repo.name.update": ["name"],
+    "repo.security.update": ["security_and_analysis"],
+    "repo.visibility.update": ["private", "visibility"],
+    "repo.website.update": ["homepage"]
+  },
   "high_risk_operations": [
     "pull_request.merge",
     "repo.archival.update",

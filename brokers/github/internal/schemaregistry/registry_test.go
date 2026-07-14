@@ -3,6 +3,7 @@ package schemaregistry
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"sync"
 	"testing"
 
@@ -32,14 +33,37 @@ func TestSchemasCoverCatalogAndAreClosed(t *testing.T) {
 }
 
 func TestRepositoryUpdateSchemasRemainFieldSplit(t *testing.T) {
-	for _, name := range []string{"repo.description.update", "repo.visibility.update", "repo.default_branch.update", "repo.feature.update"} {
+	wantFields := map[string][]string{
+		"repo.archival.update":       {"archived"},
+		"repo.default_branch.update": {"default_branch"},
+		"repo.description.update":    {"description"},
+		"repo.feature.update":        {"allow_forking", "has_issues", "has_projects", "has_pull_requests", "has_wiki", "is_template", "web_commit_signoff_required"},
+		"repo.merge_policy.update":   {"allow_auto_merge", "allow_merge_commit", "allow_rebase_merge", "allow_squash_merge", "allow_update_branch", "delete_branch_on_merge", "merge_commit_message", "merge_commit_title", "pull_request_creation_policy", "squash_merge_commit_message", "squash_merge_commit_title", "use_squash_pr_title_as_default"},
+		"repo.name.update":           {"name"},
+		"repo.security.update":       {"security_and_analysis"},
+		"repo.visibility.update":     {"private", "visibility"},
+		"repo.website.update":        {"homepage"},
+	}
+	for name, want := range wantFields {
 		operation, found := ForOperation(name)
 		if !found {
 			t.Fatalf("%s missing", name)
 		}
-		if operation.Arguments["additionalProperties"] != false {
-			t.Fatalf("%s arguments are open", name)
+		properties, _ := operation.Arguments["properties"].(map[string]any)
+		input, _ := properties["input"].(map[string]any)
+		inputProperties, _ := input["properties"].(map[string]any)
+		got := make([]string, 0, len(inputProperties))
+		for field := range inputProperties {
+			got = append(got, field)
 		}
+		slices.Sort(got)
+		if !slices.Equal(got, want) || operation.Arguments["additionalProperties"] != false || input["additionalProperties"] != false {
+			t.Fatalf("%s fields = %v, want %v", name, got, want)
+		}
+	}
+	target := json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`)
+	if err := ValidateSubmission("repo.description.update", target, json.RawMessage(`{"input":{"visibility":"private"}}`)); err == nil {
+		t.Fatal("repo.description.update accepted a visibility change")
 	}
 }
 

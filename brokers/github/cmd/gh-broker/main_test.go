@@ -243,6 +243,18 @@ func TestBuildServersAddsDedicatedOperatorListener(t *testing.T) {
 	}
 }
 
+func TestAgentServerTimeoutsCoverBoundedStreams(t *testing.T) {
+	cfg := config.Config{ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, GitHubStreamTimeout: 10 * time.Minute}
+	server := configuredAgentServer("127.0.0.1", "8081", http.NotFoundHandler(), cfg)
+	if server.ReadTimeout != 10*time.Minute || server.WriteTimeout != 10*time.Minute {
+		t.Fatalf("agent timeouts = read %s write %s", server.ReadTimeout, server.WriteTimeout)
+	}
+	operator := configuredOperatorServer("127.0.0.1", "8082", http.NotFoundHandler(), cfg)
+	if operator.ReadTimeout != 15*time.Second || operator.WriteTimeout != 0 {
+		t.Fatalf("operator timeouts = read %s write %s", operator.ReadTimeout, operator.WriteTimeout)
+	}
+}
+
 func TestServeReturnsListenError(t *testing.T) {
 	t.Parallel()
 	server := &http.Server{

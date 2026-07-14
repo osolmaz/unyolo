@@ -199,12 +199,13 @@ func TestLoadReadsOptionalGitHubAppUserCredentialFiles(t *testing.T) {
 		"GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE":    filepath.Join(dir, "webhook"),
 		"GH_BROKER_GITHUB_APP_CLIENT_ID_FILE":     filepath.Join(dir, "client-id"),
 		"GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE": filepath.Join(dir, "client-secret"),
+		"GH_BROKER_GITHUB_USER_ID":                "1234",
 	}
 	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.GitHubAppClientID != "Iv1.client" || cfg.GitHubAppClientSecret != "client-secret" {
+	if cfg.GitHubAppClientID != "Iv1.client" || cfg.GitHubAppClientSecret != "client-secret" || cfg.GitHubUserID != 1234 {
 		t.Fatalf("GitHub App user credential config = %+v", cfg)
 	}
 	values["GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE"] = ""
@@ -227,6 +228,39 @@ func TestValidateRejectsInlineDevelopmentAndAppClientSecrets(t *testing.T) {
 	app.GitHubAppClientID, app.GitHubAppClientSecret = "client-id", "secret-canary"
 	if err := app.Validate(); err == nil || strings.Contains(err.Error(), "canary") {
 		t.Fatalf("inline app client secret error = %v", err)
+	}
+}
+
+func TestAppCredentialRequiresBoundUserSelector(t *testing.T) {
+	base := Config{GitHubAppID: "123", GitHubAppPrivateKey: []byte("key"), GitHubWebhookSecret: "webhook",
+		GitHubAPIBaseURL: "https://api.github.com/", GitHubWebBaseURL: "https://github.com/"}
+	tests := []struct {
+		name    string
+		mutate  func(*Config)
+		wantErr bool
+	}{
+		{"base app", func(*Config) {}, false},
+		{"missing webhook", func(value *Config) { value.GitHubWebhookSecret = "" }, true},
+		{"unpaired client", func(value *Config) { value.GitHubAppClientID = "client" }, true},
+		{"inline client secret", func(value *Config) {
+			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubUserID = "client", "secret", 1234
+		}, true},
+		{"missing user id", func(value *Config) {
+			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubAppClientSecretFile = "client", "secret", "secret-file"
+		}, true},
+		{"orphan user id", func(value *Config) { value.GitHubUserID = 1234 }, true},
+		{"user credential", func(value *Config) {
+			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubAppClientSecretFile, value.GitHubUserID = "client", "secret", "secret-file", 1234
+		}, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			value := base
+			test.mutate(&value)
+			if err := appCredential(value); (err != nil) != test.wantErr {
+				t.Fatalf("appCredential() error = %v", err)
+			}
+		})
 	}
 }
 

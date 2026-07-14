@@ -113,7 +113,7 @@ func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error
 		return nil, err
 	}
 	api.Start(ctx)
-	servers := []*http.Server{configuredHTTPServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
+	servers := []*http.Server{configuredAgentServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
 	if cfg.OperatorSecret != "" {
 		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, api.OperatorHandler(), cfg))
 	}
@@ -146,6 +146,13 @@ func configuredHTTPServer(bindAddr string, port string, handler http.Handler, cf
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 	}
+}
+
+func configuredAgentServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
+	server := configuredHTTPServer(bindAddr, port, handler, cfg)
+	server.ReadTimeout = max(server.ReadTimeout, cfg.GitHubStreamTimeout)
+	server.WriteTimeout = max(server.WriteTimeout, cfg.GitHubStreamTimeout)
+	return server
 }
 
 func serve(ctx context.Context, server *http.Server, bindAddr string, port string) error {

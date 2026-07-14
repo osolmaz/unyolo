@@ -124,6 +124,7 @@ sudo gh-broker setup systemd \
   --github-app-private-key-file ./private-key.pem \
   --github-app-client-id-file ./client-id \
   --github-app-client-secret-file ./client-secret \
+  --github-user-id 1234 \
   --github-webhook-secret-file ./webhook-secret \
   --scope-file ./scope.json
 ```

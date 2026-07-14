@@ -45,6 +45,7 @@ func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 
 func schemasForREST(name, method, path string, operation restOperation, targetKind string, components map[string]any) operationSchemas {
 	arguments := argumentsSchemaForREST(method, path, operation, targetKind, components)
+	arguments = projectReviewedRequestFields(name, arguments)
 	upstreamResult := responseSchema(operation, components)
 	result := projectedResponseSchema(upstreamResult, responseProjection(name, upstreamResult))
 	if runnerCredentialOutput(operation.OperationID) != nil {
@@ -60,6 +61,52 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 		result = streamResultSchema()
 	}
 	return operationSchemas{Target: "target." + targetKind + ".v1", Arguments: arguments, Result: result}
+}
+
+func projectReviewedRequestFields(operation string, arguments map[string]any) map[string]any {
+	fields, found := reviewedOverrides.RESTOperationRequestFields[operation]
+	if !found {
+		return arguments
+	}
+	properties, ok := arguments["properties"].(map[string]any)
+	if !ok {
+		panic(fmt.Sprintf("reviewed request projection %q has no argument properties", operation))
+	}
+	input, ok := properties["input"].(map[string]any)
+	if !ok {
+		panic(fmt.Sprintf("reviewed request projection %q has no input body", operation))
+	}
+	inputProperties, ok := input["properties"].(map[string]any)
+	if !ok {
+		panic(fmt.Sprintf("reviewed request projection %q has no input properties", operation))
+	}
+	selected := make(map[string]any, len(fields))
+	for _, field := range fields {
+		value, present := inputProperties[field]
+		if !present {
+			panic(fmt.Sprintf("reviewed request projection %q names unknown field %q", operation, field))
+		}
+		selected[field] = value
+	}
+	projected := copyx.JSONMap(arguments)
+	projectedProperties := projected["properties"].(map[string]any)
+	projectedInput := projectedProperties["input"].(map[string]any)
+	projectedInput["properties"] = selected
+	if required, present := projectedInput["required"].([]any); present {
+		projectedInput["required"] = retainedRequired(required, selected)
+	}
+	return projected
+}
+
+func retainedRequired(required []any, properties map[string]any) []any {
+	result := make([]any, 0, len(required))
+	for _, value := range required {
+		name, _ := value.(string)
+		if _, found := properties[name]; found {
+			result = append(result, name)
+		}
+	}
+	return result
 }
 
 //nolint:cyclop // OpenAPI parameter and request-body forms require explicit handling.
