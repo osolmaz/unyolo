@@ -101,7 +101,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		return nil, err
 	}
 	operationStore := agentops.New(core.database)
-	admissionController, err := admission.New([]string{cfg.ClientID}, admission.DefaultLimits(), operationStore.AdmissionUsage)
+	admissionController, err := admission.NewConfigured([]string{cfg.ClientID}, cfg.Admission, operationStore.AdmissionUsage)
 	if err != nil {
 		_ = core.database.Close()
 		return nil, err

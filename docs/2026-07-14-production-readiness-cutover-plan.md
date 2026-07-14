@@ -362,11 +362,12 @@ operation arguments.
 
 Implemented on the production-readiness branch: Agent V1 submissions use one
 shared controller backed by SQLite occupancy counts and short-lived in-memory
-reservations. HF, GH, and sudo use the same conservative defaults; authenticated
+reservations. HF, GH, and sudo use the same conservative defaults and strict
+shared configuration format with exact per-client overrides; authenticated
 idempotent replays bypass accounting, concurrent submissions cannot race past
-capacity, and refusals return stable `429` codes with `Retry-After`. Remaining
-work here is configuration and override plumbing plus stream, sealed-payload,
-notification, and reserved recovery-capacity accounting.
+capacity, and refusals return stable `429` codes with `Retry-After`. Cancellation,
+operator decisions, health, and readiness bypass submission admission. Explicit
+overload recovery-capacity drills remain.
 
 Stream and sealed-payload stores now enforce both global and per-client
 file/byte caps after expiry cleanup. Their idempotency lookup runs before

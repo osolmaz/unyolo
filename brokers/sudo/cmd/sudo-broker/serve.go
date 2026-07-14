@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
@@ -39,6 +40,7 @@ type serveOptions struct {
 	operatorEndpoint *endpoint.Endpoint
 	telegramToken    string
 	telegramChatID   int64
+	admissionConfig  string
 	development      bool
 }
 
@@ -110,6 +112,7 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	flags.StringVar(&operatorEndpoint, "operator-endpoint", "", "operator endpoint URI")
 	flags.StringVar(&opts.telegramToken, "telegram-token-file", "", "private Telegram bot token file")
 	flags.Int64Var(&opts.telegramChatID, "telegram-chat-id", 0, "Telegram approval chat id")
+	flags.StringVar(&opts.admissionConfig, "admission-config", "", "absolute admission limits JSON")
 	flags.BoolVar(&opts.development, "development", false, "enable foreground development path rules")
 	if err := flags.Parse(args); err != nil {
 		return serveOptions{}, err
@@ -152,7 +155,7 @@ func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootF
 	if validateRootFile == nil {
 		return nil, errors.New("security-sensitive file validator is required")
 	}
-	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken} {
+	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken, opts.admissionConfig} {
 		if path != "" {
 			if err := validateRootFile(path); err != nil {
 				return nil, fmt.Errorf("security-sensitive file %s is unsafe: %w", path, err)
@@ -168,6 +171,10 @@ func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootF
 		return nil, err
 	}
 	clients, err := secretfile.Parse(opts.secretsPath)
+	if err != nil {
+		return nil, err
+	}
+	admissionConfig, err := admission.LoadFile(opts.admissionConfig, mapKeys(clients))
 	if err != nil {
 		return nil, err
 	}
@@ -206,11 +213,20 @@ func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootF
 		Policy: policy, Catalog: snapshot, Database: database,
 		Identities: plan.SystemIdentityResolver{}, Helper: helper, ClientSecrets: clients, OperatorSecrets: operators,
 		Notifier: notifierService, Poller: poller, Audit: audit.New(stderr), OperatorConfigured: len(operators) > 0,
+		Admission: admissionConfig,
 	})
 	if err != nil {
 		_ = database.Close()
 	}
 	return server, err
+}
+
+func mapKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 func serverHelperReady(ctx context.Context, server *routes.Server) error {

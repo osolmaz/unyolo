@@ -46,6 +46,7 @@ type Options struct {
 	Audit              *audit.Writer
 	Now                func() time.Time
 	OperatorConfigured bool
+	Admission          admission.Config
 }
 
 type Server struct {
@@ -116,7 +117,7 @@ func New(opts Options) (*Server, error) {
 	e.HidePort = true
 	e.Use(middleware.Recover(), noStore)
 	operationStore := agentops.New(opts.Database)
-	admissionController, err := admission.New(secretNames(opts.ClientSecrets), admission.DefaultLimits(), operationStore.AdmissionUsage)
+	admissionController, err := admission.NewConfigured(secretNames(opts.ClientSecrets), opts.Admission, operationStore.AdmissionUsage)
 	if err != nil {
 		return nil, err
 	}

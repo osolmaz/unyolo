@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/secretfile"
@@ -61,6 +62,7 @@ type Config struct {
 	UpstreamRouterURL string
 	TelegramBotToken  string
 	TelegramChatID    int64
+	Admission         admission.Config
 }
 
 // Load reads and validates configuration from getenv (normally
@@ -86,6 +88,9 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.Operators, err = loadOperators(getenv, cfg.Clients); err != nil {
 		return Config{}, err
 	}
+	if cfg.Admission, err = admission.LoadFile(brokerEnv(getenv, "ADMISSION_CONFIG"), clientNames(cfg.Clients)); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", brokerEnvName("ADMISSION_CONFIG"), err)
+	}
 	if err := loadRuntime(getenv, &cfg); err != nil {
 		return Config{}, err
 	}
@@ -93,6 +98,14 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, loadTelegram(getenv, &cfg)
+}
+
+func clientNames(clients []Client) []string {
+	names := make([]string, 0, len(clients))
+	for _, client := range clients {
+		names = append(names, client.Name)
+	}
+	return names
 }
 
 func loadRuntime(getenv func(string) string, cfg *Config) error {

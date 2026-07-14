@@ -117,6 +117,32 @@ func TestControllerRejectsInvalidConfigurationAndUsageFailure(t *testing.T) {
 	}
 }
 
+func TestControllerAppliesExactClientOverrides(t *testing.T) {
+	config := DefaultConfig()
+	config.Clients = map[string]ClientLimits{
+		"strict": {RequestsPerWindow: 1, Window: time.Minute, Active: 1, Pending: 1},
+	}
+	controller, err := newConfiguredController([]string{"strict", "default"}, config,
+		func(context.Context, string) (Usage, error) { return Usage{}, nil },
+		func() time.Time { return time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	permit, err := controller.Admit(t.Context(), "strict")
+	if err != nil {
+		t.Fatal(err)
+	}
+	permit.Release()
+	if _, err := controller.Admit(t.Context(), "strict"); limitCode(err) != "submission_rate_limited" {
+		t.Fatalf("strict second admission = %v", err)
+	}
+	permit, err = controller.Admit(t.Context(), "default")
+	if err != nil {
+		t.Fatalf("default admission = %v", err)
+	}
+	permit.Release()
+}
+
 func limitCode(err error) string {
 	var limit *LimitError
 	if errors.As(err, &limit) {

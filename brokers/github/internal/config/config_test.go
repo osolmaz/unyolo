@@ -48,6 +48,17 @@ func TestLoadRejectsMalformedPresentValues(t *testing.T) {
 	}
 }
 
+func TestLoadAdmissionOverridesForConfiguredClient(t *testing.T) {
+	values := developmentValues()
+	path := writeFile(t, t.TempDir(), "admission.json",
+		`{"requests_per_window":30,"window_seconds":60,"client_active":20,"client_pending":8,"global_active":100,"global_executing":12,"clients":{"agent-a":{"requests_per_window":5,"window_seconds":120,"active":4,"pending":2}}}`)
+	values["GH_BROKER_ADMISSION_CONFIG"] = path
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil || cfg.Admission.Clients["agent-a"].Pending != 2 {
+		t.Fatalf("admission config = %+v, %v", cfg.Admission, err)
+	}
+}
+
 func TestLoadRequiresExplicitNetworkExposure(t *testing.T) {
 	values := developmentValues()
 	values["GH_BROKER_AGENT_ENDPOINT"] = "tcp://192.0.2.10:9000"

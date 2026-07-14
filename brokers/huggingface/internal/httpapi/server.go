@@ -425,7 +425,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		return nil, err
 	}
 	operationStore := agentops.New(database)
-	admissionController, err := admission.New(secretNames(clients), admission.DefaultLimits(), operationStore.AdmissionUsage)
+	admissionController, err := admission.NewConfigured(secretNames(clients), opts.Config.Admission, operationStore.AdmissionUsage)
 	if err != nil {
 		_ = database.Close()
 		return nil, err

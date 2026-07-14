@@ -33,6 +33,17 @@ then
   exit 1
 fi
 
+for admission_server in \
+  brokers/huggingface/internal/httpapi/server.go \
+  brokers/github/internal/httpapi/server.go \
+  brokers/sudo/internal/routes/server.go
+do
+  if ! grep -q 'admission.NewConfigured' "$admission_server"; then
+    echo "$admission_server bypasses shared configured admission control" >&2
+    exit 1
+  fi
+done
+
 if find . -path './brokers' -prune -o -path './.git' -prune -o -name '*.go' -type f -print0 |
   xargs -0 grep -n 'github.com/osolmaz/brokerkit/brokers/'
 then

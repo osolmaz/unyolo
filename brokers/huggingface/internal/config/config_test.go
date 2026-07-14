@@ -59,6 +59,24 @@ func TestLoadHFTokenFile(t *testing.T) {
 	}
 }
 
+func TestLoadAdmissionOverridesForNamedClients(t *testing.T) {
+	dir := t.TempDir()
+	secrets := filepath.Join(dir, "secrets")
+	if err := os.WriteFile(secrets, []byte("agent = abcdefghijklmnopqrstuvwxyz123456\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	admissionPath := filepath.Join(dir, "admission.json")
+	admissionJSON := `{"requests_per_window":30,"window_seconds":60,"client_active":20,"client_pending":8,"global_active":100,"global_executing":12,"clients":{"agent":{"requests_per_window":5,"window_seconds":120,"active":4,"pending":2}}}`
+	if err := os.WriteFile(admissionPath, []byte(admissionJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(testGetenv(map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value",
+		"HF_BROKER_SECRETS_FILE": secrets, "HF_BROKER_ADMISSION_CONFIG": admissionPath}))
+	if err != nil || cfg.Admission.Clients["agent"].Active != 4 {
+		t.Fatalf("admission config = %+v, %v", cfg.Admission, err)
+	}
+}
+
 func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 	tests := []struct {
 		name string

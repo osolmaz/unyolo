@@ -22,6 +22,20 @@ type Limits struct {
 	GlobalExecuting   int64
 }
 
+// ClientLimits bounds one configured client's submissions and durable work.
+type ClientLimits struct {
+	RequestsPerWindow int
+	Window            time.Duration
+	Active            int64
+	Pending           int64
+}
+
+// Config combines shared global limits with exact configured-client overrides.
+type Config struct {
+	Default Limits
+	Clients map[string]ClientLimits
+}
+
 // DefaultLimits returns conservative limits suitable for a local broker daemon.
 func DefaultLimits() Limits {
 	return Limits{
@@ -33,6 +47,9 @@ func DefaultLimits() Limits {
 		GlobalExecuting:   64,
 	}
 }
+
+// DefaultConfig returns the conservative local-daemon configuration.
+func DefaultConfig() Config { return Config{Default: DefaultLimits()} }
 
 // Usage is the durable operation occupancy used by the admission decision.
 type Usage struct {
@@ -63,6 +80,7 @@ type clientState struct {
 type Controller struct {
 	mu             sync.Mutex
 	limits         Limits
+	clientLimits   map[string]ClientLimits
 	usage          UsageFunc
 	now            func() time.Time
 	clients        map[string]*clientState
@@ -71,18 +89,68 @@ type Controller struct {
 
 // New constructs a controller for a fixed set of authenticated client identities.
 func New(clients []string, limits Limits, usage UsageFunc) (*Controller, error) {
-	return newController(clients, limits, usage, time.Now)
+	return NewConfigured(clients, Config{Default: limits}, usage)
+}
+
+// NewConfigured constructs a controller with exact per-client overrides.
+func NewConfigured(clients []string, config Config, usage UsageFunc) (*Controller, error) {
+	return newConfiguredController(clients, config, usage, time.Now)
 }
 
 func newController(clients []string, limits Limits, usage UsageFunc, now func() time.Time) (*Controller, error) {
-	if usage == nil || now == nil || !validLimits(limits) || len(clients) == 0 {
+	return newConfiguredController(clients, Config{Default: limits}, usage, now)
+}
+
+func newConfiguredController(clients []string, config Config, usage UsageFunc, now func() time.Time) (*Controller, error) {
+	config = normalizedConfig(config)
+	if !validControllerDependencies(clients, config, usage, now) {
 		return nil, errors.New("admission clients, limits, usage reader, and clock are required")
 	}
 	states, err := clientStates(clients)
 	if err != nil {
 		return nil, err
 	}
-	return &Controller{limits: limits, usage: usage, now: now, clients: states}, nil
+	clientLimits, err := configuredClientLimits(states, config)
+	if err != nil {
+		return nil, err
+	}
+	return &Controller{limits: config.Default, clientLimits: clientLimits, usage: usage, now: now, clients: states}, nil
+}
+
+func normalizedConfig(config Config) Config {
+	if config.Default == (Limits{}) && len(config.Clients) == 0 {
+		return DefaultConfig()
+	}
+	return config
+}
+
+func validControllerDependencies(clients []string, config Config, usage UsageFunc, now func() time.Time) bool {
+	return usage != nil && now != nil && len(clients) > 0 && validLimits(config.Default)
+}
+
+func configuredClientLimits(states map[string]*clientState, config Config) (map[string]ClientLimits, error) {
+	defaults := clientLimitsFrom(config.Default)
+	result := make(map[string]ClientLimits, len(states))
+	for client := range states {
+		result[client] = defaults
+	}
+	for client, limits := range config.Clients {
+		if _, exists := states[client]; !exists || !validClientLimits(limits, config.Default.GlobalActive) {
+			return nil, fmt.Errorf("admission limits for client %q are invalid", client)
+		}
+		result[client] = limits
+	}
+	return result, nil
+}
+
+func clientLimitsFrom(value Limits) ClientLimits {
+	return ClientLimits{RequestsPerWindow: value.RequestsPerWindow, Window: value.Window,
+		Active: value.ClientActive, Pending: value.ClientPending}
+}
+
+func validClientLimits(value ClientLimits, globalActive int64) bool {
+	return value.RequestsPerWindow > 0 && value.Window > 0 && value.Active > 0 && value.Pending > 0 &&
+		value.Pending <= value.Active && value.Active <= globalActive
 }
 
 func clientStates(clients []string) (map[string]*clientState, error) {
@@ -126,14 +194,15 @@ func (c *Controller) Admit(ctx context.Context, client string) (*Permit, error) 
 		return nil, errors.New("admission client is not configured")
 	}
 	now := c.now().UTC()
-	if err := c.chargeRequest(state, now); err != nil {
+	limits := c.clientLimits[client]
+	if err := c.chargeRequest(state, limits, now); err != nil {
 		return nil, err
 	}
 	usage, err := c.usage(ctx, client)
 	if err != nil {
 		return nil, fmt.Errorf("read operation admission usage: %w", err)
 	}
-	if code := c.capacityCode(state, usage); code != "" {
+	if code := c.capacityCode(state, limits, usage); code != "" {
 		return nil, capacityError(code)
 	}
 	state.reserved++
@@ -141,22 +210,22 @@ func (c *Controller) Admit(ctx context.Context, client string) (*Permit, error) 
 	return &Permit{controller: c, client: client}, nil
 }
 
-func (c *Controller) chargeRequest(state *clientState, now time.Time) error {
-	if state.windowStart.IsZero() || !now.Before(state.windowStart.Add(c.limits.Window)) {
+func (c *Controller) chargeRequest(state *clientState, limits ClientLimits, now time.Time) error {
+	if state.windowStart.IsZero() || !now.Before(state.windowStart.Add(limits.Window)) {
 		state.windowStart, state.requests = now, 0
 	}
-	if state.requests >= c.limits.RequestsPerWindow {
-		return &LimitError{Code: "submission_rate_limited", RetryAfter: positiveDuration(state.windowStart.Add(c.limits.Window).Sub(now))}
+	if state.requests >= limits.RequestsPerWindow {
+		return &LimitError{Code: "submission_rate_limited", RetryAfter: positiveDuration(state.windowStart.Add(limits.Window).Sub(now))}
 	}
 	state.requests++
 	return nil
 }
 
-func (c *Controller) capacityCode(state *clientState, usage Usage) string {
-	if usage.ClientActive+state.reserved >= c.limits.ClientActive {
+func (c *Controller) capacityCode(state *clientState, limits ClientLimits, usage Usage) string {
+	if usage.ClientActive+state.reserved >= limits.Active {
 		return "client_operation_limit"
 	}
-	if usage.ClientPending+state.reserved >= c.limits.ClientPending {
+	if usage.ClientPending+state.reserved >= limits.Pending {
 		return "client_pending_limit"
 	}
 	if usage.GlobalActive+c.globalReserved >= c.limits.GlobalActive {

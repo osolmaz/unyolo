@@ -22,9 +22,10 @@ func TestParseServeOptionsAndHTTPServerHardening(t *testing.T) {
 	t.Parallel()
 	args := []string{"--policy", "/etc/sudo/policy", "--catalog", "/etc/sudo/catalog", "--secrets", "/etc/sudo/secrets",
 		"--operator-secrets", "/etc/sudo/operators", "--state", "/var/lib/sudo",
-		"--helper-socket", "/run/sudo/helper.sock", "--agent-endpoint", "tcp://127.0.0.1:9000", "--operator-endpoint", "tcp://127.0.0.1:9001"}
+		"--helper-socket", "/run/sudo/helper.sock", "--agent-endpoint", "tcp://127.0.0.1:9000", "--operator-endpoint", "tcp://127.0.0.1:9001",
+		"--admission-config", "/etc/sudo/admission.json"}
 	opts, err := parseServeOptions(args)
-	if err != nil || opts.agentEndpoint.String() != "tcp://127.0.0.1:9000" {
+	if err != nil || opts.agentEndpoint.String() != "tcp://127.0.0.1:9000" || opts.admissionConfig != "/etc/sudo/admission.json" {
 		t.Fatalf("parseServeOptions() = %+v, %v", opts, err)
 	}
 	agent, _ := serverhttp.New(http.NotFoundHandler(), serverhttp.ProfileStreaming)
