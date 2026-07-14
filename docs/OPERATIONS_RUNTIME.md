@@ -54,11 +54,12 @@ systemd process environment.
 
 ## Agent MCP Operations
 
-MCP is a resumable adapter over Agent Operations V1, not a second lifecycle.
-A provider operation call durably submits one request and returns immediately.
-Its optional public `request_id` maps once to Agent V1's internal idempotency
-key. The MCP response is a closed `brokerkit.io/mcp-operation/v1` projection
-that excludes clients, canonical arguments, approval linkage, and plan data.
+MCP execution tools are a resumable adapter over Agent Operations V1, not a
+second lifecycle. A provider operation call durably submits one request and
+returns immediately. Its optional public `request_id` maps once to Agent V1's
+internal idempotency key. The MCP response is a closed
+`brokerkit.io/mcp-operation/v1` projection that excludes clients, canonical
+arguments, approval linkage, and plan data.
 
 Provider-prefixed get, wait, and list tools recover operations after transport
 loss or process restart. Wait defaults to 25 seconds, never exceeds 25 seconds,
@@ -71,6 +72,10 @@ operation/page projections, bounded recovery, and structured conflicts.
 Providers own semantic field aliases and canonical provider validation. Pinned
 OpenClaw redaction fixtures and full-catalog audits prevent a newly generated
 public field from silently becoming unreplayable.
+
+Capability catalogs may also expose window-mode grant request tools for actions
+performed later through Git, HTTP, or another protocol. Those tools remain on
+the shared grant lifecycle and return grants, not synthetic operations.
 
 ## Service
 

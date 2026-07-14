@@ -58,9 +58,15 @@ therefore retries blindly and magnifies the identity problem.
 - Generated MCP schemas fail closed when a redaction collision is unresolved.
 - A client never needs a broker restart to recover a committed operation.
 
+Window-mode catalog entries authorize a later Git, HTTP, or provider-protocol
+action. They remain grants and use the existing grant lifecycle; they are not
+wrapped in synthetic Agent operations. The submission/result and operation
+recovery requirements below apply to execution-mode MCP tools. Window grant
+tools still use optional transcript-safe request IDs and return immediately.
+
 ## Agent-Facing Request Identity
 
-### MCP submission input
+### MCP execution submission input
 
 Replace the required MCP property:
 
@@ -98,7 +104,7 @@ The internal Agent V1 request and SQLite column may retain the term
 `idempotency_key`; that is an implementation boundary, not an MCP field. The
 MCP adapter maps `request_id` to the internal value exactly once.
 
-### MCP submission result
+### MCP execution submission result
 
 Every immediate submission result contains:
 
@@ -523,7 +529,8 @@ fields.
 
 - No agent-facing MCP submission schema contains `idempotency_key`.
 - New operations succeed without caller-supplied request identity.
-- Every submission immediately returns a durable operation ID and request ID.
+- Every execution submission immediately returns a durable operation ID and
+  request ID.
 - Exact replay returns the original operation; conflicting reuse is structured
   and actionable.
 - No submission tool waits for approval.

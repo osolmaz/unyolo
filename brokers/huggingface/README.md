@@ -110,6 +110,10 @@ calls with `hf_operation_get`, `hf_operation_wait`, or `hf_operation_list`.
 Public variable and secret names are projected to transcript-safe fields; the
 secret value itself remains sealed.
 
+Window-mode tools request temporary authorization for a later Git or HTTP
+action. They return a durable grant and use the `hf_grant_*` lifecycle tools;
+execution-mode tools return Agent operations and use `hf_operation_*`.
+
 ## Temporary grants
 
 Request an exact temporary capability when the policy marks an operation as
