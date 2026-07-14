@@ -31,6 +31,11 @@ type Metrics struct {
 	executionTime *prometheus.HistogramVec
 	decisions     *prometheus.CounterVec
 	notifications *prometheus.CounterVec
+	dependencies  *prometheus.GaugeVec
+	upstream      *prometheus.CounterVec
+	retries       *prometheus.CounterVec
+	workerActive  prometheus.Gauge
+	workerLimit   prometheus.Gauge
 }
 
 // New creates an isolated registry with one controlled broker label.
@@ -55,9 +60,20 @@ func New(broker string, source StateSource) (*Metrics, error) {
 			Help: "Operator decision outcomes.", ConstLabels: labels}, []string{"action", "result"}),
 		notifications: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_notification_deliveries_total",
 			Help: "Approval notification delivery outcomes.", ConstLabels: labels}, []string{"result"}),
+		dependencies: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "brokerkit_dependency_healthy",
+			Help: "Last observed health of a bounded runtime dependency.", ConstLabels: labels}, []string{"dependency"}),
+		upstream: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_dependency_requests_total",
+			Help: "Provider and notification dependency outcomes.", ConstLabels: labels}, []string{"dependency", "result", "error_category"}),
+		retries: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_dependency_retries_total",
+			Help: "Durable retry attempts by bounded dependency.", ConstLabels: labels}, []string{"dependency"}),
+		workerActive: prometheus.NewGauge(prometheus.GaugeOpts{Name: "brokerkit_worker_active",
+			Help: "Current provider operation workers in use.", ConstLabels: labels}),
+		workerLimit: prometheus.NewGauge(prometheus.GaugeOpts{Name: "brokerkit_worker_limit",
+			Help: "Configured provider operation worker capacity.", ConstLabels: labels}),
 	}
 	metrics.registry.MustRegister(metrics.admissions, metrics.submissions, metrics.executions,
-		metrics.executionTime, metrics.decisions, metrics.notifications)
+		metrics.executionTime, metrics.decisions, metrics.notifications, metrics.dependencies,
+		metrics.upstream, metrics.retries, metrics.workerActive, metrics.workerLimit)
 	if source != nil {
 		metrics.registry.MustRegister(newStateCollector(labels, source))
 	}
@@ -99,6 +115,36 @@ func (m *Metrics) NotificationDelivered(result string) {
 	m.notifications.WithLabelValues(closedValue(result, notificationResults)).Inc()
 }
 
+func (m *Metrics) operationStarted(limit int) {
+	m.workerActive.Inc()
+	m.workerLimit.Set(float64(max(0, limit)))
+}
+
+func (m *Metrics) operationFinished(result, category string) {
+	m.workerActive.Dec()
+	m.recordDependency("provider", result, category)
+}
+
+func (m *Metrics) notificationAttempt(result, category string) {
+	m.recordDependency("notification", result, category)
+}
+
+func (m *Metrics) dependencyRetry(dependency string) {
+	m.retries.WithLabelValues(closedValue(dependency, dependencyNames)).Inc()
+}
+
+func (m *Metrics) recordDependency(dependency, result, category string) {
+	dependency = closedValue(dependency, dependencyNames)
+	result = closedValue(result, dependencyResults)
+	category = closedValue(category, errorCategories)
+	m.upstream.WithLabelValues(dependency, result, category).Inc()
+	if result == "succeeded" || result == "reconciled" || result == "delivered" {
+		m.dependencies.WithLabelValues(dependency).Set(1)
+	} else if result == "failed" || result == "ambiguous" {
+		m.dependencies.WithLabelValues(dependency).Set(0)
+	}
+}
+
 var admissionCodes = map[string]struct{}{
 	"submission_rate_limited": {}, "client_operation_limit": {}, "client_pending_limit": {},
 	"global_operation_limit": {}, "global_execution_limit": {}, "store_unavailable": {}, "client_unconfigured": {},
@@ -109,6 +155,14 @@ var executionResults = map[string]struct{}{"succeeded": {}, "failed": {}, "recon
 var decisionActions = map[string]struct{}{"approve": {}, "deny": {}}
 var decisionResults = map[string]struct{}{"committed": {}, "replayed": {}, "rejected": {}}
 var notificationResults = map[string]struct{}{"delivered": {}, "failed": {}, "claimed": {}, "already_recorded": {}}
+var dependencyNames = map[string]struct{}{"provider": {}, "notification": {}, "privileged_helper": {}}
+var dependencyResults = map[string]struct{}{
+	"succeeded": {}, "failed": {}, "ambiguous": {}, "reconciled": {}, "delivered": {}, "claimed": {}, "already_recorded": {},
+}
+var errorCategories = map[string]struct{}{
+	"none": {}, "authentication": {}, "authorization": {}, "canceled": {}, "conflict": {}, "invalid_response": {},
+	"rate_limited": {}, "rejected": {}, "storage": {}, "timeout": {}, "unavailable": {}, "other": {},
+}
 
 func admissionCode(value string) string { return closedValue(value, admissionCodes) }
 

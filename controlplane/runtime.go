@@ -44,6 +44,7 @@ type Runtime struct {
 	Decider         approval.Decider
 	Decisions       *decision.Service
 	Metrics         *observability.Metrics
+	Diagnostics     *observability.Diagnostics
 }
 
 // New validates and assembles one broker control plane.
@@ -62,6 +63,7 @@ func New(options Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	diagnostics := observability.NewDiagnostics(options.Broker, metrics, nil)
 	decisions, err := decision.New(decision.Options{
 		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: options.Audit, Observer: metrics,
 	})
@@ -73,7 +75,7 @@ func New(options Options) (*Runtime, error) {
 		return nil, err
 	}
 	decider := channelDecider{service: decisions}
-	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions, Metrics: metrics}, nil
+	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions, Metrics: metrics, Diagnostics: diagnostics}, nil
 }
 
 func operatorHandler(options Options, decisions *decision.Service, metrics *observability.Metrics) (http.Handler, error) {

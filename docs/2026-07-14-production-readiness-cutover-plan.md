@@ -447,9 +447,13 @@ notification code records bounded outcome counters and execution latency. The
 only identity label is the setup-controlled broker name; all other labels use
 closed enums and unknown values collapse to `other`. Scrapes also report a
 bounded database-health probe and durable queue-depth gauges for approvals,
-operations, execution, and notification delivery. Dependency degradation,
-worker-capacity gauges, upstream failure/rate-limit counters, and one shared
-structured logging boundary remain.
+operations, execution, and notification delivery. The shared runtime also
+reports last-observed provider and notification health, dependency outcomes by
+closed error category, notification retries, active workers, and configured
+worker capacity. The same boundary emits JSON diagnostics with stable events,
+opaque correlation IDs, provider, catalog risk class, closed outcome, and
+closed error category; it never logs targets, reasons, operation names, URLs,
+commands, credentials, or raw errors.
 
 ### Failure drills
 

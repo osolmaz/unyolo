@@ -14,6 +14,10 @@ The current registry reports:
 - provider execution and reconciliation latency;
 - committed, replayed, and rejected approve/deny decisions; and
 - delivered, failed, claimed, and already-recorded approval notifications;
+- last-observed provider and notification dependency health;
+- provider and notification dependency outcomes by closed error category;
+- durable notification retry attempts;
+- active operation workers and configured worker capacity;
 - durable pending-approval, queued-operation, executing-operation,
   pending-notification, and unresolved-notification depths; and
 - a bounded durable-database health probe at scrape time.
@@ -27,6 +31,23 @@ closed BrokerKit enums. Client names, repository names, target users, reasons,
 paths, commands, URLs, tokens, and upstream error strings are never metric
 labels. Unknown values collapse to `other`, which keeps cardinality bounded and
 prevents secrets from reaching the exposition output.
+
+The same shared boundary writes JSON diagnostics to stderr for operation start
+and completion, approval-notification delivery, and durable dependency retries.
+Records contain only a stable event name, broker/provider, opaque bounded
+correlation ID, catalog risk class, closed result, closed error category, and
+bounded duration. They never contain the operation name, target, reason,
+repository, user, path, command, URL, token, or raw error. Stable broker-owned
+failure codes are reduced to `authentication`, `authorization`, `canceled`,
+`conflict`, `invalid_response`, `rate_limited`, `rejected`, `storage`,
+`timeout`, `unavailable`, or `other` before either logs or labels see them.
+
+Dependency health is last-observed state, not a network probe performed during
+a metrics scrape. A provider or notification failure marks that dependency
+degraded; a later proven success restores it. Database health remains the
+bounded scrape-time probe. Dependency outages are visible without changing
+liveness or claiming that an unavailable external service corrupts local
+readiness.
 
 Liveness remains an unauthenticated, secret-free process probe on the agent
 surface. Readiness verifies required durable and local privilege dependencies.

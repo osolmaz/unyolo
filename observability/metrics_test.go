@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -89,4 +90,58 @@ func TestMetricsRequireBrokerName(t *testing.T) {
 	if _, err := New(" ", nil); err == nil {
 		t.Fatal("empty metrics broker accepted")
 	}
+}
+
+func TestDiagnosticsShareBoundedMetricsAndStructuredRedaction(t *testing.T) {
+	metrics, err := New("test-broker", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	diagnostics := NewDiagnostics("test-broker", metrics, &logs)
+	diagnostics.WorkerConfigured(8)
+	diagnostics.OperationStarted(strings.Repeat("x", 160), "critical", 8)
+	diagnostics.OperationFinished(strings.Repeat("x", 160), "critical", "failed", "operation_upstream_rate_limited-secret", time.Second)
+	diagnostics.NotificationAttempt("grant-1", "failed", "notification_unavailable-secret")
+	diagnostics.Retry("grant-1", "notification")
+
+	response := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := response.Body.String()
+	for _, want := range []string{
+		"brokerkit_dependency_healthy", `dependency="provider"} 0`, `dependency="notification"} 0`,
+		"brokerkit_dependency_requests_total", `error_category="rate_limited"`, `error_category="unavailable"`,
+		"brokerkit_dependency_retries_total", "brokerkit_worker_active", "brokerkit_worker_limit",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("diagnostic metrics omitted %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "secret") || strings.Contains(logs.String(), "secret") || strings.Contains(logs.String(), strings.Repeat("x", 129)) {
+		t.Fatalf("diagnostics exposed unbounded input: metrics=%s logs=%s", body, logs.String())
+	}
+	for _, want := range []string{`"msg":"broker.operation.started"`, `"msg":"broker.operation.finished"`, `"provider":"test-broker"`, `"operation_class":"critical"`, `"error_category":"rate_limited"`} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("structured diagnostics omitted %q: %s", want, logs.String())
+		}
+	}
+}
+
+func TestErrorCategoryUsesOnlyClosedStableClasses(t *testing.T) {
+	tests := map[string]string{
+		"": "none", "rate_limited": "rate_limited", "unauthorized": "authentication", "forbidden": "authorization",
+		"operation_canceled": "canceled", "upstream_conflict": "conflict", "response_invalid": "invalid_response",
+		"operation_store_unavailable": "storage", "operation_timeout": "timeout", "upstream_result_unknown": "unavailable",
+		"execution_rejected": "rejected", "caller-controlled-token": "other",
+	}
+	for input, want := range tests {
+		if got := ErrorCategory(input); got != want {
+			t.Errorf("ErrorCategory(%q) = %q, want %q", input, got, want)
+		}
+	}
+	var diagnostics *Diagnostics
+	diagnostics.OperationStarted("ignored", "low", 1)
+	diagnostics.OperationFinished("ignored", "low", "failed", "unknown", 0)
+	diagnostics.NotificationAttempt("ignored", "failed", "unknown")
+	diagnostics.Retry("ignored", "provider")
 }

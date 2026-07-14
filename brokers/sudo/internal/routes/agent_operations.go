@@ -42,7 +42,8 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		DefinitiveFailure: operations.DefinitiveFailure, ExecutionFailure: operations.ExecutionFailure,
 		RecordPolicyRefusal: s.recordRuntimePolicyRefusal, RecordOutcome: s.recordRuntimeOutcome,
 		Notifier: s.notifier, ApprovalMessage: sudoApprovalMessage, OperatorConfigured: s.operatorConfigured,
-		Observer: s.control.Metrics,
+		Observer:    s.control.Metrics,
+		Diagnostics: s.control.Diagnostics,
 	})
 }
 

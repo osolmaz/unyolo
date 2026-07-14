@@ -303,3 +303,12 @@ then
   echo 'GitHub capability drift monitoring must remain scheduled, issue-only, and separate from generation' >&2
   exit 1
 fi
+
+if ! grep -q 'NewDiagnostics' controlplane/runtime.go ||
+  ! grep -q 'Diagnostics:.*s.control.Diagnostics' brokers/huggingface/internal/httpapi/agent_operations.go ||
+  ! grep -q 'Diagnostics:.*s.control.Diagnostics' brokers/github/internal/httpapi/agent_operations.go ||
+  ! grep -q 'Diagnostics:.*s.control.Diagnostics' brokers/sudo/internal/routes/agent_operations.go
+then
+  echo 'provider runtimes must use the shared structured diagnostics boundary' >&2
+  exit 1
+fi

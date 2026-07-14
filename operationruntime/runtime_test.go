@@ -40,6 +40,24 @@ type runtimeObserver struct {
 	notifications []string
 }
 
+type runtimeDiagnostics struct {
+	limit         int
+	started       int
+	finished      []string
+	notifications []string
+	retries       int
+}
+
+func (d *runtimeDiagnostics) WorkerConfigured(limit int)          { d.limit = limit }
+func (d *runtimeDiagnostics) OperationStarted(_, _ string, _ int) { d.started++ }
+func (d *runtimeDiagnostics) OperationFinished(_, _, result, code string, _ time.Duration) {
+	d.finished = append(d.finished, result+":"+code)
+}
+func (d *runtimeDiagnostics) NotificationAttempt(_, result, code string) {
+	d.notifications = append(d.notifications, result+":"+code)
+}
+func (d *runtimeDiagnostics) Retry(_, _ string) { d.retries++ }
+
 func (o *runtimeObserver) OperationSubmitted(result string) {
 	o.submissions = append(o.submissions, result)
 }
@@ -224,6 +242,8 @@ func admissionAPIErrorCode(err error) string {
 func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 	runtime, adapter, operations, _, closeRuntime := newRuntime(t, &PossiblePartialError{Err: errors.New("connection lost")}, directDecision, nil, false)
 	defer closeRuntime()
+	diagnostics := &runtimeDiagnostics{}
+	runtime.options.Diagnostics = diagnostics
 	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "request-2", Operation: "repo.create",
 		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
 	if err != nil {
@@ -233,6 +253,9 @@ func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 	completed, err := operations.Get("agent", operation.ID)
 	if err != nil || completed.State != agentv1.StateSucceeded || !adapter.reconciled || adapter.cleanupCount.Load() != 1 || adapter.recordedStatus.Load() != 204 {
 		t.Fatalf("completed = %+v, reconciled=%v cleanup=%d status=%d err=%v", completed, adapter.reconciled, adapter.cleanupCount.Load(), adapter.recordedStatus.Load(), err)
+	}
+	if diagnostics.started != 1 || !slices.Equal(diagnostics.finished, []string{"reconciled:"}) {
+		t.Fatalf("diagnostics = %+v", diagnostics)
 	}
 }
 
@@ -522,6 +545,8 @@ func TestRuntimeNotificationFailurePolicies(t *testing.T) {
 			notifier := &captureNotifier{err: errors.New("offline")}
 			runtime, _, operations, _, closeRuntime := newRuntime(t, nil, requestDecision, notifier, operatorConfigured)
 			defer closeRuntime()
+			diagnostics := &runtimeDiagnostics{}
+			runtime.options.Diagnostics = diagnostics
 			operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "notify", Operation: "repo.create",
 				Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
 			if err != nil {
@@ -537,6 +562,9 @@ func TestRuntimeNotificationFailurePolicies(t *testing.T) {
 			}
 			if stored.State != want {
 				t.Fatalf("stored = %+v, want %s", stored, want)
+			}
+			if !slices.Equal(diagnostics.notifications, []string{"failed:notification_unavailable"}) {
+				t.Fatalf("notification diagnostics = %+v", diagnostics)
 			}
 		})
 	}

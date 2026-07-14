@@ -59,6 +59,16 @@ type Observer interface {
 	NotificationDelivered(result string)
 }
 
+// Diagnostics receives secret-safe lifecycle context for structured logs and
+// bounded dependency/capacity metrics.
+type Diagnostics interface {
+	WorkerConfigured(workerLimit int)
+	OperationStarted(correlationID, operationClass string, workerLimit int)
+	OperationFinished(correlationID, operationClass, result, errorCode string, elapsed time.Duration)
+	NotificationAttempt(correlationID, result, errorCode string)
+	Retry(correlationID, dependency string)
+}
+
 // Options supplies provider semantics and shared durable dependencies. The
 // callbacks encode provider plans and presentation; lifecycle transitions stay
 // inside Runtime.
@@ -93,6 +103,7 @@ type Options[I, P, A any] struct {
 	WorkerConcurrency   int
 	NotificationLease   time.Duration
 	Observer            Observer
+	Diagnostics         Diagnostics
 }
 
 // Runtime drives one provider's generic Agent V1 operation lifecycle.
@@ -109,6 +120,9 @@ func New[I, P, A any](options Options[I, P, A]) (*Runtime[I, P, A], error) {
 		return nil, errors.New("operation runtime options are incomplete")
 	}
 	options = defaultOptions(options)
+	if options.Diagnostics != nil {
+		options.Diagnostics.WorkerConfigured(options.WorkerConcurrency)
+	}
 	return &Runtime[I, P, A]{options: options}, nil
 }
 
@@ -480,31 +494,41 @@ func (r *Runtime[I, P, A]) bindApproval(ctx context.Context, operation agentv1.O
 }
 
 func (r *Runtime[I, P, A]) notifyApproval(ctx context.Context, grant grants.Grant) error {
+	r.observeNotificationRetry(grant)
 	claim, done, err := r.claimNotification(grant)
 	if err != nil {
-		r.observeNotification("claimed")
+		r.observeNotification(grant.ID, "claimed", "notification_claim_failed")
 		return err
 	}
 	if done {
-		r.observeNotification("already_recorded")
+		r.observeNotification(grant.ID, "already_recorded", "")
 		return nil
 	}
 	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(claim.Grant, claim.DecisionToken))
 	if err = validateNotificationReference(ref, err); err != nil {
-		r.observeNotification("failed")
+		r.observeNotification(grant.ID, "failed", "notification_unavailable")
 		return r.settleNotificationFailure(claim, err)
 	}
 	if err := r.recordNotification(claim, ref); err != nil {
-		r.observeNotification("failed")
+		r.observeNotification(grant.ID, "failed", "notification_store_failed")
 		return err
 	}
-	r.observeNotification("delivered")
+	r.observeNotification(grant.ID, "delivered", "")
 	return nil
 }
 
-func (r *Runtime[I, P, A]) observeNotification(result string) {
+func (r *Runtime[I, P, A]) observeNotificationRetry(grant grants.Grant) {
+	if !grant.NotificationClaimedAt.IsZero() && r.options.Diagnostics != nil {
+		r.options.Diagnostics.Retry(grant.ID, "notification")
+	}
+}
+
+func (r *Runtime[I, P, A]) observeNotification(correlationID, result, errorCode string) {
 	if r.options.Observer != nil {
 		r.options.Observer.NotificationDelivered(result)
+	}
+	if r.options.Diagnostics != nil {
+		r.options.Diagnostics.NotificationAttempt(correlationID, result, errorCode)
 	}
 }
 
@@ -728,30 +752,37 @@ func (r *Runtime[I, P, A]) bindReservedPlan(operation agentv1.Operation, adapter
 
 func (r *Runtime[I, P, A]) executeReserved(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P, reserved bool) {
 	started := time.Now()
-	result := "ambiguous"
+	result, errorCode := "ambiguous", "upstream_result_unknown"
+	operationClass := string(adapter.Descriptor().Risk)
+	if r.options.Diagnostics != nil {
+		r.options.Diagnostics.OperationStarted(operation.ID, operationClass, r.options.WorkerConcurrency)
+	}
 	defer func() {
 		if r.options.Observer != nil {
 			r.options.Observer.OperationExecuted(result, time.Since(started))
 		}
+		if r.options.Diagnostics != nil {
+			r.options.Diagnostics.OperationFinished(operation.ID, operationClass, result, errorCode, time.Since(started))
+		}
 	}()
 	execution, executionErr := adapter.Execute(ctx, plan)
 	if executionErr == nil && execution.Proven {
-		result = "succeeded"
+		result, errorCode = "succeeded", ""
 		r.succeed(operation, plan, execution.Result, reserved, "", execution.UpstreamStatus)
 		return
 	}
 	if r.options.DefinitiveFailure(executionErr) {
 		result = "failed"
 		if r.settleApproval(operation, reserved, false) {
-			r.failExecution(operation, plan, executionErr, nil)
+			errorCode = r.failExecution(operation, plan, executionErr, nil).Code
 		}
 		return
 	}
-	result = r.reconcileExecution(ctx, operation, adapter, plan, reserved, execution, executionErr)
+	result, errorCode = r.reconcileExecution(ctx, operation, adapter, plan, reserved, execution, executionErr)
 }
 
 func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P,
-	reserved bool, execution Outcome, executionErr error) string {
+	reserved bool, execution Outcome, executionErr error) (string, string) {
 	outcome, reconcileErr := adapter.Reconcile(ctx, plan)
 	if reconcileErr == nil && outcome.Proven {
 		if len(outcome.Result) == 0 {
@@ -761,12 +792,13 @@ func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation age
 			outcome.UpstreamStatus = execution.UpstreamStatus
 		}
 		r.succeed(operation, plan, outcome.Result, reserved, "", outcome.UpstreamStatus)
-		return "reconciled"
+		return "reconciled", ""
 	}
+	failure := r.options.ExecutionFailure(executionErr, reconcileErr)
 	if r.settleApproval(operation, reserved, true) {
-		r.failExecution(operation, plan, executionErr, reconcileErr)
+		failure = r.failExecution(operation, plan, executionErr, reconcileErr)
 	}
-	return "ambiguous"
+	return "ambiguous", failure.Code
 }
 
 func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string, upstreamStatus int) {
@@ -921,12 +953,13 @@ func requiresApproval[I, P, A any](adapter Adapter[I, P, A]) bool {
 	return ok && required.RequiresApproval()
 }
 
-func (r *Runtime[I, P, A]) failExecution(operation agentv1.Operation, plan P, executionErr, reconcileErr error) {
+func (r *Runtime[I, P, A]) failExecution(operation agentv1.Operation, plan P, executionErr, reconcileErr error) Failure {
 	failure := r.options.ExecutionFailure(executionErr, reconcileErr)
 	r.fail(operation.ID, agentv1.StateFailed, failure.Code, failure.Message)
 	if r.options.RecordOutcome != nil {
 		r.options.RecordOutcome(operation, plan, "refused", failure.Code, 0)
 	}
+	return failure
 }
 
 // FailExecution records one provider-redacted execution or reconciliation
