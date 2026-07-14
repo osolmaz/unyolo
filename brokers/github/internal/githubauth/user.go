@@ -334,9 +334,7 @@ func (p *userProvider) activeCredential(userID int64, expiresAt time.Time) *Cred
 }
 
 func (p *userProvider) userGeneration(userID int64) uint64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.generation[userID]
+	return lockedMapValue(&p.mu, p.generation, userID)
 }
 
 func (p *userProvider) lockUser(userID int64) func() {

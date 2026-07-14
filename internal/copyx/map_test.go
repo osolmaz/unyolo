@@ -17,6 +17,15 @@ func TestStringMap(t *testing.T) {
 	}
 }
 
+func TestJSONMap(t *testing.T) {
+	source := map[string]any{"nested": map[string]any{"value": "original"}}
+	copied := JSONMap(source)
+	copied["nested"].(map[string]any)["value"] = "changed"
+	if source["nested"].(map[string]any)["value"] != "original" {
+		t.Fatal("JSONMap returned a nested alias")
+	}
+}
+
 func TestStringSliceMap(t *testing.T) {
 	if got := StringSliceMap(nil); got != nil {
 		t.Fatalf("StringSliceMap(nil) = %+v, want nil", got)

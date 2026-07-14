@@ -44,6 +44,12 @@ type Credential struct {
 	token    []byte
 }
 
+func lockedMapValue[K comparable, V any](mu *sync.Mutex, values map[K]V, key K) V {
+	mu.Lock()
+	defer mu.Unlock()
+	return values[key]
+}
+
 func (c *Credential) Metadata() Metadata {
 	if c == nil {
 		return Metadata{}

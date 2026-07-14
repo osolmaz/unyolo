@@ -20,6 +20,16 @@ func TestRegistryIsClosedAndComplete(t *testing.T) {
 	}
 }
 
+func TestRepositoryIdentity(t *testing.T) {
+	owner, repo, ok := RepositoryIdentity(map[string]any{"owner": " acme ", "name": " project "})
+	if !ok || owner != "acme" || repo != "project" {
+		t.Fatalf("RepositoryIdentity() = %q, %q, %t", owner, repo, ok)
+	}
+	if _, _, ok := RepositoryIdentity(map[string]any{"owner": "acme"}); ok {
+		t.Fatal("incomplete repository identity accepted")
+	}
+}
+
 func TestRegistryLoadFailsClosed(t *testing.T) {
 	original := append([]byte(nil), raw...)
 	t.Cleanup(func() {

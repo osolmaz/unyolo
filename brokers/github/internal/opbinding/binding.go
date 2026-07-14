@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/osolmaz/brokerkit/internal/sortedlookup"
 )
 
 type Parameter struct {
@@ -80,15 +82,7 @@ func ByOperation(name string) []Binding {
 }
 
 func ByID(id string) (Binding, bool) {
-	values, err := All()
-	if err != nil {
-		return Binding{}, false
-	}
-	index, found := slices.BinarySearchFunc(values, id, func(value Binding, target string) int { return strings.Compare(value.ID, target) })
-	if !found {
-		return Binding{}, false
-	}
-	return values[index], true
+	return sortedlookup.LoadString(All, id, func(value Binding) string { return value.ID })
 }
 
 //nolint:cyclop // Binding transport and projection invariants are reviewed in one pass.
@@ -153,11 +147,7 @@ func Validate(values []Binding) error {
 }
 
 func bindingByID(values []Binding, id string) (Binding, bool) {
-	index, found := slices.BinarySearchFunc(values, id, func(value Binding, target string) int { return strings.Compare(value.ID, target) })
-	if !found {
-		return Binding{}, false
-	}
-	return values[index], true
+	return sortedlookup.String(values, id, func(value Binding) string { return value.ID })
 }
 
 func safeResponseField(field string) bool {

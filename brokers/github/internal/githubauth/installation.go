@@ -266,9 +266,7 @@ func (p *installationProvider) enable(installationID int64) {
 }
 
 func (p *installationProvider) installationDisabled(id int64) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.disabled[id]
+	return lockedMapValue(&p.mu, p.disabled, id)
 }
 
 func (p *installationProvider) evictExpired(now time.Time) {

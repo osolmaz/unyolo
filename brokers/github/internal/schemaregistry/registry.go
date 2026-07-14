@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/internal/copyx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -78,7 +79,7 @@ func Target(kind string) (map[string]any, bool) {
 		return nil, false
 	}
 	value, found := loaded.Targets[kind]
-	return cloneMap(value), found
+	return copyx.JSONMap(value), found
 }
 
 func InputSchemas(descriptor capability.Descriptor) (map[string]any, map[string]any, map[string]any) {
@@ -93,7 +94,7 @@ func InputSchemas(descriptor capability.Descriptor) (map[string]any, map[string]
 	if !found {
 		panic("missing GitHub target schema: " + descriptor.TargetKind)
 	}
-	arguments := cloneMap(operation.Arguments)
+	arguments := copyx.JSONMap(operation.Arguments)
 	if !descriptor.Sealed {
 		return target, arguments, nil
 	}
@@ -151,13 +152,7 @@ func containsForbiddenRawField(schema map[string]any) bool {
 }
 
 func cloneOperation(value Operation) Operation {
-	return Operation{Target: value.Target, Arguments: cloneMap(value.Arguments), Result: cloneMap(value.Result)}
-}
-func cloneMap(value map[string]any) map[string]any {
-	data, _ := json.Marshal(value)
-	var result map[string]any
-	_ = json.Unmarshal(data, &result)
-	return result
+	return Operation{Target: value.Target, Arguments: copyx.JSONMap(value.Arguments), Result: copyx.JSONMap(value.Result)}
 }
 
 func Validate() error { return load() }
@@ -184,28 +179,36 @@ func ValidateSubmission(name string, targetRaw, argumentsRaw json.RawMessage) er
 }
 
 func ValidatePublicSubmission(name string, targetRaw, argumentsRaw json.RawMessage) error {
-	descriptor, found := opcatalog.ByName(name)
-	if !found || !descriptor.Sealed {
-		return errors.New("unknown sealed GitHub operation")
+	target, public, _, err := sealedSchemas(name)
+	if err != nil {
+		return err
 	}
-	target, public, _ := InputSchemas(descriptor.Descriptor)
-	if err := validateRaw(targetRaw, target); err != nil {
-		return fmt.Errorf("target %w", err)
+	if err := validateNamedRaw(targetRaw, target, "target"); err != nil {
+		return err
 	}
-	if err := validateRaw(argumentsRaw, public); err != nil {
-		return fmt.Errorf("public arguments %w", err)
-	}
-	return nil
+	return validateNamedRaw(argumentsRaw, public, "public arguments")
 }
 
 func ValidateSealedArguments(name string, argumentsRaw json.RawMessage) error {
+	_, _, sealed, err := sealedSchemas(name)
+	if err != nil {
+		return err
+	}
+	return validateNamedRaw(argumentsRaw, sealed, "sealed arguments")
+}
+
+func sealedSchemas(name string) (map[string]any, map[string]any, map[string]any, error) {
 	descriptor, found := opcatalog.ByName(name)
 	if !found || !descriptor.Sealed {
-		return errors.New("unknown sealed GitHub operation")
+		return nil, nil, nil, errors.New("unknown sealed GitHub operation")
 	}
-	_, _, sealed := InputSchemas(descriptor.Descriptor)
-	if err := validateRaw(argumentsRaw, sealed); err != nil {
-		return fmt.Errorf("sealed arguments %w", err)
+	target, public, sealed := InputSchemas(descriptor.Descriptor)
+	return target, public, sealed, nil
+}
+
+func validateNamedRaw(raw json.RawMessage, schema map[string]any, name string) error {
+	if err := validateRaw(raw, schema); err != nil {
+		return fmt.Errorf("%s %w", name, err)
 	}
 	return nil
 }

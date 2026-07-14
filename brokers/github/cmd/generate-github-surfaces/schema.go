@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/internal/copyx"
+	"github.com/osolmaz/brokerkit/schemautil"
 )
 
 var pathParameterPattern = regexp.MustCompile(`\{([^}]+)\}`)
@@ -114,55 +116,7 @@ func argumentsSchemaForREST(_ string, path string, operation restOperation, targ
 }
 
 func sensitiveTopLevelPaths(schema map[string]any) []string {
-	properties, _ := schema["properties"].(map[string]any)
-	result := []string{}
-	for name, value := range properties {
-		child, _ := value.(map[string]any)
-		if sensitiveField(name, child) || schemaContainsSensitiveField(child) {
-			result = append(result, name)
-		}
-	}
-	slices.Sort(result)
-	return result
-}
-
-//nolint:cyclop // Recursive schema composition must inspect every supported container form.
-func schemaContainsSensitiveField(schema map[string]any) bool {
-	if schema == nil {
-		return false
-	}
-	if properties, ok := schema["properties"].(map[string]any); ok {
-		for name, value := range properties {
-			child, _ := value.(map[string]any)
-			if sensitiveField(name, child) || schemaContainsSensitiveField(child) {
-				return true
-			}
-		}
-	}
-	if items, ok := schema["items"].(map[string]any); ok && schemaContainsSensitiveField(items) {
-		return true
-	}
-	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
-		if branches, ok := schema[keyword].([]any); ok {
-			for _, branch := range branches {
-				child, _ := branch.(map[string]any)
-				if schemaContainsSensitiveField(child) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func sensitiveField(name string, schema map[string]any) bool {
-	normalized := strings.ToLower(name)
-	if schema["type"] == "boolean" {
-		return false
-	}
-	return normalized == "password" || normalized == "secret" || normalized == "token" || normalized == "private_key" ||
-		normalized == "encrypted_value" || strings.HasSuffix(normalized, "_password") || strings.HasSuffix(normalized, "_secret") ||
-		strings.HasSuffix(normalized, "_token") || strings.HasSuffix(normalized, "_private_key")
+	return schemautil.SensitiveTopLevelFields(schema)
 }
 
 func streamResultSchema() map[string]any {
@@ -194,7 +148,7 @@ func projectedResponseSchema(schema map[string]any, projection []string) map[str
 }
 
 func projectResponseSchema(schema map[string]any, allowed map[string]bool, root bool) map[string]any {
-	result := cloneSchema(schema)
+	result := copyx.JSONMap(schema)
 	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
 		if alternatives, ok := result[keyword].([]any); ok {
 			for index, alternative := range alternatives {
@@ -222,13 +176,6 @@ func projectResponseSchema(schema map[string]any, allowed map[string]bool, root 
 	if root {
 		result["$schema"] = "https://json-schema.org/draft/2020-12/schema"
 	}
-	return result
-}
-
-func cloneSchema(value map[string]any) map[string]any {
-	encoded, _ := json.Marshal(value)
-	var result map[string]any
-	_ = json.Unmarshal(encoded, &result)
 	return result
 }
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/graphqlmanifest"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/inventory"
@@ -14,6 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/upstream"
+	"github.com/osolmaz/brokerkit/schemautil"
 )
 
 //nolint:cyclop // Startup cross-artifact validation is intentionally exhaustive and fail-closed.
@@ -98,52 +98,9 @@ func Validate() error {
 }
 
 func sensitiveTopLevelFields(schema map[string]any) []string {
-	properties, _ := schema["properties"].(map[string]any)
-	result := []string{}
-	for name, value := range properties {
-		child, _ := value.(map[string]any)
-		if isSensitiveField(name, child) || containsSensitiveField(child) {
-			result = append(result, name)
-		}
-	}
-	return result
+	return schemautil.SensitiveTopLevelFields(schema)
 }
 
-//nolint:cyclop // Recursive startup validation must inspect every supported schema container.
 func containsSensitiveField(schema map[string]any) bool {
-	if schema == nil {
-		return false
-	}
-	if properties, ok := schema["properties"].(map[string]any); ok {
-		for name, value := range properties {
-			child, _ := value.(map[string]any)
-			if isSensitiveField(name, child) || containsSensitiveField(child) {
-				return true
-			}
-		}
-	}
-	if items, ok := schema["items"].(map[string]any); ok && containsSensitiveField(items) {
-		return true
-	}
-	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
-		if branches, ok := schema[keyword].([]any); ok {
-			for _, branch := range branches {
-				child, _ := branch.(map[string]any)
-				if containsSensitiveField(child) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func isSensitiveField(name string, schema map[string]any) bool {
-	if schema["type"] == "boolean" {
-		return false
-	}
-	normalized := strings.ToLower(name)
-	return normalized == "password" || normalized == "secret" || normalized == "token" || normalized == "private_key" ||
-		normalized == "encrypted_value" || strings.HasSuffix(normalized, "_password") || strings.HasSuffix(normalized, "_secret") ||
-		strings.HasSuffix(normalized, "_token") || strings.HasSuffix(normalized, "_private_key")
+	return schemautil.ContainsSensitiveField(schema)
 }

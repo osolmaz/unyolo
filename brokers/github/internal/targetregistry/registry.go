@@ -54,3 +54,16 @@ func Known(kind string) bool {
 	_, found := slices.BinarySearchFunc(values, kind, func(value Descriptor, target string) int { return strings.Compare(value.Kind, target) })
 	return found
 }
+
+// String returns one normalized string target field.
+func String(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return strings.TrimSpace(value)
+}
+
+// RepositoryIdentity returns the canonical owner/name pair when both fields
+// are present.
+func RepositoryIdentity(values map[string]any) (string, string, bool) {
+	owner, repo := String(values, "owner"), String(values, "name")
+	return owner, repo, owner != "" && repo != ""
+}

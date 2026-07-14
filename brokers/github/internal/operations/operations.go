@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
@@ -699,7 +700,7 @@ func presentDescriptor(descriptor opcatalog.Descriptor, target map[string]any) a
 }
 
 func targetSummary(kind string, target map[string]any) string {
-	if owner, repo, ok := repoName(target); ok {
+	if owner, repo, ok := targetregistry.RepositoryIdentity(target); ok {
 		return owner + "/" + repo
 	}
 	if name := stringValue(target, "name"); name != "" {
@@ -780,14 +781,8 @@ func classifyExecutionError(method string, err error) error {
 	return err
 }
 
-func repoName(values map[string]any) (string, string, bool) {
-	owner, repo := stringValue(values, "owner"), stringValue(values, "name")
-	return owner, repo, owner != "" && repo != ""
-}
-
 func stringValue(values map[string]any, key string) string {
-	value, _ := values[key].(string)
-	return strings.TrimSpace(value)
+	return targetregistry.String(values, key)
 }
 
 func integerString(values map[string]any, key string) string {

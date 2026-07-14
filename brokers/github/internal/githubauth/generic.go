@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/graphqlmanifest"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -39,14 +40,14 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 		}
 		return Metadata{Kind: KindAppJWT, APIHost: m.apiURL.Host}, nil
 	case string(KindInstallation):
-		if owner, repo, ok := repositoryIdentity(target); ok {
+		if owner, repo, ok := targetregistry.RepositoryIdentity(target); ok {
 			return m.ResolveRepository(ctx, descriptor.Name, owner, repo)
 		}
 		installationID := int64Field(target, "installation_id")
 		if installationID <= 0 {
-			account := stringField(target, "owner")
+			account := targetregistry.String(target, "owner")
 			if account == "" {
-				account = stringField(target, "name")
+				account = targetregistry.String(target, "name")
 			}
 			if account != "" {
 				metadata, err := m.InstallationForAccount(ctx, account)
@@ -72,7 +73,7 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 		if userID <= 0 {
 			userID = int64Field(target, "user_id")
 		}
-		if userID <= 0 && strings.EqualFold(stringField(target, "kind"), "user") {
+		if userID <= 0 && strings.EqualFold(targetregistry.String(target, "kind"), "user") {
 			userID = int64Field(target, "id")
 		}
 		if userID <= 0 {
@@ -540,7 +541,7 @@ func targetPathValue(name, field string, target map[string]any) (string, error) 
 		if value := int64Field(target, field); value > 0 {
 			return strconv.FormatInt(value, 10), nil
 		}
-	} else if value := stringField(target, field); value != "" {
+	} else if value := targetregistry.String(target, field); value != "" {
 		return value, nil
 	}
 	return "", fmt.Errorf("GitHub target is missing path parameter %q", name)
@@ -553,11 +554,6 @@ func targetFieldForPath(name string, parameters []opbinding.TargetParameter) (st
 		}
 	}
 	return "", false
-}
-
-func repositoryIdentity(target map[string]any) (string, string, bool) {
-	owner, repo := stringField(target, "owner"), stringField(target, "name")
-	return owner, repo, owner != "" && repo != ""
 }
 
 func repositoryIDs(target map[string]any) []int64 {
@@ -576,11 +572,6 @@ func repositoryIDs(target map[string]any) []int64 {
 		}
 	}
 	return canonicalRepositoryIDs(result)
-}
-
-func stringField(values map[string]any, key string) string {
-	value, _ := values[key].(string)
-	return strings.TrimSpace(value)
 }
 
 func int64Field(values map[string]any, key string) int64 {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/internal/sortedlookup"
 )
 
 const ExpectedCount = 1436
@@ -63,15 +64,7 @@ func MustAll() []Descriptor {
 }
 
 func ByName(name string) (Descriptor, bool) {
-	values, err := All()
-	if err != nil {
-		return Descriptor{}, false
-	}
-	index, found := slices.BinarySearchFunc(values, name, func(value Descriptor, target string) int { return strings.Compare(value.Name, target) })
-	if !found {
-		return Descriptor{}, false
-	}
-	return values[index], true
+	return sortedlookup.LoadString(All, name, func(value Descriptor) string { return value.Name })
 }
 
 //nolint:cyclop // Provider-specific catalog invariants are intentionally explicit.
