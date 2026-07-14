@@ -230,7 +230,7 @@ func normalizeListOptions(clientID string, options agentv1.ListOptions) (string,
 	if clientID == "" || len(options.IdempotencyKey) > 128 || len(options.Cursor) > 128 {
 		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
 	}
-	if options.Limit < 1 || options.Limit > maxListLimit || !validListState(options.State) {
+	if options.Limit < 1 || options.Limit > maxListLimit || (options.State != "" && !options.State.Valid()) {
 		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
 	}
 	return clientID, options, nil
@@ -258,19 +258,6 @@ func operationSummary(operation agentv1.Operation) agentv1.OperationSummary {
 		IdempotencyKey: operation.IdempotencyKey, Operation: operation.Operation, State: operation.State,
 		Revision: operation.Revision, CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt,
 		TerminalAt: operation.TerminalAt, Presentation: operation.Presentation,
-	}
-}
-
-func validListState(value agentv1.State) bool {
-	if value == "" {
-		return true
-	}
-	switch value {
-	case agentv1.StatePending, agentv1.StateApproved, agentv1.StateExecuting, agentv1.StateSucceeded,
-		agentv1.StateFailed, agentv1.StateDenied, agentv1.StateExpired, agentv1.StateCanceled:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -678,21 +665,11 @@ func validStoredTerminal(operation agentv1.Operation) bool {
 }
 
 func validStoredState(operation agentv1.Operation) bool {
-	return validState(operation.State) && len(operation.ApprovalID) <= 128
+	return operation.State.Valid() && len(operation.ApprovalID) <= 128
 }
 
 func validOperationError(value *agentv1.OperationError) bool {
 	return strings.TrimSpace(value.Code) != "" && len(value.Code) <= 64 && strings.TrimSpace(value.Message) != "" && len(value.Message) <= 500
-}
-
-func validState(state agentv1.State) bool {
-	switch state {
-	case agentv1.StatePending, agentv1.StateApproved, agentv1.StateExecuting, agentv1.StateSucceeded,
-		agentv1.StateFailed, agentv1.StateDenied, agentv1.StateExpired, agentv1.StateCanceled:
-		return true
-	default:
-		return false
-	}
 }
 
 func clone(operation agentv1.Operation) agentv1.Operation {

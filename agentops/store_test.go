@@ -434,7 +434,7 @@ func TestRandomIDAndValidationHelpers(t *testing.T) {
 	if err != nil || !strings.HasPrefix(id, "op_") || len(id) < 20 {
 		t.Fatalf("random ID = %q, %v", id, err)
 	}
-	if validState(agentv1.State("unknown")) {
+	if agentv1.State("unknown").Valid() {
 		t.Fatal("unknown state accepted")
 	}
 	if validOperationError(&agentv1.OperationError{}) {

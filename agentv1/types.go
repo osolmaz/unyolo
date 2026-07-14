@@ -112,3 +112,13 @@ func (s State) Terminal() bool {
 		return false
 	}
 }
+
+func (s State) Valid() bool {
+	switch s {
+	case StatePending, StateApproved, StateExecuting, StateSucceeded,
+		StateFailed, StateDenied, StateExpired, StateCanceled:
+		return true
+	default:
+		return false
+	}
+}

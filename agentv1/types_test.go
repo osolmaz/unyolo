@@ -14,3 +14,16 @@ func TestStateTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestStateValid(t *testing.T) {
+	for _, state := range []State{StatePending, StateApproved, StateExecuting, StateSucceeded, StateFailed, StateDenied, StateExpired, StateCanceled} {
+		if !state.Valid() {
+			t.Fatalf("%s should be valid", state)
+		}
+	}
+	for _, state := range []State{"", "unknown"} {
+		if state.Valid() {
+			t.Fatalf("%q should not be valid", state)
+		}
+	}
+}

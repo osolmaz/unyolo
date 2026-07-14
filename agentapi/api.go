@@ -249,7 +249,7 @@ func listOptions(params agentwire.ListAgentOperationsParams) (agentv1.ListOption
 	if options.Limit < 1 || options.Limit > 50 {
 		return agentv1.ListOptions{}, invalidListQueryError()
 	}
-	if !validStateFilter(options.State) {
+	if options.State != "" && !options.State.Valid() {
 		return agentv1.ListOptions{}, invalidListQueryError()
 	}
 	return options, nil
@@ -261,19 +261,6 @@ func invalidOptionalListValue(provided *string, normalized string) bool {
 
 func invalidListQueryError() *Error {
 	return &Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: "Invalid operation list query"}
-}
-
-func validStateFilter(state agentv1.State) bool {
-	if state == "" {
-		return true
-	}
-	switch state {
-	case agentv1.StatePending, agentv1.StateApproved, agentv1.StateExecuting, agentv1.StateSucceeded,
-		agentv1.StateFailed, agentv1.StateDenied, agentv1.StateExpired, agentv1.StateCanceled:
-		return true
-	default:
-		return false
-	}
 }
 
 func writeOperation(c echo.Context, operation agentv1.Operation, created bool) error {
