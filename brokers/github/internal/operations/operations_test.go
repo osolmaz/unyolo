@@ -130,6 +130,48 @@ func TestMutationExecuteClassifiesAmbiguousFailuresWithoutRetry(t *testing.T) {
 	}
 }
 
+func TestRepositoryDeletionReconcilesByAbsenceWithoutReplay(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		status     int
+		wantProven bool
+	}{
+		{name: "absent", status: http.StatusNotFound, wantProven: true},
+		{name: "still present", status: http.StatusOK, wantProven: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var methods []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				methods = append(methods, request.Method)
+				if request.Method != http.MethodGet || request.URL.Path != "/repos/osolmaz/disposable" {
+					t.Fatalf("reconciliation request = %s %s", request.Method, request.URL.Path)
+				}
+				w.WriteHeader(test.status)
+				if test.status == http.StatusOK {
+					_, _ = w.Write([]byte(`{"id":1,"node_id":"R_1","name":"disposable"}`))
+				}
+			}))
+			t.Cleanup(server.Close)
+			adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "repo.delete")
+			input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"disposable"}`), json.RawMessage(`{}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := adapter.Resolve(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outcome, err := adapter.Reconcile(context.Background(), plan)
+			if err != nil || outcome.Proven != test.wantProven {
+				t.Fatalf("reconcile = %+v err=%v", outcome, err)
+			}
+			if len(methods) != 1 || methods[0] != http.MethodGet {
+				t.Fatalf("reconciliation methods = %v", methods)
+			}
+		})
+	}
+}
+
 func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) {
 	const secret = "ZW5jcnlwdGVkLWNhbmFyeS12YWx1ZQ=="
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {

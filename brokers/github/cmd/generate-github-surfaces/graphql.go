@@ -97,7 +97,7 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 		Internal: internal, FamilyGlobAllowed: !explicit, AgentFacing: !internal, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
 		CredentialKind: "user", SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"graphql:" + digest},
-		ExecutorKind: "persisted-graphql", ReconcilerKind: map[bool]string{true: "bounded-readback", false: "none"}[mutation]}}
+		ExecutorKind: "persisted-graphql", ReconcilerKind: "none"}}
 }
 
 func graphqlRootDisposition(field string) string {

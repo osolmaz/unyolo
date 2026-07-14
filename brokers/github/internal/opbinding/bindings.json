@@ -37,7 +37,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/add-custom-labels-to-self-hosted-runner-for-repo:runner.actions_add_custom_labels_to_self_hosted_runner_for_repo",
@@ -82,7 +82,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/add-repo-access-to-self-hosted-runner-group-in-org:runner.actions_add_repo_access_to_self_hosted_runner_group_in_org",
@@ -123,7 +123,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/add-selected-repo-to-org-secret:organization.actions_add_selected_repo_to_org_secret",
@@ -164,7 +164,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/add-selected-repo-to-org-variable:organization.actions_add_selected_repo_to_org_variable",
@@ -205,7 +205,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/add-self-hosted-runner-to-group-for-org:runner.actions_add_self_hosted_runner_to_group_for_org",
@@ -246,7 +246,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/approve-workflow-run:action_run.actions_approve_workflow_run",
@@ -295,7 +295,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/cancel-workflow-run:action_run.actions_cancel_workflow_run",
@@ -344,7 +344,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-environment-variable:environment.actions_create_environment_variable",
@@ -393,7 +393,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-hosted-runner-for-org:runner.actions_create_hosted_runner_for_org",
@@ -432,7 +432,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-or-update-environment-secret:environment.actions_create_or_update_environment_secret",
@@ -482,7 +482,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-or-update-org-secret:organization.actions_create_or_update_org_secret",
@@ -522,7 +522,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-or-update-repo-secret:workflow.actions_create_or_update_repo_secret",
@@ -567,7 +567,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-org-variable:organization.actions_create_org_variable",
@@ -606,7 +606,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-registration-token-for-org:runner.actions_create_registration_token_for_org",
@@ -645,7 +645,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-registration-token-for-repo:runner.actions_create_registration_token_for_repo",
@@ -689,7 +689,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-remove-token-for-org:runner.actions_create_remove_token_for_org",
@@ -728,7 +728,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-remove-token-for-repo:runner.actions_create_remove_token_for_repo",
@@ -772,7 +772,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-repo-variable:workflow.actions_create_repo_variable",
@@ -816,7 +816,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-self-hosted-runner-group-for-org:runner.actions_create_self_hosted_runner_group_for_org",
@@ -855,7 +855,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/create-workflow-dispatch:workflow.actions_create_workflow_dispatch",
@@ -904,7 +904,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/delete-actions-cache-by-id:cache.actions_delete_actions_cache_by_id",
@@ -953,7 +953,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/delete-actions-cache-by-key:cache.actions_delete_actions_cache_by_key",
@@ -1007,7 +1007,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-actions-cache-list:cache.actions_get_actions_cache_list"
   },
   {
     "id": "rest:actions/delete-artifact:artifact.actions_delete_artifact",
@@ -1056,7 +1057,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-artifact:artifact.actions_get_artifact"
   },
   {
     "id": "rest:actions/delete-custom-image-from-org:runner.actions_delete_custom_image_from_org",
@@ -1096,7 +1098,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-custom-image-for-org:runner.actions_get_custom_image_for_org"
   },
   {
     "id": "rest:actions/delete-custom-image-version-from-org:runner.actions_delete_custom_image_version_from_org",
@@ -1137,7 +1140,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-custom-image-version-for-org:runner.actions_get_custom_image_version_for_org"
   },
   {
     "id": "rest:actions/delete-environment-secret:environment.actions_delete_environment_secret",
@@ -1187,7 +1191,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-environment-secret:environment.actions_get_environment_secret"
   },
   {
     "id": "rest:actions/delete-environment-variable:environment.actions_delete_environment_variable",
@@ -1237,7 +1242,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-environment-variable:environment.actions_get_environment_variable"
   },
   {
     "id": "rest:actions/delete-hosted-runner-for-org:runner.actions_delete_hosted_runner_for_org",
@@ -1277,7 +1283,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-hosted-runner-for-org:runner.actions_get_hosted_runner_for_org"
   },
   {
     "id": "rest:actions/delete-org-secret:organization.actions_delete_org_secret",
@@ -1317,7 +1324,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-org-secret:organization.actions_get_org_secret"
   },
   {
     "id": "rest:actions/delete-org-variable:organization.actions_delete_org_variable",
@@ -1357,7 +1365,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-org-variable:organization.actions_get_org_variable"
   },
   {
     "id": "rest:actions/delete-repo-secret:workflow.actions_delete_repo_secret",
@@ -1402,7 +1411,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-repo-secret:workflow.actions_get_repo_secret"
   },
   {
     "id": "rest:actions/delete-repo-variable:workflow.actions_delete_repo_variable",
@@ -1447,7 +1457,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-repo-variable:workflow.actions_get_repo_variable"
   },
   {
     "id": "rest:actions/delete-self-hosted-runner-from-org:runner.actions_delete_self_hosted_runner_from_org",
@@ -1487,7 +1498,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-self-hosted-runner-for-org:runner.actions_get_self_hosted_runner_for_org"
   },
   {
     "id": "rest:actions/delete-self-hosted-runner-from-repo:runner.actions_delete_self_hosted_runner_from_repo",
@@ -1532,7 +1544,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-self-hosted-runner-for-repo:runner.actions_get_self_hosted_runner_for_repo"
   },
   {
     "id": "rest:actions/delete-self-hosted-runner-group-from-org:runner.actions_delete_self_hosted_runner_group_from_org",
@@ -1572,7 +1585,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-self-hosted-runner-group-for-org:runner.actions_get_self_hosted_runner_group_for_org"
   },
   {
     "id": "rest:actions/delete-workflow-run-logs:action_run.actions_delete_workflow_run_logs",
@@ -1621,7 +1635,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/download-workflow-run-logs:action_run.actions_download_workflow_run_logs"
   },
   {
     "id": "rest:actions/delete-workflow-run:action_run.actions_delete_workflow_run",
@@ -1670,7 +1685,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/get-workflow-run:action_run.actions_get_workflow_run"
   },
   {
     "id": "rest:actions/disable-selected-repository-github-actions-organization:organization.actions_disable_selected_repository_github_actions_organization",
@@ -1710,7 +1726,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/disable-selected-repository-self-hosted-runners-organization:runner.actions_disable_selected_repository_self_hosted_runners_organization",
@@ -1750,7 +1766,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/disable-workflow:workflow.actions_disable_workflow",
@@ -1799,7 +1815,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/download-artifact:artifact.actions_download_artifact",
@@ -2041,7 +2057,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/enable-selected-repository-self-hosted-runners-organization:runner.actions_enable_selected_repository_self_hosted_runners_organization",
@@ -2081,7 +2097,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/enable-workflow:workflow.actions_enable_workflow",
@@ -2130,7 +2146,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/force-cancel-workflow-run:action_run.actions_force_cancel_workflow_run",
@@ -2179,7 +2195,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/generate-runner-jitconfig-for-org:runner.actions_generate_runner_jitconfig_for_org",
@@ -2218,7 +2234,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/generate-runner-jitconfig-for-repo:runner.actions_generate_runner_jitconfig_for_repo",
@@ -2262,7 +2278,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/get-actions-cache-list:cache.actions_get_actions_cache_list",
@@ -6558,7 +6574,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/re-run-workflow-failed-jobs:action_run.actions_re_run_workflow_failed_jobs",
@@ -6607,7 +6623,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/re-run-workflow:action_run.actions_re_run_workflow",
@@ -6656,7 +6672,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/remove-all-custom-labels-from-self-hosted-runner-for-org:runner.actions_remove_all_custom_labels_from_self_hosted_runner_for_org",
@@ -6696,7 +6712,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/list-labels-for-self-hosted-runner-for-org:runner.actions_list_labels_for_self_hosted_runner_for_org"
   },
   {
     "id": "rest:actions/remove-all-custom-labels-from-self-hosted-runner-for-repo:runner.actions_remove_all_custom_labels_from_self_hosted_runner_for_repo",
@@ -6741,7 +6758,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:actions/list-labels-for-self-hosted-runner-for-repo:runner.actions_list_labels_for_self_hosted_runner_for_repo"
   },
   {
     "id": "rest:actions/remove-custom-label-from-self-hosted-runner-for-org:runner.actions_remove_custom_label_from_self_hosted_runner_for_org",
@@ -6782,7 +6800,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/remove-custom-label-from-self-hosted-runner-for-repo:runner.actions_remove_custom_label_from_self_hosted_runner_for_repo",
@@ -6828,7 +6846,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/remove-repo-access-to-self-hosted-runner-group-in-org:runner.actions_remove_repo_access_to_self_hosted_runner_group_in_org",
@@ -6869,7 +6887,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/remove-selected-repo-from-org-secret:organization.actions_remove_selected_repo_from_org_secret",
@@ -6910,7 +6928,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/remove-selected-repo-from-org-variable:organization.actions_remove_selected_repo_from_org_variable",
@@ -6951,7 +6969,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/remove-self-hosted-runner-from-group-for-org:runner.actions_remove_self_hosted_runner_from_group_for_org",
@@ -6992,7 +7010,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/review-custom-gates-for-run:action_run.actions_review_custom_gates_for_run",
@@ -7041,7 +7059,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/review-pending-deployments-for-run:action_run.actions_review_pending_deployments_for_run",
@@ -7090,7 +7108,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-actions-cache-retention-limit-for-enterprise:cache.actions_set_actions_cache_retention_limit_for_enterprise",
@@ -7129,7 +7147,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-actions-cache-retention-limit-for-organization:cache.actions_set_actions_cache_retention_limit_for_organization",
@@ -7162,7 +7180,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-actions-cache-retention-limit-for-repository:cache.actions_set_actions_cache_retention_limit_for_repository",
@@ -7206,7 +7224,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-actions-cache-storage-limit-for-enterprise:cache.actions_set_actions_cache_storage_limit_for_enterprise",
@@ -7245,7 +7263,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-actions-cache-storage-limit-for-organization:cache.actions_set_actions_cache_storage_limit_for_organization",
@@ -7278,7 +7296,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-actions-cache-storage-limit-for-repository:cache.actions_set_actions_cache_storage_limit_for_repository",
@@ -7322,7 +7340,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-allowed-actions-organization:organization.actions_set_allowed_actions_organization",
@@ -7361,7 +7379,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-allowed-actions-repository:workflow.actions_set_allowed_actions_repository",
@@ -7405,7 +7423,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-artifact-and-log-retention-settings-organization:artifact.actions_set_artifact_and_log_retention_settings_organization",
@@ -7444,7 +7462,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-artifact-and-log-retention-settings-repository:artifact.actions_set_artifact_and_log_retention_settings_repository",
@@ -7488,7 +7506,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-custom-labels-for-self-hosted-runner-for-org:runner.actions_set_custom_labels_for_self_hosted_runner_for_org",
@@ -7528,7 +7546,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-custom-labels-for-self-hosted-runner-for-repo:runner.actions_set_custom_labels_for_self_hosted_runner_for_repo",
@@ -7573,7 +7591,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-custom-oidc-sub-claim-for-repo:workflow.actions_set_custom_oidc_sub_claim_for_repo",
@@ -7617,7 +7635,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-fork-pr-contributor-approval-permissions-organization:organization.actions_set_fork_pr_contributor_approval_permissions_organization",
@@ -7656,7 +7674,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-fork-pr-contributor-approval-permissions-repository:workflow.actions_set_fork_pr_contributor_approval_permissions_repository",
@@ -7700,7 +7718,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-github-actions-default-workflow-permissions-organization:workflow.actions_set_github_actions_default_workflow_permissions_organization",
@@ -7739,7 +7757,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-github-actions-default-workflow-permissions-repository:workflow.actions_set_github_actions_default_workflow_permissions_repository",
@@ -7783,7 +7801,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-github-actions-permissions-organization:organization.actions_set_github_actions_permissions_organization",
@@ -7822,7 +7840,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-github-actions-permissions-repository:workflow.actions_set_github_actions_permissions_repository",
@@ -7866,7 +7884,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-private-repo-fork-pr-workflows-settings-organization:workflow.actions_set_private_repo_fork_pr_workflows_settings_organization",
@@ -7905,7 +7923,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-private-repo-fork-pr-workflows-settings-repository:workflow.actions_set_private_repo_fork_pr_workflows_settings_repository",
@@ -7949,7 +7967,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-repo-access-to-self-hosted-runner-group-in-org:runner.actions_set_repo_access_to_self_hosted_runner_group_in_org",
@@ -7989,7 +8007,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-selected-repos-for-org-secret:organization.actions_set_selected_repos_for_org_secret",
@@ -8029,7 +8047,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-selected-repos-for-org-variable:organization.actions_set_selected_repos_for_org_variable",
@@ -8069,7 +8087,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-selected-repositories-enabled-github-actions-organization:organization.actions_set_selected_repositories_enabled_github_actions_organization",
@@ -8108,7 +8126,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-selected-repositories-self-hosted-runners-organization:runner.actions_set_selected_repositories_self_hosted_runners_organization",
@@ -8147,7 +8165,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-self-hosted-runners-in-group-for-org:runner.actions_set_self_hosted_runners_in_group_for_org",
@@ -8187,7 +8205,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-self-hosted-runners-permissions-organization:runner.actions_set_self_hosted_runners_permissions_organization",
@@ -8226,7 +8244,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/set-workflow-access-to-repository:workflow.actions_set_workflow_access_to_repository",
@@ -8270,7 +8288,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/update-environment-variable:environment.actions_update_environment_variable",
@@ -8320,7 +8338,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/update-hosted-runner-for-org:runner.actions_update_hosted_runner_for_org",
@@ -8360,7 +8378,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/update-org-variable:organization.actions_update_org_variable",
@@ -8400,7 +8418,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/update-repo-variable:workflow.actions_update_repo_variable",
@@ -8445,7 +8463,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:actions/update-self-hosted-runner-group-for-org:runner.actions_update_self_hosted_runner_group_for_org",
@@ -8485,7 +8503,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:activity/check-repo-is-starred-by-authenticated-user:notification.activity_check_repo_is_starred_by_authenticated_user",
@@ -9548,7 +9566,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:activity/unstar-repo-for-authenticated-user:notification.activity_unstar_repo_for_authenticated_user",
@@ -9582,7 +9600,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:activity/check-repo-is-starred-by-authenticated-user:notification.activity_check_repo_is_starred_by_authenticated_user"
   },
   {
     "id": "rest:agent-tasks/create-task-in-repo:agent_task.agent_tasks_create_task_in_repo",
@@ -9626,7 +9645,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agent-tasks/get-task-by-id:agent_task.agent_tasks_get_task_by_id",
@@ -9883,7 +9902,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/add-selected-repo-to-org-variable:agent_task.add_selected_repo_to_org_variable",
@@ -9924,7 +9943,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/create-or-update-org-secret:agent_task.create_or_update_org_secret",
@@ -9964,7 +9983,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/create-or-update-repo-secret:agent_task.create_or_update_repo_secret",
@@ -10009,7 +10028,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/create-org-variable:agent_task.create_org_variable",
@@ -10048,7 +10067,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/create-repo-variable:agent_task.create_repo_variable",
@@ -10092,7 +10111,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/delete-org-secret:agent_task.delete_org_secret",
@@ -10132,7 +10151,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:agents/get-org-secret:agent_task.get_org_secret"
   },
   {
     "id": "rest:agents/delete-org-variable:agent_task.delete_org_variable",
@@ -10172,7 +10192,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:agents/get-org-variable:agent_task.get_org_variable"
   },
   {
     "id": "rest:agents/delete-repo-secret:agent_task.delete_repo_secret",
@@ -10217,7 +10238,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:agents/get-repo-secret:agent_task.get_repo_secret"
   },
   {
     "id": "rest:agents/delete-repo-variable:agent_task.delete_repo_variable",
@@ -10262,7 +10284,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:agents/get-repo-variable:agent_task.get_repo_variable"
   },
   {
     "id": "rest:agents/get-org-public-key:agent_task.get_org_public_key",
@@ -10970,7 +10993,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/remove-selected-repo-from-org-variable:agent_task.remove_selected_repo_from_org_variable",
@@ -11011,7 +11034,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/set-selected-repos-for-org-secret:agent_task.set_selected_repos_for_org_secret",
@@ -11051,7 +11074,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/set-selected-repos-for-org-variable:agent_task.set_selected_repos_for_org_variable",
@@ -11091,7 +11114,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/update-org-variable:agent_task.update_org_variable",
@@ -11131,7 +11154,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:agents/update-repo-variable:agent_task.update_repo_variable",
@@ -11176,7 +11199,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:api-insights/get-route-stats-by-actor:organization.get_route_stats_by_actor",
@@ -11731,7 +11754,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/create-from-manifest:app.apps_create_from_manifest",
@@ -11764,7 +11787,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/create-installation-access-token:installation.apps_create_installation_access_token",
@@ -11836,7 +11859,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/delete-installation:installation.apps_delete_installation",
@@ -11875,7 +11898,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:apps/get-installation:installation.apps_get_installation"
   },
   {
     "id": "rest:apps/delete-token:app.apps_delete_token",
@@ -11908,7 +11932,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/get-authenticated:app.apps_get_authenticated",
@@ -12817,7 +12841,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/reset-token:app.apps_reset_token",
@@ -12850,7 +12874,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/revoke-installation-access-token:installation.apps_revoke_installation_access_token",
@@ -12880,7 +12904,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/scope-token:app.apps_scope_token",
@@ -12913,7 +12937,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/suspend-installation:installation.apps_suspend_installation",
@@ -12952,7 +12976,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/unsuspend-installation:installation.apps_unsuspend_installation",
@@ -12991,7 +13015,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:apps/update-webhook-config-for-app:webhook.apps_update_webhook_config_for_app",
@@ -13021,7 +13045,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:billing/create-organization-budget:organization.billing_create_organization_budget",
@@ -13054,7 +13078,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:billing/delete-budget-org:organization.billing_delete_budget_org",
@@ -13088,7 +13112,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:billing/get-budget-org:organization.billing_get_budget_org"
   },
   {
     "id": "rest:billing/get-all-budgets-org:organization.billing_get_all_budgets_org",
@@ -13671,7 +13696,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:campaigns/create-campaign:organization.campaigns_create_campaign",
@@ -13710,7 +13735,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:campaigns/delete-campaign:organization.campaigns_delete_campaign",
@@ -13750,7 +13775,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:campaigns/get-campaign-summary:organization.campaigns_get_campaign_summary"
   },
   {
     "id": "rest:campaigns/get-campaign-summary:organization.campaigns_get_campaign_summary",
@@ -13891,7 +13917,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:checks/create-suite:check.checks_create_suite",
@@ -13935,7 +13961,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:checks/create:check.checks_create",
@@ -13979,7 +14005,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:checks/get-suite:check.checks_get_suite",
@@ -14370,7 +14396,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:checks/rerequest-suite:check.checks_rerequest_suite",
@@ -14415,7 +14441,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:checks/set-suites-preferences:check.checks_set_suites_preferences",
@@ -14459,7 +14485,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:checks/update:check.checks_update",
@@ -14504,7 +14530,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:classroom/get-a-classroom:organization.classroom_get_a_classroom",
@@ -14928,7 +14954,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-scanning/commit-autofix:code_scanning.code_scanning_commit_autofix",
@@ -14977,7 +15003,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-scanning/create-autofix:code_scanning.code_scanning_create_autofix",
@@ -15026,7 +15052,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-scanning/create-variant-analysis:code_scanning.code_scanning_create_variant_analysis",
@@ -15070,7 +15096,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-scanning/delete-analysis:code_scanning.code_scanning_delete_analysis",
@@ -15121,7 +15147,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:code-scanning/get-analysis:code_scanning.code_scanning_get_analysis"
   },
   {
     "id": "rest:code-scanning/delete-codeql-database:code_scanning.code_scanning_delete_codeql_database",
@@ -15166,7 +15193,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:code-scanning/get-codeql-database:code_scanning.code_scanning_get_codeql_database"
   },
   {
     "id": "rest:code-scanning/get-alert:code_scanning.code_scanning_get_alert",
@@ -15960,7 +15988,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-scanning/update-default-setup:code_scanning.code_scanning_update_default_setup",
@@ -16004,7 +16032,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-scanning/upload-sarif:code_scanning.code_scanning_upload_sarif",
@@ -16048,7 +16076,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-security/attach-configuration:organization.code_security_attach_configuration",
@@ -16088,7 +16116,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-security/attach-enterprise-configuration:enterprise.code_security_attach_enterprise_configuration",
@@ -16128,7 +16156,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-security/create-configuration:organization.code_security_create_configuration",
@@ -16167,7 +16195,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-security/delete-configuration:organization.code_security_delete_configuration",
@@ -16207,7 +16235,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:code-security/get-configuration:organization.code_security_get_configuration"
   },
   {
     "id": "rest:code-security/detach-configuration:organization.code_security_detach_configuration",
@@ -16246,7 +16275,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-security/get-configuration-for-repository:security.code_security_get_configuration_for_repository",
@@ -16714,7 +16743,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-security/set-configuration-as-default:organization.code_security_set_configuration_as_default",
@@ -16754,7 +16783,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:code-security/update-configuration:organization.code_security_update_configuration",
@@ -16794,7 +16823,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/add-repository-for-secret-for-authenticated-user:codespace.codespaces_add_repository_for_secret_for_authenticated_user",
@@ -16828,7 +16857,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/add-selected-repo-to-org-secret:organization.codespaces_add_selected_repo_to_org_secret",
@@ -16869,7 +16898,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/check-permissions-for-devcontainer:codespace.codespaces_check_permissions_for_devcontainer",
@@ -16992,7 +17021,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/create-or-update-org-secret:organization.codespaces_create_or_update_org_secret",
@@ -17032,7 +17061,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/create-or-update-repo-secret:codespace.codespaces_create_or_update_repo_secret",
@@ -17077,7 +17106,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/create-or-update-secret-for-authenticated-user:codespace.codespaces_create_or_update_secret_for_authenticated_user",
@@ -17110,7 +17139,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/create-with-pr-for-authenticated-user:pull_request.codespaces_create_with_pr_for_authenticated_user",
@@ -17159,7 +17188,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/create-with-repo-for-authenticated-user:codespace.codespaces_create_with_repo_for_authenticated_user",
@@ -17203,7 +17232,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/delete-codespaces-access-users:organization.codespaces_delete_codespaces_access_users",
@@ -17242,7 +17271,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/delete-for-authenticated-user:codespace.codespaces_delete_for_authenticated_user",
@@ -17281,7 +17310,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:codespaces/get-for-authenticated-user:codespace.codespaces_get_for_authenticated_user"
   },
   {
     "id": "rest:codespaces/delete-from-organization:member.codespaces_delete_from_organization",
@@ -17322,7 +17352,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/delete-org-secret:organization.codespaces_delete_org_secret",
@@ -17362,7 +17392,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:codespaces/get-org-secret:organization.codespaces_get_org_secret"
   },
   {
     "id": "rest:codespaces/delete-repo-secret:codespace.codespaces_delete_repo_secret",
@@ -17407,7 +17438,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:codespaces/get-repo-secret:codespace.codespaces_get_repo_secret"
   },
   {
     "id": "rest:codespaces/delete-secret-for-authenticated-user:codespace.codespaces_delete_secret_for_authenticated_user",
@@ -17440,7 +17472,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:codespaces/get-secret-for-authenticated-user:codespace.codespaces_get_secret_for_authenticated_user"
   },
   {
     "id": "rest:codespaces/export-for-authenticated-user:codespace.codespaces_export_for_authenticated_user",
@@ -17479,7 +17512,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/get-codespaces-for-user-in-org:member.codespaces_get_codespaces_for_user_in_org",
@@ -18359,7 +18392,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/remove-repository-for-secret-for-authenticated-user:codespace.codespaces_remove_repository_for_secret_for_authenticated_user",
@@ -18393,7 +18426,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/remove-selected-repo-from-org-secret:organization.codespaces_remove_selected_repo_from_org_secret",
@@ -18434,7 +18467,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/repo-machines-for-authenticated-user:codespace.codespaces_repo_machines_for_authenticated_user",
@@ -18531,7 +18564,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/set-codespaces-access:organization.codespaces_set_codespaces_access",
@@ -18570,7 +18603,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/set-repositories-for-secret-for-authenticated-user:codespace.codespaces_set_repositories_for_secret_for_authenticated_user",
@@ -18603,7 +18636,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/set-selected-repos-for-org-secret:organization.codespaces_set_selected_repos_for_org_secret",
@@ -18643,7 +18676,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/start-for-authenticated-user:codespace.codespaces_start_for_authenticated_user",
@@ -18682,7 +18715,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/stop-for-authenticated-user:codespace.codespaces_stop_for_authenticated_user",
@@ -18721,7 +18754,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/stop-in-organization:member.codespaces_stop_in_organization",
@@ -18762,7 +18795,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:codespaces/update-for-authenticated-user:codespace.codespaces_update_for_authenticated_user",
@@ -18801,7 +18834,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/add-collaborator-for-org:collaborator.copilot_spaces_add_collaborator_for_org",
@@ -18841,7 +18874,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/create-for-org:organization.copilot_spaces_create_for_org",
@@ -18880,7 +18913,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/create-resource-for-org:organization.copilot_spaces_create_resource_for_org",
@@ -18920,7 +18953,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/delete-for-org:organization.copilot_spaces_delete_for_org",
@@ -18960,7 +18993,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:copilot-spaces/get-for-org:organization.copilot_spaces_get_for_org"
   },
   {
     "id": "rest:copilot-spaces/delete-resource-for-org:organization.copilot_spaces_delete_resource_for_org",
@@ -19001,7 +19035,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:copilot-spaces/get-resource-for-org:organization.copilot_spaces_get_resource_for_org"
   },
   {
     "id": "rest:copilot-spaces/get-for-org:organization.copilot_spaces_get_for_org",
@@ -19471,7 +19506,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/update-collaborator-for-org:collaborator.copilot_spaces_update_collaborator_for_org",
@@ -19513,7 +19548,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/update-for-org:organization.copilot_spaces_update_for_org",
@@ -19553,7 +19588,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/update-for-user:copilot.copilot_spaces_update_for_user",
@@ -19593,7 +19628,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot-spaces/update-resource-for-org:organization.copilot_spaces_update_resource_for_org",
@@ -19634,7 +19669,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/add-copilot-seats-for-teams:team.copilot_add_copilot_seats_for_teams",
@@ -19673,7 +19708,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/add-copilot-seats-for-users:organization.copilot_add_copilot_seats_for_users",
@@ -19712,7 +19747,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/cancel-copilot-seat-assignment-for-teams:team.copilot_cancel_copilot_seat_assignment_for_teams",
@@ -19751,7 +19786,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/cancel-copilot-seat-assignment-for-users:organization.copilot_cancel_copilot_seat_assignment_for_users",
@@ -19790,7 +19825,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/copilot-content-exclusion-for-organization:organization.copilot_copilot_content_exclusion_for_organization",
@@ -20295,7 +20330,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/enable-copilot-coding-agent-for-repository-in-organization:organization.copilot_enable_copilot_coding_agent_for_repository_in_organization",
@@ -20335,7 +20370,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/get-copilot-cloud-agent-configuration:copilot.get_copilot_cloud_agent_configuration",
@@ -20634,7 +20669,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/set-copilot-coding-agent-selected-repositories-for-organization:organization.copilot_set_copilot_coding_agent_selected_repositories_for_organization",
@@ -20673,7 +20708,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:copilot/set-copilot-content-exclusion-for-organization:organization.copilot_set_copilot_content_exclusion_for_organization",
@@ -20712,7 +20747,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:credentials/revoke:credential.credentials_revoke",
@@ -20783,7 +20818,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependabot/create-or-update-org-secret:dependabot.create_or_update_org_secret",
@@ -20823,7 +20858,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependabot/create-or-update-repo-secret:dependabot.create_or_update_repo_secret",
@@ -20868,7 +20903,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependabot/delete-org-secret:dependabot.delete_org_secret",
@@ -20908,7 +20943,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:dependabot/get-org-secret:dependabot.get_org_secret"
   },
   {
     "id": "rest:dependabot/delete-repo-secret:dependabot.delete_repo_secret",
@@ -20953,7 +20989,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:dependabot/get-repo-secret:dependabot.get_repo_secret"
   },
   {
     "id": "rest:dependabot/get-alert:dependabot.get_alert",
@@ -21676,7 +21713,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependabot/repository-access-for-enterprise:dependabot.repository_access_for_enterprise",
@@ -21813,7 +21850,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependabot/set-selected-repos-for-org-secret:dependabot.set_selected_repos_for_org_secret",
@@ -21853,7 +21890,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependabot/update-alert:dependabot.update_alert",
@@ -21902,7 +21939,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependabot/update-repository-access-for-org:dependabot.update_repository_access_for_org",
@@ -21941,7 +21978,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependency-graph/create-repository-snapshot:dependabot.dependency_graph_create_repository_snapshot",
@@ -21985,7 +22022,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:dependency-graph/diff-range:dependabot.dependency_graph_diff_range",
@@ -22210,7 +22247,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:enterprise-team-memberships/bulk-add:team.enterprise_team_memberships_bulk_add",
@@ -22250,7 +22287,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:enterprise-team-memberships/bulk-remove:team.enterprise_team_memberships_bulk_remove",
@@ -22290,7 +22327,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:enterprise-team-memberships/get:team.enterprise_team_memberships_get",
@@ -22422,7 +22459,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:enterprise-team-memberships/get:team.enterprise_team_memberships_get"
   },
   {
     "id": "rest:enterprise-team-organizations/add:team.enterprise_team_organizations_add",
@@ -22463,7 +22501,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:enterprise-team-organizations/bulk-add:team.enterprise_team_organizations_bulk_add",
@@ -22503,7 +22541,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:enterprise-team-organizations/bulk-remove:team.enterprise_team_organizations_bulk_remove",
@@ -22543,7 +22581,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:enterprise-team-organizations/delete:team.enterprise_team_organizations_delete",
@@ -22584,7 +22622,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:enterprise-team-organizations/get-assignment:team.enterprise_team_organizations_get_assignment"
   },
   {
     "id": "rest:enterprise-team-organizations/get-assignment:team.enterprise_team_organizations_get_assignment",
@@ -22714,7 +22753,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:enterprise-teams/delete:team.enterprise_teams_delete",
@@ -22754,7 +22793,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:enterprise-teams/get:team.enterprise_teams_get"
   },
   {
     "id": "rest:enterprise-teams/get:team.enterprise_teams_get",
@@ -22883,7 +22923,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:gists/check-is-starred:gist.gists_check_is_starred",
@@ -22961,7 +23001,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:gists/create:gist.gists_create",
@@ -22991,7 +23031,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:gists/delete-comment:comment.gists_delete_comment",
@@ -23031,7 +23071,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:gists/get-comment:comment.gists_get_comment"
   },
   {
     "id": "rest:gists/delete:gist.gists_delete",
@@ -23070,7 +23111,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:gists/get:gist.gists_get"
   },
   {
     "id": "rest:gists/fork:gist.gists_fork",
@@ -23109,7 +23151,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:gists/get-comment:comment.gists_get_comment",
@@ -23599,7 +23641,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:gists/unstar:gist.gists_unstar",
@@ -23638,7 +23680,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:gists/check-is-starred:gist.gists_check_is_starred"
   },
   {
     "id": "rest:gists/update-comment:comment.gists_update_comment",
@@ -23678,7 +23721,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:gists/update:gist.gists_update",
@@ -23717,7 +23760,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:git/create-blob:git.create_blob",
@@ -23761,7 +23804,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:git/create-commit:commit.git_create_commit",
@@ -23805,7 +23848,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:git/create-ref:git.create_ref",
@@ -23849,7 +23892,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:git/create-tag:tag.git_create_tag",
@@ -23893,7 +23936,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:git/create-tree:git.create_tree",
@@ -23937,7 +23980,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:git/delete-ref:git.delete_ref",
@@ -23982,7 +24025,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:git/get-blob:git.get_blob",
@@ -24303,7 +24346,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:hosted-compute/create-network-configuration-for-org:runner.hosted_compute_create_network_configuration_for_org",
@@ -24342,7 +24385,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:hosted-compute/delete-network-configuration-from-org:runner.hosted_compute_delete_network_configuration_from_org",
@@ -24382,7 +24425,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:hosted-compute/get-network-configuration-for-org:runner.hosted_compute_get_network_configuration_for_org"
   },
   {
     "id": "rest:hosted-compute/get-network-configuration-for-org:runner.hosted_compute_get_network_configuration_for_org",
@@ -24551,7 +24595,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:interactions/get-pull-request-bypass-list-for-repo:pull_request.interactions_get_pull_request_bypass_list_for_repo",
@@ -24796,7 +24840,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:interactions/get-pull-request-bypass-list-for-repo:pull_request.interactions_get_pull_request_bypass_list_for_repo"
   },
   {
     "id": "rest:interactions/remove-restrictions-for-authenticated-user:organization.interactions_remove_restrictions_for_authenticated_user",
@@ -24826,7 +24871,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:interactions/get-restrictions-for-authenticated-user:organization.interactions_get_restrictions_for_authenticated_user"
   },
   {
     "id": "rest:interactions/remove-restrictions-for-org:organization.interactions_remove_restrictions_for_org",
@@ -24865,7 +24911,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:interactions/get-restrictions-for-org:organization.interactions_get_restrictions_for_org"
   },
   {
     "id": "rest:interactions/remove-restrictions-for-repo:organization.interactions_remove_restrictions_for_repo",
@@ -24909,7 +24956,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:interactions/get-restrictions-for-repo:organization.interactions_get_restrictions_for_repo"
   },
   {
     "id": "rest:interactions/set-pull-request-bypass-list-for-repo:pull_request.interactions_set_pull_request_bypass_list_for_repo",
@@ -24953,7 +25001,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:interactions/set-restrictions-for-authenticated-user:organization.interactions_set_restrictions_for_authenticated_user",
@@ -24983,7 +25031,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:interactions/set-restrictions-for-org:organization.interactions_set_restrictions_for_org",
@@ -25022,7 +25070,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:interactions/set-restrictions-for-repo:organization.interactions_set_restrictions_for_repo",
@@ -25066,7 +25114,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:interactions/update-pull-request-creation-cap-for-repo:pull_request.interactions_update_pull_request_creation_cap_for_repo",
@@ -25110,7 +25158,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/add-assignees:issue.issues_add_assignees",
@@ -25159,7 +25207,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/add-blocked-by-dependency:issue.issues_add_blocked_by_dependency",
@@ -25208,7 +25256,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/add-issue-field-values:issue.issues_add_issue_field_values",
@@ -25257,7 +25305,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/add-labels:label.issues_add_labels",
@@ -25306,7 +25354,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/add-sub-issue:issue.issues_add_sub_issue",
@@ -25355,7 +25403,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/check-user-can-be-assigned-to-issue:issue.issues_check_user_can_be_assigned_to_issue",
@@ -25499,7 +25547,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/create-label:label.issues_create_label",
@@ -25543,7 +25591,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/create-milestone:milestone.issues_create_milestone",
@@ -25587,7 +25635,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/create:issue.issues_create",
@@ -25631,7 +25679,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/delete-comment:comment.issues_delete_comment",
@@ -25680,7 +25728,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:issues/get-comment:comment.issues_get_comment"
   },
   {
     "id": "rest:issues/delete-issue-field-value:issue.issues_delete_issue_field_value",
@@ -25730,7 +25779,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/delete-label:label.issues_delete_label",
@@ -25775,7 +25824,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:issues/get-label:label.issues_get_label"
   },
   {
     "id": "rest:issues/delete-milestone:milestone.issues_delete_milestone",
@@ -25820,7 +25870,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:issues/get-milestone:milestone.issues_get_milestone"
   },
   {
     "id": "rest:issues/get-comment:comment.issues_get_comment",
@@ -27295,7 +27346,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/pin-comment:comment.issues_pin_comment",
@@ -27344,7 +27395,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/remove-all-labels:label.issues_remove_all_labels",
@@ -27393,7 +27444,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:issues/list-labels-on-issue:label.issues_list_labels_on_issue"
   },
   {
     "id": "rest:issues/remove-assignees:issue.issues_remove_assignees",
@@ -27442,7 +27494,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/remove-dependency-blocked-by:issue.issues_remove_dependency_blocked_by",
@@ -27496,7 +27548,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/remove-label:label.issues_remove_label",
@@ -27546,7 +27598,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/remove-sub-issue:issue.issues_remove_sub_issue",
@@ -27595,7 +27647,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/reprioritize-sub-issue:issue.issues_reprioritize_sub_issue",
@@ -27644,7 +27696,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/set-issue-field-values:issue.issues_set_issue_field_values",
@@ -27693,7 +27745,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/set-labels:label.issues_set_labels",
@@ -27742,7 +27794,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/unlock:issue.issues_unlock",
@@ -27791,7 +27843,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/unpin-comment:comment.issues_unpin_comment",
@@ -27840,7 +27892,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/update-comment:comment.issues_update_comment",
@@ -27889,7 +27941,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/update-label:label.issues_update_label",
@@ -27934,7 +27986,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/update-milestone:milestone.issues_update_milestone",
@@ -27979,7 +28031,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:issues/update:issue.issues_update",
@@ -28028,7 +28080,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:licenses/get-all-commonly-used:repo.licenses_get_all_commonly_used",
@@ -28355,7 +28407,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:migrations/get-import-status:migration.migrations_get_import_status"
   },
   {
     "id": "rest:migrations/download-archive-for-org:organization.migrations_download_archive_for_org",
@@ -28882,7 +28935,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:migrations/set-lfs-preference:migration.migrations_set_lfs_preference",
@@ -28926,7 +28979,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:migrations/start-import:migration.migrations_start_import",
@@ -28970,7 +29023,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:migrations/update-import:migration.migrations_update_import",
@@ -29014,7 +29067,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:oidc/create-oidc-custom-property-inclusion-for-enterprise:enterprise.oidc_create_oidc_custom_property_inclusion_for_enterprise",
@@ -29053,7 +29106,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:oidc/create-oidc-custom-property-inclusion-for-org:organization.oidc_create_oidc_custom_property_inclusion_for_org",
@@ -29092,7 +29145,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:oidc/delete-oidc-custom-property-inclusion-for-enterprise:enterprise.oidc_delete_oidc_custom_property_inclusion_for_enterprise",
@@ -29132,7 +29185,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:oidc/delete-oidc-custom-property-inclusion-for-org:organization.oidc_delete_oidc_custom_property_inclusion_for_org",
@@ -29172,7 +29225,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:oidc/get-oidc-custom-sub-template-for-org:organization.oidc_get_oidc_custom_sub_template_for_org",
@@ -29328,7 +29381,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/add-security-manager-team:team.orgs_add_security_manager_team",
@@ -29368,7 +29421,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/assign-team-to-org-role:team.orgs_assign_team_to_org_role",
@@ -29409,7 +29462,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/assign-user-to-org-role:organization.assign_user_to_org_role",
@@ -29450,7 +29503,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/block-user:organization.block_user",
@@ -29490,7 +29543,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/cancel-invitation:organization.cancel_invitation",
@@ -29530,7 +29583,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/check-blocked-user:organization.check_blocked_user",
@@ -29690,7 +29743,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/create-artifact-deployment-record:artifact.orgs_create_artifact_deployment_record",
@@ -29729,7 +29782,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/create-artifact-storage-record:artifact.orgs_create_artifact_storage_record",
@@ -29768,7 +29821,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/create-invitation:organization.create_invitation",
@@ -29807,7 +29860,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/create-issue-field:issue.orgs_create_issue_field",
@@ -29846,7 +29899,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/create-issue-type:issue.orgs_create_issue_type",
@@ -29885,7 +29938,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/create-webhook:organization.create_webhook",
@@ -29924,7 +29977,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/custom-properties-for-repos-create-or-update-organization-definition:organization.custom_properties_for_repos_create_or_update_organization_definition",
@@ -29964,7 +30017,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/custom-properties-for-repos-create-or-update-organization-definitions:organization.custom_properties_for_repos_create_or_update_organization_definitions",
@@ -30003,7 +30056,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/custom-properties-for-repos-create-or-update-organization-values:organization.custom_properties_for_repos_create_or_update_organization_values",
@@ -30042,7 +30095,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/custom-properties-for-repos-delete-organization-definition:organization.custom_properties_for_repos_delete_organization_definition",
@@ -30082,7 +30135,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:orgs/custom-properties-for-repos-get-organization-definition:organization.custom_properties_for_repos_get_organization_definition"
   },
   {
     "id": "rest:orgs/custom-properties-for-repos-get-organization-definition:organization.custom_properties_for_repos_get_organization_definition",
@@ -30253,7 +30307,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/delete-attestations-by-id:organization.delete_attestations_by_id",
@@ -30293,7 +30347,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/delete-attestations-by-subject-digest:organization.delete_attestations_by_subject_digest",
@@ -30333,7 +30387,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/delete-issue-field:issue.orgs_delete_issue_field",
@@ -30373,7 +30427,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/delete-issue-type:issue.orgs_delete_issue_type",
@@ -30413,7 +30467,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/delete-webhook:organization.delete_webhook",
@@ -30453,7 +30507,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:orgs/get-webhook:organization.get_webhook"
   },
   {
     "id": "rest:orgs/delete:organization.delete",
@@ -30492,7 +30547,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:orgs/get:organization.get"
   },
   {
     "id": "rest:orgs/disable-selected-repository-immutable-releases-organization:release.orgs_disable_selected_repository_immutable_releases_organization",
@@ -30532,7 +30588,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/enable-or-disable-security-product-on-all-org-repos:organization.enable_or_disable_security_product_on_all_org_repos",
@@ -30573,7 +30629,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/enable-selected-repository-immutable-releases-organization:release.orgs_enable_selected_repository_immutable_releases_organization",
@@ -30613,7 +30669,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/get-immutable-releases-settings-repositories:release.orgs_get_immutable_releases_settings_repositories",
@@ -31304,7 +31360,7 @@
     "pagination": "link",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/list-attestations:organization.list_attestations",
@@ -32560,7 +32616,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/redeliver-webhook-delivery:organization.redeliver_webhook_delivery",
@@ -32601,7 +32657,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/remove-member:member.orgs_remove_member",
@@ -32641,7 +32697,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:orgs/check-membership-for-user:member.orgs_check_membership_for_user"
   },
   {
     "id": "rest:orgs/remove-membership-for-user:member.orgs_remove_membership_for_user",
@@ -32681,7 +32738,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:orgs/get-membership-for-user:member.orgs_get_membership_for_user"
   },
   {
     "id": "rest:orgs/remove-outside-collaborator:collaborator.orgs_remove_outside_collaborator",
@@ -32721,7 +32779,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/remove-public-membership-for-authenticated-user:member.orgs_remove_public_membership_for_authenticated_user",
@@ -32761,7 +32819,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:orgs/check-public-membership-for-user:member.orgs_check_public_membership_for_user"
   },
   {
     "id": "rest:orgs/remove-security-manager-team:team.orgs_remove_security_manager_team",
@@ -32801,7 +32860,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/review-pat-grant-request:organization.review_pat_grant_request",
@@ -32841,7 +32900,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/review-pat-grant-requests-in-bulk:organization.review_pat_grant_requests_in_bulk",
@@ -32880,7 +32939,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/revoke-all-org-roles-team:team.orgs_revoke_all_org_roles_team",
@@ -32920,7 +32979,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/revoke-all-org-roles-user:organization.revoke_all_org_roles_user",
@@ -32960,7 +33019,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/revoke-org-role-team:team.orgs_revoke_org_role_team",
@@ -33001,7 +33060,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/revoke-org-role-user:organization.revoke_org_role_user",
@@ -33042,7 +33101,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/set-cluster-deployment-records:artifact.orgs_set_cluster_deployment_records",
@@ -33082,7 +33141,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/set-immutable-releases-settings-repositories:release.orgs_set_immutable_releases_settings_repositories",
@@ -33121,7 +33180,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/set-immutable-releases-settings:release.orgs_set_immutable_releases_settings",
@@ -33160,7 +33219,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/set-membership-for-user:member.orgs_set_membership_for_user",
@@ -33200,7 +33259,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/set-public-membership-for-authenticated-user:member.orgs_set_public_membership_for_authenticated_user",
@@ -33240,7 +33299,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/unblock-user:organization.unblock_user",
@@ -33280,7 +33339,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:orgs/check-blocked-user:organization.check_blocked_user"
   },
   {
     "id": "rest:orgs/update-issue-field:issue.orgs_update_issue_field",
@@ -33320,7 +33380,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/update-issue-type:issue.orgs_update_issue_type",
@@ -33360,7 +33420,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/update-membership-for-authenticated-user:member.orgs_update_membership_for_authenticated_user",
@@ -33393,7 +33453,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/update-pat-access:organization.update_pat_access",
@@ -33433,7 +33493,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/update-pat-accesses:organization.update_pat_accesses",
@@ -33472,7 +33532,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/update-webhook-config-for-org:organization.update_webhook_config_for_org",
@@ -33512,7 +33572,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/update-webhook:organization.update_webhook",
@@ -33552,7 +33612,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:orgs/update:organization.update",
@@ -33591,7 +33651,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:packages/get-all-package-versions-for-package-owned-by-authenticated-user:package.packages_get_all_package_versions_for_package_owned_by_authenticated_user",
@@ -34297,7 +34357,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:private-registries/delete-org-private-registry:organization.private_registries_delete_org_private_registry",
@@ -34337,7 +34397,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:private-registries/get-org-private-registry:organization.private_registries_get_org_private_registry"
   },
   {
     "id": "rest:private-registries/get-org-private-registry:organization.private_registries_get_org_private_registry",
@@ -34505,7 +34566,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/add-field-for-org:project.projects_add_field_for_org",
@@ -34545,7 +34606,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/add-field-for-user:project.projects_add_field_for_user",
@@ -34585,7 +34646,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/add-item-for-org:project.projects_add_item_for_org",
@@ -34625,7 +34686,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/add-item-for-user:project.projects_add_item_for_user",
@@ -34665,7 +34726,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/create-draft-item-for-authenticated-user:project.projects_create_draft_item_for_authenticated_user",
@@ -34705,7 +34766,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/create-draft-item-for-org:project.projects_create_draft_item_for_org",
@@ -34745,7 +34806,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/create-view-for-org:project.projects_create_view_for_org",
@@ -34785,7 +34846,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/delete-item-for-org:project.projects_delete_item_for_org",
@@ -34826,7 +34887,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:projects/get-org-item:project.projects_get_org_item"
   },
   {
     "id": "rest:projects/delete-item-for-user:project.projects_delete_item_for_user",
@@ -34867,7 +34929,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:projects/get-user-item:project.projects_get_user_item"
   },
   {
     "id": "rest:projects/get-field-for-org:project.projects_get_field_for_org",
@@ -35628,7 +35691,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:projects/update-item-for-user:project.projects_update_item_for_user",
@@ -35669,7 +35732,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/check-if-merged:pull_request.check_if_merged",
@@ -35768,7 +35831,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/create-review-comment:review.pulls_create_review_comment",
@@ -35817,7 +35880,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/create-review:review.pulls_create_review",
@@ -35866,7 +35929,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/create:pull_request.create",
@@ -35910,7 +35973,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/delete-pending-review:review.pulls_delete_pending_review",
@@ -35960,7 +36023,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:pulls/get-review:review.pulls_get_review"
   },
   {
     "id": "rest:pulls/delete-review-comment:review.pulls_delete_review_comment",
@@ -36009,7 +36073,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:pulls/get-review-comment:review.pulls_get_review_comment"
   },
   {
     "id": "rest:pulls/dismiss-review:review.pulls_dismiss_review",
@@ -36059,7 +36124,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/get-review-comment:review.pulls_get_review_comment",
@@ -36753,7 +36818,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/remove-requested-reviewers:pull_request.remove_requested_reviewers",
@@ -36802,7 +36867,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:pulls/list-requested-reviewers:pull_request.list_requested_reviewers"
   },
   {
     "id": "rest:pulls/request-reviewers:pull_request.request_reviewers",
@@ -36851,7 +36917,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/submit-review:review.pulls_submit_review",
@@ -36901,7 +36967,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/update-branch:pull_request.update_branch",
@@ -36950,7 +37016,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/update-review-comment:review.pulls_update_review_comment",
@@ -36999,7 +37065,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/update-review:review.pulls_update_review",
@@ -37049,7 +37115,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:pulls/update:pull_request.update",
@@ -37098,7 +37164,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:rate-limit/get:app.rate_limit_get",
@@ -37177,7 +37243,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/create-for-issue-comment:comment.reactions_create_for_issue_comment",
@@ -37226,7 +37292,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/create-for-issue:reaction.reactions_create_for_issue",
@@ -37275,7 +37341,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/create-for-pull-request-review-comment:review.reactions_create_for_pull_request_review_comment",
@@ -37324,7 +37390,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/create-for-release:release.reactions_create_for_release",
@@ -37373,7 +37439,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/delete-for-commit-comment:comment.reactions_delete_for_commit_comment",
@@ -37423,7 +37489,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/delete-for-issue-comment:comment.reactions_delete_for_issue_comment",
@@ -37473,7 +37539,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/delete-for-issue:reaction.reactions_delete_for_issue",
@@ -37523,7 +37589,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/delete-for-pull-request-comment:pull_request.reactions_delete_for_pull_request_comment",
@@ -37573,7 +37639,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/delete-for-release:release.reactions_delete_for_release",
@@ -37623,7 +37689,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:reactions/list-for-commit-comment:comment.reactions_list_for_commit_comment",
@@ -37971,7 +38037,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/add-app-access-restrictions:branch_protection.repos_add_app_access_restrictions",
@@ -38016,7 +38082,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/add-collaborator:collaborator.repos_add_collaborator",
@@ -38061,7 +38127,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/add-status-check-contexts:branch_protection.repos_add_status_check_contexts",
@@ -38106,7 +38172,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/add-team-access-restrictions:branch_protection.repos_add_team_access_restrictions",
@@ -38151,7 +38217,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/add-user-access-restrictions:branch_protection.repos_add_user_access_restrictions",
@@ -38196,7 +38262,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/cancel-pages-deployment:deployment.repos_cancel_pages_deployment",
@@ -38241,7 +38307,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/check-automated-security-fixes:repo.check_automated_security_fixes",
@@ -38611,7 +38677,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-autolink:repo.create_autolink",
@@ -38655,7 +38721,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-commit-comment:comment.repos_create_commit_comment",
@@ -38700,7 +38766,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-commit-signature-protection:branch_protection.repos_create_commit_signature_protection",
@@ -38745,7 +38811,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-commit-status:commit.repos_create_commit_status",
@@ -38790,7 +38856,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-deploy-key:repo.create_deploy_key",
@@ -38834,7 +38900,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-deployment-branch-policy:environment.repos_create_deployment_branch_policy",
@@ -38883,7 +38949,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-deployment-protection-rule:environment.repos_create_deployment_protection_rule",
@@ -38932,7 +38998,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-deployment-status:deployment.repos_create_deployment_status",
@@ -38981,7 +39047,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-deployment:deployment.repos_create_deployment",
@@ -39025,7 +39091,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-dispatch-event:repo.create_dispatch_event",
@@ -39069,7 +39135,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-for-authenticated-user:repo.create_for_authenticated_user",
@@ -39099,7 +39165,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-fork:repo.create_fork",
@@ -39143,7 +39209,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-in-org:organization.repos_create_in_org",
@@ -39182,7 +39248,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-or-update-environment:environment.repos_create_or_update_environment",
@@ -39231,7 +39297,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-or-update-file-contents:repo.create_or_update_file_contents",
@@ -39276,7 +39342,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-org-ruleset:ruleset.repos_create_org_ruleset",
@@ -39315,7 +39381,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-pages-deployment:deployment.repos_create_pages_deployment",
@@ -39359,7 +39425,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-pages-site:pages.repos_create_pages_site",
@@ -39403,7 +39469,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-release:release.repos_create_release",
@@ -39447,7 +39513,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-repo-ruleset:ruleset.repos_create_repo_ruleset",
@@ -39491,7 +39557,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-using-template:repo.create_using_template",
@@ -39525,7 +39591,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/create-webhook:webhook.repos_create_webhook",
@@ -39569,7 +39635,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/custom-properties-for-repos-create-or-update-repository-values:repo.custom_properties_for_repos_create_or_update_repository_values",
@@ -39613,7 +39679,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/custom-properties-for-repos-get-repository-values:repo.custom_properties_for_repos_get_repository_values",
@@ -39690,7 +39756,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/delete-access-restrictions:branch_protection.repos_delete_access_restrictions",
@@ -39735,7 +39801,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-access-restrictions:branch_protection.repos_get_access_restrictions"
   },
   {
     "id": "rest:repos/delete-admin-branch-protection:branch_protection.repos_delete_admin_branch_protection",
@@ -39780,7 +39847,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-admin-branch-protection:branch_protection.repos_get_admin_branch_protection"
   },
   {
     "id": "rest:repos/delete-an-environment:environment.repos_delete_an_environment",
@@ -39829,7 +39897,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-environment:environment.repos_get_environment"
   },
   {
     "id": "rest:repos/delete-autolink:repo.delete_autolink",
@@ -39874,7 +39943,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-autolink:repo.get_autolink"
   },
   {
     "id": "rest:repos/delete-branch-protection:branch_protection.repos_delete_branch_protection",
@@ -39919,7 +39989,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-branch-protection:branch_protection.repos_get_branch_protection"
   },
   {
     "id": "rest:repos/delete-commit-comment:comment.repos_delete_commit_comment",
@@ -39968,7 +40039,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-commit-comment:comment.repos_get_commit_comment"
   },
   {
     "id": "rest:repos/delete-commit-signature-protection:branch_protection.repos_delete_commit_signature_protection",
@@ -40013,7 +40085,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-commit-signature-protection:branch_protection.repos_get_commit_signature_protection"
   },
   {
     "id": "rest:repos/delete-deploy-key:repo.delete_deploy_key",
@@ -40058,7 +40131,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-deploy-key:repo.get_deploy_key"
   },
   {
     "id": "rest:repos/delete-deployment-branch-policy:environment.repos_delete_deployment_branch_policy",
@@ -40108,7 +40182,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-deployment-branch-policy:environment.repos_get_deployment_branch_policy"
   },
   {
     "id": "rest:repos/delete-deployment:deployment.repos_delete_deployment",
@@ -40157,7 +40232,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-deployment:deployment.repos_get_deployment"
   },
   {
     "id": "rest:repos/delete-file:repo.delete_file",
@@ -40202,7 +40278,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-content:repo.contents.read"
   },
   {
     "id": "rest:repos/delete-invitation:repo.delete_invitation",
@@ -40247,7 +40324,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/delete-org-ruleset:ruleset.repos_delete_org_ruleset",
@@ -40287,7 +40364,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-org-ruleset:ruleset.repos_get_org_ruleset"
   },
   {
     "id": "rest:repos/delete-pages-site:pages.repos_delete_pages_site",
@@ -40331,7 +40409,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-pages:pages.repos_get_pages"
   },
   {
     "id": "rest:repos/delete-pull-request-review-protection:branch_protection.repos_delete_pull_request_review_protection",
@@ -40376,7 +40455,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-pull-request-review-protection:branch_protection.repos_get_pull_request_review_protection"
   },
   {
     "id": "rest:repos/delete-release-asset:release.repos_delete_release_asset",
@@ -40421,7 +40501,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-release-asset:release.repos_get_release_asset"
   },
   {
     "id": "rest:repos/delete-release:release.repos_delete_release",
@@ -40470,7 +40551,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-release:release.repos_get_release"
   },
   {
     "id": "rest:repos/delete-repo-ruleset:ruleset.repos_delete_repo_ruleset",
@@ -40519,7 +40601,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-repo-ruleset:ruleset.repos_get_repo_ruleset"
   },
   {
     "id": "rest:repos/delete-webhook:webhook.repos_delete_webhook",
@@ -40564,7 +40647,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-webhook:webhook.repos_get_webhook"
   },
   {
     "id": "rest:repos/delete:repo.delete",
@@ -40608,7 +40692,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get:repo.metadata.read"
   },
   {
     "id": "rest:repos/disable-automated-security-fixes:repo.disable_automated_security_fixes",
@@ -40652,7 +40737,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/check-automated-security-fixes:repo.check_automated_security_fixes"
   },
   {
     "id": "rest:repos/disable-deployment-protection-rule:environment.repos_disable_deployment_protection_rule",
@@ -40702,7 +40788,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-custom-deployment-protection-rule:environment.repos_get_custom_deployment_protection_rule"
   },
   {
     "id": "rest:repos/disable-immutable-releases:release.repos_disable_immutable_releases",
@@ -40746,7 +40833,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/check-immutable-releases:release.repos_check_immutable_releases"
   },
   {
     "id": "rest:repos/disable-private-vulnerability-reporting:repo.disable_private_vulnerability_reporting",
@@ -40790,7 +40878,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/check-private-vulnerability-reporting:repo.check_private_vulnerability_reporting"
   },
   {
     "id": "rest:repos/disable-vulnerability-alerts:repo.disable_vulnerability_alerts",
@@ -40834,7 +40923,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/check-vulnerability-alerts:repo.check_vulnerability_alerts"
   },
   {
     "id": "rest:repos/download-tarball-archive:repo.download_tarball_archive",
@@ -40970,7 +41060,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/enable-immutable-releases:release.repos_enable_immutable_releases",
@@ -41014,7 +41104,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/enable-private-vulnerability-reporting:repo.enable_private_vulnerability_reporting",
@@ -41058,7 +41148,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/enable-vulnerability-alerts:repo.enable_vulnerability_alerts",
@@ -41102,7 +41192,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/generate-release-notes:release.repos_generate_release_notes",
@@ -41146,7 +41236,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/get-access-restrictions:branch_protection.repos_get_access_restrictions",
@@ -46084,7 +46174,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/merge:repo.merge",
@@ -46128,7 +46218,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/ping-webhook:webhook.repos_ping_webhook",
@@ -46173,7 +46263,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/redeliver-webhook-delivery:webhook.repos_redeliver_webhook_delivery",
@@ -46219,7 +46309,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/remove-app-access-restrictions:branch_protection.repos_remove_app_access_restrictions",
@@ -46264,7 +46354,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-apps-with-access-to-protected-branch:branch_protection.repos_get_apps_with_access_to_protected_branch"
   },
   {
     "id": "rest:repos/remove-collaborator:collaborator.repos_remove_collaborator",
@@ -46309,7 +46400,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/check-collaborator:collaborator.repos_check_collaborator"
   },
   {
     "id": "rest:repos/remove-status-check-contexts:branch_protection.repos_remove_status_check_contexts",
@@ -46354,7 +46446,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-all-status-check-contexts:branch_protection.repos_get_all_status_check_contexts"
   },
   {
     "id": "rest:repos/remove-status-check-protection:branch_protection.repos_remove_status_check_protection",
@@ -46399,7 +46492,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-status-checks-protection:branch_protection.repos_get_status_checks_protection"
   },
   {
     "id": "rest:repos/remove-team-access-restrictions:branch_protection.repos_remove_team_access_restrictions",
@@ -46444,7 +46538,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-teams-with-access-to-protected-branch:branch_protection.repos_get_teams_with_access_to_protected_branch"
   },
   {
     "id": "rest:repos/remove-user-access-restrictions:branch_protection.repos_remove_user_access_restrictions",
@@ -46489,7 +46584,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:repos/get-users-with-access-to-protected-branch:branch_protection.repos_get_users_with_access_to_protected_branch"
   },
   {
     "id": "rest:repos/rename-branch:branch.repos_rename_branch",
@@ -46534,7 +46630,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/replace-all-topics:repo.replace_all_topics",
@@ -46578,7 +46674,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/request-pages-build:pages.repos_request_pages_build",
@@ -46622,7 +46718,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/set-admin-branch-protection:branch_protection.repos_set_admin_branch_protection",
@@ -46667,7 +46763,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/set-app-access-restrictions:branch_protection.repos_set_app_access_restrictions",
@@ -46712,7 +46808,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/set-status-check-contexts:branch_protection.repos_set_status_check_contexts",
@@ -46757,7 +46853,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/set-team-access-restrictions:branch_protection.repos_set_team_access_restrictions",
@@ -46802,7 +46898,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/set-user-access-restrictions:branch_protection.repos_set_user_access_restrictions",
@@ -46847,7 +46943,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/test-push-webhook:webhook.repos_test_push_webhook",
@@ -46892,7 +46988,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/transfer:repo.transfer",
@@ -46936,7 +47032,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-branch-protection:branch_protection.repos_update_branch_protection",
@@ -46981,7 +47077,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-commit-comment:comment.repos_update_commit_comment",
@@ -47030,7 +47126,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-deployment-branch-policy:environment.repos_update_deployment_branch_policy",
@@ -47080,7 +47176,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-information-about-pages-site:pages.repos_update_information_about_pages_site",
@@ -47124,7 +47220,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-invitation:repo.update_invitation",
@@ -47169,7 +47265,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-org-ruleset:ruleset.repos_update_org_ruleset",
@@ -47209,7 +47305,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-pull-request-review-protection:branch_protection.repos_update_pull_request_review_protection",
@@ -47254,7 +47350,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-release-asset:release.repos_update_release_asset",
@@ -47299,7 +47395,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-release:release.repos_update_release",
@@ -47348,7 +47444,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-repo-ruleset:ruleset.repos_update_repo_ruleset",
@@ -47397,7 +47493,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-status-check-protection:branch_protection.repos_update_status_check_protection",
@@ -47442,7 +47538,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-webhook-config-for-repo:webhook.repos_update_webhook_config_for_repo",
@@ -47487,7 +47583,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update-webhook:webhook.repos_update_webhook",
@@ -47532,7 +47628,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.archival.update",
@@ -47576,7 +47672,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.default_branch.update",
@@ -47620,7 +47716,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.description.update",
@@ -47664,7 +47760,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.feature.update",
@@ -47708,7 +47804,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.merge_policy.update",
@@ -47752,7 +47848,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.name.update",
@@ -47796,7 +47892,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.security.update",
@@ -47840,7 +47936,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.visibility.update",
@@ -47884,7 +47980,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/update:repo.website.update",
@@ -47928,7 +48024,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:repos/upload-release-asset:release.repos_upload_release_asset",
@@ -47988,7 +48084,7 @@
     "conditional_request": false,
     "redirect_policy": "github-download-host-allowlist",
     "stream_direction": "upload",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:search/code:repo.search_code",
@@ -48400,7 +48496,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:secret-scanning/get-alert:secret_scanning.secret_scanning_get_alert",
@@ -48893,7 +48989,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:secret-scanning/update-org-pattern-configs:secret_scanning.secret_scanning_update_org_pattern_configs",
@@ -48932,7 +49028,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:security-advisories/create-fork:advisory.security_advisories_create_fork",
@@ -48981,7 +49077,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:security-advisories/create-private-vulnerability-report:advisory.security_advisories_create_private_vulnerability_report",
@@ -49025,7 +49121,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:security-advisories/create-repository-advisory-cve-request:advisory.security_advisories_create_repository_advisory_cve_request",
@@ -49074,7 +49170,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:security-advisories/create-repository-advisory:advisory.security_advisories_create_repository_advisory",
@@ -49118,7 +49214,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:security-advisories/get-global-advisory:advisory.security_advisories_get_global_advisory",
@@ -49494,7 +49590,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/add-member-legacy:team.teams_add_member_legacy",
@@ -49534,7 +49630,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/add-or-update-membership-for-user-in-org:team.teams_add_or_update_membership_for_user_in_org",
@@ -49575,7 +49671,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/add-or-update-membership-for-user-legacy:team.teams_add_or_update_membership_for_user_legacy",
@@ -49615,7 +49711,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/add-or-update-repo-permissions-in-org:team.teams_add_or_update_repo_permissions_in_org",
@@ -49657,7 +49753,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/add-or-update-repo-permissions-legacy:team.teams_add_or_update_repo_permissions_legacy",
@@ -49698,7 +49794,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/check-permissions-for-repo-in-org:team.teams_check_permissions_for_repo_in_org",
@@ -49820,7 +49916,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/delete-in-org:team.teams_delete_in_org",
@@ -49860,7 +49956,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:teams/get-by-name:team.teams_get_by_name"
   },
   {
     "id": "rest:teams/delete-legacy:team.teams_delete_legacy",
@@ -49899,7 +49996,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:teams/get-legacy:team.teams_get_legacy"
   },
   {
     "id": "rest:teams/get-by-name:team.teams_get_by_name",
@@ -50636,7 +50734,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:teams/get-member-legacy:team.teams_get_member_legacy"
   },
   {
     "id": "rest:teams/remove-membership-for-user-in-org:team.teams_remove_membership_for_user_in_org",
@@ -50677,7 +50776,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:teams/get-membership-for-user-in-org:team.teams_get_membership_for_user_in_org"
   },
   {
     "id": "rest:teams/remove-membership-for-user-legacy:team.teams_remove_membership_for_user_legacy",
@@ -50717,7 +50817,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:teams/get-membership-for-user-legacy:team.teams_get_membership_for_user_legacy"
   },
   {
     "id": "rest:teams/remove-repo-in-org:team.teams_remove_repo_in_org",
@@ -50759,7 +50860,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:teams/check-permissions-for-repo-in-org:team.teams_check_permissions_for_repo_in_org"
   },
   {
     "id": "rest:teams/remove-repo-legacy:team.teams_remove_repo_legacy",
@@ -50800,7 +50902,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:teams/check-permissions-for-repo-legacy:team.teams_check_permissions_for_repo_legacy"
   },
   {
     "id": "rest:teams/update-in-org:team.teams_update_in_org",
@@ -50840,7 +50943,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:teams/update-legacy:team.teams_update_legacy",
@@ -50879,7 +50982,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/add-email-for-authenticated-user:member.users_add_email_for_authenticated_user",
@@ -50909,7 +51012,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/add-social-account-for-authenticated-user:member.users_add_social_account_for_authenticated_user",
@@ -50939,7 +51042,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/block:member.users_block",
@@ -50978,7 +51081,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/check-blocked:member.users_check_blocked",
@@ -51126,7 +51229,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/create-public-ssh-key-for-authenticated-user:member.users_create_public_ssh_key_for_authenticated_user",
@@ -51156,7 +51259,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/create-ssh-signing-key-for-authenticated-user:member.users_create_ssh_signing_key_for_authenticated_user",
@@ -51186,7 +51289,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/delete-attestations-bulk:member.users_delete_attestations_bulk",
@@ -51225,7 +51328,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/delete-attestations-by-id:member.users_delete_attestations_by_id",
@@ -51265,7 +51368,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/delete-attestations-by-subject-digest:member.users_delete_attestations_by_subject_digest",
@@ -51305,7 +51408,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/delete-email-for-authenticated-user:member.users_delete_email_for_authenticated_user",
@@ -51335,7 +51438,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:users/list-emails-for-authenticated-user:member.users_list_emails_for_authenticated_user"
   },
   {
     "id": "rest:users/delete-gpg-key-for-authenticated-user:member.users_delete_gpg_key_for_authenticated_user",
@@ -51368,7 +51472,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:users/get-gpg-key-for-authenticated-user:member.users_get_gpg_key_for_authenticated_user"
   },
   {
     "id": "rest:users/delete-public-ssh-key-for-authenticated-user:member.users_delete_public_ssh_key_for_authenticated_user",
@@ -51401,7 +51506,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:users/get-public-ssh-key-for-authenticated-user:member.users_get_public_ssh_key_for_authenticated_user"
   },
   {
     "id": "rest:users/delete-social-account-for-authenticated-user:member.users_delete_social_account_for_authenticated_user",
@@ -51431,7 +51537,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:users/list-social-accounts-for-authenticated-user:member.users_list_social_accounts_for_authenticated_user"
   },
   {
     "id": "rest:users/delete-ssh-signing-key-for-authenticated-user:member.users_delete_ssh_signing_key_for_authenticated_user",
@@ -51464,7 +51571,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:users/get-ssh-signing-key-for-authenticated-user:member.users_get_ssh_signing_key_for_authenticated_user"
   },
   {
     "id": "rest:users/follow:member.users_follow",
@@ -51503,7 +51611,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/get-authenticated:member.users_get_authenticated",
@@ -51806,7 +51914,7 @@
     "pagination": "link",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/list-attestations:member.users_list_attestations",
@@ -52588,7 +52696,7 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   },
   {
     "id": "rest:users/unblock:member.users_unblock",
@@ -52627,7 +52735,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:users/check-blocked:member.users_check_blocked"
   },
   {
     "id": "rest:users/unfollow:member.users_unfollow",
@@ -52666,7 +52775,8 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "absence-proof"
+    "reconciliation": "absence-proof",
+    "reconciliation_binding_id": "rest:users/check-person-is-followed-by-authenticated:member.users_check_person_is_followed_by_authenticated"
   },
   {
     "id": "rest:users/update-authenticated:member.users_update_authenticated",
@@ -52696,6 +52806,6 @@
     "pagination": "none",
     "conditional_request": false,
     "redirect_policy": "disabled",
-    "reconciliation": "bounded-readback"
+    "reconciliation": "none"
   }
 ]

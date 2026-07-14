@@ -149,6 +149,7 @@ func generate(dir string) (generatedState, error) {
 	if err := generateREST(&state, rest, permissions); err != nil {
 		return generatedState{}, err
 	}
+	finalizeRESTReconciliation(&state)
 	if err := generateGraphQL(&state, graphql, fingerprint); err != nil {
 		return generatedState{}, err
 	}
@@ -163,6 +164,37 @@ func generate(dir string) (generatedState, error) {
 	})
 	state.highRisk = buildHighRiskReview(state.restCoverage, state.graphqlCoverage)
 	return state, nil
+}
+
+func finalizeRESTReconciliation(state *generatedState) {
+	reads := map[string]restBinding{}
+	for _, binding := range state.bindings {
+		if binding.Method == "GET" {
+			reads[binding.PathTemplate] = binding
+		}
+	}
+	reconcilerByOperation := map[string]string{}
+	for index := range state.bindings {
+		binding := &state.bindings[index]
+		binding.Reconciliation, binding.ReconciliationBindingID = "none", ""
+		if binding.Method == "DELETE" {
+			if read, found := reads[binding.PathTemplate]; found && sameTargetPathOwnership(*binding, read) {
+				binding.Reconciliation = "absence-proof"
+				binding.ReconciliationBindingID = read.ID
+			}
+		}
+		reconcilerByOperation[binding.Operation] = binding.Reconciliation
+	}
+	for index := range state.descriptors {
+		if reconciler, found := reconcilerByOperation[state.descriptors[index].Name]; found {
+			state.descriptors[index].ReconcilerKind = reconciler
+		}
+	}
+}
+
+func sameTargetPathOwnership(left, right restBinding) bool {
+	return slices.Equal(left.PathParameters, right.PathParameters) && slices.EqualFunc(left.TargetPathParameters, right.TargetPathParameters,
+		func(a, b targetParameter) bool { return a == b })
 }
 
 func loadREST(path string) (openAPIDocument, error) {

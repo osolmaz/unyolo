@@ -23,27 +23,28 @@ type TargetParameter struct {
 }
 
 type Binding struct {
-	ID                   string            `json:"id"`
-	Operation            string            `json:"operation"`
-	UpstreamOperationID  string            `json:"upstream_operation_id"`
-	Method               string            `json:"method"`
-	PathTemplate         string            `json:"path_template"`
-	CredentialKind       string            `json:"credential_kind"`
-	APIVersion           string            `json:"api_version"`
-	MediaType            string            `json:"media_type"`
-	PathParameters       []string          `json:"path_parameters,omitempty"`
-	TargetPathParameters []TargetParameter `json:"target_path_parameters,omitempty"`
-	ArgumentParameters   []Parameter       `json:"argument_parameters,omitempty"`
-	RequestSchema        string            `json:"request_schema"`
-	ResponseSchema       string            `json:"response_schema"`
-	ResponseProjection   []string          `json:"response_projection,omitempty"`
-	RequestBytesLimit    int64             `json:"request_bytes_limit"`
-	ResponseBytesLimit   int64             `json:"response_bytes_limit"`
-	Pagination           string            `json:"pagination"`
-	ConditionalRequest   bool              `json:"conditional_request"`
-	RedirectPolicy       string            `json:"redirect_policy"`
-	StreamDirection      string            `json:"stream_direction,omitempty"`
-	Reconciliation       string            `json:"reconciliation"`
+	ID                      string            `json:"id"`
+	Operation               string            `json:"operation"`
+	UpstreamOperationID     string            `json:"upstream_operation_id"`
+	Method                  string            `json:"method"`
+	PathTemplate            string            `json:"path_template"`
+	CredentialKind          string            `json:"credential_kind"`
+	APIVersion              string            `json:"api_version"`
+	MediaType               string            `json:"media_type"`
+	PathParameters          []string          `json:"path_parameters,omitempty"`
+	TargetPathParameters    []TargetParameter `json:"target_path_parameters,omitempty"`
+	ArgumentParameters      []Parameter       `json:"argument_parameters,omitempty"`
+	RequestSchema           string            `json:"request_schema"`
+	ResponseSchema          string            `json:"response_schema"`
+	ResponseProjection      []string          `json:"response_projection,omitempty"`
+	RequestBytesLimit       int64             `json:"request_bytes_limit"`
+	ResponseBytesLimit      int64             `json:"response_bytes_limit"`
+	Pagination              string            `json:"pagination"`
+	ConditionalRequest      bool              `json:"conditional_request"`
+	RedirectPolicy          string            `json:"redirect_policy"`
+	StreamDirection         string            `json:"stream_direction,omitempty"`
+	Reconciliation          string            `json:"reconciliation"`
+	ReconciliationBindingID string            `json:"reconciliation_binding_id,omitempty"`
 }
 
 //go:embed bindings.json
@@ -76,6 +77,18 @@ func ByOperation(name string) []Binding {
 		}
 	}
 	return result
+}
+
+func ByID(id string) (Binding, bool) {
+	values, err := All()
+	if err != nil {
+		return Binding{}, false
+	}
+	index, found := slices.BinarySearchFunc(values, id, func(value Binding, target string) int { return strings.Compare(value.ID, target) })
+	if !found {
+		return Binding{}, false
+	}
+	return values[index], true
 }
 
 //nolint:cyclop // Binding transport and projection invariants are reviewed in one pass.
@@ -121,7 +134,30 @@ func Validate(values []Binding) error {
 			}
 		}
 	}
+	for _, value := range values {
+		switch value.Reconciliation {
+		case "none":
+			if value.ReconciliationBindingID != "" {
+				return fmt.Errorf("GitHub REST binding %q has an unexpected reconciliation binding", value.ID)
+			}
+		case "absence-proof":
+			read, found := bindingByID(values, value.ReconciliationBindingID)
+			if !found || read.Method != http.MethodGet || read.PathTemplate != value.PathTemplate {
+				return fmt.Errorf("GitHub REST binding %q has an invalid absence proof", value.ID)
+			}
+		default:
+			return fmt.Errorf("GitHub REST binding %q has unsupported reconciliation", value.ID)
+		}
+	}
 	return nil
+}
+
+func bindingByID(values []Binding, id string) (Binding, bool) {
+	index, found := slices.BinarySearchFunc(values, id, func(value Binding, target string) int { return strings.Compare(value.ID, target) })
+	if !found {
+		return Binding{}, false
+	}
+	return values[index], true
 }
 
 func safeResponseField(field string) bool {

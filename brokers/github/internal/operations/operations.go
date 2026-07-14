@@ -151,7 +151,15 @@ func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapt
 			if len(bindings) != 1 {
 				return nil, fmt.Errorf("GitHub REST operation %q has %d bindings", descriptor.Name, len(bindings))
 			}
-			adapters = append(adapters, generatedAdapter{descriptor: descriptor, binding: &bindings[0], manager: manager, options: options})
+			var reconciliation *opbinding.Binding
+			if id := bindings[0].ReconciliationBindingID; id != "" {
+				readback, found := opbinding.ByID(id)
+				if !found {
+					return nil, fmt.Errorf("GitHub REST operation %q has no reconciliation binding", descriptor.Name)
+				}
+				reconciliation = &readback
+			}
+			adapters = append(adapters, generatedAdapter{descriptor: descriptor, binding: &bindings[0], reconciliation: reconciliation, manager: manager, options: options})
 		case "persisted-graphql":
 			document, found := graphqlmanifest.ByOperation(descriptor.Name)
 			if !found {
@@ -166,11 +174,12 @@ func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapt
 }
 
 type generatedAdapter struct {
-	descriptor opcatalog.Descriptor
-	binding    *opbinding.Binding
-	document   *graphqlmanifest.Document
-	manager    *githubauth.Manager
-	options    Options
+	descriptor     opcatalog.Descriptor
+	binding        *opbinding.Binding
+	reconciliation *opbinding.Binding
+	document       *graphqlmanifest.Document
+	manager        *githubauth.Manager
+	options        Options
 }
 
 func (a generatedAdapter) Descriptor() capability.Descriptor { return a.descriptor.Descriptor }
@@ -397,7 +406,33 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 	}
 }
 
-func (a generatedAdapter) Reconcile(context.Context, Plan) (Outcome, error) {
+func (a generatedAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
+	if a.binding == nil || a.binding.Reconciliation != "absence-proof" || a.reconciliation == nil {
+		return Outcome{Proven: false}, nil
+	}
+	target, err := decodeObject(plan.Target)
+	if err != nil {
+		return Outcome{}, errors.New("GitHub reconciliation target is invalid")
+	}
+	public, err := a.publicArguments(plan.Arguments)
+	if err != nil {
+		return Outcome{}, err
+	}
+	arguments, err := decodeObject(public)
+	if err != nil {
+		return Outcome{}, errors.New("GitHub reconciliation arguments are invalid")
+	}
+	_, err = a.manager.ExecuteREST(ctx, plan.Credential, *a.reconciliation, target, arguments)
+	if githubauth.IsNotFound(err) {
+		result := json.RawMessage(`{}`)
+		if validationErr := schemaregistry.ValidateResult(a.descriptor.Name, result); validationErr != nil {
+			return Outcome{}, validationErr
+		}
+		return Outcome{Proven: true, Result: result}, nil
+	}
+	if err != nil {
+		return Outcome{}, err
+	}
 	return Outcome{Proven: false}, nil
 }
 

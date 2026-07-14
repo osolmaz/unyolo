@@ -26,7 +26,7 @@
       "rest:actions/approve-workflow-run"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -59,7 +59,7 @@
       "rest:actions/cancel-workflow-run"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -257,7 +257,7 @@
       "rest:actions/force-cancel-workflow-run"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -653,7 +653,7 @@
       "rest:actions/re-run-job-for-workflow-run"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -686,7 +686,7 @@
       "rest:actions/re-run-workflow"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -719,7 +719,7 @@
       "rest:actions/re-run-workflow-failed-jobs"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -752,7 +752,7 @@
       "rest:actions/review-custom-gates-for-run"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "deployments": "write"
     },
@@ -785,7 +785,7 @@
       "rest:actions/review-pending-deployments-for-run"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "deployments": "write"
     },
@@ -847,7 +847,7 @@
       "rest:security-advisories/create-fork"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write",
       "repository_advisories": "read"
@@ -881,7 +881,7 @@
       "rest:security-advisories/create-private-vulnerability-report"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_advisories": "write"
     },
@@ -914,7 +914,7 @@
       "rest:security-advisories/create-repository-advisory"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_advisories": "write"
     },
@@ -947,7 +947,7 @@
       "rest:security-advisories/create-repository-advisory-cve-request"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_advisories": "write"
     },
@@ -1104,7 +1104,7 @@
       "rest:security-advisories/update-repository-advisory"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_advisories": "write"
     },
@@ -1137,7 +1137,7 @@
       "rest:agents/add-selected-repo-to-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_secrets": "write"
     }
@@ -1169,7 +1169,7 @@
       "rest:agents/add-selected-repo-to-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_variables": "write"
     }
@@ -1201,7 +1201,7 @@
       "rest:agent-tasks/create-task-in-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_repository_selection": true
   },
   {
@@ -1352,7 +1352,7 @@
       "rest:agents/create-or-update-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_secrets": "write"
     }
@@ -1387,7 +1387,7 @@
       "rest:agents/create-or-update-repo-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "agent_secrets": "write"
     },
@@ -1420,7 +1420,7 @@
       "rest:agents/create-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_variables": "write"
     }
@@ -1452,7 +1452,7 @@
       "rest:agents/create-repo-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "agent_variables": "write"
     },
@@ -2070,7 +2070,7 @@
       "rest:agents/remove-selected-repo-from-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_secrets": "write"
     }
@@ -2102,7 +2102,7 @@
       "rest:agents/remove-selected-repo-from-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_variables": "write"
     }
@@ -2137,7 +2137,7 @@
       "rest:agents/set-selected-repos-for-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_secrets": "write"
     }
@@ -2169,7 +2169,7 @@
       "rest:agents/set-selected-repos-for-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_variables": "write"
     }
@@ -2201,7 +2201,7 @@
       "rest:agents/update-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_agent_variables": "write"
     }
@@ -2233,7 +2233,7 @@
       "rest:agents/update-repo-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "agent_variables": "write"
     },
@@ -2269,7 +2269,7 @@
       "rest:apps/check-token"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "app.apps_create_from_manifest",
@@ -2298,7 +2298,7 @@
       "rest:apps/create-from-manifest"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "app.apps_delete_authorization",
@@ -2330,7 +2330,7 @@
       "rest:apps/delete-authorization"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "absence-proof"
+    "reconciler_kind": "none"
   },
   {
     "name": "app.apps_delete_token",
@@ -2362,7 +2362,7 @@
       "rest:apps/delete-token"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "absence-proof"
+    "reconciler_kind": "none"
   },
   {
     "name": "app.apps_get_authenticated",
@@ -2684,7 +2684,7 @@
       "rest:apps/reset-token"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "app.apps_scope_token",
@@ -2716,7 +2716,7 @@
       "rest:apps/scope-token"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "app.meta_get",
@@ -3149,7 +3149,7 @@
       "rest:actions/set-artifact-and-log-retention-settings-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -3181,7 +3181,7 @@
       "rest:actions/set-artifact-and-log-retention-settings-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -3214,7 +3214,7 @@
       "rest:orgs/create-artifact-deployment-record"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "artifact_metadata": "write"
     }
@@ -3246,7 +3246,7 @@
       "rest:orgs/create-artifact-storage-record"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "artifact_metadata": "write"
     }
@@ -3342,7 +3342,7 @@
       "rest:orgs/set-cluster-deployment-records"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "artifact_metadata": "write"
     }
@@ -3473,7 +3473,7 @@
       "rest:repos/rename-branch"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -3506,7 +3506,7 @@
       "rest:repos/add-app-access-restrictions"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -3539,7 +3539,7 @@
       "rest:repos/add-status-check-contexts"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -3572,7 +3572,7 @@
       "rest:repos/add-team-access-restrictions"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -3605,7 +3605,7 @@
       "rest:repos/add-user-access-restrictions"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -3638,7 +3638,7 @@
       "rest:repos/create-commit-signature-protection"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4331,7 +4331,7 @@
       "rest:repos/set-admin-branch-protection"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4364,7 +4364,7 @@
       "rest:repos/set-app-access-restrictions"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4397,7 +4397,7 @@
       "rest:repos/set-status-check-contexts"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4430,7 +4430,7 @@
       "rest:repos/set-team-access-restrictions"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4463,7 +4463,7 @@
       "rest:repos/set-user-access-restrictions"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4496,7 +4496,7 @@
       "rest:repos/update-branch-protection"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4529,7 +4529,7 @@
       "rest:repos/update-pull-request-review-protection"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4562,7 +4562,7 @@
       "rest:repos/update-status-check-protection"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -4595,7 +4595,7 @@
       "rest:actions/delete-actions-cache-by-id"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -4979,7 +4979,7 @@
       "rest:actions/set-actions-cache-retention-limit-for-enterprise"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "cache.actions_set_actions_cache_retention_limit_for_organization",
@@ -5008,7 +5008,7 @@
       "rest:actions/set-actions-cache-retention-limit-for-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -5040,7 +5040,7 @@
       "rest:actions/set-actions-cache-retention-limit-for-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -5073,7 +5073,7 @@
       "rest:actions/set-actions-cache-storage-limit-for-enterprise"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "cache.actions_set_actions_cache_storage_limit_for_organization",
@@ -5102,7 +5102,7 @@
       "rest:actions/set-actions-cache-storage-limit-for-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -5134,7 +5134,7 @@
       "rest:actions/set-actions-cache-storage-limit-for-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -5167,7 +5167,7 @@
       "rest:checks/create"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "checks": "write"
     },
@@ -5200,7 +5200,7 @@
       "rest:checks/create-suite"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "checks": "write"
     },
@@ -5365,7 +5365,7 @@
       "rest:checks/rerequest-run"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "checks": "write"
     },
@@ -5398,7 +5398,7 @@
       "rest:checks/rerequest-suite"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "checks": "write"
     },
@@ -5431,7 +5431,7 @@
       "rest:checks/set-suites-preferences"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "checks": "write"
     },
@@ -5464,7 +5464,7 @@
       "rest:checks/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "checks": "write"
     },
@@ -5497,7 +5497,7 @@
       "rest:code-scanning/commit-autofix"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -5530,7 +5530,7 @@
       "rest:code-scanning/create-autofix"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "security_events": "write"
     },
@@ -5563,7 +5563,7 @@
       "rest:code-scanning/create-variant-analysis"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -6090,7 +6090,7 @@
       "rest:code-scanning/update-alert"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "security_events": "write"
     },
@@ -6123,7 +6123,7 @@
       "rest:code-scanning/update-default-setup"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -6156,7 +6156,7 @@
       "rest:code-scanning/upload-sarif"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "security_events": "write"
     },
@@ -6189,7 +6189,7 @@
       "rest:codespaces/add-repository-for-secret-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_user_secrets": "write"
     }
@@ -6286,7 +6286,7 @@
       "rest:codespaces/create-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces": "write"
     }
@@ -6321,7 +6321,7 @@
       "rest:codespaces/create-or-update-repo-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_secrets": "write"
     },
@@ -6357,7 +6357,7 @@
       "rest:codespaces/create-or-update-secret-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_user_secrets": "write"
     }
@@ -6389,7 +6389,7 @@
       "rest:codespaces/create-with-repo-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces": "write"
     },
@@ -6519,7 +6519,7 @@
       "rest:codespaces/export-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_lifecycle_admin": "write"
     }
@@ -6973,7 +6973,7 @@
       "rest:codespaces/publish-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces": "write"
     }
@@ -7005,7 +7005,7 @@
       "rest:codespaces/remove-repository-for-secret-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_user_secrets": "write"
     }
@@ -7073,7 +7073,7 @@
       "rest:codespaces/set-repositories-for-secret-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_user_secrets": "write"
     }
@@ -7105,7 +7105,7 @@
       "rest:codespaces/start-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_lifecycle_admin": "write"
     }
@@ -7137,7 +7137,7 @@
       "rest:codespaces/stop-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_lifecycle_admin": "write"
     }
@@ -7169,7 +7169,7 @@
       "rest:codespaces/update-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces": "write"
     }
@@ -7201,7 +7201,7 @@
       "rest:copilot-spaces/add-collaborator-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_seat_management": "write"
     }
@@ -7294,7 +7294,7 @@
       "rest:copilot-spaces/remove-collaborator-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_seat_management": "write"
     }
@@ -7326,7 +7326,7 @@
       "rest:copilot-spaces/update-collaborator-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_seat_management": "write"
     }
@@ -7358,7 +7358,7 @@
       "rest:orgs/convert-member-to-outside-collaborator"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -7422,7 +7422,7 @@
       "rest:orgs/remove-outside-collaborator"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -7454,7 +7454,7 @@
       "rest:repos/add-collaborator"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -7619,7 +7619,7 @@
       "graphql:859f958e57e904a4bb764ba772d1350cebecb154c51c216d32ec710e2776ff55"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "comment.gists_create_comment",
@@ -7648,7 +7648,7 @@
       "rest:gists/create-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "gists": "write"
     }
@@ -7770,7 +7770,7 @@
       "rest:gists/update-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "gists": "write"
     }
@@ -7802,7 +7802,7 @@
       "rest:issues/create-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -7972,7 +7972,7 @@
       "rest:issues/pin-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -8005,7 +8005,7 @@
       "rest:issues/unpin-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -8038,7 +8038,7 @@
       "rest:issues/update-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -8072,7 +8072,7 @@
       "graphql:9bf3f78321763d69803cdbb68fba4e06bd773d293319507a5b037166df6e2387"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "comment.reactions_create_for_commit_comment",
@@ -8101,7 +8101,7 @@
       "rest:reactions/create-for-commit-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -8134,7 +8134,7 @@
       "rest:reactions/create-for-issue-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -8167,7 +8167,7 @@
       "rest:reactions/delete-for-commit-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -8200,7 +8200,7 @@
       "rest:reactions/delete-for-issue-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -8299,7 +8299,7 @@
       "rest:repos/create-commit-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "read"
     },
@@ -8464,7 +8464,7 @@
       "rest:repos/update-commit-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -8497,7 +8497,7 @@
       "graphql:cad227dc16e7c813ce150c6ce8a041e8a3ef5179e3228612a4637a4c063ca9c7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "commit.checks_list_for_ref",
@@ -8592,7 +8592,7 @@
       "rest:git/create-commit"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -8691,7 +8691,7 @@
       "rest:repos/create-commit-status"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "statuses": "write"
     },
@@ -9067,7 +9067,7 @@
       "rest:copilot-spaces/update-for-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "copilot.get_copilot_cloud_agent_configuration",
@@ -9161,7 +9161,7 @@
       "rest:dependabot/add-selected-repo-to-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_dependabot_secrets": "write"
     }
@@ -9196,7 +9196,7 @@
       "rest:dependabot/create-or-update-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_dependabot_secrets": "write"
     }
@@ -9231,7 +9231,7 @@
       "rest:dependabot/create-or-update-repo-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "dependabot_secrets": "write"
     },
@@ -9329,7 +9329,7 @@
       "rest:dependency-graph/create-repository-snapshot"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -9848,7 +9848,7 @@
       "rest:dependabot/remove-selected-repo-from-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_dependabot_secrets": "write"
     }
@@ -9941,7 +9941,7 @@
       "rest:dependabot/set-repository-access-default-level"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -9976,7 +9976,7 @@
       "rest:dependabot/set-selected-repos-for-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_dependabot_secrets": "write"
     }
@@ -10008,7 +10008,7 @@
       "rest:dependabot/update-alert"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "vulnerability_alerts": "write"
     },
@@ -10041,7 +10041,7 @@
       "rest:dependabot/update-repository-access-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -10073,7 +10073,7 @@
       "graphql:17543fa16af669f52412c3bdd563a534d1e5335e67cc7fe3ffcffeed88fd2c4d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "deployment.create_deployment",
@@ -10102,7 +10102,7 @@
       "graphql:e6166bc3133bc7b7c4a28391dfb592a97a51f44b17e4b52a30b761d9e73255a0"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "deployment.create_deployment_status",
@@ -10131,7 +10131,7 @@
       "graphql:2632d60dacce7d2b5fac6310d423c7dc8597c6a9aed8a1054845e53276d1e122"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "deployment.delete_deployment",
@@ -10160,7 +10160,7 @@
       "graphql:b5e6a19c9742794f05742d2cbcdd9443776add5f85438053bd599ef22391023c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "deployment.reject_deployments",
@@ -10189,7 +10189,7 @@
       "graphql:599bf26ae0879a6bd1c1fc223db7c88cb11a1b687b0a538955b959a930007902"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "deployment.repos_cancel_pages_deployment",
@@ -10218,7 +10218,7 @@
       "rest:repos/cancel-pages-deployment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pages": "write"
     },
@@ -10251,7 +10251,7 @@
       "rest:repos/create-deployment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "deployments": "write"
     },
@@ -10284,7 +10284,7 @@
       "rest:repos/create-deployment-status"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "deployments": "write"
     },
@@ -10320,7 +10320,7 @@
       "rest:repos/create-pages-deployment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pages": "write"
     },
@@ -10551,7 +10551,7 @@
       "graphql:34bf3a51123e94c389840bfd4a0ad00c1e3859927972bcc0c52abf5c5beeecbe"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.add_discussion_poll_vote",
@@ -10580,7 +10580,7 @@
       "graphql:17462258d834e0d80a0db50cd8004b70c9a094376c0b8162af2e8db8a2101600"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.close_discussion",
@@ -10609,7 +10609,7 @@
       "graphql:707469a2ad5e78443c54ee878b0ec25eccdb1a5ca8c9df794882fbb2989efcdc"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.create_discussion",
@@ -10638,7 +10638,7 @@
       "graphql:b022891b996f8abe04246d2aafe59cd32316e7541d969d61767aeb92c53d5713"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.delete_discussion",
@@ -10667,7 +10667,7 @@
       "graphql:c319173b0f929e3ed9d69f9156d43280428b67ec910de89bfdf011e93383c9c5"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.delete_discussion_comment",
@@ -10696,7 +10696,7 @@
       "graphql:ba539a103638dcebf20bb484c2ad95ff6cc0c21fbecfd67fe4b8d3310b0dc6c9"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.mark_discussion_comment_as_answer",
@@ -10725,7 +10725,7 @@
       "graphql:a90e648ae02d30e36f61505ba57639e8b83b6f2b0bbd276c835082a549d53244"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.reopen_discussion",
@@ -10754,7 +10754,7 @@
       "graphql:6bc09c7223b69dc38e97f6bd0779b977c76c5d9dc2c4fc31d1c64231f13f6e3b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.unmark_discussion_comment_as_answer",
@@ -10783,7 +10783,7 @@
       "graphql:8a2d25308034f36caae44411122d1458c5688adfd9bf589bed5d07671378103e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.update_discussion",
@@ -10812,7 +10812,7 @@
       "graphql:916730e5760c16abb95d665eb2f7c807527c47e08158530455ee2c007407bc12"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "discussion.update_discussion_comment",
@@ -10841,7 +10841,7 @@
       "graphql:fbcf6d85e2affb3d8b16e1e3f8dedeef71a0ccf6da18eed0df5cbe4275cfb900"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.accept_enterprise_administrator_invitation",
@@ -10870,7 +10870,7 @@
       "graphql:66d744ad31ddd47d7240cc84cc09206a2f58436a86e5657605459375c9a6505a"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.accept_enterprise_member_invitation",
@@ -10899,7 +10899,7 @@
       "graphql:47b2caeb4bf4c9915c720c0910575021d0d838cc0d46a0ae20f4bf9f36ef89d6"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.add_enterprise_organization_member",
@@ -10928,7 +10928,7 @@
       "graphql:41a6d31e7fed7e0d9a78366fcd59addac097425796ef98420d9e536956eb6705"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.add_enterprise_support_entitlement",
@@ -10957,7 +10957,7 @@
       "graphql:b41d21cc18310192855980af0c8154f0e9e5b84b82a58e6933f89292a171fe18"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.cancel_enterprise_admin_invitation",
@@ -10986,7 +10986,7 @@
       "graphql:e326e2d19cff31e2f3325d49fa60a3dba94b07a1cf8d02f8894793e5e81e35a0"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.cancel_enterprise_member_invitation",
@@ -11015,7 +11015,7 @@
       "graphql:5fe0ecce30cbafadde17343ebb6665c40d05926714ba3426ae5baeeaf2cc8c0f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.code_security_attach_enterprise_configuration",
@@ -11044,7 +11044,7 @@
       "rest:code-security/attach-enterprise-configuration"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.code_security_get_configurations_for_enterprise",
@@ -11189,7 +11189,7 @@
       "rest:code-security/set-configuration-as-default-for-enterprise"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.copilot_copilot_enterprise_one_day_usage_metrics",
@@ -11346,7 +11346,7 @@
       "graphql:b0bdf55fe32bcf741957b94e27fbe768981694be6c4313ad9bd2b56d0cfd8335"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.grant_enterprise_organizations_migrator_role",
@@ -11375,7 +11375,7 @@
       "graphql:86082b0ef813de2ab59ce96f80e03adc3aa4061d3edf8d579896733e1c0c109c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.invite_enterprise_admin",
@@ -11404,7 +11404,7 @@
       "graphql:6cbdcccf54ce25de4b6e27fe540ebd9e30c797fbbc9941b9024cbe6520f8984a"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.invite_enterprise_member",
@@ -11433,7 +11433,7 @@
       "graphql:582dba1c0b376d53f3246299c070d8544b456a0b442ccb375de09b38a1e19e93"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.oidc_create_oidc_custom_property_inclusion_for_enterprise",
@@ -11462,7 +11462,7 @@
       "rest:oidc/create-oidc-custom-property-inclusion-for-enterprise"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.oidc_delete_oidc_custom_property_inclusion_for_enterprise",
@@ -11491,7 +11491,7 @@
       "rest:oidc/delete-oidc-custom-property-inclusion-for-enterprise"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.oidc_list_oidc_custom_property_inclusions_for_enterprise",
@@ -11703,7 +11703,7 @@
       "graphql:de99e73bad47b79675d20cb8c400f20670469e3925cd3227f747067cd61c140f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.remove_enterprise_admin",
@@ -11732,7 +11732,7 @@
       "graphql:fc55538a4efba240aff19c95b6852151fb0957e11048a0dda59b271aed01e6f9"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.remove_enterprise_identity_provider",
@@ -11761,7 +11761,7 @@
       "graphql:8950bd677e11ab64e85ee1b89c6f56c14cdfb9efd873dc102c465d0e300de9d1"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.remove_enterprise_member",
@@ -11790,7 +11790,7 @@
       "graphql:71eef0037b3457891773f2054cd3f2f3604fc7b94daa4ee11d165658dda54024"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.remove_enterprise_organization",
@@ -11819,7 +11819,7 @@
       "graphql:2805af4fd95e9454bf6fe8669515a90f675830d84740345cc015164cd6a1176e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.remove_enterprise_support_entitlement",
@@ -11848,7 +11848,7 @@
       "graphql:1302b9c43fc8c6f714b209f6856d64ccd326a745c5b99adf26fff12a92f29963"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.revoke_enterprise_organizations_migrator_role",
@@ -11877,7 +11877,7 @@
       "graphql:32c9da88b45f5aa8c622bcefc6e301b23ec469f0a03d004afbdd97d8c0cd1e77"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.set_enterprise_identity_provider",
@@ -11906,7 +11906,7 @@
       "graphql:e5abfe33a96d984304bdca0ded85a840b5507dcadf0867e4b900ed44b51b13e5"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.transfer_enterprise_organization",
@@ -11935,7 +11935,7 @@
       "graphql:937362789501be6e9593bb676f48668c1e78f3ffcdc6b492f6be5b6c89df2058"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_administrator_role",
@@ -11964,7 +11964,7 @@
       "graphql:f3f3b159374a7b84c14fec1f838fc25b9b00ac1f19ec54a2525b44908263c39b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_allow_private_repository_forking_setting",
@@ -11993,7 +11993,7 @@
       "graphql:27ae00f6ae9224787f030bd8ae100cafa8c721c790273a95cc812780f825b29c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_default_repository_permission_setting",
@@ -12022,7 +12022,7 @@
       "graphql:f86a862386a1cca7164667b53106c4d020ce853a18d05a882f9710af68d213ce"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_deploy_key_setting",
@@ -12051,7 +12051,7 @@
       "graphql:74d0a8594a12bc18c487829316f0442c76884324fa9149e7045a0d71fcd796b8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_change_repository_visibility_setting",
@@ -12080,7 +12080,7 @@
       "graphql:d4efc4b6051603d34ee7251ec994f545ff92fe6151bd623807dd5ed094897e9b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_create_repositories_setting",
@@ -12109,7 +12109,7 @@
       "graphql:c928c997000bbd4ee3ccc33cd04859db4c5dfed8e9bf9eef57d57f9eae1c9f8e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_delete_issues_setting",
@@ -12138,7 +12138,7 @@
       "graphql:550619a0a41a12d7babb73e17455c4ca77c87decd1d073b9fd5b7ce1eccd2371"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_delete_repositories_setting",
@@ -12167,7 +12167,7 @@
       "graphql:1a1acb5fc0673ca8cc84c30c0d297897afc887d11de94fd35eb74c4a176727a7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_invite_collaborators_setting",
@@ -12196,7 +12196,7 @@
       "graphql:ed7cf3c90786e890a134dedeb74a75bd625fd45652cb4047937c25979ec28492"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_make_purchases_setting",
@@ -12225,7 +12225,7 @@
       "graphql:027b95d406f891055f37c6c5ca409aa4119bde06e4f84496b4b349a607c57f7c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_update_protected_branches_setting",
@@ -12254,7 +12254,7 @@
       "graphql:dedde957e91bbbbb1f2bf694b697bf86d181ed5204981a3b81b0a48344b9a782"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_members_can_view_dependency_insights_setting",
@@ -12283,7 +12283,7 @@
       "graphql:eb63e35c26cc5418d98bd74f7f75c5aa0c11cdba496f63f9922934af6365ff03"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_organization_projects_setting",
@@ -12312,7 +12312,7 @@
       "graphql:8485bddd3dfbb614a750bd2f66ec812a436278dc03a9af78307ff30aeb9c39fe"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_owner_organization_role",
@@ -12341,7 +12341,7 @@
       "graphql:e43d787a645d1a1377b03173b5329850658887ff62bb6dd29801f7a9c9202ccc"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_profile",
@@ -12370,7 +12370,7 @@
       "graphql:be9c358c7b4b4147326285ee6a2772d3fcf092ba11d63d011138daf5336a0814"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_repository_projects_setting",
@@ -12399,7 +12399,7 @@
       "graphql:fcf87887d5b599b1ec1b6bd0e74eba9b8fecd06433d38e4daa1bc83c20b4b684"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_two_factor_authentication_disallowed_methods_setting",
@@ -12428,7 +12428,7 @@
       "graphql:d8f74a88f60137aad673d2be8964cc3027733983e0310030a738702d926967e2"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "enterprise.update_enterprise_two_factor_authentication_required_setting",
@@ -12457,7 +12457,7 @@
       "graphql:f00ecfc2813b74f9734330bc0a0d868e066c8c44648bbdadc1717add3c1f5c34"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "environment.actions_create_environment_variable",
@@ -12486,7 +12486,7 @@
       "rest:actions/create-environment-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "environments": "write"
     },
@@ -12522,7 +12522,7 @@
       "rest:actions/create-or-update-environment-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "environments": "write"
     },
@@ -12786,7 +12786,7 @@
       "rest:actions/update-environment-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "environments": "write"
     },
@@ -12819,7 +12819,7 @@
       "rest:repos/create-deployment-branch-policy"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -12852,7 +12852,7 @@
       "rest:repos/create-deployment-protection-rule"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -12885,7 +12885,7 @@
       "rest:repos/create-or-update-environment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -13248,7 +13248,7 @@
       "rest:repos/update-deployment-branch-policy"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -13310,7 +13310,7 @@
       "rest:gists/create"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "gists": "write"
     }
@@ -13374,7 +13374,7 @@
       "rest:gists/fork"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "gists": "write"
     }
@@ -13638,7 +13638,7 @@
       "rest:gists/star"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "gists": "write"
     }
@@ -13702,7 +13702,7 @@
       "rest:gists/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "gists": "write"
     }
@@ -13734,7 +13734,7 @@
       "rest:git/create-blob"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -13767,7 +13767,7 @@
       "rest:git/create-ref"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write",
       "workflows": "write"
@@ -13801,7 +13801,7 @@
       "rest:git/create-tree"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -13834,7 +13834,7 @@
       "rest:git/delete-ref"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -13999,7 +13999,7 @@
       "rest:git/update-ref"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write",
       "workflows": "write"
@@ -14301,7 +14301,7 @@
       "rest:apps/revoke-installation-access-token"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof"
+    "reconciler_kind": "none"
   },
   {
     "name": "installation.apps_suspend_installation",
@@ -14330,7 +14330,7 @@
       "rest:apps/suspend-installation"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "installation.apps_unsuspend_installation",
@@ -14359,7 +14359,7 @@
       "rest:apps/unsuspend-installation"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "absence-proof"
+    "reconciler_kind": "none"
   },
   {
     "name": "installation.repo.list",
@@ -14417,7 +14417,7 @@
       "graphql:f0933e7655645732f9f20f14b830febc7bc75912ae2ecf57c911e2c42fcd3650"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.add_sub_issue",
@@ -14446,7 +14446,7 @@
       "graphql:d52ba7ffad896d1b869ec0141dede6f7d4e8c6a25ab97ac9c2d0a44b22b2c71e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.close_issue",
@@ -14475,7 +14475,7 @@
       "graphql:94a7466bfc3497fdca3b52fdaaa182b7468ac962c9bcdabe42dfc3a1accad226"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.convert_project_v2_draft_issue_item_to_issue",
@@ -14504,7 +14504,7 @@
       "graphql:b341e89140018ca0b06268bf921d083d124ad489002342719f321315905dfbbe"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.create_issue",
@@ -14533,7 +14533,7 @@
       "graphql:7dbc59b18b2f903c46ead1a59eb6888075f6201566e8acf59938d0a4e01f44f0"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.create_issue_field",
@@ -14562,7 +14562,7 @@
       "graphql:ddd96c9d67b01ff2012afac7feaa3a5c3ba5086baa9c822aef12840cee9403d7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.create_issue_field_value",
@@ -14591,7 +14591,7 @@
       "graphql:de27f8bd726283620b395998a14ed085affed1d184335ad58206fd851d185a02"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.create_issue_type",
@@ -14620,7 +14620,7 @@
       "graphql:676c47157d78b2d92c674e448395bbe672e69c4fff74fe3f96500ba391c5cbab"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.create_project_v2_issue_field",
@@ -14649,7 +14649,7 @@
       "graphql:efdf13e16e3117961d782d0fef4f39a63766a60fbe17b40f9c006a3f38df41cf"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.delete_issue",
@@ -14678,7 +14678,7 @@
       "graphql:dead57f56f42fd50b99d69e5c89181b56d7408cceff560cf3f62aace46fe1636"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.delete_issue_comment",
@@ -14707,7 +14707,7 @@
       "graphql:b84cf2a40bd9e69022b9ebb60cf084b312e04375af31ca4a0b33cba588d7ccaf"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.delete_issue_field",
@@ -14736,7 +14736,7 @@
       "graphql:f33623244d2c2f0fd1d9990686940e146e79c7c1a36c8762edc30df100b3898a"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.delete_issue_field_value",
@@ -14765,7 +14765,7 @@
       "graphql:baf7da4e477f574b1137a3f3749555fc38842b17c879d172b7b7ab6136e2c05c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.delete_issue_type",
@@ -14794,7 +14794,7 @@
       "graphql:2829492988fafc54f9629737bb2997eb1b1c77db572f7ffebbbe0ad97beb3513"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.issues_add_assignees",
@@ -14823,7 +14823,7 @@
       "rest:issues/add-assignees"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -14857,7 +14857,7 @@
       "rest:issues/add-blocked-by-dependency"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -14890,7 +14890,7 @@
       "rest:issues/add-issue-field-values"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -14924,7 +14924,7 @@
       "rest:issues/add-sub-issue"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -15025,7 +15025,7 @@
       "rest:issues/create"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -15058,7 +15058,7 @@
       "rest:issues/delete-issue-field-value"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -15579,7 +15579,7 @@
       "rest:issues/lock"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -15613,7 +15613,7 @@
       "rest:issues/remove-assignees"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -15647,7 +15647,7 @@
       "rest:issues/remove-dependency-blocked-by"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -15680,7 +15680,7 @@
       "rest:issues/remove-sub-issue"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -15713,7 +15713,7 @@
       "rest:issues/reprioritize-sub-issue"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -15746,7 +15746,7 @@
       "rest:issues/set-issue-field-values"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -15780,7 +15780,7 @@
       "rest:issues/unlock"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -15814,7 +15814,7 @@
       "rest:issues/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -15848,7 +15848,7 @@
       "rest:orgs/create-issue-field"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issue_fields": "write"
     }
@@ -15880,7 +15880,7 @@
       "rest:orgs/create-issue-type"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issue_types": "write"
     }
@@ -15912,7 +15912,7 @@
       "rest:orgs/delete-issue-field"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issue_fields": "write"
     }
@@ -15944,7 +15944,7 @@
       "rest:orgs/delete-issue-type"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issue_types": "write"
     }
@@ -16040,7 +16040,7 @@
       "rest:orgs/update-issue-field"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issue_fields": "write"
     }
@@ -16072,7 +16072,7 @@
       "rest:orgs/update-issue-type"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issue_types": "write"
     }
@@ -16104,7 +16104,7 @@
       "graphql:9086175f4d78e4dd84de0563486a909f91751a8a376f3bad7ce32b8f6e8b244e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.pin_issue_comment",
@@ -16133,7 +16133,7 @@
       "graphql:a966c3a88d3f0356b1efd6ba40579d719f9faf75d8010b54f6b5c13aa8647085"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.remove_sub_issue",
@@ -16162,7 +16162,7 @@
       "graphql:97ff8df6eb8b63a10eb77fc8db1e37aeb99e4cf7495a0878f76a41501e70cd6c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.reopen_issue",
@@ -16191,7 +16191,7 @@
       "graphql:91fdc09c318e0a26d284df071a12645f56939cc266f828ca4d71509b6ed9e7cb"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.repos_list_issue_types",
@@ -16253,7 +16253,7 @@
       "graphql:dd83876ccdd0107bdb202ff906d03057e7afc060a098a5dcdd25bc2e89414061"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.set_issue_field_value",
@@ -16282,7 +16282,7 @@
       "graphql:63ec231685c2690e840001d9355d9b376e9fe941d51248fb0aa8765892131a29"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.transfer_issue",
@@ -16311,7 +16311,7 @@
       "graphql:41ecd4db238937acc2834506568cd6e3e9e753f25095da90a6ec6ae3244e3882"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.unmark_issue_as_duplicate",
@@ -16340,7 +16340,7 @@
       "graphql:d9b8301290f5818b23adda2dc2f37d5fc387bd6a77d9a92e5978f872791b56dd"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.unpin_issue",
@@ -16369,7 +16369,7 @@
       "graphql:386faa2e56463cee75cf09ca41bcf09127a31d3233c46cee2af190d2ee9af5db"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.unpin_issue_comment",
@@ -16398,7 +16398,7 @@
       "graphql:8f15382214f376531f23e5cd5a111f92a3dcc1995fd371783a925b09f03f0fc7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.update_issue",
@@ -16427,7 +16427,7 @@
       "graphql:f2e743e53b18b3fe8c9212107456cf1fa4733f5b1c978777e53bb27779d68d45"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.update_issue_comment",
@@ -16456,7 +16456,7 @@
       "graphql:2fd0007df8e5dec7262b7e0fabd0f2c9af2d2f9a8af8166aed097cab9ebfbbd2"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.update_issue_field",
@@ -16485,7 +16485,7 @@
       "graphql:6086c67b9151ff797cc4c73376a1111a641732da1e9e4e0c962d47a4f1aec345"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.update_issue_field_value",
@@ -16514,7 +16514,7 @@
       "graphql:4badf7f4873dea8be8675d309d4ec2b1d24bdd8ff247e30ba7d83b218cb67812"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.update_issue_issue_type",
@@ -16543,7 +16543,7 @@
       "graphql:834a8239905b13383197cb11619c2266bb72af3e26d51fc144e6aadc104aaffe"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.update_issue_type",
@@ -16572,7 +16572,7 @@
       "graphql:772b335833a34c3e18a3c8e042b65af344ce88998a02d3ee10a940c6b0b84807"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "issue.update_project_v2_draft_issue",
@@ -16601,7 +16601,7 @@
       "graphql:827c3132d5f5134d05ab74b2db0b3ac912af03ad1ea52cb94397a5ec6fb9019e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "label.add_labels_to_labelable",
@@ -16630,7 +16630,7 @@
       "graphql:545b90d80aef4f61ce0a53573c65a120fbfdeeebf51dc45206754e217ecbf9df"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "label.clear_labels_from_labelable",
@@ -16659,7 +16659,7 @@
       "graphql:424a1c6ce7830f57abd16136d15640b0a75c4f04e461727f464ae1cabfd76983"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "label.create_label",
@@ -16688,7 +16688,7 @@
       "graphql:12a2bb4054d92bda6419fe3bb26f32a829d84de243d960bf225bbefb63783bf7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "label.delete_label",
@@ -16717,7 +16717,7 @@
       "graphql:9a3f89a2ef4ad6e6b75fcd9d66af3b9aabfe2fdaa554e730b16a56dd8c3417cb"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "label.issues_add_labels",
@@ -16746,7 +16746,7 @@
       "rest:issues/add-labels"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -16780,7 +16780,7 @@
       "rest:issues/create-label"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -17018,7 +17018,7 @@
       "rest:issues/remove-label"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -17052,7 +17052,7 @@
       "rest:issues/set-labels"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -17086,7 +17086,7 @@
       "rest:issues/update-label"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -17120,7 +17120,7 @@
       "graphql:75d4eb4e6cc48383606e7a6d45df30f497f18b828505a8a9e54fa2a2dfbc21f7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "label.search_labels",
@@ -17181,7 +17181,7 @@
       "graphql:93848f0ff5a71e1b6afa492a2505057ba147a654cd9958674e5be5e29564be66"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.cancel_sponsorship",
@@ -17210,7 +17210,7 @@
       "graphql:3cd804a3fd8b32b608e06c6cef5b7ade2be48a8fa608524f3e2e8f06eab4e423"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.codespaces_delete_from_organization",
@@ -17239,7 +17239,7 @@
       "rest:codespaces/delete-from-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces": "write",
       "organization_codespaces": "write"
@@ -17305,7 +17305,7 @@
       "rest:codespaces/stop-in-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces_lifecycle_admin": "write",
       "organization_codespaces": "write"
@@ -17371,7 +17371,7 @@
       "graphql:a2cb7890e2bbad14df2d5da9a93647c6880c9f3d6591d8c403832e0ec5d2486b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.create_sponsors_tier",
@@ -17400,7 +17400,7 @@
       "graphql:954a50beca5f593317112a85a10f605874717fdc9550c3f2ee6c6d455e8da365"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.create_sponsorship",
@@ -17429,7 +17429,7 @@
       "graphql:53a6ff611107830af81e2651d39185d650988024caf3b4b0b00c0265a6543db5"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.create_sponsorships",
@@ -17458,7 +17458,7 @@
       "graphql:49dae9006a0f889bb2c5f8243b3d4777e890cc23a4a4c9e0a81113b16b808003"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.orgs_check_membership_for_user",
@@ -17804,7 +17804,7 @@
       "rest:orgs/set-membership-for-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -17836,7 +17836,7 @@
       "rest:orgs/set-public-membership-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -17868,7 +17868,7 @@
       "rest:orgs/update-membership-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -17900,7 +17900,7 @@
       "graphql:5a3a4484c6678b32b94b4654a3e16ddd28e92e512ae50f9d61a7dc1c745bc921"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.read_sponsorables",
@@ -17958,7 +17958,7 @@
       "graphql:39825b1cb5b60c3373b450f1ae20fef37ad0587ddf8b8e27b0c38a04a9ebc25f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.update_patreon_sponsorability",
@@ -17987,7 +17987,7 @@
       "graphql:318c8abf00c123c546a14e29729025eee084cd872cf562871357863fa5b58d8a"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.update_sponsorship_preferences",
@@ -18016,7 +18016,7 @@
       "graphql:c6c7d4e001c15efd9060d99ed7efa1706fba68469a1e9149cd612bdbadc8e2c6"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.users_add_email_for_authenticated_user",
@@ -18045,7 +18045,7 @@
       "rest:users/add-email-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "emails": "write"
     }
@@ -18077,7 +18077,7 @@
       "rest:users/add-social-account-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "profile": "write"
     }
@@ -18109,7 +18109,7 @@
       "rest:users/block"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "blocking": "write"
     }
@@ -18234,7 +18234,7 @@
       "rest:users/create-gpg-key-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "gpg_keys": "write"
     }
@@ -18266,7 +18266,7 @@
       "rest:users/create-public-ssh-key-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "keys": "write"
     }
@@ -18298,7 +18298,7 @@
       "rest:users/create-ssh-signing-key-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "git_signing_ssh_public_keys": "write"
     }
@@ -18330,7 +18330,7 @@
       "rest:users/delete-attestations-bulk"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "attestations": "write"
     }
@@ -18362,7 +18362,7 @@
       "rest:users/delete-attestations-by-id"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "attestations": "write"
     }
@@ -18394,7 +18394,7 @@
       "rest:users/delete-attestations-by-subject-digest"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "attestations": "write"
     }
@@ -18586,7 +18586,7 @@
       "rest:users/follow"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "followers": "write"
     }
@@ -18888,7 +18888,7 @@
       "rest:users/list-attestations-bulk"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "member.users_list_blocked_by_authenticated_user",
@@ -19379,7 +19379,7 @@
       "rest:users/set-primary-email-visibility-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "emails": "write"
     }
@@ -19475,7 +19475,7 @@
       "rest:users/update-authenticated"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "profile": "write"
     }
@@ -19755,7 +19755,7 @@
       "rest:migrations/map-commit-author"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -19788,7 +19788,7 @@
       "rest:migrations/set-lfs-preference"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -19824,7 +19824,7 @@
       "rest:migrations/start-import"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -19860,7 +19860,7 @@
       "rest:migrations/update-import"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -19893,7 +19893,7 @@
       "rest:issues/create-milestone"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -20029,7 +20029,7 @@
       "rest:issues/update-milestone"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write",
       "pull_requests": "write"
@@ -20672,7 +20672,7 @@
       "rest:activity/star-repo-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "starring": "write"
     }
@@ -20736,7 +20736,7 @@
       "rest:actions/add-selected-repo-to-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_secrets": "write"
     }
@@ -20768,7 +20768,7 @@
       "rest:actions/add-selected-repo-to-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_actions_variables": "write"
     }
@@ -20803,7 +20803,7 @@
       "rest:actions/create-or-update-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_secrets": "write"
     }
@@ -20835,7 +20835,7 @@
       "rest:actions/create-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_actions_variables": "write"
     }
@@ -20931,7 +20931,7 @@
       "rest:actions/disable-selected-repository-github-actions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -20963,7 +20963,7 @@
       "rest:actions/enable-selected-repository-github-actions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -21413,7 +21413,7 @@
       "rest:actions/remove-selected-repo-from-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_secrets": "write"
     }
@@ -21445,7 +21445,7 @@
       "rest:actions/remove-selected-repo-from-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_actions_variables": "write"
     }
@@ -21477,7 +21477,7 @@
       "rest:actions/set-allowed-actions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -21509,7 +21509,7 @@
       "rest:actions/set-fork-pr-contributor-approval-permissions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -21541,7 +21541,7 @@
       "rest:actions/set-github-actions-permissions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -21576,7 +21576,7 @@
       "rest:actions/set-selected-repos-for-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_secrets": "write"
     }
@@ -21608,7 +21608,7 @@
       "rest:actions/set-selected-repos-for-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_actions_variables": "write"
     }
@@ -21640,7 +21640,7 @@
       "rest:actions/set-selected-repositories-enabled-github-actions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -21672,7 +21672,7 @@
       "rest:actions/update-org-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_actions_variables": "write"
     }
@@ -21794,7 +21794,7 @@
       "rest:orgs/assign-user-to-org-role"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -21826,7 +21826,7 @@
       "rest:billing/create-organization-budget"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -22210,7 +22210,7 @@
       "rest:billing/update-budget-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -22242,7 +22242,7 @@
       "rest:orgs/block-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_user_blocking": "write"
     }
@@ -22274,7 +22274,7 @@
       "rest:campaigns/create-campaign"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_campaigns": "write"
     }
@@ -22402,7 +22402,7 @@
       "rest:campaigns/update-campaign"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_campaigns": "write"
     }
@@ -22434,7 +22434,7 @@
       "rest:orgs/cancel-invitation"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -22672,7 +22672,7 @@
       "rest:code-security/attach-configuration"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -22704,7 +22704,7 @@
       "rest:code-security/create-configuration"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -22768,7 +22768,7 @@
       "rest:code-security/detach-configuration"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -22928,7 +22928,7 @@
       "rest:code-security/set-configuration-as-default"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -22960,7 +22960,7 @@
       "rest:code-security/update-configuration"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -22992,7 +22992,7 @@
       "rest:codespaces/add-selected-repo-to-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_codespaces_secrets": "write"
     }
@@ -23027,7 +23027,7 @@
       "rest:codespaces/create-or-update-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_codespaces_secrets": "write"
     }
@@ -23059,7 +23059,7 @@
       "rest:codespaces/delete-codespaces-access-users"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_codespaces_settings": "write"
     }
@@ -23284,7 +23284,7 @@
       "rest:codespaces/remove-selected-repo-from-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_codespaces_secrets": "write"
     }
@@ -23316,7 +23316,7 @@
       "rest:codespaces/set-codespaces-access"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_codespaces_settings": "write"
     }
@@ -23348,7 +23348,7 @@
       "rest:codespaces/set-codespaces-access-users"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_codespaces_settings": "write"
     }
@@ -23383,7 +23383,7 @@
       "rest:codespaces/set-selected-repos-for-org-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_codespaces_secrets": "write"
     }
@@ -23415,7 +23415,7 @@
       "rest:copilot/add-copilot-seats-for-users"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write",
       "organization_copilot_seat_management": "write"
@@ -23448,7 +23448,7 @@
       "rest:copilot/cancel-copilot-seat-assignment-for-users"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write",
       "organization_copilot_seat_management": "write"
@@ -23641,7 +23641,7 @@
       "rest:copilot/disable-copilot-coding-agent-for-repository-in-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_agent_settings": "write"
     }
@@ -23673,7 +23673,7 @@
       "rest:copilot/enable-copilot-coding-agent-for-repository-in-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_agent_settings": "write"
     }
@@ -23835,7 +23835,7 @@
       "rest:copilot/set-copilot-coding-agent-permissions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_agent_settings": "write"
     }
@@ -23867,7 +23867,7 @@
       "rest:copilot/set-copilot-coding-agent-selected-repositories-for-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_agent_settings": "write"
     }
@@ -23899,7 +23899,7 @@
       "rest:copilot/set-copilot-content-exclusion-for-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "org_copilot_content_exclusion": "write"
     }
@@ -23931,7 +23931,7 @@
       "rest:copilot-spaces/create-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_spaces": "write"
     }
@@ -23963,7 +23963,7 @@
       "rest:copilot-spaces/create-resource-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_spaces": "write"
     }
@@ -24187,7 +24187,7 @@
       "rest:copilot-spaces/update-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_spaces": "write"
     }
@@ -24219,7 +24219,7 @@
       "rest:copilot-spaces/update-resource-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_copilot_spaces": "write"
     }
@@ -24251,7 +24251,7 @@
       "rest:orgs/create-invitation"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -24286,7 +24286,7 @@
       "rest:orgs/create-webhook"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_hooks": "write"
     }
@@ -24318,7 +24318,7 @@
       "rest:orgs/custom-properties-for-repos-create-or-update-organization-definition"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_custom_properties": "admin"
     }
@@ -24350,7 +24350,7 @@
       "rest:orgs/custom-properties-for-repos-create-or-update-organization-definitions"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_custom_properties": "admin"
     }
@@ -24382,7 +24382,7 @@
       "rest:orgs/custom-properties-for-repos-create-or-update-organization-values"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_custom_properties": "write"
     }
@@ -24574,7 +24574,7 @@
       "rest:orgs/delete-attestations-bulk"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "attestations": "write"
     }
@@ -24606,7 +24606,7 @@
       "rest:orgs/delete-attestations-by-id"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "attestations": "write"
     }
@@ -24638,7 +24638,7 @@
       "rest:orgs/delete-attestations-by-subject-digest"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "attestations": "write"
     }
@@ -24702,7 +24702,7 @@
       "rest:orgs/enable-or-disable-security-product-on-all-org-repos"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -24734,7 +24734,7 @@
       "graphql:c7471333801828d108fbe660cb09512875bd87ead5b53951641ed5813330a30c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "organization.get",
@@ -25402,7 +25402,7 @@
       "rest:interactions/set-restrictions-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "interaction_limits": "write"
     }
@@ -25434,7 +25434,7 @@
       "rest:interactions/set-restrictions-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -25466,7 +25466,7 @@
       "rest:interactions/set-restrictions-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -25621,7 +25621,7 @@
       "rest:orgs/list-attestations-bulk"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "organization.list_blocked_users",
@@ -26176,7 +26176,7 @@
       "rest:oidc/create-oidc-custom-property-inclusion-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -26208,7 +26208,7 @@
       "rest:oidc/delete-oidc-custom-property-inclusion-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -26304,7 +26304,7 @@
       "rest:oidc/update-oidc-custom-sub-template-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -26481,7 +26481,7 @@
       "rest:orgs/ping-webhook"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_hooks": "write"
     }
@@ -26516,7 +26516,7 @@
       "rest:private-registries/create-org-private-registry"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_private_registries": "write"
     }
@@ -26679,7 +26679,7 @@
       "rest:private-registries/update-org-private-registry"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_private_registries": "write"
     }
@@ -26740,7 +26740,7 @@
       "rest:orgs/redeliver-webhook-delivery"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_hooks": "write"
     }
@@ -26772,7 +26772,7 @@
       "rest:repos/create-in-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     }
@@ -26839,7 +26839,7 @@
       "rest:orgs/review-pat-grant-request"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_personal_access_token_requests": "write"
     }
@@ -26874,7 +26874,7 @@
       "rest:orgs/review-pat-grant-requests-in-bulk"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_personal_access_token_requests": "write"
     }
@@ -26906,7 +26906,7 @@
       "rest:orgs/revoke-all-org-roles-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -26938,7 +26938,7 @@
       "rest:orgs/revoke-org-role-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -27002,7 +27002,7 @@
       "graphql:fb291bd0c309108114ecab2ed278ef918375051fc44eddb598eb77604cb581b2"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "organization.start_organization_migration",
@@ -27031,7 +27031,7 @@
       "graphql:d09beb95e9b8c8bff9ecf23467946929f8e90694bc342a36ecdd7017841b3131"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "organization.unblock_user",
@@ -27092,7 +27092,7 @@
       "graphql:c118c65c9c5897bbc0de52fde1c722294ee11ce63f25aab0b538f5f270d57546"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "organization.update",
@@ -27121,7 +27121,7 @@
       "rest:orgs/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -27153,7 +27153,7 @@
       "graphql:3d9283698ab32781e9120ea4ec94ba4de34efd0b04dd2c4c4d7327701931a9a2"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "organization.update_organization_web_commit_signoff_setting",
@@ -27182,7 +27182,7 @@
       "graphql:7f884232a6e8972627cc561d3d78de8412236f635bddb8e801b6ab13b04e0bc8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "organization.update_pat_access",
@@ -27214,7 +27214,7 @@
       "rest:orgs/update-pat-access"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_personal_access_tokens": "write"
     }
@@ -27249,7 +27249,7 @@
       "rest:orgs/update-pat-accesses"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_personal_access_tokens": "write"
     }
@@ -27284,7 +27284,7 @@
       "rest:orgs/update-webhook"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_hooks": "write"
     }
@@ -27319,7 +27319,7 @@
       "rest:orgs/update-webhook-config-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_hooks": "write"
     }
@@ -27641,7 +27641,7 @@
       "rest:repos/create-pages-site"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write",
       "pages": "write"
@@ -27875,7 +27875,7 @@
       "rest:repos/request-pages-build"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pages": "write"
     },
@@ -27908,7 +27908,7 @@
       "rest:repos/update-information-about-pages-site"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write",
       "pages": "write"
@@ -27942,7 +27942,7 @@
       "graphql:bf59737a48d3e14248e6ba75fe5bb025a3ba97bacb1382adf5ffe3c5443b0430"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.archive_project_v2_item",
@@ -27971,7 +27971,7 @@
       "graphql:fab5415c15ea8987ab0f69bd9eaef66261e2d80e5d14eef16fe5ecbe1a258f11"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.clear_project_v2_item_field_value",
@@ -28000,7 +28000,7 @@
       "graphql:808d97d4f4c028663fd05aa6912c71278708f6b38fe6739ab3f88a1ed3c9695b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.copy_project_v2",
@@ -28029,7 +28029,7 @@
       "graphql:cc27ebba42f492a90eea7423d37c7d8fcf9975c3d81c278750acff078ae994d2"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.create_project_v2",
@@ -28058,7 +28058,7 @@
       "graphql:dc14c2045bcbc3cbc8848d768f90bbe265b71f724cdaf1b6d0b817657b11fcad"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.create_project_v2_field",
@@ -28087,7 +28087,7 @@
       "graphql:b335cd56c79439c5a2072a04bd086415d6b5f94558e5e6e335bb330fa2291e16"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.create_project_v2_status_update",
@@ -28116,7 +28116,7 @@
       "graphql:64aa8c14bd38dbee1592b4112443a8d929d64ce2eacbbae8855b10ff6e451345"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.delete_project_v2",
@@ -28145,7 +28145,7 @@
       "graphql:0cccb54242c36ba701dbb6ab8813606a84f8905315d923ac2af235f5a7d7758d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.delete_project_v2_field",
@@ -28174,7 +28174,7 @@
       "graphql:f0a04f41da5f25015607ae886fd7cd519e83adb18e961ae635dcb162a03ae5b8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.delete_project_v2_item",
@@ -28203,7 +28203,7 @@
       "graphql:2d6d99fabc1c6e987ebb0e44972e431e9bdf6ea01ddffdfc9cda769d99b13be3"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.delete_project_v2_status_update",
@@ -28232,7 +28232,7 @@
       "graphql:e9992a355a18e75f1458a45c619151ea68a901554104afab73f277e23dd2520f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.delete_project_v2_workflow",
@@ -28261,7 +28261,7 @@
       "graphql:fafe670b98830ee4f85035f2af48a038b2d7772a1be994fcedba801d176f6c32"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.link_project_v2_to_team",
@@ -28290,7 +28290,7 @@
       "graphql:ca6e6b828263021f3fe5c64306db93f1bcbce052e13633a797f71aa081bb4aba"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.mark_project_v2_as_template",
@@ -28319,7 +28319,7 @@
       "graphql:dae133fdee1ab936109824e3dc40f07c6854efb94032be031924065bcd18ed31"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.projects_add_field_for_org",
@@ -28348,7 +28348,7 @@
       "rest:projects/add-field-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_projects": "write"
     }
@@ -28380,7 +28380,7 @@
       "rest:projects/add-field-for-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.projects_add_item_for_org",
@@ -28409,7 +28409,7 @@
       "rest:projects/add-item-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_projects": "write"
     }
@@ -28441,7 +28441,7 @@
       "rest:projects/add-item-for-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.projects_create_draft_item_for_authenticated_user",
@@ -28470,7 +28470,7 @@
       "rest:projects/create-draft-item-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.projects_create_draft_item_for_org",
@@ -28499,7 +28499,7 @@
       "rest:projects/create-draft-item-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_projects": "write"
     }
@@ -28531,7 +28531,7 @@
       "rest:projects/create-view-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_projects": "write"
     }
@@ -29051,7 +29051,7 @@
       "rest:projects/update-item-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_projects": "write"
     }
@@ -29083,7 +29083,7 @@
       "rest:projects/update-item-for-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.unarchive_project_v2_item",
@@ -29112,7 +29112,7 @@
       "graphql:2a1719bcb727ad4f81e5893145984eed5ec1aff4c6a6305c7a9b0d1ba0ae4251"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.unlink_project_v2_from_team",
@@ -29141,7 +29141,7 @@
       "graphql:159bab2454a58e577c3d5ee823cd6c1b6e7bdcf6f3d08695e72f9632434e1449"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.unmark_project_v2_as_template",
@@ -29170,7 +29170,7 @@
       "graphql:069c9a8c8947e29011881df0504f2cf7f95cfeea178ca4ac03b9994f08bdd692"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.update_project_v2",
@@ -29199,7 +29199,7 @@
       "graphql:6866c4089a90ca7866d004dd29e98b9d10e8aa247f83820cf1b76b93e07f62db"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.update_project_v2_collaborators",
@@ -29228,7 +29228,7 @@
       "graphql:228b00de3743b204010d7ae70190ba83675045ef11c97d4c811a8bef003507c5"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.update_project_v2_field",
@@ -29257,7 +29257,7 @@
       "graphql:1c2441daed7fc59a4d4a71182a0a344223bab54887314c30e0c0caee8d419dfd"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.update_project_v2_item_field_value",
@@ -29286,7 +29286,7 @@
       "graphql:06560d3f4d43856a1d251c03441e0ddc3260e9dcec3c3fe7f1d4b119762084a7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.update_project_v2_item_position",
@@ -29315,7 +29315,7 @@
       "graphql:dc5cf38444b8dfeae8d54c8c049ac6f07b90ae1af3b394772daeda8cff089133"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "project.update_project_v2_status_update",
@@ -29344,7 +29344,7 @@
       "graphql:1bf0fe265b5490a891a04016da58d2b11005b6154bdd8d2928b711218c74d45d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.add_pull_request_creation_cap_bypass_users",
@@ -29373,7 +29373,7 @@
       "graphql:e3f3bcec6fcbbbefc8645a9f5e9f103e5b87bd42fbe06cc6155834582594867f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.add_pull_request_review",
@@ -29402,7 +29402,7 @@
       "graphql:9d2c7d0e78b17a8bb721ccdf5787bde7a9242f44b795bc6f0d6a33220bb53738"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.add_pull_request_review_comment",
@@ -29431,7 +29431,7 @@
       "graphql:8cf24aa5d86c205c31ea346ecc6b4a90c78fceda19d3a5bfb723574c1e2f4c1b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.add_pull_request_review_thread",
@@ -29460,7 +29460,7 @@
       "graphql:2cf0500a7238eaacec5259f4be8539ad0c4dad08f2edd4be853a2407b516e31f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.add_pull_request_review_thread_reply",
@@ -29489,7 +29489,7 @@
       "graphql:a3e9dabf21a8ca445a649253d3ebcbb12cb498b91948aa59438786bf376a29ae"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.archive_pull_request",
@@ -29518,7 +29518,7 @@
       "graphql:bac13fa8f0a2797f36caa11a2185c294b1df8f546eb92ef030de52478832f8fd"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.check_if_merged",
@@ -29580,7 +29580,7 @@
       "graphql:44ed4487dfc365648c80397d7ab559bacb030e9a262358527f4e6793b29f5489"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.codespaces_create_with_pr_for_authenticated_user",
@@ -29609,7 +29609,7 @@
       "rest:codespaces/create-with-pr-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "codespaces": "write"
     },
@@ -29642,7 +29642,7 @@
       "graphql:88337eb2874f79a8bd134623537527f8a5eb6ced1e2f3214fbd2e4dbc983eda6"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.create",
@@ -29671,7 +29671,7 @@
       "rest:pulls/create"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -29704,7 +29704,7 @@
       "graphql:6cd7ddfe26dc9530ea89ff97cc1b20046f013e0f80eb33c8e741835cd2a319f5"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.delete_pull_request_review",
@@ -29733,7 +29733,7 @@
       "graphql:12302e69a1a221caf149582e8491430e7e4bfe6ed7c28826a9347a9326dcbb6b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.delete_pull_request_review_comment",
@@ -29762,7 +29762,7 @@
       "graphql:b7264c7b6dd7c04b037506c5516ddad464f553bb48984dd6605adcbc478041da"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.dequeue_pull_request",
@@ -29791,7 +29791,7 @@
       "graphql:a6c5c18e00893e66f235dff31aa7319305826efc24875392d076c80921986ef6"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.disable_pull_request_auto_merge",
@@ -29820,7 +29820,7 @@
       "graphql:ddf5908893fbd6f116bb7039253200fbd7b735bd5bdf7da40431dd479e728811"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.dismiss_pull_request_review",
@@ -29849,7 +29849,7 @@
       "graphql:4b60fd0543ab6541fe6ca622f26c92d21156a87546648e7a5746dabbb188c861"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.enable_pull_request_auto_merge",
@@ -29878,7 +29878,7 @@
       "graphql:ccbb26aaef7639f50e64eee271d40d8b0f377b45062b3fb323f2efa095b4c826"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.enqueue_pull_request",
@@ -29907,7 +29907,7 @@
       "graphql:a4a1a35db06b874055114929bf040084a44c8ee8009bdca3bd421a1324ebe829"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.get",
@@ -30069,7 +30069,7 @@
       "rest:interactions/set-pull-request-bypass-list-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -30102,7 +30102,7 @@
       "rest:interactions/update-pull-request-creation-cap-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -30267,7 +30267,7 @@
       "graphql:3a95635429e95ac72d21c4a96e931f4606f378c5bbd6623a233146c8c1041023"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.merge",
@@ -30296,7 +30296,7 @@
       "rest:pulls/merge"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -30329,7 +30329,7 @@
       "graphql:0e0d2418fd689b2d30e418afb535c1a31179c8e66f48c2ab3d546e0a048d3038"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.reactions_delete_for_pull_request_comment",
@@ -30358,7 +30358,7 @@
       "rest:reactions/delete-for-pull-request-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -30391,7 +30391,7 @@
       "graphql:4ffe872cfdf6928bcef00a3cfddd7212aa1df300e3fbfb37faca57738a3ebd99"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.remove_requested_reviewers",
@@ -30453,7 +30453,7 @@
       "graphql:ac11cec69d6b2409f5026dbba7ae9724148d89557188484d7b7591db4999bf6f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.repos_list_pull_requests_associated_with_commit",
@@ -30515,7 +30515,7 @@
       "rest:pulls/request-reviewers"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -30548,7 +30548,7 @@
       "graphql:f0e0acd24794a864e00e5133e9e28ebdf30b13e26513984124c7ea3e107e5015"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.search_issues_and_pull_requests",
@@ -30606,7 +30606,7 @@
       "graphql:5971ea8152153ce81c6547742576b3f1c48c7d1ca3e4c99bb60c933cf60d3737"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.unarchive_pull_request",
@@ -30635,7 +30635,7 @@
       "graphql:86653120514ed4655a80b0ad4cb9ce4caf76a17eaeaa388db77d660f3380070e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.update",
@@ -30664,7 +30664,7 @@
       "rest:pulls/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -30697,7 +30697,7 @@
       "rest:pulls/update-branch"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -30730,7 +30730,7 @@
       "graphql:a4c1b499e217a7e20be1ce0da274b9680e8af144305db7256a656bf8fb8f58a4"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.update_pull_request_branch",
@@ -30759,7 +30759,7 @@
       "graphql:42853a896e5434297b8809b85bf55207d8887ea42051d6e4f4a4316b29c836fc"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.update_pull_request_review",
@@ -30788,7 +30788,7 @@
       "graphql:b80fc64c37743c2301ea58411dd20d4d5abf27daeb601e323c2a7938c7cb8623"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "pull_request.update_pull_request_review_comment",
@@ -30817,7 +30817,7 @@
       "graphql:954224307ac2547a8dbe43d1b2039bdc41daf52115403cf88eab3a85f1f5a635"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "reaction.add_reaction",
@@ -30846,7 +30846,7 @@
       "graphql:e468f46f82c8d965ee78db0eac7db556e6c8b37edbfb55adb68d245cb6ea5b9e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "reaction.reactions_create_for_issue",
@@ -30875,7 +30875,7 @@
       "rest:reactions/create-for-issue"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -30908,7 +30908,7 @@
       "rest:reactions/delete-for-issue"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "issues": "write"
     },
@@ -30974,7 +30974,7 @@
       "graphql:cad256608c0e714dc10b3cabdfdec88e3940e10ee6ce7009ed4fbd7bbde116f6"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "release.orgs_disable_selected_repository_immutable_releases_organization",
@@ -31003,7 +31003,7 @@
       "rest:orgs/disable-selected-repository-immutable-releases-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -31035,7 +31035,7 @@
       "rest:orgs/enable-selected-repository-immutable-releases-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -31131,7 +31131,7 @@
       "rest:orgs/set-immutable-releases-settings"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -31163,7 +31163,7 @@
       "rest:orgs/set-immutable-releases-settings-repositories"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -31195,7 +31195,7 @@
       "rest:reactions/create-for-release"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_repository_selection": true
   },
   {
@@ -31225,7 +31225,7 @@
       "rest:reactions/delete-for-release"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_repository_selection": true
   },
   {
@@ -31318,7 +31318,7 @@
       "rest:repos/create-release"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write",
       "workflows": "write"
@@ -31451,7 +31451,7 @@
       "rest:repos/enable-immutable-releases"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -31484,7 +31484,7 @@
       "rest:repos/generate-release-notes"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -31715,7 +31715,7 @@
       "rest:repos/update-release"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write",
       "workflows": "write"
@@ -31749,7 +31749,7 @@
       "rest:repos/update-release-asset"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -31782,7 +31782,7 @@
       "rest:repos/upload-release-asset"
     ],
     "executor_kind": "bounded-stream",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_repository_selection": true
   },
   {
@@ -31812,7 +31812,7 @@
       "graphql:b7b75b767bd46342818d4d0296e2680d1f2ad0c5e37257a53d87790eb99fc758"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.abort_repository_migration",
@@ -31841,7 +31841,7 @@
       "graphql:9ce8700e141b355511287ee1f068493418605a6081c7186488035919e318fc9d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.accept_invitation_for_authenticated_user",
@@ -31870,7 +31870,7 @@
       "rest:repos/accept-invitation-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     }
@@ -31902,7 +31902,7 @@
       "graphql:d5c89f7cf864fd3a2fbdc1d8f2d8b8f8815edb620705fab137cb7b160b78a6f4"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.access_user_namespace_repository",
@@ -31931,7 +31931,7 @@
       "graphql:8b36399652b388a928ba28ec079a1b4945385784fa815e484dc7bbc4cd696bd9"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.add_assignees_to_assignable",
@@ -31960,7 +31960,7 @@
       "graphql:967d4a5ef83b618396f664dd2407c3bd0075aef1a2e131872641a81242b16fa8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.add_blocked_by",
@@ -31989,7 +31989,7 @@
       "graphql:8aef3923b3dd31af393251532a175b2289a63f4e4737573c15116d7156b0720e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.add_star",
@@ -32018,7 +32018,7 @@
       "graphql:bdfa2d3328328043c4f182c7f9ac7c7aa95c9f5cd47135274a1dc0066cb22534"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.add_upvote",
@@ -32047,7 +32047,7 @@
       "graphql:b7ebaad99c6f79ab5415f225f9e2a01e97978ba242ac41dd18c0df2633ecfb56"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.add_verifiable_domain",
@@ -32076,7 +32076,7 @@
       "graphql:676c3ccdd70c0f8ee63ef5f89e73013e825b94771abe44e3d2d4a6f9a000b657"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.approve_verifiable_domain",
@@ -32105,7 +32105,7 @@
       "graphql:81e94cea3c350bcfd45b55d6e688c510adc6b27386887651a7d6963448a1ce2a"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.archival.update",
@@ -32134,7 +32134,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -32167,7 +32167,7 @@
       "graphql:0f424bfd477e3aacc796263f7a5ce72c0b3dac27d97e3decb4179403c2e69a1d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.check_automated_security_fixes",
@@ -32295,7 +32295,7 @@
       "graphql:24377ac766332527f89acb6ca653b9064c7c3dbd0d92b55cf7395ec20b1e658a"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.codeowners_errors",
@@ -32390,7 +32390,7 @@
       "rest:repos/create-attestation"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "attestations": "write"
     },
@@ -32423,7 +32423,7 @@
       "graphql:20b2d5356be73c3df61b7229187d34c6438efb2ebd279811b0c71db927bbd978"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_autolink",
@@ -32452,7 +32452,7 @@
       "rest:repos/create-autolink"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -32485,7 +32485,7 @@
       "graphql:0de73a2fd4e38ba3fe28af07ae5e44acd97514074eb6047c3d5316468e7bb87c"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_check_run",
@@ -32514,7 +32514,7 @@
       "graphql:e504fb965906157021b8bb463dc29c3ce629bb7eb7edc5013ca0b6d83c49d837"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_check_suite",
@@ -32543,7 +32543,7 @@
       "graphql:34e848e9439234441dd0a32d896b6a4bb3a8a4f10bbefcc974d13d8ee4ae8214"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_commit_on_branch",
@@ -32572,7 +32572,7 @@
       "graphql:5622b3392a4c631ab2645dbe2d7cc1a6b7371cc6c6b1c708b374f4b18a653955"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_deploy_key",
@@ -32604,7 +32604,7 @@
       "rest:repos/create-deploy-key"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -32637,7 +32637,7 @@
       "rest:repos/create-dispatch-event"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -32670,7 +32670,7 @@
       "graphql:bd212b83a455da432dfd421cb545d2191c3779dcc63fd599b21ce005f4733452"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_for_authenticated_user",
@@ -32699,7 +32699,7 @@
       "rest:repos/create-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     }
@@ -32731,7 +32731,7 @@
       "rest:repos/create-fork"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write",
       "contents": "read"
@@ -32765,7 +32765,7 @@
       "graphql:4b53961012fa2509ee56cfaca86afdbdb47af61a699633266d828c444a687d0b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_linked_branch",
@@ -32794,7 +32794,7 @@
       "graphql:c0162ccb4eb8deabb4549d23b77e5c1c8bd47696148ffb4b7e29db57342bb8e1"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_migration_source",
@@ -32823,7 +32823,7 @@
       "graphql:e0700f8e888ce21ada91fc9610aebc716558e0d56eba75fef1dde38e909c6616"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_or_update_file_contents",
@@ -32852,7 +32852,7 @@
       "rest:repos/create-or-update-file-contents"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write",
       "workflows": "write"
@@ -32886,7 +32886,7 @@
       "graphql:4fad059fe1f6aff9300ab83f776b9cd1f5745972b2ea2fcdf20c0c6332a1114f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_repository",
@@ -32915,7 +32915,7 @@
       "graphql:fdac2d5e1800a47d6afd401cabe0107a716711a6fbfe2aacac49619ee1a2a79f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_repository_custom_property",
@@ -32944,7 +32944,7 @@
       "graphql:e4638b12bf086ff8699d2a61e5f87f1a8a9f05c4c21740661caf3efb1c769a35"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_repository_ruleset",
@@ -32973,7 +32973,7 @@
       "graphql:6938358e3a611756176042182b9957fa060b65ac24fdcbc8989ec861c057f8c8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.create_using_template",
@@ -33002,7 +33002,7 @@
       "rest:repos/create-using-template"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write",
       "contents": "read"
@@ -33035,7 +33035,7 @@
       "rest:repos/custom-properties-for-repos-create-or-update-repository-values"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_custom_properties": "write"
     },
@@ -33101,7 +33101,7 @@
       "rest:repos/decline-invitation-for-authenticated-user"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     }
@@ -33133,7 +33133,7 @@
       "graphql:b826b543eeb698c41a73628965a3bd2395a8530cf06447125ab7d39c5888339e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.default_branch.update",
@@ -33162,7 +33162,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -33261,7 +33261,7 @@
       "graphql:494dd62435873cbe3d40e244fd211f10859010ce64c31a947a5db0c5e00f7aa3"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_deploy_key",
@@ -33323,7 +33323,7 @@
       "graphql:baa37dae703c52eeef9aab4080a74f7da655a459c8f1067b959a23a3e3cc8cea"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_file",
@@ -33386,7 +33386,7 @@
       "rest:repos/delete-invitation"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -33419,7 +33419,7 @@
       "graphql:a8d87a640fe8fb2447e0c968570eab90d61f508c4d1b48baafb490a978537e9e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_linked_branch",
@@ -33448,7 +33448,7 @@
       "graphql:776463ce31b722b842ff534eaf883ba7b73329d05714460735053c78332354d6"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_package_version",
@@ -33477,7 +33477,7 @@
       "graphql:198e267f4b6d61c1f3742d6da71dfe155757e324508521e599e447bbc7c21c34"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_ref",
@@ -33506,7 +33506,7 @@
       "graphql:4babd0d0fe9a6ff4bfd7255828b6d3af5d9cc4f9146103998ff3851ef560e94f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_repository_custom_property",
@@ -33535,7 +33535,7 @@
       "graphql:b0a9e5c5e7f40154f9395c9c094dcf7fdbef7b69adebe2f46677c0b42dc932f2"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_repository_ruleset",
@@ -33564,7 +33564,7 @@
       "graphql:11ebc44e2616a7c2f6ca20e1f66dddd7a6e93b80b4a37c3911b0d7c06c7c874a"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.delete_verifiable_domain",
@@ -33593,7 +33593,7 @@
       "graphql:597eeed0df28e7101e0fbf05899c588ec633f970ea932a90f389b4acee0f9685"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.description.update",
@@ -33622,7 +33622,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -33754,7 +33754,7 @@
       "graphql:453ebc190ab284b669a5c43c8b085ac9849fb0d11947b18a8c9b0411aa3a3cc4"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.download_tarball_archive",
@@ -33849,7 +33849,7 @@
       "rest:repos/enable-automated-security-fixes"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -33882,7 +33882,7 @@
       "rest:repos/enable-private-vulnerability-reporting"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -33915,7 +33915,7 @@
       "rest:repos/enable-vulnerability-alerts"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -33948,7 +33948,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -34476,7 +34476,7 @@
       "graphql:90b305444d523c7c0da5377107b8bc839f37ad07e6598472b19a02996d035ebe"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.licenses_get",
@@ -34596,7 +34596,7 @@
       "graphql:bc33ee6be14804b0572ddbce8065f7728e84ad392d6e5c044abaf6e0fee8b484"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.list_activities",
@@ -35018,7 +35018,7 @@
       "graphql:c0b154d5e3e18c7c09686c6c6a056f86166de3bed92415a4aa7a7bcd878df1fb"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.mark_file_as_viewed",
@@ -35047,7 +35047,7 @@
       "graphql:77771a90abc9c26c6da4fac6d73e168159c73d09fbd39fd3a3d2ed2e701edb76"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.marketplace_listing",
@@ -35134,7 +35134,7 @@
       "rest:repos/merge"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -35167,7 +35167,7 @@
       "graphql:c2c0df4b8ca047c7107022e349fd941d6e965699d62a4a1a7ab5e5381ae09c68"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.merge_policy.update",
@@ -35196,7 +35196,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -35229,7 +35229,7 @@
       "rest:repos/merge-upstream"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -35295,7 +35295,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -35328,7 +35328,7 @@
       "graphql:ac2be8618fb8d2f0dc48ee763f189ba8c0c76e91148da28d9c13e13487fa96e0"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.promote_repository_custom_property",
@@ -35357,7 +35357,7 @@
       "graphql:dae43c070ba3373d669d4dd71348c6a70c214dbfd723d818a588cc3c220078b1"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.read_code_of_conduct",
@@ -35908,7 +35908,7 @@
       "graphql:8953fe8f2b2fe002822a4a19c374bf8bf10826f67a3bb86d0062f05949ee47d8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.remove_assignees_from_assignable",
@@ -35937,7 +35937,7 @@
       "graphql:ac5fc7ddddf62fecb8f4e50a5d6273c5dbb71cbb6d3efb5ce2b66ec609985117"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.remove_blocked_by",
@@ -35966,7 +35966,7 @@
       "graphql:3a1c8755259e829a79e6db3338cd5c4375d2fb2a38f085373d25d6f97fe06bb9"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.remove_outside_collaborator",
@@ -35995,7 +35995,7 @@
       "graphql:557d8cf1540e86361f3cf83464c7b283ad66d75b9498cc5f03ce1dd3f0bcf111"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.remove_star",
@@ -36024,7 +36024,7 @@
       "graphql:03b7874784e8af8301aa9d017d548ebb009d527f2d4e60f3c17f49806ca4d5b8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.remove_upvote",
@@ -36053,7 +36053,7 @@
       "graphql:d19fdfc9c8aac99d25b28842857515a9352b64ed7d3de577849141ea416d86da"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.reorder_environment",
@@ -36082,7 +36082,7 @@
       "graphql:56db2c13bba1e7f44ade8ebeb5e68df7af312ce8cb888e7755edfbb9d448bf12"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.replace_actors_for_assignable",
@@ -36111,7 +36111,7 @@
       "graphql:5886970ba139b41deb1ef828d8f8e93b643f072a9264e0a71ccfdc3fe28bf50d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.replace_all_topics",
@@ -36140,7 +36140,7 @@
       "rest:repos/replace-all-topics"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -36173,7 +36173,7 @@
       "graphql:e1e73124577fabcd823b7d77ccb5028dc2a1d9b9bf77f6e68950f2089703f3be"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.request_reviews_by_login",
@@ -36202,7 +36202,7 @@
       "graphql:e63994a7c8b3b5e0bccacdb3c4ebc5525a117f8609de73185435602368d1c79e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.rerequest_check_suite",
@@ -36231,7 +36231,7 @@
       "graphql:0608ba378758a0b0476bfa2fbb309f50163b699f22127ee4e05946174c8a103b"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.resolve_review_thread",
@@ -36260,7 +36260,7 @@
       "graphql:7e40b2c1b7d9f3387722bcaca6c9bfb48b464135dc706b7754d553c23c003ec0"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.revoke_migrator_role",
@@ -36289,7 +36289,7 @@
       "graphql:ddebaff8d26fdfab483211f5e17152be266149b9783ff87b4b6f57b94ab2c5ec"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.search",
@@ -36463,7 +36463,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -36496,7 +36496,7 @@
       "graphql:ae27a1d6fbe91e07cfc7a00679249ea20dd2af638f7aa1f1b9b9c33bd5f0ebcf"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.set_repository_interaction_limit",
@@ -36525,7 +36525,7 @@
       "graphql:8f3107c93a70db471887e8d9669ad4a1d97006d414e6da4679e933a54d2d2fd7"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.start_repository_migration",
@@ -36554,7 +36554,7 @@
       "graphql:3f7406109973ba0b50d9389ce639c9ee4504e663e31c7c23fd204e9123c57bab"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.transfer",
@@ -36583,7 +36583,7 @@
       "rest:repos/transfer"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -36616,7 +36616,7 @@
       "graphql:5c788d94240d15dec16ffa375b8100b9637da30f99d4cf3cb8a004adb9ee0444"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.unlink_project_v2_from_repository",
@@ -36645,7 +36645,7 @@
       "graphql:febadead7a445f372a1cc3fce3345d00ee1f3ec692bdbb8e80250f5f65aa75fe"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.unlock_lockable",
@@ -36674,7 +36674,7 @@
       "graphql:2d48b824d1b358f5e943f9c483f297a4e541ccf24003b3a838ac388ba5d2474f"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.unmark_file_as_viewed",
@@ -36703,7 +36703,7 @@
       "graphql:baa112c6356e267213cad65763bf8f7d540f0657261f14a86f910e7a31ee9885"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.unresolve_review_thread",
@@ -36732,7 +36732,7 @@
       "graphql:4e1dfb1f2b36882d1a572773b6d6c009c67d343cfa9eb876eacdc0757082e0bd"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_branch_protection_rule",
@@ -36761,7 +36761,7 @@
       "graphql:7d9af35b0629e6a0e147c417e0824a30b70522a1a55de3d3c475a1e1ac6e7826"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_check_run",
@@ -36790,7 +36790,7 @@
       "graphql:7b42811d22f60bc5b6920a012317a7d66e44040703fece91c0360a7417169f9d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_check_suite_preferences",
@@ -36819,7 +36819,7 @@
       "graphql:7209308d5e3e85c14a13d887e78f12eb4b7a956ab631ca928b028d01c0007726"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_environment",
@@ -36848,7 +36848,7 @@
       "graphql:ed4e4b8811c5d067453899ad94ab237a020105ae4171e762a7b7e0a75f6d2fbd"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_invitation",
@@ -36877,7 +36877,7 @@
       "rest:repos/update-invitation"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -36910,7 +36910,7 @@
       "graphql:40c6eb6a5d3583038128d6aa43492cba2c318350baef3761e503a359dc472fb0"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_ip_allow_list_entry",
@@ -36939,7 +36939,7 @@
       "graphql:0952103fdf680d20f19af2c6a6ec2396e78f6a935f63c9d5eace15315c8d32d5"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_ip_allow_list_for_installed_apps_enabled_setting",
@@ -36968,7 +36968,7 @@
       "graphql:393f248cbc8954bad7985330e5d9ef25d452593ac084ac564de925fe23745b2d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_notification_restriction_setting",
@@ -36997,7 +36997,7 @@
       "graphql:3e3d6653a09626c04d9cf9459f0169ddaca05e2412abf9e258a91a4782d0ef43"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_ref",
@@ -37026,7 +37026,7 @@
       "graphql:650a86a5277ad27e9648e214fd5f4a74e42e94968139a5ffe8fda89c54012820"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_refs",
@@ -37055,7 +37055,7 @@
       "graphql:c4134f408313853920b36c6a80bf3a25ca90251ff6437e49fc064998f20c6c15"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_repository",
@@ -37084,7 +37084,7 @@
       "graphql:33a77ee519934959425363d3832bf0a486393faf98f16b78a349fa02959fe6e5"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_repository_custom_property",
@@ -37113,7 +37113,7 @@
       "graphql:7df5ad69b69e2da5697d830493dc3c4f91fea5048282c9702d196c8ae1a28be8"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_repository_ruleset",
@@ -37142,7 +37142,7 @@
       "graphql:d2eba29011426e6de1bf14e39f43828ba69452b7357d41690defe9cdbdc36547"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_repository_web_commit_signoff_setting",
@@ -37171,7 +37171,7 @@
       "graphql:c338c700e5dbd83d6715e294819d73ba7929d2c12dc4145be671d90879ef9728"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_subscription",
@@ -37200,7 +37200,7 @@
       "graphql:20dfbd087c3e673cb0d2cb5b7e7006209bfe93e692fbe06b52c47a5046b30659"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_teams_repository",
@@ -37229,7 +37229,7 @@
       "graphql:42e9f5ed355cac98545baecc630108bb8eb151286beef4cc927f82fe41219b2e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.update_topics",
@@ -37258,7 +37258,7 @@
       "graphql:b53105758aac0bb803f030b5f79a81935182b64375649f97a57d696133d9a5fb"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.verify_verifiable_domain",
@@ -37287,7 +37287,7 @@
       "graphql:15994ee0dfd522650c7825c4ccb15c8ad254d1a1a95802e8b5dbf28b778c8494"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "repo.visibility.update",
@@ -37316,7 +37316,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -37349,7 +37349,7 @@
       "rest:repos/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -37382,7 +37382,7 @@
       "rest:pulls/create-reply-for-review-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -37415,7 +37415,7 @@
       "rest:pulls/create-review"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -37448,7 +37448,7 @@
       "rest:pulls/create-review-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -37547,7 +37547,7 @@
       "rest:pulls/dismiss-review"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -37778,7 +37778,7 @@
       "rest:pulls/submit-review"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -37811,7 +37811,7 @@
       "rest:pulls/update-review"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -37844,7 +37844,7 @@
       "rest:pulls/update-review-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -37877,7 +37877,7 @@
       "rest:reactions/create-for-pull-request-review-comment"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "pull_requests": "write"
     },
@@ -38007,7 +38007,7 @@
       "rest:repos/create-org-ruleset"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -38039,7 +38039,7 @@
       "rest:repos/create-repo-ruleset"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -38463,7 +38463,7 @@
       "rest:repos/update-org-ruleset"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -38495,7 +38495,7 @@
       "rest:repos/update-repo-ruleset"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -38528,7 +38528,7 @@
       "rest:actions/add-custom-labels-to-self-hosted-runner-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -38560,7 +38560,7 @@
       "rest:actions/add-custom-labels-to-self-hosted-runner-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -38593,7 +38593,7 @@
       "rest:actions/add-repo-access-to-self-hosted-runner-group-in-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -38625,7 +38625,7 @@
       "rest:actions/add-self-hosted-runner-to-group-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -38657,7 +38657,7 @@
       "rest:actions/create-hosted-runner-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -38690,7 +38690,7 @@
       "rest:actions/create-registration-token-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -38723,7 +38723,7 @@
       "rest:actions/create-registration-token-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -38757,7 +38757,7 @@
       "rest:actions/create-remove-token-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -38790,7 +38790,7 @@
       "rest:actions/create-remove-token-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -38823,7 +38823,7 @@
       "rest:actions/create-self-hosted-runner-group-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -39048,7 +39048,7 @@
       "rest:actions/disable-selected-repository-self-hosted-runners-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -39080,7 +39080,7 @@
       "rest:actions/enable-selected-repository-self-hosted-runners-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -39112,7 +39112,7 @@
       "rest:actions/generate-runner-jitconfig-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -39144,7 +39144,7 @@
       "rest:actions/generate-runner-jitconfig-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -40078,7 +40078,7 @@
       "rest:actions/remove-custom-label-from-self-hosted-runner-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -40110,7 +40110,7 @@
       "rest:actions/remove-custom-label-from-self-hosted-runner-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -40143,7 +40143,7 @@
       "rest:actions/remove-repo-access-to-self-hosted-runner-group-in-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -40175,7 +40175,7 @@
       "rest:actions/remove-self-hosted-runner-from-group-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -40207,7 +40207,7 @@
       "rest:actions/set-custom-labels-for-self-hosted-runner-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -40239,7 +40239,7 @@
       "rest:actions/set-custom-labels-for-self-hosted-runner-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -40272,7 +40272,7 @@
       "rest:actions/set-repo-access-to-self-hosted-runner-group-in-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -40304,7 +40304,7 @@
       "rest:actions/set-selected-repositories-self-hosted-runners-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -40336,7 +40336,7 @@
       "rest:actions/set-self-hosted-runners-in-group-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -40368,7 +40368,7 @@
       "rest:actions/set-self-hosted-runners-permissions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -40400,7 +40400,7 @@
       "rest:actions/update-hosted-runner-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -40432,7 +40432,7 @@
       "rest:actions/update-self-hosted-runner-group-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_self_hosted_runners": "write"
     }
@@ -40464,7 +40464,7 @@
       "rest:hosted-compute/create-network-configuration-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_network_configurations": "write"
     }
@@ -40624,7 +40624,7 @@
       "rest:hosted-compute/update-network-configuration-for-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_network_configurations": "write"
     }
@@ -40656,7 +40656,7 @@
       "rest:secret-scanning/create-push-protection-bypass"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -40888,7 +40888,7 @@
       "rest:secret-scanning/update-alert"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "secret_scanning_alerts": "write"
     },
@@ -40921,7 +40921,7 @@
       "rest:secret-scanning/update-org-pattern-configs"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -41052,7 +41052,7 @@
       "rest:code-quality/update-setup"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -41176,7 +41176,7 @@
       "rest:git/create-tag"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "contents": "write"
     },
@@ -41275,7 +41275,7 @@
       "rest:copilot/add-copilot-seats-for-teams"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write",
       "organization_copilot_seat_management": "write"
@@ -41308,7 +41308,7 @@
       "rest:copilot/cancel-copilot-seat-assignment-for-teams"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write",
       "organization_copilot_seat_management": "write"
@@ -41405,7 +41405,7 @@
       "rest:enterprise-team-memberships/add"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41437,7 +41437,7 @@
       "rest:enterprise-team-memberships/bulk-add"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41469,7 +41469,7 @@
       "rest:enterprise-team-memberships/bulk-remove"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41597,7 +41597,7 @@
       "rest:enterprise-team-organizations/add"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41629,7 +41629,7 @@
       "rest:enterprise-team-organizations/bulk-add"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41661,7 +41661,7 @@
       "rest:enterprise-team-organizations/bulk-remove"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41789,7 +41789,7 @@
       "rest:enterprise-teams/create"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41917,7 +41917,7 @@
       "rest:enterprise-teams/update"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "enterprise_teams": "write"
     }
@@ -41949,7 +41949,7 @@
       "rest:orgs/add-security-manager-team"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -41981,7 +41981,7 @@
       "rest:orgs/assign-team-to-org-role"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -42109,7 +42109,7 @@
       "rest:orgs/remove-security-manager-team"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -42141,7 +42141,7 @@
       "rest:orgs/revoke-all-org-roles-team"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -42173,7 +42173,7 @@
       "rest:orgs/revoke-org-role-team"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "absence-proof",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -42238,7 +42238,7 @@
       "rest:teams/add-member-legacy"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -42270,7 +42270,7 @@
       "rest:teams/add-or-update-membership-for-user-in-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -42302,7 +42302,7 @@
       "rest:teams/add-or-update-membership-for-user-legacy"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -42334,7 +42334,7 @@
       "rest:teams/add-or-update-repo-permissions-in-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write",
       "members": "read"
@@ -42368,7 +42368,7 @@
       "rest:teams/add-or-update-repo-permissions-legacy"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write",
       "members": "read"
@@ -42468,7 +42468,7 @@
       "rest:teams/create"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -43205,7 +43205,7 @@
       "rest:teams/update-in-org"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -43237,7 +43237,7 @@
       "rest:teams/update-legacy"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "members": "write"
     }
@@ -43269,7 +43269,7 @@
       "graphql:3233d3027493f250d30fe4f46e9d16fb910bad01c5bba5e73eec2d50fb1a756d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.change_user_status",
@@ -43298,7 +43298,7 @@
       "graphql:ca08978817a09abcd2b68d763f3c4e4d6a7da8bc213f77dbe61e38335ce2ab35"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.create_user_list",
@@ -43327,7 +43327,7 @@
       "graphql:2e5f75fdacbf97410f5a319a758f10b27a93b168fa1d6c280bba076aab6aec5d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.delete_user_list",
@@ -43356,7 +43356,7 @@
       "graphql:96d7d7fdcc2d504a77deb3f8241f5c0af44983e0a740fa32a614cb65a8b1028d"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.follow_user",
@@ -43385,7 +43385,7 @@
       "graphql:a22e108eb75cbeffe1fdaedbcae4323a9596ad8067135b3814989c1e8a3aebf3"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.read_user",
@@ -43443,7 +43443,7 @@
       "graphql:ad0443f5aa6159ec08d64cfd3deaee7db2eb0275de39b8b39d64d52609fa8058"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.unfollow_user",
@@ -43472,7 +43472,7 @@
       "graphql:8eef874afe0a1af4a380fe58425a6cf3ee703f58b79f8b5f4e93062c12a9401e"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.update_ip_allow_list_user_level_enforcement_enabled_setting",
@@ -43501,7 +43501,7 @@
       "graphql:c66d7058ae05f89b71763e7c21d5d3ca4428eac06d0d75402dfd24c345ee7522"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.update_user_list",
@@ -43530,7 +43530,7 @@
       "graphql:a347e9b7a296e92b21d9a2b3b067c2c955747d4723dfda83c6438e0b95d1b4af"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "user.update_user_lists_for_item",
@@ -43559,7 +43559,7 @@
       "graphql:03680d3a5822aea11111c083848a23f6847e0407aa6ec2969d1bc843e8d46fe1"
     ],
     "executor_kind": "persisted-graphql",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "webhook.apps_get_webhook_config_for_app",
@@ -43675,7 +43675,7 @@
       "rest:apps/redeliver-webhook-delivery"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "webhook.apps_update_webhook_config_for_app",
@@ -43707,7 +43707,7 @@
       "rest:apps/update-webhook-config-for-app"
     ],
     "executor_kind": "operator",
-    "reconciler_kind": "bounded-readback"
+    "reconciler_kind": "none"
   },
   {
     "name": "webhook.repos_create_webhook",
@@ -43739,7 +43739,7 @@
       "rest:repos/create-webhook"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_hooks": "write"
     },
@@ -43970,7 +43970,7 @@
       "rest:repos/ping-webhook"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_hooks": "read"
     },
@@ -44003,7 +44003,7 @@
       "rest:repos/redeliver-webhook-delivery"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_hooks": "write"
     },
@@ -44036,7 +44036,7 @@
       "rest:repos/test-push-webhook"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_hooks": "read"
     },
@@ -44072,7 +44072,7 @@
       "rest:repos/update-webhook"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_hooks": "write"
     },
@@ -44108,7 +44108,7 @@
       "rest:repos/update-webhook-config-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "repository_hooks": "write"
     },
@@ -44144,7 +44144,7 @@
       "rest:actions/create-or-update-repo-secret"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "secrets": "write"
     },
@@ -44177,7 +44177,7 @@
       "rest:actions/create-repo-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions_variables": "write"
     },
@@ -44210,7 +44210,7 @@
       "rest:actions/create-workflow-dispatch"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -44309,7 +44309,7 @@
       "rest:actions/disable-workflow"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -44342,7 +44342,7 @@
       "rest:actions/enable-workflow"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -45000,7 +45000,7 @@
       "rest:actions/set-allowed-actions-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -45033,7 +45033,7 @@
       "rest:actions/set-custom-oidc-sub-claim-for-repo"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions": "write"
     },
@@ -45066,7 +45066,7 @@
       "rest:actions/set-fork-pr-contributor-approval-permissions-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -45099,7 +45099,7 @@
       "rest:actions/set-github-actions-default-workflow-permissions-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -45131,7 +45131,7 @@
       "rest:actions/set-github-actions-default-workflow-permissions-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -45164,7 +45164,7 @@
       "rest:actions/set-github-actions-permissions-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -45197,7 +45197,7 @@
       "rest:actions/set-private-repo-fork-pr-workflows-settings-organization"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "organization_administration": "write"
     }
@@ -45229,7 +45229,7 @@
       "rest:actions/set-private-repo-fork-pr-workflows-settings-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -45262,7 +45262,7 @@
       "rest:actions/set-workflow-access-to-repository"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "administration": "write"
     },
@@ -45295,7 +45295,7 @@
       "rest:actions/update-repo-variable"
     ],
     "executor_kind": "rest-binding",
-    "reconciler_kind": "bounded-readback",
+    "reconciler_kind": "none",
     "required_github_permissions": {
       "actions_variables": "write"
     },
