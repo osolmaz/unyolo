@@ -47,6 +47,8 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		return runSetupWithContext(ctx, stdout, stderr, args[1:])
 	case "doctor":
 		return runDoctor(ctx, stdout, stderr, args[1:])
+	case "policy":
+		return runPolicy(stdout, stderr, args[1:])
 	case "operations":
 		return runOperations(stdout, args[1:])
 	case "operation":
@@ -59,7 +61,7 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		if found, err := runGeneratedCLI(ctx, stdout, args); found {
 			return err
 		}
-		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|operations|operation|stream|mcp]")
+		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|policy|operations|operation|stream|mcp]")
 	}
 }
 

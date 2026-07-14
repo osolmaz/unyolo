@@ -295,14 +295,17 @@ func requirePolicyReplacement(plan systemdPlan) error {
 }
 
 func checkPolicyReplacement(stdout io.Writer, plan systemdPlan) error {
-	err := requirePolicyReplacement(plan)
-	if err == nil || plan.opts.ReplacePolicy {
-		return err
+	_, err := os.Stat(plan.scopePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
 	}
-	if previewErr := printPolicyReplacementPreview(stdout, plan); previewErr != nil {
-		return exitError{code: 64, message: previewErr.Error()}
+	if err != nil {
+		return fmt.Errorf("inspect existing policy: %w", err)
 	}
-	return err
+	if err := printPolicyReplacementPreview(stdout, plan); err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
+	return requirePolicyReplacement(plan)
 }
 
 func readHFTokenFile(path string) ([]byte, error) {

@@ -14,8 +14,14 @@ import (
 )
 
 func runDoctor(ctx context.Context, stdout io.Writer, stderr io.Writer, args []string) error {
-	if len(args) == 0 || args[0] != "github" {
-		return exitError{code: 64, message: "usage: gh-broker doctor github --repo owner/name [flags]"}
+	if len(args) == 0 {
+		return exitError{code: 64, message: "usage: gh-broker doctor [github|policy] [flags]"}
+	}
+	if args[0] == "policy" {
+		return runDoctorPolicy(stdout, stderr, args[1:])
+	}
+	if args[0] != "github" {
+		return exitError{code: 64, message: "usage: gh-broker doctor [github|policy] [flags]"}
 	}
 	command, err := parseDoctorGitHub(stderr, args[1:])
 	if err != nil {

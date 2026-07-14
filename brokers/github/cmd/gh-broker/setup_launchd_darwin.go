@@ -33,6 +33,9 @@ func runSetupLaunchdCommand(ctx context.Context, stdout, stderr io.Writer, stdin
 	if opts.DryRun {
 		return printLaunchdDryRun(stdout, plan)
 	}
+	if err := checkGitHubPolicyReplacement(stdout, plan); err != nil {
+		return err
+	}
 	installPlan, err := brokerkitLaunchdInstallPlan(plan)
 	if err != nil {
 		return err
@@ -147,7 +150,10 @@ func printLaunchdDryRun(stdout io.Writer, plan systemdPlan) error {
 		return err
 	}
 	_, err = fmt.Fprintf(stdout, "Would configure gh-broker LaunchDaemon:\n  user: %s\n  group: %s\n  config: %s\n  state: %s\n  plist: %s\n%s", plan.opts.User, plan.opts.Group, plan.opts.ConfigDir, plan.opts.StateDir, filepath.Join(plan.opts.SystemdDir, ghLaunchdPlist), body)
-	return err
+	if err != nil {
+		return err
+	}
+	return printGitHubPolicyReplacementPreview(stdout, plan)
 }
 
 func printLaunchdSummary(stdout io.Writer, plan systemdPlan) error {

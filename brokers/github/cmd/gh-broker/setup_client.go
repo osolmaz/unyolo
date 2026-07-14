@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
 	"github.com/osolmaz/brokerkit/clientconfig"
 	"github.com/osolmaz/brokerkit/endpoint"
 	bkservice "github.com/osolmaz/brokerkit/service"
@@ -16,8 +17,8 @@ import (
 )
 
 const setupUsage = `usage:
-  gh-broker setup systemd --scope-file FILE (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
-  gh-broker setup launchd --scope-file FILE (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
+  gh-broker setup systemd [--policy-preset request-all-agent-operations | --scope-file FILE] (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
+  gh-broker setup launchd [--policy-preset request-all-agent-operations | --scope-file FILE] (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
   gh-broker setup github-user enroll|rotate --state-dir DIR --credential-file FILE --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup github-user revoke --state-dir DIR --user-id ID --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
@@ -34,6 +35,11 @@ type setupSystemdOptions struct {
 	GitHubUserID              int64
 	GitHubWebhookSecretFile   string
 	ScopeFile                 string
+	PolicyPreset              string
+	DeniedOperations          bksetup.StringListFlag
+	ResetDeniedOperations     bool
+	ReplacePolicy             bool
+	PolicyPresetExplicit      bool
 	SharedSecret              string
 	OperatorID                string
 	OperatorSecretFile        string
@@ -135,6 +141,10 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	fs.Int64Var(&opts.GitHubUserID, "github-user-id", 0, "immutable GitHub user id for user credential operations")
 	fs.StringVar(&opts.GitHubWebhookSecretFile, "github-webhook-secret-file", "", "file containing the GitHub webhook secret")
 	fs.StringVar(&opts.ScopeFile, "scope-file", "", "policy scope JSON file")
+	fs.StringVar(&opts.PolicyPreset, "policy-preset", policypreset.RequestAllAgentOperations, "provider-owned policy preset")
+	fs.Var(&opts.DeniedOperations, "deny-operation", "exact operation to deny in the preset; repeatable")
+	fs.BoolVar(&opts.ResetDeniedOperations, "reset-denied-operations", false, "discard installed deny overrides before applying --deny-operation flags")
+	fs.BoolVar(&opts.ReplacePolicy, "replace-policy", false, "replace an existing managed policy")
 	fs.BoolVar(&opts.DevTokenFallback, "dev-token-fallback", false, "configure the current GitHub token fallback runtime")
 	fs.StringVar(&opts.OperatorID, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
@@ -151,6 +161,7 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	if fs.NArg() != 0 {
 		return setupSystemdOptions{}, false, errors.New("setup systemd does not accept positional arguments")
 	}
+	opts.PolicyPresetExplicit = flagWasProvided(fs, "policy-preset")
 	finalized, err := bksetup.FinalizeSystemd(opts.SystemdOptions)
 	if err != nil {
 		return setupSystemdOptions{}, false, err
@@ -216,13 +227,39 @@ func validateSetupOperatorListener(opts setupSystemdOptions) error {
 }
 
 func validateSetupSystemdCredentialOptions(opts setupSystemdOptions) error {
-	if opts.ScopeFile == "" {
-		return errors.New("--scope-file is required")
+	if err := validateSetupPolicyOptions(opts); err != nil {
+		return err
 	}
 	if opts.DevTokenFallback {
 		return validateDevTokenSetup(opts)
 	}
 	return validateGitHubAppSetup(opts)
+}
+
+func validateSetupPolicyOptions(opts setupSystemdOptions) error {
+	if opts.ScopeFile != "" {
+		if opts.PolicyPresetExplicit || len(opts.DeniedOperations) > 0 || opts.ResetDeniedOperations {
+			return errors.New("--scope-file cannot be combined with managed policy preset flags")
+		}
+		return nil
+	}
+	if opts.PolicyPreset != policypreset.RequestAllAgentOperations {
+		return fmt.Errorf("unknown --policy-preset %q", opts.PolicyPreset)
+	}
+	if opts.ResetDeniedOperations && !opts.ReplacePolicy {
+		return errors.New("--reset-denied-operations requires --replace-policy")
+	}
+	_, err := policypreset.Render(policypreset.Profile{
+		Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
+		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
+	})
+	return err
+}
+
+func flagWasProvided(fs *flag.FlagSet, name string) bool {
+	provided := false
+	fs.Visit(func(found *flag.Flag) { provided = provided || found.Name == name })
+	return provided
 }
 
 func validateDevTokenSetup(opts setupSystemdOptions) error {

@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -24,10 +26,15 @@ func requiredGHSetupArgs(args ...string) []string {
 	return append([]string{"--client", "agent-a", "--operator", "operator-a", "--agent-user", "agent-user", "--operator-user", "operator-user"}, args...)
 }
 
-func TestParseSetupSystemdRequiresScope(t *testing.T) {
-	_, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), requiredGHSetupArgs())
-	if err == nil || !strings.Contains(err.Error(), "--scope-file") {
-		t.Fatalf("parseSetupSystemd() error = %v, want scope requirement", err)
+func TestParseSetupSystemdDefaultsToManagedPreset(t *testing.T) {
+	dir := t.TempDir()
+	tokenFile := writeFixture(t, dir, "github-token", "ghp_token\n")
+	opts, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), requiredGHSetupArgs("--github-token-file", tokenFile, "--dev-token-fallback"))
+	if err != nil {
+		t.Fatalf("parseSetupSystemd() error = %v", err)
+	}
+	if opts.ScopeFile != "" || opts.PolicyPreset != policypreset.RequestAllAgentOperations {
+		t.Fatalf("policy options = %+v", opts)
 	}
 }
 
@@ -84,15 +91,16 @@ func TestParseSetupSystemdReadsSharedSecretFromFileAndStdin(t *testing.T) {
 
 func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 	var stdout bytes.Buffer
+	configDir := t.TempDir()
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
 		SystemdOptions: bksetup.SystemdOptions{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
-			ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
+			ConfigDir: configDir, StateDir: "/var/lib/gh-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
 			ClientName: "agent-a", Endpoint: testGHAgentEndpoint, DryRun: true,
 		},
 		GitHubTokenFile: "/tmp/github-token",
-		ScopeFile:       "/tmp/scope.json",
+		PolicyPreset:    policypreset.RequestAllAgentOperations,
 		SharedSecret:    strings.Repeat("s", 32),
 		OperatorID:      "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
 		DevTokenFallback: true,
@@ -103,7 +111,7 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 	for _, want := range []string{
 		"gh-broker systemd service",
 		"token fallback:  true",
-		"github token:    /etc/gh-broker/github-token",
+		"github token:    " + filepath.Join(configDir, githubTokenFileName),
 		"broker endpoint: " + testGHAgentEndpoint,
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -114,17 +122,18 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 
 func TestSetupSystemdDryRunForGitHubAppFiles(t *testing.T) {
 	var stdout bytes.Buffer
+	configDir := t.TempDir()
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
 		SystemdOptions: bksetup.SystemdOptions{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
-			ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
+			ConfigDir: configDir, StateDir: "/var/lib/gh-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
 			ClientName: "agent-a", Endpoint: testGHAgentEndpoint, DryRun: true,
 		},
 		GitHubAppIDFile:         "/tmp/app-id",
 		GitHubAppPrivateKeyFile: "/tmp/private-key.pem",
 		GitHubWebhookSecretFile: "/tmp/webhook-secret",
-		ScopeFile:               "/tmp/scope.json",
+		PolicyPreset:            policypreset.RequestAllAgentOperations,
 		SharedSecret:            strings.Repeat("s", 32),
 		OperatorID:              "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
 	})
@@ -133,8 +142,8 @@ func TestSetupSystemdDryRunForGitHubAppFiles(t *testing.T) {
 	}
 	for _, want := range []string{
 		"token fallback:  false",
-		"app id file:     /etc/gh-broker/github-app-id",
-		"app private key: /etc/gh-broker/github-app-private-key.pem",
+		"app id file:     " + filepath.Join(configDir, githubAppIDFileName),
+		"app private key: " + filepath.Join(configDir, githubAppPrivateKeyFileName),
 		"broker endpoint: " + testGHAgentEndpoint,
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -217,6 +226,68 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	}
 	assertTextExcludes(t, envText, strings.Repeat("s", 32))
 	assertTextExcludes(t, envText, "123:telegram-secret")
+}
+
+func TestManagedPresetArtifactsPreserveInstalledDenies(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plan := systemdSetupPlan(setupSystemdOptions{
+		SystemdOptions:   bksetup.SystemdOptions{ConfigDir: configDir, ClientName: "agent-a"},
+		PolicyPreset:     policypreset.RequestAllAgentOperations,
+		DeniedOperations: bksetup.StringListFlag{"repo.delete"},
+	})
+	first, err := renderGitHubSetupPolicy(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.managedPreset || first.counts == nil || first.counts.Deny != 312 || first.counts.Request != 513 {
+		t.Fatalf("first policy = %+v", first)
+	}
+	for path, data := range map[string][]byte{
+		plan.scopePath: first.scope, plan.policyProfilePath: first.profile, plan.policyManifestPath: first.manifest,
+	} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan.opts.DeniedOperations = bksetup.StringListFlag{"pull_request.create"}
+	second, err := renderGitHubSetupPolicy(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := policypreset.ParseProfile(second.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"pull_request.create", "repo.delete"}
+	if !slices.Equal(profile.DeniedOperations, want) {
+		t.Fatalf("preserved denies = %v, want %v", profile.DeniedOperations, want)
+	}
+}
+
+func TestCustomScopeRemovesManagedPresetEvidence(t *testing.T) {
+	dir := t.TempDir()
+	plan := systemdSetupPlan(setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{
+			ConfigDir: filepath.Join(dir, "config"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"),
+			User: "service", Group: "service", ClientName: "agent-a", Endpoint: testGHAgentEndpoint, BinaryPath: "/usr/local/bin/gh-broker",
+		},
+		ScopeFile:       writeFixture(t, dir, "scope.json", minimalScopeJSON()),
+		GitHubTokenFile: writeFixture(t, dir, "token", "token\n"), DevTokenFallback: true,
+		SharedSecret: strings.Repeat("s", 32), OperatorID: "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
+	})
+	installPlan, err := brokerkitSystemdInstallPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{ghPolicyProfileFileName, ghPolicyManifestFileName} {
+		if !slices.ContainsFunc(installPlan.RemoveFiles, func(file bkservice.ManagedFileRef) bool { return file.Name == name }) {
+			t.Fatalf("managed preset evidence %s is not retired", name)
+		}
+	}
 }
 
 func assertTextExcludes(t *testing.T, text string, value string) {
@@ -334,7 +405,7 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		t.Fatalf("validateSetupSystemdOptions(user credential) error = %v", err)
 	}
 	cases := []func(*setupSystemdOptions){
-		func(opts *setupSystemdOptions) { opts.ScopeFile = "" },
+		func(opts *setupSystemdOptions) { opts.PolicyPresetExplicit = true },
 		func(opts *setupSystemdOptions) { opts.GitHubTokenFile = "" },
 		func(opts *setupSystemdOptions) { opts.ClientName = "bad=name" },
 		func(opts *setupSystemdOptions) { opts.SharedSecret = "short" },

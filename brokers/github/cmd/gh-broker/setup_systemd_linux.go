@@ -10,10 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
+	sharedpreset "github.com/osolmaz/brokerkit/policypreset"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -29,6 +32,8 @@ const (
 	ghSecretsFileName             = "secrets"
 	ghOperatorSecretsFileName     = "operator-secrets"
 	ghScopeFileName               = "scope.json"
+	ghPolicyProfileFileName       = "policy-profile.json"
+	ghPolicyManifestFileName      = "policy-manifest.json"
 	ghEnvFileName                 = "env"
 	ghUnitFileName                = "gh-broker.service"
 	maxGitHubSetupFileBytes       = 16 * 1024 * 1024
@@ -46,6 +51,8 @@ type systemdPlan struct {
 	secretsPath         string
 	operatorSecretsPath string
 	scopePath           string
+	policyProfilePath   string
+	policyManifestPath  string
 	envPath             string
 	unitPath            string
 }
@@ -68,6 +75,9 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 	}
 	if opts.DryRun {
 		return printSystemdDryRun(stdout, plan)
+	}
+	if err := checkGitHubPolicyReplacement(stdout, plan); err != nil {
+		return err
 	}
 	installPlan, err := brokerkitSystemdInstallPlan(plan)
 	if err != nil {
@@ -103,15 +113,14 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 		secretsPath:         filepath.Join(opts.ConfigDir, ghSecretsFileName),
 		operatorSecretsPath: filepath.Join(opts.ConfigDir, ghOperatorSecretsFileName),
 		scopePath:           filepath.Join(opts.ConfigDir, ghScopeFileName),
+		policyProfilePath:   filepath.Join(opts.ConfigDir, ghPolicyProfileFileName),
+		policyManifestPath:  filepath.Join(opts.ConfigDir, ghPolicyManifestFileName),
 		envPath:             filepath.Join(opts.ConfigDir, ghEnvFileName),
 		unitPath:            filepath.Join(opts.SystemdDir, ghUnitFileName),
 	}
 }
 
 func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan, error) {
-	if _, err := ghpolicy.LoadFile(plan.opts.ScopeFile); err != nil {
-		return bkservice.SystemdInstallPlan{}, err
-	}
 	files, err := githubManagedFiles(plan)
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
@@ -121,6 +130,12 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		return bkservice.SystemdInstallPlan{}, err
 	}
 	removeFiles := []bkservice.ManagedFileRef(nil)
+	if plan.opts.ScopeFile != "" {
+		removeFiles = append(removeFiles,
+			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghPolicyProfileFileName},
+			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghPolicyManifestFileName},
+		)
+	}
 	if plan.opts.DevTokenFallback {
 		removeFiles = append(removeFiles,
 			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppIDFileName},
@@ -169,16 +184,22 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	scope, err := readRequiredSetupFile(plan.opts.ScopeFile, "--scope-file")
+	policyFiles, err := renderGitHubSetupPolicy(plan)
 	if err != nil {
 		return nil, err
 	}
 	files := append(credentials,
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghSecretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghOperatorSecretsFileName, Data: []byte(plan.opts.OperatorID + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghScopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghScopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghEnvFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	)
+	if policyFiles.managedPreset {
+		files = append(files,
+			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghPolicyProfileFileName, Data: policyFiles.profile, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghPolicyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+		)
+	}
 	if plan.opts.TelegramBotTokenFile != "" {
 		token, readErr := readRequiredSetupFile(plan.opts.TelegramBotTokenFile, "--telegram-bot-token-file")
 		if readErr != nil {
@@ -187,6 +208,111 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
 	}
 	return files, nil
+}
+
+type githubSetupPolicyFiles struct {
+	scope         []byte
+	profile       []byte
+	manifest      []byte
+	counts        *policypreset.OperationCounts
+	policyDigest  string
+	managedPreset bool
+}
+
+func renderGitHubSetupPolicy(plan systemdPlan) (githubSetupPolicyFiles, error) {
+	if plan.opts.ScopeFile != "" {
+		scope, err := readRequiredSetupFile(plan.opts.ScopeFile, "--scope-file")
+		if err != nil {
+			return githubSetupPolicyFiles{}, err
+		}
+		if _, err := ghpolicy.Parse(scope); err != nil {
+			return githubSetupPolicyFiles{}, err
+		}
+		return githubSetupPolicyFiles{scope: scope, policyDigest: sharedpreset.Digest(scope)}, nil
+	}
+	denied, err := githubSetupDeniedOperations(plan)
+	if err != nil {
+		return githubSetupPolicyFiles{}, err
+	}
+	artifacts, err := policypreset.Render(policypreset.Profile{
+		Version: policypreset.ProfileVersion, Preset: plan.opts.PolicyPreset,
+		Clients: []string{plan.opts.ClientName}, DeniedOperations: denied,
+	})
+	if err != nil {
+		return githubSetupPolicyFiles{}, err
+	}
+	counts := artifacts.Manifest.OperationCounts
+	return githubSetupPolicyFiles{
+		scope: artifacts.PolicyJSON, profile: artifacts.ProfileJSON, manifest: artifacts.ManifestJSON,
+		counts: &counts, policyDigest: artifacts.Manifest.PolicyDigest, managedPreset: true,
+	}, nil
+}
+
+func githubSetupDeniedOperations(plan systemdPlan) ([]string, error) {
+	if plan.opts.ResetDeniedOperations {
+		return slices.Clone(plan.opts.DeniedOperations), nil
+	}
+	installed, err := installedGitHubPolicyArtifacts(plan)
+	if err != nil {
+		return nil, err
+	}
+	if installed == nil {
+		return slices.Clone(plan.opts.DeniedOperations), nil
+	}
+	report := policypreset.Check(installed.profile, installed.manifest, installed.scope)
+	if report.Status != policypreset.DriftCurrent && report.Status != policypreset.DriftStale {
+		return nil, fmt.Errorf("installed policy artifacts are %s; run gh-broker doctor policy or use --reset-denied-operations", report.Status)
+	}
+	profile, err := policypreset.ParseInstalledProfile(installed.profile)
+	if err != nil {
+		return nil, fmt.Errorf("parse installed policy profile: %w", err)
+	}
+	return mergeGitHubDeniedOperations(profile.DeniedOperations, plan.opts.DeniedOperations), nil
+}
+
+type installedGitHubPolicy struct {
+	profile  []byte
+	manifest []byte
+	scope    []byte
+}
+
+func installedGitHubPolicyArtifacts(plan systemdPlan) (*installedGitHubPolicy, error) {
+	profile, profileFound, err := readOptionalGitHubPolicyArtifact(plan.policyProfilePath, "profile")
+	if err != nil {
+		return nil, err
+	}
+	manifest, manifestFound, err := readOptionalGitHubPolicyArtifact(plan.policyManifestPath, "manifest")
+	if err != nil {
+		return nil, err
+	}
+	if !profileFound && !manifestFound {
+		return nil, nil
+	}
+	if !profileFound || !manifestFound {
+		return nil, errors.New("installed managed policy artifacts are incomplete; restore both profile and manifest or use --reset-denied-operations")
+	}
+	scope, err := os.ReadFile(plan.scopePath) // #nosec G304 -- fixed file beneath the selected config directory.
+	if err != nil {
+		return nil, fmt.Errorf("read installed policy scope: %w", err)
+	}
+	return &installedGitHubPolicy{profile: profile, manifest: manifest, scope: scope}, nil
+}
+
+func readOptionalGitHubPolicyArtifact(path, name string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- fixed file beneath the selected config directory.
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read installed policy %s: %w", name, err)
+	}
+	return data, true, nil
+}
+
+func mergeGitHubDeniedOperations(installed, requested []string) []string {
+	values := append(slices.Clone(installed), requested...)
+	slices.Sort(values)
+	return slices.Compact(values)
 }
 
 func githubCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
@@ -303,6 +429,75 @@ func validateSystemdSetupPlan(plan systemdPlan) error {
 	return err
 }
 
+func checkGitHubPolicyReplacement(stdout io.Writer, plan systemdPlan) error {
+	_, err := os.Stat(plan.scopePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect existing policy: %w", err)
+	}
+	if err := printGitHubPolicyReplacementPreview(stdout, plan); err != nil {
+		return err
+	}
+	if !plan.opts.ReplacePolicy {
+		return errors.New("managed policy already exists; inspect it first or rerun with --replace-policy")
+	}
+	return nil
+}
+
+func printGitHubPolicyReplacementPreview(stdout io.Writer, plan systemdPlan) error {
+	candidate, err := renderGitHubSetupPolicy(plan)
+	if err != nil {
+		return err
+	}
+	currentDigest, currentCounts, err := currentGitHubPolicyPreview(plan)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "\nPolicy replacement preview:\n  current digest:   %s\n  candidate digest: %s\n", currentDigest, candidate.policyDigest); err != nil {
+		return err
+	}
+	return writeGitHubOperationCountPreview(stdout, currentCounts, candidate.counts)
+}
+
+func currentGitHubPolicyPreview(plan systemdPlan) (string, *policypreset.OperationCounts, error) {
+	scope, err := os.ReadFile(plan.scopePath) // #nosec G304 -- fixed file beneath the selected config directory.
+	if errors.Is(err, os.ErrNotExist) {
+		return "(none)", nil, nil
+	}
+	if err != nil {
+		return "", nil, fmt.Errorf("read installed policy scope: %w", err)
+	}
+	installed, err := installedGitHubPolicyArtifacts(plan)
+	if err != nil {
+		return "", nil, err
+	}
+	if installed == nil {
+		return sharedpreset.Digest(scope), nil, nil
+	}
+	manifest, err := policypreset.ParseManifest(installed.manifest)
+	if err != nil {
+		return "", nil, fmt.Errorf("parse installed policy manifest: %w", err)
+	}
+	counts := manifest.OperationCounts
+	return sharedpreset.Digest(scope), &counts, nil
+}
+
+func writeGitHubOperationCountPreview(stdout io.Writer, current, candidate *policypreset.OperationCounts) error {
+	if candidate == nil {
+		_, err := fmt.Fprintln(stdout, "  operation counts: custom policy")
+		return err
+	}
+	if current == nil {
+		_, err := fmt.Fprintf(stdout, "  candidate counts: allow=%d request=%d deny=%d total=%d\n", candidate.Allow, candidate.Request, candidate.Deny, candidate.Total)
+		return err
+	}
+	_, err := fmt.Fprintf(stdout, "  operation counts: allow %d -> %d; request %d -> %d; deny %d -> %d; total %d -> %d\n",
+		current.Allow, candidate.Allow, current.Request, candidate.Request, current.Deny, candidate.Deny, current.Total, candidate.Total)
+	return err
+}
+
 func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
 	if opts.DryRun || opts.AllowNonRoot {
 		return bkservice.PathValidationPreview
@@ -338,7 +533,10 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   agent access:    %s (%s)
   operator access: %s (%s)
 %s`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), showPath(plan.opts.TelegramBotTokenFile != "", plan.telegramTokenPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, plan.opts.Endpoint, plan.opts.AgentUser, plan.opts.AgentAccessGroup, plan.opts.OperatorUser, plan.opts.OperatorAccessGroup, sockets)
-	return err
+	if err != nil {
+		return err
+	}
+	return printGitHubPolicyReplacementPreview(stdout, plan)
 }
 
 func showPath(enabled bool, path string) string {
