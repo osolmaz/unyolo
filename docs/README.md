@@ -27,4 +27,5 @@ component documentation.
 
 ## Active Work
 
+- [HF Broker request-all policy preset plan](2026-07-14-hf-broker-request-all-policy-preset-plan.md)
 - [Refactor plan](2026-07-12-refactor-plan.md)
