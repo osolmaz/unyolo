@@ -17,6 +17,7 @@ import (
 
 const setupUsage = `usage:
   gh-broker setup systemd --scope-file FILE (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
+  gh-broker setup launchd --scope-file FILE (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
   gh-broker setup github-user enroll|rotate --state-dir DIR --credential-file FILE --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup github-user revoke --state-dir DIR --user-id ID --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
@@ -57,6 +58,8 @@ func runSetupWithContext(ctx context.Context, stdout io.Writer, stderr io.Writer
 		return runSetupClientCommand(stdout, stderr, args[1:])
 	case "systemd":
 		return runSetupSystemdCommand(ctx, stdout, stderr, os.Stdin, args[1:])
+	case "launchd":
+		return runSetupLaunchdCommand(ctx, stdout, stderr, os.Stdin, args[1:])
 	case "github-user":
 		return runSetupGitHubUser(ctx, stdout, stderr, args[1:])
 	default:
