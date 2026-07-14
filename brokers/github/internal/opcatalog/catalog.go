@@ -89,7 +89,7 @@ func Validate(values []Descriptor) error {
 		if (value.Risk == capability.RiskHigh || value.Risk == capability.RiskCritical) && value.AuthorizationMode == capability.ModeExecution && !value.ExplicitOnly {
 			return fmt.Errorf("high-risk GitHub operation %q is not explicit-only", value.Name)
 		}
-		if value.Sealed != (len(value.SealedInputPaths) > 0) {
+		if value.Sealed != (len(value.SealedInputPaths) > 0 || value.CredentialOutputKind != nil) {
 			return errors.New("GitHub sealed-input metadata drifted")
 		}
 	}

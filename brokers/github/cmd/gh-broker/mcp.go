@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -187,6 +188,7 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 		Target          json.RawMessage `json:"target"`
 		Arguments       json.RawMessage `json:"arguments"`
 		SealedArguments json.RawMessage `json:"sealed_arguments"`
+		CredentialSlot  string          `json:"credential_slot"`
 		Attrs           map[string]any  `json:"attrs"`
 		Minutes         int             `json:"minutes"`
 		MaxUses         json.RawMessage `json:"max_uses"`
@@ -206,21 +208,33 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 		return nil, err
 	}
 	if descriptor.Sealed {
-		if len(input.SealedArguments) == 0 {
+		if descriptor.CredentialOutputKind != nil {
+			if len(input.SealedArguments) != 0 || !credentialstore.ValidSlot(input.CredentialSlot) {
+				return nil, errors.New("credential_slot is required and sealed_arguments are not accepted")
+			}
+			if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
+				return nil, err
+			}
+			input.Arguments, err = json.Marshal(map[string]any{"public": input.Arguments, "credential_slot": input.CredentialSlot})
+			if err != nil {
+				return nil, err
+			}
+		} else if len(input.SealedArguments) == 0 {
 			return nil, errors.New("sealed_arguments are required")
-		}
-		if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
-			return nil, err
-		}
-		if err := schemaregistry.ValidateSealedArguments(descriptor.Name, input.SealedArguments); err != nil {
-			return nil, err
-		}
-		input.Arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, input.IdempotencyKey, input.Arguments, input.SealedArguments)
-		if err != nil {
-			return nil, err
+		} else {
+			if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
+				return nil, err
+			}
+			if err := schemaregistry.ValidateSealedArguments(descriptor.Name, input.SealedArguments); err != nil {
+				return nil, err
+			}
+			input.Arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, input.IdempotencyKey, input.Arguments, input.SealedArguments)
+			if err != nil {
+				return nil, err
+			}
 		}
 	} else {
-		if len(input.SealedArguments) != 0 {
+		if len(input.SealedArguments) != 0 || input.CredentialSlot != "" {
 			return nil, errors.New("operation does not accept sealed_arguments")
 		}
 		if err := schemaregistry.ValidateSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {

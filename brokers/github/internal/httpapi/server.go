@@ -59,6 +59,7 @@ type Server struct {
 	agentAPI            *agentapi.Handler
 	sealedStore         *sealedstore.Store
 	sealedPayloads      *sealedpayload.Service
+	credentialStore     *credentialstore.Store
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
 	githubCredentials   *githubauth.Manager
@@ -91,7 +92,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	e.Use(middleware.Recover())
 	e.Use(noStore)
 	e.GET("/healthz", health)
-	gitBaseURL, apiBaseURL, githubClient, appSource, err := newGitHubDependencies(cfg)
+	gitBaseURL, apiBaseURL, githubClient, appSource, credentialSlots, err := newGitHubDependencies(cfg)
 	if err != nil {
 		_ = core.database.Close()
 		return nil, err
@@ -100,7 +101,8 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
 		database: core.database, operations: agentops.New(core.database), notifier: core.notifier, telegram: core.telegram,
 		githubCredentials: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
-		githubClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
+		credentialStore: credentialSlots,
+		githubClient:    githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
 	}
@@ -112,6 +114,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	adapters, err := operations.NewGeneratedAdapters(appSource, operations.Options{
 		RequestingUserID: cfg.GitHubUserID,
 		SealedStore:      server.sealedStore,
+		CredentialStore:  server.credentialStore,
 	})
 	if err != nil {
 		_ = core.database.Close()
@@ -205,18 +208,15 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
 }
 
-func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, error) {
+func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {
 	gitBaseURL, apiBaseURL, err := githubBaseURLs(cfg)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	client := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
-	var encryptedStore *credentialstore.Store
-	if strings.TrimSpace(cfg.GitHubAppID) != "" {
-		encryptedStore, err = credentialstore.Open(cfg.StateDir)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
+	encryptedStore, err := credentialstore.Open(stateDir(cfg.StateDir))
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
 	}
 	manager, err := githubauth.New(githubauth.Config{
 		AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey, AppClientID: cfg.GitHubAppClientID,
@@ -224,7 +224,7 @@ func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client,
 		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: apiBaseURL, WebBaseURL: gitBaseURL,
 		HTTPClient: client, Store: encryptedStore,
 	})
-	return gitBaseURL, apiBaseURL, client, manager, err
+	return gitBaseURL, apiBaseURL, client, manager, encryptedStore, err
 }
 
 func githubCredentialMode(cfg config.Config) string {

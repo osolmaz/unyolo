@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 func TestGeneratedRegistryCoversAgentFacingRESTAndGraphQL(t *testing.T) {
-	adapters, err := NewGeneratedAdapters(nil, Options{SealedStore: newSealedStore(t)})
+	adapters, err := NewGeneratedAdapters(nil, newAdapterOptions(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +150,9 @@ func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapters, err := NewGeneratedAdapters(newOperationsManager(t, server.URL), Options{SealedStore: store})
+	options := newAdapterOptions(t)
+	options.SealedStore = store
+	adapters, err := NewGeneratedAdapters(newOperationsManager(t, server.URL), options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,6 +198,49 @@ func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) 
 	}
 }
 
+func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
+	const token = "runner-token-canary"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/brokerkit/actions/runners/registration-token" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"token":"` + token + `","expires_at":"2026-07-14T12:00:00Z"}`))
+	}))
+	t.Cleanup(server.Close)
+	credentials, err := credentialstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := newAdapterOptions(t)
+	options.CredentialStore = credentials
+	adapters, err := NewGeneratedAdapters(newOperationsManager(t, server.URL), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := NewRegistry(adapters...)
+	adapter, found := registry.Lookup("runner.actions_create_registration_token_for_repo")
+	if !found {
+		t.Fatal("runner token adapter not found")
+	}
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),
+		json.RawMessage(`{"public":{},"credential_slot":"ci-runner"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(context.Background(), input)
+	if err != nil || !strings.Contains(plan.Presentation.Summary, "ci-runner") {
+		t.Fatalf("plan = %+v err = %v", plan, err)
+	}
+	outcome, err := adapter.Execute(context.Background(), plan)
+	if err != nil || !outcome.Proven || strings.Contains(string(outcome.Result), token) {
+		t.Fatalf("outcome = %+v err = %v", outcome, err)
+	}
+	stored, metadata, err := credentials.Get("ci-runner", "github-runner-token")
+	if err != nil || string(stored) != token || metadata.Slot != "ci-runner" {
+		t.Fatalf("stored = %q metadata = %+v err = %v", stored, metadata, err)
+	}
+}
+
 func newOperationsManager(t *testing.T, base string) *githubauth.Manager {
 	t.Helper()
 	apiURL, err := url.Parse(base)
@@ -220,7 +266,7 @@ func serverClient(_ string) *http.Client {
 
 func mustLookupGenerated(t *testing.T, manager *githubauth.Manager, name string) Adapter {
 	t.Helper()
-	adapters, err := NewGeneratedAdapters(manager, Options{SealedStore: newSealedStore(t)})
+	adapters, err := NewGeneratedAdapters(manager, newAdapterOptions(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,6 +288,15 @@ func newSealedStore(t *testing.T) *sealedstore.Store {
 		t.Fatal(err)
 	}
 	return store
+}
+
+func newAdapterOptions(t *testing.T) Options {
+	t.Helper()
+	credentials, err := credentialstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Options{SealedStore: newSealedStore(t), CredentialStore: credentials}
 }
 
 func assertJSONEqual(t *testing.T, raw json.RawMessage, expected string) {

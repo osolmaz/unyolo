@@ -93,35 +93,63 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 }
 
 func (m *Manager) ExecuteREST(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (ExecutionResult, error) {
+	response, err := m.executeREST(ctx, selector, binding, target, arguments)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	return decodeRESTResponse(response, binding)
+}
+
+// ExecuteRESTRaw returns one bounded upstream JSON result before projection.
+// It is reserved for adapters that immediately move a credential field into
+// an encrypted broker-owned slot.
+func (m *Manager) ExecuteRESTRaw(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (ExecutionResult, error) {
+	response, err := m.executeREST(ctx, selector, binding, target, arguments)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := limitedBody(response.Body, binding.ResponseBytesLimit)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	var value any
+	if strictjson.Decode(body, &value, false) != nil {
+		return ExecutionResult{}, errors.New("GitHub API response is invalid")
+	}
+	return ExecutionResult{StatusCode: response.StatusCode, Body: body}, nil
+}
+
+func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (*http.Response, error) {
 	if m == nil {
-		return ExecutionResult{}, errors.New("GitHub credential provider is unavailable")
+		return nil, errors.New("GitHub credential provider is unavailable")
 	}
 	path, err := restPath(binding, target, arguments)
 	if err != nil {
-		return ExecutionResult{}, err
+		return nil, err
 	}
 	query, err := restQuery(binding, arguments)
 	if err != nil {
-		return ExecutionResult{}, err
+		return nil, err
 	}
 	var body []byte
 	if input, ok := arguments["input"]; ok {
 		body, err = json.Marshal(input)
 		if err != nil {
-			return ExecutionResult{}, errors.New("encode GitHub request body")
+			return nil, errors.New("encode GitHub request body")
 		}
 		if int64(len(body)) > binding.RequestBytesLimit {
-			return ExecutionResult{}, errors.New("GitHub request body exceeds its size limit")
+			return nil, errors.New("GitHub request body exceeds its size limit")
 		}
 	}
 	unescapedPath, err := url.PathUnescape(path)
 	if err != nil {
-		return ExecutionResult{}, errors.New("GitHub API path is invalid")
+		return nil, errors.New("GitHub API path is invalid")
 	}
 	requestURL := m.apiURL.ResolveReference(&url.URL{Path: unescapedPath, RawPath: path, RawQuery: query.Encode()})
 	request, err := http.NewRequestWithContext(ctx, binding.Method, requestURL.String(), bytes.NewReader(body))
 	if err != nil {
-		return ExecutionResult{}, errors.New("create GitHub API request")
+		return nil, errors.New("create GitHub API request")
 	}
 	request.Header.Set("Accept", binding.MediaType)
 	if len(body) > 0 {
@@ -129,9 +157,9 @@ func (m *Manager) ExecuteREST(ctx context.Context, selector Metadata, binding op
 	}
 	response, err := m.doAPI(ctx, selector, request)
 	if err != nil {
-		return ExecutionResult{}, err
+		return nil, err
 	}
-	return decodeRESTResponse(response, binding)
+	return response, nil
 }
 
 func (m *Manager) ExecuteGraphQL(ctx context.Context, selector Metadata, document graphqlmanifest.Document, variables map[string]any) (ExecutionResult, error) {

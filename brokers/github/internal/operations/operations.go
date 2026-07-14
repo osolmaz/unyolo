@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operationruntime"
 	"github.com/osolmaz/brokerkit/sealedstore"
@@ -67,6 +68,7 @@ type ClientBoundAdapter = operationruntime.ClientBoundAdapter[Input]
 type Options struct {
 	RequestingUserID int64
 	SealedStore      sealedPayloadStore
+	CredentialStore  credentialOutputStore
 }
 
 type sealedPayloadStore interface {
@@ -75,9 +77,14 @@ type sealedPayloadStore interface {
 	Delete(sealedstore.Reference) error
 }
 
+type credentialOutputStore interface {
+	Put(string, string, []byte) (credentialstore.Metadata, error)
+}
+
 type sealedArguments struct {
-	Public        json.RawMessage        `json:"public"`
-	SealedPayload *sealedstore.Reference `json:"sealed_payload"`
+	Public         json.RawMessage        `json:"public"`
+	SealedPayload  *sealedstore.Reference `json:"sealed_payload,omitempty"`
+	CredentialSlot string                 `json:"credential_slot,omitempty"`
 }
 
 type Registry struct {
@@ -113,6 +120,9 @@ func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapt
 		}
 		if descriptor.Sealed && options.SealedStore == nil {
 			return nil, fmt.Errorf("GitHub sealed operation %q requires a sealed payload store", descriptor.Name)
+		}
+		if descriptor.CredentialOutputKind != nil && options.CredentialStore == nil {
+			return nil, fmt.Errorf("GitHub credential output operation %q requires a credential store", descriptor.Name)
 		}
 		switch descriptor.ExecutorKind {
 		case "rest-binding", "bounded-stream":
@@ -188,7 +198,14 @@ func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (js
 		return cloneRaw(arguments), arguments, nil
 	}
 	var protected sealedArguments
-	if err := strictjson.Decode(arguments, &protected, true); err != nil || len(protected.Public) == 0 || protected.SealedPayload == nil {
+	if err := strictjson.Decode(arguments, &protected, true); err != nil || len(protected.Public) == 0 {
+		return nil, nil, errors.New("GitHub sealed operation arguments are invalid")
+	}
+	if a.descriptor.CredentialOutputKind != nil {
+		if protected.SealedPayload != nil || !credentialstore.ValidSlot(protected.CredentialSlot) {
+			return nil, nil, errors.New("GitHub credential output requires one valid destination slot")
+		}
+	} else if protected.SealedPayload == nil || protected.CredentialSlot != "" {
 		return nil, nil, errors.New("GitHub sealed operation arguments are invalid")
 	}
 	if err := schemaregistry.ValidatePublicSubmission(a.descriptor.Name, target, protected.Public); err != nil {
@@ -210,6 +227,9 @@ func (a generatedAdapter) ValidateClient(input Input, client, requestKey string)
 		return err
 	}
 	reference := arguments.SealedPayload
+	if a.descriptor.CredentialOutputKind != nil {
+		return nil
+	}
 	if reference.Owner != client || reference.Purpose != a.descriptor.Name || reference.RequestKey != requestKey {
 		return errors.New("sealed payload does not belong to this client, operation, and request")
 	}
@@ -237,6 +257,16 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 		return Plan{}, err
 	}
 	presentation := presentDescriptor(a.descriptor, targetMap)
+	authorization := authorizeDescriptor(a.descriptor, targetMap, argumentsMap)
+	if a.descriptor.CredentialOutputKind != nil {
+		protected, _ := decodeSealedArguments(input.Arguments)
+		if authorization.Attrs == nil {
+			authorization.Attrs = map[string]string{}
+		}
+		authorization.Attrs["credential_slot"] = protected.CredentialSlot
+		authorization.Attrs["credential_kind"] = *a.descriptor.CredentialOutputKind
+		presentation.Summary += " into broker credential slot " + protected.CredentialSlot
+	}
 	return Plan{
 		Operation:         a.descriptor.Name,
 		OperationRevision: a.descriptor.OperationRevision,
@@ -245,7 +275,7 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 		Preconditions:     credentialPreconditions(credential),
 		Credential:        credential,
 		Presentation:      presentation,
-		Authorization:     authorizeDescriptor(a.descriptor, targetMap, argumentsMap),
+		Authorization:     authorization,
 	}, nil
 }
 
@@ -282,6 +312,9 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 	}
 	switch {
 	case a.binding != nil:
+		if a.descriptor.CredentialOutputKind != nil {
+			return a.executeCredentialOutput(ctx, plan, targetMap, argumentsMap)
+		}
 		result, err := a.manager.ExecuteREST(ctx, plan.Credential, *a.binding, targetMap, argumentsMap)
 		if err != nil {
 			return Outcome{}, classifyExecutionError(a.binding.Method, err)
@@ -316,7 +349,7 @@ func (a generatedAdapter) Cleanup(plan Plan) error {
 		return nil
 	}
 	arguments, err := decodeSealedArguments(plan.Arguments)
-	if err != nil {
+	if err != nil || arguments.SealedPayload == nil {
 		return err
 	}
 	return a.options.SealedStore.Delete(*arguments.SealedPayload)
@@ -340,6 +373,9 @@ func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.
 	protected, err := decodeSealedArguments(arguments)
 	if err != nil {
 		return nil, err
+	}
+	if protected.SealedPayload == nil {
+		return protected.Public, nil
 	}
 	payload, err := a.options.SealedStore.Consume(*protected.SealedPayload)
 	if err != nil {
@@ -372,10 +408,40 @@ func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.
 
 func decodeSealedArguments(raw json.RawMessage) (sealedArguments, error) {
 	var arguments sealedArguments
-	if err := strictjson.Decode(raw, &arguments, true); err != nil || len(arguments.Public) == 0 || arguments.SealedPayload == nil {
+	if err := strictjson.Decode(raw, &arguments, true); err != nil || len(arguments.Public) == 0 {
 		return sealedArguments{}, errors.New("GitHub sealed operation arguments are invalid")
 	}
 	return arguments, nil
+}
+
+func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
+	protected, err := decodeSealedArguments(plan.Arguments)
+	if err != nil || !credentialstore.ValidSlot(protected.CredentialSlot) || a.binding == nil || a.descriptor.CredentialOutputKind == nil {
+		return Outcome{}, errors.New("GitHub credential output plan is invalid")
+	}
+	result, err := a.manager.ExecuteRESTRaw(ctx, plan.Credential, *a.binding, target, arguments)
+	if err != nil {
+		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+	}
+	defer zero(result.Body)
+	var upstream struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if strictjson.Decode(result.Body, &upstream, true) != nil || upstream.Token == "" || upstream.ExpiresAt == "" {
+		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
+	}
+	token := []byte(upstream.Token)
+	defer zero(token)
+	stored, err := a.options.CredentialStore.Put(protected.CredentialSlot, *a.descriptor.CredentialOutputKind, token)
+	if err != nil {
+		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
+	}
+	encoded, _ := json.Marshal(map[string]any{"stored": true, "slot": stored.Slot, "kind": stored.Kind})
+	if err := schemaregistry.ValidateResult(a.descriptor.Name, encoded); err != nil {
+		return Outcome{}, err
+	}
+	return Outcome{Proven: true, Result: encoded}, nil
 }
 
 func mergeObjects(destination, source map[string]any) error {

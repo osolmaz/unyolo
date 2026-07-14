@@ -44,6 +44,21 @@ func TestGeneratedCapabilityJSONMatchesCatalog(t *testing.T) {
 	}
 }
 
+func TestRunnerTokensUseEncryptedCredentialOutputs(t *testing.T) {
+	for _, name := range []string{
+		"runner.actions_create_registration_token_for_org",
+		"runner.actions_create_registration_token_for_repo",
+		"runner.actions_create_remove_token_for_org",
+		"runner.actions_create_remove_token_for_repo",
+	} {
+		descriptor, found := ByName(name)
+		if !found || descriptor.CredentialOutputKind == nil || *descriptor.CredentialOutputKind != "github-runner-token" ||
+			!descriptor.Sealed || !descriptor.ExplicitOnly || !descriptor.AgentFacing {
+			t.Fatalf("runner credential descriptor %q = %+v", name, descriptor)
+		}
+	}
+}
+
 func TestGitHubCatalogValidationFailsClosed(t *testing.T) {
 	valid := MustAll()
 	tests := []struct {

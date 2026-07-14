@@ -21,6 +21,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/clienthttp"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/sealedpayload"
@@ -120,6 +121,7 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	targetText := flags.String("target-json", "", "closed target JSON")
 	argumentsText := flags.String("arguments-json", "{}", "closed argument JSON")
 	sealedFile := flags.String("sealed-file", "", "sealed argument JSON file")
+	credentialSlot := flags.String("credential-slot", "", "encrypted credential destination slot")
 	reason := flags.String("reason", "Run "+descriptor.Name+" through GH Broker", "approval reason")
 	key := flags.String("idempotency-key", "", "stable retry key")
 	wait := flags.Bool("wait", false, "wait for terminal state")
@@ -128,7 +130,7 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 		return exitError{code: 64, message: "closed --target-json and valid operation flags are required"}
 	}
 	target, arguments := json.RawMessage(*targetText), json.RawMessage(*argumentsText)
-	if err := validateOperationInput(descriptor, target, arguments, *sealedFile); err != nil {
+	if err := validateOperationInput(descriptor, target, arguments, *sealedFile, *credentialSlot); err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
 	if strings.TrimSpace(*reason) == "" || len(*reason) > 2000 {
@@ -145,7 +147,12 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	if descriptor.Sealed {
+	if descriptor.CredentialOutputKind != nil {
+		arguments, err = json.Marshal(map[string]any{"public": arguments, "credential_slot": *credentialSlot})
+		if err != nil {
+			return err
+		}
+	} else if descriptor.Sealed {
 		sealed, readErr := readSealedArguments(*sealedFile)
 		if readErr != nil {
 			return exitError{code: 64, message: readErr.Error()}
@@ -238,14 +245,20 @@ func (connection operationConnection) client() (*agentclient.Client, error) {
 	return agentclient.New(agentclient.Options{BaseURL: connection.baseURL, Credential: connection.secret})
 }
 
-func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile string) error {
+func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot string) error {
+	if descriptor.CredentialOutputKind != nil {
+		if sealedFile != "" || !credentialstore.ValidSlot(credentialSlot) {
+			return errors.New("credential output operation requires --credential-slot and does not accept --sealed-file")
+		}
+		return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
+	}
 	if descriptor.Sealed {
-		if sealedFile == "" {
+		if sealedFile == "" || credentialSlot != "" {
 			return errors.New("sealed operation requires --sealed-file")
 		}
 		return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
 	}
-	if sealedFile != "" {
+	if sealedFile != "" || credentialSlot != "" {
 		return errors.New("operation does not accept --sealed-file")
 	}
 	return schemaregistry.ValidateSubmission(descriptor.Name, target, public)

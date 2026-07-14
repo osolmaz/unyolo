@@ -206,13 +206,14 @@ func categoryName(family string) string {
 //nolint:cyclop // Security metadata is derived in one auditable classification path.
 func descriptorForREST(name, method, path string, operation restOperation, disposition, credential string, permissions map[string]string, classes []string) opcatalog.Descriptor {
 	mutation := method != http.MethodGet && method != http.MethodHead
+	credentialOutput := runnerCredentialOutput(operation.OperationID)
 	mode, dispositionFlags, maxUses := capability.ModeWindow, "W", 100
 	if mutation {
 		mode, dispositionFlags, maxUses = capability.ModeExecution, "E", 1
 	}
 	risk := operationRisk(name, classes, method)
-	explicit := mutation && (len(classes) > 0 || risk >= capability.RiskHigh)
-	sealed := mutation && len(operation.RequestBody) > 0 && slices.Contains(classes, "secret") && containsAny(strings.ToLower(operation.OperationID), []string{"create", "update", "set", "add", "put"})
+	explicit := mutation && (len(classes) > 0 || risk >= capability.RiskHigh) || credentialOutput != nil
+	sealed := mutation && len(operation.RequestBody) > 0 && slices.Contains(classes, "secret") && containsAny(strings.ToLower(operation.OperationID), []string{"create", "update", "set", "add", "put"}) || credentialOutput != nil
 	internal := disposition == "internal"
 	if explicit {
 		dispositionFlags += "/X"
@@ -242,10 +243,18 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		RequestTTLSeconds: 300, ApprovalTTLSeconds: 600, FamilyGlobAllowed: !explicit,
 		AgentFacing: agentFacing, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
-		CredentialKind:   credential,
-		SealedInputPaths: sealedPaths(operation, sealed), UpstreamBindingIDs: []string{"rest:" + operation.OperationID},
+		CredentialKind: credential, CredentialOutputKind: credentialOutput,
+		SealedInputPaths: sealedPaths(operation, sealed && credentialOutput == nil), UpstreamBindingIDs: []string{"rest:" + operation.OperationID},
 		ExecutorKind: executorKind(disposition), ReconcilerKind: reconcilerKind(method, disposition),
 	}, RequiredGitHubPermissions: permissions, RequiredRepositorySelection: strings.Contains(path, "/repos/{owner}/{repo}")}
+}
+
+func runnerCredentialOutput(operationID string) *string {
+	if !strings.Contains(operationID, "create-registration-token") && !strings.Contains(operationID, "create-remove-token") {
+		return nil
+	}
+	kind := "github-runner-token"
+	return &kind
 }
 
 func implementationStatus(disposition, executor string, agentFacing bool) capability.ImplementationStatus {

@@ -101472,7 +101472,25 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "kind": {
+            "const": "github-runner-token"
+          },
+          "slot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[^/\\x00-\\x1f]+$",
+            "type": "string"
+          },
+          "stored": {
+            "const": true
+          }
+        },
+        "required": [
+          "stored",
+          "slot",
+          "kind"
+        ],
         "type": "object"
       }
     },
@@ -101487,7 +101505,25 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "kind": {
+            "const": "github-runner-token"
+          },
+          "slot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[^/\\x00-\\x1f]+$",
+            "type": "string"
+          },
+          "stored": {
+            "const": true
+          }
+        },
+        "required": [
+          "stored",
+          "slot",
+          "kind"
+        ],
         "type": "object"
       }
     },
@@ -101502,7 +101538,25 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "kind": {
+            "const": "github-runner-token"
+          },
+          "slot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[^/\\x00-\\x1f]+$",
+            "type": "string"
+          },
+          "stored": {
+            "const": true
+          }
+        },
+        "required": [
+          "stored",
+          "slot",
+          "kind"
+        ],
         "type": "object"
       }
     },
@@ -101517,7 +101571,25 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "kind": {
+            "const": "github-runner-token"
+          },
+          "slot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[^/\\x00-\\x1f]+$",
+            "type": "string"
+          },
+          "stored": {
+            "const": true
+          }
+        },
+        "required": [
+          "stored",
+          "slot",
+          "kind"
+        ],
         "type": "object"
       }
     },

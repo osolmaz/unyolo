@@ -84,6 +84,15 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 		arguments["required"] = required
 	}
 	result := projectedResponseSchema(responseSchema(operation, components), responseProjection(operation))
+	if runnerCredentialOutput(operation.OperationID) != nil {
+		result = map[string]any{
+			"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+			"properties": map[string]any{
+				"stored": map[string]any{"const": true}, "slot": nameSchema(), "kind": map[string]any{"const": "github-runner-token"},
+			},
+			"required": []string{"stored", "slot", "kind"},
+		}
+	}
 	return operationSchemas{Target: "target." + targetKind + ".v1", Arguments: arguments, Result: result}
 }
 

@@ -168,6 +168,35 @@ func TestSealedOperationUploadsSecretBeforeSubmission(t *testing.T) {
 	}
 }
 
+func TestCredentialOutputSubmissionRequiresEncryptedSlot(t *testing.T) {
+	const operation = "runner.actions_create_registration_token_for_repo"
+	var submitted []byte
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/agent/v1/operations" {
+			t.Fatalf("unexpected credential output route %s", request.URL.Path)
+		}
+		submitted, _ = io.ReadAll(request.Body)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StatePending))
+	}))
+	defer server.Close()
+	descriptor, _ := opcatalog.ByName(operation)
+	var output bytes.Buffer
+	withoutSlot := []string{"--target-json", `{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`, "--arguments-json", `{}`}
+	if err := submitCatalogOperation(t.Context(), &output, descriptor, withoutSlot); err == nil {
+		t.Fatal("credential output accepted without a slot")
+	}
+	err := submitCatalogOperation(t.Context(), &output, descriptor, append(withoutSlot,
+		"--credential-slot", "ci-runner", "--idempotency-key", "runner-token", "--reason", "enroll runner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(submitted, []byte(`"credential_slot":"ci-runner"`)) || bytes.Contains(submitted, []byte(`"sealed_payload"`)) {
+		t.Fatalf("submitted = %s", submitted)
+	}
+}
+
 func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 	var output bytes.Buffer
 	for _, args := range [][]string{nil, {"submit"}, {"submit", "not.real"}, {"bogus"}, {"get"}} {

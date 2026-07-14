@@ -167,6 +167,36 @@ func TestMCPSealedToolUsesOneTimePayloadBoundary(t *testing.T) {
 	}
 }
 
+func TestMCPCredentialOutputUsesNamedSlot(t *testing.T) {
+	const operation = "runner.actions_create_registration_token_for_repo"
+	var submitted []byte
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/agent/v1/operations" {
+			t.Fatalf("unexpected route %s", request.URL.Path)
+		}
+		submitted, _ = io.ReadAll(request.Body)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StatePending))
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_MCP_EXACT_OPERATIONS": operation, "GH_BROKER_MCP_CLIENT_OPERATIONS": operation,
+		"GH_BROKER_MCP_POLICY_OPERATIONS": operation, "GH_BROKER_MCP_RUNTIME_OPERATIONS": operation,
+	}
+	_, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
+		Name:      "gh_runner_actions_create_registration_token_for_repo",
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"credential_slot":"ci-runner","reason":"enroll runner","idempotency_key":"runner-token","wait_seconds":0}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(submitted, []byte(`"credential_slot":"ci-runner"`)) || bytes.Contains(submitted, []byte(`"token"`)) {
+		t.Fatalf("submitted = %s", submitted)
+	}
+}
+
 func TestMCPRejectsUnsafeCallsAndResourceRequests(t *testing.T) {
 	all := map[string]string{
 		"GH_BROKER_MCP_EXACT_OPERATIONS":   "repo.metadata.read,agent_task.create_or_update_repo_secret",
