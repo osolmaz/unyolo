@@ -2,6 +2,8 @@
 
 Date: 2026-07-14
 
+Status: implemented
+
 ## Objective
 
 Make a BrokerKit-owned HF Broker policy preset the default for new HF Broker
@@ -354,4 +356,3 @@ artifact consistency.
 - Doctor reports catalog drift and supports a reviewable candidate update.
 - ML Claw can consume the released preset without carrying its own HF operation
   policy inventory.
-

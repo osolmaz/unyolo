@@ -69,10 +69,17 @@ func parseDoctorPolicy(stderr io.Writer, args []string) (doctorPolicyCommand, er
 		}
 		return doctorPolicyCommand{}, exitError{code: 64, message: "invalid doctor policy flags"}
 	}
-	if fs.NArg() != 0 || command.profilePath == "" || command.manifestPath == "" || command.policyPath == "" {
-		return doctorPolicyCommand{}, exitError{code: 64, message: "doctor policy requires --profile, --manifest, and --scope"}
+	if err := validateDoctorPolicyCommand(fs, command); err != nil {
+		return doctorPolicyCommand{}, err
 	}
 	return command, nil
+}
+
+func validateDoctorPolicyCommand(fs *flag.FlagSet, command doctorPolicyCommand) error {
+	if fs.NArg() != 0 || command.profilePath == "" || command.manifestPath == "" || command.policyPath == "" {
+		return exitError{code: 64, message: "doctor policy requires --profile, --manifest, and --scope"}
+	}
+	return nil
 }
 
 type doctorPolicyArtifacts struct {
@@ -122,6 +129,10 @@ func writeDoctorPolicyReport(stdout io.Writer, report policypreset.DriftReport, 
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(report)
 	}
+	return writeDoctorPolicyText(stdout, report)
+}
+
+func writeDoctorPolicyText(stdout io.Writer, report policypreset.DriftReport) error {
 	if _, err := fmt.Fprintf(stdout, "Policy status: %s\n", report.Status); err != nil {
 		return err
 	}
@@ -130,15 +141,21 @@ func writeDoctorPolicyReport(stdout io.Writer, report policypreset.DriftReport, 
 			return err
 		}
 	}
-	operationGroups := []struct {
+	return writeDoctorOperationGroups(stdout, []struct {
 		label      string
 		operations []string
 	}{
 		{"Added operations", report.AddedOperations},
 		{"Removed operations", report.RemovedOperations},
 		{"Changed operations", report.ChangedOperations},
-	}
-	for _, group := range operationGroups {
+	})
+}
+
+func writeDoctorOperationGroups(stdout io.Writer, groups []struct {
+	label      string
+	operations []string
+}) error {
+	for _, group := range groups {
 		if len(group.operations) > 0 {
 			if _, err := fmt.Fprintf(stdout, "%s: %s\n", group.label, strings.Join(group.operations, ", ")); err != nil {
 				return err

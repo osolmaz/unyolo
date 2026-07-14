@@ -79,18 +79,37 @@ func parsePolicyRender(stderr io.Writer, args []string) (policyRenderCommand, er
 	if err := fs.Parse(args); err != nil {
 		return policyRenderCommand{}, policyFlagError(stderr, &flagOutput, err)
 	}
-	if fs.NArg() != 0 || command.policyOutput == "" || command.profileOutput == "" || command.manifestOutput == "" {
-		return policyRenderCommand{}, exitError{code: 64, message: "policy render requires --output, --profile-out, and --manifest-out"}
+	if err := validatePolicyRenderCommand(fs, command); err != nil {
+		return policyRenderCommand{}, err
 	}
-	if command.policyOutput == command.profileOutput || command.policyOutput == command.manifestOutput || command.profileOutput == command.manifestOutput {
-		return policyRenderCommand{}, exitError{code: 64, message: "policy render output paths must be distinct"}
-	}
-	if len(clients) == 0 {
-		clients = []string{"agent"}
-	}
-	command.clients = clients
+	command.clients = defaultPolicyClients(clients)
 	command.deniedOperations = denied
 	return command, nil
+}
+
+func validatePolicyRenderCommand(fs *flag.FlagSet, command policyRenderCommand) error {
+	if policyRenderOutputsMissing(fs, command) {
+		return exitError{code: 64, message: "policy render requires --output, --profile-out, and --manifest-out"}
+	}
+	if policyRenderOutputsOverlap(command) {
+		return exitError{code: 64, message: "policy render output paths must be distinct"}
+	}
+	return nil
+}
+
+func policyRenderOutputsMissing(fs *flag.FlagSet, command policyRenderCommand) bool {
+	return fs.NArg() != 0 || command.policyOutput == "" || command.profileOutput == "" || command.manifestOutput == ""
+}
+
+func policyRenderOutputsOverlap(command policyRenderCommand) bool {
+	return command.policyOutput == command.profileOutput || command.policyOutput == command.manifestOutput || command.profileOutput == command.manifestOutput
+}
+
+func defaultPolicyClients(clients stringListFlag) stringListFlag {
+	if len(clients) == 0 {
+		return []string{"agent"}
+	}
+	return clients
 }
 
 type policyArtifactOutput struct {

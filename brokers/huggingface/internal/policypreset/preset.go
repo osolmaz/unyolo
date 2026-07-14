@@ -180,18 +180,26 @@ func checkArtifactDigests(report *DriftReport, profileData, policyData []byte, m
 
 func checkCatalogDrift(report *DriftReport, manifest, current Manifest) {
 	if manifest.CatalogDigest != current.CatalogDigest {
-		if report.Status == DriftCurrent {
-			report.Status = DriftStale
-		}
-		report.Details = append(report.Details, "operation catalog changed since this policy was rendered")
+		markCatalogStale(report)
 	}
 	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Operations)
 	if manifest.OperationCounts != current.OperationCounts || reportHasOperationDrift(*report) {
-		if report.Status == DriftCurrent {
-			report.Status = DriftModified
-		}
-		report.Details = append(report.Details, "manifest operation summary does not match the rendered profile and current catalog")
+		markManifestModified(report)
 	}
+}
+
+func markCatalogStale(report *DriftReport) {
+	if report.Status == DriftCurrent {
+		report.Status = DriftStale
+	}
+	report.Details = append(report.Details, "operation catalog changed since this policy was rendered")
+}
+
+func markManifestModified(report *DriftReport) {
+	if report.Status == DriftCurrent {
+		report.Status = DriftModified
+	}
+	report.Details = append(report.Details, "manifest operation summary does not match the rendered profile and current catalog")
 }
 
 func reportHasOperationDrift(report DriftReport) bool {
@@ -205,27 +213,7 @@ func Render(input Profile) (Artifacts, error) {
 		return Artifacts{}, err
 	}
 	descriptors := opcatalog.MustAll()
-	denied := make(map[string]bool, len(profile.DeniedOperations))
-	for _, operation := range profile.DeniedOperations {
-		denied[operation] = true
-	}
-
-	document := policyDocument{Rules: make([]policyRule, 0, len(descriptors))}
-	manifest := Manifest{
-		Version: ManifestVersion, Preset: profile.Preset,
-		Operations: make([]OperationFingerprint, 0, len(descriptors)),
-	}
-	for _, descriptor := range descriptors {
-		effect := descriptor.DefaultPolicyEffect
-		if denied[descriptor.Name] {
-			effect = opcatalog.DefaultEffectDeny
-		}
-		document.Rules = append(document.Rules, renderRule(profile.Clients, descriptor, effect))
-		manifest.Operations = append(manifest.Operations, fingerprint(descriptor, effect))
-		manifest.OperationCounts.add(effect)
-	}
-	manifest.OperationCounts.Total = len(descriptors)
-
+	document, manifest := renderCatalog(profile, descriptors)
 	profileJSON, err := marshalCanonical(profile)
 	if err != nil {
 		return Artifacts{}, err
@@ -252,6 +240,31 @@ func Render(input Profile) (Artifacts, error) {
 		Profile: profile, Manifest: manifest, ProfileJSON: profileJSON,
 		PolicyJSON: policyJSON, ManifestJSON: manifestJSON,
 	}, nil
+}
+
+func renderCatalog(profile Profile, descriptors []opcatalog.Descriptor) (policyDocument, Manifest) {
+	denied := deniedOperationSet(profile.DeniedOperations)
+	document := policyDocument{Rules: make([]policyRule, 0, len(descriptors))}
+	manifest := Manifest{Version: ManifestVersion, Preset: profile.Preset, Operations: make([]OperationFingerprint, 0, len(descriptors))}
+	for _, descriptor := range descriptors {
+		effect := descriptor.DefaultPolicyEffect
+		if denied[descriptor.Name] {
+			effect = opcatalog.DefaultEffectDeny
+		}
+		document.Rules = append(document.Rules, renderRule(profile.Clients, descriptor, effect))
+		manifest.Operations = append(manifest.Operations, fingerprint(descriptor, effect))
+		manifest.OperationCounts.add(effect)
+	}
+	manifest.OperationCounts.Total = len(descriptors)
+	return document, manifest
+}
+
+func deniedOperationSet(operations []string) map[string]bool {
+	denied := make(map[string]bool, len(operations))
+	for _, operation := range operations {
+		denied[operation] = true
+	}
+	return denied
 }
 
 func normalizeProfile(profile Profile) (Profile, error) {
@@ -367,6 +380,17 @@ func digest(data []byte) string {
 }
 
 func parseManifest(data []byte) (Manifest, error) {
+	manifest, err := decodeManifest(data)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if err := validateManifest(manifest); err != nil {
+		return Manifest{}, err
+	}
+	return manifest, nil
+}
+
+func decodeManifest(data []byte) (Manifest, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
@@ -377,16 +401,20 @@ func parseManifest(data []byte) (Manifest, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return Manifest{}, errors.New("parse policy manifest: trailing content")
 	}
+	return manifest, nil
+}
+
+func validateManifest(manifest Manifest) error {
 	if manifest.Version != ManifestVersion || manifest.Preset != RequestAllAgentOperations {
-		return Manifest{}, errors.New("policy manifest version or preset is invalid")
+		return errors.New("policy manifest version or preset is invalid")
 	}
 	if manifest.CatalogDigest == "" || manifest.ProfileDigest == "" || manifest.PolicyDigest == "" {
-		return Manifest{}, errors.New("policy manifest is missing digests")
+		return errors.New("policy manifest is missing digests")
 	}
 	if manifest.OperationCounts.Total != len(manifest.Operations) {
-		return Manifest{}, errors.New("policy manifest operation count is inconsistent")
+		return errors.New("policy manifest operation count is inconsistent")
 	}
-	return manifest, nil
+	return nil
 }
 
 func invalidReport(err error) DriftReport {

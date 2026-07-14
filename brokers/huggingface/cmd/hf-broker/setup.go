@@ -192,17 +192,25 @@ func validateSetupRepo(opts setupSystemdOptions) error {
 		return exitError{code: 64, message: "--repo and --repo-type must be set together"}
 	}
 	if opts.Repo == "" {
-		if opts.PolicyPreset != policypreset.RequestAllAgentOperations {
-			return exitError{code: 64, message: fmt.Sprintf("unknown --policy-preset %q", opts.PolicyPreset)}
-		}
-		if _, err := policypreset.Render(policypreset.Profile{
-			Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
-			Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
-		}); err != nil {
-			return exitError{code: 64, message: err.Error()}
-		}
-		return nil
+		return validateSetupPreset(opts)
 	}
+	return validateSetupNarrowRepo(opts)
+}
+
+func validateSetupPreset(opts setupSystemdOptions) error {
+	if opts.PolicyPreset != policypreset.RequestAllAgentOperations {
+		return exitError{code: 64, message: fmt.Sprintf("unknown --policy-preset %q", opts.PolicyPreset)}
+	}
+	if _, err := policypreset.Render(policypreset.Profile{
+		Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
+		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
+	}); err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
+	return nil
+}
+
+func validateSetupNarrowRepo(opts setupSystemdOptions) error {
 	if opts.PolicyPresetExplicit {
 		return exitError{code: 64, message: "--policy-preset cannot be combined with --repo and --repo-type"}
 	}

@@ -99,6 +99,49 @@ func TestCheckReportsCurrentModifiedAndInvalidArtifacts(t *testing.T) {
 	}
 }
 
+func TestCheckReportsCatalogAndManifestDrift(t *testing.T) {
+	artifacts, err := Render(NewProfile([]string{"agent"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := artifacts.Manifest
+	stale.CatalogDigest = "sha256:stale"
+	staleJSON, _ := marshalCanonical(stale)
+	if report := Check(artifacts.ProfileJSON, staleJSON, artifacts.PolicyJSON); report.Status != DriftStale {
+		t.Fatalf("stale report = %+v", report)
+	}
+	modified := artifacts.Manifest
+	modified.Operations[0].Effect = opcatalog.DefaultEffectRequest
+	modifiedJSON, _ := marshalCanonical(modified)
+	report := Check(artifacts.ProfileJSON, modifiedJSON, artifacts.PolicyJSON)
+	if report.Status != DriftModified || len(report.ChangedOperations) != 1 {
+		t.Fatalf("modified manifest report = %+v", report)
+	}
+}
+
+func TestParseManifestRejectsMalformedArtifacts(t *testing.T) {
+	artifacts, err := Render(NewProfile([]string{"agent"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongVersion := artifacts.Manifest
+	wrongVersion.Version = 2
+	missingDigest := artifacts.Manifest
+	missingDigest.PolicyDigest = ""
+	wrongCount := artifacts.Manifest
+	wrongCount.OperationCounts.Total--
+	tests := [][]byte{[]byte("{"), append(append([]byte(nil), artifacts.ManifestJSON...), []byte("{}")...)}
+	for _, manifest := range []Manifest{wrongVersion, missingDigest, wrongCount} {
+		data, _ := marshalCanonical(manifest)
+		tests = append(tests, data)
+	}
+	for _, data := range tests {
+		if _, err := parseManifest(data); err == nil {
+			t.Fatalf("parseManifest accepted %q", data)
+		}
+	}
+}
+
 func assertRuleEffect(t *testing.T, data []byte, operation, effect string) {
 	t.Helper()
 	var document struct {
