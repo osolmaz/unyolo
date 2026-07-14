@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/credentialstore"
@@ -212,7 +213,7 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 		}
 	}
 	presentation := presentDescriptor(descriptor, map[string]any{"number": float64(7)})
-	authorization := authorizeDescriptor(descriptor, map[string]any{"owner": "osolmaz", "name": "brokerkit", "id": float64(3)},
+	authorization := authorizeDescriptor(descriptor, nil, map[string]any{"owner": "osolmaz", "name": "brokerkit", "id": float64(3)},
 		map[string]any{"ref": "main", "input": map[string]any{"base": "main", "head": "feature", "merge_method": "squash",
 			"labels": []any{"bug", "urgent"}, "permission": "maintain"}})
 	if presentation.Title != "Test operation" || !slices.Equal(authorization.TargetFields["id"], []string{"3"}) ||
@@ -280,6 +281,21 @@ func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	}
 	if values := scalarStrings(map[string]any{"not": "scalar"}); values != nil {
 		t.Fatalf("object scalar values = %+v", values)
+	}
+}
+
+func TestAuthorizationBindsConcretePathSelectors(t *testing.T) {
+	binding := opbinding.ByOperation("collaborator.orgs_remove_outside_collaborator")
+	if len(binding) != 1 {
+		t.Fatalf("bindings = %+v", binding)
+	}
+	descriptor, found := opcatalog.ByName("collaborator.orgs_remove_outside_collaborator")
+	if !found {
+		t.Fatal("descriptor not found")
+	}
+	authorization := authorizeDescriptor(descriptor, &binding[0], map[string]any{"name": "acme"}, map[string]any{"username": "octocat"})
+	if !slices.Equal(authorization.Attrs["selector_username"], []string{"octocat"}) {
+		t.Fatalf("authorization = %+v", authorization)
 	}
 }
 
@@ -384,6 +400,51 @@ func TestMutationExecuteClassifiesAmbiguousFailuresWithoutRetry(t *testing.T) {
 	}
 	if outcome, err := adapter.Reconcile(context.Background(), plan); err != nil || outcome.Proven {
 		t.Fatalf("reconcile = %+v err=%v", outcome, err)
+	}
+}
+
+func TestDocumentedAcceptedMutationIsSuccessful(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/repos/osolmaz/brokerkit/deployments" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"id":7}`)
+	}))
+	t.Cleanup(server.Close)
+	adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "deployment.repos_create_deployment")
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"input":{"ref":"main"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := adapter.Execute(t.Context(), plan)
+	if err != nil || !outcome.Proven || !strings.Contains(string(outcome.Result), `"id":7`) {
+		t.Fatalf("outcome = %+v, err = %v", outcome, err)
+	}
+}
+
+func TestExecutionStatusRejectsUndocumentedOutcomes(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		method      string
+		status      int
+		wantPartial bool
+		wantError   bool
+	}{
+		{name: "documented", method: http.MethodPost, status: 202},
+		{name: "mutation", method: http.MethodPost, status: 299, wantPartial: true, wantError: true},
+		{name: "read", method: http.MethodGet, status: 299, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := executionStatusError(opbinding.Binding{Method: test.method, SuccessStatusCodes: []int{202}}, test.status)
+			if (err != nil) != test.wantError || IsPossiblePartial(err) != test.wantPartial {
+				t.Fatalf("error = %v, partial = %t", err, IsPossiblePartial(err))
+			}
+		})
 	}
 }
 

@@ -203,6 +203,13 @@ func TestSpecializedValidationBoundaries(t *testing.T) {
 	if err := ValidateResult("issue.issues_update", json.RawMessage(`{"id":1,"state":"open"}`)); err != nil {
 		t.Fatalf("composed projected result rejected: %v", err)
 	}
+	if err := ValidateArguments("issue.issues_update", json.RawMessage(`{"input":{"milestone":null}}`)); err != nil {
+		t.Fatalf("nullable milestone rejected: %v", err)
+	}
+	largeContent := json.RawMessage(`{"content":"` + string(bytes.Repeat([]byte("a"), (1<<20)+1)) + `","encoding":"base64"}`)
+	if err := ValidateResult("repo.contents.read", largeContent); err != nil {
+		t.Fatalf("bounded repository content rejected: %v", err)
+	}
 
 	for name, call := range map[string]func() error{
 		"public unknown": func() error { return ValidatePublicSubmission("repo.metadata.read", target, json.RawMessage(`{}`)) },
@@ -223,7 +230,7 @@ func TestSpecializedValidationBoundaries(t *testing.T) {
 		},
 		"result unknown":   func() error { return ValidateResult("not.real", json.RawMessage(`{}`)) },
 		"result invalid":   func() error { return ValidateResult("repo.metadata.read", json.RawMessage(`{"private":true}`)) },
-		"result oversized": func() error { return ValidateResult("repo.metadata.read", bytes.Repeat([]byte(" "), (1<<20)+1)) },
+		"result oversized": func() error { return ValidateResult("repo.metadata.read", bytes.Repeat([]byte(" "), (4<<20)+1)) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := call(); err == nil {

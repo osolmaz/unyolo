@@ -54,6 +54,23 @@ func TestPresenterShowsConcreteGeneratedTargetsAndSecurityAttributes(t *testing.
 	}
 }
 
+func TestPresenterShowsGeneratedPathSelectors(t *testing.T) {
+	presentation, err := (Presenter{}).Present(t.Context(), grants.Grant{
+		ID: "grant-selector", Operation: "collaborator.orgs_remove_outside_collaborator",
+		Target: policy.Target{Kind: "organization", Fields: map[string][]string{"name": {"acme"}}},
+		Attrs:  map[string][]string{"selector_username": {"octocat"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range presentation.Fields {
+		if field.Label == "Selector username" && field.Value == "octocat" {
+			return
+		}
+	}
+	t.Fatalf("presentation = %+v", presentation)
+}
+
 func TestTargetSummaryRejectsKindOnlyAndFormatsNamedTargets(t *testing.T) {
 	t.Parallel()
 	if got := TargetSummary(policy.Target{Kind: "user"}); got != "" {

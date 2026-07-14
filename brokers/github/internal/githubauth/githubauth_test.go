@@ -177,6 +177,19 @@ func TestInstallationCredentialExpiryAndErrorsAreDeterministicAndRedacted(t *tes
 	}
 }
 
+func TestInstallationPermissionsSupportPinnedCatalogBeyondSDK(t *testing.T) {
+	permissions, err := installationPermissions(map[string]string{"agent_secrets": "write", "issue_fields": "read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if permissions["agent_secrets"] != "write" || permissions["issue_fields"] != "read" {
+		t.Fatalf("permissions = %+v", permissions)
+	}
+	if _, err := installationPermissions(map[string]string{"not_pinned": "read"}); err == nil {
+		t.Fatal("unknown permission accepted")
+	}
+}
+
 func TestInstallationInvalidationWinsAgainstConcurrentMint(t *testing.T) {
 	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
 	mintStarted := make(chan struct{})

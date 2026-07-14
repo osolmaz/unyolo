@@ -2087,7 +2087,10 @@
           "name": {
             "description": "The name of the workflow run.",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -2095,7 +2098,10 @@
           },
           "status": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -2148,7 +2154,10 @@
           "name": {
             "description": "The name of the workflow run.",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -2156,7 +2165,10 @@
           },
           "status": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -2511,7 +2523,10 @@
                 "name": {
                   "description": "The name of the workflow run.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "node_id": {
                   "maxLength": 1048576,
@@ -2519,7 +2534,10 @@
                 },
                 "status": {
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "updated_at": {
                   "format": "date-time",
@@ -2632,7 +2650,10 @@
                 "name": {
                   "description": "The name of the workflow run.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "node_id": {
                   "maxLength": 1048576,
@@ -2640,7 +2661,10 @@
                 },
                 "status": {
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "updated_at": {
                   "format": "date-time",
@@ -2683,7 +2707,10 @@
                 "type": "boolean"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -2712,7 +2739,10 @@
                 "type": "boolean"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -2741,7 +2771,10 @@
                 "type": "boolean"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -3015,7 +3048,10 @@
               "cvss_vector_string": {
                 "description": "The CVSS vector that calculates the severity of the advisory. You must choose between setting this field or `severity`.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "cwe_ids": {
                 "description": "A list of Common Weakness Enumeration (CWE) IDs.",
@@ -3024,7 +3060,10 @@
                   "type": "string"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "description": {
                 "description": "A detailed description of what the advisory impacts.",
@@ -3040,7 +3079,10 @@
                   "low"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "start_private_fork": {
                 "default": false,
@@ -3084,7 +3126,10 @@
                         "name": {
                           "description": "The unique package name within its ecosystem.",
                           "maxLength": 1048576,
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         }
                       },
                       "required": [
@@ -3095,7 +3140,10 @@
                     "patched_versions": {
                       "description": "The package version(s) that resolve the vulnerability.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "vulnerable_functions": {
                       "description": "The functions in the package that are affected.",
@@ -3104,12 +3152,18 @@
                         "type": "string"
                       },
                       "maxItems": 100,
-                      "type": "array"
+                      "type": [
+                        "array",
+                        "null"
+                      ]
                     },
                     "vulnerable_version_range": {
                       "description": "The range of the package versions affected by the vulnerability.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -3118,7 +3172,10 @@
                   "type": "object"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -3143,7 +3200,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "description": "The state of the advisory.",
@@ -3162,7 +3222,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The API URL for the advisory.",
@@ -3219,17 +3282,26 @@
                   "type": "object"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "cve_id": {
                 "description": "The Common Vulnerabilities and Exposures (CVE) ID.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "cvss_vector_string": {
                 "description": "The CVSS vector that calculates the severity of the advisory. You must choose between setting this field or `severity`.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "cwe_ids": {
                 "description": "A list of Common Weakness Enumeration (CWE) IDs.",
@@ -3238,7 +3310,10 @@
                   "type": "string"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "description": {
                 "description": "A detailed description of what the advisory impacts.",
@@ -3254,7 +3329,10 @@
                   "low"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "start_private_fork": {
                 "default": false,
@@ -3298,7 +3376,10 @@
                         "name": {
                           "description": "The unique package name within its ecosystem.",
                           "maxLength": 1048576,
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         }
                       },
                       "required": [
@@ -3309,7 +3390,10 @@
                     "patched_versions": {
                       "description": "The package version(s) that resolve the vulnerability.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "vulnerable_functions": {
                       "description": "The functions in the package that are affected.",
@@ -3318,12 +3402,18 @@
                         "type": "string"
                       },
                       "maxItems": 100,
-                      "type": "array"
+                      "type": [
+                        "array",
+                        "null"
+                      ]
                     },
                     "vulnerable_version_range": {
                       "description": "The range of the package versions affected by the vulnerability.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -3358,7 +3448,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "description": "The state of the advisory.",
@@ -3377,7 +3470,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The API URL for the advisory.",
@@ -3464,7 +3560,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "description": "The state of the advisory.",
@@ -3483,7 +3582,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The API URL for the advisory.",
@@ -3743,7 +3845,10 @@
               "format": "date-time",
               "maxLength": 1048576,
               "readOnly": true,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "state": {
               "description": "The state of the advisory.",
@@ -3762,7 +3867,10 @@
               "format": "date-time",
               "maxLength": 1048576,
               "readOnly": true,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "description": "The API URL for the advisory.",
@@ -3794,7 +3902,10 @@
                   "type": "string"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "collaborating_users": {
                 "description": "A list of usernames who have been granted write access to the advisory.",
@@ -3803,7 +3914,10 @@
                   "type": "string"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "credits": {
                 "description": "A list of users receiving credit for their participation in the security advisory.",
@@ -3840,17 +3954,26 @@
                   "type": "object"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "cve_id": {
                 "description": "The Common Vulnerabilities and Exposures (CVE) ID.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "cvss_vector_string": {
                 "description": "The CVSS vector that calculates the severity of the advisory. You must choose between setting this field or `severity`.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "cwe_ids": {
                 "description": "A list of Common Weakness Enumeration (CWE) IDs.",
@@ -3859,7 +3982,10 @@
                   "type": "string"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "description": {
                 "description": "A detailed description of what the advisory impacts.",
@@ -3875,7 +4001,10 @@
                   "low"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "state": {
                 "description": "The state of the advisory.",
@@ -3924,7 +4053,10 @@
                         "name": {
                           "description": "The unique package name within its ecosystem.",
                           "maxLength": 1048576,
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         }
                       },
                       "required": [
@@ -3935,7 +4067,10 @@
                     "patched_versions": {
                       "description": "The package version(s) that resolve the vulnerability.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "vulnerable_functions": {
                       "description": "The functions in the package that are affected.",
@@ -3944,12 +4079,18 @@
                         "type": "string"
                       },
                       "maxItems": 100,
-                      "type": "array"
+                      "type": [
+                        "array",
+                        "null"
+                      ]
                     },
                     "vulnerable_version_range": {
                       "description": "The range of the package versions affected by the vulnerability.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -3979,7 +4120,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "description": "The state of the advisory.",
@@ -3998,7 +4142,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The API URL for the advisory.",
@@ -5443,7 +5590,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -5460,7 +5610,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -5518,7 +5671,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -5535,7 +5691,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -6016,7 +6175,10 @@
           }
         },
         "title": "GitHub app",
-        "type": "object"
+        "type": [
+          "object",
+          "null"
+        ]
       }
     },
     "app.apps_get_by_slug": {
@@ -6065,7 +6227,10 @@
           }
         },
         "title": "GitHub app",
-        "type": "object"
+        "type": [
+          "object",
+          "null"
+        ]
       }
     },
     "app.apps_get_subscription_plan_for_account": {
@@ -6402,7 +6567,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "User Marketplace Purchase",
@@ -6442,7 +6610,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "User Marketplace Purchase",
@@ -7322,7 +7493,10 @@
           "created_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "integer"
@@ -7339,7 +7513,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "maxLength": 1048576,
@@ -7417,7 +7594,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "type": "integer"
@@ -7434,7 +7614,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "maxLength": 1048576,
@@ -7497,7 +7680,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "type": "integer"
@@ -7514,7 +7700,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "maxLength": 1048576,
@@ -8655,7 +8844,10 @@
             }
           },
           "title": "GitHub app",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "maxItems": 100,
         "type": "array"
@@ -8851,7 +9043,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -9160,7 +9355,10 @@
             }
           },
           "title": "GitHub app",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "maxItems": 100,
         "type": "array"
@@ -9376,7 +9574,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -9465,7 +9666,10 @@
             }
           },
           "title": "GitHub app",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "maxItems": 100,
         "type": "array"
@@ -9685,7 +9889,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -9805,7 +10012,10 @@
             }
           },
           "title": "GitHub app",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "maxItems": 100,
         "type": "array"
@@ -10001,7 +10211,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -10043,7 +10256,10 @@
               },
               "allow_force_pushes": {
                 "description": "Permits force pushes to the protected branch by anyone with write access to the repository. Set to `true` to allow force pushes. Set to `false` or `null` to block force pushes. Default: `false`. For more information, see \"[Enabling force pushes to a protected branch](https://docs.github.com/github/administering-a-repository/enabling-force-pushes-to-a-protected-branch)\" in the GitHub Help documentation.\"",
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               },
               "allow_fork_syncing": {
                 "default": false,
@@ -10056,7 +10272,10 @@
               },
               "enforce_admins": {
                 "description": "Enforce all configured restrictions for administrators. Set to `true` to enforce required status checks for repository administrators. Set to `null` to disable.",
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               },
               "lock_branch": {
                 "default": false,
@@ -10161,7 +10380,10 @@
                     "type": "integer"
                   }
                 },
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "required_status_checks": {
                 "additionalProperties": false,
@@ -10209,7 +10431,10 @@
                   "strict",
                   "contexts"
                 ],
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "restrictions": {
                 "additionalProperties": false,
@@ -10247,7 +10472,10 @@
                   "users",
                   "teams"
                 ],
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -11311,7 +11539,10 @@
           "created_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "int64",
@@ -11332,16 +11563,25 @@
               "pending"
             ],
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "CheckSuite",
@@ -11427,7 +11667,10 @@
           "created_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "int64",
@@ -11448,16 +11691,25 @@
               "pending"
             ],
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "CheckSuite",
@@ -11706,7 +11958,10 @@
               "created_at": {
                 "format": "date-time",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "format": "int64",
@@ -11723,7 +11978,10 @@
               "updated_at": {
                 "format": "date-time",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "url": {
                 "format": "uri",
@@ -12054,7 +12312,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -12234,7 +12495,10 @@
           },
           "confirm_delete": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -12307,7 +12571,10 @@
               "fixed"
             ],
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "description": "The time that the alert was last updated in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`.",
@@ -12474,7 +12741,10 @@
             "description": "Timestamp of latest configuration update.",
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -12657,7 +12927,10 @@
                 "fixed"
               ],
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "type": "object"
@@ -12742,7 +13015,10 @@
           "tool_guid": {
             "description": "The GUID of the tool used to generate the code scanning analysis, if provided in the uploaded SARIF data.",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "tool_name": {
             "description": "The name of the tool used to generate the code scanning analysis.",
@@ -12777,7 +13053,10 @@
                 "fixed"
               ],
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "updated_at": {
               "description": "The time that the alert was last updated in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`.",
@@ -12884,7 +13163,10 @@
           "tool_guid": {
             "description": "The GUID of the tool used to generate the code scanning analysis, if provided in the uploaded SARIF data.",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "tool_name": {
             "description": "The name of the tool used to generate the code scanning analysis.",
@@ -12919,7 +13201,10 @@
                 "fixed"
               ],
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "updated_at": {
               "description": "The time that the alert was last updated in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`.",
@@ -13042,7 +13327,10 @@
           "tool_guid": {
             "description": "The GUID of the tool used to generate the code scanning analysis, if provided in the uploaded SARIF data.",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "tool_name": {
             "description": "The name of the tool used to generate the code scanning analysis.",
@@ -13119,7 +13407,10 @@
               "dismissed_comment": {
                 "description": "The dismissal comment associated with the dismissal of the alert.",
                 "maxLength": 280,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "dismissed_reason": {
                 "description": "**Required when the state is dismissed.** The reason for dismissing or closing the alert.",
@@ -13129,7 +13420,10 @@
                   "used in tests"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "state": {
                 "description": "Sets the state of the code scanning alert. You must provide `dismissed_reason` when you set the state to `dismissed`.",
@@ -13173,7 +13467,10 @@
               "fixed"
             ],
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "description": "The time that the alert was last updated in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`.",
@@ -13235,7 +13532,10 @@
               "runner_label": {
                 "description": "Runner label to be used if the runner type is labeled.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "runner_type": {
                 "description": "Runner type to be used.",
@@ -13837,7 +14137,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -13988,12 +14291,18 @@
           "sha": {
             "description": "Git commit SHA of the exported branch",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "description": "State of the latest export",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "Fetches information about an export of a codespace.",
@@ -14029,12 +14338,18 @@
           "sha": {
             "description": "Git commit SHA of the exported branch",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "description": "State of the latest export",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "Fetches information about an export of a codespace.",
@@ -14548,7 +14863,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -14565,7 +14883,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -14672,7 +14993,10 @@
               },
               "name": {
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "node_id": {
                 "maxLength": 1048576,
@@ -15189,7 +15513,10 @@
               },
               "name": {
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "node_id": {
                 "maxLength": 1048576,
@@ -15300,7 +15627,10 @@
                     },
                     "name": {
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "node_id": {
                       "maxLength": 1048576,
@@ -15417,7 +15747,10 @@
                     },
                     "name": {
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "node_id": {
                       "maxLength": 1048576,
@@ -15601,7 +15934,10 @@
               },
               "name": {
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "node_id": {
                 "maxLength": 1048576,
@@ -15756,7 +16092,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -15915,7 +16254,10 @@
               },
               "name": {
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "node_id": {
                 "maxLength": 1048576,
@@ -15932,7 +16274,10 @@
               }
             },
             "title": "Collaborator",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "title": "Repository Collaborator Permission",
@@ -15993,7 +16338,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -17621,7 +17969,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -17642,16 +17993,25 @@
                     "pending"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "title": "CheckSuite",
@@ -17895,7 +18255,10 @@
               "description": {
                 "description": "A short description of the status.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "state": {
                 "description": "The state of the status.",
@@ -17911,7 +18274,10 @@
               "target_url": {
                 "description": "The target URL to associate with this status. This URL will be linked from the GitHub UI to allow users to easily see the source of the status.  \nFor example, if your continuous integration system is posting build status, you would want to provide the deep link for the build output for this specific SHA:  \n`http://ci.example.com/user/repo/build/sha`",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -19009,14 +19375,21 @@
                       "additionalProperties": {
                         "anyOf": [
                           {
-                            "maxLength": 1048576,
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              }
+                            ]
                           },
                           {
-                            "type": "number"
-                          },
-                          {
-                            "type": "boolean"
+                            "type": "null"
                           }
                         ]
                       },
@@ -19047,14 +19420,21 @@
                             "additionalProperties": {
                               "anyOf": [
                                 {
-                                  "maxLength": 1048576,
-                                  "type": "string"
+                                  "anyOf": [
+                                    {
+                                      "maxLength": 1048576,
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    }
+                                  ]
                                 },
                                 {
-                                  "type": "number"
-                                },
-                                {
-                                  "type": "boolean"
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -19106,14 +19486,21 @@
                 "additionalProperties": {
                   "anyOf": [
                     {
-                      "maxLength": 1048576,
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
                     },
                     {
-                      "type": "number"
-                    },
-                    {
-                      "type": "boolean"
+                      "type": "null"
                     }
                   ]
                 },
@@ -20069,7 +20456,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -20086,7 +20476,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -20186,7 +20579,10 @@
                 }
               },
               "title": "Simple Repository",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "maxItems": 100,
             "type": "array"
@@ -20250,7 +20646,10 @@
                 }
               },
               "title": "Simple Repository",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "maxItems": 100,
             "type": "array"
@@ -20956,7 +21355,10 @@
                 "default": "",
                 "description": "Short description of the deployment.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "environment": {
                 "default": "production",
@@ -21512,7 +21914,10 @@
           "environment": {
             "default": "none",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "page": {
             "default": 1,
@@ -26146,7 +26551,10 @@
                   "protected_branches",
                   "custom_branch_policies"
                 ],
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "prevent_self_review": {
                 "description": "Whether or not a user who created the job is prevented from approving their own job.",
@@ -26174,14 +26582,20 @@
                   "type": "object"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "wait_timer": {
                 "description": "The amount of time to delay a job after the job is initially triggered. The time (in minutes) must be an integer between 0 and 43,200 (30 days).",
                 "type": "integer"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -27356,16 +27770,25 @@
                     "filename": {
                       "description": "The new filename for the file.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
-                  "type": "object"
+                  "type": [
+                    "object",
+                    "null"
+                  ]
                 },
                 "description": "The gist files to be updated, renamed, or deleted. Each `key` must match the current filename\n(including extension) of the targeted gist file. For example: `hello.py`.\n\nTo delete a file, set the whole file to null. For example: `hello.py : null`. The file will also be\ndeleted if the specified object does not contain at least one of `content` or `filename`.",
                 "type": "object"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -27548,7 +27971,10 @@
                     "sha": {
                       "description": "The SHA1 checksum ID of the object in the tree. Also called `tree.sha`. If the value is `null` then the file will be deleted.  \n  \n**Note:** Use either `tree.sha` or `content` to specify the contents of the entry. Using both `tree.sha` and `content` will return an error.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "type": {
                       "description": "Either `blob`, `tree`, or `commit`.",
@@ -28376,7 +28802,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "Unique identifier of the repository",
@@ -28395,7 +28824,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -28558,7 +28990,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "Unique identifier of the repository",
@@ -28577,7 +29012,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -28835,7 +29273,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "Unique identifier of the repository",
@@ -28854,7 +29295,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -30133,7 +30577,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -30144,7 +30591,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -30178,7 +30628,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -30265,7 +30718,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -30276,7 +30732,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -30310,7 +30769,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -30480,7 +30942,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -30491,7 +30956,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -30525,7 +30993,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -30666,11 +31137,17 @@
                       "properties": {
                         "color": {
                           "maxLength": 1048576,
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "description": {
                           "maxLength": 1048576,
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "id": {
                           "type": "integer"
@@ -30688,14 +31165,21 @@
                 "type": "array"
               },
               "milestone": {
-                "oneOf": [
+                "anyOf": [
                   {
-                    "maxLength": 1048576,
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      {
+                        "description": "The `number` of the milestone to associate this issue with. _NOTE: Only users with push access can set the milestone for new issues. The milestone is silently dropped otherwise._",
+                        "type": "integer"
+                      }
+                    ]
                   },
                   {
-                    "description": "The `number` of the milestone to associate this issue with. _NOTE: Only users with push access can set the milestone for new issues. The milestone is silently dropped otherwise._",
-                    "type": "integer"
+                    "type": "null"
                   }
                 ]
               },
@@ -30714,7 +31198,10 @@
               "type": {
                 "description": "The name of the issue type to associate with this issue. _NOTE: Only users with push access can set the type for new issues. The type is silently dropped otherwise._",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -30772,7 +31259,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -30783,7 +31273,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -30817,7 +31310,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -30910,7 +31406,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -30921,7 +31420,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -30955,7 +31457,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -31068,7 +31573,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -31079,7 +31587,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -31113,7 +31624,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -31260,7 +31774,10 @@
                     "purple"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "description": "The time the issue type created.",
@@ -31271,7 +31788,10 @@
                 "description": {
                   "description": "The description of the issue type.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "The unique identifier of the issue type.",
@@ -31305,7 +31825,10 @@
                 "description"
               ],
               "title": "Issue Type",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "date-time",
@@ -31359,7 +31882,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -31448,7 +31974,10 @@
                     "purple"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "description": "The time the issue type created.",
@@ -31459,7 +31988,10 @@
                 "description": {
                   "description": "The description of the issue type.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "The unique identifier of the issue type.",
@@ -31493,7 +32025,10 @@
                 "description"
               ],
               "title": "Issue Type",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "date-time",
@@ -31580,7 +32115,10 @@
                     "purple"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "description": "The time the issue type created.",
@@ -31591,7 +32129,10 @@
                 "description": {
                   "description": "The description of the issue type.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "The unique identifier of the issue type.",
@@ -31625,7 +32166,10 @@
                 "description"
               ],
               "title": "Issue Type",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "date-time",
@@ -31930,7 +32474,10 @@
                     "purple"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "description": "The time the issue type created.",
@@ -31941,7 +32488,10 @@
                 "description": {
                   "description": "The description of the issue type.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "The unique identifier of the issue type.",
@@ -31975,7 +32525,10 @@
                 "description"
               ],
               "title": "Issue Type",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "date-time",
@@ -32117,7 +32670,10 @@
                     "purple"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "description": "The time the issue type created.",
@@ -32128,7 +32684,10 @@
                 "description": {
                   "description": "The description of the issue type.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "The unique identifier of the issue type.",
@@ -32162,7 +32721,10 @@
                 "description"
               ],
               "title": "Issue Type",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "date-time",
@@ -32311,7 +32873,10 @@
                     "purple"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "description": "The time the issue type created.",
@@ -32322,7 +32887,10 @@
                 "description": {
                   "description": "The description of the issue type.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "The unique identifier of the issue type.",
@@ -32356,7 +32924,10 @@
                 "description"
               ],
               "title": "Issue Type",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "date-time",
@@ -32482,7 +33053,10 @@
                     "purple"
                   ],
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "description": "The time the issue type created.",
@@ -32493,7 +33067,10 @@
                 "description": {
                   "description": "The description of the issue type.",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "The unique identifier of the issue type.",
@@ -32527,7 +33104,10 @@
                 "description"
               ],
               "title": "Issue Type",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "date-time",
@@ -32569,7 +33149,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -32650,7 +33233,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -32661,7 +33247,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -32695,7 +33284,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -32765,7 +33357,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -32776,7 +33371,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -32810,7 +33408,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -32897,7 +33498,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -32908,7 +33512,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -32942,7 +33549,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -33037,7 +33647,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -33048,7 +33661,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -33082,7 +33698,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -33221,7 +33840,10 @@
               "body": {
                 "description": "The contents of the issue.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "duplicate_issue_id": {
                 "description": "The ID of the issue to mark as the canonical duplicate when `state_reason` is `duplicate`. The issue must exist and be accessible to the authenticated user. Ignored when `state_reason` is not `duplicate`.",
@@ -33279,11 +33901,17 @@
                       "properties": {
                         "color": {
                           "maxLength": 1048576,
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "description": {
                           "maxLength": 1048576,
-                          "type": "string"
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "id": {
                           "type": "integer"
@@ -33301,14 +33929,21 @@
                 "type": "array"
               },
               "milestone": {
-                "oneOf": [
+                "anyOf": [
                   {
-                    "maxLength": 1048576,
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      {
+                        "description": "The `number` of the milestone to associate this issue with or use `null` to remove the current milestone. Only users with push access can set the milestone for issues. Without push access to the repository, milestone changes are silently dropped.",
+                        "type": "integer"
+                      }
+                    ]
                   },
                   {
-                    "description": "The `number` of the milestone to associate this issue with or use `null` to remove the current milestone. Only users with push access can set the milestone for issues. Without push access to the repository, milestone changes are silently dropped.",
-                    "type": "integer"
+                    "type": "null"
                   }
                 ]
               },
@@ -33330,24 +33965,37 @@
                   "reopened"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "title": {
-                "description": "The title of the issue.",
-                "oneOf": [
+                "anyOf": [
                   {
-                    "maxLength": 1048576,
-                    "type": "string"
+                    "description": "The title of the issue.",
+                    "oneOf": [
+                      {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
                   },
                   {
-                    "type": "integer"
+                    "type": "null"
                   }
                 ]
               },
               "type": {
                 "description": "The name of the issue type to associate with this issue or use `null` to remove the current issue type. Only users with push access can set the type for issues. Without push access to the repository, type changes are silently dropped.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "type": "object"
@@ -33398,7 +34046,10 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "created_at": {
                 "description": "The time the issue type created.",
@@ -33409,7 +34060,10 @@
               "description": {
                 "description": "The description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "id": {
                 "description": "The unique identifier of the issue type.",
@@ -33443,7 +34097,10 @@
               "description"
             ],
             "title": "Issue Type",
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -33484,7 +34141,10 @@
               "description": {
                 "description": "Description of the issue field.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "name": {
                 "description": "Name of the issue field.",
@@ -33514,7 +34174,10 @@
                     "description": {
                       "description": "Description of the option.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "name": {
                       "description": "Name of the option.",
@@ -33534,7 +34197,10 @@
                   "type": "object"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "visibility": {
                 "description": "The visibility of the issue field. Can be `organization_members_only` (visible only within the organization) or `all` (visible to all users who can see issues). Only used when the visibility settings feature is enabled. Defaults to `organization_members_only`.",
@@ -33591,7 +34257,10 @@
           }
         },
         "title": "Issue Field",
-        "type": "object"
+        "type": [
+          "object",
+          "null"
+        ]
       }
     },
     "issue.orgs_create_issue_type": {
@@ -33616,12 +34285,18 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "description": {
                 "description": "Description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "is_enabled": {
                 "description": "Whether or not the issue type is enabled at the organization level.",
@@ -33678,7 +34353,10 @@
           }
         },
         "title": "Issue Type",
-        "type": "object"
+        "type": [
+          "object",
+          "null"
+        ]
       }
     },
     "issue.orgs_delete_issue_field": {
@@ -33769,7 +34447,10 @@
             }
           },
           "title": "Issue Field",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "maxItems": 100,
         "type": "array"
@@ -33817,7 +34498,10 @@
             }
           },
           "title": "Issue Type",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "maxItems": 100,
         "type": "array"
@@ -33835,7 +34519,10 @@
               "description": {
                 "description": "Description of the issue field.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "name": {
                 "description": "Name of the issue field.",
@@ -33865,7 +34552,10 @@
                     "description": {
                       "description": "Description of the option.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "id": {
                       "description": "The id of an existing option to retain or update. Omit this when creating a new option.",
@@ -33946,7 +34636,10 @@
           }
         },
         "title": "Issue Field",
-        "type": "object"
+        "type": [
+          "object",
+          "null"
+        ]
       }
     },
     "issue.orgs_update_issue_type": {
@@ -33971,12 +34664,18 @@
                   "purple"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "description": {
                 "description": "Description of the issue type.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "is_enabled": {
                 "description": "Whether or not the issue type is enabled at the organization level.",
@@ -34037,7 +34736,10 @@
           }
         },
         "title": "Issue Type",
-        "type": "object"
+        "type": [
+          "object",
+          "null"
+        ]
       }
     },
     "issue.pin_issue": {
@@ -34327,7 +35029,10 @@
             }
           },
           "title": "Issue Type",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "maxItems": 100,
         "type": "array"
@@ -38024,7 +38729,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -38137,7 +38845,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -38956,7 +39667,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "GPG Key",
@@ -39403,7 +40117,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -39457,7 +40174,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -39511,7 +40231,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -39598,7 +40321,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "GPG Key",
@@ -39706,7 +40432,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -39860,7 +40589,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -39950,7 +40682,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -40006,7 +40741,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -40062,7 +40800,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -40118,7 +40859,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -40179,7 +40923,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "GPG Key",
@@ -40227,7 +40974,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "GPG Key",
@@ -40647,7 +41397,10 @@
               "twitter_username": {
                 "description": "The new Twitter username of the user.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "type": "object"
@@ -40671,7 +41424,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -40730,8 +41486,68 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "maxProperties": 0,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -41268,7 +42084,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -41931,7 +42750,10 @@
           "created_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -41973,7 +42795,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -41981,7 +42806,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -42086,7 +42914,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -42094,7 +42925,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -42134,7 +42968,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -42142,7 +42979,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -42182,7 +43022,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -42190,7 +43033,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -42230,7 +43076,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -42238,7 +43087,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -42278,7 +43130,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -42286,7 +43141,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -42326,7 +43184,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -42334,7 +43195,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -42457,7 +43321,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "description": "Unique identifier of the repository",
@@ -42476,7 +43343,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -42545,7 +43415,10 @@
                     "created_at": {
                       "format": "date-time",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "id": {
                       "description": "Unique identifier of the repository",
@@ -42564,7 +43437,10 @@
                     "updated_at": {
                       "format": "date-time",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "url": {
                       "format": "uri",
@@ -42590,7 +43466,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "Unique identifier of the repository",
@@ -42609,7 +43488,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -42656,7 +43538,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -42673,7 +43558,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -42723,7 +43611,10 @@
                 },
                 "name": {
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "node_id": {
                   "maxLength": 1048576,
@@ -42760,7 +43651,10 @@
                     },
                     "name": {
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "node_id": {
                       "maxLength": 1048576,
@@ -42777,7 +43671,10 @@
                     }
                   },
                   "title": "Simple User",
-                  "type": "object"
+                  "type": [
+                    "object",
+                    "null"
+                  ]
                 }
               },
               "title": "Stargazer",
@@ -42819,7 +43716,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -42836,7 +43736,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -42884,7 +43787,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -43640,7 +44546,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -43657,7 +44566,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -43715,7 +44627,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -43732,7 +44647,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -43783,7 +44701,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "Unique identifier of the repository",
@@ -43802,7 +44723,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -44226,7 +45150,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -44234,7 +45161,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -44274,7 +45204,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "maxLength": 1048576,
@@ -44282,7 +45215,10 @@
             },
             "type": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Event",
@@ -45056,13 +45992,19 @@
                 },
                 "maxItems": 100,
                 "minItems": 1,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "contact_link": {
                 "description": "The contact link of the campaign. Must be a URI.",
                 "format": "uri",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "description": {
                 "description": "A description for the campaign",
@@ -45353,7 +46295,10 @@
                 "description": "The contact link of the campaign. Must be a URI.",
                 "format": "uri",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "description": {
                 "description": "A description for the campaign",
@@ -45845,7 +46790,10 @@
                   "runner_label": {
                     "description": "The label of the runner to use for code scanning default setup when runner_type is 'labeled'.",
                     "maxLength": 1048576,
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "runner_type": {
                     "description": "Whether to use labeled runners or standard GitHub runners.",
@@ -45858,7 +46806,10 @@
                     "type": "string"
                   }
                 },
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "code_scanning_delegated_alert_dismissal": {
                 "default": "not_set",
@@ -45877,10 +46828,16 @@
                 "properties": {
                   "allow_advanced": {
                     "description": "Whether to allow repos which use advanced setup",
-                    "type": "boolean"
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   }
                 },
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "code_security": {
                 "description": "The enablement status of GitHub Code Security features.",
@@ -46586,7 +47543,10 @@
                   "runner_label": {
                     "description": "The label of the runner to use for code scanning default setup when runner_type is 'labeled'.",
                     "maxLength": 1048576,
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "runner_type": {
                     "description": "Whether to use labeled runners or standard GitHub runners.",
@@ -46599,7 +47559,10 @@
                     "type": "string"
                   }
                 },
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "code_scanning_delegated_alert_dismissal": {
                 "default": "disabled",
@@ -46618,10 +47581,16 @@
                 "properties": {
                   "allow_advanced": {
                     "description": "Whether to allow repos which use advanced setup",
-                    "type": "boolean"
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   }
                 },
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               },
               "code_security": {
                 "description": "The enablement status of GitHub Code Security features.",
@@ -47316,7 +48285,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -47333,7 +48305,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -47806,7 +48781,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -47823,7 +48801,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -48954,29 +49935,42 @@
                   "type": "string"
                 },
                 "maxItems": 100,
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               },
               "default_value": {
-                "description": "Default value of the property",
-                "oneOf": [
+                "anyOf": [
                   {
-                    "maxLength": 1048576,
-                    "type": "string"
+                    "description": "Default value of the property",
+                    "oneOf": [
+                      {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      }
+                    ]
                   },
                   {
-                    "items": {
-                      "maxLength": 1048576,
-                      "type": "string"
-                    },
-                    "maxItems": 100,
-                    "type": "array"
+                    "type": "null"
                   }
                 ]
               },
               "description": {
                 "description": "Short description of the property",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "require_explicit_values": {
                 "description": "Whether setting properties values is mandatory",
@@ -49005,7 +49999,10 @@
                   "org_and_repo_actors"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -49059,29 +50056,42 @@
                         "type": "string"
                       },
                       "maxItems": 100,
-                      "type": "array"
+                      "type": [
+                        "array",
+                        "null"
+                      ]
                     },
                     "default_value": {
-                      "description": "Default value of the property",
-                      "oneOf": [
+                      "anyOf": [
                         {
-                          "maxLength": 1048576,
-                          "type": "string"
+                          "description": "Default value of the property",
+                          "oneOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "maxItems": 100,
+                              "type": "array"
+                            }
+                          ]
                         },
                         {
-                          "items": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "maxItems": 100,
-                          "type": "array"
+                          "type": "null"
                         }
                       ]
                     },
                     "description": {
                       "description": "Short description of the property",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "property_name": {
                       "description": "The name of the property",
@@ -49130,7 +50140,10 @@
                         "org_and_repo_actors"
                       ],
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -49197,19 +50210,26 @@
                       "type": "string"
                     },
                     "value": {
-                      "description": "The value assigned to the property",
-                      "oneOf": [
+                      "anyOf": [
                         {
-                          "maxLength": 1048576,
-                          "type": "string"
+                          "description": "The value assigned to the property",
+                          "oneOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "maxItems": 100,
+                              "type": "array"
+                            }
+                          ]
                         },
                         {
-                          "items": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "maxItems": 100,
-                          "type": "array"
+                          "type": "null"
                         }
                       ]
                     }
@@ -50896,7 +51916,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -51099,7 +52122,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -51209,7 +52235,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -51226,7 +52255,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -51277,7 +52309,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -51294,7 +52329,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -51699,8 +52737,68 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "maxProperties": 0,
-        "properties": {},
+        "properties": {
+          "stream": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "media_type": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "owner": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "request_key": {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^/\\x00-\\x1f]+$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "purpose",
+              "request_key",
+              "digest",
+              "size",
+              "media_type",
+              "expires_at"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "stream"
+        ],
         "type": "object"
       }
     },
@@ -52558,7 +53656,10 @@
               "username": {
                 "description": "The username to use when authenticating with the private registry. This field should be omitted if the private registry does not require a username for authentication.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "visibility": {
                 "description": "Which type of organization repositories have access to the private registry. `selected` means only the repositories specified by `selected_repository_ids` can access the private registry.",
@@ -52916,7 +54017,10 @@
               "username": {
                 "description": "The username to use when authenticating with the private registry. This field should be omitted if the private registry does not require a username for authentication.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "visibility": {
                 "description": "Which type of organization repositories have access to the private registry. `selected` means only the repositories specified by `selected_repository_ids` can access the private registry.",
@@ -53305,7 +54409,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -53322,7 +54429,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -53358,7 +54468,10 @@
               "reason": {
                 "description": "Reason for approving or denying the request. Max 1024 characters.",
                 "maxLength": 1024,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -53414,7 +54527,10 @@
               "reason": {
                 "description": "Reason for approving or denying the requests. Max 1024 characters.",
                 "maxLength": 1024,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -53550,7 +54666,10 @@
               "format": "date-time",
               "maxLength": 1048576,
               "readOnly": true,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "state": {
               "description": "The state of the advisory.",
@@ -53569,7 +54688,10 @@
               "format": "date-time",
               "maxLength": 1048576,
               "readOnly": true,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "description": "The API URL for the advisory.",
@@ -55131,7 +56253,10 @@
                 "type": "object"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -55152,7 +56277,10 @@
               "errored"
             ],
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The API address for accessing this Page resource.",
@@ -55239,7 +56367,10 @@
               "errored"
             ],
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The API address for accessing this Page resource.",
@@ -55442,7 +56573,10 @@
               "cname": {
                 "description": "Specify a custom domain for the repository. Sending a `null` value will remove the custom domain. For more about custom domains, see \"[Using a custom domain with GitHub Pages](https://docs.github.com/pages/configuring-a-custom-domain-for-your-github-pages-site).\"",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "https_enforced": {
                 "description": "Specify whether HTTPS should be enforced for the repository.",
@@ -58428,14 +59562,21 @@
                       "type": "integer"
                     },
                     "value": {
-                      "description": "The new value for the field:\n- For text, number, and date fields, provide the new value directly.\n- For single select and iteration fields, provide the ID of the option or iteration.\n- To clear the field, set this to null.",
-                      "oneOf": [
+                      "anyOf": [
                         {
-                          "maxLength": 1048576,
-                          "type": "string"
+                          "description": "The new value for the field:\n- For text, number, and date fields, provide the new value directly.\n- For single select and iteration fields, provide the ID of the option or iteration.\n- To clear the field, set this to null.",
+                          "oneOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
                         },
                         {
-                          "type": "number"
+                          "type": "null"
                         }
                       ]
                     }
@@ -58519,14 +59660,21 @@
                       "type": "integer"
                     },
                     "value": {
-                      "description": "The new value for the field:\n- For text, number, and date fields, provide the new value directly.\n- For single select and iteration fields, provide the ID of the option or iteration.\n- To clear the field, set this to null.",
-                      "oneOf": [
+                      "anyOf": [
                         {
-                          "maxLength": 1048576,
-                          "type": "string"
+                          "description": "The new value for the field:\n- For text, number, and date fields, provide the new value directly.\n- For single select and iteration fields, provide the ID of the option or iteration.\n- To clear the field, set this to null.",
+                          "oneOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
                         },
                         {
-                          "type": "number"
+                          "type": "null"
                         }
                       ]
                     }
@@ -60005,7 +61153,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -60858,7 +62009,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -61193,7 +62347,10 @@
           "properties": {
             "sha": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "status": {
               "enum": [
@@ -61277,7 +62434,10 @@
                 },
                 "name": {
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "node_id": {
                   "maxLength": 1048576,
@@ -61399,7 +62559,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -62073,7 +63236,10 @@
                         "purple"
                       ],
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "created_at": {
                       "description": "The time the issue type created.",
@@ -62084,7 +63250,10 @@
                     "description": {
                       "description": "The description of the issue type.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "id": {
                       "description": "The unique identifier of the issue type.",
@@ -62118,7 +63287,10 @@
                     "description"
                   ],
                   "title": "Issue Type",
-                  "type": "object"
+                  "type": [
+                    "object",
+                    "null"
+                  ]
                 },
                 "updated_at": {
                   "format": "date-time",
@@ -62382,7 +63554,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -63096,7 +64271,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -63113,7 +64291,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -63457,7 +64638,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -63466,7 +64650,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -63628,7 +64815,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -63637,7 +64827,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -63672,7 +64865,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -63681,7 +64877,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -63807,7 +65006,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -63816,7 +65018,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -63936,7 +65141,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -63945,7 +65153,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -64034,7 +65245,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -64043,7 +65257,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -65214,7 +66431,7 @@
               "additionalProperties": false,
               "properties": {
                 "content": {
-                  "maxLength": 1048576,
+                  "maxLength": 4194304,
                   "type": "string"
                 },
                 "name": {
@@ -65256,7 +66473,7 @@
             "description": "Content File",
             "properties": {
               "content": {
-                "maxLength": 1048576,
+                "maxLength": 4194304,
                 "type": "string"
               },
               "encoding": {
@@ -65558,7 +66775,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "Autolink reference",
@@ -66599,7 +67819,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -67013,7 +68236,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "title": "File Commit",
@@ -68273,19 +69499,26 @@
                       "type": "string"
                     },
                     "value": {
-                      "description": "The value assigned to the property",
-                      "oneOf": [
+                      "anyOf": [
                         {
-                          "maxLength": 1048576,
-                          "type": "string"
+                          "description": "The value assigned to the property",
+                          "oneOf": [
+                            {
+                              "maxLength": 1048576,
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "maxLength": 1048576,
+                                "type": "string"
+                              },
+                              "maxItems": 100,
+                              "type": "array"
+                            }
+                          ]
                         },
                         {
-                          "items": {
-                            "maxLength": 1048576,
-                            "type": "string"
-                          },
-                          "maxItems": 100,
-                          "type": "array"
+                          "type": "null"
                         }
                       ]
                     }
@@ -68792,7 +70025,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "title": "File Commit",
@@ -69777,7 +71013,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "Autolink reference",
@@ -69850,7 +71089,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "Community Profile",
@@ -69881,7 +71123,10 @@
                 },
                 "name": {
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "node_id": {
                   "maxLength": 1048576,
@@ -69898,7 +71143,10 @@
                 }
               },
               "title": "Simple User",
-              "type": "object"
+              "type": [
+                "object",
+                "null"
+              ]
             }
           },
           "title": "Contributor Activity",
@@ -70267,7 +71515,10 @@
           "url": {
             "format": "uri",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "License",
@@ -70315,7 +71566,10 @@
             "url": {
               "format": "uri",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "License Simple",
@@ -70576,7 +71830,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "title": "Autolink reference",
@@ -70777,7 +72034,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "description": "Unique identifier of the repository",
@@ -70796,7 +72056,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -70870,7 +72133,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -70887,7 +72153,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -70943,7 +72212,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -70960,7 +72232,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -71121,7 +72396,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -71138,7 +72416,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -74030,7 +75311,10 @@
                 },
                 "name": {
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "node_id": {
                   "maxLength": 1048576,
@@ -74216,7 +75500,10 @@
                     "type": "object"
                   }
                 },
-                "type": "object"
+                "type": [
+                  "object",
+                  "null"
+                ]
               }
             },
             "type": "object"
@@ -74574,7 +75861,10 @@
           "created_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "int64",
@@ -74591,7 +75881,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -78686,7 +79979,10 @@
                   "properties": {
                     "actor_id": {
                       "description": "The ID of the actor that can bypass a ruleset. Required for `Integration`, `RepositoryRole`, `Team`, and `User` actor types. If `actor_type` is `OrganizationAdmin`, `actor_id` is ignored. If `actor_type` is `DeployKey`, this should be null. `OrganizationAdmin` is not applicable for personal repositories.",
-                      "type": "integer"
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
                     },
                     "actor_type": {
                       "description": "The type of actor that can bypass a ruleset.",
@@ -80458,7 +81754,10 @@
                   "properties": {
                     "actor_id": {
                       "description": "The ID of the actor that can bypass a ruleset. Required for `Integration`, `RepositoryRole`, `Team`, and `User` actor types. If `actor_type` is `OrganizationAdmin`, `actor_id` is ignored. If `actor_type` is `DeployKey`, this should be null. `OrganizationAdmin` is not applicable for personal repositories.",
-                      "type": "integer"
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
                     },
                     "actor_type": {
                       "description": "The type of actor that can bypass a ruleset.",
@@ -82267,7 +83566,10 @@
                   "properties": {
                     "actor_id": {
                       "description": "The ID of the actor that can bypass a ruleset. Required for `Integration`, `RepositoryRole`, `Team`, and `User` actor types. If `actor_type` is `OrganizationAdmin`, `actor_id` is ignored. If `actor_type` is `DeployKey`, this should be null. `OrganizationAdmin` is not applicable for personal repositories.",
-                      "type": "integer"
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
                     },
                     "actor_type": {
                       "description": "The type of actor that can bypass a ruleset.",
@@ -84037,7 +85339,10 @@
                   "properties": {
                     "actor_id": {
                       "description": "The ID of the actor that can bypass a ruleset. Required for `Integration`, `RepositoryRole`, `Team`, and `User` actor types. If `actor_type` is `OrganizationAdmin`, `actor_id` is ignored. If `actor_type` is `DeployKey`, this should be null. `OrganizationAdmin` is not applicable for personal repositories.",
-                      "type": "integer"
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
                     },
                     "actor_type": {
                       "description": "The type of actor that can bypass a ruleset.",
@@ -85501,7 +86806,10 @@
                   "version": {
                     "description": "The version of the runner image to deploy. This is relevant only for runners using custom images.",
                     "maxLength": 1048576,
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 },
                 "type": "object"
@@ -86901,7 +88209,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "format": "int64",
@@ -86918,7 +88229,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -87011,7 +88325,10 @@
                 "created_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "id": {
                   "description": "Unique identifier of the repository",
@@ -87030,7 +88347,10 @@
                 "updated_at": {
                   "format": "date-time",
                   "maxLength": 1048576,
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "format": "uri",
@@ -87897,7 +89217,10 @@
               "image_version": {
                 "description": "The version of the runner image to deploy. This is relevant only for runners using custom images.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "maximum_runners": {
                 "description": "The maximum amount of runners to scale up to. Runners will not auto-scale above this number. Use this setting to limit your cost.",
@@ -87980,7 +89303,10 @@
               "network_configuration_id": {
                 "description": "The identifier of a hosted compute network configuration.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "restricted_to_workflows": {
                 "default": false,
@@ -88433,7 +89759,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The REST API URL of the alert resource.",
@@ -88703,7 +90032,10 @@
               "format": "date-time",
               "maxLength": 1048576,
               "readOnly": true,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "description": "The REST API URL of the alert resource.",
@@ -88856,7 +90188,10 @@
               "format": "date-time",
               "maxLength": 1048576,
               "readOnly": true,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "description": "The REST API URL of the alert resource.",
@@ -88972,7 +90307,10 @@
               "assignee": {
                 "description": "The username of the user to assign to the alert. Set to `null` to unassign the alert.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "resolution": {
                 "description": "**Required when the `state` is `resolved`.** The reason for resolving the alert.",
@@ -88983,12 +90321,18 @@
                   "used_in_tests"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "resolution_comment": {
                 "description": "An optional comment when closing or reopening an alert. Cannot be updated or deleted.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "state": {
                 "description": "Sets the state of the secret scanning alert. You must provide `resolution` when you set the state to `resolved`.",
@@ -89006,7 +90350,10 @@
                   "inactive"
                 ],
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "type": "object"
@@ -89047,7 +90394,10 @@
             "format": "date-time",
             "maxLength": 1048576,
             "readOnly": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "description": "The REST API URL of the alert resource.",
@@ -89077,7 +90427,10 @@
                     "custom_pattern_version": {
                       "description": "The version of the entity. This is used to confirm you're updating the current version of the entity and mitigate unintentionally overriding someone else's update.",
                       "maxLength": 1048576,
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "push_protection_setting": {
                       "description": "Push protection setting to set for the pattern.",
@@ -89102,7 +90455,10 @@
               "pattern_config_version": {
                 "description": "The version of the entity. This is used to confirm you're updating the current version of the entity and mitigate unintentionally overriding someone else's update.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "provider_pattern_settings": {
                 "description": "Pattern settings for provider patterns.",
@@ -89221,7 +90577,10 @@
             "description": "Timestamp of latest configuration update.",
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -89357,7 +90716,10 @@
               "runner_label": {
                 "description": "Runner label to be used if the runner type is labeled.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "runner_type": {
                 "description": "Runner type to be used.",
@@ -89995,7 +91357,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -90063,7 +91428,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -90134,7 +91502,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -90189,7 +91560,10 @@
           },
           "name": {
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "node_id": {
             "maxLength": 1048576,
@@ -90249,7 +91623,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -90588,12 +91965,18 @@
               "description": {
                 "description": "A description of the team.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "group_id": {
                 "description": "The ID of the IdP group to assign team membership with. You can get this value from the [REST API endpoints for SCIM](https://docs.github.com/rest/scim#list-provisioned-scim-groups-for-an-enterprise).",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "name": {
                 "description": "The name of the team.",
@@ -90818,17 +92201,26 @@
               "description": {
                 "description": "A new description for the team.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "group_id": {
                 "description": "The ID of the IdP group to assign team membership with. The new IdP group will replace the existing one, or replace existing direct members if the team isn't currently linked to an IdP group.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "name": {
                 "description": "A new name for the team.",
                 "maxLength": 1048576,
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "notification_setting": {
                 "description": "The notification setting the team is set to. The options are:\n\n* `notifications_enabled` - team members receive notifications when the team is @mentioned.\n* `notifications_disabled` - no one receives notifications.\n",
@@ -91511,7 +92903,10 @@
           "created_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "description": "Unique identifier of the repository",
@@ -91529,7 +92924,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -91557,7 +92955,10 @@
           "created_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "description": "Unique identifier of the repository",
@@ -91575,7 +92976,10 @@
           "updated_at": {
             "format": "date-time",
             "maxLength": 1048576,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "format": "uri",
@@ -92295,7 +93699,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -92361,7 +93768,10 @@
             },
             "name": {
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "node_id": {
               "maxLength": 1048576,
@@ -92522,7 +93932,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -92539,7 +93952,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -92584,7 +94000,10 @@
             "created_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "format": "int64",
@@ -92601,7 +94020,10 @@
             "updated_at": {
               "format": "date-time",
               "maxLength": 1048576,
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "url": {
               "format": "uri",
@@ -92763,7 +94185,10 @@
               },
               "parent_team_id": {
                 "description": "The ID of a team to set as the parent team.",
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "permission": {
                 "default": "pull",
@@ -92876,7 +94301,10 @@
               },
               "parent_team_id": {
                 "description": "The ID of a team to set as the parent team.",
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "permission": {
                 "default": "pull",
@@ -93975,7 +95403,10 @@
                 "type": "string"
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "type": "object"

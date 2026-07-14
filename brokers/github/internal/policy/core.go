@@ -161,7 +161,8 @@ func attrsForOperation(attrs map[string][]string, op Operation) (map[string][]st
 }
 
 func canonicalAttr(key string) (string, bool) {
-	switch strings.TrimSpace(key) {
+	key = strings.TrimSpace(key)
+	switch key {
 	case "ref", "refs":
 		return "ref", true
 	case "base_ref", "base_refs":
@@ -172,9 +173,9 @@ func canonicalAttr(key string) (string, bool) {
 		return "path", true
 	case "actor_id", "actor_login", "arguments_digest", "content_digest", "credential_kind", "environment", "label", "merge_method",
 		"credential_slot", "permission", "ref_change", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref":
-		return strings.TrimSpace(key), true
+		return key, true
 	default:
-		return "", false
+		return key, slices.Contains(CatalogAttributeNames(), key)
 	}
 }
 

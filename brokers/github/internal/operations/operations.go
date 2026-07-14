@@ -315,7 +315,7 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 		return Plan{}, err
 	}
 	presentation := presentDescriptor(a.descriptor, targetMap)
-	authorization := authorizeDescriptor(a.descriptor, targetMap, argumentsMap)
+	authorization := authorizeDescriptor(a.descriptor, a.binding, targetMap, argumentsMap)
 	if a.descriptor.CredentialOutputKind != nil {
 		protected, _ := decodeSealedArguments(input.Arguments)
 		if authorization.Attrs == nil {
@@ -352,7 +352,7 @@ func (a generatedAdapter) Authorize(plan Plan) Authorization {
 	targetMap, _ := decodeObject(plan.Target)
 	publicArguments, _ := a.publicArguments(plan.Arguments)
 	argumentsMap, _ := decodeObject(publicArguments)
-	return authorizeDescriptor(a.descriptor, targetMap, argumentsMap)
+	return authorizeDescriptor(a.descriptor, a.binding, targetMap, argumentsMap)
 }
 
 func (a generatedAdapter) Present(plan Plan) agentv1.Presentation {
@@ -392,8 +392,8 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 		if err != nil {
 			return Outcome{}, classifyExecutionError(a.binding.Method, err)
 		}
-		if result.StatusCode == 202 {
-			return Outcome{}, &PossiblePartialError{Err: githubauth.APIError{Code: "accepted", StatusCode: result.StatusCode}}
+		if err := executionStatusError(*a.binding, result.StatusCode); err != nil {
+			return Outcome{}, err
 		}
 		if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
 			return Outcome{}, err
@@ -402,6 +402,17 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 	default:
 		return Outcome{}, errors.New("GitHub adapter is incomplete")
 	}
+}
+
+func executionStatusError(binding opbinding.Binding, status int) error {
+	if slices.Contains(binding.SuccessStatusCodes, status) {
+		return nil
+	}
+	unexpected := githubauth.APIError{Code: "unexpected_success_status", StatusCode: status}
+	if binding.Method == "GET" || binding.Method == "HEAD" {
+		return unexpected
+	}
+	return &PossiblePartialError{Err: unexpected}
 }
 
 func (a generatedAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
@@ -709,14 +720,35 @@ func targetSummary(kind string, target map[string]any) string {
 	return kind
 }
 
-func authorizeDescriptor(descriptor opcatalog.Descriptor, target, arguments map[string]any) Authorization {
+func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Binding, target, arguments map[string]any) Authorization {
+	attrs := authorizationAttrs(arguments)
+	selectors := authorizationSelectorAttrs(binding, arguments)
+	if attrs == nil && len(selectors) > 0 {
+		attrs = map[string][]string{}
+	}
+	for key, values := range selectors {
+		attrs[key] = values
+	}
 	return Authorization{
 		Operation:      descriptor.Name,
 		TargetKind:     descriptor.TargetKind,
 		TargetFields:   authorizationTargetFields(target),
-		Attrs:          authorizationAttrs(arguments),
+		Attrs:          attrs,
 		CredentialKind: descriptor.CredentialKind,
 	}
+}
+
+func authorizationSelectorAttrs(binding *opbinding.Binding, arguments map[string]any) map[string][]string {
+	if binding == nil || len(binding.AuthorizationParameters) == 0 {
+		return nil
+	}
+	result := make(map[string][]string, len(binding.AuthorizationParameters))
+	for _, parameter := range binding.AuthorizationParameters {
+		if values := scalarStrings(arguments[parameter.Name]); len(values) > 0 {
+			result[parameter.Attribute] = values
+		}
+	}
+	return result
 }
 
 func authorizationTargetFields(target map[string]any) map[string][]string {

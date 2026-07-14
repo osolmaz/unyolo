@@ -66,36 +66,43 @@ type restCoverage struct {
 }
 
 type restBinding struct {
-	ID                      string             `json:"id"`
-	Operation               string             `json:"operation"`
-	UpstreamOperationID     string             `json:"upstream_operation_id"`
-	Method                  string             `json:"method"`
-	PathTemplate            string             `json:"path_template"`
-	CredentialKind          string             `json:"credential_kind"`
-	APIVersion              string             `json:"api_version"`
-	MediaType               string             `json:"media_type"`
-	PathParameters          []string           `json:"path_parameters,omitempty"`
-	TargetPathParameters    []targetParameter  `json:"target_path_parameters,omitempty"`
-	AuthenticatedUserTarget bool               `json:"authenticated_user_target,omitempty"`
-	ArgumentParameters      []parameterBinding `json:"argument_parameters,omitempty"`
-	RequestSchema           string             `json:"request_schema"`
-	ResponseSchema          string             `json:"response_schema"`
-	ResponseProjection      []string           `json:"response_projection,omitempty"`
-	ResponseRootType        string             `json:"response_root_type"`
-	ServerRole              string             `json:"server_role"`
-	RequestBytesLimit       int64              `json:"request_bytes_limit"`
-	ResponseBytesLimit      int64              `json:"response_bytes_limit"`
-	Pagination              string             `json:"pagination"`
-	ConditionalRequest      bool               `json:"conditional_request"`
-	RedirectPolicy          string             `json:"redirect_policy"`
-	StreamDirection         string             `json:"stream_direction,omitempty"`
-	Reconciliation          string             `json:"reconciliation"`
-	ReconciliationBindingID string             `json:"reconciliation_binding_id,omitempty"`
+	ID                      string                   `json:"id"`
+	Operation               string                   `json:"operation"`
+	UpstreamOperationID     string                   `json:"upstream_operation_id"`
+	Method                  string                   `json:"method"`
+	PathTemplate            string                   `json:"path_template"`
+	CredentialKind          string                   `json:"credential_kind"`
+	APIVersion              string                   `json:"api_version"`
+	MediaType               string                   `json:"media_type"`
+	PathParameters          []string                 `json:"path_parameters,omitempty"`
+	TargetPathParameters    []targetParameter        `json:"target_path_parameters,omitempty"`
+	AuthorizationParameters []authorizationParameter `json:"authorization_parameters,omitempty"`
+	AuthenticatedUserTarget bool                     `json:"authenticated_user_target,omitempty"`
+	ArgumentParameters      []parameterBinding       `json:"argument_parameters,omitempty"`
+	RequestSchema           string                   `json:"request_schema"`
+	ResponseSchema          string                   `json:"response_schema"`
+	ResponseProjection      []string                 `json:"response_projection,omitempty"`
+	ResponseRootType        string                   `json:"response_root_type"`
+	ServerRole              string                   `json:"server_role"`
+	RequestBytesLimit       int64                    `json:"request_bytes_limit"`
+	ResponseBytesLimit      int64                    `json:"response_bytes_limit"`
+	SuccessStatusCodes      []int                    `json:"success_status_codes"`
+	Pagination              string                   `json:"pagination"`
+	ConditionalRequest      bool                     `json:"conditional_request"`
+	RedirectPolicy          string                   `json:"redirect_policy"`
+	StreamDirection         string                   `json:"stream_direction,omitempty"`
+	Reconciliation          string                   `json:"reconciliation"`
+	ReconciliationBindingID string                   `json:"reconciliation_binding_id,omitempty"`
 }
 
 type targetParameter struct {
 	Name  string `json:"name"`
 	Field string `json:"field"`
+}
+
+type authorizationParameter struct {
+	Name      string `json:"name"`
+	Attribute string `json:"attribute"`
 }
 
 type parameterBinding struct {

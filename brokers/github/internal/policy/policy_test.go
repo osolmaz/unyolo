@@ -276,6 +276,21 @@ func TestRegistryHelpers(t *testing.T) {
 	}
 }
 
+func TestGeneratedPathSelectorsAreOperationSpecificPolicyAttributes(t *testing.T) {
+	selector := "selector_username"
+	operation := Operation("collaborator.orgs_remove_outside_collaborator")
+	if !slices.Contains(operationAttrs(operation), selector) {
+		t.Fatalf("collaborator attrs = %v", operationAttrs(operation))
+	}
+	if slices.Contains(operationAttrs(Operation("repo.metadata.read")), selector) {
+		t.Fatalf("repository metadata unexpectedly accepts %q", selector)
+	}
+	attrs, err := attrsForOperation(map[string][]string{selector: {"octocat"}}, operation)
+	if err != nil || !slices.Equal(attrs[selector], []string{"octocat"}) {
+		t.Fatalf("selector attrs = %+v, err = %v", attrs, err)
+	}
+}
+
 func TestCoreTargetsForOperation(t *testing.T) {
 	t.Parallel()
 	targets, err := coreTargetsForOperation([]Target{{Kind: "*", Owner: "dutifuldev", Name: "gh-broker"}}, OperationGitFetch)

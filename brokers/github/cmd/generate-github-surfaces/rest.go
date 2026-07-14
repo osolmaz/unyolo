@@ -107,7 +107,7 @@ func generateRESTOperation(state *generatedState, method, path string, operation
 		descriptor := descriptorForREST(name, method, path, operation, disposition, credential, requiredPermissions, riskClasses, components)
 		state.descriptors = append(state.descriptors, descriptor)
 		coverage.CatalogOperations = append(coverage.CatalogOperations, name)
-		state.schemas.Operations[name] = schemasForREST(name, method, path, operation, descriptor.TargetKind, components)
+		state.schemas.Operations[name] = schemasForREST(name, method, path, operation, descriptor.Descriptor, components)
 		state.bindings = append(state.bindings, bindingForREST(name, method, path, operation, descriptor.Descriptor, components))
 	}
 	state.restCoverage = append(state.restCoverage, coverage)
@@ -494,6 +494,8 @@ func streamDirection(operationID string) string {
 		"actions/download-job-logs-for-workflow-run",
 		"actions/download-workflow-run-attempt-logs",
 		"actions/download-workflow-run-logs",
+		"migrations/download-archive-for-org",
+		"migrations/get-archive-for-authenticated-user",
 		"repos/download-tarball-archive",
 		"repos/download-zipball-archive",
 		"repos/get-release-asset",

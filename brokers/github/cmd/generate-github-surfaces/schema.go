@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/capability"
@@ -43,11 +44,12 @@ func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 	return result
 }
 
-func schemasForREST(name, method, path string, operation restOperation, targetKind string, components map[string]any) operationSchemas {
-	arguments := argumentsSchemaForREST(method, path, operation, targetKind, components)
+func schemasForREST(name, method, path string, operation restOperation, descriptor capability.Descriptor, components map[string]any) operationSchemas {
+	arguments := argumentsSchemaForREST(method, path, operation, descriptor.TargetKind, components)
 	arguments = projectReviewedRequestFields(name, arguments)
 	upstreamResult := responseSchema(operation, components)
 	result := projectedResponseSchema(upstreamResult, responseProjection(name, upstreamResult))
+	alignProjectedResultLimits(name, result, responseLimit(descriptor))
 	if runnerCredentialOutput(operation.OperationID) != nil {
 		result = map[string]any{
 			"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
@@ -60,7 +62,38 @@ func schemasForREST(name, method, path string, operation restOperation, targetKi
 	if streamDirection(operation.OperationID) == "download" {
 		result = streamResultSchema()
 	}
-	return operationSchemas{Target: "target." + targetKind + ".v1", Arguments: arguments, Result: result}
+	return operationSchemas{Target: "target." + descriptor.TargetKind + ".v1", Arguments: arguments, Result: result}
+}
+
+func alignProjectedResultLimits(operation string, schema map[string]any, limit int64) {
+	if operation != "repo.contents.read" {
+		return
+	}
+	if properties, ok := schema["properties"].(map[string]any); ok {
+		if content, ok := properties["content"].(map[string]any); ok {
+			content["maxLength"] = limit
+		}
+		for _, value := range properties {
+			if child, ok := value.(map[string]any); ok {
+				alignProjectedResultLimits(operation, child, limit)
+			}
+		}
+	}
+	if items, ok := schema["items"].(map[string]any); ok {
+		alignProjectedResultLimits(operation, items, limit)
+	}
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		for _, value := range schemaArray(schema[keyword]) {
+			if child, ok := value.(map[string]any); ok {
+				alignProjectedResultLimits(operation, child, limit)
+			}
+		}
+	}
+}
+
+func schemaArray(value any) []any {
+	values, _ := value.([]any)
+	return values
 }
 
 func projectReviewedRequestFields(operation string, arguments map[string]any) map[string]any {
@@ -381,6 +414,7 @@ func closeOpenAPISchema(schema map[string]any, components map[string]any, resolv
 		next[reference] = true
 		return closeOpenAPISchema(resolved, components, next, depth+1)
 	}
+	nullable, _ := schema["nullable"].(bool)
 	closed := closeSchema(schema, depth)
 	for _, keyword := range []string{"properties", "$defs"} {
 		if values, ok := closed[keyword].(map[string]any); ok {
@@ -405,9 +439,32 @@ func closeOpenAPISchema(schema map[string]any, components map[string]any, resolv
 			}
 		}
 	}
-	delete(closed, "nullable")
+	applyNullable(closed, nullable)
 	normalizeComposedObjectProperties(closed)
 	return closed
+}
+
+func applyNullable(schema map[string]any, nullable bool) {
+	delete(schema, "nullable")
+	if !nullable {
+		return
+	}
+	if value, found := schema["type"]; found {
+		types, ok := value.([]any)
+		if !ok {
+			types = []any{value}
+		}
+		if !slices.Contains(types, any("null")) {
+			types = append(types, "null")
+		}
+		schema["type"] = types
+		return
+	}
+	branch := copyx.JSONMap(schema)
+	for key := range schema {
+		delete(schema, key)
+	}
+	schema["anyOf"] = []any{branch, map[string]any{"type": "null"}}
 }
 
 func normalizeComposedObjectProperties(schema map[string]any) {
@@ -476,6 +533,7 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 			targetParameters = append(targetParameters, targetParameter{Name: parameter, Field: field})
 		}
 	}
+	authorizationParameters := pathAuthorizationParameters(pathParameters, targetParameters)
 	arguments := []parameterBinding{}
 	pagination := "none"
 	conditional := false
@@ -494,10 +552,9 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 	if method == "GET" || method == "HEAD" {
 		conditional = true
 	}
-	responseLimit := int64(4 << 20)
+	responseLimit := responseLimit(descriptor)
 	requestLimit := int64(2 << 20)
 	if descriptor.ExecutorKind == "bounded-stream" {
-		responseLimit = 256 << 20
 		if streamDirection(operation.OperationID) == "upload" {
 			requestLimit = 256 << 20
 		}
@@ -507,14 +564,57 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 	return restBinding{
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
-		MediaType: "application/vnd.github+json", PathParameters: pathParameters, TargetPathParameters: targetParameters, ArgumentParameters: arguments,
+		MediaType: "application/vnd.github+json", PathParameters: pathParameters, TargetPathParameters: targetParameters,
+		AuthorizationParameters: authorizationParameters, ArgumentParameters: arguments,
 		AuthenticatedUserTarget: authenticatedUserTarget(operation.OperationID, descriptor.TargetKind, descriptor.CredentialKind, path, targetParameters),
 		RequestSchema:           descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
 		ResponseRootType: rootType, ServerRole: serverRole(operation),
-		RequestBytesLimit: requestLimit, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
+		RequestBytesLimit: requestLimit, ResponseBytesLimit: responseLimit, SuccessStatusCodes: successStatusCodes(operation, streamDirection(operation.OperationID)),
+		Pagination: pagination, ConditionalRequest: conditional,
 		RedirectPolicy: redirectPolicy(descriptor.ExecutorKind), Reconciliation: descriptor.ReconcilerKind,
 		StreamDirection: streamDirection(operation.OperationID),
 	}
+}
+
+func responseLimit(descriptor capability.Descriptor) int64 {
+	if descriptor.ExecutorKind == "bounded-stream" {
+		return 256 << 20
+	}
+	return 4 << 20
+}
+
+func pathAuthorizationParameters(pathParameters []string, targetParameters []targetParameter) []authorizationParameter {
+	targetOwned := make(map[string]bool, len(targetParameters))
+	for _, parameter := range targetParameters {
+		targetOwned[parameter.Name] = true
+	}
+	result := make([]authorizationParameter, 0, len(pathParameters))
+	for _, name := range pathParameters {
+		if !targetOwned[name] {
+			result = append(result, authorizationParameter{Name: name, Attribute: "selector_" + strings.ReplaceAll(name, "-", "_")})
+		}
+	}
+	return result
+}
+
+func successStatusCodes(operation restOperation, direction string) []int {
+	result := documentedStatusCodes(operation, 200, 300)
+	if len(result) == 0 && direction == "download" {
+		return documentedStatusCodes(operation, 300, 400)
+	}
+	return result
+}
+
+func documentedStatusCodes(operation restOperation, minimum, maximum int) []int {
+	result := make([]int, 0, len(operation.Responses))
+	for value := range operation.Responses {
+		status, err := strconv.Atoi(value)
+		if err == nil && status >= minimum && status < maximum {
+			result = append(result, status)
+		}
+	}
+	slices.Sort(result)
+	return result
 }
 
 func authenticatedUserTarget(operationID, targetKind, credentialKind, path string, targetParameters []targetParameter) bool {

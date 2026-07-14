@@ -1,7 +1,6 @@
 package githubauth
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -38,6 +37,17 @@ type cacheEntry struct {
 	refreshAt  time.Time
 }
 
+type installationTokenRequest struct {
+	RepositoryIDs []int64           `json:"repository_ids,omitempty"`
+	Repositories  []string          `json:"repositories,omitempty"`
+	Permissions   map[string]string `json:"permissions"`
+}
+
+type installationTokenResponse struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 type installationProvider struct {
 	app           *appProvider
 	apiURL        *url.URL
@@ -68,13 +78,13 @@ func (p *installationProvider) credential(ctx context.Context, installationID in
 	if installationID <= 0 {
 		return nil, errors.New("exact GitHub installation id is required")
 	}
-	permissionObject, err := installationPermissions(permissions)
+	validatedPermissions, err := installationPermissions(permissions)
 	if err != nil {
 		return nil, err
 	}
 	key := credentialCacheKey(installationID, repositoryIDs, permissions, p.apiURL.Host, p.refreshBefore)
 	value, err, _ := p.flight.Do(key, func() (any, error) {
-		return p.mintCredential(ctx, key, installationID, repositoryIDs, permissions, permissionObject)
+		return p.mintCredential(ctx, key, installationID, repositoryIDs, validatedPermissions)
 	})
 	if err != nil {
 		return nil, err
@@ -86,8 +96,7 @@ func (p *installationProvider) credential(ctx context.Context, installationID in
 	return credential, nil
 }
 
-//nolint:cyclop // Token scope, cache identity, expiry, and response checks form one credential boundary.
-func (p *installationProvider) mintCredential(ctx context.Context, key string, installationID int64, repositoryIDs []int64, permissions map[string]string, permissionObject *github.InstallationPermissions) (*Credential, error) {
+func (p *installationProvider) mintCredential(ctx context.Context, key string, installationID int64, repositoryIDs []int64, permissions map[string]string) (*Credential, error) {
 	p.mu.Lock()
 	if p.disabled[installationID] {
 		p.mu.Unlock()
@@ -100,16 +109,15 @@ func (p *installationProvider) mintCredential(ctx context.Context, key string, i
 		return entry.credential, nil
 	}
 	p.mu.Unlock()
-	options := &github.InstallationTokenOptions{Permissions: permissionObject}
-	if len(repositoryIDs) > 0 {
-		options.RepositoryIDs = repositoryIDs
-	}
-	token, _, err := p.app.client.Apps.CreateInstallationToken(ctx, installationID, options)
+	token, err := p.createInstallationToken(ctx, installationID, installationTokenRequest{
+		RepositoryIDs: repositoryIDs,
+		Permissions:   permissions,
+	})
 	if err != nil {
-		return nil, classifyAPIError(err)
+		return nil, err
 	}
-	value := []byte(strings.TrimSpace(token.GetToken()))
-	expiresAt := token.GetExpiresAt().UTC()
+	value := []byte(strings.TrimSpace(token.Token))
+	expiresAt := token.ExpiresAt.UTC()
 	if len(value) == 0 || !expiresAt.After(now.Add(p.refreshBefore)) {
 		zero(value)
 		return nil, errors.New("GitHub installation token response is invalid")
@@ -177,11 +185,11 @@ func (p *installationProvider) resolveRepository(ctx context.Context, owner, rep
 	if p.installationDisabled(installation.GetID()) {
 		return repositoryResolution{}, errors.New("GitHub installation is suspended or deleted")
 	}
-	permissionObject, err := installationPermissions(permissions)
+	validatedPermissions, err := installationPermissions(permissions)
 	if err != nil {
 		return repositoryResolution{}, err
 	}
-	result, err := p.resolveRepositoryID(ctx, installation, owner, repo, permissionObject)
+	result, err := p.resolveRepositoryID(ctx, installation, owner, repo, validatedPermissions)
 	if err != nil {
 		return repositoryResolution{}, err
 	}
@@ -203,14 +211,15 @@ func (p *installationProvider) cachedRepository(key string) (repositoryResolutio
 // GitHub's repository-installation response does not include the repository
 // id. Mint one uncached name-restricted credential, resolve the immutable id,
 // revoke that bootstrap credential, then mint/cache only by repository id.
-func (p *installationProvider) resolveRepositoryID(ctx context.Context, installation *github.Installation, owner, repo string, permissions *github.InstallationPermissions) (repositoryResolution, error) {
-	token, _, err := p.app.client.Apps.CreateInstallationToken(ctx, installation.GetID(), &github.InstallationTokenOptions{
-		Repositories: []string{repo}, Permissions: permissions,
+func (p *installationProvider) resolveRepositoryID(ctx context.Context, installation *github.Installation, owner, repo string, permissions map[string]string) (repositoryResolution, error) {
+	token, err := p.createInstallationToken(ctx, installation.GetID(), installationTokenRequest{
+		Repositories: []string{repo},
+		Permissions:  permissions,
 	})
 	if err != nil {
-		return repositoryResolution{}, classifyAPIError(err)
+		return repositoryResolution{}, err
 	}
-	bootstrap := []byte(token.GetToken())
+	bootstrap := []byte(token.Token)
 	if len(bootstrap) == 0 {
 		return repositoryResolution{}, errors.New("GitHub repository resolution credential is invalid")
 	}
@@ -320,23 +329,46 @@ func canonicalRepositoryIDs(ids []int64) []int64 {
 	return result
 }
 
-func installationPermissions(value map[string]string) (*github.InstallationPermissions, error) {
-	for key, level := range value {
-		if strings.TrimSpace(key) == "" || (level != "read" && level != "write") {
-			return nil, errors.New("GitHub installation permission map is invalid")
-		}
+func (p *installationProvider) createInstallationToken(ctx context.Context, installationID int64, options installationTokenRequest) (installationTokenResponse, error) {
+	if p == nil || p.app == nil || p.app.client == nil || installationID <= 0 {
+		return installationTokenResponse{}, errors.New("GitHub installation token request is invalid")
 	}
-	encoded, err := json.Marshal(value)
+	request, err := p.app.client.NewRequest(ctx, http.MethodPost, fmt.Sprintf("app/installations/%d/access_tokens", installationID), options)
 	if err != nil {
-		return nil, errors.New("encode GitHub installation permissions")
+		return installationTokenResponse{}, errors.New("create GitHub installation token request")
 	}
-	var result github.InstallationPermissions
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&result); err != nil {
+	var token installationTokenResponse
+	if _, err := p.app.client.Do(request, &token); err != nil {
+		return installationTokenResponse{}, classifyAPIError(err)
+	}
+	return token, nil
+}
+
+func installationPermissions(value map[string]string) (map[string]string, error) {
+	if len(value) == 0 {
 		return nil, errors.New("GitHub installation permission map is invalid")
 	}
-	return &result, nil
+	result := make(map[string]string, len(value))
+	for key, level := range value {
+		if !knownInstallationPermission(key) || (level != "read" && level != "write") {
+			return nil, errors.New("GitHub installation permission map is invalid")
+		}
+		result[key] = level
+	}
+	return result, nil
+}
+
+func knownInstallationPermission(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, descriptor := range opcatalog.MustAll() {
+		if _, found := descriptor.RequiredGitHubPermissions[name]; found {
+			return true
+		}
+	}
+	return false
 }
 
 func installationPermissionMap(value *github.InstallationPermissions) map[string]string {

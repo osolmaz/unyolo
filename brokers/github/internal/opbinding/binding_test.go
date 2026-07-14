@@ -70,6 +70,63 @@ func TestBindingsUseDistinctAuthoritativeTargetFields(t *testing.T) {
 	}
 }
 
+func TestBindingsAuthorizeEveryNonTargetPathSelector(t *testing.T) {
+	t.Parallel()
+	binding := ByOperation("collaborator.orgs_remove_outside_collaborator")
+	want := []AuthorizationParameter{{Name: "username", Attribute: "selector_username"}}
+	if len(binding) != 1 || !slices.Equal(binding[0].AuthorizationParameters, want) {
+		t.Fatalf("collaborator authorization parameters = %+v, want %+v", binding, want)
+	}
+	if attributes := AuthorizationAttributes("collaborator.orgs_remove_outside_collaborator"); !slices.Equal(attributes, []string{"selector_username"}) {
+		t.Fatalf("authorization attributes = %v", attributes)
+	}
+	if attributes := AuthorizationAttributes("not.real"); attributes != nil {
+		t.Fatalf("unknown authorization attributes = %v", attributes)
+	}
+	for _, binding := range mustBindings(t) {
+		if err := validatePathAuthorization(binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPathAuthorizationValidationRejectsIncompleteBindings(t *testing.T) {
+	base := ByOperation("collaborator.orgs_remove_outside_collaborator")[0]
+	for name, mutate := range map[string]func(*Binding){
+		"missing selector": func(value *Binding) { value.AuthorizationParameters = nil },
+		"unknown path":     func(value *Binding) { value.AuthorizationParameters[0].Name = "not_in_path" },
+		"target overlap":   func(value *Binding) { value.AuthorizationParameters[0].Name = "org" },
+		"unsafe attr":      func(value *Binding) { value.AuthorizationParameters[0].Attribute = "username" },
+		"duplicate name": func(value *Binding) {
+			value.AuthorizationParameters = append(value.AuthorizationParameters, value.AuthorizationParameters[0])
+		},
+		"duplicate attr": func(value *Binding) {
+			value.PathParameters = append(value.PathParameters, "actor")
+			value.AuthorizationParameters = append(value.AuthorizationParameters, AuthorizationParameter{Name: "actor", Attribute: "selector_username"})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := base
+			value.PathParameters = slices.Clone(base.PathParameters)
+			value.TargetPathParameters = slices.Clone(base.TargetPathParameters)
+			value.AuthorizationParameters = slices.Clone(base.AuthorizationParameters)
+			mutate(&value)
+			if err := validatePathAuthorization(value); err == nil {
+				t.Fatal("invalid authorization binding accepted")
+			}
+		})
+	}
+}
+
+func mustBindings(t *testing.T) []Binding {
+	t.Helper()
+	bindings, err := All()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bindings
+}
+
 func pathNumberParameter(operation string) string {
 	if operation == "issue.issues_update" {
 		return "issue_number"
@@ -94,6 +151,9 @@ func TestBindingValidationFailsClosed(t *testing.T) {
 		{"path", func(value *Binding) { value.PathTemplate = "relative" }},
 		{"version", func(value *Binding) { value.APIVersion = "latest" }},
 		{"limit", func(value *Binding) { value.RequestBytesLimit = 0 }},
+		{"missing status", func(value *Binding) { value.SuccessStatusCodes = nil }},
+		{"unsorted status", func(value *Binding) { value.SuccessStatusCodes = []int{204, 200} }},
+		{"invalid status", func(value *Binding) { value.SuccessStatusCodes = []int{400} }},
 		{"url", func(value *Binding) { value.PathTemplate = "https://example.invalid" }},
 		{"missing response projection", func(value *Binding) { value.ResponseProjection = nil }},
 		{"unsafe response projection", func(value *Binding) { value.ResponseProjection = []string{"token"} }},

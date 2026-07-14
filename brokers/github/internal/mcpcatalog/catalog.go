@@ -10,6 +10,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/capability"
 )
@@ -42,7 +43,7 @@ func Tools(exposure Exposure, enabled Enabled) ([]map[string]any, error) {
 		return nil, err
 	}
 	tools := capability.MCPTools(capability.SurfaceOptions{Descriptors: opcatalog.CapabilityDescriptors(descriptors), Schemas: schemaregistry.InputSchemas,
-		AttributeNames:         []string{"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method", "path", "permission", "ref", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref"},
+		AttributeNames:         ghpolicy.CatalogAttributeNames(),
 		WindowSubmitsOperation: true,
 		ToolDescription: func(descriptor capability.Descriptor) string {
 			return descriptor.Summary + " GitHub credentials remain inside GH Broker."

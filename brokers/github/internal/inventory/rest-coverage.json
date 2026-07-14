@@ -10906,12 +10906,12 @@
     "method": "GET",
     "path": "/orgs/{org}/migrations/{migration_id}/archive",
     "summary": "Download an organization migration archive",
-    "disposition": "implemented",
+    "disposition": "protocol",
     "catalog_operations": [
       "organization.migrations_download_archive_for_org"
     ],
     "credential_kind": "user",
-    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
+    "reason": "named bounded binary or redirect-validated stream adapter",
     "reviewed": true
   },
   {
@@ -10919,12 +10919,12 @@
     "method": "GET",
     "path": "/user/migrations/{migration_id}/archive",
     "summary": "Download a user migration archive",
-    "disposition": "implemented",
+    "disposition": "protocol",
     "catalog_operations": [
       "migration.migrations_get_archive_for_authenticated_user"
     ],
     "credential_kind": "user",
-    "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
+    "reason": "named bounded binary or redirect-validated stream adapter",
     "reviewed": true
   },
   {

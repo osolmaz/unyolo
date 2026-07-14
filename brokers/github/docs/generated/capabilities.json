@@ -19522,7 +19522,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "implemented",
+    "implementation_status": "protocol",
     "risk": "low",
     "target_kind": "user",
     "max_uses": 100,
@@ -19539,7 +19539,7 @@
     "upstream_binding_ids": [
       "rest:migrations/get-archive-for-authenticated-user"
     ],
-    "executor_kind": "rest-binding",
+    "executor_kind": "bounded-stream",
     "reconciler_kind": "none"
   },
   {
@@ -26042,7 +26042,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "implemented",
+    "implementation_status": "protocol",
     "risk": "low",
     "target_kind": "organization",
     "max_uses": 100,
@@ -26059,7 +26059,7 @@
     "upstream_binding_ids": [
       "rest:migrations/download-archive-for-org"
     ],
-    "executor_kind": "rest-binding",
+    "executor_kind": "bounded-stream",
     "reconciler_kind": "none"
   },
   {

@@ -25,32 +25,39 @@ type TargetParameter struct {
 	Field string `json:"field"`
 }
 
+type AuthorizationParameter struct {
+	Name      string `json:"name"`
+	Attribute string `json:"attribute"`
+}
+
 type Binding struct {
-	ID                      string            `json:"id"`
-	Operation               string            `json:"operation"`
-	UpstreamOperationID     string            `json:"upstream_operation_id"`
-	Method                  string            `json:"method"`
-	PathTemplate            string            `json:"path_template"`
-	CredentialKind          string            `json:"credential_kind"`
-	APIVersion              string            `json:"api_version"`
-	MediaType               string            `json:"media_type"`
-	PathParameters          []string          `json:"path_parameters,omitempty"`
-	TargetPathParameters    []TargetParameter `json:"target_path_parameters,omitempty"`
-	AuthenticatedUserTarget bool              `json:"authenticated_user_target,omitempty"`
-	ArgumentParameters      []Parameter       `json:"argument_parameters,omitempty"`
-	RequestSchema           string            `json:"request_schema"`
-	ResponseSchema          string            `json:"response_schema"`
-	ResponseProjection      []string          `json:"response_projection,omitempty"`
-	ResponseRootType        string            `json:"response_root_type"`
-	ServerRole              string            `json:"server_role"`
-	RequestBytesLimit       int64             `json:"request_bytes_limit"`
-	ResponseBytesLimit      int64             `json:"response_bytes_limit"`
-	Pagination              string            `json:"pagination"`
-	ConditionalRequest      bool              `json:"conditional_request"`
-	RedirectPolicy          string            `json:"redirect_policy"`
-	StreamDirection         string            `json:"stream_direction,omitempty"`
-	Reconciliation          string            `json:"reconciliation"`
-	ReconciliationBindingID string            `json:"reconciliation_binding_id,omitempty"`
+	ID                      string                   `json:"id"`
+	Operation               string                   `json:"operation"`
+	UpstreamOperationID     string                   `json:"upstream_operation_id"`
+	Method                  string                   `json:"method"`
+	PathTemplate            string                   `json:"path_template"`
+	CredentialKind          string                   `json:"credential_kind"`
+	APIVersion              string                   `json:"api_version"`
+	MediaType               string                   `json:"media_type"`
+	PathParameters          []string                 `json:"path_parameters,omitempty"`
+	TargetPathParameters    []TargetParameter        `json:"target_path_parameters,omitempty"`
+	AuthorizationParameters []AuthorizationParameter `json:"authorization_parameters,omitempty"`
+	AuthenticatedUserTarget bool                     `json:"authenticated_user_target,omitempty"`
+	ArgumentParameters      []Parameter              `json:"argument_parameters,omitempty"`
+	RequestSchema           string                   `json:"request_schema"`
+	ResponseSchema          string                   `json:"response_schema"`
+	ResponseProjection      []string                 `json:"response_projection,omitempty"`
+	ResponseRootType        string                   `json:"response_root_type"`
+	ServerRole              string                   `json:"server_role"`
+	RequestBytesLimit       int64                    `json:"request_bytes_limit"`
+	ResponseBytesLimit      int64                    `json:"response_bytes_limit"`
+	SuccessStatusCodes      []int                    `json:"success_status_codes"`
+	Pagination              string                   `json:"pagination"`
+	ConditionalRequest      bool                     `json:"conditional_request"`
+	RedirectPolicy          string                   `json:"redirect_policy"`
+	StreamDirection         string                   `json:"stream_direction,omitempty"`
+	Reconciliation          string                   `json:"reconciliation"`
+	ReconciliationBindingID string                   `json:"reconciliation_binding_id,omitempty"`
 }
 
 //go:embed bindings.json
@@ -60,6 +67,7 @@ var once sync.Once
 var values []Binding
 var loadErr error
 var safeProjectionSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,255}$`)
+var safeAuthorizationAttributePattern = regexp.MustCompile(`^selector_[A-Za-z0-9_]{1,255}$`)
 
 func All() ([]Binding, error) {
 	once.Do(func() {
@@ -117,10 +125,11 @@ func Validate(values []Binding) error {
 		if (value.StreamDirection != "") != (value.RedirectPolicy == "github-download-host-allowlist") {
 			return fmt.Errorf("GitHub REST binding %q stream metadata drifted", value.ID)
 		}
-		for _, parameter := range value.TargetPathParameters {
-			if !slices.Contains(value.PathParameters, parameter.Name) || !slices.Contains([]string{"id", "number", "owner", "repo", "name"}, parameter.Field) {
-				return fmt.Errorf("GitHub REST binding %q has invalid target path ownership", value.ID)
-			}
+		if err := validateBindingAuthorization(value); err != nil {
+			return err
+		}
+		if err := validateSuccessStatusCodes(value); err != nil {
+			return err
 		}
 		if len(value.ResponseProjection) == 0 {
 			return fmt.Errorf("GitHub REST binding %q has no safe response projection", value.ID)
@@ -154,6 +163,72 @@ func Validate(values []Binding) error {
 	return nil
 }
 
+func validateBindingAuthorization(value Binding) error {
+	for _, parameter := range value.TargetPathParameters {
+		if !slices.Contains(value.PathParameters, parameter.Name) || !slices.Contains([]string{"id", "number", "owner", "repo", "name"}, parameter.Field) {
+			return fmt.Errorf("GitHub REST binding %q has invalid target path ownership", value.ID)
+		}
+	}
+	return validatePathAuthorization(value)
+}
+
+func validateSuccessStatusCodes(value Binding) error {
+	if !validSuccessStatusSequence(value.SuccessStatusCodes) {
+		return fmt.Errorf("GitHub REST binding %q has invalid success statuses", value.ID)
+	}
+	for _, status := range value.SuccessStatusCodes {
+		if !validSuccessStatus(status, value.StreamDirection) {
+			return fmt.Errorf("GitHub REST binding %q has invalid success status %d", value.ID, status)
+		}
+	}
+	return nil
+}
+
+func validSuccessStatusSequence(statuses []int) bool {
+	return len(statuses) > 0 && slices.IsSorted(statuses)
+}
+
+func validSuccessStatus(status int, direction string) bool {
+	valid2xx := status >= http.StatusOK && status < http.StatusMultipleChoices
+	validDownloadRedirect := status >= http.StatusMultipleChoices && status < http.StatusBadRequest && direction == "download"
+	return valid2xx || validDownloadRedirect
+}
+
+func validatePathAuthorization(value Binding) error {
+	target := make(map[string]bool, len(value.TargetPathParameters))
+	for _, parameter := range value.TargetPathParameters {
+		target[parameter.Name] = true
+	}
+	authorized, err := authorizationParameterNames(value, target)
+	if err != nil {
+		return err
+	}
+	for _, name := range value.PathParameters {
+		if target[name] == authorized[name] {
+			return fmt.Errorf("GitHub REST binding %q does not bind path parameter %q exactly once", value.ID, name)
+		}
+	}
+	return nil
+}
+
+func authorizationParameterNames(value Binding, target map[string]bool) (map[string]bool, error) {
+	authorized := make(map[string]bool, len(value.AuthorizationParameters))
+	authorizedAttributes := make(map[string]bool, len(value.AuthorizationParameters))
+	for _, parameter := range value.AuthorizationParameters {
+		if !validAuthorizationParameter(value, parameter, target, authorized, authorizedAttributes) {
+			return nil, fmt.Errorf("GitHub REST binding %q has invalid authorization parameter", value.ID)
+		}
+		authorized[parameter.Name] = true
+		authorizedAttributes[parameter.Attribute] = true
+	}
+	return authorized, nil
+}
+
+func validAuthorizationParameter(value Binding, parameter AuthorizationParameter, target, names, attributes map[string]bool) bool {
+	return slices.Contains(value.PathParameters, parameter.Name) && !target[parameter.Name] &&
+		safeAuthorizationAttributePattern.MatchString(parameter.Attribute) && !names[parameter.Name] && !attributes[parameter.Attribute]
+}
+
 func validTransport(value Binding) bool {
 	return slices.Contains([]string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete, http.MethodPatch, http.MethodHead}, value.Method) &&
 		strings.HasPrefix(value.PathTemplate, "/") && value.APIVersion == "2026-03-10" && value.CredentialKind != "" && value.ServerRole != ""
@@ -162,6 +237,19 @@ func validTransport(value Binding) bool {
 func validSchemas(value Binding) bool {
 	return value.RequestSchema != "" && value.ResponseSchema != "" && value.RequestBytesLimit > 0 && value.ResponseBytesLimit > 0 &&
 		slices.Contains([]string{"object", "array"}, value.ResponseRootType)
+}
+
+func AuthorizationAttributes(operation string) []string {
+	bindings := ByOperation(operation)
+	if len(bindings) != 1 {
+		return nil
+	}
+	result := make([]string, 0, len(bindings[0].AuthorizationParameters))
+	for _, parameter := range bindings[0].AuthorizationParameters {
+		result = append(result, parameter.Attribute)
+	}
+	slices.Sort(result)
+	return slices.Compact(result)
 }
 
 func validExecution(value Binding) bool {

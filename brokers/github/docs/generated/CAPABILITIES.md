@@ -621,7 +621,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `member.users_unfollow` | medium | implemented | user | user | typed CLI/MCP |
 | `member.users_update_authenticated` | medium | implemented | user | user | typed CLI/MCP |
 | `migration.migrations_cancel_import` | critical | implemented | user | repo | typed CLI/MCP |
-| `migration.migrations_get_archive_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `migration.migrations_get_archive_for_authenticated_user` | low | protocol | user | user | typed CLI/MCP |
 | `migration.migrations_get_commit_authors` | low | implemented | user | repo | typed CLI/MCP |
 | `migration.migrations_get_import_status` | low | implemented | user | repo | typed CLI/MCP |
 | `migration.migrations_get_large_files` | low | implemented | user | repo | typed CLI/MCP |
@@ -826,7 +826,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `organization.list_pending_invitations` | low | implemented | installation | organization | typed CLI/MCP |
 | `organization.list_webhook_deliveries` | low | implemented | installation | organization | typed CLI/MCP |
 | `organization.list_webhooks` | low | implemented | installation | organization | typed CLI/MCP |
-| `organization.migrations_download_archive_for_org` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.migrations_download_archive_for_org` | low | protocol | user | organization | typed CLI/MCP |
 | `organization.migrations_get_status_for_org` | low | implemented | user | organization | typed CLI/MCP |
 | `organization.migrations_list_for_org` | low | implemented | user | organization | typed CLI/MCP |
 | `organization.migrations_list_repos_for_org` | low | implemented | user | organization | typed CLI/MCP |

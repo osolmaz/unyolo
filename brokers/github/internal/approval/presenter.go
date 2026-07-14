@@ -4,6 +4,7 @@ package approval
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
@@ -81,10 +82,21 @@ func DisplayFields(grant grants.Grant) []operatorinbox.DisplayField {
 		"merge_method": "Merge method", "path": "Path", "permission": "Permission", "ref": "Ref", "release_state": "Release state",
 		"resource_id": "Resource ID", "role": "Role", "visibility": "Visibility", "workflow": "Workflow", "workflow_ref": "Workflow ref",
 	}
-	for _, key := range []string{"actor_id", "actor_login", "base_ref", "credential_kind", "credential_slot", "environment", "head_ref",
-		"label", "merge_method", "path", "permission", "ref", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref"} {
+	keys := make([]string, 0, len(grant.Attrs))
+	for key := range grant.Attrs {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
 		if values := grant.Attrs[key]; len(values) > 0 {
-			fields = append(fields, operatorinbox.DisplayField{Label: attributeLabels[key], Value: strings.Join(values, ", ")})
+			label := attributeLabels[key]
+			if selector, found := strings.CutPrefix(key, "selector_"); found {
+				label = "Selector " + strings.ReplaceAll(selector, "_", " ")
+			}
+			if label == "" {
+				label = key
+			}
+			fields = append(fields, operatorinbox.DisplayField{Label: label, Value: strings.Join(values, ", ")})
 		}
 	}
 	return fields

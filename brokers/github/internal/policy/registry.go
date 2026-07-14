@@ -44,7 +44,7 @@ func operationInfos() map[Operation]operationInfo {
 		result[Operation(descriptor.Name)] = operationInfo{
 			spec: corepolicy.OperationSpec{
 				TargetKinds: []string{descriptor.TargetKind},
-				Attrs:       CatalogAttributeNames(),
+				Attrs:       catalogAttributesForOperation(descriptor.Name),
 				Grantable:   true,
 				GrantMode:   mode,
 			},

@@ -243,17 +243,25 @@ func ValidateStreamPublic(name string, targetRaw, argumentsRaw json.RawMessage) 
 }
 
 func ValidateResult(name string, resultRaw json.RawMessage) error {
-	if len(resultRaw) > 1<<20 {
-		return errors.New("GitHub operation result is too large")
-	}
 	operation, found := ForOperation(name)
 	if !found {
 		return errors.New("unknown GitHub operation")
+	}
+	if int64(len(resultRaw)) > resultBytesLimit(name) {
+		return errors.New("GitHub operation result is too large")
 	}
 	if err := validateRaw(resultRaw, operation.Result); err != nil {
 		return fmt.Errorf("result %w", err)
 	}
 	return nil
+}
+
+func resultBytesLimit(name string) int64 {
+	bindings := opbinding.ByOperation(name)
+	if len(bindings) == 1 && bindings[0].ResponseBytesLimit > 0 {
+		return bindings[0].ResponseBytesLimit
+	}
+	return 1 << 20
 }
 
 func targetSchemaForID(id string) (map[string]any, bool) {
