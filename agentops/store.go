@@ -227,13 +227,23 @@ func normalizeListOptions(clientID string, options agentv1.ListOptions) (string,
 	if options.Limit == 0 {
 		options.Limit = defaultListLimit
 	}
-	if clientID == "" || len(options.IdempotencyKey) > 128 || len(options.Cursor) > 128 {
+	if !validListIdentity(clientID, options) {
 		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
 	}
-	if options.Limit < 1 || options.Limit > maxListLimit || (options.State != "" && !options.State.Valid()) {
+	if !validListSelection(options) {
 		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
 	}
 	return clientID, options, nil
+}
+
+func validListIdentity(clientID string, options agentv1.ListOptions) bool {
+	return clientID != "" && len(options.IdempotencyKey) <= 128 && len(options.Cursor) <= 128
+}
+
+func validListSelection(options agentv1.ListOptions) bool {
+	validLimit := options.Limit >= 1 && options.Limit <= maxListLimit
+	validState := options.State == "" || options.State.Valid()
+	return validLimit && validState
 }
 
 func operationPage(records []state.OperationRecord, limit int) (agentv1.OperationPage, error) {

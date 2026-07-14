@@ -227,6 +227,14 @@ func waitOptions(params agentwire.WaitForAgentOperationParams) (int64, time.Dura
 }
 
 func listOptions(params agentwire.ListAgentOperationsParams) (agentv1.ListOptions, *Error) {
+	options := listOptionsFromParams(params)
+	if err := validateListOptions(params, options); err != nil {
+		return agentv1.ListOptions{}, err
+	}
+	return options, nil
+}
+
+func listOptionsFromParams(params agentwire.ListAgentOperationsParams) agentv1.ListOptions {
 	options := agentv1.ListOptions{Limit: 20}
 	if params.IdempotencyKey != nil {
 		options.IdempotencyKey = strings.TrimSpace(*params.IdempotencyKey)
@@ -240,19 +248,23 @@ func listOptions(params agentwire.ListAgentOperationsParams) (agentv1.ListOption
 	if params.Cursor != nil {
 		options.Cursor = strings.TrimSpace(*params.Cursor)
 	}
+	return options
+}
+
+func validateListOptions(params agentwire.ListAgentOperationsParams, options agentv1.ListOptions) *Error {
 	if invalidOptionalListValue(params.IdempotencyKey, options.IdempotencyKey) {
-		return agentv1.ListOptions{}, invalidListQueryError()
+		return invalidListQueryError()
 	}
 	if invalidOptionalListValue(params.Cursor, options.Cursor) {
-		return agentv1.ListOptions{}, invalidListQueryError()
+		return invalidListQueryError()
 	}
 	if options.Limit < 1 || options.Limit > 50 {
-		return agentv1.ListOptions{}, invalidListQueryError()
+		return invalidListQueryError()
 	}
 	if options.State != "" && !options.State.Valid() {
-		return agentv1.ListOptions{}, invalidListQueryError()
+		return invalidListQueryError()
 	}
-	return options, nil
+	return nil
 }
 
 func invalidOptionalListValue(provided *string, normalized string) bool {

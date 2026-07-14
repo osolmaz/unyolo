@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,14 +16,22 @@ import (
 type fakeClient struct {
 	operation agentv1.Operation
 	page      agentv1.OperationPage
+	getErr    error
+	listErr   error
 	waitErr   error
+	wait      func(context.Context, agentv1.Operation) (agentv1.Operation, error)
 }
 
-func (f *fakeClient) Get(context.Context, string) (agentv1.Operation, error) { return f.operation, nil }
-func (f *fakeClient) List(context.Context, agentv1.ListOptions) (agentv1.OperationPage, error) {
-	return f.page, nil
+func (f *fakeClient) Get(context.Context, string) (agentv1.Operation, error) {
+	return f.operation, f.getErr
 }
-func (f *fakeClient) Wait(context.Context, agentv1.Operation) (agentv1.Operation, error) {
+func (f *fakeClient) List(context.Context, agentv1.ListOptions) (agentv1.OperationPage, error) {
+	return f.page, f.listErr
+}
+func (f *fakeClient) Wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
+	if f.wait != nil {
+		return f.wait(ctx, operation)
+	}
 	return f.operation, f.waitErr
 }
 
@@ -87,5 +96,52 @@ func TestConflictProjection(t *testing.T) {
 	original := errors.New("other")
 	if !errors.Is(Conflict(t.Context(), client, "req", original), original) {
 		t.Fatal("unrelated error changed")
+	}
+}
+
+func TestWaitFollowsPendingOperation(t *testing.T) {
+	operation := agentv1.Operation{ID: "op", IdempotencyKey: "req", State: agentv1.StatePending}
+	client := &fakeClient{operation: operation}
+	seconds := 1
+	got, err := Wait(t.Context(), client, WaitInput{OperationID: " op ", TimeoutSeconds: &seconds}, nil)
+	if err != nil || got.ID != "op" {
+		t.Fatalf("Wait() = %+v, %v", got, err)
+	}
+
+	client.waitErr = errors.New("wait failed")
+	if _, err := Wait(t.Context(), client, WaitInput{OperationID: "op", TimeoutSeconds: &seconds}, nil); !errors.Is(err, client.waitErr) {
+		t.Fatalf("Wait() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	client.wait = func(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
+		return operation, ctx.Err()
+	}
+	if _, err := Wait(ctx, client, WaitInput{OperationID: "op", TimeoutSeconds: &seconds}, nil); err != nil {
+		t.Fatalf("Wait() canceled recovery = %v", err)
+	}
+}
+
+func TestOperationRecoveryRejectsInvalidInputsAndClientErrors(t *testing.T) {
+	client := &fakeClient{getErr: errors.New("get failed"), listErr: errors.New("list failed")}
+	if _, err := Get(t.Context(), client, GetInput{OperationID: "op"}, nil); !errors.Is(err, client.getErr) {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if _, err := Wait(t.Context(), client, WaitInput{}, nil); err == nil {
+		t.Fatal("Wait() accepted an empty operation ID")
+	}
+	if _, err := List(t.Context(), client, ListInput{}); !errors.Is(err, client.listErr) {
+		t.Fatalf("List() error = %v", err)
+	}
+	tooMany := MaxListLimit + 1
+	for _, input := range []ListInput{
+		{RequestID: "bad value"},
+		{Cursor: strings.Repeat("c", 129)},
+		{Limit: &tooMany},
+	} {
+		if _, err := List(t.Context(), client, input); err == nil {
+			t.Fatalf("List() accepted %+v", input)
+		}
 	}
 }

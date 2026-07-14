@@ -175,16 +175,24 @@ func Wait(ctx context.Context, client Client, input WaitInput, projector ResultP
 	if operation.State.Terminal() || seconds == 0 {
 		return Project(operation, projector)
 	}
+	updated, err := waitForUpdate(ctx, client, operation, seconds)
+	if err != nil {
+		return Operation{}, err
+	}
+	return Project(updated, projector)
+}
+
+func waitForUpdate(ctx context.Context, client Client, operation agentv1.Operation, seconds int) (agentv1.Operation, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
 	defer cancel()
 	updated, waitErr := client.Wait(waitCtx, operation)
 	if waitCtx.Err() != nil && updated.ID != "" {
-		waitErr = nil
+		return updated, nil
 	}
 	if waitErr != nil {
-		return Operation{}, waitErr
+		return agentv1.Operation{}, waitErr
 	}
-	return Project(updated, projector)
+	return updated, nil
 }
 
 func waitParameters(input WaitInput) (string, int, error) {
@@ -200,27 +208,48 @@ func waitParameters(input WaitInput) (string, int, error) {
 }
 
 func List(ctx context.Context, client Client, input ListInput) (Page, error) {
+	options, err := listParameters(input)
+	if err != nil {
+		return Page{}, err
+	}
+	page, err := client.List(ctx, options)
+	if err != nil {
+		return Page{}, err
+	}
+	return projectPage(page), nil
+}
+
+func listParameters(input ListInput) (agentv1.ListOptions, error) {
 	limit := DefaultListLimit
 	if input.Limit != nil {
 		limit = *input.Limit
 	}
 	input.RequestID = strings.TrimSpace(input.RequestID)
 	input.Cursor = strings.TrimSpace(input.Cursor)
-	if len(input.RequestID) > 128 || (input.RequestID != "" && !requestIDPattern.MatchString(input.RequestID)) ||
-		len(input.Cursor) > 128 || limit < 1 || limit > MaxListLimit {
-		return Page{}, errors.New("operation list input is invalid")
+	if !validListParameters(input.RequestID, input.Cursor, limit) {
+		return agentv1.ListOptions{}, errors.New("operation list input is invalid")
 	}
-	page, err := client.List(ctx, agentv1.ListOptions{
+	return agentv1.ListOptions{
 		IdempotencyKey: input.RequestID, State: input.State, Limit: limit, Cursor: input.Cursor,
-	})
-	if err != nil {
-		return Page{}, err
+	}, nil
+}
+
+func validListParameters(requestID, cursor string, limit int) bool {
+	if len(requestID) > 128 || len(cursor) > 128 {
+		return false
 	}
+	if requestID != "" && !requestIDPattern.MatchString(requestID) {
+		return false
+	}
+	return limit >= 1 && limit <= MaxListLimit
+}
+
+func projectPage(page agentv1.OperationPage) Page {
 	result := Page{APIVersion: PageAPIVersion, Operations: make([]Operation, 0, len(page.Operations)), NextCursor: page.NextCursor}
 	for _, operation := range page.Operations {
 		result.Operations = append(result.Operations, projectSummary(operation))
 	}
-	return result, nil
+	return result
 }
 
 // Conflict converts Agent V1 idempotency conflicts into the bounded MCP

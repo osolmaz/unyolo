@@ -129,34 +129,39 @@ func (c *Client) Wait(ctx context.Context, operation agentv1.Operation) (agentv1
 }
 
 func decodeHTTPResponse(response *http.Response, err error) (agentv1.Operation, error) {
+	status, data, err := readResponse(response, err)
 	if err != nil {
 		return agentv1.Operation{}, err
 	}
-	if response == nil {
-		return agentv1.Operation{}, errors.New("agent source returned no response")
-	}
-	defer func() { _ = response.Body.Close() }()
-	data, err := httpx.ReadLimited(response.Body, maxResponseBytes)
-	if err != nil {
-		return agentv1.Operation{}, err
-	}
-	return decodeResponse(response.StatusCode, data)
+	return decodeResponse(status, data)
 }
 
 func decodePageResponse(response *http.Response, err error) (agentv1.OperationPage, error) {
+	status, data, err := readResponse(response, err)
 	if err != nil {
 		return agentv1.OperationPage{}, err
 	}
+	return decodePage(status, data)
+}
+
+func readResponse(response *http.Response, err error) (int, []byte, error) {
+	if err != nil {
+		return 0, nil, err
+	}
 	if response == nil {
-		return agentv1.OperationPage{}, errors.New("agent source returned no response")
+		return 0, nil, errors.New("agent source returned no response")
 	}
 	defer func() { _ = response.Body.Close() }()
 	data, err := httpx.ReadLimited(response.Body, maxResponseBytes)
 	if err != nil {
-		return agentv1.OperationPage{}, err
+		return 0, nil, err
 	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return agentv1.OperationPage{}, decodeError(response.StatusCode, data)
+	return response.StatusCode, data, nil
+}
+
+func decodePage(status int, data []byte) (agentv1.OperationPage, error) {
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return agentv1.OperationPage{}, decodeError(status, data)
 	}
 	var wire agentwire.OperationPage
 	if strictjson.Decode(data, &wire, false) != nil {
