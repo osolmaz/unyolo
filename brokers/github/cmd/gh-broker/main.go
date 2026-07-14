@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubsurface"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
@@ -34,6 +35,7 @@ func run(ctx context.Context) error {
 	return runServer(ctx)
 }
 
+//nolint:cyclop // Top-level CLI dispatch keeps every supported command explicit.
 func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {
 		return runServer(ctx)
@@ -46,8 +48,19 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 		return runSetupWithContext(ctx, stdout, stderr, args[1:])
 	case "doctor":
 		return runDoctor(ctx, stdout, stderr, args[1:])
+	case "operations":
+		return runOperations(stdout, args[1:])
+	case "operation":
+		return runOperation(ctx, stdout, args[1:])
+	case "stream":
+		return runStream(ctx, stdout, args[1:])
+	case "mcp":
+		return runMCP(ctx, os.Getenv, os.Stdin, stdout, args[1:])
 	default:
-		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup]")
+		if found, err := runGeneratedCLI(ctx, stdout, args); found {
+			return err
+		}
+		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|operations|operation|stream|mcp]")
 	}
 }
 
@@ -88,6 +101,9 @@ func runServer(ctx context.Context) error {
 }
 
 func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error) {
+	if err := githubsurface.Validate(); err != nil {
+		return nil, fmt.Errorf("validate generated GitHub surface: %w", err)
+	}
 	brokerPolicy, err := policy.LoadFile(cfg.ScopeFile)
 	if err != nil {
 		return nil, err
@@ -97,7 +113,7 @@ func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error
 		return nil, err
 	}
 	api.Start(ctx)
-	servers := []*http.Server{configuredHTTPServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
+	servers := []*http.Server{configuredAgentServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
 	if cfg.OperatorSecret != "" {
 		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, api.OperatorHandler(), cfg))
 	}
@@ -130,6 +146,13 @@ func configuredHTTPServer(bindAddr string, port string, handler http.Handler, cf
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 	}
+}
+
+func configuredAgentServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
+	server := configuredHTTPServer(bindAddr, port, handler, cfg)
+	server.ReadTimeout = max(server.ReadTimeout, cfg.GitHubStreamTimeout)
+	server.WriteTimeout = max(server.WriteTimeout, cfg.GitHubStreamTimeout)
+	return server
 }
 
 func serve(ctx context.Context, server *http.Server, bindAddr string, port string) error {

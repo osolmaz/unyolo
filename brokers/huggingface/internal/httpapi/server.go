@@ -21,20 +21,22 @@ import (
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialstore"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
 	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/sealedpayload"
+	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -80,38 +82,38 @@ type Options struct {
 type Server struct {
 	router *echo.Echo
 
-	control                  *controlplane.Runtime
-	authorization            *bkauthorization.Coordinator
-	policy                   policy.Policy
-	audit                    audit.Recorder
-	mirrors                  *mirror.Manager
-	upstream                 *url.URL
-	routerUpstream           *url.URL
-	httpClient               *http.Client
-	inferenceHTTPClient      *http.Client
-	hfToken                  string
-	maxBody                  int64
-	grants                   *grants.Store
-	plans                    *hfplan.Store
-	operations               *agentops.Store
-	operationRegistry        *operations.Registry
-	hubClient                *hubclient.Client
-	sealedStore              *sealedstore.Store
-	credentialStore          *credentialstore.Store
-	agentAPI                 *agentapi.Handler
-	database                 *state.Database
-	planValidator            hfplan.Validator
-	notifier                 bknotify.Notifier
-	operatorConfigured       bool
-	lifecycleContext         context.Context
-	lifecycleCancel          context.CancelFunc
-	backgroundWorkers        sync.WaitGroup
-	closeOnce                sync.Once
-	closeErr                 error
-	operationAuthLocks       [64]sync.Mutex
-	operationSubmissionLocks [64]sync.Mutex
-	now                      func() time.Time
-	newLFSActionID           func() (string, error)
+	control             *controlplane.Runtime
+	authorization       *bkauthorization.Coordinator
+	policy              policy.Policy
+	audit               audit.Recorder
+	mirrors             *mirror.Manager
+	upstream            *url.URL
+	routerUpstream      *url.URL
+	httpClient          *http.Client
+	inferenceHTTPClient *http.Client
+	hfToken             string
+	maxBody             int64
+	grants              *grants.Store
+	plans               *hfplan.Store
+	operations          *agentops.Store
+	operationRegistry   *operations.Registry
+	operationRuntime    *operations.Runtime
+	hubClient           *hubclient.Client
+	sealedStore         *sealedstore.Store
+	sealedPayloads      *sealedpayload.Service
+	credentialStore     *credentialstore.Store
+	agentAPI            *agentapi.Handler
+	database            *state.Database
+	planValidator       hfplan.Validator
+	notifier            bknotify.Notifier
+	operatorConfigured  bool
+	lifecycleContext    context.Context
+	lifecycleCancel     context.CancelFunc
+	backgroundWorkers   sync.WaitGroup
+	closeOnce           sync.Once
+	closeErr            error
+	now                 func() time.Time
+	newLFSActionID      func() (string, error)
 
 	lfsMu      sync.Mutex
 	lfsActions map[string]lfsAction
@@ -203,8 +205,8 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 		return nil, err
 	}
 	server.startGrantNotificationSweeper(lifecycleContext)
-	server.startSealedPayloadSweeper(lifecycleContext)
-	server.startOperationWorker(lifecycleContext)
+	server.sealedPayloads.Start(lifecycleContext)
+	server.operationRuntime.Start(lifecycleContext)
 	go func() {
 		<-lifecycleContext.Done()
 		_ = server.database.Close()
@@ -237,6 +239,12 @@ func (s *Server) Close() error {
 	s.closeOnce.Do(func() {
 		if s.lifecycleCancel != nil {
 			s.lifecycleCancel()
+		}
+		if s.operationRuntime != nil {
+			s.operationRuntime.Wait()
+		}
+		if s.sealedPayloads != nil {
+			s.sealedPayloads.Wait()
 		}
 		s.backgroundWorkers.Wait()
 		s.closeErr = s.database.Close()
@@ -437,10 +445,21 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		now:                opts.Now,
 		newLFSActionID:     opts.NewLFSActionID,
 	}
+	sealedPayloadService, sealedPayloadErr := sealedpayload.New(sealedpayload.Options{
+		Store: sealedPayloads, Descriptor: opcatalog.ByName, Authenticate: server.authenticateAPI,
+		WriteFailure: func(response http.ResponseWriter, status int, reason, message string) {
+			writeJSendFail(response, status, reason, message)
+		},
+		Now: opts.Now,
+	})
+	server.sealedPayloads = sealedPayloadService
 	authorization, authorizationErr := bkauthorization.New(bkauthorization.Options{
 		Registry: policy.AuthorizationRegistry(), Decide: server.policy.DecideAuthorization,
 		Grants: store, ActiveGrants: server.activeAuthorizationGrants, Now: opts.Now,
 	})
+	server.authorization = authorization
+	operationRuntime, operationRuntimeErr := server.newOperationRuntime()
+	server.operationRuntime = operationRuntime
 	agentAPI, agentAPIErr := agentapi.New(agentapi.Options{
 		Store: server.operations, Authenticate: runtime.Clients.AuthenticateHeader,
 		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "hf-broker",
@@ -448,11 +467,10 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 			server.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
 		},
 	})
-	if err := errors.Join(authorizationErr, agentAPIErr); err != nil {
+	if err := errors.Join(sealedPayloadErr, authorizationErr, operationRuntimeErr, agentAPIErr); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
-	server.authorization = authorization
 	server.agentAPI = agentAPI
 	server.router = newRouter(server)
 	return server, nil

@@ -11,7 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/sealedstore"
+	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 type sealedPayloadStore interface {

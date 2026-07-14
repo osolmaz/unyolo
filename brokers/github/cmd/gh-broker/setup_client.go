@@ -17,27 +17,32 @@ import (
 
 const setupUsage = `usage:
   gh-broker setup systemd --scope-file FILE (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
+  gh-broker setup github-user enroll|rotate --state-dir DIR --credential-file FILE --github-app-client-id-file FILE --github-app-client-secret-file FILE
+  gh-broker setup github-user revoke --state-dir DIR --user-id ID --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup client --client <name> --url <url> --secret-file <path> [--home-dir <path>]`
 
 type setupClientOptions = bksetup.ClientOptions
 
 type setupSystemdOptions struct {
 	bksetup.SystemdOptions
-	GitHubTokenFile         string
-	GitHubAppIDFile         string
-	GitHubAppPrivateKeyFile string
-	GitHubWebhookSecretFile string
-	ScopeFile               string
-	SharedSecret            string
-	OperatorID              string
-	OperatorSecretFile      string
-	OperatorSecret          string
-	OperatorBindAddr        string
-	OperatorPort            int
-	TelegramBotTokenFile    string
-	TelegramChatID          int64
-	DevTokenFallback        bool
-	CommandRunner           bkservice.CommandRunner
+	GitHubTokenFile           string
+	GitHubAppIDFile           string
+	GitHubAppPrivateKeyFile   string
+	GitHubAppClientIDFile     string
+	GitHubAppClientSecretFile string
+	GitHubUserID              int64
+	GitHubWebhookSecretFile   string
+	ScopeFile                 string
+	SharedSecret              string
+	OperatorID                string
+	OperatorSecretFile        string
+	OperatorSecret            string
+	OperatorBindAddr          string
+	OperatorPort              int
+	TelegramBotTokenFile      string
+	TelegramChatID            int64
+	DevTokenFallback          bool
+	CommandRunner             bkservice.CommandRunner
 }
 
 func runSetup(stdout io.Writer, stderr io.Writer, args []string) error {
@@ -53,6 +58,8 @@ func runSetupWithContext(ctx context.Context, stdout io.Writer, stderr io.Writer
 		return runSetupClientCommand(stdout, stderr, args[1:])
 	case "systemd":
 		return runSetupSystemdCommand(ctx, stdout, stderr, os.Stdin, args[1:])
+	case "github-user":
+		return runSetupGitHubUser(ctx, stdout, stderr, args[1:])
 	default:
 		return errors.New(setupUsage)
 	}
@@ -121,6 +128,9 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	fs.StringVar(&opts.GitHubTokenFile, "github-token-file", "", "file containing a GitHub token for dev-token fallback")
 	fs.StringVar(&opts.GitHubAppIDFile, "github-app-id-file", "", "file containing the GitHub App id")
 	fs.StringVar(&opts.GitHubAppPrivateKeyFile, "github-app-private-key-file", "", "file containing the GitHub App private key")
+	fs.StringVar(&opts.GitHubAppClientIDFile, "github-app-client-id-file", "", "file containing the GitHub App OAuth client id for user credentials")
+	fs.StringVar(&opts.GitHubAppClientSecretFile, "github-app-client-secret-file", "", "file containing the GitHub App OAuth client secret for user credentials")
+	fs.Int64Var(&opts.GitHubUserID, "github-user-id", 0, "immutable GitHub user id for user credential operations")
 	fs.StringVar(&opts.GitHubWebhookSecretFile, "github-webhook-secret-file", "", "file containing the GitHub webhook secret")
 	fs.StringVar(&opts.ScopeFile, "scope-file", "", "policy scope JSON file")
 	fs.BoolVar(&opts.DevTokenFallback, "dev-token-fallback", false, "configure the current GitHub token fallback runtime")
@@ -171,10 +181,6 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return errors.New("--telegram-bot-token-file and --telegram-chat-id must be set together")
 	}
-	return validateSetupSystemdOperatorOptions(opts)
-}
-
-func validateSetupSystemdOperatorOptions(opts setupSystemdOptions) error {
 	if err := validateSetupOperatorCredentials(opts); err != nil {
 		return err
 	}
@@ -222,8 +228,28 @@ func validateDevTokenSetup(opts setupSystemdOptions) error {
 }
 
 func validateGitHubAppSetup(opts setupSystemdOptions) error {
+	if err := validateGitHubAppCoreSetup(opts); err != nil {
+		return err
+	}
+	return validateGitHubAppUserSetup(opts)
+}
+
+func validateGitHubAppCoreSetup(opts setupSystemdOptions) error {
 	if opts.GitHubAppIDFile == "" || opts.GitHubAppPrivateKeyFile == "" || opts.GitHubWebhookSecretFile == "" {
 		return errors.New("GitHub App credential files are required unless --dev-token-fallback is set")
+	}
+	return nil
+}
+
+func validateGitHubAppUserSetup(opts setupSystemdOptions) error {
+	if (opts.GitHubAppClientIDFile == "") != (opts.GitHubAppClientSecretFile == "") {
+		return errors.New("--github-app-client-id-file and --github-app-client-secret-file must be set together")
+	}
+	if opts.GitHubAppClientIDFile != "" && opts.GitHubUserID <= 0 {
+		return errors.New("--github-user-id is required with GitHub App OAuth client credentials")
+	}
+	if opts.GitHubAppClientIDFile == "" && opts.GitHubUserID != 0 {
+		return errors.New("--github-user-id requires GitHub App OAuth client credentials")
 	}
 	return nil
 }

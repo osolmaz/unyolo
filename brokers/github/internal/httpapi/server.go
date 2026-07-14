@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,23 +20,32 @@ import (
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
+	bkauth "github.com/osolmaz/brokerkit/auth"
+	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
+	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/sealedpayload"
+	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 type Server struct {
 	echo                *echo.Echo
+	authorization       *bkauthorization.Coordinator
 	policy              *policy.Policy
 	grants              *grants.Store
 	plans               *ghplan.Store
@@ -45,14 +53,18 @@ type Server struct {
 	control             *controlplane.Runtime
 	database            *state.Database
 	operations          *agentops.Store
+	operationRegistry   *operations.Registry
+	operationRuntime    *operations.Runtime
 	agentAPI            *agentapi.Handler
+	sealedStore         *sealedstore.Store
+	sealedPayloads      *sealedpayload.Service
+	credentialStore     *credentialstore.Store
+	streamStore         *streamstore.Store
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
-	githubToken         string
-	githubApp           *githubapp.Source
+	githubCredentials   *githubauth.Manager
 	githubWebhookSecret string
 	githubClient        *http.Client
-	githubReadClient    *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
 	auditWriter         *bkaudit.Writer
@@ -64,10 +76,9 @@ type Server struct {
 	lifecycleContext    context.Context
 	lifecycleCancel     context.CancelFunc
 	backgroundWorkers   sync.WaitGroup
-	operationWorkerOnce sync.Once
-	operationAuthLocks  [64]sync.Mutex
 }
 
+//nolint:cyclop // Startup constructs and validates every security-sensitive dependency in one fail-closed boundary.
 func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if brokerPolicy == nil {
 		return nil, errors.New("policy is required")
@@ -82,7 +93,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	e.Use(middleware.Recover())
 	e.Use(noStore)
 	e.GET("/healthz", health)
-	gitBaseURL, apiBaseURL, githubClient, appSource, err := newGitHubDependencies(cfg)
+	gitBaseURL, apiBaseURL, githubClient, appSource, credentialSlots, err := newGitHubDependencies(cfg)
 	if err != nil {
 		_ = core.database.Close()
 		return nil, err
@@ -90,14 +101,72 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	server := &Server{
 		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
 		database: core.database, operations: agentops.New(core.database), notifier: core.notifier, telegram: core.telegram,
-		githubToken: cfg.GitHubToken, githubApp: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
-		githubClient: githubClient, githubReadClient: githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
+		githubCredentials: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
+		credentialStore: credentialSlots,
+		githubClient:    githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
+	}
+	server.sealedStore, err = sealedstore.Open(stateDir(cfg.StateDir))
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	server.streamStore, err = streamstore.Open(stateDir(cfg.StateDir))
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	adapters, err := operations.NewGeneratedAdapters(appSource, operations.Options{
+		RequestingUserID: cfg.GitHubUserID,
+		SealedStore:      server.sealedStore,
+		CredentialStore:  server.credentialStore,
+		StreamStore:      server.streamStore,
+	})
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	server.operationRegistry, err = operations.NewRegistry(adapters...)
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	if err = server.operationRegistry.ValidateCoverage(); err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	registry, registryErr := policy.AuthorizationRegistry()
+	if registryErr == nil {
+		server.authorization, registryErr = bkauthorization.New(bkauthorization.Options{
+			Registry: registry, Decide: brokerPolicy.DecideAuthorization, Grants: core.grants,
+		})
+	}
+	if registryErr != nil {
+		_ = core.database.Close()
+		return nil, registryErr
+	}
+	server.operationRuntime, err = server.newOperationRuntime()
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
 	}
 	server.agentAPI, err = agentapi.New(agentapi.Options{
 		Store: server.operations, Authenticate: core.control.Clients.AuthenticateHeader,
 		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "gh-broker",
+	})
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	server.sealedPayloads, err = sealedpayload.New(sealedpayload.Options{
+		Store: server.sealedStore,
+		Descriptor: func(name string) (capability.Descriptor, bool) {
+			descriptor, found := opcatalog.ByName(name)
+			return descriptor.Descriptor, found
+		},
+		Authenticate: server.authenticateAgentUpload,
+		WriteFailure: writeSealedPayloadFailure,
 	})
 	if err != nil {
 		_ = core.database.Close()
@@ -146,21 +215,34 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
 }
 
-func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubapp.Source, error) {
-	gitBaseURL, apiBaseURL, err := githubBaseURLs()
+func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {
+	gitBaseURL, apiBaseURL, err := githubBaseURLs(cfg)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	client := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
-	app, err := configuredGitHubApp(cfg, apiBaseURL, client)
-	return gitBaseURL, apiBaseURL, client, app, err
+	userStore, err := githubauth.OpenUserCredentialStore(stateDir(cfg.StateDir))
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	manager, err := githubauth.New(githubauth.Config{
+		AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey, AppClientID: cfg.GitHubAppClientID,
+		AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
+		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: apiBaseURL, WebBaseURL: gitBaseURL,
+		HTTPClient: client, StreamTimeout: defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute), Store: userStore,
+	})
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	outputStore, err := credentialstore.OpenNamespace(stateDir(cfg.StateDir), "github-operation-outputs")
+	return gitBaseURL, apiBaseURL, client, manager, outputStore, err
 }
 
 func githubCredentialMode(cfg config.Config) string {
 	if strings.TrimSpace(cfg.GitHubAppID) != "" && len(cfg.GitHubAppPrivateKey) > 0 {
-		return "github_app"
+		return string(githubauth.KindInstallation)
 	}
-	return "development_pat"
+	return string(githubauth.KindDevelopmentToken)
 }
 
 func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator ghplan.Validator, auditWriter *bkaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
@@ -185,30 +267,65 @@ func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator 
 
 func (s *Server) registerRoutes(auth security.TokenAuth) {
 	s.agentAPI.Register(s.echo)
+	s.echo.POST("/api/agent/v1/sealed-payloads", s.sealedPayloads.Upload)
+	s.echo.POST("/api/agent/v1/streams", s.uploadStream)
+	s.echo.GET("/api/agent/v1/streams/:id", s.downloadStream)
 	protected := s.echo.Group("")
 	protected.Use(auth.Middleware)
 	protected.Use(validateRouteParams)
-	protected.GET("/api/repos", s.listRepos)
 	protected.POST("/api/grants", s.createGrant)
 	protected.GET("/api/grants", s.listGrants)
 	protected.GET("/api/grants/:id", s.getGrant)
-	protected.GET("/api/repos/:owner/:repo/contents", s.readContents)
-	protected.GET("/api/repos/:owner/:repo/contents/*", s.readContents)
 	protected.GET("/:owner/:repoGit/info/refs", s.gitInfoRefs)
 	protected.POST("/:owner/:repoGit/git-upload-pack", s.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", s.gitReceivePack)
 	s.echo.POST("/webhooks/github", s.githubWebhook)
 }
 
+func (s *Server) authenticateAgentUpload(response http.ResponseWriter, request *http.Request) (string, bool) {
+	client, err := s.control.Clients.AuthenticateHeader(request.Header.Get("Authorization"))
+	if err == nil {
+		return client, true
+	}
+	status := http.StatusForbidden
+	reason := "bad_auth"
+	message := "Authentication failed"
+	if errors.Is(err, bkauth.ErrMissing) {
+		status = http.StatusUnauthorized
+		reason = "missing_auth"
+		message = "Authentication required"
+		response.Header().Set("WWW-Authenticate", `Bearer realm="gh-broker"`)
+	}
+	writeSealedPayloadFailure(response, status, reason, message)
+	return "", false
+}
+
+func writeSealedPayloadFailure(response http.ResponseWriter, status int, reason, message string) {
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(status)
+	_ = json.NewEncoder(response).Encode(map[string]any{
+		"status": "fail",
+		"data":   map[string]string{"reason": reason, "message": message},
+	})
+}
+
 // OperatorHandler exposes Brokerkit's shared inbox over the canonical grant store.
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
 
-func githubBaseURLs() (*url.URL, *url.URL, error) {
-	gitBaseURL, err := url.Parse("https://github.com")
+func githubBaseURLs(cfg config.Config) (*url.URL, *url.URL, error) {
+	webBase := cfg.GitHubWebBaseURL
+	if strings.TrimSpace(webBase) == "" {
+		webBase = "https://github.com/"
+	}
+	apiBase := cfg.GitHubAPIBaseURL
+	if strings.TrimSpace(apiBase) == "" {
+		apiBase = "https://api.github.com/"
+	}
+	gitBaseURL, err := url.Parse(webBase)
 	if err != nil {
 		return nil, nil, err
 	}
-	apiBaseURL, err := url.Parse("https://api.github.com")
+	apiBaseURL, err := url.Parse(apiBase)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -252,6 +369,12 @@ func (s *Server) Close() error {
 	s.closeOnce.Do(func() {
 		if s.lifecycleCancel != nil {
 			s.lifecycleCancel()
+		}
+		if s.operationRuntime != nil {
+			s.operationRuntime.Wait()
+		}
+		if s.sealedPayloads != nil {
+			s.sealedPayloads.Wait()
 		}
 		s.backgroundWorkers.Wait()
 		s.closeErr = s.database.Close()
@@ -331,6 +454,7 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 		s.releaseGrantUses(reserved)
 		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
 	}
+	c.Set(githubOperationContextKey, string(authorized[0].Request.Operation))
 	if err := s.enforceReceivePackBackstops(c, authorized); err != nil {
 		s.releaseGrantUses(reserved)
 		s.auditAuthorizedReceivePack(c, authorized, errorOutcome(err), errorString(err), errorStatus(c, err))
@@ -359,28 +483,6 @@ func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authori
 	}
 	s.auditAuthorizedReceivePack(c, authorized, "proxied", "", responseStatus(c))
 	return nil
-}
-
-func (s *Server) listRepos(c echo.Context) error {
-	request := policy.Request{
-		Client:    security.ClientFromContext(c),
-		Operation: policy.OperationInstallationReposList,
-		Target:    policy.Target{Kind: "installation"},
-	}
-	return s.authorizeBrokerRequest(c, request, s.fetchAndFilterRepos)
-}
-
-func (s *Server) readContents(c echo.Context) error {
-	contentPath, err := contentPathParam(c)
-	if err != nil {
-		return err
-	}
-	attrs := map[string]string{"path": contentPath}
-	if ref := c.QueryParam("ref"); ref != "" {
-		attrs["ref"] = ref
-	}
-	request := s.repoRequest(c, policy.OperationContentsRead, attrs)
-	return s.authorizeBrokerRequest(c, request, s.proxyContents)
 }
 
 func (s *Server) authorizeBrokerRequest(
@@ -412,6 +514,7 @@ func (s *Server) runAuthorizedBrokerRequest(
 	reserved []grants.Grant,
 	run func(echo.Context) error,
 ) error {
+	c.Set(githubOperationContextKey, string(request.Operation))
 	err := run(c)
 	if err != nil {
 		err = s.settleFailedExecution(c, reserved, err)
@@ -522,325 +625,10 @@ func isZeroOID(value string) bool {
 	return true
 }
 
-func pullRequestAttrs(body []byte) (map[string]string, error) {
-	var payload struct {
-		Title               string `json:"title"`
-		Body                string `json:"body"`
-		Head                string `json:"head"`
-		Base                string `json:"base"`
-		Draft               bool   `json:"draft"`
-		MaintainerCanModify *bool  `json:"maintainer_can_modify"`
-	}
-	if err := strictjson.Decode(body, &payload, true); err != nil {
-		return nil, errors.New("invalid pull request json")
-	}
-	if strings.TrimSpace(payload.Title) == "" {
-		return nil, errors.New("pull request title is required")
-	}
-	if len(payload.Title) > 256 {
-		return nil, errors.New("pull request title is too long")
-	}
-	if len(payload.Body) > 60000 {
-		return nil, errors.New("pull request body is too long")
-	}
-	baseRef, err := branchNameToRef(payload.Base)
-	if err != nil {
-		return nil, fmt.Errorf("invalid pull request base: %w", err)
-	}
-	headRef, err := headNameToRef(payload.Head)
-	if err != nil {
-		return nil, fmt.Errorf("invalid pull request head: %w", err)
-	}
-	return map[string]string{"base_ref": baseRef, "head_ref": headRef, "ref": headRef}, nil
-}
-
-func headNameToRef(head string) (string, error) {
-	if strings.Contains(head, ":") {
-		return "", errors.New("fork-qualified pull request heads are not supported")
-	}
-	return branchNameToRef(head)
-}
-
-func branchNameToRef(branch string) (string, error) {
-	branch = strings.TrimSpace(branch)
-	if err := validateBranchName(branch); err != nil {
-		return "", err
-	}
-	return "refs/heads/" + branch, nil
-}
-
-func validateBranchName(branch string) error {
-	for _, validate := range []func(string) error{
-		requireBranchName,
-		validateBranchPath,
-		validateBranchGitSyntax,
-		validateBranchChars,
-	} {
-		if err := validate(branch); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func requireBranchName(branch string) error {
-	if branch == "" {
-		return errors.New("branch is required")
-	}
-	return nil
-}
-
-func validateBranchPath(branch string) error {
-	if strings.HasPrefix(branch, "/") || strings.HasSuffix(branch, "/") || strings.Contains(branch, "//") {
-		return errors.New("branch path is malformed")
-	}
-	return nil
-}
-
-func validateBranchGitSyntax(branch string) error {
-	if strings.Contains(branch, "..") || strings.Contains(branch, "@{") {
-		return errors.New("branch contains unsupported git syntax")
-	}
-	return nil
-}
-
-func validateBranchChars(branch string) error {
-	if strings.ContainsAny(branch, " \t\r\n~^:?*[\\") {
-		return errors.New("branch contains unsupported characters")
-	}
-	return nil
-}
-
-func contentPathParam(c echo.Context) (string, error) {
-	contentPath := c.Param("*")
-	if contentPath == "" {
-		return ".", nil
-	}
-	if err := validateContentPath(contentPath); err != nil {
-		return "", echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	return contentPath, nil
-}
-
-func validateContentPath(contentPath string) error {
-	for _, rawSegment := range strings.Split(contentPath, "/") {
-		segment, err := url.PathUnescape(rawSegment)
-		if err != nil {
-			segment = rawSegment
-		}
-		if escapedPathSeparator(rawSegment) || strings.Contains(segment, "/") {
-			return errors.New("content path contains escaped path separator")
-		}
-		if segment == "" || segment == "." || segment == ".." {
-			return errors.New("content path contains unsupported path segment")
-		}
-	}
-	return nil
-}
-
-func escapedPathSeparator(segment string) bool {
-	return strings.Contains(strings.ToLower(segment), "%2f")
-}
-
-func (s *Server) proxyContents(c echo.Context) error {
-	segments := []string{"repos", c.Param("owner"), c.Param("repo"), "contents"}
-	contentPath, err := contentPathParam(c)
-	if err != nil {
-		return err
-	}
-	if contentPath != "." {
-		segments = append(segments, escapedJoinPathSegments(contentPath)...)
-	}
-	upstreamURL := s.githubAPIBaseURL.JoinPath(segments...)
-	query := url.Values{}
-	if ref := c.QueryParam("ref"); ref != "" {
-		query.Set("ref", ref)
-	}
-	upstreamURL.RawQuery = query.Encode()
-	return s.proxyTo(c, upstreamURL, func(request *http.Request) error {
-		return s.configureGitHubAPIRequest(c, request, c.Param("owner"), c.Param("repo"))
-	})
-}
-
-func escapedJoinPathSegments(pathValue string) []string {
-	segments := strings.Split(pathValue, "/")
-	for index, segment := range segments {
-		segments[index] = strings.ReplaceAll(segment, "%", "%25")
-	}
-	return segments
-}
-
-func (s *Server) fetchAndFilterRepos(c echo.Context) error {
-	response, err := s.fetchRepoList(c)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-	if !successfulStatus(response.StatusCode) {
-		httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
-		return copyUpstreamResponse(c, response)
-	}
-	httpx.CopyHeaders(c.Response().Header(), response.Header, githubFilteredResponseHeader)
-	return s.writeFilteredRepoList(c, response)
-}
-
-func (s *Server) fetchRepoList(c echo.Context) (*http.Response, error) {
-	if s.githubApp != nil {
-		return s.fetchGitHubAppRepoList(c)
-	}
-	upstreamURLs := s.repoListURLs(c)
-	var response *http.Response
-	var err error
-	for index, upstreamURL := range upstreamURLs {
-		response, err = s.fetchRepoListURL(c, upstreamURL)
-		if err != nil {
-			return nil, err
-		}
-		if index == 0 && repoListShouldFallback(response.StatusCode) {
-			_ = response.Body.Close()
-			continue
-		}
-		return response, nil
-	}
-	return response, nil
-}
-
-func (s *Server) fetchRepoListURL(c echo.Context, upstreamURL *url.URL) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, upstreamURL.String(), http.NoBody)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
-	}
-	if err := s.configureGitHubAPIRequest(c, request, "", ""); err != nil {
-		return nil, err
-	}
-	// #nosec G704 -- upstream URL is built from a fixed GitHub API base URL.
-	markUpstreamDispatched(c)
-	response, err := s.githubClient.Do(request)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
-	}
-	return response, nil
-}
-
-func (s *Server) repoListURLs(c echo.Context) []*url.URL {
-	userURL := s.repoListURL(c, "user", "repos")
-	installationURL := s.repoListURL(c, "installation", "repositories")
-	if looksLikeInstallationToken(s.githubToken) {
-		return []*url.URL{installationURL, userURL}
-	}
-	return []*url.URL{userURL, installationURL}
-}
-
-func (s *Server) repoListURL(c echo.Context, pathSegments ...string) *url.URL {
-	upstreamURL := s.githubAPIBaseURL.JoinPath(pathSegments...)
-	query := url.Values{}
-	query.Set("per_page", boundedQueryInt(c.QueryParam("per_page"), 100, 1, 100))
-	if page := boundedQueryInt(c.QueryParam("page"), 0, 1, 100000); page != "0" {
-		query.Set("page", page)
-	}
-	upstreamURL.RawQuery = query.Encode()
-	return upstreamURL
-}
-
-func looksLikeInstallationToken(token string) bool {
-	return strings.HasPrefix(token, "ghs_")
-}
-
-func repoListShouldFallback(status int) bool {
-	return status == http.StatusUnauthorized || status == http.StatusForbidden
-}
-
-func successfulStatus(status int) bool {
-	return status >= http.StatusOK && status < http.StatusMultipleChoices
-}
-
 func copyUpstreamResponse(c echo.Context, response *http.Response) error {
 	c.Response().WriteHeader(response.StatusCode)
 	_, err := io.Copy(c.Response(), response.Body)
 	return err
-}
-
-func (s *Server) writeFilteredRepoList(c echo.Context, response *http.Response) error {
-	body, err := httpx.ReadLimited(response.Body, 10*1024*1024)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "github repo list response is too large")
-	}
-	filtered, err := s.filterRepos(c, body)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "decode github repo list")
-	}
-	return c.JSONBlob(response.StatusCode, filtered)
-}
-
-func (s *Server) filterRepos(c echo.Context, body []byte) ([]byte, error) {
-	var repos []json.RawMessage
-	if err := json.Unmarshal(body, &repos); err != nil {
-		var installationPayload struct {
-			Repositories []json.RawMessage `json:"repositories"`
-		}
-		if objectErr := json.Unmarshal(body, &installationPayload); objectErr != nil || installationPayload.Repositories == nil {
-			return nil, err
-		}
-		repos = installationPayload.Repositories
-		filtered := s.filterRepoArray(c, repos)
-		return json.Marshal(map[string][]json.RawMessage{"repositories": filtered})
-	}
-	return json.Marshal(s.filterRepoArray(c, repos))
-}
-
-func (s *Server) filterRepoArray(c echo.Context, repos []json.RawMessage) []json.RawMessage {
-	filtered := make([]json.RawMessage, 0, len(repos))
-	for _, raw := range repos {
-		owner, name, ok := repoIdentity(raw)
-		if !ok {
-			continue
-		}
-		request := policy.Request{
-			Client:    security.ClientFromContext(c),
-			Operation: policy.OperationRepoMetadataRead,
-			Target:    policy.Target{Kind: "repo", Owner: owner, Name: name},
-		}
-		if s.policy.Allows(request) {
-			filtered = append(filtered, raw)
-		}
-	}
-	return filtered
-}
-
-func repoIdentity(raw json.RawMessage) (string, string, bool) {
-	var repo struct {
-		Name     string `json:"name"`
-		FullName string `json:"full_name"`
-		Owner    struct {
-			Login string `json:"login"`
-		} `json:"owner"`
-	}
-	if err := json.Unmarshal(raw, &repo); err != nil {
-		return "", "", false
-	}
-	owner := strings.TrimSpace(repo.Owner.Login)
-	name := strings.TrimSpace(repo.Name)
-	if owner == "" || name == "" {
-		fullOwner, fullName, ok := strings.Cut(repo.FullName, "/")
-		if ok {
-			owner = strings.TrimSpace(fullOwner)
-			name = strings.TrimSpace(fullName)
-		}
-	}
-	return owner, name, owner != "" && name != ""
-}
-
-func boundedQueryInt(value string, fallback int, minValue int, maxValue int) string {
-	if value == "" {
-		return strconv.Itoa(fallback)
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed < minValue || parsed > maxValue {
-		return strconv.Itoa(fallback)
-	}
-	return strconv.Itoa(parsed)
 }
 
 func (s *Server) audit(c echo.Context, request policy.Request, outcome string, reason string, status int, matchedRuleIDs []string) {

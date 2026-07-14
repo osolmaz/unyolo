@@ -17,8 +17,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +24,7 @@ import (
 	"github.com/labstack/echo/v4"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubapp"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
@@ -69,7 +67,7 @@ func TestGitHubWebhookVerifiesSignatureAndAuditsMetadata(t *testing.T) {
 	server := newTestServer(t)
 	server.githubWebhookSecret = "webhook-secret"
 	server.auditWriter = bkaudit.New(&logs)
-	body := []byte(`{"action":"added","installation":{"id":42},"repository":{"full_name":"dutifuldev/gh-broker"}}`)
+	body := []byte(`{"action":"added","installation":{"id":42},"repositories_added":[{"full_name":"dutifuldev/gh-broker"}]}`)
 	response := doWebhook(t, server, body, map[string]string{
 		"X-GitHub-Event":      "installation_repositories",
 		"X-GitHub-Delivery":   "delivery-1",
@@ -888,7 +886,7 @@ func TestInvalidGrantNotificationReferenceCancelsRequest(t *testing.T) {
 func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
 	t.Parallel()
 	stateDir := t.TempDir()
-	cfg := config.Config{ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, StateDir: stateDir}
+	cfg := config.Config{ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, GitHubTokenFile: "/protected/github-token", StateDir: stateDir}
 	brokerPolicy := requestPRPolicy(t)
 	server, err := New(cfg, brokerPolicy)
 	if err != nil {
@@ -1226,7 +1224,7 @@ func TestGetGrantDirect(t *testing.T) {
 	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "get-direct",
-		Operation:       string(policy.OperationPullRequestCreate),
+		Operation:       string(policy.Operation("pull_request.create")),
 		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "get direct",
@@ -1253,7 +1251,7 @@ func TestGetGrantDirect(t *testing.T) {
 func createGrant(t *testing.T, server *Server, requestID string, reason string) *httptest.ResponseRecorder {
 	t.Helper()
 	body := fmt.Sprintf(
-		`{"client_request_id":%q,"operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":%q,"minutes":5}`,
+		`{"client_request_id":%q,"operation":"git.push.force","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":%q,"minutes":5}`,
 		requestID,
 		reason,
 	)
@@ -1302,10 +1300,11 @@ func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 		body string
 		want int
 	}{
-		"bad json":        {body: `{`, want: http.StatusBadRequest},
-		"missing reason":  {body: `{"client_request_id":"bad","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"}}`, want: http.StatusBadRequest},
-		"not requestable": {body: `{"client_request_id":"bad","operation":"git.fetch","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"reason":"fetch"}`, want: http.StatusForbidden},
-		"too long":        {body: `{"client_request_id":"bad","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"too long","minutes":99}`, want: http.StatusBadRequest},
+		"bad json":               {body: `{`, want: http.StatusBadRequest},
+		"missing reason":         {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"}}`, want: http.StatusBadRequest},
+		"non protocol operation": {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"open PR"}`, want: http.StatusBadRequest},
+		"not requestable":        {body: `{"client_request_id":"bad","operation":"git.fetch","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"reason":"fetch"}`, want: http.StatusBadRequest},
+		"too long":               {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"too long","minutes":99}`, want: http.StatusBadRequest},
 	}
 	for name, tc := range cases {
 		response := doWithBody(t, server, http.MethodPost, "/api/grants", bearerAuth(), []byte(tc.body))
@@ -1318,7 +1317,7 @@ func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 func TestDecodeGrantCreateDirect(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	valid := newBodyContext(t, server, `{"client_request_id":"request-1","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"open PR"}`)
+	valid := newBodyContext(t, server, `{"client_request_id":"request-1","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"open PR"}`)
 	payload, err := decodeGrantCreate(valid)
 	if err != nil {
 		t.Fatalf("decodeGrantCreate(valid) error = %v", err)
@@ -1343,31 +1342,12 @@ func TestDecodeGrantCreateDirect(t *testing.T) {
 	}
 }
 
-func TestPullRequestClassificationRejectsAmbiguousJSON(t *testing.T) {
-	valid := []byte(`{"title":"Change","head":"feature","base":"main"}`)
-	attrs, err := pullRequestAttrs(valid)
-	if err != nil || attrs["base_ref"] != "refs/heads/main" || attrs["head_ref"] != "refs/heads/feature" {
-		t.Fatalf("pullRequestAttrs(valid) = %+v, %v", attrs, err)
-	}
-	for name, body := range map[string][]byte{
-		"duplicate": []byte(`{"title":"Change","head":"feature","head":"other","base":"main"}`),
-		"trailing":  append(append([]byte(nil), valid...), []byte(` {}`)...),
-		"unknown":   []byte(`{"title":"Change","head":"feature","base":"main","future":true}`),
-	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := pullRequestAttrs(body); err == nil {
-				t.Fatal("pullRequestAttrs() accepted ambiguous JSON")
-			}
-		})
-	}
-}
-
 func TestPlanGrantCreateDirect(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
-	body := `{"client_request_id":"request-1","operation":"pr.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"open PR","minutes":5}`
+	body := `{"client_request_id":"request-1","operation":"git.push.force","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"force push work branch","minutes":5}`
 	noNotifier := newBodyContext(t, server, body)
 	if _, err := server.planGrantCreate(noNotifier); err == nil {
 		t.Fatal("planGrantCreate(no notifier) error = nil, want service unavailable")
@@ -1394,7 +1374,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "deny-pr",
-		Operation:       string(policy.OperationPullRequestCreate),
+		Operation:       string(policy.Operation("pull_request.create")),
 		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "deny test",
@@ -1438,7 +1418,7 @@ func TestDenyTelegramGrantDirect(t *testing.T) {
 	result, _, err := server.requestGrant(grants.Request{
 		Client:          "bob",
 		ClientRequestID: "deny-direct",
-		Operation:       string(policy.OperationPullRequestCreate),
+		Operation:       string(policy.Operation("pull_request.create")),
 		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "deny direct",
@@ -1503,470 +1483,13 @@ func TestAPITarget(t *testing.T) {
 	}
 }
 
-func TestListReposFiltersByPolicy(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		if r.URL.Query().Get("per_page") != "100" {
-			t.Fatalf("per_page = %q, want 100", r.URL.Query().Get("per_page"))
-		}
-		_, _ = w.Write([]byte(`[
-			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}},
-			{"name":"repo","full_name":"outside/repo","owner":{"login":"outside"}}
-		]`))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if gotPath != "/user/repos" {
-		t.Fatalf("upstream path = %q, want /user/repos", gotPath)
-	}
-	var repos []struct {
-		FullName string `json:"full_name"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &repos); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if len(repos) != 1 || repos[0].FullName != "dutifuldev/gh-broker" {
-		t.Fatalf("repos = %+v, want only policy-allowed repo", repos)
-	}
-}
-
-func TestListReposUsesInstallationEndpointForInstallationToken(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		_, _ = w.Write([]byte(`{"repositories":[
-			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}
-		]}`))
-	})
-	server.githubToken = "ghs_installation_token"
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if gotPath != "/installation/repositories" {
-		t.Fatalf("upstream path = %q, want installation repositories endpoint", gotPath)
-	}
-}
-
-func TestListReposUsesGitHubAppInstallationTokens(t *testing.T) {
-	t.Parallel()
-	var installationRepoAuths []string
-	server := newTestServerWithHandler(t, githubAppRepoListHandler(t, &installationRepoAuths))
-	server.githubApp = newTestGitHubAppSource(t, server)
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if !slices.Equal(installationRepoAuths, []string{"Bearer ghs_installation_42", "Bearer ghs_installation_77"}) {
-		t.Fatalf("installation repo auths = %v", installationRepoAuths)
-	}
-	var body struct {
-		Repositories []struct {
-			FullName string `json:"full_name"`
-		} `json:"repositories"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if len(body.Repositories) != 1 || body.Repositories[0].FullName != "dutifuldev/gh-broker" {
-		t.Fatalf("repositories = %+v, want only policy-allowed repo", body.Repositories)
-	}
-}
-
-func githubAppRepoListHandler(t *testing.T, installationRepoAuths *[]string) http.HandlerFunc {
-	t.Helper()
-	return func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/app/installations":
-			writeRawJSON(w, `[{"id":42},{"id":77}]`)
-		case "/app/installations/42/access_tokens":
-			writeRawJSON(w, `{"token":"ghs_installation_42"}`)
-		case "/app/installations/77/access_tokens":
-			writeRawJSON(w, `{"token":"ghs_installation_77"}`)
-		case "/installation/repositories":
-			writeGitHubAppRepoListResponse(w, installationRepoAuths, r.Header.Get("Authorization"))
-		default:
-			t.Fatalf("unexpected upstream path %s", r.URL.Path)
-		}
-	}
-}
-
-func writeGitHubAppRepoListResponse(w http.ResponseWriter, installationRepoAuths *[]string, authorization string) {
-	*installationRepoAuths = append(*installationRepoAuths, authorization)
-	if authorization == "Bearer ghs_installation_42" {
-		writeRawJSON(w, `{"repositories":[{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}]}`)
-		return
-	}
-	writeRawJSON(w, `{"repositories":[{"name":"outside","full_name":"outside/outside","owner":{"login":"outside"}}]}`)
-}
-
-func TestLooksLikeInstallationTokenAndRepoListURLOrder(t *testing.T) {
-	t.Parallel()
-	if !looksLikeInstallationToken("ghs_installation_token") {
-		t.Fatal("looksLikeInstallationToken(ghs_) = false, want true")
-	}
-	if looksLikeInstallationToken("ghp_user_token") {
-		t.Fatal("looksLikeInstallationToken(ghp_) = true, want false")
-	}
+func TestLegacyJSONProxyRoutesAreRemoved(t *testing.T) {
 	server := newTestServer(t)
-	context := server.echo.NewContext(httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/repos", http.NoBody), httptest.NewRecorder())
-	server.githubToken = "ghs_installation_token"
-	installationFirst := server.repoListURLs(context)
-	if got := urlPaths(installationFirst); !slices.Equal(got, []string{"installation/repositories", "user/repos"}) {
-		t.Fatalf("installation token repo URL paths = %v, want installation then user", got)
-	}
-	server.githubToken = "ghp_user_token"
-	userFirst := server.repoListURLs(context)
-	if got := urlPaths(userFirst); !slices.Equal(got, []string{"user/repos", "installation/repositories"}) {
-		t.Fatalf("user token repo URL paths = %v, want user then installation", got)
-	}
-}
-
-func urlPaths(urls []*url.URL) []string {
-	paths := make([]string, 0, len(urls))
-	for _, item := range urls {
-		paths = append(paths, strings.TrimPrefix(item.Path, "/"))
-	}
-	return paths
-}
-
-func TestListReposFallsBackBetweenUserAndInstallationEndpoints(t *testing.T) {
-	t.Parallel()
-	var gotPaths []string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPaths = append(gotPaths, r.URL.Path)
-		if r.URL.Path == "/user/repos" {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		_, _ = w.Write([]byte(`{"repositories":[
-			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}
-		]}`))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if strings.Join(gotPaths, ",") != "/user/repos,/installation/repositories" {
-		t.Fatalf("upstream paths = %v, want user then installation fallback", gotPaths)
-	}
-}
-
-func TestListReposDropsStaleContentLength(t *testing.T) {
-	t.Parallel()
-	upstreamBody := `[
-		{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}},
-		{"name":"repo","full_name":"outside/repo","owner":{"login":"outside"}}
-	]`
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Length", strconv.Itoa(len(upstreamBody)))
-		w.Header().Set("Link", `<https://api.github.com/user/repos?page=2>; rel="next"`)
-		_, _ = w.Write([]byte(upstreamBody))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if response.Header().Get("Content-Length") == strconv.Itoa(len(upstreamBody)) {
-		t.Fatalf("Content-Length copied from unfiltered upstream response")
-	}
-	if values := response.Header().Values("Link"); len(values) > 0 {
-		t.Fatalf("Link copied from unfiltered upstream response: %v", values)
-	}
-	var repos []struct {
-		FullName string `json:"full_name"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &repos); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if len(repos) != 1 || repos[0].FullName != "dutifuldev/gh-broker" {
-		t.Fatalf("repos = %+v, want filtered response body", repos)
-	}
-}
-
-func TestListReposDropsCredentialMetadataHeaders(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		setCredentialMetadataHeaders(w.Header())
-		w.Header().Set("X-RateLimit-Remaining", "42")
-		_, _ = w.Write([]byte(`[
-			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}}
-		]`))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	assertCredentialMetadataHeadersDropped(t, response.Header())
-	if got := response.Header().Get("X-RateLimit-Remaining"); got != "42" {
-		t.Fatalf("X-RateLimit-Remaining = %q, want forwarded rate-limit header", got)
-	}
-}
-
-func TestListReposSupportsInstallationPayload(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"repositories":[
-			{"name":"gh-broker","full_name":"dutifuldev/gh-broker","owner":{"login":"dutifuldev"}},
-			{"full_name":"outside/repo"}
-		]}`))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos?per_page=500&page=2", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	var payload struct {
-		Repositories []struct {
-			FullName string `json:"full_name"`
-		} `json:"repositories"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if len(payload.Repositories) != 1 || payload.Repositories[0].FullName != "dutifuldev/gh-broker" {
-		t.Fatalf("payload = %+v, want filtered installation repositories", payload)
-	}
-}
-
-func TestRepoIdentity(t *testing.T) {
-	t.Parallel()
-	cases := map[string]struct {
-		raw       json.RawMessage
-		wantOwner string
-		wantName  string
-		wantOK    bool
-	}{
-		"owner object": {
-			raw:       json.RawMessage(`{"name":"gh-broker","owner":{"login":"dutifuldev"},"full_name":"ignored/value"}`),
-			wantOwner: "dutifuldev",
-			wantName:  "gh-broker",
-			wantOK:    true,
-		},
-		"full name fallback": {
-			raw:       json.RawMessage(`{"full_name":"osolmaz/brokerkit"}`),
-			wantOwner: "osolmaz",
-			wantName:  "brokerkit",
-			wantOK:    true,
-		},
-		"missing repo identity": {
-			raw:    json.RawMessage(`{"full_name":"missing-slash"}`),
-			wantOK: false,
-		},
-		"invalid json": {
-			raw:    json.RawMessage(`{`),
-			wantOK: false,
-		},
-	}
-	for name, tc := range cases {
-		owner, repo, ok := repoIdentity(tc.raw)
-		if owner != tc.wantOwner || repo != tc.wantName || ok != tc.wantOK {
-			t.Fatalf("%s repoIdentity() = owner=%q repo=%q ok=%t, want owner=%q repo=%q ok=%t", name, owner, repo, ok, tc.wantOwner, tc.wantName, tc.wantOK)
-		}
-	}
-}
-
-func TestFilterRepoArrayUsesPolicy(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/repos", http.NoBody)
-	context := server.echo.NewContext(request, httptest.NewRecorder())
-	context.Set("gh-broker.client", "bob")
-	filtered := server.filterRepoArray(context, []json.RawMessage{
-		json.RawMessage(`{"name":"gh-broker","owner":{"login":"dutifuldev"}}`),
-		json.RawMessage(`{"name":"private","owner":{"login":"outside"}}`),
-		json.RawMessage(`{"not":"a repo"}`),
-	})
-	if len(filtered) != 1 || !strings.Contains(string(filtered[0]), "gh-broker") {
-		t.Fatalf("filtered repos = %s, want only policy-allowed repo", filtered)
-	}
-}
-
-func TestListReposForwardsUpstreamError(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		setCredentialMetadataHeaders(w.Header())
-		w.Header().Set("X-RateLimit-Remaining", "42")
-		w.WriteHeader(http.StatusTeapot)
-		_, _ = w.Write([]byte("upstream error"))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusTeapot || !strings.Contains(response.Body.String(), "upstream error") {
-		t.Fatalf("status/body = %d %q, want upstream error", response.Code, response.Body.String())
-	}
-	assertCredentialMetadataHeadersDropped(t, response.Header())
-	if got := response.Header().Get("X-RateLimit-Remaining"); got != "42" {
-		t.Fatalf("X-RateLimit-Remaining = %q, want forwarded rate-limit header", got)
-	}
-}
-
-func TestListReposRejectsInvalidUpstreamJSON(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"unexpected":true}`))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos", bearerAuth())
-	if response.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-}
-
-func TestReadContentsRootUsesContentsEndpoint(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusOK)
-	})
-	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if gotPath != "/repos/dutifuldev/gh-broker/contents" {
-		t.Fatalf("upstream path = %q, want root contents path", gotPath)
-	}
-}
-
-func TestReadContentsRouteUsesGitHubContentsPath(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	var gotQuery string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotQuery = r.URL.RawQuery
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"name":"README.md"}`))
-	})
-	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/docs/README.md?ref=main", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if gotPath != "/repos/dutifuldev/gh-broker/contents/docs/README.md" {
-		t.Fatalf("upstream path = %q, want contents path", gotPath)
-	}
-	if gotQuery != "ref=main" {
-		t.Fatalf("upstream query = %q, want ref=main", gotQuery)
-	}
-}
-
-func TestReadContentsDoesNotFollowGitHubRedirects(t *testing.T) {
-	t.Parallel()
-	var paths []string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
-		if r.URL.Path == "/repos/dutifuldev/gh-broker/contents/README.md" {
-			http.Redirect(w, r, "/repos/outside/private/contents/README.md", http.StatusFound)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md", bearerAuth())
-	if response.Code != http.StatusFound {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if strings.Join(paths, ",") != "/repos/dutifuldev/gh-broker/contents/README.md" {
-		t.Fatalf("upstream paths = %v, want only original policy-checked contents request", paths)
-	}
-}
-
-func TestReadContentsAllowsLiteralPercentPath(t *testing.T) {
-	t.Parallel()
-	var gotPath string
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusOK)
-	})
-	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/100%25.md", bearerAuth())
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if gotPath != "/repos/dutifuldev/gh-broker/contents/100%.md" {
-		t.Fatalf("upstream path = %q, want literal percent path", gotPath)
-	}
-}
-
-func TestReadContentsRejectsDotSegments(t *testing.T) {
-	t.Parallel()
-	var upstreamCalls int
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		upstreamCalls++
-		w.WriteHeader(http.StatusOK)
-	})
-	for _, path := range []string{
-		"/api/repos/dutifuldev/gh-broker/contents/../issues",
-		"/api/repos/dutifuldev/gh-broker/contents/docs/%2e%2e/issues",
-		"/api/repos/dutifuldev/gh-broker/contents/docs/./README.md",
-		"/api/repos/dutifuldev/gh-broker/contents/docs%2Fsecret",
-		"/api/repos/dutifuldev/gh-broker/contents/docs%2F..%2Fissues",
-	} {
+	for _, path := range []string{"/api/repos", "/api/repos/osolmaz/brokerkit/contents/README.md"} {
 		response := do(t, server, http.MethodGet, path, bearerAuth())
-		if response.Code != http.StatusBadRequest {
-			t.Fatalf("%s status = %d, body = %s", path, response.Code, response.Body.String())
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want 404", path, response.Code)
 		}
-	}
-	if upstreamCalls != 0 {
-		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
-	}
-}
-
-func TestRepoRoutesRejectUnsafeRouteSegments(t *testing.T) {
-	t.Parallel()
-	var upstreamCalls int
-	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
-		upstreamCalls++
-		w.WriteHeader(http.StatusOK)
-	})
-	for _, path := range []string{
-		"/api/repos/dutifuldev/%2e%2e/contents/README.md",
-		"/api/repos/dutifuldev/foo%2Fbar/contents/README.md",
-		"/api/repos/%2e%2e/gh-broker/contents/README.md",
-		"/dutifuldev/foo%2Fbar.git/info/refs?service=git-upload-pack",
-		"/dutifuldev/../info/refs?service=git-upload-pack",
-	} {
-		response := do(t, server, http.MethodGet, path, bearerAuth())
-		if response.Code != http.StatusBadRequest {
-			t.Fatalf("%s status = %d, body = %s", path, response.Code, response.Body.String())
-		}
-	}
-	if upstreamCalls != 0 {
-		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
-	}
-}
-
-func TestReadContentsRefUsesPolicy(t *testing.T) {
-	t.Parallel()
-	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
-		{
-			ID:         "bob-main-contents",
-			Effect:     policy.EffectAllow,
-			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationContentsRead},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
-			Attrs:      map[string][]string{"paths": {"*"}, "refs": {"main"}},
-		},
-	}})
-	if err != nil {
-		t.Fatalf("policy.New() error = %v", err)
-	}
-	var upstreamCalls int
-	server := newTestServerWithPolicyAndHandler(t, brokerPolicy, func(w http.ResponseWriter, _ *http.Request) {
-		upstreamCalls++
-		w.WriteHeader(http.StatusOK)
-	})
-	allowed := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md?ref=main", bearerAuth())
-	if allowed.Code != http.StatusOK {
-		t.Fatalf("allowed status = %d, body = %s", allowed.Code, allowed.Body.String())
-	}
-	denied := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md?ref=private-branch", bearerAuth())
-	if denied.Code != http.StatusForbidden {
-		t.Fatalf("denied status = %d, body = %s", denied.Code, denied.Body.String())
-	}
-	if upstreamCalls != 1 {
-		t.Fatalf("upstream calls = %d, want only the allowed contents read", upstreamCalls)
 	}
 }
 
@@ -2058,6 +1581,7 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 		ClientID:            "bob",
 		SharedSecret:        testSharedSecret,
 		GitHubToken:         testGitHubToken,
+		GitHubTokenFile:     "/protected/github-token",
 		StateDir:            t.TempDir(),
 		TelegramBotToken:    "bot-token",
 		TelegramChatID:      123,
@@ -2098,12 +1622,22 @@ func TestGitProxyUsesServerSideCredential(t *testing.T) {
 func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 	t.Parallel()
 	var gotAuthorization string
+	var tokenMints int
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/repos/dutifuldev/gh-broker/installation":
 			writeRawJSON(w, `{"id":42}`)
 		case "/app/installations/42/access_tokens":
-			writeRawJSON(w, `{"token":"ghs_repo_token"}`)
+			tokenMints++
+			if tokenMints == 1 {
+				writeRawJSON(w, `{"token":"ghs_bootstrap","expires_at":"2099-07-09T18:00:00Z"}`)
+			} else {
+				writeRawJSON(w, `{"token":"ghs_repo_token","expires_at":"2099-07-09T18:00:00Z"}`)
+			}
+		case "/repos/dutifuldev/gh-broker":
+			writeRawJSON(w, `{"id":99,"name":"gh-broker","owner":{"login":"dutifuldev"}}`)
+		case "/installation/token":
+			w.WriteHeader(http.StatusNoContent)
 		case "/dutifuldev/gh-broker.git/info/refs":
 			gotAuthorization = r.Header.Get("Authorization")
 			w.WriteHeader(http.StatusOK)
@@ -2111,7 +1645,7 @@ func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 			t.Fatalf("unexpected upstream path %s", r.URL.Path)
 		}
 	})
-	server.githubApp = newTestGitHubAppSource(t, server)
+	server.githubCredentials = newTestGitHubAppManager(t, server)
 	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
@@ -2121,29 +1655,46 @@ func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 	}
 }
 
-func TestContentsProxyUsesGitHubAppInstallationToken(t *testing.T) {
+func TestReceivePackUsesWriteAndInspectionInstallationTokens(t *testing.T) {
 	t.Parallel()
-	var gotAuthorization string
+	var tokenRequests []string
+	var gitAuthorization string
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/repos/dutifuldev/gh-broker/installation":
 			writeRawJSON(w, `{"id":42}`)
 		case "/app/installations/42/access_tokens":
-			writeRawJSON(w, `{"token":"ghs_contents_token"}`)
-		case "/repos/dutifuldev/gh-broker/contents/README.md":
-			gotAuthorization = r.Header.Get("Authorization")
-			writeRawJSON(w, `{"name":"README.md"}`)
+			body, _ := io.ReadAll(r.Body)
+			tokenRequests = append(tokenRequests, string(body))
+			writeRawJSON(w, fmt.Sprintf(`{"token":"ghs_token_%d","expires_at":"2099-07-09T18:00:00Z"}`, len(tokenRequests)))
+		case "/repos/dutifuldev/gh-broker":
+			writeRawJSON(w, `{"id":99,"name":"gh-broker","default_branch":"main","owner":{"login":"dutifuldev"}}`)
+		case "/installation/token":
+			w.WriteHeader(http.StatusNoContent)
+		case "/repos/dutifuldev/gh-broker/rules/branches/bob/work":
+			writeRawJSON(w, `[]`)
+		case "/repos/dutifuldev/gh-broker/branches/bob/work/protection":
+			http.NotFound(w, r)
+		case "/dutifuldev/gh-broker.git/git-receive-pack":
+			gitAuthorization = r.Header.Get("Authorization")
+			w.WriteHeader(http.StatusOK)
 		default:
 			t.Fatalf("unexpected upstream path %s", r.URL.Path)
 		}
 	})
-	server.githubApp = newTestGitHubAppSource(t, server)
-	response := do(t, server, http.MethodGet, "/api/repos/dutifuldev/gh-broker/contents/README.md", bearerAuth())
+	server.githubCredentials = newTestGitHubAppManager(t, server)
+	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(),
+		receivePackCreate("refs/heads/bob/work"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if gotAuthorization != "Bearer ghs_contents_token" {
-		t.Fatalf("authorization = %q, want GitHub App installation bearer token", gotAuthorization)
+	if len(tokenRequests) != 3 || !strings.Contains(tokenRequests[0], `"contents":"write"`) ||
+		!strings.Contains(tokenRequests[1], `"contents":"write"`) ||
+		!strings.Contains(tokenRequests[2], `"administration":"read"`) || !strings.Contains(tokenRequests[2], `"metadata":"read"`) {
+		t.Fatalf("installation token requests = %#v", tokenRequests)
+	}
+	if gitAuthorization != githubGitAuthorization("ghs_token_2") {
+		t.Fatalf("git authorization = %q, want repository-scoped write token", gitAuthorization)
 	}
 }
 
@@ -2335,10 +1886,8 @@ func newTestServerWithPolicyAndHandlerInStateDir(t *testing.T, brokerPolicy *pol
 	upstream := httptest.NewServer(withDefaultGitHubSafetyState(handler))
 	t.Cleanup(upstream.Close)
 	server, err := New(config.Config{
-		ClientID:     "bob",
-		SharedSecret: testSharedSecret,
-		GitHubToken:  testGitHubToken,
-		StateDir:     stateDir,
+		ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, GitHubTokenFile: "/protected/github-token",
+		GitHubAPIBaseURL: upstream.URL, GitHubWebBaseURL: upstream.URL, StateDir: stateDir,
 	}, brokerPolicy)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -2348,11 +1897,8 @@ func newTestServerWithPolicyAndHandlerInStateDir(t *testing.T, brokerPolicy *pol
 		t.Fatalf("Parse() error = %v", err)
 	}
 	writeClient := *upstream.Client()
-	readClient := *upstream.Client()
 	server.githubClient = &writeClient
 	server.githubClient.CheckRedirect = stopGitHubRedirect
-	server.githubReadClient = &readClient
-	server.githubReadClient.CheckRedirect = stopGitHubRedirect
 	server.githubGitBaseURL = upstreamURL
 	server.githubAPIBaseURL = upstreamURL
 	return server
@@ -2365,7 +1911,7 @@ func withDefaultGitHubSafetyState(next http.HandlerFunc) http.HandlerFunc {
 			_, _ = w.Write([]byte(`[]`))
 		case strings.Contains(r.URL.Path, "/branches/") && strings.HasSuffix(r.URL.Path, "/protection"):
 			http.NotFound(w, r)
-		case strings.HasPrefix(r.URL.Path, "/repos/") && len(strings.Split(strings.Trim(r.URL.Path, "/"), "/")) == 3:
+		case strings.HasPrefix(r.URL.Path, "/repos/") && len(strings.Split(strings.Trim(r.URL.Path, "/"), "/")) == 3 && strings.Contains(r.Header.Get("Authorization"), testGitHubToken):
 			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
 		default:
 			next(w, r)
@@ -2380,13 +1926,21 @@ func requestPRPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-can-request-pr-create",
 			Effect:     policy.EffectRequest,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationPullRequestCreate},
+			Operations: []policy.Operation{policy.Operation("pull_request.create")},
 			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
 			Attrs: map[string][]string{
 				"refs":      {"refs/heads/bob/work"},
 				"head_refs": {"refs/heads/bob/work"},
 				"base_refs": {"refs/heads/main"},
 			},
+		},
+		{
+			ID:         "bob-can-request-force-push",
+			Effect:     policy.EffectRequest,
+			Clients:    []string{"bob"},
+			Operations: []policy.Operation{policy.OperationGitPushForce},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Attrs:      map[string][]string{"refs": {"refs/heads/bob/work"}},
 		},
 	}})
 	if err != nil {
@@ -2632,7 +2186,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-repo-read",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationGitFetch, policy.OperationRepoMetadataRead},
+			Operations: []policy.Operation{policy.OperationGitFetch, policy.Operation("repo.metadata.read")},
 			Targets: []policy.Target{
 				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
 				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
@@ -2642,7 +2196,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-contents-read",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationContentsRead},
+			Operations: []policy.Operation{policy.Operation("repo.contents.read")},
 			Targets: []policy.Target{
 				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
 				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
@@ -2653,7 +2207,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-list-repos",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationInstallationReposList},
+			Operations: []policy.Operation{policy.Operation("installation.repo.list")},
 			Targets:    []policy.Target{{Kind: "installation"}},
 		},
 		{
@@ -2675,7 +2229,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-pr-create",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationPullRequestCreate},
+			Operations: []policy.Operation{policy.Operation("pull_request.create")},
 			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
 			Attrs: map[string][]string{
 				"refs":      {"refs/heads/bob/*", "refs/heads/agent/*"},
@@ -2865,19 +2419,17 @@ func zeroOID() string {
 	return "0000000000000000000000000000000000000000"
 }
 
-func newTestGitHubAppSource(t *testing.T, server *Server) *githubapp.Source {
+func newTestGitHubAppManager(t *testing.T, server *Server) *githubauth.Manager {
 	t.Helper()
-	source, err := githubapp.New(githubapp.Config{
-		AppID:         "12345",
-		PrivateKeyPEM: testGitHubAppPrivateKey(t),
-		APIBaseURL:    server.githubAPIBaseURL,
-		HTTPClient:    server.githubClient,
-		Now:           func() time.Time { return time.Date(2026, 7, 9, 17, 0, 0, 0, time.UTC) },
+	manager, err := githubauth.New(githubauth.Config{
+		AppID: "12345", AppPrivateKey: testGitHubAppPrivateKey(t), APIBaseURL: server.githubAPIBaseURL,
+		WebBaseURL: server.githubGitBaseURL, HTTPClient: server.githubClient,
+		Now: func() time.Time { return time.Date(2026, 7, 9, 17, 0, 0, 0, time.UTC) },
 	})
 	if err != nil {
-		t.Fatalf("githubapp.New() error = %v", err)
+		t.Fatalf("githubauth.New() error = %v", err)
 	}
-	return source
+	return manager
 }
 
 func testGitHubAppPrivateKey(t *testing.T) []byte {

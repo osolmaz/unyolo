@@ -12,6 +12,8 @@ The shared install, setup, policy, approval, and release contract is in
 - Echo HTTP server
 - `gh-broker --version`
 - `gh-broker setup client`
+- `gh-broker setup github-user enroll|rotate|revoke` for protected local
+  enrollment of expiring GitHub App user credentials
 - `gh-broker setup systemd` for Linux service file/config generation
 - `gh-broker doctor github` for local isolation, GitHub App, repository, and
   default-branch protection checks
@@ -20,8 +22,11 @@ The shared install, setup, policy, approval, and release contract is in
 - Rule-based `scope.json` with GitHub classification delegated to the shared
   brokerkit policy engine
 - Git smart HTTP fetch and push route shape
-- Narrow GitHub API routes for repository listing, content reads, and pull request creation
-- Server-side GitHub token forwarding as a development credential path
+- Exhaustive typed Agent V1 operations generated from pinned GitHub REST and GraphQL definitions
+- Opaque broker-owned `app-jwt`, exact installation, user, and protected-file
+  development credential providers
+- Exact installation-token narrowing and cache isolation by installation,
+  repository ids, permissions, API host, and expiry behavior
 - Localhost bind by default for Tailnet-oriented deployment
 - Conservative receive-pack size cap and upstream GitHub timeouts
 - Structured audit logs without secrets, request bodies, diffs, or pack contents
@@ -30,13 +35,43 @@ The shared install, setup, policy, approval, and release contract is in
 - No policy read/write API
 - Tests for auth, route shape, policy decisions, and receive-pack classification
 
+## Generated operation surface
+
+The checked-in stage 2–3 inventory classifies all 1,196 operations in the
+pinned stable GitHub REST API and all 300 roots in the pinned full GraphQL
+introspection, including 16 deprecated mutation roots. It generates 1,436
+canonical typed catalog operations, closed target/argument/result schemas,
+REST bindings, persisted GraphQL documents, policy metadata, GitHub App
+permission profiles, CLI metadata, MCP tool schemas, and capability docs.
+
+Browse the generated reference in
+[CAPABILITIES.md](docs/generated/CAPABILITIES.md) or query it locally:
+
+```sh
+gh-broker operations list --family pull_request
+gh-broker operations describe repo.visibility.update
+```
+
+The MCP server exposes the exhaustive catalog through the paged
+`github://operations` resource. `tools/list` is separately filtered by the
+authenticated client's enabled operations, policy-visible operations, runtime
+capabilities, and the operator exposure profile. With no configured
+intersection it advertises zero execution tools; it never publishes the full
+catalog as 1,000+ tools by default.
+
+Credential selection is immutable broker metadata. Callers choose an operation
+and target, never a credential kind, token scope, installation, or permission
+set. The generated operation catalog supplies the minimum GitHub App permission
+map used for installation-token minting.
+
 ## Local Development
 
 ```sh
 cp .env.example .env
 cp scope.example.json scope.json
+install -m 600 /dev/null github-token
+# write a development-only fine-grained token to github-token
 # edit GH_BROKER_SHARED_SECRET to a generated value with at least 32 bytes
-# set GH_BROKER_GITHUB_TOKEN to a GitHub token with the repo access gh-broker should broker
 # edit scope.json by hand
 source .env
 make check
@@ -80,6 +115,20 @@ sudo gh-broker setup systemd \
   --scope-file ./scope.json
 ```
 
+To enable encrypted GitHub App user credentials, add the App's OAuth client
+files to setup:
+
+```sh
+sudo gh-broker setup systemd \
+  --github-app-id-file ./app-id \
+  --github-app-private-key-file ./private-key.pem \
+  --github-app-client-id-file ./client-id \
+  --github-app-client-secret-file ./client-secret \
+  --github-user-id 1234 \
+  --github-webhook-secret-file ./webhook-secret \
+  --scope-file ./scope.json
+```
+
 Development setup with a token file:
 
 ```sh
@@ -88,6 +137,42 @@ sudo gh-broker setup systemd \
   --github-token-file ./github-token \
   --scope-file ./scope.json
 ```
+
+This fallback is protected-file-only and non-production. `doctor github`
+returns an unsafe result if it is selected with
+`GH_BROKER_ENVIRONMENT=production`.
+
+Enroll an expiring GitHub App user credential from a local operator shell while
+the broker is stopped. The state directory must already exist with the broker
+service user's ownership; setup preserves that owner across key and slot
+writes. The input is a mode `0600` JSON file and is deleted by the operator
+after a successful enrollment:
+
+```json
+{
+  "user_id": 1234,
+  "login": "octocat",
+  "access_token": "expiring-access-token",
+  "refresh_token": "expiring-refresh-token",
+  "access_expires_at": "2026-07-14T12:00:00Z",
+  "refresh_expires_at": "2026-10-14T12:00:00Z"
+}
+```
+
+```sh
+chmod 600 user-credential.json app-client-id app-client-secret
+gh-broker setup github-user enroll \
+  --state-dir /var/lib/gh-broker \
+  --credential-file ./user-credential.json \
+  --github-app-client-id-file ./app-client-id \
+  --github-app-client-secret-file ./app-client-secret
+rm user-credential.json
+```
+
+Use the same command with `rotate` and a replacement credential file to rotate
+an enrollment. Revoke immediately with `github-user revoke --user-id 1234`
+and the same state/client flags. These commands return only the action and
+immutable user id; there is no credential readback command or API route.
 
 Add Telegram notifications by passing the bot token as a protected file:
 
@@ -142,18 +227,22 @@ git -c http.extraHeader="Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
   ls-remote http://localhost:8080/osolmaz/gh-broker.git
 ```
 
-List policy-visible repositories:
+List repositories visible to the selected GitHub user credential:
 
 ```sh
-curl -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  http://localhost:8080/api/repos
+gh-broker operation submit repo.list_for_authenticated_user \
+  --target-json '{"kind":"user","name":"osolmaz"}' \
+  --arguments-json '{}' \
+  --wait
 ```
 
 Read repository contents:
 
 ```sh
-curl -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  http://localhost:8080/api/repos/osolmaz/gh-broker/contents/README.md?ref=main
+gh-broker operation submit repo.contents.read \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --arguments-json '{"path":"README.md","ref":"main"}' \
+  --wait
 ```
 
 Open a pull request:
@@ -161,7 +250,7 @@ Open a pull request:
 ```sh
 curl -X POST -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"idempotency_key":"open-agent-pr","operation":"pr.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"arguments":{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."},"reason":"Open the reviewed feature branch"}' \
+  -d '{"idempotency_key":"open-agent-pr","operation":"pull_request.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"arguments":{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."},"reason":"Open the reviewed feature branch"}' \
   http://localhost:8080/api/agent/v1/operations
 ```
 
@@ -203,16 +292,18 @@ Example direct-main exception:
 ```text
 GET  /healthz
 
-GET  /api/repos
-POST /api/grants
-GET  /api/grants
-GET  /api/grants/{id}
-GET  /api/repos/{owner}/{repo}/contents/{path}
+POST /api/grants                         Git smart-HTTP protocol grant request
+GET  /api/grants                         Git smart-HTTP protocol grants
+GET  /api/grants/{id}                    Git smart-HTTP protocol grant
 
 GET  /.well-known/brokerkit-agent
 POST /api/agent/v1/operations
 GET  /api/agent/v1/operations/{id}
 GET  /api/agent/v1/operations/{id}/events
+POST /api/agent/v1/operations/{id}/cancel
+POST /api/agent/v1/sealed-payloads
+POST /api/agent/v1/streams
+GET  /api/agent/v1/streams/{id}
 
 GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
 POST /{owner}/{repo}.git/git-upload-pack
@@ -221,7 +312,10 @@ GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
 POST /{owner}/{repo}.git/git-receive-pack
 ```
 
-The long-term route shape is `/api/*` for JSON APIs and Git smart-HTTP routes for Git. Compatibility aliases are not part of the production plan.
+All discrete GitHub JSON operations use Agent V1. The `/api/grants` surface is
+reserved for approval requests created while handling Git smart-HTTP protocol
+traffic. Direct repository-list and contents proxy routes are not supported.
+Compatibility aliases are not part of the production surface.
 
 ## Operator Inbox
 
@@ -257,13 +351,17 @@ GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE=/etc/gh-broker/github-webhook-secret
 ```
 
 For repo-scoped requests, gh-broker resolves the GitHub App installation for
-the target repository and mints a short-lived installation token after broker
-policy allows the request. For repository listing, gh-broker lists App
-installations and then filters visible installation repositories through
-`scope.json`.
+the target repository with `go-github` and mints a short-lived token with the
+exact repository id and catalog-derived minimum permission map after broker
+policy allows the request. Cache keys include the installation id, sorted exact
+repository ids, exact permissions, API host, and refresh behavior. Broader
+credentials are never reused for narrower requests. App JWT transport is
+provided by `ghinstallation`; typed GitHub API pagination, errors, rate limits,
+installation resolution, token requests, and webhook parsing use `go-github`.
+Repository-list credentials are uncached and revoked immediately after use.
 
-`GH_BROKER_GITHUB_TOKEN_FILE` remains available as a local development
-fallback.
+`GH_BROKER_GITHUB_TOKEN_FILE` remains available only as a protected-file local
+development fallback. Inline PAT configuration is rejected.
 
 GitHub App webhooks are accepted at:
 
@@ -275,13 +373,22 @@ The webhook route requires `X-Hub-Signature-256`, `X-GitHub-Event`, and
 `X-GitHub-Delivery`. It verifies the payload with
 `GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE`, accepts bodies up to 1 MiB, and logs only
 audit-safe metadata such as event, delivery id, action, installation id, and
-repository name.
+repository name. Installation suspension/deletion, repository selection
+changes, and `github_app_authorization` revocation invalidate affected cached
+credentials immediately. Invalid or unknown signed payloads fail closed.
+
+User access and refresh credentials are stored only in BrokerKit's encrypted
+credential store. Access credentials refresh before expiry, rotating refresh
+credentials are persisted as one encrypted record, and enrollment, rotation,
+revocation, errors, plans, results, audit events, and operator surfaces never
+return credential material.
 
 Deployment safety defaults:
 
 - `GH_BROKER_BIND_ADDR` defaults to `127.0.0.1`.
 - `GH_BROKER_STATE_DIR` defaults to `./state`.
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
+- `GH_BROKER_GITHUB_STREAM_TIMEOUT` defaults to 600 seconds for bounded uploads and downloads.
 - `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
 - `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
   Telegram notifications for requestable grants. Telegram tokens are loaded
@@ -291,12 +398,14 @@ Deployment safety defaults:
   for the request, and verified webhook event metadata.
 - Audit logs do not include tokens, cookies, request bodies, PR bodies, pack
   contents, diffs, raw upstream bodies, JWTs, installation tokens, or private
-  keys.
+  keys, refresh tokens, PATs, or GitHub App client secrets.
 
 ## Grants
 
-Request rules do not execute directly. An authenticated client creates a
-pending grant with `POST /api/grants`; every request must include a unique
+Request rules do not execute directly. Discrete GitHub operations use Agent V1,
+which creates the durable approval request as part of the submitted operation.
+Git smart-HTTP protocol handling creates a pending grant through
+`POST /api/grants`; every such request must include a unique
 `client_request_id`, and retries must reuse that value. gh-broker sends the
 approval request to Telegram when Telegram is configured, but the durable
 operator inbox remains authoritative and works without Telegram. Approval

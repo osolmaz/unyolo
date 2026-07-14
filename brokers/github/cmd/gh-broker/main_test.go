@@ -193,6 +193,7 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", writeScopeFile(t))
 	t.Setenv("GH_BROKER_STATE_DIR", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
@@ -208,6 +209,7 @@ func TestRunReturnsScopeFileError(t *testing.T) {
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", filepath.Join(t.TempDir(), "missing.json"))
 	err := run(t.Context())
 	if err == nil {
@@ -238,6 +240,18 @@ func TestBuildServersAddsDedicatedOperatorListener(t *testing.T) {
 	}
 	if len(servers) != 2 || servers[0].Addr != "127.0.0.2:9090" || servers[1].Addr != "127.0.0.1:9091" || servers[1].WriteTimeout != 0 || servers[1].ReadTimeout != cfg.ReadTimeout {
 		t.Fatalf("servers = %+v", servers)
+	}
+}
+
+func TestAgentServerTimeoutsCoverBoundedStreams(t *testing.T) {
+	cfg := config.Config{ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, GitHubStreamTimeout: 10 * time.Minute}
+	server := configuredAgentServer("127.0.0.1", "8081", http.NotFoundHandler(), cfg)
+	if server.ReadTimeout != 10*time.Minute || server.WriteTimeout != 10*time.Minute {
+		t.Fatalf("agent timeouts = read %s write %s", server.ReadTimeout, server.WriteTimeout)
+	}
+	operator := configuredOperatorServer("127.0.0.1", "8082", http.NotFoundHandler(), cfg)
+	if operator.ReadTimeout != 15*time.Second || operator.WriteTimeout != 0 {
+		t.Fatalf("operator timeouts = read %s write %s", operator.ReadTimeout, operator.WriteTimeout)
 	}
 }
 
@@ -274,6 +288,7 @@ func configForBuildTest(t *testing.T) config.Config {
 		ClientID:            "bob",
 		SharedSecret:        strings.Repeat("a", 32),
 		GitHubToken:         "github-token",
+		GitHubTokenFile:     "/protected/github-token",
 		ScopeFile:           writeScopeFile(t),
 		StateDir:            t.TempDir(),
 		GitHubHTTPTimeout:   time.Second,
@@ -285,7 +300,7 @@ func configForBuildTest(t *testing.T) config.Config {
 func writeScopeFile(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "scope.json")
-	body := []byte(`{"rules":[{"id":"bob-read","effect":"allow","clients":["bob"],"operations":["git.fetch","repo.metadata.read","contents.read","installation.repos.list"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"},{"kind":"installation"}]}]}`)
+	body := []byte(`{"rules":[{"id":"bob-read","effect":"allow","clients":["bob"],"operations":["git.fetch","repo.metadata.read","repo.contents.read","installation.repo.list"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"},{"kind":"installation"}]}]}`)
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}

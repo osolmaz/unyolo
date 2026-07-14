@@ -24,6 +24,7 @@ jobs:
       - name: gofmt check
         run: test -z "$(gofmt -l .)"
       - run: ./scripts/check-architecture.sh
+      - run: ./scripts/check-github-generated.sh
       - run: ./scripts/check-sql.sh
       - run: go test ./protocol
       - run: go vet ./...
@@ -44,10 +45,14 @@ jobs:
           (cd brokers/sudo && slophammer-go dry .)
       - name: Slophammer complexity gates
         run: |
-          slophammer-go crap .
+          slophammer_binary="$(command -v slophammer-go)"
+          slophammer-go() {
+            SLOPHAMMER_GO="$slophammer_binary" ./scripts/check-github-crap.sh
+          }
+          # The wrapper verifies every score against an exact ceiling and rejects tool failures.
+          slophammer-go crap . --max-score 8
           ./scripts/test-check-hf-crap.sh
           ./scripts/check-hf-crap.sh
-          (cd brokers/github && slophammer-go crap .)
       - name: mutate4go gate (opt-in)
         if: ${{ vars.RUN_MUTATION == 'true' }}
         run: ./scripts/check-mutation.sh

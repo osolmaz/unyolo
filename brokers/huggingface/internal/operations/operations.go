@@ -2,16 +2,14 @@
 package operations
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/operationruntime"
 )
 
 type Input struct {
@@ -37,24 +35,10 @@ type PolicyDecision struct {
 	RuleIDs []string
 }
 
-type Outcome struct {
-	Proven bool
-	Result json.RawMessage
-}
+type Outcome = operationruntime.Outcome
+type PossiblePartialError = operationruntime.PossiblePartialError
 
-// PossiblePartialError marks a multi-call operation that may have changed
-// upstream state before a later call failed. Workers must reconcile it instead
-// of treating the wrapped error as a definitive refusal.
-type PossiblePartialError struct{ Err error }
-
-func (e *PossiblePartialError) Error() string { return e.Err.Error() }
-func (e *PossiblePartialError) Unwrap() error { return e.Err }
-
-// IsPossiblePartial reports whether an execution error requires reconciliation.
-func IsPossiblePartial(err error) bool {
-	var partial *PossiblePartialError
-	return errors.As(err, &partial)
-}
+var IsPossiblePartial = operationruntime.IsPossiblePartial
 
 type reconstructedPlan struct {
 	presentation agentv1.Presentation
@@ -140,84 +124,30 @@ func digestValue[T any](value T) string {
 	return digest(encoded)
 }
 
-type Adapter interface {
-	Descriptor() opcatalog.Descriptor
-	Decode(target, arguments json.RawMessage) (Input, error)
-	Resolve(context.Context, Input) (Plan, error)
-	Authorize(Plan) hfpolicy.Request
-	Present(Plan) agentv1.Presentation
-	Execute(context.Context, Plan) (Outcome, error)
-	Reconcile(context.Context, Plan) (Outcome, error)
-}
-
-// ClientBoundAdapter binds requester-owned external references after the
-// authenticated client is known and before provider resolution begins.
-type ClientBoundAdapter interface {
-	ValidateClient(Input, string, string) error
-}
-
-// PlanCleaner removes transient provider material when an operation reaches a
-// terminal state without consuming it.
-type PlanCleaner interface {
-	Cleanup(Plan) error
-}
+type Adapter = operationruntime.Adapter[Input, Plan, hfpolicy.Request]
+type ClientBoundAdapter = operationruntime.ClientBoundAdapter[Input]
+type PlanCleaner = operationruntime.PlanCleaner[Plan]
+type Runtime = operationruntime.Runtime[Input, Plan, hfpolicy.Request]
+type RuntimeOptions = operationruntime.Options[Input, Plan, hfpolicy.Request]
+type Preparation = operationruntime.Preparation[Plan, hfpolicy.Request]
 
 type Registry struct {
-	byName map[string]Adapter
-	names  []string
+	*operationruntime.Registry[Input, Plan, hfpolicy.Request]
 }
 
 func NewRegistry(adapters ...Adapter) (*Registry, error) {
-	registry := &Registry{byName: make(map[string]Adapter, len(adapters))}
-	for _, adapter := range adapters {
-		if adapter == nil {
-			return nil, errors.New("nil Hugging Face operation adapter")
-		}
-		descriptor := adapter.Descriptor()
-		canonical, found := opcatalog.ByName(descriptor.Name)
-		if !found || canonical != descriptor || canonical.AuthorizationMode != opcatalog.ModeExecution {
-			return nil, fmt.Errorf("adapter %q does not match the capability catalog", descriptor.Name)
-		}
-		if _, exists := registry.byName[descriptor.Name]; exists {
-			return nil, fmt.Errorf("duplicate adapter %q", descriptor.Name)
-		}
-		registry.byName[descriptor.Name] = adapter
-		registry.names = append(registry.names, descriptor.Name)
+	registry, err := operationruntime.NewRegistry(operationruntime.RegistryOptions{
+		Provider: "Hugging Face", Descriptor: opcatalog.ByName,
+	}, adapters...)
+	if err != nil {
+		return nil, err
 	}
-	slices.Sort(registry.names)
-	return registry, nil
-}
-
-func (r *Registry) Lookup(name string) (Adapter, bool) {
-	if r == nil {
-		return nil, false
-	}
-	adapter, found := r.byName[name]
-	return adapter, found
-}
-
-func (r *Registry) Names() []string {
-	if r == nil {
-		return nil
-	}
-	return slices.Clone(r.names)
+	return &Registry{Registry: registry}, nil
 }
 
 // ValidateCoverage ensures every catalog entry advertised as an implemented
 // execution operation has an adapter. Existing bounded protocol operations do
 // not enter this registry.
 func (r *Registry) ValidateCoverage() error {
-	var missing []string
-	for _, descriptor := range opcatalog.MustAll() {
-		if descriptor.AuthorizationMode != opcatalog.ModeExecution || descriptor.Implementation != opcatalog.StatusImplemented {
-			continue
-		}
-		if _, found := r.Lookup(descriptor.Name); !found {
-			missing = append(missing, descriptor.Name)
-		}
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("missing Hugging Face operation adapters: %s", strings.Join(missing, ", "))
-	}
-	return nil
+	return r.Registry.ValidateCoverage("Hugging Face", opcatalog.MustAll())
 }

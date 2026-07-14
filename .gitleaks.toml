@@ -12,3 +12,19 @@ regexes = [
   '''01JZ8M7G1WPEY7NQ8B6J3D2A4V''',
   '''0123456789abcdef0123456789abcdef'''
 ]
+
+[[allowlists]]
+description = "Pinned official GitHub OpenAPI snapshot with upstream example credentials"
+paths = [
+  '''brokers/github/internal/upstream/snapshots/rest-api-2026-03-10\.json'''
+]
+
+[[allowlists]]
+description = "Encrypted sealed-payload test canary"
+paths = [
+  '''brokers/github/internal/operations/operations_test\.go'''
+]
+regexTarget = "match"
+regexes = [
+  '''ZW5jcnlwdGVkLWNhbmFyeS12YWx1ZQ=='''
+]

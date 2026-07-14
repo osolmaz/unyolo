@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "retrieved_at": "2026-07-14T05:12:00+08:00",
+  "artifacts": [
+    {
+      "path": "rest-api-2026-03-10.json",
+      "source_url": "https://raw.githubusercontent.com/github/rest-api-description/3b43edf675308c515b5e92a3eb89db17f6e6d806/descriptions/api.github.com/api.github.com.2026-03-10.json",
+      "source_commit": "3b43edf675308c515b5e92a3eb89db17f6e6d806",
+      "api_version": "2026-03-10",
+      "sha256": "6aeba0698eee20f8396144d6a59c40f72c76a6b96a85b459d85fe252c10df244",
+      "license": "MIT",
+      "license_file": "LICENSE.rest-api-description.md"
+    },
+    {
+      "path": "graphql-introspection-2026-07-14.json",
+      "source_url": "https://api.github.com/graphql",
+      "schema_fingerprint": "sha256:dcb72c092bc9ad076cea69a2428f22dffd46116149ceaec8fc5ef29d1a8ab0a2",
+      "sha256": "dcb72c092bc9ad076cea69a2428f22dffd46116149ceaec8fc5ef29d1a8ab0a2",
+      "license": "GitHub API data; documentation under CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "github-app-permissions-2026-03-10.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "api_version": "2026-03-10",
+      "sha256": "68587f9776a651ea550727c7c16c252e5196e1116b0ef3c8dc16e43df82c9c4d",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/check_run.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/check_run.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "17b0c9a63483c67ce74c027d2a04c49122523406b3aaf11ee32f32d9c0e42a30",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/github_app_authorization.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/github_app_authorization.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "57c8a43ae6fd3ce79ade11d95e58c236515cde895a53c3c7d6123c49a2c5e833",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/installation.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/installation.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "57c8510612e17e9af637249155d9ca895f383e9cb9324aacc71618c0c8bb5097",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/installation_repositories.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/installation_repositories.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "cca9c2827bc226d97c4548a9f1015f6b8cf520ff3810921c8f41cfe28ad00906",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/installation_target.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/installation_target.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "d0f0d205896aba99ee33d303cc3441c96bca272ce93ce6b5f97bd2bbecb67df1",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/repository.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/repository.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "481e9eb40156d0ce0de274d12140dd96d7aa5a1caa0ae39d1498bc24f7aeb5e8",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/workflow_job.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/workflow_job.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "cdfc9d3417fe397e04b6d976683449a2c30bbce5e53986a9bb340614fd25b2cb",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "webhooks/workflow_run.json",
+      "source_url": "https://raw.githubusercontent.com/github/docs/0e9fa09707cfbd5a88e508a5fc1b35c05bb53297/src/webhooks/data/fpt/workflow_run.json",
+      "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
+      "sha256": "0fc71401f83470e7b80f13c70da45ecc4cf41279b3d33627ee9074aa2065db28",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    }
+  ]
+}

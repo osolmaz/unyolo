@@ -1,0 +1,506 @@
+[
+  {
+    "kind": "advisory",
+    "schema": "target.advisory.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "alert",
+    "schema": "target.alert.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "app",
+    "schema": "target.app.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "artifact",
+    "schema": "target.artifact.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "cache",
+    "schema": "target.cache.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "check",
+    "schema": "target.check.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "codespace",
+    "schema": "target.codespace.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "comment",
+    "schema": "target.comment.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "commit",
+    "schema": "target.commit.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "deployment",
+    "schema": "target.deployment.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "discussion",
+    "schema": "target.discussion.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "enterprise",
+    "schema": "target.enterprise.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "environment",
+    "schema": "target.environment.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "gist",
+    "schema": "target.gist.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "installation",
+    "schema": "target.installation.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "issue",
+    "schema": "target.issue.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "job",
+    "schema": "target.job.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "label",
+    "schema": "target.label.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "member",
+    "schema": "target.member.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "milestone",
+    "schema": "target.milestone.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "notification",
+    "schema": "target.notification.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "organization",
+    "schema": "target.organization.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "package",
+    "schema": "target.package.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "project",
+    "schema": "target.project.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "pull_request",
+    "schema": "target.pull_request.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "reaction",
+    "schema": "target.reaction.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "ref",
+    "schema": "target.ref.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "release",
+    "schema": "target.release.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "repo",
+    "schema": "target.repo.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "ruleset",
+    "schema": "target.ruleset.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "run",
+    "schema": "target.run.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "security",
+    "schema": "target.security.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "team",
+    "schema": "target.team.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "user",
+    "schema": "target.user.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "webhook",
+    "schema": "target.webhook.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  },
+  {
+    "kind": "workflow",
+    "schema": "target.workflow.v1",
+    "policy_fields": [
+      "id",
+      "node_id",
+      "owner",
+      "repo",
+      "name",
+      "number",
+      "installation_id",
+      "installation_account"
+    ]
+  }
+]

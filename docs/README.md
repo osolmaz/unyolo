@@ -31,3 +31,4 @@ component documentation.
 - [HF Broker request-all policy preset plan](2026-07-14-hf-broker-request-all-policy-preset-plan.md)
 - [Provider-neutral policy presets plan](2026-07-14-provider-neutral-policy-presets-plan.md)
 - [Refactor plan](2026-07-12-refactor-plan.md)
+- [GitHub operation coverage plan](2026-07-14-github-operation-coverage-plan.md)

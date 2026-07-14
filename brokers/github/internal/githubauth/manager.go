@@ -1,0 +1,269 @@
+package githubauth
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/osolmaz/brokerkit/credentialstore"
+)
+
+type Config struct {
+	AppID                string
+	AppPrivateKey        []byte
+	AppClientID          string
+	AppClientSecret      []byte
+	DevelopmentToken     []byte
+	DevelopmentTokenFile string
+	APIBaseURL           *url.URL
+	WebBaseURL           *url.URL
+	HTTPClient           *http.Client
+	StreamTimeout        time.Duration
+	Store                *credentialstore.Store
+	Now                  func() time.Time
+	RefreshBefore        time.Duration
+}
+
+type Manager struct {
+	apiURL        *url.URL
+	webURL        *url.URL
+	client        *http.Client
+	streamTimeout time.Duration
+	app           *appProvider
+	installation  *installationProvider
+	user          *userProvider
+	development   *Credential
+}
+
+func New(cfg Config) (*Manager, error) {
+	cfg.DevelopmentToken = bytes.TrimSpace(cfg.DevelopmentToken)
+	apiURL, err := normalizeAPIURL(cfg.APIBaseURL)
+	if err != nil {
+		return nil, err
+	}
+	webURL, err := normalizeWebURL(cfg.WebBaseURL)
+	if err != nil {
+		return nil, err
+	}
+	client := cfg.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopRedirect}
+	}
+	manager := &Manager{apiURL: apiURL, webURL: webURL, client: client, streamTimeout: defaultStreamTimeout(cfg.StreamTimeout)}
+	mode, err := configuredCredentialMode(cfg)
+	if err != nil {
+		return nil, err
+	}
+	switch mode {
+	case KindUser:
+		manager.user = manager.newUserProvider(cfg)
+		return manager, nil
+	case KindDevelopmentToken:
+		manager.development = &Credential{metadata: Metadata{Kind: KindDevelopmentToken, APIHost: apiURL.Host}, token: append([]byte(nil), cfg.DevelopmentToken...)}
+		return manager, nil
+	case KindAppJWT, KindInstallation:
+		// App JWTs remain internal to the App transport. Installation is the
+		// externally observable credential kind for an App-backed manager.
+	}
+	app, err := newAppProvider(cfg.AppID, cfg.AppPrivateKey, apiURL, client)
+	if err != nil {
+		return nil, err
+	}
+	manager.app = app
+	manager.installation = newInstallationProvider(app, apiURL, client, cfg.Now, cfg.RefreshBefore)
+	if cfg.Store != nil {
+		manager.user = manager.newUserProvider(cfg)
+	}
+	return manager, nil
+}
+
+func defaultStreamTimeout(value time.Duration) time.Duration {
+	if value <= 0 {
+		return 10 * time.Minute
+	}
+	return value
+}
+
+func configuredCredentialMode(cfg Config) (Kind, error) {
+	hasApp := strings.TrimSpace(cfg.AppID) != "" || len(cfg.AppPrivateKey) > 0
+	hasDevelopment := len(cfg.DevelopmentToken) > 0
+	if hasApp && hasDevelopment {
+		return "", errors.New("configure exactly one GitHub App or development credential")
+	}
+	if hasDevelopment {
+		if strings.TrimSpace(cfg.DevelopmentTokenFile) == "" {
+			return "", errors.New("development GitHub token must come from a protected file")
+		}
+		return KindDevelopmentToken, nil
+	}
+	if hasApp {
+		return KindInstallation, nil
+	}
+	if cfg.Store == nil || strings.TrimSpace(cfg.AppClientID) == "" || len(cfg.AppClientSecret) == 0 {
+		return "", errors.New("GitHub credential provider is not configured")
+	}
+	return KindUser, nil
+}
+
+func (m *Manager) newUserProvider(cfg Config) *userProvider {
+	return newUserProvider(cfg.Store, m.apiURL, m.webURL, m.client, cfg.AppClientID, cfg.AppClientSecret, cfg.Now, cfg.RefreshBefore)
+}
+
+func (m *Manager) CredentialKind() Kind {
+	if m != nil && m.app != nil {
+		return KindInstallation
+	}
+	return KindDevelopmentToken
+}
+
+func (m *Manager) CheckApp(ctx context.Context) error {
+	if m == nil || m.app == nil {
+		return errors.New("GitHub App credential is unavailable")
+	}
+	return m.app.check(ctx)
+}
+
+func (m *Manager) RepositoryCredential(ctx context.Context, operation, owner, repo string) (*Credential, error) {
+	if m == nil {
+		return nil, errors.New("GitHub credential provider is unavailable")
+	}
+	if m.development != nil {
+		return m.development, nil
+	}
+	credential, _, err := m.installation.repositoryCredential(ctx, operation, owner, repo)
+	return credential, err
+}
+
+func (m *Manager) ResolveRepository(ctx context.Context, operation, owner, repo string) (Metadata, error) {
+	if m == nil || m.installation == nil {
+		return Metadata{}, errors.New("GitHub App credential is unavailable")
+	}
+	credential, resolution, err := m.installation.repositoryCredential(ctx, operation, owner, repo)
+	if err != nil {
+		return Metadata{}, err
+	}
+	metadata := credential.Metadata()
+	metadata.RepositoryIDs = []int64{resolution.ID}
+	return metadata, nil
+}
+
+func (m *Manager) InstallationCredential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string) (*Credential, error) {
+	return m.installationCredential(ctx, installationID, repositoryIDs, permissions, false)
+}
+
+func (m *Manager) installationCredential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool) (*Credential, error) {
+	if m == nil || m.installation == nil {
+		return nil, errors.New("GitHub App credential is unavailable")
+	}
+	return m.installation.credential(ctx, installationID, repositoryIDs, permissions, allowEmpty)
+}
+
+func (m *Manager) InstallationForAccount(ctx context.Context, account string) (Metadata, error) {
+	if m == nil || m.app == nil {
+		return Metadata{}, errors.New("GitHub App credential is unavailable")
+	}
+	installation, err := m.app.installationForAccount(ctx, account)
+	if err != nil {
+		return Metadata{}, err
+	}
+	return Metadata{Kind: KindInstallation, InstallationID: installation.GetID(), APIHost: m.apiURL.Host}, nil
+}
+
+func (m *Manager) InvalidateInstallation(installationID int64, disabled bool) {
+	if m != nil && m.installation != nil {
+		m.installation.invalidate(installationID, disabled)
+	}
+}
+
+func (m *Manager) EnableInstallation(installationID int64) {
+	if m != nil && m.installation != nil {
+		m.installation.enable(installationID)
+	}
+}
+
+func (m *Manager) UserCredential(ctx context.Context, userID int64) (*Credential, error) {
+	if m == nil || m.user == nil {
+		return nil, errors.New("GitHub user credential provider is unavailable")
+	}
+	return m.user.credential(ctx, userID)
+}
+
+func (m *Manager) EnrollUser(ctx context.Context, enrollment UserEnrollment) error {
+	if m == nil || m.user == nil {
+		return errors.New("GitHub user credential provider is unavailable")
+	}
+	return m.user.enroll(ctx, enrollment, false)
+}
+
+func (m *Manager) RotateUser(ctx context.Context, enrollment UserEnrollment) error {
+	if m == nil || m.user == nil {
+		return errors.New("GitHub user credential provider is unavailable")
+	}
+	return m.user.enroll(ctx, enrollment, true)
+}
+
+func (m *Manager) RevokeUser(ctx context.Context, userID int64) error {
+	if m == nil || m.user == nil {
+		return errors.New("GitHub user credential provider is unavailable")
+	}
+	return m.user.revoke(ctx, userID)
+}
+
+func (m *Manager) InvalidateUser(userID int64) error {
+	if m == nil || m.user == nil {
+		return nil
+	}
+	return m.user.invalidate(userID)
+}
+
+func (m *Manager) API(credential *Credential) (*API, error) {
+	if m == nil || credential == nil {
+		return nil, errors.New("GitHub API credential is unavailable")
+	}
+	token, err := credential.tokenCopy()
+	if err != nil {
+		return nil, err
+	}
+	defer zero(token)
+	sdk, err := newGitHubClient(m.client, m.apiURL, token)
+	if err != nil {
+		return nil, errors.New("initialize GitHub API client")
+	}
+	return &API{client: sdk}, nil
+}
+
+func (m *Manager) Installations(ctx context.Context) ([]int64, error) {
+	if m == nil || m.app == nil {
+		return nil, errors.New("GitHub App credential is unavailable")
+	}
+	items, err := m.app.installations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.GetID())
+	}
+	return ids, nil
+}
+
+func normalizeWebURL(value *url.URL) (*url.URL, error) {
+	if value == nil {
+		value, _ = url.Parse("https://github.com/")
+	}
+	result := *value
+	if result.Scheme != "https" && (result.Scheme != "http" || !localHostname(result.Hostname())) {
+		return nil, errors.New("GitHub web URL must use HTTPS")
+	}
+	if result.Host == "" || result.User != nil || result.RawQuery != "" || result.Fragment != "" {
+		return nil, errors.New("GitHub web URL is invalid")
+	}
+	result.Path = strings.TrimRight(result.Path, "/") + "/"
+	return &result, nil
+}
+
+func stopRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }

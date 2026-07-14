@@ -13,3 +13,20 @@ git merge-base --is-ancestor 7b7f5f11c9c3caf6471b5bc2d772fbea2c1c7532 HEAD
 git diff --exit-code 7b7f5f11c9c3caf6471b5bc2d772fbea2c1c7532^{tree} HEAD:brokers/github
 go test -race ./...
 ```
+
+## Official GitHub metadata
+
+The stage 2–3 operation inventory is generated entirely from checked-in
+official GitHub snapshots under `internal/upstream/snapshots`. It pins:
+
+- stable REST OpenAPI 3.0 at `github/rest-api-description` commit
+  `3b43edf675308c515b5e92a3eb89db17f6e6d806`, API `2026-03-10`;
+- the full GitHub.com GraphQL introspection retrieved on 2026-07-14;
+- GitHub App endpoint-permission metadata at `github/docs` commit
+  `0e9fa09707cfbd5a88e508a5fc1b35c05bb53297`; and
+- reconciliation-relevant webhook metadata from the same docs commit.
+
+`internal/upstream/snapshots/provenance.json` records the source URL, commit or
+schema fingerprint, retrieval time, SHA-256 digest, and license notice for each
+artifact. `scripts/check-github-generated.sh` verifies both snapshot integrity
+and generated-artifact drift without network access.

@@ -1,11 +1,11 @@
 {
   "rules": [
     {
-      "id": "deny-gh-broker-main-force",
+      "id": "deny-main-force-push",
       "effect": "deny",
       "clients": ["*"],
       "operations": ["git.push.force"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "gh-broker"}],
+      "targets": [{"kind": "repo", "owner": "*", "name": "*"}],
       "attrs": {
         "refs": ["refs/heads/main"]
       }
@@ -18,66 +18,60 @@
       "targets": [{"kind": "repo", "owner": "*", "name": "*"}]
     },
     {
-      "id": "bob-list-repos",
+      "id": "bob-read-brokerkit",
       "effect": "allow",
       "clients": ["bob"],
-      "operations": ["installation.repos.list"],
-      "targets": [{"kind": "installation"}]
+      "operations": ["git.fetch", "repo.metadata.read", "repo.contents.read"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     },
     {
-      "id": "bob-repo-read-osolmaz",
-      "effect": "allow",
-      "clients": ["bob"],
-      "operations": ["git.fetch", "repo.metadata.read"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}]
-    },
-    {
-      "id": "bob-contents-read-osolmaz",
-      "effect": "allow",
-      "clients": ["bob"],
-      "operations": ["contents.read"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
-      "attrs": {
-        "paths": ["*", "docs/*", "."]
-      }
-    },
-    {
-      "id": "bob-push-advertise",
+      "id": "bob-advertise-push",
       "effect": "allow",
       "clients": ["bob"],
       "operations": ["git.push.advertise"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}]
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     },
     {
-      "id": "bob-push-branches",
+      "id": "bob-push-feature-branches",
       "effect": "allow",
       "clients": ["bob"],
-      "operations": ["git.push.branch_create", "git.push.force"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
+      "operations": ["git.push.branch_create", "git.push.fast_forward", "git.push.force"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}],
       "attrs": {
         "refs": ["refs/heads/bob/*", "refs/heads/agent/*"]
       }
     },
     {
-      "id": "bob-pr-create-main",
-      "effect": "allow",
+      "id": "approve-pull-request-create",
+      "effect": "request",
       "clients": ["bob"],
-      "operations": ["pr.create"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "*"}],
+      "operations": ["pull_request.create"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}],
       "attrs": {
         "refs": ["refs/heads/bob/*", "refs/heads/agent/*"],
         "base_refs": ["refs/heads/main"]
       }
     },
     {
-      "id": "direct-main-example",
-      "effect": "allow",
+      "id": "approve-repository-delete",
+      "effect": "request",
       "clients": ["bob"],
-      "operations": ["git.push.force"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "direct-main"}],
-      "attrs": {
-        "refs": ["refs/heads/main"]
-      }
+      "operations": ["repo.delete"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit-e2e-*"}]
+    },
+    {
+      "id": "approve-repository-secret",
+      "effect": "request",
+      "clients": ["bob"],
+      "operations": ["agent_task.create_or_update_repo_secret"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
+    },
+    {
+      "id": "approve-collaborator-administration",
+      "effect": "request",
+      "clients": ["bob"],
+      "operations": ["collaborator.repos_add_collaborator", "collaborator.repos_remove_collaborator"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     }
   ]
 }

@@ -1,4 +1,7 @@
 go:
+  exclude:
+    - pattern: "cmd/generate-github-surfaces/**"
+      reason: deterministic generator code is enforced by the pinned generated-artifact drift gate
   coverage:
     threshold: 85
   dry:

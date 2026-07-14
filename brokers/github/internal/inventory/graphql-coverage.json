@@ -1,0 +1,2970 @@
+[
+  {
+    "root_type": "mutation",
+    "field": "abortQueuedMigrations",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.abort_queued_migrations",
+    "required_credential": "user",
+    "persisted_digest": "9693e90f41f333fd467611ab40518ddcd17429c760df450fbc7210d56de1f080",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "abortRepositoryMigration",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.abort_repository_migration",
+    "required_credential": "user",
+    "persisted_digest": "c159d734886f276971f56bdf4aa54fcdc3a46dd13bc3d6c74840d95b624a6855",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "acceptEnterpriseAdministratorInvitation",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.accept_enterprise_administrator_invitation",
+    "required_credential": "user",
+    "persisted_digest": "61866d0ffc9db3b16d852b102f0087224123ddcf13f703a63b7280dd415fe494",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "acceptEnterpriseMemberInvitation",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.accept_enterprise_member_invitation",
+    "required_credential": "user",
+    "persisted_digest": "f598cff9466bf6b01ecb26c0c8a36b1438e0d928a8bc4739f88c8accc4c67697",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "acceptTopicSuggestion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.accept_topic_suggestion",
+    "required_credential": "user",
+    "persisted_digest": "eb5b29f0b56495e0d24e0b1ae3aae711444bca0ec9f13afbfd1487e17a3ac9f8",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "accessUserNamespaceRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.access_user_namespace_repository",
+    "required_credential": "user",
+    "persisted_digest": "c3206b9ad8dd78591c1a67bc9507bec9555d0c3b6d2efbeba06e08dafb08bebc",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addAssigneesToAssignable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.add_assignees_to_assignable",
+    "required_credential": "user",
+    "persisted_digest": "2b55d377a23fbb4fd28289f0e0e1ee9904fc6b74ff43d9b901b1cc1c088a6a0e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addBlockedBy",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.add_blocked_by",
+    "required_credential": "user",
+    "persisted_digest": "5ebd9de86a5de98488ea22a7afa7232b46a13b4aa7b6bf14a4a9fa0aa5d90bd0",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "comment.add_comment",
+    "required_credential": "user",
+    "persisted_digest": "54e909a149084c7bc04c5b4b253980f4671ac699e35040d8c9a45ff453479dca",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addDiscussionComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.add_discussion_comment",
+    "required_credential": "user",
+    "persisted_digest": "1751833fc7bd56f54a14f258111fe740bbc988e712c3097a34e4527a3cb64ffa",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addDiscussionPollVote",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.add_discussion_poll_vote",
+    "required_credential": "user",
+    "persisted_digest": "e30d57cd8b70fb7a3fad16384a1efea9c6c9b54efb0f87cde96df8cb76461784",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addEnterpriseOrganizationMember",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.add_enterprise_organization_member",
+    "required_credential": "user",
+    "persisted_digest": "53f644c397c1f245eb887470999cd33472af2db4e29263a2e302b3fe1628553f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addEnterpriseSupportEntitlement",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.add_enterprise_support_entitlement",
+    "required_credential": "user",
+    "persisted_digest": "037c76594b3125553faad41d94b34421b7388b9c74c0951270048e43ece6d9f3",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addLabelsToLabelable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "label.add_labels_to_labelable",
+    "required_credential": "user",
+    "persisted_digest": "01756a5ae34e4c519c17fb6f88485024b5ab5713c29f8b57e8bfa5a992db5a13",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addProjectCard",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addProjectColumn",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addProjectV2DraftIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.add_project_v2_draft_issue",
+    "required_credential": "user",
+    "persisted_digest": "7de7e0602c81d0fd464bc1575cf71d1952efa428ab09918941a586ef33d28b46",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addProjectV2ItemById",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.add_project_v2_item_by_id",
+    "required_credential": "user",
+    "persisted_digest": "45c0c1207e0d8ef46cd9858ee38dbf5a914f0b8f0b069d7f119fb98784fd080a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addPullRequestCreationCapBypassUsers",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.add_pull_request_creation_cap_bypass_users",
+    "required_credential": "user",
+    "persisted_digest": "de3066c389d6a2e6cb4f07ac0b0b2dff4a10011e0ad6c11a8397bc5b4c428ede",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addPullRequestReview",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.add_pull_request_review",
+    "required_credential": "user",
+    "persisted_digest": "b58822f7ab199b37924431bc2bb28263246e32e16dc434fe66a4b32dcb109fc0",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addPullRequestReviewComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.add_pull_request_review_comment",
+    "required_credential": "user",
+    "persisted_digest": "63bc240e6001f27dd6579398b2b17c2786581799f2df9eceb14472d8b4f9353f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addPullRequestReviewThread",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.add_pull_request_review_thread",
+    "required_credential": "user",
+    "persisted_digest": "75df5e9e3fe6e3b58f4b3a9db83735c740d914594582414ba9926a5d2fffc6ec",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addPullRequestReviewThreadReply",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.add_pull_request_review_thread_reply",
+    "required_credential": "user",
+    "persisted_digest": "24faad37e8eaf4e1273e62351b360148f8e6d1e05628d7e3c5f815ee0411e204",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addReaction",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "reaction.add_reaction",
+    "required_credential": "user",
+    "persisted_digest": "09a4cb8317800544265d5ff8354cbd397ef4905d9db54ab1276ebd04acb1fe0d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addStar",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.add_star",
+    "required_credential": "user",
+    "persisted_digest": "2daccfbc4c7ce50217fab10e00d955c3c02da2ced8be7cf0b1e17bf211c1ca38",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addSubIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.add_sub_issue",
+    "required_credential": "user",
+    "persisted_digest": "cec140f970289418aade0f00935484c32549ed865469497f06731dc71fba707a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addUpvote",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.add_upvote",
+    "required_credential": "user",
+    "persisted_digest": "c0ffce9240e5305f601cb47d9b50781a323c858ce2a868a09958f2cafb6fa48d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "addVerifiableDomain",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.add_verifiable_domain",
+    "required_credential": "user",
+    "persisted_digest": "6280ef8221b75459e581c4c2107937925bcab1429f73c5d35de868bbc85c7656",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "approveDeployments",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "deployment.approve_deployments",
+    "required_credential": "user",
+    "persisted_digest": "8ef702e930c93f89661e77096cda587ebacfac36b132f12e21080ff6c598f5b6",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "approveVerifiableDomain",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.approve_verifiable_domain",
+    "required_credential": "user",
+    "persisted_digest": "7846d1ba5c542eb099846b3534a9e2ec5409f4698d091e5a99d3c099ea1ef574",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "archiveProjectV2Item",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.archive_project_v2_item",
+    "required_credential": "user",
+    "persisted_digest": "5f633741dd63bff3d1184d0ee3bf386d9f5ad8d19721d3d5f90bbe6f1f8edfda",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "archivePullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.archive_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "1dc5141cc5bda78c4fe8071b22f6c1e8744289c37354c9d4364107bfcb9fd29e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "archiveRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.archive_repository",
+    "required_credential": "user",
+    "persisted_digest": "ec984f525c69b59cd52ff5acadb0d9beddfefc3094900b5f152d0a552cb47e1b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "cancelEnterpriseAdminInvitation",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.cancel_enterprise_admin_invitation",
+    "required_credential": "user",
+    "persisted_digest": "40722a753b7a71e951dfc3fcf36892677ca396a5ed9376af06f708fcecf9159b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "cancelEnterpriseMemberInvitation",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.cancel_enterprise_member_invitation",
+    "required_credential": "user",
+    "persisted_digest": "666186568d95ffe945184884da22129cf18487331ac5b77b64ce8be274e2e8e1",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "cancelSponsorship",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.cancel_sponsorship",
+    "required_credential": "user",
+    "persisted_digest": "e0b2c36bd869de93b4e13347e9b49c45ec3bf2d09764d752f0b9fb54dff906f1",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "changeUserStatus",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.change_user_status",
+    "required_credential": "user",
+    "persisted_digest": "f1642190e4b43a8330a2f7239fc2da4d7384758fd896b3d192832d5372463efd",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "clearLabelsFromLabelable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "label.clear_labels_from_labelable",
+    "required_credential": "user",
+    "persisted_digest": "713842a5b84856e91b983d34eceda905de0572e9221fe32cb80c53ead47b6581",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "clearProjectV2ItemFieldValue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.clear_project_v2_item_field_value",
+    "required_credential": "user",
+    "persisted_digest": "75a2a1a668359bb2d1ec6f53df96c74176f4ffc190a197f45a89c612885ce2c3",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "cloneProject",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "cloneTemplateRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.clone_template_repository",
+    "required_credential": "user",
+    "persisted_digest": "bf40430bb56bffce814f473ebc217740c69fbe4c709037cc1fa3a8bb037ff5c9",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "closeDiscussion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.close_discussion",
+    "required_credential": "user",
+    "persisted_digest": "98a0fd61ee9e57870dd56499f0f97c9a99ec5e9ba50525c8382c6a4e690db6b8",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "closeIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.close_issue",
+    "required_credential": "user",
+    "persisted_digest": "f5894e2e58ab2bc027f5cb138cf872a60053d77ec25bb6788b0a0f9ecb456296",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "closePullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.close_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "ea68dc24786cb0d32b343b7f73043238fe814faf7a7c34119bb0b095116281b5",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "convertProjectCardNoteToIssue",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "convertProjectV2DraftIssueItemToIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.convert_project_v2_draft_issue_item_to_issue",
+    "required_credential": "user",
+    "persisted_digest": "babdd1829fa5153a3629eb13fc038ad3d5811a42c22463154e364e3ba6f0312d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "convertPullRequestToDraft",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.convert_pull_request_to_draft",
+    "required_credential": "user",
+    "persisted_digest": "33d6521d0f310f818010420a73473824672fe45029fbfa072e779f7d2839855a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "copyProjectV2",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.copy_project_v2",
+    "required_credential": "user",
+    "persisted_digest": "2219504c14e2ab8a7d0a35871630edd5a47223bd471d66f8a9386fd8dbed48ca",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createAttributionInvitation",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_attribution_invitation",
+    "required_credential": "user",
+    "persisted_digest": "e9a2b75d0df91cfee2e7ce5dbb17c6b9090a4abb2e8ef68677f529a54bca9a2f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createBranchProtectionRule",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_branch_protection_rule",
+    "required_credential": "user",
+    "persisted_digest": "a32748c424b2f366f236adec43bc4897f3ce99e9cd85b205ec9e55015d1df1f6",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createCheckRun",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_check_run",
+    "required_credential": "user",
+    "persisted_digest": "58d41b2212228a1f953db6111bde6e4dd47cd67f7914a153d9d7f218af47ac18",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createCheckSuite",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_check_suite",
+    "required_credential": "user",
+    "persisted_digest": "94299bdc62485b6b9414ef929898aaa25717e0e7f914aee58ab14f1c46ff45e1",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createCommitOnBranch",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_commit_on_branch",
+    "required_credential": "user",
+    "persisted_digest": "83a029d59c5220cd77d450af12fcab2616b4f4420a46e517e506d96c4675f351",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createDeployment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "deployment.create_deployment",
+    "required_credential": "user",
+    "persisted_digest": "7fef30467b7244f591af3462eee972801f11fdcd951990a4dda5ad0fe460223b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createDeploymentStatus",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "deployment.create_deployment_status",
+    "required_credential": "user",
+    "persisted_digest": "2099112f26a89a168fa4c4bfc5686032397839b3ffbecf631d7dc228077b9885",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createDiscussion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.create_discussion",
+    "required_credential": "user",
+    "persisted_digest": "dc6af50da5e2bbb461f6eb98a6abd9c84b9dde3329c5eb174e0b321ba19b316f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createEnterpriseOrganization",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.create_enterprise_organization",
+    "required_credential": "user",
+    "persisted_digest": "aee34936d61ebb25ea5287c6e14738a7fbd9d077f27cb261aa1ac5eba9120c30",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createEnvironment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_environment",
+    "required_credential": "user",
+    "persisted_digest": "fd5c8f4077ee8a1258064ae61a3f6468eada1b49b93db9d7a5ea9ebebcf76ea1",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createIpAllowListEntry",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_ip_allow_list_entry",
+    "required_credential": "user",
+    "persisted_digest": "0eae66e86cc39dd54c46902c1eea17afd0ce67bd09e70e01a8f01f18a91c4573",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.create_issue",
+    "required_credential": "user",
+    "persisted_digest": "fc5fde7911647aa431aeeb1abe32f310aa36324b6bd164e83e3fb8abe1733064",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createIssueField",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.create_issue_field",
+    "required_credential": "user",
+    "persisted_digest": "e5fc380d64b3b6e4b9012cad059e30b78f29a15d0c93258e1d6a9d01d800631c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createIssueFieldValue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.create_issue_field_value",
+    "required_credential": "user",
+    "persisted_digest": "94ae0740b4ea1158b65dc8b416e612dc87640ce7c1c9c8cd8af3d4eeab4d9f28",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createIssueType",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.create_issue_type",
+    "required_credential": "user",
+    "persisted_digest": "52409879c9a6f074aed192504d07c1b6c79dad4a0f297c7a5b393ade9c382a0a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createLabel",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "label.create_label",
+    "required_credential": "user",
+    "persisted_digest": "153e45d14cb57ddc811d47d2ac573b06503f260c53ed1d019f2336f0bcd46084",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createLinkedBranch",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_linked_branch",
+    "required_credential": "user",
+    "persisted_digest": "3502fa941391b3f77a6d5448bc974aa6bfd568ab5e5ffe40fe0706a26577b629",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createMigrationSource",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_migration_source",
+    "required_credential": "user",
+    "persisted_digest": "524558f02da5ac875746c55481a95e6f21fd3c1a983178778c54a613e1dd0991",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createProject",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createProjectV2",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.create_project_v2",
+    "required_credential": "user",
+    "persisted_digest": "470741e59c70e9416a4798e19f1f6202d73c17ec212ec1beb1cbdf30975faebc",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createProjectV2Field",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.create_project_v2_field",
+    "required_credential": "user",
+    "persisted_digest": "4abb4c1333cf9dfad72ded55c43f688c840fa7a1e5c949d8415cddfef936ed81",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createProjectV2IssueField",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.create_project_v2_issue_field",
+    "required_credential": "user",
+    "persisted_digest": "523188a39ccb02e0155e3201cea380e699616c480e08fd0619624ef32b665ebd",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createProjectV2StatusUpdate",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.create_project_v2_status_update",
+    "required_credential": "user",
+    "persisted_digest": "478bbaa1cb84695e63ac97d23107bd22c00a76dfaa02a411848eab699d8d7a70",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createPullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.create_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "2e6b9053c5e33065d978a65cef35e3a5992ec36702b4d5987a2392b5fbbd1a4c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createRef",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_ref",
+    "required_credential": "user",
+    "persisted_digest": "90c24de7e328e52c6b4c0296f6c23d6d9b1f84ac8236db75c32daa0e2df7a55d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_repository",
+    "required_credential": "user",
+    "persisted_digest": "df98299519e726dc147da2e516ecc321c50f69749587d269ada7da746c744256",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createRepositoryCustomProperty",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_repository_custom_property",
+    "required_credential": "user",
+    "persisted_digest": "c2f81c7b74588a1f348f64cf88055b1c89c8d550abf2da089b9a9b508472ff09",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createRepositoryRuleset",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.create_repository_ruleset",
+    "required_credential": "user",
+    "persisted_digest": "4a75c01688d4ee251e0908dd4dd9a0826a7e044d4243c7c8c740e5bef32dc1ce",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createSponsorsListing",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.create_sponsors_listing",
+    "required_credential": "user",
+    "persisted_digest": "4ca975b67b0387886f993de871af7a9e67218e860b2bdc90bdd6a11580f11202",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createSponsorsTier",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.create_sponsors_tier",
+    "required_credential": "user",
+    "persisted_digest": "ce23548a9d7cd361d0702aa0a246c69b416d73916c0e01b39f256d35296f3d7a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createSponsorship",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.create_sponsorship",
+    "required_credential": "user",
+    "persisted_digest": "257931196061d39249c6446c0536e0521c0dc1e66ddc78b7f4d02a22485d96a8",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createSponsorships",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.create_sponsorships",
+    "required_credential": "user",
+    "persisted_digest": "294184b6751aa9e1d3f9bc7becbc8dfee7dc56adf53803dd81a1d1386030b943",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "createUserList",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.create_user_list",
+    "required_credential": "user",
+    "persisted_digest": "58e048daabd6aa8fbaebfb5b4f527ebe60e132a1409a9b7c137375337940670d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "declineTopicSuggestion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.decline_topic_suggestion",
+    "required_credential": "user",
+    "persisted_digest": "e0c53f791f51226b986aeabe013809fae87eac2edda363fb3c113776c5987c2b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteBranchProtectionRule",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_branch_protection_rule",
+    "required_credential": "user",
+    "persisted_digest": "aaa2ba8f1df68cba2116d1bf2da89f4529ca2f7207e819166a73baa09307e6b0",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteDeployment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "deployment.delete_deployment",
+    "required_credential": "user",
+    "persisted_digest": "e0f4691687bdfba0be8843a650b2219d67205b5d525db3afbebf0aa0f4ce2f5d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteDiscussion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.delete_discussion",
+    "required_credential": "user",
+    "persisted_digest": "89f6b059c06796ecc4bc5d9b161090d063e8e5fa8ede5932545bfca47c4f19ac",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteDiscussionComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.delete_discussion_comment",
+    "required_credential": "user",
+    "persisted_digest": "635d1076aeab450c7c9c7e344e56d16e0bd826e03d36e3a74089e079f791b785",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteEnvironment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_environment",
+    "required_credential": "user",
+    "persisted_digest": "a8d431a3aa21adabf758d71f69cf75a7e672c859abf7bff37c2caadb96e91bbc",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteIpAllowListEntry",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_ip_allow_list_entry",
+    "required_credential": "user",
+    "persisted_digest": "2ef858576ec79efc3ab07adefe9b5a9d2381219d5a8b3ef091dc149528a3a552",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.delete_issue",
+    "required_credential": "user",
+    "persisted_digest": "97943264b088332daf5bb8b5890b83f638af955c287512e63c9668819ed9c10b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteIssueComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.delete_issue_comment",
+    "required_credential": "user",
+    "persisted_digest": "3823bf08cc7375b24a24ff937f137206d8fc5499dd1dd24b17b05b699e182409",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteIssueField",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.delete_issue_field",
+    "required_credential": "user",
+    "persisted_digest": "1205e0dbfd0d66190b4dad3dcea12e2ee844fa777eaef1a7f1ceff1cd77195e8",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteIssueFieldValue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.delete_issue_field_value",
+    "required_credential": "user",
+    "persisted_digest": "345137353e8e0cb45662942233d4bf1b7f8a1da57f88f45ab4d6aac3c6bea40e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteIssueType",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.delete_issue_type",
+    "required_credential": "user",
+    "persisted_digest": "7316525685a2aa535d08ce44def74bd7e7c6490e626a9c9f3bf299bad3513fe7",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteLabel",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "label.delete_label",
+    "required_credential": "user",
+    "persisted_digest": "81605d028546111077c316359fbc6d9ffd23019e0d2a82688465505bf5128c25",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteLinkedBranch",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_linked_branch",
+    "required_credential": "user",
+    "persisted_digest": "ec50d985c3bc2d9682a08290e79511c874ed1301f9b97aa0f962926434fbc1f7",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deletePackageVersion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_package_version",
+    "required_credential": "user",
+    "persisted_digest": "b78dbd40975c13a6b6c373384ee1dcf8290f2eececdef69b7a62cc0f55337d1b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProject",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProjectCard",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProjectColumn",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProjectV2",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.delete_project_v2",
+    "required_credential": "user",
+    "persisted_digest": "745d4c560504f0dc39505e6ba28751bf95801e4c8de14039d408a74612bd88d1",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProjectV2Field",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.delete_project_v2_field",
+    "required_credential": "user",
+    "persisted_digest": "cee223d0fd8b74606d9f0710a553c4ef3a1da70d8031c3c2df03338a511e6e09",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProjectV2Item",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.delete_project_v2_item",
+    "required_credential": "user",
+    "persisted_digest": "1f5bdf61324940c4795b5314476cd6b51353e27ed18bcee7115e930f77275919",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProjectV2StatusUpdate",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.delete_project_v2_status_update",
+    "required_credential": "user",
+    "persisted_digest": "fe24a4fceba2a8ffc58acf11727dbb62b789df2bbde4cce2009ff9e6e41356db",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteProjectV2Workflow",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.delete_project_v2_workflow",
+    "required_credential": "user",
+    "persisted_digest": "7f2014434b4e09020c7f100bd74a319f08dc8ac452de16104893f8d4529449de",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deletePullRequestReview",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.delete_pull_request_review",
+    "required_credential": "user",
+    "persisted_digest": "52c984e5642b898831dedcb43bab6ff942951e6f45336542279043981f680010",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deletePullRequestReviewComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.delete_pull_request_review_comment",
+    "required_credential": "user",
+    "persisted_digest": "6a9d52610d590d015eed9ff52bc142c32e491ddea0237ac463be053d132820bf",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteRef",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_ref",
+    "required_credential": "user",
+    "persisted_digest": "79837013731755e7f563f7acf43afe3aaaf572fbe331db2aea10212959f73dca",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteRepositoryCustomProperty",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_repository_custom_property",
+    "required_credential": "user",
+    "persisted_digest": "f47478c7ad92e0b701033c25d5adc3b708ad6ef8682c6fd9b46be8c22c381e65",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteRepositoryRuleset",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_repository_ruleset",
+    "required_credential": "user",
+    "persisted_digest": "0ae32e5cf9c21945e94b6d536a1f9c1c19e0d3d9e0bd272a74e7c67c4218bf3f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteUserList",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.delete_user_list",
+    "required_credential": "user",
+    "persisted_digest": "7d072c1ad0da377185cfb2255368eb312f9415a650e7848552880087b09e5f25",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "deleteVerifiableDomain",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.delete_verifiable_domain",
+    "required_credential": "user",
+    "persisted_digest": "7745742f442554f7627641f327a4de9a24865c2b771a86392c82f72becf18c0e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "dequeuePullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.dequeue_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "97a0c5f5fcad8989c470929efd2538eb3e892c31997fec16b690953493e3c043",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "disablePullRequestAutoMerge",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.disable_pull_request_auto_merge",
+    "required_credential": "user",
+    "persisted_digest": "7109572b634f4552cd03fae332f285478f866a0383c4b0ad4ad177773b69d962",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "dismissPullRequestReview",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.dismiss_pull_request_review",
+    "required_credential": "user",
+    "persisted_digest": "ff74ae75226644ac9204c0e2c09f7d69b8688e5261b50582cd411d28e2875235",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "dismissRepositoryVulnerabilityAlert",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.dismiss_repository_vulnerability_alert",
+    "required_credential": "user",
+    "persisted_digest": "f150019a85405c8023e33d97c750b14c7d1e6be3afaf26a206058ad7124b7b8a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "enablePullRequestAutoMerge",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.enable_pull_request_auto_merge",
+    "required_credential": "user",
+    "persisted_digest": "9d0e61e858f5af9085010ba041988625404aa3594021b880a52646a18382059d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "enqueuePullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.enqueue_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "9f5ae2c7974644691d385b24a09df3defa4c22ba8740604b1edb8c5fcbffef41",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "followOrganization",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "organization.follow_organization",
+    "required_credential": "user",
+    "persisted_digest": "3998673c88aaa9fcc6da994cece33342deedc3e577098582e7a6398e960275cf",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "followUser",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.follow_user",
+    "required_credential": "user",
+    "persisted_digest": "60d1268e91c2fe90a50f50c08b5af3a983797562bdfcf470c55b7f909ceb9869",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "grantEnterpriseOrganizationsMigratorRole",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.grant_enterprise_organizations_migrator_role",
+    "required_credential": "user",
+    "persisted_digest": "f0ffc97a07ab85574eba6e39622a50ddb8682c7fa166ebaa1dbf47439ed4bc80",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "grantMigratorRole",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.grant_migrator_role",
+    "required_credential": "user",
+    "persisted_digest": "be43e1737b660f3b806186f2caa8da526c8b16699c4b76737960059c102da5a7",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "importProject",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "inviteEnterpriseAdmin",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.invite_enterprise_admin",
+    "required_credential": "user",
+    "persisted_digest": "eac94611504ae7cef305959da35566c66214c86bdf82f1f58a1c809174f69536",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "inviteEnterpriseMember",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.invite_enterprise_member",
+    "required_credential": "user",
+    "persisted_digest": "3d1087b9349671584033e97a155c7eedfa797d9df625c296333510e8a2ff4db5",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "linkProjectV2ToRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.link_project_v2_to_repository",
+    "required_credential": "user",
+    "persisted_digest": "7d69cf5fd08479048c2ada05a46a5e2f70ed8defa9d112b46882eee51434f36e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "linkProjectV2ToTeam",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.link_project_v2_to_team",
+    "required_credential": "user",
+    "persisted_digest": "9d84e7268f783372fe2cfaca5fb411f38eb76b0b9f5a9b51ffeaf3d3b7f40b6a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "linkRepositoryToProject",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "lockLockable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.lock_lockable",
+    "required_credential": "user",
+    "persisted_digest": "7018091a3e7c7d7b8adcc90cfe02f81c525f07b89a2dec0fc26589fcc926304a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "markDiscussionCommentAsAnswer",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.mark_discussion_comment_as_answer",
+    "required_credential": "user",
+    "persisted_digest": "ceb165cce0f732f4937c7f42f4f3cc537e31e920415588b456955f5e01da1d40",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "markFileAsViewed",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.mark_file_as_viewed",
+    "required_credential": "user",
+    "persisted_digest": "48bfe94d0a2030a8815d17bda74fafc386889565da46da48c91c600f90624c57",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "markProjectV2AsTemplate",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.mark_project_v2_as_template",
+    "required_credential": "user",
+    "persisted_digest": "b5ecc03610600502b65e6f0a9f5d01eac4c119877b93b00ddfc0076a1874da1a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "markPullRequestReadyForReview",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.mark_pull_request_ready_for_review",
+    "required_credential": "user",
+    "persisted_digest": "afbf5ec06f9df8f8fdd786823fc3b85441ea12fc7df091283c2d3b36a502a79d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "mergeBranch",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.merge_branch",
+    "required_credential": "user",
+    "persisted_digest": "defb6d9e7c3a2b8e289571b0197faddd85ed2e7718f9d82c98cdeccfbc3e68eb",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "mergePullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.merge_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "112ae291f11dbe98d741de150bce3a921e6e21ec4f9c8aba2cda6e3751d267a6",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "minimizeComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "comment.minimize_comment",
+    "required_credential": "user",
+    "persisted_digest": "b21e096e835ef7341c8c2a011a57ede6f56bec0db5a0a7a3e8fa4651dd6516fe",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "moveProjectCard",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "moveProjectColumn",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "pinEnvironment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.pin_environment",
+    "required_credential": "user",
+    "persisted_digest": "bf0e999d8af84cb07947b17bcfc4a6e134dd6b78e37fd0be9cef942bbcc2395f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "pinIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.pin_issue",
+    "required_credential": "user",
+    "persisted_digest": "a5947c838b33a5e11838ebabc38d2fc8255491b19159e26c38638057caff1927",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "pinIssueComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.pin_issue_comment",
+    "required_credential": "user",
+    "persisted_digest": "64fb80444452c1769a6973e261397331da27fc107ab3a82d91fb67626b71c829",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "promoteRepositoryCustomProperty",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.promote_repository_custom_property",
+    "required_credential": "user",
+    "persisted_digest": "26b57889e240c11e330fc480e987d331325d43343040c358c4e94e4db8f9c651",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "publishSponsorsTier",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.publish_sponsors_tier",
+    "required_credential": "user",
+    "persisted_digest": "cba73e8e717875d6357f259ab61210c4eb343f19db943d84ccc70b74a1626c9c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "regenerateEnterpriseIdentityProviderRecoveryCodes",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.regenerate_enterprise_identity_provider_recovery_codes",
+    "required_credential": "user",
+    "persisted_digest": "cbe960dfa9399e637caddae89091dd47622d61ccb0e016a029db20e588841f70",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "regenerateVerifiableDomainToken",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.regenerate_verifiable_domain_token",
+    "required_credential": "user",
+    "persisted_digest": "a1823edbd8e1b67d3755a8a8c3d920a6e170d19ad548f749d307d7393f18043b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "rejectDeployments",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "deployment.reject_deployments",
+    "required_credential": "user",
+    "persisted_digest": "79bf98f5c43624059a14e4decb1029d0f4b905249e3548dc39b7237e89119176",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeAssigneesFromAssignable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.remove_assignees_from_assignable",
+    "required_credential": "user",
+    "persisted_digest": "fcf06762939d935d9041452adad0f465db961929b5495a89328846833d580248",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeBlockedBy",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.remove_blocked_by",
+    "required_credential": "user",
+    "persisted_digest": "97a56941c0d12842e2f831cf50c96b3142ec44682382b7f40affe1e1f6438a9a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeEnterpriseAdmin",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.remove_enterprise_admin",
+    "required_credential": "user",
+    "persisted_digest": "339a9efac4b8af685e3896056934a7239fb5dc039b37bcfef410a1a4eb43e289",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeEnterpriseIdentityProvider",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.remove_enterprise_identity_provider",
+    "required_credential": "user",
+    "persisted_digest": "90a08d6f0193d0597bfbb424af3f33a4dd402def134141e9b55defe0fba33b01",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeEnterpriseMember",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.remove_enterprise_member",
+    "required_credential": "user",
+    "persisted_digest": "c25abd6b12208f4fbf509c722a6813392e07fd3aca901f6c30649749cc576c19",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeEnterpriseOrganization",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.remove_enterprise_organization",
+    "required_credential": "user",
+    "persisted_digest": "dcbc31bc065021e25b9a1edbb632a84dd63579eb6f85bb4eba55eeb4f61f6a23",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeEnterpriseSupportEntitlement",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.remove_enterprise_support_entitlement",
+    "required_credential": "user",
+    "persisted_digest": "3cafde5709a160d4b3e59002010d4ef3209df35ec2e88137d38e43c82e23a582",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeLabelsFromLabelable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "label.remove_labels_from_labelable",
+    "required_credential": "user",
+    "persisted_digest": "3843d8a09a147556298772cf7c4399d9709e7ec699328eacbfe252737095ebe2",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeOutsideCollaborator",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.remove_outside_collaborator",
+    "required_credential": "user",
+    "persisted_digest": "82908ef45bf166c4b82b01964d6140e24dd2c12b7375a49857b06552065ca741",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removePullRequestCreationCapBypassUsers",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.remove_pull_request_creation_cap_bypass_users",
+    "required_credential": "user",
+    "persisted_digest": "03686d79b529785d5df4d861334b2e6b5330dfd14255a1d0fae94dd076354298",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeReaction",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "reaction.remove_reaction",
+    "required_credential": "user",
+    "persisted_digest": "b7728167e53ebd0d98b11fcc428be3085a53b8151e5f446922a49c1fcc78627f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeStar",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.remove_star",
+    "required_credential": "user",
+    "persisted_digest": "a8f42fb8b19be6a2adc0bbf799d9f2253da88595d4f4dd6a7d924781b5c7630a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeSubIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.remove_sub_issue",
+    "required_credential": "user",
+    "persisted_digest": "6efffa4b8ab75ca89c4b8b0a0dd82523e242a25f442fc4aeaa351379124c2dd5",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "removeUpvote",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.remove_upvote",
+    "required_credential": "user",
+    "persisted_digest": "bc143ede447cce9a12224e40b884f222d85c53fce77a88fa18bab85e035dfea4",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "reopenDiscussion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.reopen_discussion",
+    "required_credential": "user",
+    "persisted_digest": "965ea4080efbe8760e4f0eafd7ee2655804bd9dd9596ac803f57dd0847401434",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "reopenIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.reopen_issue",
+    "required_credential": "user",
+    "persisted_digest": "1933a14898eac9e96e9b0c1ce2e834aae71458def69c2495b06163459db537b4",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "reopenPullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.reopen_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "e20cfba9d89e93c14e63cf8e47916232613538b0b601b1a0d8db81b3edf4aba2",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "reorderEnvironment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.reorder_environment",
+    "required_credential": "user",
+    "persisted_digest": "75390a93d7ac294b99dd108f7aeb7e8ddaad7a7af8d539be8ebe5628f8cf686e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "replaceActorsForAssignable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.replace_actors_for_assignable",
+    "required_credential": "user",
+    "persisted_digest": "5628bfa54786ad10e4997280f4271604e62e440a9e614092a8a9b60a08519a59",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "reprioritizeSubIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.reprioritize_sub_issue",
+    "required_credential": "user",
+    "persisted_digest": "443cd8575909bce10b4a7b52d11945c0ac6dded8f85143af0a204b91037e90e0",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "requestReviews",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.request_reviews",
+    "required_credential": "user",
+    "persisted_digest": "031125e01a62a9ac22dc1b65336df0b58c7394b2a97bf9602e6c737bd726716c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "requestReviewsByLogin",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.request_reviews_by_login",
+    "required_credential": "user",
+    "persisted_digest": "cfc8f8b4d2d8688264c844280cc9789683af863d809b0505d28f034203f2a6cd",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "rerequestCheckSuite",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.rerequest_check_suite",
+    "required_credential": "user",
+    "persisted_digest": "981443dac71ca76a8d5cd1d9d155cb93a467869084ac81d06cd764155f668b69",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "resolveReviewThread",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.resolve_review_thread",
+    "required_credential": "user",
+    "persisted_digest": "692b7990e5aaaefbd843c1144b7ea4bd6dc2f1867b73c384a4e873da932cbf19",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "retireSponsorsTier",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.retire_sponsors_tier",
+    "required_credential": "user",
+    "persisted_digest": "36c4581e9397822d24a277b485e257bb43be529ca14672a1e4588b4b60a70fbb",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "revertPullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.revert_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "682e3248f0c315d31f1c73b69b024ea30650a4e63ceeb26feb25b7bc1151af6e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "revokeEnterpriseOrganizationsMigratorRole",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.revoke_enterprise_organizations_migrator_role",
+    "required_credential": "user",
+    "persisted_digest": "c5b811a7e6928364d268961d61cfe797a495674d8c4ab67348b96b6b22e7e5a4",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "revokeMigratorRole",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.revoke_migrator_role",
+    "required_credential": "user",
+    "persisted_digest": "984d38a0144e7b91d13243b0f847349dff5d88e7e5dff484e3ebae9cdd59c64a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "setEnterpriseIdentityProvider",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.set_enterprise_identity_provider",
+    "required_credential": "user",
+    "persisted_digest": "b5bf06351f47454ace22fd0951597ee69e541ff6d8a90a7d7b3e3ad521576be7",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "setIssueFieldValue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.set_issue_field_value",
+    "required_credential": "user",
+    "persisted_digest": "2f93dd09e6d773298fe9d637e248b49110fc75cfd02729b9541c7de5daf54278",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "setOrganizationInteractionLimit",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "organization.set_organization_interaction_limit",
+    "required_credential": "user",
+    "persisted_digest": "fceec7c1c96a08547c334f82547ad9ab3a145f4c9ab48b3fd1056c555b732ae7",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "setRepositoryCustomPropertyValues",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.set_repository_custom_property_values",
+    "required_credential": "user",
+    "persisted_digest": "89f461da6357a60ce4c7d20b1f3c31961b515e9d44ce23f6da3841b5f26243f5",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "setRepositoryInteractionLimit",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.set_repository_interaction_limit",
+    "required_credential": "user",
+    "persisted_digest": "1343374bfb56648a63137f2656a154ead480a868c1a6dd2fa4302743bb04a198",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "setUserInteractionLimit",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.set_user_interaction_limit",
+    "required_credential": "user",
+    "persisted_digest": "f88f9529682d26b1f2b183804e155c1961176289933569cde2de8f31e2d565f9",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "startOrganizationMigration",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "organization.start_organization_migration",
+    "required_credential": "user",
+    "persisted_digest": "d1b20b050fd07aedd905d37da0a6cf5775c7ca93ca226c84edc306affd1ccf14",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "startRepositoryMigration",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.start_repository_migration",
+    "required_credential": "user",
+    "persisted_digest": "c95232ec5b89741eb701fc7a84f8ed86d4286a9d657a5e0c3a76012c4a50c402",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "submitPullRequestReview",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.submit_pull_request_review",
+    "required_credential": "user",
+    "persisted_digest": "11d95f9b2ca6d6bfb6ffc8e40d1c21b88ba48441057ed1384161e422dbbd5e6f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "transferEnterpriseOrganization",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.transfer_enterprise_organization",
+    "required_credential": "user",
+    "persisted_digest": "551f81db5639160dbc09ace320847449bf787d20022e17d021b426fa429a91ae",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "transferIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.transfer_issue",
+    "required_credential": "user",
+    "persisted_digest": "d1114384ff525ae35cf5e364d9c306160c9f789f3a356a9cdfeb5c014f9ff59d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unarchiveProjectV2Item",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.unarchive_project_v2_item",
+    "required_credential": "user",
+    "persisted_digest": "654609fe90b34e8db08e183688c7511ff591debc5d6b5d8e3b4e3475e76b2470",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unarchivePullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.unarchive_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "fa94380fb4b06d525fb38865c6793cc01d3733fe66c6b287a9c05caad6777e41",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unarchiveRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.unarchive_repository",
+    "required_credential": "user",
+    "persisted_digest": "9b0becfb9167ea01856e38df34cc02f303f7998a8e7110aa3dd0058688d35375",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unfollowOrganization",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "organization.unfollow_organization",
+    "required_credential": "user",
+    "persisted_digest": "1900f44bb59bfc443e565b87a39f7bfb5f329bc87609853c5aaab5904c10f191",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unfollowUser",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.unfollow_user",
+    "required_credential": "user",
+    "persisted_digest": "2be4521ca1f1824b946635b75dfe26768df8835b850366a279df012bd5c4bbec",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unlinkProjectV2FromRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.unlink_project_v2_from_repository",
+    "required_credential": "user",
+    "persisted_digest": "b133d071249b3370a3ba52fc9def2b32add6a564dc02a01a6ad56b10555f9844",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unlinkProjectV2FromTeam",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.unlink_project_v2_from_team",
+    "required_credential": "user",
+    "persisted_digest": "1c1a533eba0114f9576fb9d16b715b6964121dbf8cdb496e6a86b3cc9fab1d8f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unlinkRepositoryFromProject",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unlockLockable",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.unlock_lockable",
+    "required_credential": "user",
+    "persisted_digest": "a56985c97bfbcfc3aa868e873e8e001a3c050af91f52ad779aeec6d9801247c6",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unmarkDiscussionCommentAsAnswer",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.unmark_discussion_comment_as_answer",
+    "required_credential": "user",
+    "persisted_digest": "46b986ca4a85d346fe194287fada7b9d95bab3c6cd97acb8e6b8c2b3eb836f57",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unmarkFileAsViewed",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.unmark_file_as_viewed",
+    "required_credential": "user",
+    "persisted_digest": "c7706e598870e6070343c1f6ad8aa7ddb50af54dc4c7a488a93b3066a66e98cf",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unmarkIssueAsDuplicate",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.unmark_issue_as_duplicate",
+    "required_credential": "user",
+    "persisted_digest": "cbaa070533ecec2e04861b00d86733e9fa479d8801e4b68f66975c25127ce1ee",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unmarkProjectV2AsTemplate",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.unmark_project_v2_as_template",
+    "required_credential": "user",
+    "persisted_digest": "ec11cd42769f46bac153440c89b8dde62b146cfc95f802354de5472b4d9de46c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unminimizeComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "comment.unminimize_comment",
+    "required_credential": "user",
+    "persisted_digest": "cfb57dd4ddf309a5a6e7e47ddb64b31466d55d392c2e8f617cb2e9bcdd1565d4",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unpinIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.unpin_issue",
+    "required_credential": "user",
+    "persisted_digest": "806fdd49e7b9958b7b6bb7e11ea3b765094a89ad903323ee797c1910346ff231",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unpinIssueComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.unpin_issue_comment",
+    "required_credential": "user",
+    "persisted_digest": "26de823891b9e754b0b7fbe10615e0933ba737879e6a13c917519682eb37ef71",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "unresolveReviewThread",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.unresolve_review_thread",
+    "required_credential": "user",
+    "persisted_digest": "b66af824fda28bfad0dcc210b6ad64bfe9cb2ea76b3a04d9a34da018e78795a6",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateBranchProtectionRule",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_branch_protection_rule",
+    "required_credential": "user",
+    "persisted_digest": "828a2e6077e8c7137024ebc2882c4e677797f4a00efa88987d11ca112d16558b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateCheckRun",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_check_run",
+    "required_credential": "user",
+    "persisted_digest": "a4669d0fad719c54b51d37f882668e80f507be8dad8bf29a09d3f3ce9cdafcbb",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateCheckSuitePreferences",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_check_suite_preferences",
+    "required_credential": "user",
+    "persisted_digest": "3e0c36b94c01aaba3a4dc2726a45b53f1fb3f2dfd58c5a9fd5dccdcbcef51527",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateDiscussion",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.update_discussion",
+    "required_credential": "user",
+    "persisted_digest": "05d63d628837075a20f93f42ce2549cd45a76260ecb359a5ab9ad5a9a8680e06",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateDiscussionComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "discussion.update_discussion_comment",
+    "required_credential": "user",
+    "persisted_digest": "3608689658f3e57c24d1e0c4ef6347c303300edf3688464abf09537e3b2bdb7b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseAdministratorRole",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_administrator_role",
+    "required_credential": "user",
+    "persisted_digest": "1fbb1a73d12b392979a209bd9ea75b3dbbad38e32f9163003001262ecaa0aa38",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseAllowPrivateRepositoryForkingSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_allow_private_repository_forking_setting",
+    "required_credential": "user",
+    "persisted_digest": "b39f47ad798b929128fa15e8550888c07821a6049b59583b69c6c0470b3720a7",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseDefaultRepositoryPermissionSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_default_repository_permission_setting",
+    "required_credential": "user",
+    "persisted_digest": "5d04e62747b1725d5559873da214166eaba4cfa4b7e457f60d9179fee16f9bca",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseDeployKeySetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_deploy_key_setting",
+    "required_credential": "user",
+    "persisted_digest": "d4652bdbe8f8bb7ad612f2bc821518ca058185ad0ad8d8083dfde2977fc3cd61",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanChangeRepositoryVisibilitySetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_change_repository_visibility_setting",
+    "required_credential": "user",
+    "persisted_digest": "ccc5606dc66f08cec03205e23982b8528825adae03659962da7ab2c4b297d911",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanCreateRepositoriesSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_create_repositories_setting",
+    "required_credential": "user",
+    "persisted_digest": "6703c55e2555f42b55b0b0f9d1cb6459623fb749fa781ffe4d95e397a7b479cd",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanDeleteIssuesSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_delete_issues_setting",
+    "required_credential": "user",
+    "persisted_digest": "42526b14f805f1ce73fb99f39747d7a29d9be18f05852db788d1f79a7c0eb744",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanDeleteRepositoriesSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_delete_repositories_setting",
+    "required_credential": "user",
+    "persisted_digest": "193eb835696cb01b010774745a72a93f51477a2e22a9020d102253a0cce600ba",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanInviteCollaboratorsSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_invite_collaborators_setting",
+    "required_credential": "user",
+    "persisted_digest": "a50c9baeb96e1a714f210bbbcaae3e94c85b7eb667c1ed0366440bf48f142090",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanMakePurchasesSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_make_purchases_setting",
+    "required_credential": "user",
+    "persisted_digest": "73cedc6c8e055d8579be303da61fcfa49546b8f49c32c2848236e0eb46a4a5a0",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanUpdateProtectedBranchesSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_update_protected_branches_setting",
+    "required_credential": "user",
+    "persisted_digest": "e80dde1c8a203bb8588083772fa63fd5ec32f57df1661f680d9a9a6ee8da1c57",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseMembersCanViewDependencyInsightsSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_members_can_view_dependency_insights_setting",
+    "required_credential": "user",
+    "persisted_digest": "c9e1af54d77e75e3666b05e5023d91e1715684da6d18e631fb37897eea09588b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseOrganizationProjectsSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_organization_projects_setting",
+    "required_credential": "user",
+    "persisted_digest": "9cd02933770d7def88c1b8084be8375e7f714effedad0b6a900ba12a2ab5c11d",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseOwnerOrganizationRole",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_owner_organization_role",
+    "required_credential": "user",
+    "persisted_digest": "bc1f4ecbb42215edd9b0af19023d12b002f5796c59114328961c2137ed36541a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseProfile",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_profile",
+    "required_credential": "user",
+    "persisted_digest": "3a0e3d6df00ac1af15196dbe6052be6bbd9305df02a0a4c8a2546b0917184bb5",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseRepositoryProjectsSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_repository_projects_setting",
+    "required_credential": "user",
+    "persisted_digest": "d451619317a37a5120e7946262a095248cf98fca305d3397411332bdfbc2beab",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseTwoFactorAuthenticationDisallowedMethodsSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_two_factor_authentication_disallowed_methods_setting",
+    "required_credential": "user",
+    "persisted_digest": "8d38f1a19bf2a1dbe8938dd9a8b114d391af024de8cbffa8821a96dc873a0db5",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnterpriseTwoFactorAuthenticationRequiredSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.update_enterprise_two_factor_authentication_required_setting",
+    "required_credential": "user",
+    "persisted_digest": "5ec0e1c63b8395dff6295cd94b6ecbc60cefab93c3957968c9d985eb529539bb",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateEnvironment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_environment",
+    "required_credential": "user",
+    "persisted_digest": "77d1902999284019e23d1ba8828c2ad037f08bc85bc09f64c25d37362d7edb66",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIpAllowListEnabledSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_ip_allow_list_enabled_setting",
+    "required_credential": "user",
+    "persisted_digest": "d7aa73fa33aaa3cd0442b30817d3909c93470093997f812e1188e94dcefe9b84",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIpAllowListEntry",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_ip_allow_list_entry",
+    "required_credential": "user",
+    "persisted_digest": "ac7fc85ed519d6a487ed4af4620104e666f62aea1d48086e3a277a3ca698de95",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIpAllowListForInstalledAppsEnabledSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_ip_allow_list_for_installed_apps_enabled_setting",
+    "required_credential": "user",
+    "persisted_digest": "394e44e3360a4cfd7e7b15f8028680588d5d057872db5ba1bacb4045c9eef5d3",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIpAllowListUserLevelEnforcementEnabledSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.update_ip_allow_list_user_level_enforcement_enabled_setting",
+    "required_credential": "user",
+    "persisted_digest": "b8ac28564b4c7375803b33eafef586ad97f57ac485338800f06461dea1f0ac9a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.update_issue",
+    "required_credential": "user",
+    "persisted_digest": "bc8103215275734a0c79a3293ced44bcfdfbed01515adb00019bd13890b34110",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIssueComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.update_issue_comment",
+    "required_credential": "user",
+    "persisted_digest": "d9c57c2c6615fd2c533b8a813ce7430b79da00a82e309a56f77dac7faa38238b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIssueField",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.update_issue_field",
+    "required_credential": "user",
+    "persisted_digest": "cbced922fa86d36a03520d491371b6f6b592c0e9cb4fcdaa21ca6572048befdd",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIssueFieldValue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.update_issue_field_value",
+    "required_credential": "user",
+    "persisted_digest": "90074f8f7eb00b62895d23ddeb60219586a890ea778d3923c77254b2692a2a8b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIssueIssueType",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.update_issue_issue_type",
+    "required_credential": "user",
+    "persisted_digest": "d4a6f64ca93c3c5931f968453146b83049fef1444865d82279d911855b613f02",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateIssueType",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.update_issue_type",
+    "required_credential": "user",
+    "persisted_digest": "71254530f9cecd443872e330db315b910d27f8d9d3512fb093ae29eba51f31f4",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateLabel",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "label.update_label",
+    "required_credential": "user",
+    "persisted_digest": "87caac132720ca78a26a16fd1156b0090e4ea0f721841cb59f0528b2a5392729",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateNotificationRestrictionSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_notification_restriction_setting",
+    "required_credential": "user",
+    "persisted_digest": "b9ec058bc5486f10eaab0c57aaa911a620d18eb6b87f1d21fb9814ed84e39889",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateOrganizationAllowPrivateRepositoryForkingSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "organization.update_organization_allow_private_repository_forking_setting",
+    "required_credential": "user",
+    "persisted_digest": "a666b75f9d359fe26c4e97a43dc6f083946c919cd04a7eabc4181cbd63f417ce",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateOrganizationWebCommitSignoffSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "organization.update_organization_web_commit_signoff_setting",
+    "required_credential": "user",
+    "persisted_digest": "41e4c4c9b9fabd624fa418d4265f946998a68e4564d7112e521a182c74d709f8",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updatePatreonSponsorability",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.update_patreon_sponsorability",
+    "required_credential": "user",
+    "persisted_digest": "1af77fc8904566f2ecddc63304ea082138b557e07102017adc3c9c3d2226c853",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProject",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectCard",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectColumn",
+    "deprecated": true,
+    "disposition": "blocked-upstream",
+    "reason": "Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. Removal on 2025-04-01 UTC.",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectV2",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.update_project_v2",
+    "required_credential": "user",
+    "persisted_digest": "cd7bf9ffbe8575f335ed426269fa79dff2a5208fc1df7cf9f6bf7486daa4b76a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectV2Collaborators",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.update_project_v2_collaborators",
+    "required_credential": "user",
+    "persisted_digest": "6aac11d81a7b19d872a6d60f95a875a3041af24ff4f65c4c45f52c8850f5e008",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectV2DraftIssue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "issue.update_project_v2_draft_issue",
+    "required_credential": "user",
+    "persisted_digest": "b1e1510ffaa40202c42add6fce57ab092f202298eeace987153e926aadd94894",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectV2Field",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.update_project_v2_field",
+    "required_credential": "user",
+    "persisted_digest": "5477d8cb2a9fb15c599e994c2d0f45fdcb72c854fa8fa8e72d24c9b7a39d98b2",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectV2ItemFieldValue",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.update_project_v2_item_field_value",
+    "required_credential": "user",
+    "persisted_digest": "19425a425dae8f8b1ee83d48df2522aeee87501ce00baa099ffa664c4e59396e",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectV2ItemPosition",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.update_project_v2_item_position",
+    "required_credential": "user",
+    "persisted_digest": "5708c833c29d2d409cb29d3b32027b72049bfd522b52ebc6bd66b34cc4d0a50c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateProjectV2StatusUpdate",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "project.update_project_v2_status_update",
+    "required_credential": "user",
+    "persisted_digest": "f9ddd5d19db12d5204dd1009116a9c8d5328b9a54999e8d9ca269b5685dbad97",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updatePullRequest",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.update_pull_request",
+    "required_credential": "user",
+    "persisted_digest": "1d8bfb13c7f1b595f237d598da02e7b962c3e223d4a05937ea10f0ff62121832",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updatePullRequestBranch",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.update_pull_request_branch",
+    "required_credential": "user",
+    "persisted_digest": "b95ae804db53a3047b834d9ada685aa9b3c7c539c7868039d5c38f9b59f67fcb",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updatePullRequestReview",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.update_pull_request_review",
+    "required_credential": "user",
+    "persisted_digest": "1ca09e8f68348b8000ee692e1da024ee9bd99066ea58049a8e9fff6238d3407b",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updatePullRequestReviewComment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "pull_request.update_pull_request_review_comment",
+    "required_credential": "user",
+    "persisted_digest": "97db8060f507a3c2c9b3b86a2e821e04cda8bf196c77b7989849671471b73db9",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateRef",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_ref",
+    "required_credential": "user",
+    "persisted_digest": "80fc768b0f74c183ff4bc3a02093c6ff514fab6ada3b59a634adc80d04469d17",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateRefs",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_refs",
+    "required_credential": "user",
+    "persisted_digest": "d5a616fab20589c9ddd397e68bc0b2ba73e043934f8203b783e7ecc85f29b39a",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_repository",
+    "required_credential": "user",
+    "persisted_digest": "5f09ff42c217bf4151bc1e245f2b06f2c5cd095a8120e15921e962aabbde65c5",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateRepositoryCustomProperty",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_repository_custom_property",
+    "required_credential": "user",
+    "persisted_digest": "942029a4da68313e4a5d5829ea0abaebb20ceac853ef9700113b765f1e17aafd",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateRepositoryRuleset",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_repository_ruleset",
+    "required_credential": "user",
+    "persisted_digest": "894a0cfdd064409ca7edc40c7cd54f36512e8c2c1695fc2b3d460cf54ca01e7c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateRepositoryWebCommitSignoffSetting",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_repository_web_commit_signoff_setting",
+    "required_credential": "user",
+    "persisted_digest": "a43ce97d94fcd5692d85d9d8e3ae90e9c1a26cc615b0c09ab475c858ccaaf0fd",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateSponsorshipPreferences",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.update_sponsorship_preferences",
+    "required_credential": "user",
+    "persisted_digest": "7d95990c7f1d21cccc8db44812883814d67db13d6299f7cdd3ad0f00558fdd23",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateSubscription",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_subscription",
+    "required_credential": "user",
+    "persisted_digest": "540e249925848b4060619a3bd2c71285c324cb94162bec6c5463545666e6d312",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateTeamReviewAssignment",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "team.update_team_review_assignment",
+    "required_credential": "user",
+    "persisted_digest": "2854aaa1384e6b6d7f8a9466111bda724600ddf89df1f8a812ea0af87a03cb2c",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateTeamsRepository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_teams_repository",
+    "required_credential": "user",
+    "persisted_digest": "a7e778a5ffcc43f6b617b86d5caa09c561271b462b0a291fede958af801c3785",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateTopics",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.update_topics",
+    "required_credential": "user",
+    "persisted_digest": "f9f33ddfd2b56c49fc2313cfa29963ec8ef932fe8a9c3c8e2ae6f7decc09c8a8",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateUserList",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.update_user_list",
+    "required_credential": "user",
+    "persisted_digest": "eaff87f2697d8ae008a5302a4ad8c051604b09ee85b6967249b44b89bb3fae40",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "updateUserListsForItem",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.update_user_lists_for_item",
+    "required_credential": "user",
+    "persisted_digest": "b7e74f84204a911abea576ee3caf55e7b11f267281e7a05d8a9e47cfc16d5b7f",
+    "reviewed": true
+  },
+  {
+    "root_type": "mutation",
+    "field": "verifyVerifiableDomain",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.verify_verifiable_domain",
+    "required_credential": "user",
+    "persisted_digest": "a0396ea9d5b573612b9ec908532057f7c1c63cb3041d06eeb68306bcff58e3f0",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "_entities",
+    "deprecated": false,
+    "disposition": "internal",
+    "catalog_operation": "repo.read_entities",
+    "required_credential": "user",
+    "persisted_digest": "004205939663168c4e8518e7253c407ba306ca3eeedd0692fe31124a56e5b9a8",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "codeOfConduct",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_code_of_conduct",
+    "required_credential": "user",
+    "persisted_digest": "6efbb40607f5bb2532ed1cead8f040a77f3b4ceb9b31cf753ed130720f58ff80",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "codesOfConduct",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_codes_of_conduct",
+    "required_credential": "user",
+    "persisted_digest": "44ce63b056a777cd66e4a07ea3ef96c5825c0fc2258fae6b49d4980661049f44",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "enterprise",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.read_enterprise",
+    "required_credential": "user",
+    "persisted_digest": "c33ab73bebfd60ce2aa3dfdda1520b657e6875f7f6cd9a659920d32cb77ae64e",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "enterpriseAdministratorInvitation",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.read_enterprise_administrator_invitation",
+    "required_credential": "user",
+    "persisted_digest": "c15e472589caf1b72662e2737154e9e678b64c3c9d59bab8fc55f456e1a9bf70",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "enterpriseAdministratorInvitationByToken",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.read_enterprise_administrator_invitation_by_token",
+    "required_credential": "user",
+    "persisted_digest": "e352f3403f7a1aa4671d3378373cd548e4116a418378c3b1ed49265370feec1a",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "enterpriseMemberInvitation",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.read_enterprise_member_invitation",
+    "required_credential": "user",
+    "persisted_digest": "7da6d9b89efe2897f84a7520da734a7ebd772d6632f4765b9285b0144dbe6734",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "enterpriseMemberInvitationByToken",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "enterprise.read_enterprise_member_invitation_by_token",
+    "required_credential": "user",
+    "persisted_digest": "27a71e0c225d19d649df25f029ede6abf9639bdcb8f373c87f8d8b021adca2f9",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "id",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_id",
+    "required_credential": "user",
+    "persisted_digest": "538dcb909f350dbd4eb086aaa2629d9f0d10b4751bcba8f17fee83169fbbe522",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "license",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_license",
+    "required_credential": "user",
+    "persisted_digest": "a445695719fcf540787efeb45b92e29732c2aba244e6ef99cdb315aa27719034",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "licenses",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_licenses",
+    "required_credential": "user",
+    "persisted_digest": "a9ab1304b44f2e2c8ad24713931af48a05ef47aee133c60122438df6b12c09ca",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "marketplaceCategories",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_marketplace_categories",
+    "required_credential": "user",
+    "persisted_digest": "d4869f138f079ec91279402aa1f7ea1729c5c75da7d9fe3de76038244c1c9ba4",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "marketplaceCategory",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_marketplace_category",
+    "required_credential": "user",
+    "persisted_digest": "fc435c859de6d6df749baa6413d06f5570090ce78b11b0486a364d2cbc084a6e",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "marketplaceListing",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.marketplace_listing",
+    "required_credential": "user",
+    "persisted_digest": "a540422419dc3b5f6c2457d76f3c1435814b1581ee08ede8dd0f6fb6cb106ab6",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "marketplaceListings",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.marketplace_listings",
+    "required_credential": "user",
+    "persisted_digest": "ee71bc5c48da3381f29b0a6aa5b1e0a48f267d6a270b385cb97df8e59cef8ddd",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "meta",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_meta",
+    "required_credential": "user",
+    "persisted_digest": "b03772d0d8a3edcecb02f8cc806af0fb3536bc9a9f573290c19eaf0bce2ebf84",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "node",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_node",
+    "required_credential": "user",
+    "persisted_digest": "a09cf7b662a6a4598ce45d7fa6cd0a778dcfbc189ef4604d4b6e4e2b4054361b",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "nodes",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_nodes",
+    "required_credential": "user",
+    "persisted_digest": "64ead73cba0f88527339c8bed0b8d04f350c49a9f57894f6b25fd7641850727c",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "organization",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "organization.read_organization",
+    "required_credential": "user",
+    "persisted_digest": "6cfd9591b0d2c30a74737b2df545d401b863b0d79323c465a86caf80e33ef50a",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "rateLimit",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_rate_limit",
+    "required_credential": "user",
+    "persisted_digest": "97a92bcc956a896f5388371a4b0d15a494816e920622b1ac60ccbe8f2f781fe1",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "relay",
+    "deprecated": false,
+    "disposition": "internal",
+    "catalog_operation": "repo.read_relay",
+    "required_credential": "user",
+    "persisted_digest": "823ff1e22da3fd8a7f005a0c9fef57f26249bcc39b208e85651aed1bd5219ace",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "repository",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_repository",
+    "required_credential": "user",
+    "persisted_digest": "1856251fe5ce08e9f2e90a92dfd441a3bde63bc72739168e1055f2c72c154c3c",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "repositoryOwner",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_repository_owner",
+    "required_credential": "user",
+    "persisted_digest": "dac69a2ec8ae57b1392897f90829a02b8792ea6a00647cd747da536077f486d1",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "resource",
+    "deprecated": false,
+    "disposition": "internal",
+    "catalog_operation": "repo.read_resource",
+    "required_credential": "user",
+    "persisted_digest": "a0c4b18ac2be99fbf5ffefe11fd517b233dd3b4b4a29140b5bc87f6947cb684d",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "search",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.search",
+    "required_credential": "user",
+    "persisted_digest": "28396b183be10756043b4b2109c9ba89238b28b1327b3bbf84c57e4e3de8a7f4",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "securityAdvisories",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "security.read_security_advisories",
+    "required_credential": "user",
+    "persisted_digest": "73d0b84d92f3e88e57e703da26b7b5cd4a14dd71863940d484be8d0ffd6b9f16",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "securityAdvisory",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "advisory.read_security_advisory",
+    "required_credential": "user",
+    "persisted_digest": "b355d43024817791b1e667c6fdd1d8d725047bd073bb102e6b46d193ce61a942",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "securityVulnerabilities",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "security.read_security_vulnerabilities",
+    "required_credential": "user",
+    "persisted_digest": "3eda96e580977b23cc4de4782c6779aa71d2dd86ba2e8316a66576e142459258",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "sponsorables",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "member.read_sponsorables",
+    "required_credential": "user",
+    "persisted_digest": "0213017f3fdeab5ebc068026dc46d24f8252832f55558be3441ceab906f39e85",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "topic",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_topic",
+    "required_credential": "user",
+    "persisted_digest": "fd883e1e9648ce9c650f792af537f9790ff01c75667115650d60ad37a7923e19",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "user",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "user.read_user",
+    "required_credential": "user",
+    "persisted_digest": "6c1ac23bf6411b900797fc8734d997f8a02cee93e9dad4c265894d15407c8eae",
+    "reviewed": true
+  },
+  {
+    "root_type": "query",
+    "field": "viewer",
+    "deprecated": false,
+    "disposition": "graphql",
+    "catalog_operation": "repo.read_viewer",
+    "required_credential": "user",
+    "persisted_digest": "917161fd0d0e6fc253130fa06d31f6a877e8c010e5425f6e072c81bf0aac11c4",
+    "reviewed": true
+  }
+]

@@ -1,0 +1,1442 @@
+# GitHub capability catalog
+
+Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by hand.
+
+| Operation | Risk | Status | Credential | Target | Agent surface |
+|---|---|---|---|---|---|
+| `action_run.actions_approve_workflow_run` | medium | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_cancel_workflow_run` | critical | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_delete_workflow_run` | critical | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_delete_workflow_run_logs` | critical | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_download_job_logs_for_workflow_run` | low | protocol | installation | job | typed CLI/MCP |
+| `action_run.actions_download_workflow_run_attempt_logs` | low | protocol | installation | run | typed CLI/MCP |
+| `action_run.actions_download_workflow_run_logs` | low | protocol | installation | run | typed CLI/MCP |
+| `action_run.actions_force_cancel_workflow_run` | critical | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_get_job_for_workflow_run` | low | implemented | installation | job | typed CLI/MCP |
+| `action_run.actions_get_pending_deployments_for_run` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_get_reviews_for_run` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_get_workflow_run` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_get_workflow_run_attempt` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_get_workflow_run_usage` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_list_concurrency_groups_for_workflow_run` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_list_jobs_for_workflow_run` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_list_jobs_for_workflow_run_attempt` | low | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_list_workflow_runs` | low | implemented | installation | workflow | typed CLI/MCP |
+| `action_run.actions_list_workflow_runs_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `action_run.actions_re_run_job_for_workflow_run` | medium | implemented | installation | job | typed CLI/MCP |
+| `action_run.actions_re_run_workflow` | medium | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_re_run_workflow_failed_jobs` | medium | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_review_custom_gates_for_run` | medium | implemented | installation | run | typed CLI/MCP |
+| `action_run.actions_review_pending_deployments_for_run` | medium | implemented | installation | run | typed CLI/MCP |
+| `advisory.read_security_advisory` | low | operator-only | user | advisory | no |
+| `advisory.security_advisories_create_fork` | medium | implemented | installation | advisory | typed CLI/MCP |
+| `advisory.security_advisories_create_private_vulnerability_report` | medium | implemented | installation | repo | typed CLI/MCP |
+| `advisory.security_advisories_create_repository_advisory` | medium | implemented | installation | repo | typed CLI/MCP |
+| `advisory.security_advisories_create_repository_advisory_cve_request` | medium | implemented | installation | advisory | typed CLI/MCP |
+| `advisory.security_advisories_get_global_advisory` | low | implemented | user | advisory | typed CLI/MCP |
+| `advisory.security_advisories_get_repository_advisory` | low | implemented | installation | advisory | typed CLI/MCP |
+| `advisory.security_advisories_list_global_advisories` | low | implemented | user | user | typed CLI/MCP |
+| `advisory.security_advisories_list_repository_advisories` | low | implemented | installation | repo | typed CLI/MCP |
+| `advisory.security_advisories_update_repository_advisory` | medium | implemented | installation | advisory | typed CLI/MCP |
+| `agent_task.add_selected_repo_to_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.add_selected_repo_to_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.agent_tasks_create_task_in_repo` | medium | implemented | user | repo | typed CLI/MCP |
+| `agent_task.agent_tasks_get_task_by_id` | low | implemented | user | user | typed CLI/MCP |
+| `agent_task.agent_tasks_get_task_by_repo_and_id` | low | implemented | user | repo | typed CLI/MCP |
+| `agent_task.agent_tasks_list_tasks` | low | implemented | user | user | typed CLI/MCP |
+| `agent_task.agent_tasks_list_tasks_for_repo` | low | implemented | user | repo | typed CLI/MCP |
+| `agent_task.create_or_update_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.create_or_update_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.create_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.create_repo_variable` | medium | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.delete_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.delete_org_variable` | critical | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.delete_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.delete_repo_variable` | critical | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.get_org_public_key` | low | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.get_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.get_org_variable` | low | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.get_repo_public_key` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.get_repo_secret` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.get_repo_variable` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.list_org_secrets` | low | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.list_org_variables` | low | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.list_repo_organization_secrets` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.list_repo_organization_variables` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.list_repo_secrets` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.list_repo_variables` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.list_selected_repos_for_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.list_selected_repos_for_org_variable` | low | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.remove_selected_repo_from_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.remove_selected_repo_from_org_variable` | critical | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.set_selected_repos_for_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.set_selected_repos_for_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.update_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `agent_task.update_repo_variable` | medium | implemented | installation | repo | typed CLI/MCP |
+| `app.apps_check_token` | critical | operator-only | app-jwt | app | no |
+| `app.apps_create_from_manifest` | medium | operator-only | app-jwt | app | no |
+| `app.apps_delete_authorization` | critical | operator-only | app-jwt | app | no |
+| `app.apps_delete_token` | critical | operator-only | app-jwt | app | no |
+| `app.apps_get_authenticated` | low | operator-only | app-jwt | app | no |
+| `app.apps_get_by_slug` | low | operator-only | app-jwt | app | no |
+| `app.apps_get_subscription_plan_for_account` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_get_subscription_plan_for_account_stubbed` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_list_accounts_for_plan` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_list_accounts_for_plan_stubbed` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_list_plans` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_list_plans_stubbed` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_list_subscriptions_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_list_subscriptions_for_authenticated_user_stubbed` | low | implemented | user | user | typed CLI/MCP |
+| `app.apps_reset_token` | critical | operator-only | app-jwt | app | no |
+| `app.apps_scope_token` | critical | operator-only | app-jwt | app | no |
+| `app.meta_get` | low | implemented | user | user | typed CLI/MCP |
+| `app.meta_get_all_versions` | low | implemented | user | user | typed CLI/MCP |
+| `app.meta_get_octocat` | low | implemented | user | user | typed CLI/MCP |
+| `app.meta_get_zen` | low | implemented | user | user | typed CLI/MCP |
+| `app.meta_root` | low | internal | user | user | no |
+| `app.rate_limit_get` | low | internal | user | user | no |
+| `artifact.actions_delete_artifact` | critical | implemented | installation | artifact | typed CLI/MCP |
+| `artifact.actions_download_artifact` | low | protocol | installation | artifact | typed CLI/MCP |
+| `artifact.actions_get_artifact` | low | implemented | installation | artifact | typed CLI/MCP |
+| `artifact.actions_get_artifact_and_log_retention_settings_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `artifact.actions_get_artifact_and_log_retention_settings_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `artifact.actions_list_artifacts_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `artifact.actions_list_workflow_run_artifacts` | low | implemented | installation | run | typed CLI/MCP |
+| `artifact.actions_set_artifact_and_log_retention_settings_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `artifact.actions_set_artifact_and_log_retention_settings_repository` | high | implemented | installation | repo | typed CLI/MCP |
+| `artifact.orgs_create_artifact_deployment_record` | high | implemented | installation | organization | typed CLI/MCP |
+| `artifact.orgs_create_artifact_storage_record` | high | implemented | installation | organization | typed CLI/MCP |
+| `artifact.orgs_list_artifact_deployment_records` | low | implemented | installation | organization | typed CLI/MCP |
+| `artifact.orgs_list_artifact_storage_records` | low | implemented | installation | organization | typed CLI/MCP |
+| `artifact.orgs_set_cluster_deployment_records` | high | implemented | installation | organization | typed CLI/MCP |
+| `branch.repos_get_branch` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch.repos_get_branch_rules` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch.repos_list_branches` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch.repos_rename_branch` | medium | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_add_app_access_restrictions` | high | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_add_status_check_contexts` | medium | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_add_team_access_restrictions` | high | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_add_user_access_restrictions` | high | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_create_commit_signature_protection` | medium | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_delete_access_restrictions` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_delete_admin_branch_protection` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_delete_branch_protection` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_delete_commit_signature_protection` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_delete_pull_request_review_protection` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_access_restrictions` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_admin_branch_protection` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_all_status_check_contexts` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_apps_with_access_to_protected_branch` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_branch_protection` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_commit_signature_protection` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_pull_request_review_protection` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_status_checks_protection` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_teams_with_access_to_protected_branch` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_get_users_with_access_to_protected_branch` | low | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_remove_app_access_restrictions` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_remove_status_check_contexts` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_remove_status_check_protection` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_remove_team_access_restrictions` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_remove_user_access_restrictions` | critical | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_set_admin_branch_protection` | medium | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_set_app_access_restrictions` | high | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_set_status_check_contexts` | medium | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_set_team_access_restrictions` | high | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_set_user_access_restrictions` | high | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_update_branch_protection` | medium | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_update_pull_request_review_protection` | medium | implemented | installation | repo | typed CLI/MCP |
+| `branch_protection.repos_update_status_check_protection` | medium | implemented | installation | repo | typed CLI/MCP |
+| `cache.actions_delete_actions_cache_by_id` | critical | implemented | installation | cache | typed CLI/MCP |
+| `cache.actions_delete_actions_cache_by_key` | critical | implemented | installation | repo | typed CLI/MCP |
+| `cache.actions_get_actions_cache_list` | low | implemented | installation | repo | typed CLI/MCP |
+| `cache.actions_get_actions_cache_retention_limit_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `cache.actions_get_actions_cache_retention_limit_for_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `cache.actions_get_actions_cache_retention_limit_for_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `cache.actions_get_actions_cache_storage_limit_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `cache.actions_get_actions_cache_storage_limit_for_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `cache.actions_get_actions_cache_storage_limit_for_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `cache.actions_get_actions_cache_usage` | low | implemented | installation | repo | typed CLI/MCP |
+| `cache.actions_get_actions_cache_usage_by_repo_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `cache.actions_get_actions_cache_usage_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `cache.actions_set_actions_cache_retention_limit_for_enterprise` | critical | implemented | user | enterprise | typed CLI/MCP |
+| `cache.actions_set_actions_cache_retention_limit_for_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `cache.actions_set_actions_cache_retention_limit_for_repository` | medium | implemented | installation | repo | typed CLI/MCP |
+| `cache.actions_set_actions_cache_storage_limit_for_enterprise` | critical | implemented | user | enterprise | typed CLI/MCP |
+| `cache.actions_set_actions_cache_storage_limit_for_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `cache.actions_set_actions_cache_storage_limit_for_repository` | medium | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_create` | medium | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_create_suite` | medium | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_get` | low | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_get_suite` | low | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_list_annotations` | low | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_list_for_suite` | low | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_rerequest_run` | medium | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_rerequest_suite` | medium | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_set_suites_preferences` | medium | implemented | installation | repo | typed CLI/MCP |
+| `check.checks_update` | medium | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_commit_autofix` | medium | implemented | installation | alert | typed CLI/MCP |
+| `code_scanning.code_scanning_create_autofix` | medium | implemented | installation | alert | typed CLI/MCP |
+| `code_scanning.code_scanning_create_variant_analysis` | medium | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_delete_analysis` | critical | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_delete_codeql_database` | critical | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_get_alert` | low | implemented | installation | alert | typed CLI/MCP |
+| `code_scanning.code_scanning_get_analysis` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_get_autofix` | low | implemented | installation | alert | typed CLI/MCP |
+| `code_scanning.code_scanning_get_codeql_database` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_get_default_setup` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_get_sarif` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_get_variant_analysis` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_get_variant_analysis_repo_task` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_list_alert_instances` | low | implemented | installation | alert | typed CLI/MCP |
+| `code_scanning.code_scanning_list_alerts_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `code_scanning.code_scanning_list_alerts_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_list_codeql_databases` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_list_recent_analyses` | low | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_update_alert` | medium | implemented | installation | alert | typed CLI/MCP |
+| `code_scanning.code_scanning_update_default_setup` | medium | implemented | installation | repo | typed CLI/MCP |
+| `code_scanning.code_scanning_upload_sarif` | medium | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_add_repository_for_secret_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_check_permissions_for_devcontainer` | low | implemented | user | repo | typed CLI/MCP |
+| `codespace.codespaces_codespace_machines_for_authenticated_user` | low | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_create_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_create_or_update_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_create_or_update_secret_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_create_with_repo_for_authenticated_user` | medium | implemented | user | repo | typed CLI/MCP |
+| `codespace.codespaces_delete_for_authenticated_user` | critical | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_delete_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_delete_secret_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_export_for_authenticated_user` | medium | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_get_export_details_for_authenticated_user` | low | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_get_for_authenticated_user` | low | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_get_public_key_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_get_repo_public_key` | low | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_get_repo_secret` | low | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_get_secret_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_list_devcontainers_in_repository_for_authenticated_user` | low | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_list_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_list_in_repository_for_authenticated_user` | low | implemented | user | repo | typed CLI/MCP |
+| `codespace.codespaces_list_repo_secrets` | low | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_list_repositories_for_secret_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_list_secrets_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_pre_flight_with_repo_for_authenticated_user` | low | implemented | user | repo | typed CLI/MCP |
+| `codespace.codespaces_publish_for_authenticated_user` | medium | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_remove_repository_for_secret_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_repo_machines_for_authenticated_user` | low | implemented | installation | repo | typed CLI/MCP |
+| `codespace.codespaces_set_repositories_for_secret_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `codespace.codespaces_start_for_authenticated_user` | medium | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_stop_for_authenticated_user` | medium | implemented | user | codespace | typed CLI/MCP |
+| `codespace.codespaces_update_for_authenticated_user` | medium | implemented | user | codespace | typed CLI/MCP |
+| `collaborator.copilot_spaces_add_collaborator_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `collaborator.copilot_spaces_list_collaborators_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `collaborator.copilot_spaces_list_collaborators_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `collaborator.copilot_spaces_remove_collaborator_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `collaborator.copilot_spaces_update_collaborator_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `collaborator.orgs_convert_member_to_outside_collaborator` | high | implemented | installation | organization | typed CLI/MCP |
+| `collaborator.orgs_list_outside_collaborators` | low | implemented | installation | organization | typed CLI/MCP |
+| `collaborator.orgs_remove_outside_collaborator` | critical | implemented | installation | organization | typed CLI/MCP |
+| `collaborator.repos_add_collaborator` | high | implemented | installation | repo | typed CLI/MCP |
+| `collaborator.repos_check_collaborator` | low | implemented | installation | repo | typed CLI/MCP |
+| `collaborator.repos_get_collaborator_permission_level` | low | implemented | installation | repo | typed CLI/MCP |
+| `collaborator.repos_list_collaborators` | low | implemented | installation | repo | typed CLI/MCP |
+| `collaborator.repos_remove_collaborator` | critical | implemented | installation | repo | typed CLI/MCP |
+| `comment.add_comment` | medium | operator-only | user | comment | no |
+| `comment.gists_create_comment` | medium | implemented | user | gist | typed CLI/MCP |
+| `comment.gists_delete_comment` | critical | implemented | user | comment | typed CLI/MCP |
+| `comment.gists_get_comment` | low | implemented | user | comment | typed CLI/MCP |
+| `comment.gists_list_comments` | low | implemented | user | gist | typed CLI/MCP |
+| `comment.gists_update_comment` | medium | implemented | user | comment | typed CLI/MCP |
+| `comment.issues_create_comment` | medium | implemented | installation | issue | typed CLI/MCP |
+| `comment.issues_delete_comment` | critical | implemented | installation | comment | typed CLI/MCP |
+| `comment.issues_get_comment` | low | implemented | installation | comment | typed CLI/MCP |
+| `comment.issues_list_comments` | low | implemented | installation | issue | typed CLI/MCP |
+| `comment.issues_list_comments_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `comment.issues_pin_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `comment.issues_unpin_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `comment.issues_update_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `comment.minimize_comment` | medium | operator-only | user | comment | no |
+| `comment.reactions_create_for_commit_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `comment.reactions_create_for_issue_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `comment.reactions_delete_for_commit_comment` | critical | implemented | installation | comment | typed CLI/MCP |
+| `comment.reactions_delete_for_issue_comment` | critical | implemented | installation | comment | typed CLI/MCP |
+| `comment.reactions_list_for_commit_comment` | low | implemented | installation | comment | typed CLI/MCP |
+| `comment.reactions_list_for_issue_comment` | low | implemented | installation | comment | typed CLI/MCP |
+| `comment.repos_create_commit_comment` | medium | implemented | installation | repo | typed CLI/MCP |
+| `comment.repos_delete_commit_comment` | critical | implemented | installation | comment | typed CLI/MCP |
+| `comment.repos_get_commit_comment` | low | implemented | installation | comment | typed CLI/MCP |
+| `comment.repos_list_comments_for_commit` | low | implemented | installation | repo | typed CLI/MCP |
+| `comment.repos_list_commit_comments_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `comment.repos_update_commit_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `comment.unminimize_comment` | medium | operator-only | user | comment | no |
+| `commit.checks_list_for_ref` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.checks_list_suites_for_ref` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.git_create_commit` | medium | implemented | installation | repo | typed CLI/MCP |
+| `commit.git_get_commit` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_compare_commits` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_create_commit_status` | medium | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_get_combined_status_for_ref` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_get_commit` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_get_commit_activity_stats` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_list_branches_for_head_commit` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_list_commit_statuses_for_ref` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.repos_list_commits` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.search_commits` | low | implemented | user | user | typed CLI/MCP |
+| `copilot.copilot_spaces_get_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `copilot.copilot_spaces_get_resource_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `copilot.copilot_spaces_list_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `copilot.copilot_spaces_list_resources_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `copilot.copilot_spaces_update_for_user` | medium | implemented | user | user | typed CLI/MCP |
+| `copilot.get_copilot_cloud_agent_configuration` | low | implemented | installation | repo | typed CLI/MCP |
+| `credential.credentials_revoke` | critical | internal | development-token | app | no |
+| `dependabot.add_selected_repo_to_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.create_or_update_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.create_or_update_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.delete_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.delete_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.dependency_graph_create_repository_snapshot` | medium | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.dependency_graph_diff_range` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.dependency_graph_export_sbom` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.dependency_graph_fetch_sbom_report` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.dependency_graph_generate_sbom_report` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.get_alert` | low | implemented | installation | alert | typed CLI/MCP |
+| `dependabot.get_org_public_key` | low | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.get_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.get_repo_public_key` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.get_repo_secret` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.list_alerts_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `dependabot.list_alerts_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.list_alerts_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.list_org_secrets` | low | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.list_repo_secrets` | low | implemented | installation | repo | typed CLI/MCP |
+| `dependabot.list_selected_repos_for_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.remove_selected_repo_from_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.repository_access_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `dependabot.repository_access_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.set_repository_access_default_level` | high | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.set_selected_repos_for_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `dependabot.update_alert` | medium | implemented | installation | alert | typed CLI/MCP |
+| `dependabot.update_repository_access_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `deployment.approve_deployments` | medium | operator-only | user | deployment | no |
+| `deployment.create_deployment` | medium | operator-only | user | deployment | no |
+| `deployment.create_deployment_status` | medium | operator-only | user | deployment | no |
+| `deployment.delete_deployment` | critical | operator-only | user | deployment | no |
+| `deployment.reject_deployments` | medium | operator-only | user | deployment | no |
+| `deployment.repos_cancel_pages_deployment` | critical | implemented | installation | repo | typed CLI/MCP |
+| `deployment.repos_create_deployment` | medium | implemented | installation | repo | typed CLI/MCP |
+| `deployment.repos_create_deployment_status` | medium | implemented | installation | deployment | typed CLI/MCP |
+| `deployment.repos_create_pages_deployment` | medium | implemented | installation | repo | typed CLI/MCP |
+| `deployment.repos_delete_deployment` | critical | implemented | installation | deployment | typed CLI/MCP |
+| `deployment.repos_get_deployment` | low | implemented | installation | deployment | typed CLI/MCP |
+| `deployment.repos_get_deployment_status` | low | implemented | installation | deployment | typed CLI/MCP |
+| `deployment.repos_get_pages_deployment` | low | implemented | installation | repo | typed CLI/MCP |
+| `deployment.repos_list_deployment_statuses` | low | implemented | installation | deployment | typed CLI/MCP |
+| `deployment.repos_list_deployments` | low | implemented | installation | repo | typed CLI/MCP |
+| `discussion.add_discussion_comment` | medium | operator-only | user | discussion | no |
+| `discussion.add_discussion_poll_vote` | medium | operator-only | user | discussion | no |
+| `discussion.close_discussion` | medium | operator-only | user | discussion | no |
+| `discussion.create_discussion` | medium | operator-only | user | discussion | no |
+| `discussion.delete_discussion` | critical | operator-only | user | discussion | no |
+| `discussion.delete_discussion_comment` | critical | operator-only | user | discussion | no |
+| `discussion.mark_discussion_comment_as_answer` | medium | operator-only | user | discussion | no |
+| `discussion.reopen_discussion` | medium | operator-only | user | discussion | no |
+| `discussion.unmark_discussion_comment_as_answer` | medium | operator-only | user | discussion | no |
+| `discussion.update_discussion` | medium | operator-only | user | discussion | no |
+| `discussion.update_discussion_comment` | medium | operator-only | user | discussion | no |
+| `enterprise.accept_enterprise_administrator_invitation` | critical | operator-only | user | enterprise | no |
+| `enterprise.accept_enterprise_member_invitation` | critical | operator-only | user | enterprise | no |
+| `enterprise.add_enterprise_organization_member` | critical | operator-only | user | enterprise | no |
+| `enterprise.add_enterprise_support_entitlement` | critical | operator-only | user | enterprise | no |
+| `enterprise.cancel_enterprise_admin_invitation` | critical | operator-only | user | enterprise | no |
+| `enterprise.cancel_enterprise_member_invitation` | critical | operator-only | user | enterprise | no |
+| `enterprise.code_security_attach_enterprise_configuration` | critical | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.code_security_get_configurations_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.code_security_get_default_configurations_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.code_security_get_repositories_for_enterprise_configuration` | low | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.code_security_get_single_configuration_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.code_security_set_configuration_as_default_for_enterprise` | critical | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.copilot_copilot_enterprise_one_day_usage_metrics` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `enterprise.copilot_copilot_enterprise_usage_metrics` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `enterprise.copilot_copilot_users_one_day_usage_metrics` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `enterprise.copilot_copilot_users_usage_metrics` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `enterprise.create_enterprise_organization` | critical | operator-only | user | enterprise | no |
+| `enterprise.grant_enterprise_organizations_migrator_role` | critical | operator-only | user | enterprise | no |
+| `enterprise.invite_enterprise_admin` | critical | operator-only | user | enterprise | no |
+| `enterprise.invite_enterprise_member` | critical | operator-only | user | enterprise | no |
+| `enterprise.oidc_create_oidc_custom_property_inclusion_for_enterprise` | critical | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.oidc_delete_oidc_custom_property_inclusion_for_enterprise` | critical | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.oidc_list_oidc_custom_property_inclusions_for_enterprise` | low | implemented | user | enterprise | typed CLI/MCP |
+| `enterprise.read_enterprise` | low | operator-only | user | enterprise | no |
+| `enterprise.read_enterprise_administrator_invitation` | low | operator-only | user | enterprise | no |
+| `enterprise.read_enterprise_administrator_invitation_by_token` | low | operator-only | user | enterprise | no |
+| `enterprise.read_enterprise_member_invitation` | low | operator-only | user | enterprise | no |
+| `enterprise.read_enterprise_member_invitation_by_token` | low | operator-only | user | enterprise | no |
+| `enterprise.regenerate_enterprise_identity_provider_recovery_codes` | critical | operator-only | user | enterprise | no |
+| `enterprise.remove_enterprise_admin` | critical | operator-only | user | enterprise | no |
+| `enterprise.remove_enterprise_identity_provider` | critical | operator-only | user | enterprise | no |
+| `enterprise.remove_enterprise_member` | critical | operator-only | user | enterprise | no |
+| `enterprise.remove_enterprise_organization` | critical | operator-only | user | enterprise | no |
+| `enterprise.remove_enterprise_support_entitlement` | critical | operator-only | user | enterprise | no |
+| `enterprise.revoke_enterprise_organizations_migrator_role` | critical | operator-only | user | enterprise | no |
+| `enterprise.set_enterprise_identity_provider` | critical | operator-only | user | enterprise | no |
+| `enterprise.transfer_enterprise_organization` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_administrator_role` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_allow_private_repository_forking_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_default_repository_permission_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_deploy_key_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_change_repository_visibility_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_create_repositories_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_delete_issues_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_delete_repositories_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_invite_collaborators_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_make_purchases_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_update_protected_branches_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_members_can_view_dependency_insights_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_organization_projects_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_owner_organization_role` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_profile` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_repository_projects_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_two_factor_authentication_disallowed_methods_setting` | critical | operator-only | user | enterprise | no |
+| `enterprise.update_enterprise_two_factor_authentication_required_setting` | critical | operator-only | user | enterprise | no |
+| `environment.actions_create_environment_variable` | medium | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_create_or_update_environment_secret` | critical | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_delete_environment_secret` | critical | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_delete_environment_variable` | critical | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_get_environment_public_key` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_get_environment_secret` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_get_environment_variable` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_list_environment_secrets` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_list_environment_variables` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.actions_update_environment_variable` | medium | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_create_deployment_branch_policy` | medium | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_create_deployment_protection_rule` | medium | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_create_or_update_environment` | medium | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_delete_an_environment` | critical | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_delete_deployment_branch_policy` | critical | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_disable_deployment_protection_rule` | medium | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_get_all_deployment_protection_rules` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_get_all_environments` | low | implemented | installation | repo | typed CLI/MCP |
+| `environment.repos_get_custom_deployment_protection_rule` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_get_deployment_branch_policy` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_get_environment` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_list_custom_deployment_rule_integrations` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_list_deployment_branch_policies` | low | implemented | installation | environment | typed CLI/MCP |
+| `environment.repos_update_deployment_branch_policy` | medium | implemented | installation | environment | typed CLI/MCP |
+| `gist.gists_check_is_starred` | low | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_create` | medium | implemented | user | user | typed CLI/MCP |
+| `gist.gists_delete` | critical | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_fork` | medium | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_get` | low | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_get_revision` | low | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_list` | low | implemented | user | user | typed CLI/MCP |
+| `gist.gists_list_commits` | low | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_list_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `gist.gists_list_forks` | low | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_list_public` | low | implemented | user | user | typed CLI/MCP |
+| `gist.gists_list_starred` | low | implemented | user | user | typed CLI/MCP |
+| `gist.gists_star` | medium | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_unstar` | medium | implemented | user | gist | typed CLI/MCP |
+| `gist.gists_update` | medium | implemented | user | gist | typed CLI/MCP |
+| `git.create_blob` | medium | implemented | installation | repo | typed CLI/MCP |
+| `git.create_ref` | medium | implemented | installation | repo | typed CLI/MCP |
+| `git.create_tree` | medium | implemented | installation | repo | typed CLI/MCP |
+| `git.delete_ref` | critical | implemented | installation | repo | typed CLI/MCP |
+| `git.get_blob` | low | implemented | installation | repo | typed CLI/MCP |
+| `git.get_ref` | low | implemented | installation | repo | typed CLI/MCP |
+| `git.get_tree` | low | implemented | installation | repo | typed CLI/MCP |
+| `git.list_matching_refs` | low | implemented | installation | repo | typed CLI/MCP |
+| `git.update_ref` | medium | implemented | installation | repo | typed CLI/MCP |
+| `installation.apps_create_installation_access_token` | critical | internal | app-jwt | installation | no |
+| `installation.apps_delete_installation` | critical | operator-only | app-jwt | installation | no |
+| `installation.apps_get_installation` | low | operator-only | app-jwt | installation | no |
+| `installation.apps_get_repo_installation` | low | implemented | user | repo | typed CLI/MCP |
+| `installation.apps_get_user_installation` | low | implemented | user | user | typed CLI/MCP |
+| `installation.apps_list_installation_repos_for_authenticated_user` | low | implemented | user | installation | typed CLI/MCP |
+| `installation.apps_list_installation_requests_for_authenticated_app` | low | operator-only | app-jwt | app | no |
+| `installation.apps_list_installations` | low | operator-only | app-jwt | app | no |
+| `installation.apps_list_installations_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `installation.apps_revoke_installation_access_token` | critical | implemented | user | installation | typed CLI/MCP |
+| `installation.apps_suspend_installation` | high | operator-only | app-jwt | installation | no |
+| `installation.apps_unsuspend_installation` | high | operator-only | app-jwt | installation | no |
+| `installation.repo.list` | low | implemented | installation | installation | typed CLI/MCP |
+| `issue.add_project_v2_draft_issue` | medium | operator-only | user | issue | no |
+| `issue.add_sub_issue` | medium | operator-only | user | issue | no |
+| `issue.close_issue` | medium | operator-only | user | issue | no |
+| `issue.convert_project_v2_draft_issue_item_to_issue` | medium | operator-only | user | issue | no |
+| `issue.create_issue` | medium | operator-only | user | issue | no |
+| `issue.create_issue_field` | medium | operator-only | user | issue | no |
+| `issue.create_issue_field_value` | medium | operator-only | user | issue | no |
+| `issue.create_issue_type` | medium | operator-only | user | issue | no |
+| `issue.create_project_v2_issue_field` | medium | operator-only | user | issue | no |
+| `issue.delete_issue` | critical | operator-only | user | issue | no |
+| `issue.delete_issue_comment` | critical | operator-only | user | issue | no |
+| `issue.delete_issue_field` | critical | operator-only | user | issue | no |
+| `issue.delete_issue_field_value` | critical | operator-only | user | issue | no |
+| `issue.delete_issue_type` | critical | operator-only | user | issue | no |
+| `issue.issues_add_assignees` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_add_blocked_by_dependency` | high | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_add_issue_field_values` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_add_sub_issue` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_check_user_can_be_assigned` | low | implemented | installation | repo | typed CLI/MCP |
+| `issue.issues_check_user_can_be_assigned_to_issue` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_create` | medium | implemented | installation | repo | typed CLI/MCP |
+| `issue.issues_delete_issue_field_value` | critical | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_get` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_get_event` | low | implemented | installation | repo | typed CLI/MCP |
+| `issue.issues_get_parent` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_list` | low | implemented | user | user | typed CLI/MCP |
+| `issue.issues_list_assignees` | low | implemented | installation | repo | typed CLI/MCP |
+| `issue.issues_list_dependencies_blocked_by` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_list_dependencies_blocking` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_list_events` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_list_events_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `issue.issues_list_events_for_timeline` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_list_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `issue.issues_list_for_org` | low | implemented | user | organization | typed CLI/MCP |
+| `issue.issues_list_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `issue.issues_list_issue_field_values_for_issue` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_list_sub_issues` | low | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_lock` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_remove_assignees` | critical | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_remove_dependency_blocked_by` | critical | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_remove_sub_issue` | critical | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_reprioritize_sub_issue` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_set_issue_field_values` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_unlock` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.issues_update` | medium | implemented | installation | issue | typed CLI/MCP |
+| `issue.orgs_create_issue_field` | high | implemented | installation | organization | typed CLI/MCP |
+| `issue.orgs_create_issue_type` | high | implemented | installation | organization | typed CLI/MCP |
+| `issue.orgs_delete_issue_field` | critical | implemented | installation | organization | typed CLI/MCP |
+| `issue.orgs_delete_issue_type` | critical | implemented | installation | organization | typed CLI/MCP |
+| `issue.orgs_list_issue_fields` | low | implemented | installation | organization | typed CLI/MCP |
+| `issue.orgs_list_issue_types` | low | implemented | installation | organization | typed CLI/MCP |
+| `issue.orgs_update_issue_field` | high | implemented | installation | organization | typed CLI/MCP |
+| `issue.orgs_update_issue_type` | high | implemented | installation | organization | typed CLI/MCP |
+| `issue.pin_issue` | medium | operator-only | user | issue | no |
+| `issue.pin_issue_comment` | medium | operator-only | user | issue | no |
+| `issue.remove_sub_issue` | critical | operator-only | user | issue | no |
+| `issue.reopen_issue` | medium | operator-only | user | issue | no |
+| `issue.repos_list_issue_types` | low | implemented | installation | repo | typed CLI/MCP |
+| `issue.reprioritize_sub_issue` | medium | operator-only | user | issue | no |
+| `issue.set_issue_field_value` | medium | operator-only | user | issue | no |
+| `issue.transfer_issue` | critical | operator-only | user | issue | no |
+| `issue.unmark_issue_as_duplicate` | medium | operator-only | user | issue | no |
+| `issue.unpin_issue` | medium | operator-only | user | issue | no |
+| `issue.unpin_issue_comment` | medium | operator-only | user | issue | no |
+| `issue.update_issue` | medium | operator-only | user | issue | no |
+| `issue.update_issue_comment` | medium | operator-only | user | issue | no |
+| `issue.update_issue_field` | medium | operator-only | user | issue | no |
+| `issue.update_issue_field_value` | medium | operator-only | user | issue | no |
+| `issue.update_issue_issue_type` | medium | operator-only | user | issue | no |
+| `issue.update_issue_type` | medium | operator-only | user | issue | no |
+| `issue.update_project_v2_draft_issue` | medium | operator-only | user | issue | no |
+| `label.add_labels_to_labelable` | medium | operator-only | user | label | no |
+| `label.clear_labels_from_labelable` | medium | operator-only | user | label | no |
+| `label.create_label` | medium | operator-only | user | label | no |
+| `label.delete_label` | critical | operator-only | user | label | no |
+| `label.issues_add_labels` | medium | implemented | installation | issue | typed CLI/MCP |
+| `label.issues_create_label` | medium | implemented | installation | repo | typed CLI/MCP |
+| `label.issues_delete_label` | critical | implemented | installation | repo | typed CLI/MCP |
+| `label.issues_get_label` | low | implemented | installation | repo | typed CLI/MCP |
+| `label.issues_list_labels_for_milestone` | low | implemented | installation | repo | typed CLI/MCP |
+| `label.issues_list_labels_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `label.issues_list_labels_on_issue` | low | implemented | installation | issue | typed CLI/MCP |
+| `label.issues_remove_all_labels` | critical | implemented | installation | issue | typed CLI/MCP |
+| `label.issues_remove_label` | critical | implemented | installation | issue | typed CLI/MCP |
+| `label.issues_set_labels` | medium | implemented | installation | issue | typed CLI/MCP |
+| `label.issues_update_label` | medium | implemented | installation | repo | typed CLI/MCP |
+| `label.remove_labels_from_labelable` | critical | operator-only | user | label | no |
+| `label.search_labels` | low | implemented | installation | installation | typed CLI/MCP |
+| `label.update_label` | medium | operator-only | user | label | no |
+| `member.cancel_sponsorship` | critical | operator-only | user | member | no |
+| `member.codespaces_delete_from_organization` | critical | implemented | installation | organization | typed CLI/MCP |
+| `member.codespaces_get_codespaces_for_user_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `member.codespaces_stop_in_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `member.copilot_get_copilot_seat_details_for_user` | low | implemented | installation | organization | typed CLI/MCP |
+| `member.create_sponsors_listing` | critical | operator-only | user | member | no |
+| `member.create_sponsors_tier` | critical | operator-only | user | member | no |
+| `member.create_sponsorship` | critical | operator-only | user | member | no |
+| `member.create_sponsorships` | critical | operator-only | user | member | no |
+| `member.orgs_check_membership_for_user` | low | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_check_public_membership_for_user` | low | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_get_membership_for_authenticated_user` | low | implemented | user | organization | typed CLI/MCP |
+| `member.orgs_get_membership_for_user` | low | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_list_members` | low | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_list_memberships_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.orgs_list_public_members` | low | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_remove_member` | critical | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_remove_membership_for_user` | critical | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_remove_public_membership_for_authenticated_user` | critical | implemented | user | organization | typed CLI/MCP |
+| `member.orgs_set_membership_for_user` | high | implemented | installation | organization | typed CLI/MCP |
+| `member.orgs_set_public_membership_for_authenticated_user` | high | implemented | user | organization | typed CLI/MCP |
+| `member.orgs_update_membership_for_authenticated_user` | high | implemented | user | organization | typed CLI/MCP |
+| `member.publish_sponsors_tier` | critical | operator-only | user | member | no |
+| `member.read_sponsorables` | low | operator-only | user | member | no |
+| `member.retire_sponsors_tier` | critical | operator-only | user | member | no |
+| `member.update_patreon_sponsorability` | critical | operator-only | user | member | no |
+| `member.update_sponsorship_preferences` | critical | operator-only | user | member | no |
+| `member.users_add_email_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_add_social_account_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_block` | high | implemented | user | user | typed CLI/MCP |
+| `member.users_check_blocked` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_check_following_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_check_person_is_followed_by_authenticated` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_create_gpg_key_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_create_public_ssh_key_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_create_ssh_signing_key_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_delete_attestations_bulk` | critical | implemented | installation | user | typed CLI/MCP |
+| `member.users_delete_attestations_by_id` | critical | implemented | installation | user | typed CLI/MCP |
+| `member.users_delete_attestations_by_subject_digest` | critical | implemented | installation | user | typed CLI/MCP |
+| `member.users_delete_email_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `member.users_delete_gpg_key_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `member.users_delete_public_ssh_key_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `member.users_delete_social_account_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `member.users_delete_ssh_signing_key_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `member.users_follow` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_get_authenticated` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_get_by_id` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_get_by_username` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_get_context_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_get_gpg_key_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_get_public_ssh_key_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_get_ssh_signing_key_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_attestations` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_attestations_bulk` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_list_blocked_by_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_emails_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_followed_by_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_followers_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_followers_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_following_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_gpg_keys_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_gpg_keys_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_public_emails_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_public_keys_for_user` | low | implemented | installation | user | typed CLI/MCP |
+| `member.users_list_public_ssh_keys_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_social_accounts_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_social_accounts_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_ssh_signing_keys_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_list_ssh_signing_keys_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `member.users_set_primary_email_visibility_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_unblock` | high | implemented | user | user | typed CLI/MCP |
+| `member.users_unfollow` | medium | implemented | user | user | typed CLI/MCP |
+| `member.users_update_authenticated` | medium | implemented | user | user | typed CLI/MCP |
+| `migration.migrations_cancel_import` | critical | implemented | user | repo | typed CLI/MCP |
+| `migration.migrations_get_archive_for_authenticated_user` | low | protocol | user | user | typed CLI/MCP |
+| `migration.migrations_get_commit_authors` | low | implemented | user | repo | typed CLI/MCP |
+| `migration.migrations_get_import_status` | low | implemented | user | repo | typed CLI/MCP |
+| `migration.migrations_get_large_files` | low | implemented | user | repo | typed CLI/MCP |
+| `migration.migrations_get_status_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `migration.migrations_list_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `migration.migrations_list_repos_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `migration.migrations_map_commit_author` | medium | implemented | user | repo | typed CLI/MCP |
+| `migration.migrations_set_lfs_preference` | medium | implemented | user | repo | typed CLI/MCP |
+| `migration.migrations_start_import` | medium | implemented | user | repo | typed CLI/MCP |
+| `migration.migrations_update_import` | medium | implemented | user | repo | typed CLI/MCP |
+| `milestone.issues_create_milestone` | medium | implemented | installation | repo | typed CLI/MCP |
+| `milestone.issues_delete_milestone` | critical | implemented | installation | repo | typed CLI/MCP |
+| `milestone.issues_get_milestone` | low | implemented | installation | repo | typed CLI/MCP |
+| `milestone.issues_list_milestones` | low | implemented | installation | repo | typed CLI/MCP |
+| `milestone.issues_update_milestone` | medium | implemented | installation | repo | typed CLI/MCP |
+| `notification.activity_check_repo_is_starred_by_authenticated_user` | low | implemented | user | repo | typed CLI/MCP |
+| `notification.activity_get_feeds` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_get_repo_subscription` | low | implemented | user | repo | typed CLI/MCP |
+| `notification.activity_get_thread` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_get_thread_subscription_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_events_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_notifications_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_public_events` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_public_events_for_repo_network` | low | implemented | user | repo | typed CLI/MCP |
+| `notification.activity_list_public_events_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_received_events_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_received_public_events_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_repo_events` | low | implemented | installation | repo | typed CLI/MCP |
+| `notification.activity_list_repo_notifications_for_authenticated_user` | low | implemented | user | repo | typed CLI/MCP |
+| `notification.activity_list_repos_starred_by_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_repos_starred_by_user` | low | implemented | installation | user | typed CLI/MCP |
+| `notification.activity_list_repos_watched_by_user` | low | implemented | installation | user | typed CLI/MCP |
+| `notification.activity_list_stargazers_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `notification.activity_list_watched_repos_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `notification.activity_list_watchers_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `notification.activity_star_repo_for_authenticated_user` | medium | implemented | user | repo | typed CLI/MCP |
+| `notification.activity_unstar_repo_for_authenticated_user` | medium | implemented | user | repo | typed CLI/MCP |
+| `organization.actions_add_selected_repo_to_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_add_selected_repo_to_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_create_or_update_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_create_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_delete_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_delete_org_variable` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_disable_selected_repository_github_actions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_enable_selected_repository_github_actions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_get_allowed_actions_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_get_fork_pr_contributor_approval_permissions_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_get_github_actions_permissions_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_get_org_public_key` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_get_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_get_org_variable` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_list_org_secrets` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_list_org_variables` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_list_repo_organization_secrets` | low | implemented | installation | repo | typed CLI/MCP |
+| `organization.actions_list_repo_organization_variables` | low | implemented | installation | repo | typed CLI/MCP |
+| `organization.actions_list_selected_repos_for_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_list_selected_repos_for_org_variable` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_list_selected_repositories_enabled_github_actions_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_remove_selected_repo_from_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_remove_selected_repo_from_org_variable` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_set_allowed_actions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_set_fork_pr_contributor_approval_permissions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_set_github_actions_permissions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_set_selected_repos_for_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_set_selected_repos_for_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_set_selected_repositories_enabled_github_actions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.actions_update_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.activity_list_org_events_for_authenticated_user` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.activity_list_public_org_events` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.apps_get_org_installation` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.assign_user_to_org_role` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_create_organization_budget` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_delete_budget_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_get_all_budgets_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_get_budget_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_get_github_billing_ai_credit_usage_report_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_get_github_billing_ai_credit_usage_report_user` | low | implemented | user | user | typed CLI/MCP |
+| `organization.billing_get_github_billing_premium_request_usage_report_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_get_github_billing_premium_request_usage_report_user` | low | implemented | user | user | typed CLI/MCP |
+| `organization.billing_get_github_billing_usage_report_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_get_github_billing_usage_report_user` | low | implemented | user | user | typed CLI/MCP |
+| `organization.billing_get_github_billing_usage_summary_report_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.billing_get_github_billing_usage_summary_report_user` | low | implemented | user | user | typed CLI/MCP |
+| `organization.billing_update_budget_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.block_user` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.campaigns_create_campaign` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.campaigns_delete_campaign` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.campaigns_get_campaign_summary` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.campaigns_list_org_campaigns` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.campaigns_update_campaign` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.cancel_invitation` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.check_blocked_user` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.classroom_get_a_classroom` | low | implemented | user | user | typed CLI/MCP |
+| `organization.classroom_get_an_assignment` | low | implemented | user | user | typed CLI/MCP |
+| `organization.classroom_get_assignment_grades` | low | implemented | user | user | typed CLI/MCP |
+| `organization.classroom_list_accepted_assignments_for_an_assignment` | low | implemented | user | user | typed CLI/MCP |
+| `organization.classroom_list_assignments_for_a_classroom` | low | implemented | user | user | typed CLI/MCP |
+| `organization.classroom_list_classrooms` | low | implemented | user | user | typed CLI/MCP |
+| `organization.code_security_attach_configuration` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_create_configuration` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_delete_configuration` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_detach_configuration` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_get_configuration` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_get_configurations_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_get_default_configurations` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_get_repositories_for_configuration` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_set_configuration_as_default` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.code_security_update_configuration` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_add_selected_repo_to_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_create_or_update_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_delete_codespaces_access_users` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_delete_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_get_org_public_key` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_get_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_list_in_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_list_org_secrets` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_list_selected_repos_for_org_secret` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_remove_selected_repo_from_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_set_codespaces_access` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_set_codespaces_access_users` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.codespaces_set_selected_repos_for_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_add_copilot_seats_for_users` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_cancel_copilot_seat_assignment_for_users` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_copilot_content_exclusion_for_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_copilot_organization_one_day_usage_metrics` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_copilot_organization_usage_metrics` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_copilot_organization_users_one_day_usage_metrics` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_copilot_organization_users_usage_metrics` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_disable_copilot_coding_agent_for_repository_in_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_enable_copilot_coding_agent_for_repository_in_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_get_copilot_coding_agent_permissions_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_get_copilot_organization_details` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_list_copilot_coding_agent_selected_repositories_for_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_list_copilot_seats` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_set_copilot_coding_agent_permissions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_set_copilot_coding_agent_selected_repositories_for_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_set_copilot_content_exclusion_for_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_create_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_create_resource_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_delete_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_delete_resource_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_get_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_get_resource_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_list_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_list_resources_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_update_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.copilot_spaces_update_resource_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.create_invitation` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.create_webhook` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.custom_properties_for_repos_create_or_update_organization_definition` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.custom_properties_for_repos_create_or_update_organization_definitions` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.custom_properties_for_repos_create_or_update_organization_values` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.custom_properties_for_repos_delete_organization_definition` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.custom_properties_for_repos_get_organization_definition` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.custom_properties_for_repos_get_organization_definitions` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.custom_properties_for_repos_get_organization_values` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.delete` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.delete_attestations_bulk` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.delete_attestations_by_id` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.delete_attestations_by_subject_digest` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.delete_webhook` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.enable_or_disable_security_product_on_all_org_repos` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.follow_organization` | high | operator-only | user | organization | no |
+| `organization.get` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.get_org_role` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_route_stats_by_actor` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_subject_stats` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_summary_stats` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_summary_stats_by_actor` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_summary_stats_by_user` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_time_stats` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_time_stats_by_actor` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_time_stats_by_user` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_user_stats` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_webhook` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_webhook_config_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.get_webhook_delivery` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.interactions_get_restrictions_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `organization.interactions_get_restrictions_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.interactions_get_restrictions_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `organization.interactions_remove_restrictions_for_authenticated_user` | critical | implemented | user | user | typed CLI/MCP |
+| `organization.interactions_remove_restrictions_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.interactions_remove_restrictions_for_repo` | critical | implemented | installation | repo | typed CLI/MCP |
+| `organization.interactions_set_restrictions_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `organization.interactions_set_restrictions_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.interactions_set_restrictions_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `organization.list` | low | implemented | user | user | typed CLI/MCP |
+| `organization.list_app_installations` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_attestation_repositories` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_attestations` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.list_attestations_bulk` | high | implemented | user | organization | typed CLI/MCP |
+| `organization.list_blocked_users` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_failed_invitations` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `organization.list_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `organization.list_org_role_users` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_org_roles` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_pat_grant_repositories` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_pat_grant_request_repositories` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_pat_grant_requests` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_pat_grants` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_pending_invitations` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_webhook_deliveries` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.list_webhooks` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.migrations_download_archive_for_org` | low | protocol | user | organization | typed CLI/MCP |
+| `organization.migrations_get_status_for_org` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.migrations_list_for_org` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.migrations_list_repos_for_org` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.oidc_create_oidc_custom_property_inclusion_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.oidc_delete_oidc_custom_property_inclusion_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.oidc_get_oidc_custom_sub_template_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.oidc_list_oidc_custom_property_inclusions_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.oidc_update_oidc_custom_sub_template_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.packages_get_all_package_versions_for_package_owned_by_org` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.packages_get_package_for_organization` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.packages_get_package_version_for_organization` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.packages_list_docker_migration_conflicting_packages_for_organization` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.packages_list_packages_for_organization` | low | implemented | user | organization | typed CLI/MCP |
+| `organization.ping_webhook` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.private_registries_create_org_private_registry` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.private_registries_delete_org_private_registry` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.private_registries_get_org_private_registry` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.private_registries_get_org_public_key` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.private_registries_list_org_private_registries` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.private_registries_update_org_private_registry` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.read_organization` | low | operator-only | user | organization | no |
+| `organization.redeliver_webhook_delivery` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.repos_create_in_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.repos_list_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.review_pat_grant_request` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.review_pat_grant_requests_in_bulk` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.revoke_all_org_roles_user` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.revoke_org_role_user` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.security_advisories_list_org_repository_advisories` | low | implemented | installation | organization | typed CLI/MCP |
+| `organization.set_organization_interaction_limit` | high | operator-only | user | organization | no |
+| `organization.start_organization_migration` | high | operator-only | user | organization | no |
+| `organization.unblock_user` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.unfollow_organization` | high | operator-only | user | organization | no |
+| `organization.update` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.update_organization_allow_private_repository_forking_setting` | high | operator-only | user | organization | no |
+| `organization.update_organization_web_commit_signoff_setting` | high | operator-only | user | organization | no |
+| `organization.update_pat_access` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.update_pat_accesses` | critical | implemented | installation | organization | typed CLI/MCP |
+| `organization.update_webhook` | high | implemented | installation | organization | typed CLI/MCP |
+| `organization.update_webhook_config_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `package.packages_get_all_package_versions_for_package_owned_by_authenticated_user` | low | implemented | user | package | typed CLI/MCP |
+| `package.packages_get_all_package_versions_for_package_owned_by_user` | low | implemented | user | package | typed CLI/MCP |
+| `package.packages_get_package_for_authenticated_user` | low | implemented | user | package | typed CLI/MCP |
+| `package.packages_get_package_for_user` | low | implemented | user | package | typed CLI/MCP |
+| `package.packages_get_package_version_for_authenticated_user` | low | implemented | user | package | typed CLI/MCP |
+| `package.packages_get_package_version_for_user` | low | implemented | user | package | typed CLI/MCP |
+| `package.packages_list_docker_migration_conflicting_packages_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `package.packages_list_docker_migration_conflicting_packages_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `package.packages_list_packages_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `package.packages_list_packages_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `pages.repos_create_pages_site` | medium | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_delete_pages_site` | critical | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_get_latest_pages_build` | low | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_get_pages` | low | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_get_pages_build` | low | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_get_pages_health_check` | low | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_list_pages_builds` | low | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_request_pages_build` | medium | implemented | installation | repo | typed CLI/MCP |
+| `pages.repos_update_information_about_pages_site` | medium | implemented | installation | repo | typed CLI/MCP |
+| `project.add_project_v2_item_by_id` | medium | operator-only | user | project | no |
+| `project.archive_project_v2_item` | critical | operator-only | user | project | no |
+| `project.clear_project_v2_item_field_value` | medium | operator-only | user | project | no |
+| `project.copy_project_v2` | medium | operator-only | user | project | no |
+| `project.create_project_v2` | medium | operator-only | user | project | no |
+| `project.create_project_v2_field` | medium | operator-only | user | project | no |
+| `project.create_project_v2_status_update` | medium | operator-only | user | project | no |
+| `project.delete_project_v2` | critical | operator-only | user | project | no |
+| `project.delete_project_v2_field` | critical | operator-only | user | project | no |
+| `project.delete_project_v2_item` | critical | operator-only | user | project | no |
+| `project.delete_project_v2_status_update` | critical | operator-only | user | project | no |
+| `project.delete_project_v2_workflow` | critical | operator-only | user | project | no |
+| `project.link_project_v2_to_team` | medium | operator-only | user | project | no |
+| `project.mark_project_v2_as_template` | medium | operator-only | user | project | no |
+| `project.projects_add_field_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_add_field_for_user` | medium | implemented | user | user | typed CLI/MCP |
+| `project.projects_add_item_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_add_item_for_user` | medium | implemented | user | user | typed CLI/MCP |
+| `project.projects_create_draft_item_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `project.projects_create_draft_item_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_create_view_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_delete_item_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_delete_item_for_user` | critical | implemented | user | user | typed CLI/MCP |
+| `project.projects_get_field_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_get_field_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `project.projects_get_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_get_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `project.projects_get_org_item` | low | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_get_user_item` | low | implemented | user | user | typed CLI/MCP |
+| `project.projects_list_fields_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_list_fields_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `project.projects_list_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_list_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `project.projects_list_items_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_list_items_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `project.projects_list_view_items_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_list_view_items_for_user` | low | implemented | user | user | typed CLI/MCP |
+| `project.projects_update_item_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `project.projects_update_item_for_user` | medium | implemented | user | user | typed CLI/MCP |
+| `project.unarchive_project_v2_item` | critical | operator-only | user | project | no |
+| `project.unlink_project_v2_from_team` | medium | operator-only | user | project | no |
+| `project.unmark_project_v2_as_template` | medium | operator-only | user | project | no |
+| `project.update_project_v2` | medium | operator-only | user | project | no |
+| `project.update_project_v2_collaborators` | medium | operator-only | user | project | no |
+| `project.update_project_v2_field` | medium | operator-only | user | project | no |
+| `project.update_project_v2_item_field_value` | medium | operator-only | user | project | no |
+| `project.update_project_v2_item_position` | medium | operator-only | user | project | no |
+| `project.update_project_v2_status_update` | medium | operator-only | user | project | no |
+| `pull_request.add_pull_request_creation_cap_bypass_users` | high | operator-only | user | pull_request | no |
+| `pull_request.add_pull_request_review` | medium | operator-only | user | pull_request | no |
+| `pull_request.add_pull_request_review_comment` | medium | operator-only | user | pull_request | no |
+| `pull_request.add_pull_request_review_thread` | medium | operator-only | user | pull_request | no |
+| `pull_request.add_pull_request_review_thread_reply` | medium | operator-only | user | pull_request | no |
+| `pull_request.archive_pull_request` | critical | operator-only | user | pull_request | no |
+| `pull_request.check_if_merged` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.close_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.codespaces_create_with_pr_for_authenticated_user` | medium | implemented | user | pull_request | typed CLI/MCP |
+| `pull_request.convert_pull_request_to_draft` | medium | operator-only | user | pull_request | no |
+| `pull_request.create` | medium | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.create_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.delete_pull_request_review` | critical | operator-only | user | pull_request | no |
+| `pull_request.delete_pull_request_review_comment` | critical | operator-only | user | pull_request | no |
+| `pull_request.dequeue_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.disable_pull_request_auto_merge` | medium | operator-only | user | pull_request | no |
+| `pull_request.dismiss_pull_request_review` | medium | operator-only | user | pull_request | no |
+| `pull_request.enable_pull_request_auto_merge` | medium | operator-only | user | pull_request | no |
+| `pull_request.enqueue_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.get` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.interactions_get_pull_request_bypass_list_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.interactions_get_pull_request_creation_cap_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.interactions_remove_pull_request_bypass_list_for_repo` | critical | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.interactions_set_pull_request_bypass_list_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.interactions_update_pull_request_creation_cap_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.list` | low | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.list_commits` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.list_files` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.list_requested_reviewers` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.mark_pull_request_ready_for_review` | medium | operator-only | user | pull_request | no |
+| `pull_request.merge` | high | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.merge_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.reactions_delete_for_pull_request_comment` | critical | implemented | installation | comment | typed CLI/MCP |
+| `pull_request.remove_pull_request_creation_cap_bypass_users` | critical | operator-only | user | pull_request | no |
+| `pull_request.remove_requested_reviewers` | critical | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.reopen_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.repos_list_pull_requests_associated_with_commit` | low | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.request_reviewers` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.revert_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.search_issues_and_pull_requests` | low | implemented | user | user | typed CLI/MCP |
+| `pull_request.submit_pull_request_review` | medium | operator-only | user | pull_request | no |
+| `pull_request.unarchive_pull_request` | critical | operator-only | user | pull_request | no |
+| `pull_request.update` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.update_branch` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `pull_request.update_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.update_pull_request_branch` | medium | operator-only | user | pull_request | no |
+| `pull_request.update_pull_request_review` | medium | operator-only | user | pull_request | no |
+| `pull_request.update_pull_request_review_comment` | medium | operator-only | user | pull_request | no |
+| `reaction.add_reaction` | medium | operator-only | user | reaction | no |
+| `reaction.reactions_create_for_issue` | medium | implemented | installation | issue | typed CLI/MCP |
+| `reaction.reactions_delete_for_issue` | critical | implemented | installation | issue | typed CLI/MCP |
+| `reaction.reactions_list_for_issue` | low | implemented | installation | issue | typed CLI/MCP |
+| `reaction.remove_reaction` | critical | operator-only | user | reaction | no |
+| `release.orgs_disable_selected_repository_immutable_releases_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `release.orgs_enable_selected_repository_immutable_releases_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `release.orgs_get_immutable_releases_settings` | low | implemented | installation | organization | typed CLI/MCP |
+| `release.orgs_get_immutable_releases_settings_repositories` | low | implemented | installation | organization | typed CLI/MCP |
+| `release.orgs_set_immutable_releases_settings` | high | implemented | installation | organization | typed CLI/MCP |
+| `release.orgs_set_immutable_releases_settings_repositories` | high | implemented | installation | organization | typed CLI/MCP |
+| `release.reactions_create_for_release` | medium | implemented | user | release | typed CLI/MCP |
+| `release.reactions_delete_for_release` | critical | implemented | user | release | typed CLI/MCP |
+| `release.reactions_list_for_release` | low | implemented | user | release | typed CLI/MCP |
+| `release.repos_check_immutable_releases` | low | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_create_release` | medium | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_delete_release` | critical | implemented | installation | release | typed CLI/MCP |
+| `release.repos_delete_release_asset` | critical | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_disable_immutable_releases` | medium | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_enable_immutable_releases` | medium | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_generate_release_notes` | medium | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_get_latest_release` | low | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_get_release` | low | implemented | installation | release | typed CLI/MCP |
+| `release.repos_get_release_asset` | low | protocol | installation | repo | typed CLI/MCP |
+| `release.repos_get_release_by_tag` | low | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_list_release_assets` | low | implemented | installation | release | typed CLI/MCP |
+| `release.repos_list_releases` | low | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_update_release` | medium | implemented | installation | release | typed CLI/MCP |
+| `release.repos_update_release_asset` | medium | implemented | installation | repo | typed CLI/MCP |
+| `release.repos_upload_release_asset` | medium | protocol | user | release | typed CLI/MCP |
+| `repo.abort_queued_migrations` | critical | operator-only | user | repo | no |
+| `repo.abort_repository_migration` | critical | operator-only | user | repo | no |
+| `repo.accept_invitation_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `repo.accept_topic_suggestion` | medium | operator-only | user | repo | no |
+| `repo.access_user_namespace_repository` | high | operator-only | user | repo | no |
+| `repo.add_assignees_to_assignable` | medium | operator-only | user | repo | no |
+| `repo.add_blocked_by` | high | operator-only | user | repo | no |
+| `repo.add_star` | medium | operator-only | user | repo | no |
+| `repo.add_upvote` | medium | operator-only | user | repo | no |
+| `repo.add_verifiable_domain` | medium | operator-only | user | repo | no |
+| `repo.approve_verifiable_domain` | medium | operator-only | user | repo | no |
+| `repo.archival.update` | high | implemented | installation | repo | typed CLI/MCP |
+| `repo.archive_repository` | critical | operator-only | user | repo | no |
+| `repo.check_automated_security_fixes` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.check_private_vulnerability_reporting` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.check_vulnerability_alerts` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.clone_template_repository` | medium | operator-only | user | repo | no |
+| `repo.codeowners_errors` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.contents.read` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_attestation` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_attribution_invitation` | medium | operator-only | user | repo | no |
+| `repo.create_autolink` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_branch_protection_rule` | medium | operator-only | user | repo | no |
+| `repo.create_check_run` | medium | operator-only | user | repo | no |
+| `repo.create_check_suite` | medium | operator-only | user | repo | no |
+| `repo.create_commit_on_branch` | medium | operator-only | user | repo | no |
+| `repo.create_deploy_key` | critical | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_dispatch_event` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_environment` | medium | operator-only | user | repo | no |
+| `repo.create_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `repo.create_fork` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_ip_allow_list_entry` | medium | operator-only | user | repo | no |
+| `repo.create_linked_branch` | medium | operator-only | user | repo | no |
+| `repo.create_migration_source` | medium | operator-only | user | repo | no |
+| `repo.create_or_update_file_contents` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_ref` | medium | operator-only | user | repo | no |
+| `repo.create_repository` | medium | operator-only | user | repo | no |
+| `repo.create_repository_custom_property` | medium | operator-only | user | repo | no |
+| `repo.create_repository_ruleset` | medium | operator-only | user | repo | no |
+| `repo.create_using_template` | medium | implemented | installation | installation | typed CLI/MCP |
+| `repo.custom_properties_for_repos_create_or_update_repository_values` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.custom_properties_for_repos_get_repository_values` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.decline_invitation_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `repo.decline_topic_suggestion` | medium | operator-only | user | repo | no |
+| `repo.default_branch.update` | high | implemented | installation | repo | typed CLI/MCP |
+| `repo.delete` | critical | implemented | installation | repo | typed CLI/MCP |
+| `repo.delete_autolink` | critical | implemented | installation | repo | typed CLI/MCP |
+| `repo.delete_branch_protection_rule` | critical | operator-only | user | repo | no |
+| `repo.delete_deploy_key` | critical | implemented | installation | repo | typed CLI/MCP |
+| `repo.delete_environment` | critical | operator-only | user | repo | no |
+| `repo.delete_file` | critical | implemented | installation | repo | typed CLI/MCP |
+| `repo.delete_invitation` | critical | implemented | installation | repo | typed CLI/MCP |
+| `repo.delete_ip_allow_list_entry` | critical | operator-only | user | repo | no |
+| `repo.delete_linked_branch` | critical | operator-only | user | repo | no |
+| `repo.delete_package_version` | critical | operator-only | user | repo | no |
+| `repo.delete_ref` | critical | operator-only | user | repo | no |
+| `repo.delete_repository_custom_property` | critical | operator-only | user | repo | no |
+| `repo.delete_repository_ruleset` | critical | operator-only | user | repo | no |
+| `repo.delete_verifiable_domain` | critical | operator-only | user | repo | no |
+| `repo.description.update` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.disable_automated_security_fixes` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.disable_private_vulnerability_reporting` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.disable_vulnerability_alerts` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.dismiss_repository_vulnerability_alert` | medium | operator-only | user | repo | no |
+| `repo.download_tarball_archive` | low | protocol | installation | repo | typed CLI/MCP |
+| `repo.download_zipball_archive` | low | protocol | installation | repo | typed CLI/MCP |
+| `repo.enable_automated_security_fixes` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.enable_private_vulnerability_reporting` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.enable_vulnerability_alerts` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.feature.update` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_all_topics` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_autolink` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_clones` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_code_frequency_stats` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_community_profile_metrics` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_contributors_stats` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_deploy_key` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_hash_algorithm` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_participation_stats` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_punch_card_stats` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_readme` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_readme_in_directory` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_top_paths` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_top_referrers` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.get_views` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.grant_migrator_role` | high | operator-only | user | repo | no |
+| `repo.licenses_get` | low | implemented | user | user | typed CLI/MCP |
+| `repo.licenses_get_all_commonly_used` | low | implemented | user | user | typed CLI/MCP |
+| `repo.licenses_get_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.link_project_v2_to_repository` | medium | operator-only | user | repo | no |
+| `repo.list_activities` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_attestations` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_autolinks` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_contributors` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_deploy_keys` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `repo.list_for_user` | low | implemented | installation | user | typed CLI/MCP |
+| `repo.list_forks` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_invitations` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_invitations_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `repo.list_languages` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_public` | low | implemented | installation | installation | typed CLI/MCP |
+| `repo.lock_lockable` | medium | operator-only | user | repo | no |
+| `repo.mark_file_as_viewed` | medium | operator-only | user | repo | no |
+| `repo.marketplace_listing` | low | operator-only | user | repo | no |
+| `repo.marketplace_listings` | low | operator-only | user | repo | no |
+| `repo.merge` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.merge_branch` | medium | operator-only | user | repo | no |
+| `repo.merge_policy.update` | high | implemented | installation | repo | typed CLI/MCP |
+| `repo.merge_upstream` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.metadata.read` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.name.update` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.pin_environment` | medium | operator-only | user | repo | no |
+| `repo.promote_repository_custom_property` | medium | operator-only | user | repo | no |
+| `repo.read_code_of_conduct` | low | operator-only | user | repo | no |
+| `repo.read_codes_of_conduct` | low | operator-only | user | repo | no |
+| `repo.read_entities` | low | internal | user | repo | no |
+| `repo.read_id` | low | operator-only | user | repo | no |
+| `repo.read_license` | low | operator-only | user | repo | no |
+| `repo.read_licenses` | low | operator-only | user | repo | no |
+| `repo.read_marketplace_categories` | low | operator-only | user | repo | no |
+| `repo.read_marketplace_category` | low | operator-only | user | repo | no |
+| `repo.read_meta` | low | operator-only | user | repo | no |
+| `repo.read_node` | low | operator-only | user | repo | no |
+| `repo.read_nodes` | low | operator-only | user | repo | no |
+| `repo.read_rate_limit` | low | operator-only | user | repo | no |
+| `repo.read_relay` | low | internal | user | repo | no |
+| `repo.read_repository` | low | operator-only | user | repo | no |
+| `repo.read_repository_owner` | low | operator-only | user | repo | no |
+| `repo.read_resource` | low | internal | user | repo | no |
+| `repo.read_topic` | low | operator-only | user | repo | no |
+| `repo.read_viewer` | low | operator-only | user | repo | no |
+| `repo.regenerate_verifiable_domain_token` | critical | operator-only | user | repo | no |
+| `repo.remove_assignees_from_assignable` | critical | operator-only | user | repo | no |
+| `repo.remove_blocked_by` | critical | operator-only | user | repo | no |
+| `repo.remove_outside_collaborator` | critical | operator-only | user | repo | no |
+| `repo.remove_star` | critical | operator-only | user | repo | no |
+| `repo.remove_upvote` | critical | operator-only | user | repo | no |
+| `repo.reorder_environment` | medium | operator-only | user | repo | no |
+| `repo.replace_actors_for_assignable` | medium | operator-only | user | repo | no |
+| `repo.replace_all_topics` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.request_reviews` | medium | operator-only | user | repo | no |
+| `repo.request_reviews_by_login` | medium | operator-only | user | repo | no |
+| `repo.rerequest_check_suite` | medium | operator-only | user | repo | no |
+| `repo.resolve_review_thread` | medium | operator-only | user | repo | no |
+| `repo.revoke_migrator_role` | critical | operator-only | user | repo | no |
+| `repo.search` | low | operator-only | user | repo | no |
+| `repo.search_code` | low | implemented | user | user | typed CLI/MCP |
+| `repo.search_repos` | low | implemented | user | user | typed CLI/MCP |
+| `repo.search_topics` | low | implemented | user | user | typed CLI/MCP |
+| `repo.search_users` | low | implemented | user | user | typed CLI/MCP |
+| `repo.security.update` | high | implemented | installation | repo | typed CLI/MCP |
+| `repo.set_repository_custom_property_values` | medium | operator-only | user | repo | no |
+| `repo.set_repository_interaction_limit` | medium | operator-only | user | repo | no |
+| `repo.start_repository_migration` | medium | operator-only | user | repo | no |
+| `repo.transfer` | critical | implemented | user | repo | typed CLI/MCP |
+| `repo.unarchive_repository` | critical | operator-only | user | repo | no |
+| `repo.unlink_project_v2_from_repository` | medium | operator-only | user | repo | no |
+| `repo.unlock_lockable` | medium | operator-only | user | repo | no |
+| `repo.unmark_file_as_viewed` | medium | operator-only | user | repo | no |
+| `repo.unresolve_review_thread` | medium | operator-only | user | repo | no |
+| `repo.update_branch_protection_rule` | medium | operator-only | user | repo | no |
+| `repo.update_check_run` | medium | operator-only | user | repo | no |
+| `repo.update_check_suite_preferences` | medium | operator-only | user | repo | no |
+| `repo.update_environment` | medium | operator-only | user | repo | no |
+| `repo.update_invitation` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.update_ip_allow_list_enabled_setting` | medium | operator-only | user | repo | no |
+| `repo.update_ip_allow_list_entry` | medium | operator-only | user | repo | no |
+| `repo.update_ip_allow_list_for_installed_apps_enabled_setting` | medium | operator-only | user | repo | no |
+| `repo.update_notification_restriction_setting` | medium | operator-only | user | repo | no |
+| `repo.update_ref` | medium | operator-only | user | repo | no |
+| `repo.update_refs` | medium | operator-only | user | repo | no |
+| `repo.update_repository` | medium | operator-only | user | repo | no |
+| `repo.update_repository_custom_property` | medium | operator-only | user | repo | no |
+| `repo.update_repository_ruleset` | medium | operator-only | user | repo | no |
+| `repo.update_repository_web_commit_signoff_setting` | medium | operator-only | user | repo | no |
+| `repo.update_subscription` | medium | operator-only | user | repo | no |
+| `repo.update_teams_repository` | medium | operator-only | user | repo | no |
+| `repo.update_topics` | medium | operator-only | user | repo | no |
+| `repo.verify_verifiable_domain` | medium | operator-only | user | repo | no |
+| `repo.visibility.update` | high | implemented | installation | repo | typed CLI/MCP |
+| `repo.website.update` | medium | implemented | installation | repo | typed CLI/MCP |
+| `review.pulls_create_reply_for_review_comment` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_create_review` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_create_review_comment` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_delete_pending_review` | critical | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_delete_review_comment` | critical | implemented | installation | comment | typed CLI/MCP |
+| `review.pulls_dismiss_review` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_get_review` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_get_review_comment` | low | implemented | installation | comment | typed CLI/MCP |
+| `review.pulls_list_comments_for_review` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_list_review_comments` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_list_review_comments_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `review.pulls_list_reviews` | low | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_submit_review` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_update_review` | medium | implemented | installation | pull_request | typed CLI/MCP |
+| `review.pulls_update_review_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `review.reactions_create_for_pull_request_review_comment` | medium | implemented | installation | comment | typed CLI/MCP |
+| `review.reactions_list_for_pull_request_review_comment` | low | implemented | installation | comment | typed CLI/MCP |
+| `ruleset.orgs_get_org_ruleset_history` | low | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.orgs_get_org_ruleset_version` | low | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_create_org_ruleset` | high | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_create_repo_ruleset` | medium | implemented | installation | repo | typed CLI/MCP |
+| `ruleset.repos_delete_org_ruleset` | critical | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_delete_repo_ruleset` | critical | implemented | installation | ruleset | typed CLI/MCP |
+| `ruleset.repos_get_org_rule_suite` | low | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_get_org_rule_suites` | low | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_get_org_ruleset` | low | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_get_org_rulesets` | low | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_get_repo_rule_suite` | low | implemented | installation | repo | typed CLI/MCP |
+| `ruleset.repos_get_repo_rule_suites` | low | implemented | installation | repo | typed CLI/MCP |
+| `ruleset.repos_get_repo_ruleset` | low | implemented | installation | ruleset | typed CLI/MCP |
+| `ruleset.repos_get_repo_ruleset_history` | low | implemented | installation | ruleset | typed CLI/MCP |
+| `ruleset.repos_get_repo_ruleset_version` | low | implemented | installation | ruleset | typed CLI/MCP |
+| `ruleset.repos_get_repo_rulesets` | low | implemented | installation | repo | typed CLI/MCP |
+| `ruleset.repos_update_org_ruleset` | high | implemented | installation | organization | typed CLI/MCP |
+| `ruleset.repos_update_repo_ruleset` | medium | implemented | installation | ruleset | typed CLI/MCP |
+| `runner.actions_add_custom_labels_to_self_hosted_runner_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_add_custom_labels_to_self_hosted_runner_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_add_repo_access_to_self_hosted_runner_group_in_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_add_self_hosted_runner_to_group_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_create_hosted_runner_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_create_registration_token_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_create_registration_token_for_repo` | critical | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_create_remove_token_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_create_remove_token_for_repo` | critical | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_create_self_hosted_runner_group_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_delete_custom_image_from_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_delete_custom_image_version_from_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_delete_hosted_runner_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_delete_self_hosted_runner_from_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_delete_self_hosted_runner_from_repo` | critical | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_delete_self_hosted_runner_group_from_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_disable_selected_repository_self_hosted_runners_organization` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_enable_selected_repository_self_hosted_runners_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_generate_runner_jitconfig_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_generate_runner_jitconfig_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_get_custom_image_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_custom_image_version_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_hosted_runner_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_hosted_runners_github_owned_images_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_hosted_runners_limits_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_hosted_runners_machine_specs_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_hosted_runners_partner_images_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_hosted_runners_platforms_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_self_hosted_runner_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_self_hosted_runner_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_get_self_hosted_runner_group_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_get_self_hosted_runners_permissions_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_custom_image_versions_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_custom_images_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_github_hosted_runners_in_group_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_hosted_runners_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_labels_for_self_hosted_runner_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_labels_for_self_hosted_runner_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_list_repo_access_to_self_hosted_runner_group_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_runner_applications_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_runner_applications_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_list_selected_repositories_self_hosted_runners_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_self_hosted_runner_groups_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_self_hosted_runners_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_list_self_hosted_runners_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_list_self_hosted_runners_in_group_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_remove_all_custom_labels_from_self_hosted_runner_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_remove_all_custom_labels_from_self_hosted_runner_for_repo` | critical | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_remove_custom_label_from_self_hosted_runner_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_remove_custom_label_from_self_hosted_runner_for_repo` | critical | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_remove_repo_access_to_self_hosted_runner_group_in_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_remove_self_hosted_runner_from_group_for_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_set_custom_labels_for_self_hosted_runner_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_set_custom_labels_for_self_hosted_runner_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `runner.actions_set_repo_access_to_self_hosted_runner_group_in_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_set_selected_repositories_self_hosted_runners_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_set_self_hosted_runners_in_group_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_set_self_hosted_runners_permissions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_update_hosted_runner_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.actions_update_self_hosted_runner_group_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.hosted_compute_create_network_configuration_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `runner.hosted_compute_delete_network_configuration_from_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `runner.hosted_compute_get_network_configuration_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.hosted_compute_get_network_settings_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.hosted_compute_list_network_configurations_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `runner.hosted_compute_update_network_configuration_for_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `secret_scanning.secret_scanning_create_push_protection_bypass` | medium | implemented | user | repo | typed CLI/MCP |
+| `secret_scanning.secret_scanning_get_alert` | low | implemented | installation | alert | typed CLI/MCP |
+| `secret_scanning.secret_scanning_get_scan_history` | low | implemented | installation | repo | typed CLI/MCP |
+| `secret_scanning.secret_scanning_list_alerts_for_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `secret_scanning.secret_scanning_list_alerts_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `secret_scanning.secret_scanning_list_locations_for_alert` | low | implemented | installation | alert | typed CLI/MCP |
+| `secret_scanning.secret_scanning_list_org_pattern_configs` | low | implemented | installation | organization | typed CLI/MCP |
+| `secret_scanning.secret_scanning_update_alert` | critical | implemented | installation | alert | typed CLI/MCP |
+| `secret_scanning.secret_scanning_update_org_pattern_configs` | high | implemented | installation | organization | typed CLI/MCP |
+| `security.code_quality_get_finding` | low | implemented | installation | repo | typed CLI/MCP |
+| `security.code_quality_get_setup` | low | implemented | installation | repo | typed CLI/MCP |
+| `security.code_quality_list_findings_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `security.code_quality_update_setup` | medium | implemented | installation | repo | typed CLI/MCP |
+| `security.code_security_get_configuration_for_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `security.read_security_advisories` | low | operator-only | user | security | no |
+| `security.read_security_vulnerabilities` | low | operator-only | user | security | no |
+| `tag.git_create_tag` | medium | implemented | installation | repo | typed CLI/MCP |
+| `tag.git_get_tag` | low | implemented | installation | repo | typed CLI/MCP |
+| `tag.repos_list_tags` | low | implemented | installation | repo | typed CLI/MCP |
+| `team.copilot_add_copilot_seats_for_teams` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.copilot_cancel_copilot_seat_assignment_for_teams` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.copilot_copilot_enterprise_user_teams_one_day_report` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `team.copilot_copilot_organization_user_teams_one_day_report` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.enterprise_team_memberships_add` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_memberships_bulk_add` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_memberships_bulk_remove` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_memberships_get` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_memberships_list` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_memberships_remove` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_organizations_add` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_organizations_bulk_add` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_organizations_bulk_remove` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_organizations_delete` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_organizations_get_assignment` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_team_organizations_get_assignments` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_teams_create` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_teams_delete` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_teams_get` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_teams_list` | low | implemented | installation | enterprise | typed CLI/MCP |
+| `team.enterprise_teams_update` | critical | implemented | installation | enterprise | typed CLI/MCP |
+| `team.orgs_add_security_manager_team` | high | implemented | installation | organization | typed CLI/MCP |
+| `team.orgs_assign_team_to_org_role` | high | implemented | installation | organization | typed CLI/MCP |
+| `team.orgs_list_invitation_teams` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.orgs_list_org_role_teams` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.orgs_list_security_manager_teams` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.orgs_remove_security_manager_team` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.orgs_revoke_all_org_roles_team` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.orgs_revoke_org_role_team` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.repos_list_teams` | low | implemented | installation | repo | typed CLI/MCP |
+| `team.teams_add_member_legacy` | high | implemented | installation | team | typed CLI/MCP |
+| `team.teams_add_or_update_membership_for_user_in_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_add_or_update_membership_for_user_legacy` | high | implemented | installation | team | typed CLI/MCP |
+| `team.teams_add_or_update_repo_permissions_in_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_add_or_update_repo_permissions_legacy` | high | implemented | installation | team | typed CLI/MCP |
+| `team.teams_check_permissions_for_repo_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_check_permissions_for_repo_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_create` | high | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_delete_in_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_delete_legacy` | critical | implemented | installation | team | typed CLI/MCP |
+| `team.teams_get_by_name` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_get_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_get_member_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_get_membership_for_user_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_get_membership_for_user_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_list` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_list_child_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_list_child_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_list_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
+| `team.teams_list_members_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_list_members_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_list_pending_invitations_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_list_pending_invitations_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_list_repos_in_org` | low | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_list_repos_legacy` | low | implemented | installation | team | typed CLI/MCP |
+| `team.teams_remove_member_legacy` | critical | implemented | installation | team | typed CLI/MCP |
+| `team.teams_remove_membership_for_user_in_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_remove_membership_for_user_legacy` | critical | implemented | installation | team | typed CLI/MCP |
+| `team.teams_remove_repo_in_org` | critical | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_remove_repo_legacy` | critical | implemented | installation | team | typed CLI/MCP |
+| `team.teams_update_in_org` | high | implemented | installation | organization | typed CLI/MCP |
+| `team.teams_update_legacy` | medium | implemented | installation | team | typed CLI/MCP |
+| `team.update_team_review_assignment` | medium | operator-only | user | team | no |
+| `user.change_user_status` | medium | operator-only | user | user | no |
+| `user.create_user_list` | medium | operator-only | user | user | no |
+| `user.delete_user_list` | critical | operator-only | user | user | no |
+| `user.follow_user` | medium | operator-only | user | user | no |
+| `user.read_user` | low | operator-only | user | user | no |
+| `user.set_user_interaction_limit` | medium | operator-only | user | user | no |
+| `user.unfollow_user` | medium | operator-only | user | user | no |
+| `user.update_ip_allow_list_user_level_enforcement_enabled_setting` | medium | operator-only | user | user | no |
+| `user.update_user_list` | medium | operator-only | user | user | no |
+| `user.update_user_lists_for_item` | medium | operator-only | user | user | no |
+| `webhook.apps_get_webhook_config_for_app` | low | operator-only | app-jwt | app | no |
+| `webhook.apps_get_webhook_delivery` | low | operator-only | app-jwt | app | no |
+| `webhook.apps_list_webhook_deliveries` | low | operator-only | app-jwt | app | no |
+| `webhook.apps_redeliver_webhook_delivery` | medium | operator-only | app-jwt | app | no |
+| `webhook.apps_update_webhook_config_for_app` | medium | operator-only | app-jwt | app | no |
+| `webhook.repos_create_webhook` | medium | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_delete_webhook` | critical | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_get_webhook` | low | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_get_webhook_config_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_get_webhook_delivery` | low | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_list_webhook_deliveries` | low | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_list_webhooks` | low | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_ping_webhook` | medium | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_redeliver_webhook_delivery` | medium | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_test_push_webhook` | medium | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_update_webhook` | medium | implemented | installation | repo | typed CLI/MCP |
+| `webhook.repos_update_webhook_config_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_create_or_update_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_create_repo_variable` | medium | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_create_workflow_dispatch` | medium | implemented | installation | workflow | typed CLI/MCP |
+| `workflow.actions_delete_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_delete_repo_variable` | critical | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_disable_workflow` | medium | implemented | installation | workflow | typed CLI/MCP |
+| `workflow.actions_enable_workflow` | medium | implemented | installation | workflow | typed CLI/MCP |
+| `workflow.actions_get_allowed_actions_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_concurrency_group_for_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_custom_oidc_sub_claim_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_fork_pr_contributor_approval_permissions_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_github_actions_default_workflow_permissions_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `workflow.actions_get_github_actions_default_workflow_permissions_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_github_actions_permissions_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_private_repo_fork_pr_workflows_settings_organization` | low | implemented | installation | organization | typed CLI/MCP |
+| `workflow.actions_get_private_repo_fork_pr_workflows_settings_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_repo_public_key` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_repo_secret` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_repo_variable` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_workflow` | low | implemented | installation | workflow | typed CLI/MCP |
+| `workflow.actions_get_workflow_access_to_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_get_workflow_usage` | low | implemented | installation | workflow | typed CLI/MCP |
+| `workflow.actions_list_concurrency_groups_for_repository` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_list_repo_secrets` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_list_repo_variables` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_list_repo_workflows` | low | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_set_allowed_actions_repository` | high | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_set_custom_oidc_sub_claim_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_set_fork_pr_contributor_approval_permissions_repository` | high | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_set_github_actions_default_workflow_permissions_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `workflow.actions_set_github_actions_default_workflow_permissions_repository` | high | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_set_github_actions_permissions_repository` | high | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_set_private_repo_fork_pr_workflows_settings_organization` | high | implemented | installation | organization | typed CLI/MCP |
+| `workflow.actions_set_private_repo_fork_pr_workflows_settings_repository` | high | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_set_workflow_access_to_repository` | high | implemented | installation | repo | typed CLI/MCP |
+| `workflow.actions_update_repo_variable` | medium | implemented | installation | repo | typed CLI/MCP |

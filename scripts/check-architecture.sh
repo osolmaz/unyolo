@@ -106,6 +106,87 @@ then
   exit 1
 fi
 
+if ! grep -q 'github.com/osolmaz/brokerkit/capability' brokers/huggingface/internal/opcatalog/catalog.go ||
+  ! grep -A4 'type Descriptor struct' brokers/github/internal/opcatalog/catalog.go | grep -q 'capability.Descriptor'
+then
+  echo 'provider operation catalogs must use the shared capability descriptor' >&2
+  exit 1
+fi
+
+if ! grep -q 'githubsurface.Validate' brokers/github/cmd/gh-broker/main.go ||
+  ! grep -q 'mcpcatalog.Tools' brokers/github/cmd/gh-broker/mcp.go ||
+  [ ! -f brokers/github/internal/inventory/rest-coverage.json ] ||
+  [ ! -f brokers/github/internal/inventory/graphql-coverage.json ]
+then
+  echo 'GH generated catalog startup validation or filtered MCP discovery is missing' >&2
+  exit 1
+fi
+
+if [ -d brokers/github/internal/githubapp ] || [ -d brokers/github/internal/githubapi ] ||
+  grep -R -n --include='*.go' -E 'brokers/github/internal/(githubapp|githubapi)' brokers/github 2>/dev/null
+then
+  echo 'GH custom JWT, installation pagination, or narrow API reader survived the credential cutover' >&2
+  exit 1
+fi
+
+if ! grep -R -q --include='*.go' 'github.com/bradleyfalzon/ghinstallation/v2' brokers/github/internal/githubauth ||
+  ! grep -R -q --include='*.go' 'github.com/google/go-github/v88/github' brokers/github/internal/githubauth
+then
+  echo 'GH credential handling must use ghinstallation and go-github behind githubauth' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'github.com/(google/go-github|bradleyfalzon/ghinstallation)' \
+  . --exclude-dir=.git --exclude-dir=brokers 2>/dev/null
+then
+  echo 'shared packages must not expose GitHub provider types' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' -E 'github.com/(google/go-github|bradleyfalzon/ghinstallation)' \
+  brokers/github --exclude-dir=githubauth 2>/dev/null
+then
+  echo 'GitHub SDK types must remain behind the githubauth boundary' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' --exclude='*_test.go' -E \
+  'json:"(graphql|caller|headers)"' brokers/github/cmd/gh-broker brokers/github/internal/httpapi 2>/dev/null
+then
+  echo 'GH caller boundary accepts a raw transport selector' >&2
+  exit 1
+fi
+
+if ! grep -q 'github.com/osolmaz/brokerkit/operationruntime' brokers/huggingface/internal/operations/operations.go ||
+  grep -R -n --include='*.go' -E 'type Adapter interface|byName map\[string\].*Adapter|type PossiblePartialError struct' \
+    brokers/huggingface --exclude='*_test.go' 2>/dev/null
+then
+  echo 'HF operation adapters and registry must use the shared operationruntime contract' >&2
+  exit 1
+fi
+
+if grep -R -l --include='*.go' --exclude='*_test.go' -E \
+  'func \([^)]*\) startOperationWorker|StateExecuting|operations\.Transition\(' brokers 2>/dev/null |
+  grep -v -E '^brokers/(github/internal/httpapi/(agent_operations|runtime)|sudo/internal/routes/agent_operations)\.go$'
+then
+  echo 'provider-local Agent lifecycle orchestration exists outside the temporary legacy allowlist' >&2
+  exit 1
+fi
+
+if find brokers -type d \( -name sealedstore -o -name credentialstore -o -name schemautil -o -name securefile \) -print |
+  grep .
+then
+  echo 'provider-local generic operation primitives survived the shared runtime cutover' >&2
+  exit 1
+fi
+
+if grep -R -n --include='*.go' --exclude='*_test.go' -E \
+  'func (inlineSchemaReferences|inlineSchemaMap|startSealedPayloadSweeper)\(' brokers 2>/dev/null
+then
+  echo 'provider-local generated-surface or sealed-payload lifecycle implementation survived the cutover' >&2
+  exit 1
+fi
+
 if grep -R -n -E '"\$ref"[[:space:]]*:[[:space:]]*"\.\.' protocol/openapi 2>/dev/null; then
   echo 'canonical OpenAPI documents must own all payload schemas' >&2
   exit 1

@@ -2,9 +2,18 @@
 package copyx
 
 import (
+	"encoding/json"
 	"slices"
 	"sort"
 )
+
+// JSONMap returns a deep copy of a JSON-compatible map.
+func JSONMap(values map[string]any) map[string]any {
+	encoded, _ := json.Marshal(values)
+	var result map[string]any
+	_ = json.Unmarshal(encoded, &result)
+	return result
+}
 
 // StringMap returns a shallow copy of values.
 func StringMap(values map[string]string) map[string]string {

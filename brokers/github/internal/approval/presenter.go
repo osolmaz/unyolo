@@ -4,7 +4,10 @@ package approval
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/policy"
@@ -14,53 +17,123 @@ import (
 type Presenter struct{}
 
 func (Presenter) Present(_ context.Context, grant grants.Grant) (operatorinbox.Presentation, error) {
-	target := targetSummary(grant)
+	target := TargetSummary(grant.Target)
 	if target == "" {
 		return operatorinbox.Presentation{}, fmt.Errorf("GitHub grant %q has no target", grant.ID)
-	}
-	fields := []operatorinbox.DisplayField{{Label: "Operation", Value: grant.Operation}}
-	labels := map[string]string{"ref": "Ref", "base_ref": "Base ref", "head_ref": "Head ref", "path": "Path"}
-	for _, key := range []string{"ref", "base_ref", "head_ref", "path"} {
-		if value := policy.FirstValue(grant.Attrs[key]); value != "" {
-			fields = append(fields, operatorinbox.DisplayField{Label: labels[key], Value: value})
-		}
 	}
 	return operatorinbox.Presentation{
 		Risk: risk(grant.Operation), Title: "GitHub: " + grant.Operation,
 		Summary: "Review this GitHub operation before granting temporary access.",
-		Target:  target, Fields: fields,
+		Target:  target, Fields: DisplayFields(grant),
 	}, nil
 }
 
-func targetSummary(grant grants.Grant) string {
-	if grant.Target.Kind != "repo" {
-		return grant.Target.Kind
+// TargetSummary renders the complete canonical target without exposing request payloads.
+func TargetSummary(target policy.Target) string {
+	kind := strings.TrimSpace(target.Kind)
+	owner := policy.FirstValue(target.Fields["owner"])
+	name := policy.FirstValue(target.Fields["name"])
+	repo := policy.FirstValue(target.Fields["repo"])
+	if kind == "repo" {
+		return repositoryTarget(owner, name)
 	}
-	owner := policy.FirstValue(grant.Target.Fields["owner"])
-	name := policy.FirstValue(grant.Target.Fields["name"])
+	locator := targetLocator(target, owner, repo, name)
+	if kind == "" || locator == "" {
+		return ""
+	}
+	return kind + " " + locator
+}
+
+func repositoryTarget(owner, name string) string {
 	if owner == "" || name == "" {
 		return ""
 	}
 	return owner + "/" + name
 }
 
+func targetLocator(target policy.Target, owner, repo, name string) string {
+	return appendTargetQualifier(baseTargetLocator(target, owner, repo, name), target)
+}
+
+func baseTargetLocator(target policy.Target, owner, repo, name string) string {
+	if owner != "" && repo != "" {
+		return repositoryTarget(owner, repo)
+	}
+	locator := name
+	if owner != "" && name != "" {
+		return repositoryTarget(owner, name)
+	}
+	if locator != "" {
+		return locator
+	}
+	if owner != "" {
+		return owner
+	}
+	return policy.FirstValue(target.Fields["installation_account"])
+}
+
+func appendTargetQualifier(locator string, target policy.Target) string {
+	if number := policy.FirstValue(target.Fields["number"]); number != "" {
+		return strings.TrimSpace(locator + " #" + number)
+	}
+	for _, key := range []string{"id", "installation_id", "node_id"} {
+		if value := policy.FirstValue(target.Fields[key]); value != "" {
+			return strings.TrimSpace(locator + " " + value)
+		}
+	}
+	return locator
+}
+
+// DisplayFields returns the exact target and closed policy vocabulary used by every approval surface.
+func DisplayFields(grant grants.Grant) []operatorinbox.DisplayField {
+	fields := []operatorinbox.DisplayField{{Label: "Operation", Value: grant.Operation}, {Label: "Target", Value: TargetSummary(grant.Target)}}
+	targetLabels := map[string]string{"owner": "Target owner", "repo": "Target repository", "name": "Target name", "number": "Target number", "id": "Target ID", "node_id": "Target node ID",
+		"installation_id": "Installation ID", "installation_account": "Installation account"}
+	for _, key := range []string{"owner", "repo", "name", "number", "id", "node_id", "installation_id", "installation_account"} {
+		if values := grant.Target.Fields[key]; len(values) > 0 {
+			fields = append(fields, operatorinbox.DisplayField{Label: targetLabels[key], Value: strings.Join(values, ", ")})
+		}
+	}
+	attributeLabels := map[string]string{ // #nosec G101 -- keys name non-secret policy metadata shown to the operator.
+		"actor_id": "Actor ID", "actor_login": "Actor", "base_ref": "Base ref", "credential_kind": "Credential kind",
+		"credential_slot": "Credential slot", "environment": "Environment", "head_ref": "Head ref", "label": "Labels",
+		"merge_method": "Merge method", "path": "Path", "permission": "Permission", "ref": "Ref", "release_state": "Release state",
+		"resource_id": "Resource ID", "resource_name": "Resource name", "resource_owner": "Resource owner", "role": "Role",
+		"visibility": "Visibility", "workflow": "Workflow", "workflow_ref": "Workflow ref",
+	}
+	keys := make([]string, 0, len(grant.Attrs))
+	for key := range grant.Attrs {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		if values := grant.Attrs[key]; len(values) > 0 {
+			label := attributeLabels[key]
+			if selector, found := strings.CutPrefix(key, "selector_"); found {
+				label = "Selector " + strings.ReplaceAll(selector, "_", " ")
+			}
+			if label == "" {
+				label = key
+			}
+			fields = append(fields, operatorinbox.DisplayField{Label: label, Value: strings.Join(values, ", ")})
+		}
+	}
+	return fields
+}
+
 func risk(operation string) operatorinbox.Risk {
+	if descriptor, found := opcatalog.ByName(operation); found {
+		return operatorinbox.Risk(descriptor.Risk)
+	}
 	risks := map[string]operatorinbox.Risk{
-		"git.fetch":               operatorinbox.RiskLow,
-		"git.push.advertise":      operatorinbox.RiskMedium,
-		"git.push.branch_create":  operatorinbox.RiskHigh,
-		"git.push.fast_forward":   operatorinbox.RiskHigh,
-		"git.push.force":          operatorinbox.RiskCritical,
-		"git.ref.delete":          operatorinbox.RiskCritical,
-		"git.tag.update":          operatorinbox.RiskHigh,
-		"pr.create":               operatorinbox.RiskHigh,
-		"pr.update":               operatorinbox.RiskHigh,
-		"pr.merge":                operatorinbox.RiskCritical,
-		"checks.read":             operatorinbox.RiskLow,
-		"repo.metadata.read":      operatorinbox.RiskLow,
-		"contents.read":           operatorinbox.RiskLow,
-		"installation.repos.list": operatorinbox.RiskLow,
-		"webhook.github.receive":  operatorinbox.RiskMedium,
+		"git.fetch":              operatorinbox.RiskLow,
+		"git.push.advertise":     operatorinbox.RiskMedium,
+		"git.push.branch_create": operatorinbox.RiskHigh,
+		"git.push.fast_forward":  operatorinbox.RiskHigh,
+		"git.push.force":         operatorinbox.RiskCritical,
+		"git.ref.delete":         operatorinbox.RiskCritical,
+		"git.tag.update":         operatorinbox.RiskHigh,
+		"webhook.github.receive": operatorinbox.RiskMedium,
 	}
 	if value, ok := risks[operation]; ok {
 		return value

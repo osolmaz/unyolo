@@ -1,492 +1,207 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentapi"
-	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
+	bkauthorization "github.com/osolmaz/brokerkit/authorization"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/operationruntime"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
 
-const maxAgentGitHubBody = 64 * 1024
+const operationAuthorizationGrace = 30 * time.Second
 
-func (s *Server) cancelAgentOperation(_ context.Context, client, id string) (agentv1.Operation, error) {
-	lock := s.operationAuthorizationLock(id)
-	lock.Lock()
-	defer lock.Unlock()
-	operation, err := s.operations.Get(client, id)
-	if err != nil || operation.State.Terminal() {
-		return operation, err
-	}
-	if operation.State == agentv1.StateExecuting {
-		return agentv1.Operation{}, agentops.ErrNotCancelable
-	}
-	if err := s.cancelAgentApproval(operation, client); err != nil {
-		return agentv1.Operation{}, err
-	}
-	return s.operations.Cancel(client, id)
-}
-
-func (s *Server) cancelAgentApproval(operation agentv1.Operation, client string) error {
-	if operation.ApprovalID == "" {
-		return nil
-	}
-	grant, err := s.grants.Get(operation.ApprovalID)
-	if err != nil {
-		return err
-	}
-	switch grant.Status {
-	case grants.StatusPending:
-		_, err = s.grants.CancelForClient(grant.ID, client)
-	case grants.StatusActive:
-		_, err = s.grants.RevokeForClient(grant.ID, client)
-	case grants.StatusDenied, grants.StatusExpired, grants.StatusConsumed, grants.StatusRevoked, grants.StatusCanceled:
-	}
-	return err
-}
-
-type pullRequestTarget struct {
-	Kind  string `json:"kind"`
-	Owner string `json:"owner"`
-	Name  string `json:"name"`
-}
-
-type pullRequestArguments struct {
-	Title               string `json:"title"`
-	Body                string `json:"body,omitempty"`
-	Head                string `json:"head"`
-	Base                string `json:"base"`
-	Draft               bool   `json:"draft,omitempty"`
-	MaintainerCanModify *bool  `json:"maintainer_can_modify,omitempty"`
-}
-
-type pullRequestResult struct {
-	Number int    `json:"number"`
-	URL    string `json:"url"`
-}
-
-func (s *Server) submitAgentOperation(_ context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
-	if request.Operation != string(policy.OperationPullRequestCreate) {
-		return agentv1.Operation{}, false, &agentapi.Error{Status: http.StatusBadRequest, Code: "unsupported_operation", Message: "Unsupported agent operation"}
-	}
-	target, arguments, attrs, err := decodePullRequestOperation(request)
-	if err != nil {
-		return agentv1.Operation{}, false, &agentapi.Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: err.Error()}
-	}
-	operation, created, err := s.operations.Submit(agentops.Submit{
-		Broker: "gh-broker", ClientID: client, IdempotencyKey: request.IdempotencyKey, Operation: request.Operation,
-		Target: request.Target, Arguments: request.Arguments, Reason: request.Reason,
-		Presentation: agentv1.Presentation{Title: "Create GitHub pull request", Summary: pullRequestSummary(target, arguments)},
+func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
+	return operationruntime.New(operations.RuntimeOptions{
+		Broker:        "gh-broker",
+		Operations:    s.operations,
+		Registry:      s.operationRegistry.Registry,
+		Authorization: s.authorization,
+		Grants:        s.grants,
+		Decide:        s.policy.DecideAuthorization,
+		Project: func(auth operations.Authorization) corepolicy.Request {
+			return policy.AuthorizationRequest(auth.Client, auth.Operation, auth.TargetKind, auth.TargetFields, auth.Attrs)
+		},
+		SetClient: func(plan *operations.Plan, client string) { plan.Authorization.Client = client },
+		InputData: func(input operations.Input) (json.RawMessage, json.RawMessage) {
+			return input.Target, input.Arguments
+		},
+		PlanData: func(plan operations.Plan) (json.RawMessage, json.RawMessage) {
+			return plan.Target, plan.Arguments
+		},
+		Prepare:             s.prepareRuntimePlan,
+		Load:                s.loadRuntimePlan,
+		PlanDigest:          func(grant grants.Grant) string { return grant.Metadata[ghplan.MetadataDigest] },
+		StoredPlan:          func(digest string) (state.PlanRecord, error) { return s.database.Plan(context.Background(), digest) },
+		ValidateExecution:   s.planValidator.ValidateExecution,
+		MapSubmissionError:  mapOperationSubmissionError,
+		DefinitiveFailure:   definitiveExecutionFailure,
+		ExecutionFailure:    operationExecutionFailure,
+		RecordPolicyRefusal: s.recordOperationPolicyRefusal,
+		RecordOutcome:       s.recordOperationOutcome,
+		Notifier:            s.notifier,
+		ApprovalMessage:     grantApprovalMessage,
+		OperatorConfigured:  s.operatorConfigured,
+		AuthorizationGrace:  operationAuthorizationGrace,
 	})
-	if err != nil {
-		return agentv1.Operation{}, false, err
-	}
-	if created || operation.State == agentv1.StatePending && operation.ApprovalID == "" {
-		operation = s.authorizePullRequest(s.agentLifecycleContext(), operation, target, attrs)
-	}
-	return operation, created, nil
 }
 
-func (s *Server) agentLifecycleContext() context.Context {
+func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkauthorization.GrantIntent, error) {
+	adapter, found := s.operationRegistry.Lookup(preparation.DescriptorName)
+	if !found {
+		return bkauthorization.GrantIntent{}, errors.New("operation adapter is unavailable")
+	}
+	descriptor, found := opcatalog.ByName(preparation.DescriptorName)
+	if !found {
+		return bkauthorization.GrantIntent{}, errors.New("operation descriptor is unavailable")
+	}
+	mode := corepolicy.GrantModeWindow
+	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+		mode = corepolicy.GrantModeExecution
+	}
+	duration := time.Duration(adapter.Descriptor().ApprovalTTLSeconds) * time.Second
+	pending := time.Duration(adapter.Descriptor().RequestTTLSeconds) * time.Second
+	if !preparation.Direct {
+		bounds := preparation.Decision.GrantPolicy
+		if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
+			return bkauthorization.GrantIntent{}, errors.New("operation approval mode does not match policy")
+		}
+		duration = min(time.Duration(bounds.DefaultMinutes)*time.Minute, duration)
+		pending = min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, pending)
+	}
+	request := grants.Request{
+		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
+		Target: preparation.Core.Target, Attrs: preparation.Core.Attrs, Reason: preparation.Reason,
+		Duration: duration, PendingTimeout: pending, MaxUses: usebudget.Limit(1), MaxUsesSpecified: true,
+		Metadata: map[string]string{"github_grant_mode": string(mode)},
+	}
+	ruleIDs := preparation.Decision.MatchedRequestRuleIDs
+	if preparation.Direct {
+		ruleIDs = preparation.Decision.MatchedAllowRuleIDs
+	}
+	prepared, err := prepareAdapterPlan(preparation.Plan, request, adapter.Present(preparation.Plan), string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	if !preparation.Direct {
+		ghplan.BindPrepared(&request, prepared)
+		ghplan.BindPresentation(&request, adapter.Present(preparation.Plan))
+	}
+	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+}
+
+func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {
+	kind := string(provider.Credential.Kind)
+	return ghplan.Prepare(ghplan.Plan{
+		APIVersion: ghplan.SchemaV1, Operation: provider.Operation, OperationRevision: provider.OperationRevision,
+		ClientID: request.Client, ClientRequestID: request.ClientRequestID, Target: provider.Target, Arguments: provider.Arguments,
+		Preconditions: provider.Preconditions, CredentialSelector: ghplan.CredentialSelector{Name: "primary", Kind: kind}, Presentation: presentation,
+		Authorization: ghplan.Authorization{Mode: request.Metadata["github_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
+			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
+			Target: ghplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,
+			PolicyEffect: policyEffect, PolicyRuleIDs: append([]string(nil), policyRuleIDs...)},
+		CreatedAt: createdAt.UTC(), ExpiresAt: createdAt.Add(request.PendingTimeout + request.Duration).UTC(),
+	})
+}
+
+//nolint:cyclop // Provider plan binding is intentionally explicit at the trust boundary.
+func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations.Adapter) (operations.Plan, error) {
+	envelope, err := s.plans.Get(operation.PlanDigest)
+	if err != nil || envelope.Operation != operation.Operation || envelope.OperationRevision != adapter.Descriptor().OperationRevision ||
+		envelope.ClientID != operation.ClientID || envelope.ClientRequestID != operation.ID || envelope.ExpiresAt.Before(time.Now().UTC()) {
+		return operations.Plan{}, errors.New("operation plan binding is invalid")
+	}
+	credential, err := operations.CredentialFromPreconditions(envelope.Preconditions)
+	if err != nil || string(credential.Kind) != envelope.CredentialSelector.Kind {
+		return operations.Plan{}, errors.New("operation credential binding is invalid")
+	}
+	plan := operations.Plan{ExecutionID: operation.ID, Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
+		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Credential: credential, Presentation: envelope.Presentation,
+		PolicyDecision: operations.PolicyDecision{Effect: envelope.Authorization.PolicyEffect, RuleIDs: envelope.Authorization.PolicyRuleIDs}}
+	input, err := adapter.Decode(plan.Target, plan.Arguments)
+	if err != nil || !operationruntime.EqualJSONObject(input.Target, plan.Target) || !operationruntime.EqualJSONObject(input.Arguments, plan.Arguments) {
+		return operations.Plan{}, errors.New("operation plan payload is invalid")
+	}
+	plan.Authorization = adapter.Authorize(plan)
+	plan.Authorization.Client = operation.ClientID
+	if plan.Authorization.Operation == "" {
+		return operations.Plan{}, errors.New("operation policy metadata is invalid")
+	}
+	return plan, nil
+}
+
+func definitiveExecutionFailure(err error) bool {
+	return err != nil && !operations.IsPossiblePartial(err)
+}
+
+func operationExecutionFailure(executionErr, reconcileErr error) operationruntime.Failure {
+	failure := operationruntime.Failure{Code: "upstream_result_unknown", Message: "Operation result is unknown and was not retried"}
+	var upstream githubauth.APIError
+	if errors.As(executionErr, &upstream) && upstream.StatusCode > 0 && upstream.StatusCode < http.StatusInternalServerError {
+		failure.Code, failure.Message = upstream.Code, "GitHub rejected the operation"
+	} else if executionErr == nil && reconcileErr != nil {
+		failure.Code, failure.Message = "operation_reconciliation_failed", "Operation completed but reconciliation failed"
+	}
+	return failure
+}
+
+func mapOperationSubmissionError(err error) error {
+	var upstream githubauth.APIError
+	if errors.As(err, &upstream) {
+		status := http.StatusBadGateway
+		if upstream.StatusCode == http.StatusNotFound {
+			status = http.StatusNotFound
+		}
+		return &agentapi.Error{Status: status, Code: upstream.Code, Message: "Could not resolve GitHub operation target"}
+	}
+	return &agentapi.Error{Status: http.StatusBadRequest, Code: "operation_input_invalid", Message: err.Error()}
+}
+
+func (s *Server) recordOperationPolicyRefusal(operation agentv1.Operation, plan operations.Plan, decision corepolicy.Decision, code string) {
+	providerDecision := s.policy.AuthorizationDecision(decision)
+	s.recordOperationPolicyDecision(operation.ClientID, operation.Operation, operationPolicyTarget(plan.Authorization), "denied", code, 0, providerDecision)
+}
+
+func (s *Server) agentLifecycleContext(fallback context.Context) context.Context {
 	if s.lifecycleContext != nil {
 		return s.lifecycleContext
 	}
-	return context.Background()
+	return fallback
 }
 
-func (s *Server) authorizePullRequest(ctx context.Context, operation agentv1.Operation, target pullRequestTarget, attrs map[string]string) agentv1.Operation {
-	lock := s.operationAuthorizationLock(operation.ID)
-	lock.Lock()
-	defer lock.Unlock()
-	current, err := s.operations.GetByID(operation.ID)
-	if err != nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not read operation")
-	}
-	if current.State != agentv1.StatePending || current.ApprovalID != "" {
-		return current
-	}
-	request := policy.Request{Client: current.ClientID, Operation: policy.OperationPullRequestCreate, Target: target.policyTarget(), Attrs: attrs}
-	decision, err := s.evaluateBrokerRequest(request)
-	if err != nil {
-		return s.failAgentOperation(current.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not inspect approvals")
-	}
-	return s.applyPullRequestDecision(ctx, current, target, attrs, request, decision)
+func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
+	return s.operationRuntime.Submit(s.agentLifecycleContext(ctx), client, request)
 }
 
-func (s *Server) operationAuthorizationLock(id string) *sync.Mutex {
-	var hash uint64 = 14695981039346656037
-	for i := 0; i < len(id); i++ {
-		hash ^= uint64(id[i])
-		hash *= 1099511628211
-	}
-	return &s.operationAuthLocks[hash%uint64(len(s.operationAuthLocks))]
+func (s *Server) cancelAgentOperation(ctx context.Context, client, id string) (agentv1.Operation, error) {
+	return s.operationRuntime.Cancel(ctx, client, id)
 }
 
-func (s *Server) applyPullRequestDecision(ctx context.Context, operation agentv1.Operation, target pullRequestTarget, attrs map[string]string, request policy.Request, decision policy.Decision) agentv1.Operation {
-	if decision.Allowed {
-		return s.applyAllowedPullRequest(operation, decision.GrantID)
-	}
-	if decision.Effect != policy.EffectRequest {
-		return s.failAgentOperation(operation.ID, agentv1.StateDenied, "policy_denied", "Policy denied this operation")
-	}
-	requestDecision := s.policy.EvaluateGrantRequest(request)
-	if requestDecision.Effect != policy.EffectRequest || requestDecision.GrantPolicy == nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_policy_invalid", "Pull request approval policy is invalid")
-	}
-	return s.requestPullRequestApproval(ctx, operation, target, attrs, requestDecision.GrantPolicy)
-}
-
-func (s *Server) applyAllowedPullRequest(operation agentv1.Operation, grantID string) agentv1.Operation {
-	if grantID != "" {
-		updated, err := s.operations.SetApproval(operation.ID, grantID)
-		if err == nil {
-			return s.syncAgentApproval(updated)
-		}
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind approval")
-	}
-	updated, err := s.operations.Transition(operation.ID, agentv1.StateApproved)
-	if err != nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not approve operation")
-	}
-	return updated
-}
-
-func (s *Server) requestPullRequestApproval(ctx context.Context, operation agentv1.Operation, target pullRequestTarget, attrs map[string]string, bounds *corepolicy.GrantPolicy) agentv1.Operation {
-	if s.notifier == nil && !s.operatorConfigured {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_channel_not_configured", "Approval channel is not configured")
-	}
-	duration, pending, maxUses, err := pullRequestGrantBounds(bounds)
-	if err != nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_policy_invalid", "Pull request approval policy is invalid")
-	}
-	request := grants.Request{
-		Client: operation.ClientID, ClientRequestID: operation.ID, Operation: operation.Operation,
-		Target: policy.CoreTarget(target.policyTarget()), Attrs: corepolicy.SingletonValues(attrs), Reason: operation.Reason,
-		Duration: duration, PendingTimeout: pending, MaxUses: maxUses,
-	}
-	result, _, err := s.requestGrant(request)
-	if err != nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_request_failed", "Could not create approval request")
-	}
-	if err := s.notifyAgentApproval(ctx, result.Grant); err != nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_notification_failed", "Could not notify the operator")
-	}
-	updated, err := s.operations.SetApproval(operation.ID, result.Grant.ID)
-	if err != nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Could not bind approval")
-	}
-	return updated
-}
-
-func pullRequestGrantBounds(bounds *corepolicy.GrantPolicy) (time.Duration, time.Duration, usebudget.Limit, error) {
-	if corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeExecution || bounds.DefaultMaxUses != 1 {
-		return 0, 0, 0, errors.New("pull request approvals require one execution")
-	}
-	return grantBounds(bounds, bounds.DefaultMinutes, 1)
-}
-
-func (s *Server) notifyAgentApproval(ctx context.Context, grant grants.Grant) error {
-	if s.notifier == nil {
-		return nil
-	}
-	claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
-	if err != nil {
-		return err
-	}
-	if !claimed {
-		return s.existingAgentNotification(grant.ID)
-	}
-	return s.sendAgentNotification(ctx, claim)
-}
-
-func (s *Server) existingAgentNotification(grantID string) error {
-	current, err := s.grants.Get(grantID)
-	if err == nil && current.Notification != nil {
-		return nil
-	}
-	return errors.New("approval notification is already claimed")
-}
-
-func (s *Server) sendAgentNotification(ctx context.Context, claim grants.NotificationClaim) error {
-	ref, err := s.notifier.SendApproval(ctx, grantApprovalMessage(claim.Grant, claim.DecisionToken))
-	if err != nil || ref.MessageID <= 0 {
-		if err == nil {
-			err = errors.New("approval notifier returned an invalid message")
-		}
-		return s.settleAgentNotificationFailure(claim, err)
-	}
-	stored, recorded, err := s.grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
-	if err != nil || !recorded && stored.Notification == nil {
-		return errors.Join(err, errors.New("approval notification claim changed"))
-	}
-	return nil
-}
-
-func (s *Server) settleAgentNotificationFailure(claim grants.NotificationClaim, cause error) error {
-	if s.operatorConfigured {
-		_, _, err := s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
-		return errors.Join(cause, err)
-	}
-	_, _, err := s.grants.CancelIfNotificationClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
-	return errors.Join(cause, err)
-}
-
-func decodePullRequestOperation(request agentv1.SubmitRequest) (pullRequestTarget, pullRequestArguments, map[string]string, error) {
-	var target pullRequestTarget
-	if err := decodeAgentObject(request.Target, &target); err != nil || !validPullRequestTarget(target) {
-		return pullRequestTarget{}, pullRequestArguments{}, nil, errors.New("pull request target must contain an exact owner and repository")
-	}
-	var arguments pullRequestArguments
-	if err := decodeAgentObject(request.Arguments, &arguments); err != nil {
-		return pullRequestTarget{}, pullRequestArguments{}, nil, errors.New("invalid pull request arguments")
-	}
-	body, _ := json.Marshal(arguments)
-	attrs, err := pullRequestAttrs(body)
-	if err != nil {
-		return pullRequestTarget{}, pullRequestArguments{}, nil, err
-	}
-	return target, arguments, attrs, nil
-}
-
-func validPullRequestTarget(target pullRequestTarget) bool {
-	return target.Kind == "repo" && target.Owner != "" && target.Name != "" &&
-		validateRouteSegment(target.Owner) == nil && validateRouteSegment(target.Name) == nil
-}
-
-func decodeAgentObject(data []byte, destination any) error {
-	if len(data) == 0 || len(data) > maxAgentGitHubBody {
-		return errors.New("invalid JSON object")
-	}
-	return strictDecode(data, destination)
-}
-
-func strictDecode(data []byte, destination any) error {
-	return strictjson.Decode(data, destination, true)
-}
-
-func (target pullRequestTarget) policyTarget() policy.Target {
-	return policy.Target{Kind: "repo", Owner: target.Owner, Name: target.Name}
-}
-
-func pullRequestSummary(target pullRequestTarget, arguments pullRequestArguments) string {
-	return fmt.Sprintf("Open %s/%s pull request %q from %s into %s", target.Owner, target.Name, arguments.Title, arguments.Head, arguments.Base)
+func (s *Server) cancelGrantForClient(grant grants.Grant, client string) error {
+	return s.operationRuntime.CancelGrant(grant, client)
 }
 
 func (s *Server) startOperationWorker(ctx context.Context) {
-	s.operationWorkerOnce.Do(func() {
-		workerContext, cancel := context.WithCancel(ctx)
-		s.lifecycleContext = workerContext
-		s.lifecycleCancel = cancel
-		s.backgroundWorkers.Add(1)
-		go func() {
-			defer s.backgroundWorkers.Done()
-			ticker := time.NewTicker(500 * time.Millisecond)
-			defer ticker.Stop()
-			s.recoverAgentOperations(workerContext)
-			for {
-				select {
-				case <-workerContext.Done():
-					return
-				case <-ticker.C:
-					s.advanceAgentOperations(workerContext)
-				}
-			}
-		}()
-	})
+	workerContext, cancel := context.WithCancel(ctx)
+	s.lifecycleContext = workerContext
+	s.lifecycleCancel = cancel
+	s.operationRuntime.Start(workerContext)
 }
 
-func (s *Server) recoverAgentOperations(ctx context.Context) {
-	operations, err := s.operations.ListUnfinished()
-	if err != nil {
-		return
-	}
-	for _, operation := range operations {
-		if operation.State == agentv1.StateExecuting {
-			_, _ = s.operations.Fail(operation.ID, agentv1.StateFailed, "execution_interrupted", "Broker restarted during execution; result is unknown")
-			continue
-		}
-		s.advanceAgentOperation(ctx, operation)
-	}
-}
-
-func (s *Server) advanceAgentOperations(ctx context.Context) {
-	operations, err := s.operations.ListUnfinished()
-	if err != nil {
-		return
-	}
-	for _, operation := range operations {
-		s.advanceAgentOperation(ctx, operation)
-	}
-}
-
-func (s *Server) advanceAgentOperation(ctx context.Context, operation agentv1.Operation) {
-	operation = s.prepareAgentOperation(ctx, operation)
-	if operation.State != agentv1.StateApproved {
-		return
-	}
-	claimed, err := s.operations.Transition(operation.ID, agentv1.StateExecuting)
-	if err == nil {
-		s.executePullRequest(ctx, claimed)
-	}
-}
-
-func (s *Server) prepareAgentOperation(ctx context.Context, operation agentv1.Operation) agentv1.Operation {
-	if operation.State != agentv1.StatePending {
-		return operation
-	}
-	if operation.ApprovalID != "" {
-		return s.syncAgentApproval(operation)
-	}
-	return s.authorizeStoredPullRequest(ctx, operation)
-}
-
-func (s *Server) authorizeStoredPullRequest(ctx context.Context, operation agentv1.Operation) agentv1.Operation {
-	target, _, attrs, err := decodePullRequestOperation(agentv1.SubmitRequest{Target: operation.Target, Arguments: operation.Arguments})
-	if err != nil {
-		return s.failAgentOperation(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
-	}
-	return s.authorizePullRequest(ctx, operation, target, attrs)
-}
-
-func (s *Server) syncAgentApproval(operation agentv1.Operation) agentv1.Operation {
-	grant, err := s.grants.Get(operation.ApprovalID)
-	if err != nil {
-		return operation
-	}
-	switch grant.Status {
-	case grants.StatusActive:
-		updated, _ := s.operations.Transition(operation.ID, agentv1.StateApproved)
-		return updated
-	case grants.StatusDenied:
-		return s.failAgentOperation(operation.ID, agentv1.StateDenied, "approval_denied", "Approval was denied")
-	case grants.StatusExpired:
-		return s.failAgentOperation(operation.ID, agentv1.StateExpired, "approval_expired", "Approval request expired")
-	case grants.StatusCanceled, grants.StatusRevoked:
-		return s.failAgentOperation(operation.ID, agentv1.StateCanceled, "approval_canceled", "Approval was canceled")
-	default:
-		return operation
-	}
-}
-
-func (s *Server) executePullRequest(ctx context.Context, operation agentv1.Operation) {
-	target, arguments, _, err := decodePullRequestOperation(agentv1.SubmitRequest{Target: operation.Target, Arguments: operation.Arguments})
-	if err != nil {
-		s.failAgentOperation(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
-		return
-	}
-	reserved, ok := s.reserveAgentApproval(operation)
-	if !ok {
-		return
-	}
-	result, definitive, err := s.createUpstreamPullRequest(ctx, target, arguments)
-	if err != nil {
-		s.failPullRequestExecution(operation, reserved, definitive)
-		return
-	}
-	if reserved {
-		if _, err := s.grants.CommitUse(operation.ApprovalID); err != nil {
-			s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Pull request was created but approval accounting failed")
-			return
-		}
-	}
-	encoded, _ := json.Marshal(result)
-	_, _ = s.operations.Succeed(operation.ID, encoded)
-}
-
-func (s *Server) reserveAgentApproval(operation agentv1.Operation) (bool, bool) {
-	if operation.ApprovalID == "" {
-		return false, true
-	}
-	grant, err := s.grants.Get(operation.ApprovalID)
-	if err != nil || s.planValidator.ValidateExecution(grant) != nil {
-		s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
-		return false, false
-	}
-	if _, err := s.grants.ReserveUse(grant.ID); err != nil {
-		s.failAgentOperation(operation.ID, agentv1.StateFailed, "approval_unavailable", "Approval could not be reserved")
-		return false, false
-	}
-	return true, true
-}
-
-func (s *Server) failPullRequestExecution(operation agentv1.Operation, reserved, definitive bool) {
-	if reserved {
-		if definitive {
-			_, _ = s.grants.CommitUse(operation.ApprovalID)
-		} else {
-			_, _ = s.grants.RetainUse(operation.ApprovalID)
-		}
-	}
-	code, message := "upstream_rejected", "GitHub rejected the pull request"
-	if !definitive {
-		code, message = "upstream_result_unknown", "GitHub pull request result is unknown; it was not retried"
-	}
-	s.failAgentOperation(operation.ID, agentv1.StateFailed, code, message)
-}
-
-func (s *Server) createUpstreamPullRequest(ctx context.Context, target pullRequestTarget, arguments pullRequestArguments) (pullRequestResult, bool, error) {
-	token, err := s.githubCredentialForRepoContext(ctx, target.Owner, target.Name)
-	if err != nil {
-		return pullRequestResult{}, false, err
-	}
-	body, _ := json.Marshal(arguments)
-	requestURL := s.githubAPIBaseURL.JoinPath("repos", target.Owner, target.Name, "pulls")
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
-	if err != nil {
-		return pullRequestResult{}, false, err
-	}
-	configureInstallationTokenRequest(request, token)
-	request.Header.Set("Content-Type", "application/json")
-	response, err := s.githubClient.Do(request)
-	if err != nil {
-		return pullRequestResult{}, false, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	return decodePullRequestResponse(response)
-}
-
-func decodePullRequestResponse(response *http.Response) (pullRequestResult, bool, error) {
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxAgentGitHubBody+1))
-	if err != nil || len(data) > maxAgentGitHubBody {
-		return pullRequestResult{}, false, errors.New("GitHub response is invalid")
-	}
-	if definitive, err := pullRequestResponseStatus(response.StatusCode); err != nil {
-		return pullRequestResult{}, definitive, err
-	}
-	var upstream struct {
-		Number  int    `json:"number"`
-		HTMLURL string `json:"html_url"`
-	}
-	if json.Unmarshal(data, &upstream) != nil || upstream.Number <= 0 || upstream.HTMLURL == "" {
-		return pullRequestResult{}, false, errors.New("GitHub response is invalid")
-	}
-	return pullRequestResult{Number: upstream.Number, URL: upstream.HTMLURL}, true, nil
-}
-
-func pullRequestResponseStatus(status int) (bool, error) {
-	if status >= 200 && status < 300 {
-		return true, nil
-	}
-	return status >= 400 && status < 500, fmt.Errorf("GitHub status %d", status)
-}
-
-func (s *Server) failAgentOperation(id string, state agentv1.State, code, message string) agentv1.Operation {
-	operation, err := s.operations.Fail(id, state, code, message)
-	if err != nil {
-		operation, _ = s.operations.GetByID(id)
-	}
-	return operation
+func operationDebugID(operation agentv1.Operation) string {
+	return fmt.Sprintf("%s:%s", operation.Operation, operation.ID)
 }

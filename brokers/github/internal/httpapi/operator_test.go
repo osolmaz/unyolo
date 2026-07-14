@@ -71,7 +71,7 @@ func newOperatorTestServer(t *testing.T, clientSecret string, operatorSecret str
 	}
 	cfg := config.Config{
 		ClientID: "bob", SharedSecret: clientSecret, OperatorID: "onur", OperatorSecret: operatorSecret,
-		StateDir: filepath.Join(t.TempDir(), "state"), GitHubToken: "github-token", GitHubHTTPTimeout: time.Second,
+		StateDir: filepath.Join(t.TempDir(), "state"), GitHubToken: "github-token", GitHubTokenFile: "/protected/github-token", GitHubHTTPTimeout: time.Second,
 	}
 	server, err := New(cfg, brokerPolicy)
 	if err != nil {
