@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operationruntime"
+	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 type Input struct {
@@ -61,9 +62,22 @@ type Runtime = operationruntime.Runtime[Input, Plan, Authorization]
 type RuntimeOptions = operationruntime.Options[Input, Plan, Authorization]
 type Preparation = operationruntime.Preparation[Plan, Authorization]
 type PlanCleaner = operationruntime.PlanCleaner[Plan]
+type ClientBoundAdapter = operationruntime.ClientBoundAdapter[Input]
 
 type Options struct {
 	RequestingUserID int64
+	SealedStore      sealedPayloadStore
+}
+
+type sealedPayloadStore interface {
+	Validate(sealedstore.Reference) error
+	Consume(sealedstore.Reference) ([]byte, error)
+	Delete(sealedstore.Reference) error
+}
+
+type sealedArguments struct {
+	Public        json.RawMessage        `json:"public"`
+	SealedPayload *sealedstore.Reference `json:"sealed_payload"`
 }
 
 type Registry struct {
@@ -97,6 +111,9 @@ func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapt
 		if !shouldHaveAdapter(descriptor) {
 			continue
 		}
+		if descriptor.Sealed && options.SealedStore == nil {
+			return nil, fmt.Errorf("GitHub sealed operation %q requires a sealed payload store", descriptor.Name)
+		}
 		switch descriptor.ExecutorKind {
 		case "rest-binding", "bounded-stream":
 			bindings := opbinding.ByOperation(descriptor.Name)
@@ -128,21 +145,75 @@ type generatedAdapter struct {
 func (a generatedAdapter) Descriptor() capability.Descriptor { return a.descriptor.Descriptor }
 
 func (a generatedAdapter) Decode(target, arguments json.RawMessage) (Input, error) {
-	if err := schemaregistry.ValidateSubmission(a.descriptor.Name, target, arguments); err != nil {
+	decodedArguments, validationArguments, err := a.decodeArguments(target, arguments)
+	if err != nil {
 		return Input{}, err
 	}
 	if a.binding != nil {
-		argumentMap, err := decodeObject(arguments)
+		argumentMap, err := decodeObject(validationArguments)
 		if err != nil {
 			return Input{}, errors.New("GitHub operation arguments are invalid")
 		}
+		targetMap, err := decodeObject(target)
+		if err != nil {
+			return Input{}, errors.New("GitHub operation target is invalid")
+		}
 		for _, name := range a.binding.TargetPathParameters {
-			if _, found := argumentMap[name]; found {
+			if _, found := argumentMap[name]; found && targetSuppliesPathParameter(name, targetMap) {
 				return Input{}, fmt.Errorf("GitHub path parameter %q must come from the validated target", name)
 			}
 		}
 	}
-	return Input{Target: cloneRaw(target), Arguments: cloneRaw(arguments)}, nil
+	return Input{Target: cloneRaw(target), Arguments: decodedArguments}, nil
+}
+
+func targetSuppliesPathParameter(name string, target map[string]any) bool {
+	switch name {
+	case "owner":
+		return stringValue(target, "owner") != ""
+	case "repo", "org", "enterprise", "username", "user", "team_slug", "environment_name", "package_name", "codespace_name", "ghsa_id", "ref":
+		return stringValue(target, "name") != "" || name == "org" && stringValue(target, "owner") != ""
+	}
+	if strings.HasSuffix(name, "_id") {
+		return integerString(target, "id") != ""
+	}
+	return (strings.HasSuffix(name, "_number") || name == "number") && integerString(target, "number") != ""
+}
+
+func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
+	if !a.descriptor.Sealed {
+		if err := schemaregistry.ValidateSubmission(a.descriptor.Name, target, arguments); err != nil {
+			return nil, nil, err
+		}
+		return cloneRaw(arguments), arguments, nil
+	}
+	var protected sealedArguments
+	if err := strictjson.Decode(arguments, &protected, true); err != nil || len(protected.Public) == 0 || protected.SealedPayload == nil {
+		return nil, nil, errors.New("GitHub sealed operation arguments are invalid")
+	}
+	if err := schemaregistry.ValidatePublicSubmission(a.descriptor.Name, target, protected.Public); err != nil {
+		return nil, nil, err
+	}
+	encoded, err := json.Marshal(protected)
+	if err != nil {
+		return nil, nil, errors.New("GitHub sealed operation arguments are invalid")
+	}
+	return encoded, protected.Public, nil
+}
+
+func (a generatedAdapter) ValidateClient(input Input, client, requestKey string) error {
+	if !a.descriptor.Sealed {
+		return nil
+	}
+	arguments, err := decodeSealedArguments(input.Arguments)
+	if err != nil {
+		return err
+	}
+	reference := arguments.SealedPayload
+	if reference.Owner != client || reference.Purpose != a.descriptor.Name || reference.RequestKey != requestKey {
+		return errors.New("sealed payload does not belong to this client, operation, and request")
+	}
+	return a.options.SealedStore.Validate(*reference)
 }
 
 func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
@@ -153,7 +224,11 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	if err != nil {
 		return Plan{}, errors.New("GitHub operation target is invalid")
 	}
-	argumentsMap, err := decodeObject(input.Arguments)
+	publicArguments, err := a.publicArguments(input.Arguments)
+	if err != nil {
+		return Plan{}, err
+	}
+	argumentsMap, err := decodeObject(publicArguments)
 	if err != nil {
 		return Plan{}, errors.New("GitHub operation arguments are invalid")
 	}
@@ -179,7 +254,8 @@ func (a generatedAdapter) Authorize(plan Plan) Authorization {
 		return plan.Authorization
 	}
 	targetMap, _ := decodeObject(plan.Target)
-	argumentsMap, _ := decodeObject(plan.Arguments)
+	publicArguments, _ := a.publicArguments(plan.Arguments)
+	argumentsMap, _ := decodeObject(publicArguments)
 	return authorizeDescriptor(a.descriptor, targetMap, argumentsMap)
 }
 
@@ -196,7 +272,11 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 	if err != nil {
 		return Outcome{}, errors.New("GitHub operation target is invalid")
 	}
-	argumentsMap, err := decodeObject(plan.Arguments)
+	executionArguments, err := a.materializeArguments(plan.Arguments)
+	if err != nil {
+		return Outcome{}, err
+	}
+	argumentsMap, err := decodeObject(executionArguments)
 	if err != nil {
 		return Outcome{}, errors.New("GitHub operation arguments are invalid")
 	}
@@ -229,6 +309,89 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 
 func (a generatedAdapter) Reconcile(context.Context, Plan) (Outcome, error) {
 	return Outcome{Proven: false}, nil
+}
+
+func (a generatedAdapter) Cleanup(plan Plan) error {
+	if !a.descriptor.Sealed {
+		return nil
+	}
+	arguments, err := decodeSealedArguments(plan.Arguments)
+	if err != nil {
+		return err
+	}
+	return a.options.SealedStore.Delete(*arguments.SealedPayload)
+}
+
+func (a generatedAdapter) publicArguments(arguments json.RawMessage) (json.RawMessage, error) {
+	if !a.descriptor.Sealed {
+		return arguments, nil
+	}
+	protected, err := decodeSealedArguments(arguments)
+	if err != nil {
+		return nil, err
+	}
+	return protected.Public, nil
+}
+
+func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.RawMessage, error) {
+	if !a.descriptor.Sealed {
+		return arguments, nil
+	}
+	protected, err := decodeSealedArguments(arguments)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := a.options.SealedStore.Consume(*protected.SealedPayload)
+	if err != nil {
+		return nil, err
+	}
+	defer zero(payload)
+	if err := schemaregistry.ValidateSealedArguments(a.descriptor.Name, payload); err != nil {
+		return nil, err
+	}
+	public, err := decodeObject(protected.Public)
+	if err != nil {
+		return nil, errors.New("GitHub sealed operation public arguments are invalid")
+	}
+	secret, err := decodeObject(payload)
+	if err != nil {
+		return nil, errors.New("GitHub sealed payload must be a JSON object")
+	}
+	if err := mergeObjects(public, secret); err != nil {
+		return nil, err
+	}
+	merged, err := json.Marshal(public)
+	if err != nil {
+		return nil, errors.New("GitHub sealed payload is invalid")
+	}
+	if err := schemaregistry.ValidateArguments(a.descriptor.Name, merged); err != nil {
+		return nil, err
+	}
+	return merged, nil
+}
+
+func decodeSealedArguments(raw json.RawMessage) (sealedArguments, error) {
+	var arguments sealedArguments
+	if err := strictjson.Decode(raw, &arguments, true); err != nil || len(arguments.Public) == 0 || arguments.SealedPayload == nil {
+		return sealedArguments{}, errors.New("GitHub sealed operation arguments are invalid")
+	}
+	return arguments, nil
+}
+
+func mergeObjects(destination, source map[string]any) error {
+	for key, value := range source {
+		if _, exists := destination[key]; exists {
+			return fmt.Errorf("sealed payload overlaps public field %q", key)
+		}
+		destination[key] = value
+	}
+	return nil
+}
+
+func zero(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
 }
 
 func shouldHaveAdapter(descriptor opcatalog.Descriptor) bool {

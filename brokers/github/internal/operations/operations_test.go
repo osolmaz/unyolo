@@ -3,17 +3,20 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 func TestGeneratedRegistryCoversAgentFacingRESTAndGraphQL(t *testing.T) {
-	adapters, err := NewGeneratedAdapters(nil, Options{})
+	adapters, err := NewGeneratedAdapters(nil, Options{SealedStore: newSealedStore(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +51,8 @@ func TestRESTAdapterRejectsEscapeHatchesAndExecutes(t *testing.T) {
 		t.Fatal("raw escape hatch was accepted")
 	}
 	contents := mustLookupGenerated(t, newOperationsManager(t, server.URL), "repo.contents.read")
-	if _, err := contents.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"path":"README.md"}`)); err == nil || !strings.Contains(err.Error(), "validated target") {
-		t.Fatalf("path parameter decode error = %v", err)
+	if _, err := contents.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"path":"README.md"}`)); err != nil {
+		t.Fatalf("argument-owned path parameter was rejected: %v", err)
 	}
 	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{}`))
 	if err != nil {
@@ -124,6 +127,74 @@ func TestMutationExecuteClassifiesAmbiguousFailuresWithoutRetry(t *testing.T) {
 	}
 }
 
+func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) {
+	const secret = "ZW5jcnlwdGVkLWNhbmFyeS12YWx1ZQ=="
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPut || request.URL.Path != "/repos/osolmaz/brokerkit/actions/secrets/DEPLOY_TOKEN" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), secret) || !strings.Contains(string(body), `"key_id":"key-1"`) {
+			t.Fatalf("request body = %s", body)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	store := newSealedStore(t)
+	reference, err := store.PutForRequest("bob", "workflow.actions_create_or_update_repo_secret", "secret-request",
+		[]byte(`{"input":{"encrypted_value":"`+secret+`","key_id":"key-1"}}`), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapters, err := NewGeneratedAdapters(newOperationsManager(t, server.URL), Options{SealedStore: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := NewRegistry(adapters...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, found := registry.Lookup("workflow.actions_create_or_update_repo_secret")
+	if !found {
+		t.Fatal("sealed adapter not found")
+	}
+	wrapper, _ := json.Marshal(map[string]any{
+		"public":         json.RawMessage(`{"secret_name":"DEPLOY_TOKEN"}`),
+		"sealed_payload": reference,
+	})
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), wrapper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(input.Arguments), secret) {
+		t.Fatal("secret was retained in decoded arguments")
+	}
+	bound := adapter.(ClientBoundAdapter)
+	if err := bound.ValidateClient(input, "bob", "secret-request"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bound.ValidateClient(input, "alice", "secret-request"); err == nil {
+		t.Fatal("accepted another client's sealed payload")
+	}
+	plan, err := adapter.Resolve(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(plan.Arguments), secret) {
+		t.Fatal("secret was retained in the immutable plan")
+	}
+	outcome, err := adapter.Execute(context.Background(), plan)
+	if err != nil || !outcome.Proven {
+		t.Fatalf("execute = %+v err=%v", outcome, err)
+	}
+	if _, err := store.Consume(reference); err == nil {
+		t.Fatal("sealed payload was reusable")
+	}
+}
+
 func newOperationsManager(t *testing.T, base string) *githubauth.Manager {
 	t.Helper()
 	apiURL, err := url.Parse(base)
@@ -149,7 +220,7 @@ func serverClient(_ string) *http.Client {
 
 func mustLookupGenerated(t *testing.T, manager *githubauth.Manager, name string) Adapter {
 	t.Helper()
-	adapters, err := NewGeneratedAdapters(manager, Options{})
+	adapters, err := NewGeneratedAdapters(manager, Options{SealedStore: newSealedStore(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +233,15 @@ func mustLookupGenerated(t *testing.T, manager *githubauth.Manager, name string)
 		t.Fatalf("adapter %q not found", name)
 	}
 	return adapter
+}
+
+func newSealedStore(t *testing.T) *sealedstore.Store {
+	t.Helper()
+	store, err := sealedstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
 }
 
 func assertJSONEqual(t *testing.T, raw json.RawMessage, expected string) {

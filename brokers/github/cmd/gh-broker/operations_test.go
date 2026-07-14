@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 const operationTestSecret = "0123456789abcdef0123456789abcdef"
@@ -112,6 +114,57 @@ func TestOperationSubmissionAndLifecycleUseAgentV1(t *testing.T) {
 		if !strings.Contains(output.String(), `"id": "op_test"`) {
 			t.Fatalf("%s output=%s", action, output.String())
 		}
+	}
+}
+
+func TestSealedOperationUploadsSecretBeforeSubmission(t *testing.T) {
+	const operation = "workflow.actions_create_or_update_repo_secret"
+	const requestKey = "sealed-request"
+	const secret = "Y2FuYXJ5"
+	var uploaded, submitted []byte
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/agent/v1/sealed-payloads":
+			if request.Header.Get("X-Broker-Operation") != operation || request.Header.Get("X-Broker-Idempotency-Key") != requestKey {
+				t.Errorf("sealed headers = %#v", request.Header)
+			}
+			uploaded, _ = io.ReadAll(request.Body)
+			writer.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(writer).Encode(sealedstore.Reference{
+				ID: "sealed_012345678901234567890123", Owner: "bob", Purpose: operation, RequestKey: requestKey,
+				Digest: strings.Repeat("a", 64), Size: len(uploaded), ExpiresAt: time.Now().Add(time.Hour).Unix(),
+			})
+		case "/api/agent/v1/operations":
+			submitted, _ = io.ReadAll(request.Body)
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StatePending))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	sealedFile := filepath.Join(t.TempDir(), "secret.json")
+	if err := os.WriteFile(sealedFile, []byte(`{"input":{"encrypted_value":"`+secret+`","key_id":"key-1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	descriptor, _ := opcatalog.ByName(operation)
+	var output bytes.Buffer
+	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
+		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`,
+		"--arguments-json", `{"secret_name":"DEPLOY_TOKEN"}`,
+		"--sealed-file", sealedFile,
+		"--idempotency-key", requestKey,
+		"--reason", "rotate deploy secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(uploaded, []byte(secret)) || bytes.Contains(submitted, []byte(secret)) {
+		t.Fatalf("uploaded=%s submitted=%s", uploaded, submitted)
+	}
+	if !bytes.Contains(submitted, []byte(`"sealed_payload"`)) || !bytes.Contains(submitted, []byte(`"secret_name":"DEPLOY_TOKEN"`)) {
+		t.Fatalf("submitted=%s", submitted)
 	}
 }
 

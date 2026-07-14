@@ -21,14 +21,17 @@ import (
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
+	bkauth "github.com/osolmaz/brokerkit/auth"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
+	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
@@ -36,6 +39,8 @@ import (
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/sealedpayload"
+	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -52,6 +57,8 @@ type Server struct {
 	operationRegistry   *operations.Registry
 	operationRuntime    *operations.Runtime
 	agentAPI            *agentapi.Handler
+	sealedStore         *sealedstore.Store
+	sealedPayloads      *sealedpayload.Service
 	notifier            notify.Notifier
 	telegram            *bktelegram.Client
 	githubCredentials   *githubauth.Manager
@@ -97,7 +104,15 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
 		operatorConfigured: cfg.OperatorSecret != "",
 	}
-	adapters, err := operations.NewGeneratedAdapters(appSource, operations.Options{RequestingUserID: cfg.GitHubUserID})
+	server.sealedStore, err = sealedstore.Open(stateDir(cfg.StateDir))
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	adapters, err := operations.NewGeneratedAdapters(appSource, operations.Options{
+		RequestingUserID: cfg.GitHubUserID,
+		SealedStore:      server.sealedStore,
+	})
 	if err != nil {
 		_ = core.database.Close()
 		return nil, err
@@ -129,6 +144,19 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	server.agentAPI, err = agentapi.New(agentapi.Options{
 		Store: server.operations, Authenticate: core.control.Clients.AuthenticateHeader,
 		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "gh-broker",
+	})
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	server.sealedPayloads, err = sealedpayload.New(sealedpayload.Options{
+		Store: server.sealedStore,
+		Descriptor: func(name string) (capability.Descriptor, bool) {
+			descriptor, found := opcatalog.ByName(name)
+			return descriptor.Descriptor, found
+		},
+		Authenticate: server.authenticateAgentUpload,
+		WriteFailure: writeSealedPayloadFailure,
 	})
 	if err != nil {
 		_ = core.database.Close()
@@ -228,6 +256,7 @@ func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator 
 
 func (s *Server) registerRoutes(auth security.TokenAuth) {
 	s.agentAPI.Register(s.echo)
+	s.echo.POST("/api/agent/v1/sealed-payloads", s.sealedPayloads.Upload)
 	protected := s.echo.Group("")
 	protected.Use(auth.Middleware)
 	protected.Use(validateRouteParams)
@@ -241,6 +270,33 @@ func (s *Server) registerRoutes(auth security.TokenAuth) {
 	protected.POST("/:owner/:repoGit/git-upload-pack", s.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", s.gitReceivePack)
 	s.echo.POST("/webhooks/github", s.githubWebhook)
+}
+
+func (s *Server) authenticateAgentUpload(response http.ResponseWriter, request *http.Request) (string, bool) {
+	client, err := s.control.Clients.AuthenticateHeader(request.Header.Get("Authorization"))
+	if err == nil {
+		return client, true
+	}
+	status := http.StatusForbidden
+	reason := "bad_auth"
+	message := "Authentication failed"
+	if errors.Is(err, bkauth.ErrMissing) {
+		status = http.StatusUnauthorized
+		reason = "missing_auth"
+		message = "Authentication required"
+		response.Header().Set("WWW-Authenticate", `Bearer realm="gh-broker"`)
+	}
+	writeSealedPayloadFailure(response, status, reason, message)
+	return "", false
+}
+
+func writeSealedPayloadFailure(response http.ResponseWriter, status int, reason, message string) {
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(status)
+	_ = json.NewEncoder(response).Encode(map[string]any{
+		"status": "fail",
+		"data":   map[string]string{"reason": reason, "message": message},
+	})
 }
 
 // OperatorHandler exposes Brokerkit's shared inbox over the canonical grant store.
@@ -306,6 +362,9 @@ func (s *Server) Close() error {
 		}
 		if s.operationRuntime != nil {
 			s.operationRuntime.Wait()
+		}
+		if s.sealedPayloads != nil {
+			s.sealedPayloads.Wait()
 		}
 		s.backgroundWorkers.Wait()
 		s.closeErr = s.database.Close()

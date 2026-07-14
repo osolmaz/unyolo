@@ -183,29 +183,51 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 	if !found {
 		return nil, errors.New("tool is not advertised for this client and deployment")
 	}
-	if descriptor.Sealed {
-		return nil, errors.New("sealed GitHub operation execution is not enabled in stages 2-3")
-	}
 	var input struct {
-		Target         json.RawMessage `json:"target"`
-		Arguments      json.RawMessage `json:"arguments"`
-		Attrs          map[string]any  `json:"attrs"`
-		Minutes        int             `json:"minutes"`
-		MaxUses        json.RawMessage `json:"max_uses"`
-		Reason         string          `json:"reason"`
-		IdempotencyKey string          `json:"idempotency_key"`
-		WaitSeconds    int             `json:"wait_seconds"`
+		Target          json.RawMessage `json:"target"`
+		Arguments       json.RawMessage `json:"arguments"`
+		SealedArguments json.RawMessage `json:"sealed_arguments"`
+		Attrs           map[string]any  `json:"attrs"`
+		Minutes         int             `json:"minutes"`
+		MaxUses         json.RawMessage `json:"max_uses"`
+		Reason          string          `json:"reason"`
+		IdempotencyKey  string          `json:"idempotency_key"`
+		WaitSeconds     int             `json:"wait_seconds"`
 	}
-	if strictjson.Decode(call.Arguments, &input, true) != nil || input.Reason == "" || input.IdempotencyKey == "" || input.WaitSeconds < 0 || input.WaitSeconds > 900 {
+	if strictjson.Decode(call.Arguments, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 ||
+		input.IdempotencyKey == "" || input.WaitSeconds < 0 || input.WaitSeconds > 900 {
 		return nil, errors.New("invalid typed tool arguments")
 	}
 	if len(input.Arguments) == 0 {
 		input.Arguments = json.RawMessage(`{}`)
 	}
-	if err := schemaregistry.ValidateSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
+	connection, err := loadOperationConnection(getenv)
+	if err != nil {
 		return nil, err
 	}
-	client, err := loadOperationClient(getenv)
+	if descriptor.Sealed {
+		if len(input.SealedArguments) == 0 {
+			return nil, errors.New("sealed_arguments are required")
+		}
+		if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
+			return nil, err
+		}
+		if err := schemaregistry.ValidateSealedArguments(descriptor.Name, input.SealedArguments); err != nil {
+			return nil, err
+		}
+		input.Arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, input.IdempotencyKey, input.Arguments, input.SealedArguments)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if len(input.SealedArguments) != 0 {
+			return nil, errors.New("operation does not accept sealed_arguments")
+		}
+		if err := schemaregistry.ValidateSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
+			return nil, err
+		}
+	}
+	client, err := connection.client()
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -9,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +20,11 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/clienthttp"
+	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/sealedpayload"
+	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 const operationWaitDefault = 15 * time.Minute
@@ -112,6 +119,7 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	flags.SetOutput(io.Discard)
 	targetText := flags.String("target-json", "", "closed target JSON")
 	argumentsText := flags.String("arguments-json", "{}", "closed argument JSON")
+	sealedFile := flags.String("sealed-file", "", "sealed argument JSON file")
 	reason := flags.String("reason", "Run "+descriptor.Name+" through GH Broker", "approval reason")
 	key := flags.String("idempotency-key", "", "stable retry key")
 	wait := flags.Bool("wait", false, "wait for terminal state")
@@ -119,14 +127,11 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	if flags.Parse(args) != nil || flags.NArg() != 0 || *targetText == "" {
 		return exitError{code: 64, message: "closed --target-json and valid operation flags are required"}
 	}
-	if descriptor.Sealed {
-		return exitError{code: 64, message: "sealed GitHub inputs are cataloged but not enabled before the credential/execution stages"}
-	}
 	target, arguments := json.RawMessage(*targetText), json.RawMessage(*argumentsText)
-	if err := schemaregistry.ValidateSubmission(descriptor.Name, target, arguments); err != nil {
+	if err := validateOperationInput(descriptor, target, arguments, *sealedFile); err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
-	if strings.TrimSpace(*reason) == "" {
+	if strings.TrimSpace(*reason) == "" || len(*reason) > 2000 {
 		return exitError{code: 64, message: "reason is required"}
 	}
 	if *key == "" {
@@ -136,9 +141,23 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 		}
 		*key = generated
 	}
-	client, err := loadOperationClient(os.Getenv)
+	connection, err := loadOperationConnection(os.Getenv)
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
+	}
+	if descriptor.Sealed {
+		sealed, readErr := readSealedArguments(*sealedFile)
+		if readErr != nil {
+			return exitError{code: 64, message: readErr.Error()}
+		}
+		arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, *key, arguments, sealed)
+		if err != nil {
+			return err
+		}
+	}
+	client, err := connection.client()
+	if err != nil {
+		return err
 	}
 	operation, err := client.Submit(ctx, agentv1.SubmitRequest{IdempotencyKey: *key, Operation: descriptor.Name, Target: target, Arguments: arguments, Reason: *reason})
 	if err != nil {
@@ -184,6 +203,19 @@ func runOperationLifecycle(ctx context.Context, stdout io.Writer, action string,
 }
 
 func loadOperationClient(getenv func(string) string) (*agentclient.Client, error) {
+	connection, err := loadOperationConnection(getenv)
+	if err != nil {
+		return nil, err
+	}
+	return connection.client()
+}
+
+type operationConnection struct {
+	baseURL string
+	secret  string
+}
+
+func loadOperationConnection(getenv func(string) string) (operationConnection, error) {
 	baseURL := strings.TrimSpace(getenv("GH_BROKER_URL"))
 	secret := strings.TrimSpace(getenv("GH_BROKER_SHARED_SECRET"))
 	if secret == "" {
@@ -191,15 +223,86 @@ func loadOperationClient(getenv func(string) string) (*agentclient.Client, error
 		if path != "" {
 			data, err := os.ReadFile(path) // #nosec G304 -- the client credential path is explicit operator configuration.
 			if err != nil {
-				return nil, errors.New("GH Broker client credential could not be read")
+				return operationConnection{}, errors.New("GH Broker client credential could not be read")
 			}
 			secret = strings.TrimSpace(string(data))
 		}
 	}
 	if baseURL == "" || secret == "" {
-		return nil, errors.New("GH Broker client URL and credential are not configured")
+		return operationConnection{}, errors.New("GH Broker client URL and credential are not configured")
 	}
-	return agentclient.New(agentclient.Options{BaseURL: baseURL, Credential: secret})
+	return operationConnection{baseURL: baseURL, secret: secret}, nil
+}
+
+func (connection operationConnection) client() (*agentclient.Client, error) {
+	return agentclient.New(agentclient.Options{BaseURL: connection.baseURL, Credential: connection.secret})
+}
+
+func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile string) error {
+	if descriptor.Sealed {
+		if sealedFile == "" {
+			return errors.New("sealed operation requires --sealed-file")
+		}
+		return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
+	}
+	if sealedFile != "" {
+		return errors.New("operation does not accept --sealed-file")
+	}
+	return schemaregistry.ValidateSubmission(descriptor.Name, target, public)
+}
+
+func readSealedArguments(path string) (json.RawMessage, error) {
+	file, err := os.Open(path) // #nosec G304 -- the explicit sealed input path is caller controlled.
+	if err != nil {
+		return nil, errors.New("sealed arguments could not be read")
+	}
+	defer func() { _ = file.Close() }()
+	payload, err := httpx.ReadLimited(file, sealedpayload.MaxPayloadBytes)
+	if err != nil || len(payload) == 0 {
+		return nil, errors.New("sealed arguments must be bounded JSON")
+	}
+	var object map[string]any
+	if strictjson.Decode(payload, &object, false) != nil || object == nil {
+		return nil, errors.New("sealed arguments must be a JSON object")
+	}
+	return payload, nil
+}
+
+func (connection operationConnection) wrapSealedArguments(ctx context.Context, operation, requestKey string, public, sealed json.RawMessage) (json.RawMessage, error) {
+	reference, err := connection.uploadSealedPayload(ctx, operation, requestKey, sealed)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{"public": public, "sealed_payload": reference})
+}
+
+func (connection operationConnection) uploadSealedPayload(ctx context.Context, operation, requestKey string, payload []byte) (sealedstore.Reference, error) {
+	base, err := clienthttp.ParseBaseURL(connection.baseURL)
+	if err != nil {
+		return sealedstore.Reference{}, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+"/api/agent/v1/sealed-payloads", bytes.NewReader(payload))
+	if err != nil {
+		return sealedstore.Reference{}, errors.New("create sealed payload request")
+	}
+	request.Header.Set("Authorization", "Bearer "+connection.secret)
+	request.Header.Set("Content-Type", "application/octet-stream")
+	request.Header.Set("X-Broker-Operation", operation)
+	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	if err != nil {
+		return sealedstore.Reference{}, errors.New("upload sealed payload")
+	}
+	defer func() { _ = response.Body.Close() }()
+	data, readErr := httpx.ReadLimited(response.Body, 1<<20)
+	if readErr != nil || response.StatusCode != http.StatusCreated {
+		return sealedstore.Reference{}, errors.New("broker rejected sealed payload")
+	}
+	var reference sealedstore.Reference
+	if strictjson.Decode(data, &reference, true) != nil || reference.ID == "" || reference.Purpose != operation || reference.RequestKey != requestKey {
+		return sealedstore.Reference{}, errors.New("broker returned an invalid sealed payload reference")
+	}
+	return reference, nil
 }
 
 func operationRequestID() (string, error) {

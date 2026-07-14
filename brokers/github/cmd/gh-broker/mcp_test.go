@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 func mcpTestEnv(values map[string]string) func(string) string {
@@ -121,6 +124,46 @@ func TestMCPTypedToolSubmission(t *testing.T) {
 	response := handleMCP(t.Context(), mcpTestEnv(env), mcpRequest{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "tools/call", Params: json.RawMessage(`{"name":"gh_repo_metadata_read","arguments":{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","idempotency_key":"request-2","wait_seconds":0}}`)})
 	if response.Error != nil || response.Result.(map[string]any)["isError"] != false {
 		t.Fatalf("response=%#v", response)
+	}
+}
+
+func TestMCPSealedToolUsesOneTimePayloadBoundary(t *testing.T) {
+	const operation = "workflow.actions_create_or_update_repo_secret"
+	var submitted []byte
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/agent/v1/sealed-payloads":
+			payload, _ := io.ReadAll(request.Body)
+			if !bytes.Contains(payload, []byte("Y2FuYXJ5")) {
+				t.Errorf("sealed payload = %s", payload)
+			}
+			writer.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(writer).Encode(sealedstore.Reference{ID: "sealed_012345678901234567890123", Owner: "bob", Purpose: operation,
+				RequestKey: "mcp-secret", Digest: strings.Repeat("a", 64), Size: len(payload), ExpiresAt: time.Now().Add(time.Hour).Unix()})
+		case "/api/agent/v1/operations":
+			submitted, _ = io.ReadAll(request.Body)
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StatePending))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_MCP_EXACT_OPERATIONS": operation, "GH_BROKER_MCP_CLIENT_OPERATIONS": operation,
+		"GH_BROKER_MCP_POLICY_OPERATIONS": operation, "GH_BROKER_MCP_RUNTIME_OPERATIONS": operation,
+	}
+	_, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
+		Name:      "gh_workflow_actions_create_or_update_repo_secret",
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{"secret_name":"DEPLOY_TOKEN"},"sealed_arguments":{"input":{"encrypted_value":"Y2FuYXJ5","key_id":"key-1"}},"reason":"rotate secret","idempotency_key":"mcp-secret","wait_seconds":0}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(submitted, []byte("Y2FuYXJ5")) || !bytes.Contains(submitted, []byte(`"sealed_payload"`)) {
+		t.Fatalf("submitted = %s", submitted)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
@@ -171,6 +172,44 @@ func ValidateSubmission(name string, targetRaw, argumentsRaw json.RawMessage) er
 	}
 	if err := validateRaw(targetRaw, target); err != nil {
 		return fmt.Errorf("target %w", err)
+	}
+	if err := validateRaw(argumentsRaw, operation.Arguments); err != nil {
+		return fmt.Errorf("arguments %w", err)
+	}
+	return nil
+}
+
+func ValidatePublicSubmission(name string, targetRaw, argumentsRaw json.RawMessage) error {
+	descriptor, found := opcatalog.ByName(name)
+	if !found || !descriptor.Sealed {
+		return errors.New("unknown sealed GitHub operation")
+	}
+	target, public, _ := InputSchemas(descriptor.Descriptor)
+	if err := validateRaw(targetRaw, target); err != nil {
+		return fmt.Errorf("target %w", err)
+	}
+	if err := validateRaw(argumentsRaw, public); err != nil {
+		return fmt.Errorf("public arguments %w", err)
+	}
+	return nil
+}
+
+func ValidateSealedArguments(name string, argumentsRaw json.RawMessage) error {
+	descriptor, found := opcatalog.ByName(name)
+	if !found || !descriptor.Sealed {
+		return errors.New("unknown sealed GitHub operation")
+	}
+	_, _, sealed := InputSchemas(descriptor.Descriptor)
+	if err := validateRaw(argumentsRaw, sealed); err != nil {
+		return fmt.Errorf("sealed arguments %w", err)
+	}
+	return nil
+}
+
+func ValidateArguments(name string, argumentsRaw json.RawMessage) error {
+	operation, found := ForOperation(name)
+	if !found {
+		return errors.New("unknown GitHub operation")
 	}
 	if err := validateRaw(argumentsRaw, operation.Arguments); err != nil {
 		return fmt.Errorf("arguments %w", err)
