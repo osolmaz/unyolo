@@ -69,7 +69,7 @@ func ByName(name string) (Descriptor, bool) {
 }
 
 func Validate(values []Descriptor) error {
-	if err := capability.Validate(CapabilityDescriptors(values), capability.ValidationOptions{Provider: "GitHub", ExpectedCount: ExpectedCount, MCPToolPrefix: "gh_"}); err != nil {
+	if err := capability.Validate(CapabilityDescriptors(values), capability.ValidationOptions{Provider: "GitHub", ExpectedCount: ExpectedCount, MCPToolPrefix: "gh_", RequireDefaultPolicyEffect: true}); err != nil {
 		return err
 	}
 	for _, value := range values {
