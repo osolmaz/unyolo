@@ -10,6 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/audit"
@@ -64,6 +65,7 @@ type Server struct {
 	operatorConfigured bool
 	database           *state.Database
 	operations         *agentops.Store
+	admission          *admission.Controller
 	authorization      *bkauthorization.Coordinator
 	operationRegistry  *operations.Registry
 	operationRuntime   *operations.Runtime
@@ -113,10 +115,15 @@ func New(opts Options) (*Server, error) {
 	e.HideBanner = true
 	e.HidePort = true
 	e.Use(middleware.Recover(), noStore)
+	operationStore := agentops.New(opts.Database)
+	admissionController, err := admission.New(secretNames(opts.ClientSecrets), admission.DefaultLimits(), operationStore.AdmissionUsage)
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: grantStore, plans: plans,
 		identities: opts.Identities, helper: opts.Helper, validator: validator, notifier: opts.Notifier, poller: opts.Poller,
 		audit: opts.Audit, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
-		database: opts.Database, operations: agentops.New(opts.Database), authorization: authorization, operationRegistry: operationRegistry}
+		database: opts.Database, operations: operationStore, admission: admissionController, authorization: authorization, operationRegistry: operationRegistry}
 	server.operationRuntime, err = server.newOperationRuntime()
 	if err != nil {
 		return nil, err
@@ -128,6 +135,14 @@ func New(opts Options) (*Server, error) {
 	}
 	server.registerRoutes()
 	return server, nil
+}
+
+func secretNames(values map[string]string) []string {
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	return names
 }
 
 func (s *Server) Handler() http.Handler { return s.echo }

@@ -4,6 +4,7 @@ package agentapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -64,9 +65,10 @@ var _ agentwire.ServerInterface = (*Handler)(nil)
 
 // Error is a provider-safe stable Agent V1 HTTP failure.
 type Error struct {
-	Status  int
-	Code    string
-	Message string
+	Status            int
+	Code              string
+	Message           string
+	RetryAfterSeconds int
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -328,5 +330,8 @@ func writeStoreError(c echo.Context, err error, action string) error {
 }
 
 func writeError(c echo.Context, err *Error) error {
+	if err.Status == http.StatusTooManyRequests && err.RetryAfterSeconds > 0 {
+		c.Response().Header().Set("Retry-After", fmt.Sprintf("%d", err.RetryAfterSeconds))
+	}
 	return c.JSON(err.Status, agentwire.ErrorEnvelope{Error: agentwire.OperationError{Code: err.Code, Message: err.Message}})
 }

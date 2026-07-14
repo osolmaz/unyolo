@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
@@ -57,6 +58,7 @@ type Failure struct {
 type Options[I, P, A any] struct {
 	Broker              string
 	Operations          *agentops.Store
+	Admission           *admission.Controller
 	Registry            *Registry[I, P, A]
 	Authorization       *authorization.Coordinator
 	Grants              *grants.Store
@@ -198,12 +200,40 @@ func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request ag
 			return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
 		}
 	}
+	permit, err := r.admit(ctx, client)
+	if err != nil {
+		return agentv1.Operation{}, false, err
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
 	plan, err := adapter.Resolve(ctx, input)
 	if err != nil {
 		return agentv1.Operation{}, false, r.options.MapSubmissionError(err)
 	}
 	r.options.SetClient(&plan, client)
-	return r.submitResolved(ctx, client, request, adapter, plan)
+	operation, created, err := r.submitResolved(ctx, client, request, adapter, plan)
+	if created && permit != nil {
+		permit.Commit()
+	}
+	return operation, created, err
+}
+
+func (r *Runtime[I, P, A]) admit(ctx context.Context, client string) (*admission.Permit, error) {
+	if r.options.Admission == nil {
+		return nil, nil
+	}
+	permit, err := r.options.Admission.Admit(ctx, client)
+	if err == nil {
+		return permit, nil
+	}
+	var limit *admission.LimitError
+	if errors.As(err, &limit) {
+		seconds := int((limit.RetryAfter + time.Second - 1) / time.Second)
+		return nil, &agentapi.Error{Status: http.StatusTooManyRequests, Code: limit.Code,
+			Message: "Operation admission limit reached", RetryAfterSeconds: seconds}
+	}
+	return nil, operationAPIError(http.StatusServiceUnavailable, "operation_store_unavailable", "Could not check operation capacity")
 }
 
 func (r *Runtime[I, P, A]) decode(request agentv1.SubmitRequest) (Adapter[I, P, A], I, error) {

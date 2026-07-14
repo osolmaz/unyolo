@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
+	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/authorization"
@@ -119,6 +121,34 @@ func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
 	completed, err := operations.Get("agent", operation.ID)
 	if err != nil || completed.State != agentv1.StateSucceeded || string(completed.Result) != `{"created":true}` || adapter.cleanupCount.Load() != 1 || adapter.recordedStatus.Load() != 201 {
 		t.Fatalf("completed = %+v cleanup=%d status=%d err=%v", completed, adapter.cleanupCount.Load(), adapter.recordedStatus.Load(), err)
+	}
+}
+
+func TestRuntimeAdmissionDoesNotChargeIdempotentReplay(t *testing.T) {
+	runtime, _, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
+	defer closeRuntime()
+	limits := admission.DefaultLimits()
+	limits.RequestsPerWindow = 1
+	controller, err := admission.New([]string{"agent"}, limits, operations.AdmissionUsage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.options.Admission = controller
+	request := agentv1.SubmitRequest{IdempotencyKey: "admitted-1", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"}
+	first, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || !created {
+		t.Fatalf("first submit = %+v, %v, %v", first, created, err)
+	}
+	replay, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || created || replay.ID != first.ID {
+		t.Fatalf("replay = %+v, %v, %v", replay, created, err)
+	}
+	request.IdempotencyKey = "admitted-2"
+	_, _, err = runtime.Submit(t.Context(), "agent", request)
+	var apiErr *agentapi.Error
+	if !errors.As(err, &apiErr) || apiErr.Status != 429 || apiErr.Code != "submission_rate_limited" || apiErr.RetryAfterSeconds < 1 {
+		t.Fatalf("limited submit = %#v", err)
 	}
 }
 

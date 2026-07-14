@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/audit"
@@ -95,6 +96,7 @@ type Server struct {
 	grants              *grants.Store
 	plans               *hfplan.Store
 	operations          *agentops.Store
+	admission           *admission.Controller
 	operationRegistry   *operations.Registry
 	operationRuntime    *operations.Runtime
 	hubClient           *hubclient.Client
@@ -194,6 +196,14 @@ func prepareServer(opts Options) (*Server, context.Context, error) {
 		return nil, nil, err
 	}
 	return server, ctx, nil
+}
+
+func secretNames(values map[string]string) []string {
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	return names
 }
 
 func startServer(ctx context.Context, server *Server, opts Options) (*Server, error) {
@@ -414,6 +424,12 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		_ = database.Close()
 		return nil, err
 	}
+	operationStore := agentops.New(database)
+	admissionController, err := admission.New(secretNames(clients), admission.DefaultLimits(), operationStore.AdmissionUsage)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	server := &Server{
 		control:        runtime,
 		policy:         opts.Scope,
@@ -433,7 +449,8 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		maxBody:            opts.Config.MaxPackBytes,
 		grants:             store,
 		plans:              plans,
-		operations:         agentops.New(database),
+		operations:         operationStore,
+		admission:          admissionController,
 		operationRegistry:  operationRegistry,
 		hubClient:          hub,
 		sealedStore:        sealedPayloads,

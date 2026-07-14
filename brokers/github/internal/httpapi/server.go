@@ -17,6 +17,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
@@ -53,6 +54,7 @@ type Server struct {
 	control             *controlplane.Runtime
 	database            *state.Database
 	operations          *agentops.Store
+	admission           *admission.Controller
 	operationRegistry   *operations.Registry
 	operationRuntime    *operations.Runtime
 	agentAPI            *agentapi.Handler
@@ -98,9 +100,15 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 		_ = core.database.Close()
 		return nil, err
 	}
+	operationStore := agentops.New(core.database)
+	admissionController, err := admission.New([]string{cfg.ClientID}, admission.DefaultLimits(), operationStore.AdmissionUsage)
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
 	server := &Server{
 		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
-		database: core.database, operations: agentops.New(core.database), notifier: core.notifier, telegram: core.telegram,
+		database: core.database, operations: operationStore, admission: admissionController, notifier: core.notifier, telegram: core.telegram,
 		githubCredentials: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
 		credentialStore: credentialSlots,
 		githubClient:    githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,

@@ -179,6 +179,42 @@ func (q *Queries) GetOperationForClient(ctx context.Context, arg GetOperationFor
 	return i, err
 }
 
+const getOperationUsage = `-- name: GetOperationUsage :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN client_id = ?1 AND state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_active,
+    CAST(COALESCE(SUM(CASE WHEN client_id = ?1 AND state = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_pending,
+    CAST(COALESCE(SUM(CASE WHEN state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_active,
+    CAST(COALESCE(SUM(CASE WHEN state = 'executing' THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_executing
+FROM operations
+`
+
+type GetOperationUsageRow struct {
+	ClientActive    int64
+	ClientPending   int64
+	GlobalActive    int64
+	GlobalExecuting int64
+}
+
+// GetOperationUsage
+//
+//	SELECT
+//	    CAST(COALESCE(SUM(CASE WHEN client_id = ?1 AND state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_active,
+//	    CAST(COALESCE(SUM(CASE WHEN client_id = ?1 AND state = 'pending' THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_pending,
+//	    CAST(COALESCE(SUM(CASE WHEN state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_active,
+//	    CAST(COALESCE(SUM(CASE WHEN state = 'executing' THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_executing
+//	FROM operations
+func (q *Queries) GetOperationUsage(ctx context.Context, clientID string) (GetOperationUsageRow, error) {
+	row := q.db.QueryRowContext(ctx, getOperationUsage, clientID)
+	var i GetOperationUsageRow
+	err := row.Scan(
+		&i.ClientActive,
+		&i.ClientPending,
+		&i.GlobalActive,
+		&i.GlobalExecuting,
+	)
+	return i, err
+}
+
 const getPlan = `-- name: GetPlan :one
 SELECT digest, schema_name, canonical, created_at
 FROM plans

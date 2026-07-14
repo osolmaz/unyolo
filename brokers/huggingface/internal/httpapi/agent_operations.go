@@ -30,6 +30,7 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 	return operationruntime.New(operations.RuntimeOptions{
 		Broker:        "hf-broker",
 		Operations:    s.operations,
+		Admission:     s.admission,
 		Registry:      s.operationRegistry.Registry,
 		Authorization: s.authorization,
 		Grants:        s.grants,

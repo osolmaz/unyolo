@@ -518,7 +518,7 @@ func newTestServer(database *state.Database, helper *fakeHelper, directory strin
 	}
 	client := &executorclient.Client{SocketPath: "/fake/helper.sock", Dial: helper.dial}
 	return New(Options{Policy: brokerPolicy, Catalog: snapshot, Database: database, Identities: fakeIdentities{}, Helper: client,
-		ClientSecrets: map[string]string{"bob": testClientSecret}, OperatorSecrets: map[string]string{"operator": testOperatorSecret},
+		ClientSecrets: map[string]string{"bob": testClientSecret, "unmatched-client": strings.Repeat("u", 32)}, OperatorSecrets: map[string]string{"operator": testOperatorSecret},
 		Audit: audit.New(&bytes.Buffer{}), Now: time.Now, OperatorConfigured: true})
 }
 

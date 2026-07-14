@@ -360,6 +360,14 @@ decisions so overload cannot prevent recovery. Metrics labels and in-memory
 accounting are bounded by configured client identities, never caller-supplied
 operation arguments.
 
+Implemented on the production-readiness branch: Agent V1 submissions use one
+shared controller backed by SQLite occupancy counts and short-lived in-memory
+reservations. HF, GH, and sudo use the same conservative defaults; authenticated
+idempotent replays bypass accounting, concurrent submissions cannot race past
+capacity, and refusals return stable `429` codes with `Retry-After`. Remaining
+work here is configuration and override plumbing plus stream, sealed-payload,
+notification, and reserved recovery-capacity accounting.
+
 ### Credential replacement and revocation
 
 Define one shared credential lifecycle for broker client secrets, operator

@@ -23,7 +23,7 @@ import (
 
 func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 	return operationruntime.New(operations.RuntimeOptions{
-		Broker: "sudo-broker", Operations: s.operations, Registry: s.operationRegistry.Registry,
+		Broker: "sudo-broker", Operations: s.operations, Admission: s.admission, Registry: s.operationRegistry.Registry,
 		Authorization: s.authorization, Grants: s.grants, Decide: s.policy.Decide,
 		Project:   func(request corepolicy.Request) corepolicy.Request { return request },
 		SetClient: func(value *operations.Plan, client string) { value.Authorization.Client = client },
