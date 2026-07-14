@@ -38,6 +38,8 @@ func ForOperation(descriptor capability.Descriptor) capability.SurfaceProjection
 		projection.Arguments = documentName
 	case "member.users_create_public_ssh_key_for_authenticated_user", "member.users_create_ssh_signing_key_for_authenticated_user":
 		projection.Arguments = publicMaterial
+	case "repo.create_deploy_key":
+		projection.Arguments = publicMaterial
 	case "member.users_create_gpg_key_for_authenticated_user":
 		projection.Arguments = armoredMaterial
 	case "commit.git_create_commit":

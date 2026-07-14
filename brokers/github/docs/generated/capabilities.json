@@ -32579,13 +32579,13 @@
     "name": "repo.create_deploy_key",
     "operation_revision": 1,
     "summary": "Create a deploy key",
-    "disposition": "E/X/S",
+    "disposition": "E/X",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": true,
+    "sealed": false,
     "internal": false,
     "implementation_status": "implemented",
-    "risk": "critical",
+    "risk": "high",
     "target_kind": "repo",
     "max_uses": 1,
     "request_ttl_seconds": 300,
@@ -32598,9 +32598,6 @@
     "argument_schema": "arguments.repo.create_deploy_key.v1",
     "result_schema": "result.repo.create_deploy_key.v1",
     "credential_kind": "installation",
-    "sealed_input_paths": [
-      "input"
-    ],
     "upstream_binding_ids": [
       "rest:repos/create-deploy-key"
     ],

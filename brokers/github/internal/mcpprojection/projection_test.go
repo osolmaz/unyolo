@@ -10,6 +10,7 @@ func TestRequiredProjectionRegistry(t *testing.T) {
 	for _, operation := range []string{
 		"cache.actions_delete_actions_cache_by_key", "repo.read_license",
 		"member.users_create_public_ssh_key_for_authenticated_user", "member.users_create_gpg_key_for_authenticated_user",
+		"repo.create_deploy_key",
 		"commit.git_create_commit", "secret_scanning.secret_scanning_get_alert",
 		"artifact.actions_download_artifact",
 	} {

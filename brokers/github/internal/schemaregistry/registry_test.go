@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/capability"
 )
 
 func TestSchemasCoverCatalogAndAreClosed(t *testing.T) {
@@ -193,6 +194,18 @@ func TestInputSchemasSplitSealedArguments(t *testing.T) {
 	target, arguments, sealed = InputSchemas(protected.Descriptor)
 	if target == nil || arguments == nil || sealed == nil {
 		t.Fatalf("sealed target=%#v arguments=%#v sealed=%#v", target, arguments, sealed)
+	}
+}
+
+func TestDeployKeyUsesPublicArguments(t *testing.T) {
+	descriptor, found := opcatalog.ByName("repo.create_deploy_key")
+	if !found || descriptor.Sealed || !descriptor.ExplicitOnly || descriptor.Risk != capability.RiskHigh {
+		t.Fatalf("deploy key descriptor = %+v, found=%t", descriptor, found)
+	}
+	_, arguments, sealed := InputSchemas(descriptor.Descriptor)
+	input := arguments["properties"].(map[string]any)["input"].(map[string]any)
+	if input["properties"].(map[string]any)["key"] == nil || sealed != nil {
+		t.Fatalf("deploy key arguments=%#v sealed=%#v", arguments, sealed)
 	}
 }
 

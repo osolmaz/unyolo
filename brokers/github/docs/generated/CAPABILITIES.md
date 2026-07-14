@@ -1038,7 +1038,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `repo.create_check_run` | medium | operator-only | user | repo | no |
 | `repo.create_check_suite` | medium | operator-only | user | repo | no |
 | `repo.create_commit_on_branch` | medium | operator-only | user | repo | no |
-| `repo.create_deploy_key` | critical | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_deploy_key` | high | implemented | installation | repo | typed CLI/MCP |
 | `repo.create_dispatch_event` | medium | implemented | installation | repo | typed CLI/MCP |
 | `repo.create_environment` | medium | operator-only | user | repo | no |
 | `repo.create_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
