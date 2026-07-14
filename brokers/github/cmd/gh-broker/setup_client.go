@@ -6,11 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/clientconfig"
+	"github.com/osolmaz/brokerkit/endpoint"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -19,7 +19,7 @@ const setupUsage = `usage:
   gh-broker setup systemd --scope-file FILE (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
   gh-broker setup github-user enroll|rotate --state-dir DIR --credential-file FILE --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup github-user revoke --state-dir DIR --user-id ID --github-app-client-id-file FILE --github-app-client-secret-file FILE
-  gh-broker setup client --client <name> --url <url> --secret-file <path> [--home-dir <path>]`
+  gh-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
 
 type setupClientOptions = bksetup.ClientOptions
 
@@ -37,8 +37,7 @@ type setupSystemdOptions struct {
 	OperatorID                string
 	OperatorSecretFile        string
 	OperatorSecret            string
-	OperatorBindAddr          string
-	OperatorPort              int
+	OperatorEndpoint          string
 	TelegramBotTokenFile      string
 	TelegramChatID            int64
 	DevTokenFallback          bool
@@ -97,7 +96,7 @@ func parseSetupClient(stderr io.Writer, args []string) (setupClientOptions, erro
 }
 
 func ghClientDefaults() bksetup.ClientDefaults {
-	return bksetup.ClientDefaults{BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientName: "bob"}
+	return bksetup.ClientDefaults{BrokerName: "gh-broker", EnvPrefix: "GH_BROKER"}
 }
 
 func validateSetupClientOptions(opts setupClientOptions) error {
@@ -118,7 +117,7 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	opts := setupSystemdOptions{
 		SystemdOptions: bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
-			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081,
+			Endpoint: "unix:///run/brokerkit/github/agent/broker.sock",
 		}),
 	}
 	var flagOutput strings.Builder
@@ -134,10 +133,9 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	fs.StringVar(&opts.GitHubWebhookSecretFile, "github-webhook-secret-file", "", "file containing the GitHub webhook secret")
 	fs.StringVar(&opts.ScopeFile, "scope-file", "", "policy scope JSON file")
 	fs.BoolVar(&opts.DevTokenFallback, "dev-token-fallback", false, "configure the current GitHub token fallback runtime")
-	fs.StringVar(&opts.OperatorID, "operator", "onur", "operator identity for the protected inbox")
+	fs.StringVar(&opts.OperatorID, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
-	fs.StringVar(&opts.OperatorBindAddr, "operator-bind-addr", "127.0.0.1", "operator inbox listen address")
-	fs.IntVar(&opts.OperatorPort, "operator-port", 8082, "operator inbox listen port")
+	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/brokerkit/github/operator/broker.sock", "operator inbox endpoint URI")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	if err := fs.Parse(args); err != nil {
@@ -201,11 +199,15 @@ func validateSetupOperatorCredentials(opts setupSystemdOptions) error {
 }
 
 func validateSetupOperatorListener(opts setupSystemdOptions) error {
-	if net.ParseIP(opts.OperatorBindAddr) == nil && opts.OperatorBindAddr != "localhost" {
-		return errors.New("--operator-bind-addr must be an IP address or localhost")
+	operatorEndpoint, err := endpoint.Parse(opts.OperatorEndpoint, endpoint.ParseOptions{})
+	if err != nil {
+		return fmt.Errorf("--operator-endpoint: %w", err)
 	}
-	if opts.OperatorPort < 1 || opts.OperatorPort > 65535 || opts.OperatorPort == opts.Port {
-		return errors.New("--operator-port must be valid and differ from the agent port")
+	if operatorEndpoint.Scheme() == endpoint.SchemeFD {
+		return errors.New("--operator-endpoint cannot use a raw inherited descriptor")
+	}
+	if operatorEndpoint.String() == opts.Endpoint {
+		return errors.New("operator and agent endpoints must differ")
 	}
 	return nil
 }

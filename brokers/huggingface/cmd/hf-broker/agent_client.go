@@ -16,6 +16,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentclient"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/clienthttp"
 )
 
 const defaultClientWait = 15 * time.Minute
@@ -72,21 +73,25 @@ func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writ
 }
 
 func loadAgentClient(getenv func(string) string) (*agentClient, error) {
-	baseURL := firstEnvironment(getenv, "HF_BROKER_URL", "MLCLAW_HF_BROKER_URL")
+	endpointURI := firstEnvironment(getenv, "HF_BROKER_AGENT_ENDPOINT")
 	secret, err := loadAgentSecret(getenv)
 	if err != nil {
 		return nil, err
 	}
-	operations, err := agentclient.New(agentclient.Options{BaseURL: baseURL, Credential: secret})
+	operations, err := agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret})
 	if err != nil {
 		return nil, err
 	}
-	grantClient, err := newHFGrantClient(baseURL, secret)
+	grantClient, err := newHFGrantClient(endpointURI, secret)
+	if err != nil {
+		return nil, err
+	}
+	baseURL, httpClient, err := clienthttp.ForEndpoint(endpointURI, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &agentClient{operations: operations, baseURL: baseURL, secret: secret,
-		httpClient:  &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		httpClient:  httpClient,
 		grantClient: grantClient}, nil
 }
 

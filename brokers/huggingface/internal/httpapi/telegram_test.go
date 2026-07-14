@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
@@ -215,6 +217,7 @@ func newTelegramDecisionTestServer(t *testing.T, store *grants.Store, notifier n
 		Broker:        "hf-broker",
 		Store:         store,
 		ClientSecrets: map[string]string{"agent": testSecret},
+		Audit:         audit.New(io.Discard),
 	})
 	if err != nil {
 		t.Fatal(err)

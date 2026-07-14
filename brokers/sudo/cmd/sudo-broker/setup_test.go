@@ -30,6 +30,7 @@ func TestSetupSystemdDryRunBuildsSeparatedUnits(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runSetupSystemd(context.Background(), []string{
 		"--dry-run", "--binary", "/usr/bin/true", "--helper-binary", "/usr/bin/true",
+		"--client", "agent-a", "--operator", "operator-a", "--agent-user", "agent-user", "--operator-user", "operator-user",
 		"--policy-file", policyPath, "--catalog-file", catalogPath,
 	}, &stdout, &stderr)
 	if err != nil {
@@ -55,7 +56,7 @@ func TestSetupClientUsesSharedClientFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout bytes.Buffer
-	if err := runSetup(context.Background(), []string{"client", "--client", "bob", "--url", "http://127.0.0.1:8084", "--secret-file", secretPath, "--home-dir", home}, &stdout, &bytes.Buffer{}); err != nil {
+	if err := runSetup(context.Background(), []string{"client", "--client", "bob", "--endpoint", "unix:///run/sudo-broker/agent.sock", "--secret-file", secretPath, "--home-dir", home}, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(home, ".config", "sudo-broker", "client.env"))
@@ -92,10 +93,11 @@ func TestSetupPathAndOptionHelpers(t *testing.T) {
 		t.Fatalf("default helper = %q", got)
 	}
 	opts := sudoSystemdOptions{SystemdOptions: bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
-		BrokerName: "sudo-broker", User: "sudo-broker", Group: "sudo-broker", ClientName: "bob", BindAddr: "127.0.0.1", Port: 8084,
+		BrokerName: "sudo-broker", User: "sudo-broker", Group: "sudo-broker", ClientName: "agent-a", Endpoint: "unix:///run/sudo-broker/agent.sock",
 	}), HelperBinary: helper, HelperStateDir: "/var/lib/sudo/helper", HelperSocket: "/run/sudo/helper.sock",
-		PolicyFile: "/policy", CatalogFile: "/catalog", SharedSecret: strings.Repeat("s", 32), OperatorID: "onur",
-		OperatorSecret: strings.Repeat("o", 32), OperatorBindAddr: "127.0.0.1", OperatorPort: 8085}
+		PolicyFile: "/policy", CatalogFile: "/catalog", SharedSecret: strings.Repeat("s", 32), OperatorID: "operator-a",
+		OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: "unix:///run/sudo-broker/operator.sock"}
+	opts.AgentUser, opts.OperatorUser = "agent-user", "operator-user"
 	opts.DryRun = true
 	if err := validateSudoSystemdOptions(opts); err != nil {
 		t.Fatal(err)
@@ -103,7 +105,7 @@ func TestSetupPathAndOptionHelpers(t *testing.T) {
 	for _, mutate := range []func(*sudoSystemdOptions){
 		func(value *sudoSystemdOptions) { value.HelperSocket = "relative" },
 		func(value *sudoSystemdOptions) { value.HelperStateDir = value.StateDir },
-		func(value *sudoSystemdOptions) { value.OperatorPort = value.Port },
+		func(value *sudoSystemdOptions) { value.OperatorEndpoint = value.Endpoint },
 		func(value *sudoSystemdOptions) { value.OperatorID = "bad=name" },
 		func(value *sudoSystemdOptions) { value.OperatorSecret = value.SharedSecret },
 		func(value *sudoSystemdOptions) { value.TelegramBotTokenFile = "/token" },
@@ -143,6 +145,7 @@ func TestSetupFileAndTelegramBranches(t *testing.T) {
 	_ = os.WriteFile(tokenPath, []byte("token"), 0o600)
 	var output bytes.Buffer
 	if err := runSetupSystemd(context.Background(), []string{"--dry-run", "--binary", "/usr/bin/true", "--helper-binary", "/usr/bin/true",
+		"--client", "agent-a", "--operator", "operator-a", "--agent-user", "agent-user", "--operator-user", "operator-user",
 		"--catalog-file", catalogPath, "--policy-file", policyPath, "--telegram-bot-token-file", tokenPath, "--telegram-chat-id", "1"}, &output, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}

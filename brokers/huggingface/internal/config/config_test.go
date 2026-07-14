@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestLoadDefaultsAndSecretsFile(t *testing.T) {
+func TestLoadRequiresRuntimeAndAppliesTuningDefaults(t *testing.T) {
 	dir := t.TempDir()
 	secrets := filepath.Join(dir, "secrets")
 	if err := os.WriteFile(secrets, []byte("agent = abcdefghijklmnopqrstuvwxyz123456\n"), 0o600); err != nil {
@@ -18,12 +18,12 @@ func TestLoadDefaultsAndSecretsFile(t *testing.T) {
 		"HF_BROKER_HF_TOKEN":     "hf_token_value",
 		"HF_BROKER_SECRETS_FILE": secrets,
 	}
-	cfg, err := Load(func(key string) string { return env[key] })
+	cfg, err := Load(testGetenv(env))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.BindAddr != DefaultBindAddr || cfg.Port != DefaultPort || cfg.ScopeFile != DefaultScopeFile {
-		t.Fatalf("defaults not applied: %+v", cfg)
+	if cfg.AgentEndpoint.String() != "tcp://127.0.0.1:32191" || cfg.ScopeFile != "/tmp/hf-broker-scope.json" || cfg.StateDir != "/tmp/hf-broker-state" {
+		t.Fatalf("runtime not loaded: %+v", cfg)
 	}
 	if cfg.MaxPackBytes != DefaultMaxPackBytes || cfg.HFTimeout != DefaultHFTimeout {
 		t.Fatalf("size/timeout defaults not applied: %+v", cfg)
@@ -50,7 +50,7 @@ func TestLoadHFTokenFile(t *testing.T) {
 		"HF_BROKER_HF_TOKEN_FILE": tokenFile,
 		"HF_BROKER_SECRETS_FILE":  secrets,
 	}
-	cfg, err := Load(func(key string) string { return env[key] })
+	cfg, err := Load(testGetenv(env))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -70,16 +70,18 @@ func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 		{name: "missing token file", env: map[string]string{"HF_BROKER_HF_TOKEN_FILE": "/tmp/does-not-exist", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN_FILE"},
 		{name: "missing client", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value"}, want: "HF_BROKER_SHARED_SECRET"},
 		{name: "short secret", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "short"}, want: "shorter than"},
-		{name: "bad port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_PORT": "zero"}, want: "HF_BROKER_PORT"},
-		{name: "bad operator port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_PORT": "zero"}, want: "HF_BROKER_OPERATOR_PORT"},
-		{name: "shared listener port", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_PORT": "8080"}, want: "different ports"},
+		{name: "bad endpoint", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_AGENT_ENDPOINT": "http://127.0.0.1:1"}, want: "HF_BROKER_AGENT_ENDPOINT"},
+		{name: "bad network exposure", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_NETWORK_EXPOSURE": "yes"}, want: "HF_BROKER_NETWORK_EXPOSURE"},
+		{name: "plaintext upstream", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_UPSTREAM_HUB_URL": "http://127.0.0.1:9000"}, want: "HF_BROKER_UPSTREAM_HUB_URL"},
+		{name: "operator endpoint missing", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_ENDPOINT": ""}, want: "HF_BROKER_OPERATOR_ENDPOINT"},
+		{name: "shared endpoint", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_ENDPOINT": "tcp://127.0.0.1:32191"}, want: "must differ"},
 		{name: "telegram token without chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value"}, want: "HF_BROKER_TELEGRAM"},
 		{name: "bad telegram chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "HF_BROKER_TELEGRAM_CHAT_ID": "chat"}, want: "HF_BROKER_TELEGRAM_CHAT_ID"},
 		{name: "token pasted into token file", env: map[string]string{"HF_BROKER_HF_TOKEN_FILE": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN_FILE"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Load(func(key string) string { return tc.env[key] })
+			_, err := Load(testGetenv(tc.env))
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Load() error = %v, want containing %q", err, tc.want)
 			}
@@ -90,6 +92,18 @@ func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 				t.Fatalf("error leaked telegram token: %v", err)
 			}
 		})
+	}
+}
+
+func TestLoadAllowsDevelopmentLoopbackUpstreamAndAcknowledgedNetworkEndpoint(t *testing.T) {
+	env := map[string]string{
+		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_DEVELOPMENT": "true", "HF_BROKER_AGENT_ENDPOINT": "tcp://192.0.2.10:9000",
+		"HF_BROKER_NETWORK_EXPOSURE": "allow", "HF_BROKER_UPSTREAM_HUB_URL": "http://127.0.0.1:9001",
+		"HF_BROKER_UPSTREAM_ROUTER_URL": "http://[::1]:9002",
+	}
+	if _, err := Load(testGetenv(env)); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -105,7 +119,7 @@ func TestLoadRejectsDuplicateClientSecrets(t *testing.T) {
 		"HF_BROKER_SECRETS_FILE": secrets,
 	}
 
-	_, err := Load(func(key string) string { return env[key] })
+	_, err := Load(testGetenv(env))
 	if err == nil || !strings.Contains(err.Error(), "duplicate client secret") {
 		t.Fatalf("Load() error = %v, want duplicate client secret", err)
 	}
@@ -128,19 +142,19 @@ func TestLoadOperatorCredentialsAreSeparate(t *testing.T) {
 	}
 	env := map[string]string{
 		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SECRETS_FILE": clients,
-		"HF_BROKER_OPERATOR_SECRETS_FILE": operators, "HF_BROKER_OPERATOR_BIND_ADDR": "::1", "HF_BROKER_OPERATOR_PORT": "9091",
+		"HF_BROKER_OPERATOR_SECRETS_FILE": operators, "HF_BROKER_OPERATOR_ENDPOINT": "tcp://[::1]:32192",
 	}
-	cfg, err := Load(func(key string) string { return env[key] })
+	cfg, err := Load(testGetenv(env))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Operators) != 1 || cfg.Operators[0].Name != "onur" || cfg.OperatorBindAddr != "::1" || cfg.OperatorPort != 9091 {
+	if len(cfg.Operators) != 1 || cfg.Operators[0].Name != "onur" || cfg.OperatorEndpoint == nil || cfg.OperatorEndpoint.String() != "tcp://[::1]:32192" {
 		t.Fatalf("operator config = %+v", cfg)
 	}
 	if err := os.WriteFile(operators, []byte("onur = "+clientSecret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(func(key string) string { return env[key] }); err == nil || !strings.Contains(err.Error(), "reuses a client secret") || strings.Contains(err.Error(), clientSecret) {
+	if _, err := Load(testGetenv(env)); err == nil || !strings.Contains(err.Error(), "reuses a client secret") || strings.Contains(err.Error(), clientSecret) {
 		t.Fatalf("reused operator error = %v", err)
 	}
 }
@@ -149,8 +163,7 @@ func TestLoadOverrides(t *testing.T) {
 	env := map[string]string{
 		"HF_BROKER_HF_TOKEN":            "hf_token_value",
 		"HF_BROKER_SHARED_SECRET":       "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_BIND_ADDR":           "0.0.0.0",
-		"HF_BROKER_PORT":                "9090",
+		"HF_BROKER_AGENT_ENDPOINT":      "unix:///run/hf-broker/agent.sock",
 		"HF_BROKER_SCOPE_FILE":          "/tmp/scope.json",
 		"HF_BROKER_STATE_DIR":           "/tmp/state",
 		"HF_BROKER_MAX_PACK_BYTES":      "64",
@@ -160,11 +173,11 @@ func TestLoadOverrides(t *testing.T) {
 		"HF_BROKER_TELEGRAM_BOT_TOKEN":  "telegram_token_value",
 		"HF_BROKER_TELEGRAM_CHAT_ID":    "12345",
 	}
-	cfg, err := Load(func(key string) string { return env[key] })
+	cfg, err := Load(testGetenv(env))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.BindAddr != "0.0.0.0" || cfg.Port != 9090 || cfg.ScopeFile != "/tmp/scope.json" || cfg.StateDir != "/tmp/state" {
+	if cfg.AgentEndpoint.String() != "unix:///run/hf-broker/agent.sock" || cfg.ScopeFile != "/tmp/scope.json" || cfg.StateDir != "/tmp/state" {
 		t.Fatalf("overrides not applied: %+v", cfg)
 	}
 	if cfg.MaxPackBytes != 64 || cfg.HFTimeout != 5*time.Second {
@@ -187,12 +200,12 @@ func TestLoadTelegramTokenFile(t *testing.T) {
 		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
 		"HF_BROKER_TELEGRAM_BOT_TOKEN_FILE": path, "HF_BROKER_TELEGRAM_CHAT_ID": "12345",
 	}
-	cfg, err := Load(func(key string) string { return env[key] })
+	cfg, err := Load(testGetenv(env))
 	if err != nil || cfg.TelegramBotToken != "telegram_file_token" || cfg.TelegramChatID != 12345 {
 		t.Fatalf("Load(token file) cfg=%+v err=%v", cfg, err)
 	}
 	env["HF_BROKER_TELEGRAM_BOT_TOKEN"] = "inline"
-	if _, err := Load(func(key string) string { return env[key] }); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+	if _, err := Load(testGetenv(env)); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("Load(inline and file) error = %v", err)
 	}
 }
@@ -206,8 +219,23 @@ func TestLoadTelegramTokenFileRejectsOversizedSecret(t *testing.T) {
 		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
 		"HF_BROKER_TELEGRAM_BOT_TOKEN_FILE": path, "HF_BROKER_TELEGRAM_CHAT_ID": "12345",
 	}
-	_, err := Load(func(key string) string { return env[key] })
+	_, err := Load(testGetenv(env))
 	if err == nil || !strings.Contains(err.Error(), "exceeds") || strings.Contains(err.Error(), path) {
 		t.Fatalf("Load(oversized token file) error = %v", err)
+	}
+}
+
+func testGetenv(values map[string]string) func(string) string {
+	defaults := map[string]string{
+		"HF_BROKER_AGENT_ENDPOINT":    "tcp://127.0.0.1:32191",
+		"HF_BROKER_OPERATOR_ENDPOINT": "tcp://127.0.0.1:32192",
+		"HF_BROKER_SCOPE_FILE":        "/tmp/hf-broker-scope.json",
+		"HF_BROKER_STATE_DIR":         "/tmp/hf-broker-state",
+	}
+	return func(key string) string {
+		if value, ok := values[key]; ok {
+			return value
+		}
+		return defaults[key]
 	}
 }

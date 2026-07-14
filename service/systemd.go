@@ -42,6 +42,110 @@ type SystemdUnit struct {
 	RuntimeDirectoryMode os.FileMode
 }
 
+// SystemdSocketUnit describes one deployment-owned listening socket. The
+// socket is passed to Service with FileDescriptorName when it is activated.
+type SystemdSocketUnit struct {
+	Description        string
+	ListenStream       string
+	Service            string
+	FileDescriptorName string
+	SocketUser         string
+	SocketGroup        string
+	SocketMode         os.FileMode
+	DirectoryMode      os.FileMode
+}
+
+// SystemdSocketInstall binds a socket unit filename to its typed definition.
+type SystemdSocketInstall struct {
+	UnitName string
+	Unit     SystemdSocketUnit
+}
+
+// RenderSystemdSocket renders a permission-scoped stream socket unit.
+func RenderSystemdSocket(unit SystemdSocketUnit) (string, error) {
+	if err := unit.validate(); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`[Unit]
+Description=%s
+
+[Socket]
+ListenStream=%s
+FileDescriptorName=%s
+SocketUser=%s
+SocketGroup=%s
+SocketMode=%04o
+DirectoryMode=%04o
+Service=%s
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target
+`, unit.Description, unit.ListenStream, unit.FileDescriptorName, unit.SocketUser,
+		unit.SocketGroup, unit.SocketMode.Perm(), unit.DirectoryMode.Perm(), unit.Service), nil
+}
+
+// RenderSystemdSockets renders named socket units for dry-run output.
+func RenderSystemdSockets(units []SystemdSocketInstall) (string, error) {
+	var body strings.Builder
+	for _, unit := range units {
+		rendered, err := RenderSystemdSocket(unit.Unit)
+		if err != nil {
+			return "", fmt.Errorf("render %s: %w", unit.UnitName, err)
+		}
+		_, _ = fmt.Fprintf(&body, "\n# %s\n%s", unit.UnitName, rendered)
+	}
+	return body.String(), nil
+}
+
+func (unit SystemdSocketUnit) validate() error {
+	if err := validateRequiredLines(map[string]string{
+		"description": unit.Description, "listen stream": unit.ListenStream,
+		"service": unit.Service, "file descriptor name": unit.FileDescriptorName,
+		"socket user": unit.SocketUser, "socket group": unit.SocketGroup,
+	}); err != nil {
+		return err
+	}
+	if err := validateDescription(unit.Description); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(unit.ListenStream) || filepath.Clean(unit.ListenStream) != unit.ListenStream || unit.ListenStream == string(filepath.Separator) {
+		return errors.New("systemd socket listen path must be absolute and normalized")
+	}
+	if !validDependencyUnit(unit.Service) || !strings.HasSuffix(unit.Service, ".service") {
+		return errors.New("systemd socket service must be a literal .service unit name")
+	}
+	if !validName(unit.FileDescriptorName) {
+		return errors.New("systemd socket descriptor name is invalid")
+	}
+	if err := validatex.AccountNames(map[string]string{"socket user": unit.SocketUser, "socket group": unit.SocketGroup}); err != nil {
+		return err
+	}
+	if err := validateSocketMode(unit.SocketMode, "socket"); err != nil {
+		return err
+	}
+	return validateSocketMode(unit.DirectoryMode, "socket directory")
+}
+
+func validateSocketMode(mode os.FileMode, label string) error {
+	if mode == 0 || mode&^os.ModePerm != 0 || mode.Perm()&0o007 != 0 {
+		return fmt.Errorf("%s mode must deny all access to other users", label)
+	}
+	return nil
+}
+
+func validName(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for _, char := range value {
+		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && !strings.ContainsRune("_.-", char) {
+			return false
+		}
+	}
+	return true
+}
+
 // HomeAccess controls service visibility into user home directories.
 type HomeAccess string
 

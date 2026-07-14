@@ -2,8 +2,10 @@ package operatorfake
 
 import (
 	"context"
+	"io"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/operatorv1"
@@ -20,6 +22,7 @@ func TestServerRunsProductionOperatorContract(t *testing.T) {
 	}
 	server, err := New(Options{
 		Store: store, OperatorSecrets: map[string]string{"onur": "operator-secret-with-enough-entropy"},
+		Audit: audit.New(io.Discard),
 		Presenter: operatorinbox.PresenterFunc(func(context.Context, grants.Grant) (operatorinbox.Presentation, error) {
 			return operatorinbox.Presentation{Title: "Request", Target: "target"}, nil
 		}),

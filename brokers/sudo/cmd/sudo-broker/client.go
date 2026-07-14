@@ -9,8 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -100,16 +98,12 @@ func writeCommandResult(stdout, stderr io.Writer, raw json.RawMessage) error {
 }
 
 func loadAgentClient() (*agentclient.Client, error) {
-	baseURL := strings.TrimSpace(os.Getenv("SUDO_BROKER_URL"))
+	endpointURI := strings.TrimSpace(os.Getenv("SUDO_BROKER_AGENT_ENDPOINT"))
 	secret := strings.TrimSpace(os.Getenv("SUDO_BROKER_SHARED_SECRET"))
-	parsed, err := url.Parse(baseURL)
-	if baseURL == "" || secret == "" || err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return nil, errors.New("SUDO_BROKER_URL and SUDO_BROKER_SHARED_SECRET must identify a local broker")
+	if endpointURI == "" || secret == "" {
+		return nil, errors.New("SUDO_BROKER_AGENT_ENDPOINT and SUDO_BROKER_SHARED_SECRET must identify a local broker")
 	}
-	if err := validateLoopbackAddress(parsed.Host); err != nil {
-		return nil, errors.New("SUDO_BROKER_URL must use a loopback address")
-	}
-	return agentclient.New(agentclient.Options{BaseURL: baseURL, Credential: secret, HTTPClient: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}})
+	return agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret})
 }
 
 func addCommandFlags(flags *flag.FlagSet, values *commandFlags) {

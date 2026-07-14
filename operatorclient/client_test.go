@@ -21,11 +21,12 @@ import (
 
 func TestClientImplementsOperatorV1Source(t *testing.T) {
 	t.Parallel()
+	token := strings.Repeat("t", 32)
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		paths = append(paths, request.URL.RequestURI())
 		writer.Header().Set("Content-Type", "application/json")
-		if request.URL.Path != "/healthz" && request.Header.Get("Authorization") != "Bearer operator-token" {
+		if request.URL.Path != "/healthz" && request.Header.Get("Authorization") != "Bearer "+token {
 			writeError(writer, http.StatusUnauthorized, "unauthorized")
 			return
 		}
@@ -43,7 +44,7 @@ func TestClientImplementsOperatorV1Source(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client := &Client{BaseURL: server.URL, Token: "operator-token", HTTPClient: server.Client()}
+	client := newTestOperatorClient(t, server.URL, token, server.Client())
 	if descriptor, err := client.Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
 		t.Fatalf("Discover() = %+v, %v", descriptor, err)
 	}
@@ -86,7 +87,7 @@ func TestClientWatchesOperatorV1Events(t *testing.T) {
 		_, _ = fmt.Fprintf(writer, "id: %s\ndata: %s\n\n", event.Cursor, encoded)
 	}))
 	defer server.Close()
-	stream, err := (&Client{BaseURL: server.URL, HTTPClient: server.Client()}).Watch(t.Context(), "")
+	stream, err := newTestOperatorClient(t, server.URL, "", server.Client()).Watch(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func TestEventReceiveCancellationClosesBlockedStream(t *testing.T) {
 		<-request.Context().Done()
 	}))
 	defer server.Close()
-	stream, err := (&Client{BaseURL: server.URL, HTTPClient: server.Client()}).Watch(t.Context(), "")
+	stream, err := newTestOperatorClient(t, server.URL, "", server.Client()).Watch(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ func TestClientRejectsWrongResponseMediaTypes(t *testing.T) {
 		_, _ = writer.Write([]byte(`{"api_version":"operator.v1"}`))
 	}))
 	defer server.Close()
-	client := &Client{BaseURL: server.URL, HTTPClient: server.Client()}
+	client := newTestOperatorClient(t, server.URL, "", server.Client())
 	if _, err := client.Discover(t.Context()); err == nil {
 		t.Fatal("Discover() accepted text/plain")
 	}
@@ -151,7 +152,7 @@ func TestClientDropsUnknownResponseFieldsAndRejectsTrailingData(t *testing.T) {
 		_, _ = fmt.Fprintf(writer, `{"api_version":%q,"unknown":{"unsafe":"dropped"}}`, operatorv1.APIVersion)
 	}))
 	defer server.Close()
-	if descriptor, err := (&Client{BaseURL: server.URL, HTTPClient: server.Client()}).Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
+	if descriptor, err := newTestOperatorClient(t, server.URL, "", server.Client()).Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
 		t.Fatalf("Discover(unknown output) = %+v, %v", descriptor, err)
 	}
 	trailing := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -159,11 +160,11 @@ func TestClientDropsUnknownResponseFieldsAndRejectsTrailingData(t *testing.T) {
 		_, _ = fmt.Fprintf(writer, `{"api_version":%q}{}`, operatorv1.APIVersion)
 	}))
 	defer trailing.Close()
-	if _, err := (&Client{BaseURL: trailing.URL, HTTPClient: trailing.Client()}).Discover(t.Context()); err == nil {
+	if _, err := newTestOperatorClient(t, trailing.URL, "", trailing.Client()).Discover(t.Context()); err == nil {
 		t.Fatal("Discover() accepted trailing response data")
 	}
-	if _, err := NewUnix("relative.sock", "token"); err == nil {
-		t.Fatal("NewUnix() accepted a relative socket path")
+	if _, err := New("unix://relative.sock", "token", nil); err == nil {
+		t.Fatal("New() accepted a relative socket path")
 	}
 }
 
@@ -206,13 +207,13 @@ func TestWireConversionsPreserveOptionalOperatorFields(t *testing.T) {
 
 func TestClientConstructionAndResponseErrors(t *testing.T) {
 	t.Parallel()
-	client, err := NewUnix("/tmp/brokerkit-operator.sock", "token")
-	if err != nil || client.BaseURL != "http://brokerkit" || client.HTTPClient == nil {
-		t.Fatalf("NewUnix() = %#v, %v", client, err)
+	client, err := New("unix:///tmp/brokerkit-operator.sock", strings.Repeat("t", 32), nil)
+	if err != nil || client.baseURL != "http://brokerkit.local" || client.httpClient == nil {
+		t.Fatalf("New() = %#v, %v", client, err)
 	}
-	for _, path := range []string{"", "/tmp/../tmp/socket", "/tmp/bad\x00socket"} {
-		if _, err := NewUnix(path, "token"); err == nil {
-			t.Fatalf("NewUnix(%q) succeeded", path)
+	for _, endpoint := range []string{"", "unix:///tmp/../tmp/socket", "unix:///tmp/bad\x00socket"} {
+		if _, err := New(endpoint, strings.Repeat("t", 32), nil); err == nil {
+			t.Fatalf("New(%q) succeeded", endpoint)
 		}
 	}
 	apiErr := &Error{Status: http.StatusConflict, Code: "revision_conflict", Message: "stale revision"}
@@ -226,6 +227,15 @@ func TestClientConstructionAndResponseErrors(t *testing.T) {
 	if err := decodeClientResponse(nil, nil, &struct{}{}); err == nil {
 		t.Fatal("decodeClientResponse accepted nil response")
 	}
+}
+
+func newTestOperatorClient(t *testing.T, baseURL, token string, httpClient *http.Client) *Client {
+	t.Helper()
+	client, err := New(strings.Replace(baseURL, "http://", "tcp://", 1), token, httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
 }
 
 func writeError(writer http.ResponseWriter, status int, code string) {

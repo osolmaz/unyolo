@@ -7,10 +7,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/osolmaz/brokerkit/clienthttp"
 )
 
 func TestRunFailsClosedWhenRequiredEnvMissing(t *testing.T) {
@@ -27,8 +28,9 @@ func TestRunFailsOnMissingScopeFileWithoutLeakingToken(t *testing.T) {
 	clearBrokerEnv(t)
 	t.Setenv("HF_BROKER_HF_TOKEN", "hf_token_value")
 	t.Setenv("HF_BROKER_SHARED_SECRET", "abcdefghijklmnopqrstuvwxyz123456")
-	t.Setenv("HF_BROKER_SCOPE_FILE", "does-not-exist.json")
-	t.Setenv("HF_BROKER_PORT", "65530")
+	t.Setenv("HF_BROKER_SCOPE_FILE", "/tmp/does-not-exist.json")
+	t.Setenv("HF_BROKER_STATE_DIR", "/tmp/hf-broker-test-state")
+	t.Setenv("HF_BROKER_AGENT_ENDPOINT", "unix:///tmp/hf-broker-test.sock")
 	err := runWithContext(context.Background(), os.Getenv, ioDiscard{}, ioDiscard{})
 	if err == nil || !strings.Contains(err.Error(), "read scope file") {
 		t.Fatalf("run() error = %v, want missing scope", err)
@@ -45,12 +47,12 @@ func clearBrokerEnv(t *testing.T) {
 		"HF_TOKEN_FILE",
 		"SHARED_SECRET",
 		"SECRETS_FILE",
-		"BIND_ADDR",
-		"PORT",
+		"AGENT_ENDPOINT",
+		"DEVELOPMENT",
+		"NETWORK_EXPOSURE",
 		"OPERATOR_SHARED_SECRET",
 		"OPERATOR_SECRETS_FILE",
-		"OPERATOR_BIND_ADDR",
-		"OPERATOR_PORT",
+		"OPERATOR_ENDPOINT",
 		"SCOPE_FILE",
 		"STATE_DIR",
 		"MAX_PACK_BYTES",
@@ -68,17 +70,21 @@ func clearBrokerEnv(t *testing.T) {
 
 func TestRunWithContextStartsAndStops(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	scopePath := filepath.Join(dir, "scope.json")
 	if err := os.WriteFile(scopePath, []byte(`{"rules":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	port := freePort(t)
+	agentEndpoint := "unix://" + filepath.Join(dir, "agent.sock")
 	env := map[string]string{
-		"HF_BROKER_HF_TOKEN":      "hf_token_value",
-		"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_SCOPE_FILE":    scopePath,
-		"HF_BROKER_STATE_DIR":     filepath.Join(dir, "state"),
-		"HF_BROKER_PORT":          strconv.Itoa(port),
+		"HF_BROKER_HF_TOKEN":       "hf_token_value",
+		"HF_BROKER_SHARED_SECRET":  "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_SCOPE_FILE":     scopePath,
+		"HF_BROKER_STATE_DIR":      filepath.Join(dir, "state"),
+		"HF_BROKER_AGENT_ENDPOINT": agentEndpoint,
+		"HF_BROKER_DEVELOPMENT":    "true",
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,7 +93,7 @@ func TestRunWithContextStartsAndStops(t *testing.T) {
 	go func() {
 		errs <- runWithContext(ctx, func(key string) string { return env[key] }, &stdout, &stderr)
 	}()
-	waitForHealth(t, port)
+	waitForHealth(t, agentEndpoint)
 	cancel()
 	select {
 	case err := <-errs:
@@ -104,6 +110,9 @@ func TestRunWithContextStartsAndStops(t *testing.T) {
 
 func TestRunWithContextStartsOperatorListener(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	scopePath := filepath.Join(dir, "scope.json")
 	operatorPath := filepath.Join(dir, "operator-secrets")
 	if err := os.WriteFile(scopePath, []byte(`{"rules":[]}`), 0o600); err != nil {
@@ -113,23 +122,25 @@ func TestRunWithContextStartsOperatorListener(t *testing.T) {
 	if err := os.WriteFile(operatorPath, []byte("onur = "+operatorSecret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	agentPort, operatorPort := freePort(t), freePort(t)
+	agentEndpoint := "unix://" + filepath.Join(dir, "agent.sock")
+	operatorEndpoint := "unix://" + filepath.Join(dir, "operator.sock")
 	env := map[string]string{
 		"HF_BROKER_HF_TOKEN":              "hf_token_value",
 		"HF_BROKER_SHARED_SECRET":         "abcdefghijklmnopqrstuvwxyz123456",
 		"HF_BROKER_SCOPE_FILE":            scopePath,
 		"HF_BROKER_STATE_DIR":             filepath.Join(dir, "state"),
-		"HF_BROKER_PORT":                  strconv.Itoa(agentPort),
+		"HF_BROKER_AGENT_ENDPOINT":        agentEndpoint,
 		"HF_BROKER_OPERATOR_SECRETS_FILE": operatorPath,
-		"HF_BROKER_OPERATOR_PORT":         strconv.Itoa(operatorPort),
+		"HF_BROKER_OPERATOR_ENDPOINT":     operatorEndpoint,
+		"HF_BROKER_DEVELOPMENT":           "true",
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	errs := make(chan error, 1)
 	go func() {
 		errs <- runWithContext(ctx, func(key string) string { return env[key] }, ioDiscard{}, ioDiscard{})
 	}()
-	waitForHealth(t, agentPort)
-	waitForOperator(t, operatorPort, operatorSecret)
+	waitForHealth(t, agentEndpoint)
+	waitForOperator(t, operatorEndpoint, operatorSecret)
 	cancel()
 	select {
 	case err := <-errs:
@@ -143,28 +154,32 @@ func TestRunWithContextStartsOperatorListener(t *testing.T) {
 
 func TestRunWithContextReturnsListenError(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	scopePath := filepath.Join(dir, "scope.json")
 	if err := os.WriteFile(scopePath, []byte(`{"rules":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	socketPath := filepath.Join(dir, "agent.sock")
+	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
 		_ = listener.Close()
 	}()
-	port := listener.Addr().(*net.TCPAddr).Port
 	env := map[string]string{
-		"HF_BROKER_HF_TOKEN":      "hf_token_value",
-		"HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_SCOPE_FILE":    scopePath,
-		"HF_BROKER_STATE_DIR":     filepath.Join(dir, "state"),
-		"HF_BROKER_PORT":          strconv.Itoa(port),
+		"HF_BROKER_HF_TOKEN":       "hf_token_value",
+		"HF_BROKER_SHARED_SECRET":  "abcdefghijklmnopqrstuvwxyz123456",
+		"HF_BROKER_SCOPE_FILE":     scopePath,
+		"HF_BROKER_STATE_DIR":      filepath.Join(dir, "state"),
+		"HF_BROKER_AGENT_ENDPOINT": "unix://" + socketPath,
+		"HF_BROKER_DEVELOPMENT":    "true",
 	}
 	err = runWithContext(context.Background(), func(key string) string { return env[key] }, ioDiscard{}, ioDiscard{})
-	if err == nil || !strings.Contains(err.Error(), "bind") {
-		t.Fatalf("runWithContext() error = %v, want bind failure", err)
+	if err == nil || !strings.Contains(err.Error(), "already accepting") {
+		t.Fatalf("runWithContext() error = %v, want occupied endpoint failure", err)
 	}
 }
 
@@ -174,23 +189,15 @@ func (ioDiscard) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func freePort(t *testing.T) int {
+func waitForHealth(t *testing.T, endpointURI string) {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	baseURL, client, err := clienthttp.ForEndpoint(endpointURI, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_ = listener.Close()
-	}()
-	return listener.Addr().(*net.TCPAddr).Port
-}
-
-func waitForHealth(t *testing.T, port int) {
-	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/healthz")
+		resp, err := client.Get(baseURL + "/healthz")
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -202,9 +209,13 @@ func waitForHealth(t *testing.T, port int) {
 	t.Fatal("server did not become healthy")
 }
 
-func waitForOperator(t *testing.T, port int, secret string) {
+func waitForOperator(t *testing.T, endpointURI, secret string) {
 	t.Helper()
-	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/.well-known/brokerkit-operator"
+	baseURL, client, err := clienthttp.ForEndpoint(endpointURI, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := baseURL + "/.well-known/brokerkit-operator"
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
@@ -212,7 +223,7 @@ func waitForOperator(t *testing.T, port int, secret string) {
 			t.Fatal(err)
 		}
 		request.Header.Set("Authorization", "Bearer "+secret)
-		response, err := http.DefaultClient.Do(request)
+		response, err := client.Do(request)
 		if err == nil {
 			_ = response.Body.Close()
 			if response.StatusCode == http.StatusOK {

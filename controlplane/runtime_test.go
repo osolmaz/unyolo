@@ -1,11 +1,13 @@
 package controlplane
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/grants"
 )
 
@@ -15,6 +17,7 @@ func TestRuntimeSeparatesClientAndOperatorCredentials(t *testing.T) {
 		Broker: "test-broker", Store: store,
 		ClientSecrets:   map[string]string{"bob": "client-secret-abcdefghijklmnopqrstuvwxyz"},
 		OperatorSecrets: map[string]string{"onur": "operator-secret-abcdefghijklmnopqrstuvwxyz"},
+		Audit:           audit.New(io.Discard),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +42,7 @@ func TestRuntimeAllowsDisabledOperatorSurface(t *testing.T) {
 	runtime, err := New(Options{
 		Broker: "test-broker", Store: grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{}),
 		ClientSecrets: map[string]string{"bob": "client-secret-abcdefghijklmnopqrstuvwxyz"},
+		Audit:         audit.New(io.Discard),
 	})
 	if err != nil || runtime.OperatorHandler != nil {
 		t.Fatalf("New() = %+v, %v", runtime, err)
@@ -48,11 +52,13 @@ func TestRuntimeAllowsDisabledOperatorSurface(t *testing.T) {
 func TestRuntimeRejectsInvalidAssembly(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
+	recorder := audit.New(io.Discard)
 	for _, options := range []Options{
-		{Store: store, ClientSecrets: map[string]string{"bob": clientSecret}},
-		{Broker: "test-broker", ClientSecrets: map[string]string{"bob": clientSecret}},
-		{Broker: "test-broker", Store: store},
-		{Broker: "test-broker", Store: store, ClientSecrets: map[string]string{"bob": clientSecret}, OperatorSecrets: map[string]string{"onur": clientSecret}},
+		{Store: store, ClientSecrets: map[string]string{"bob": clientSecret}, Audit: recorder},
+		{Broker: "test-broker", ClientSecrets: map[string]string{"bob": clientSecret}, Audit: recorder},
+		{Broker: "test-broker", Store: store, Audit: recorder},
+		{Broker: "test-broker", Store: store, ClientSecrets: map[string]string{"bob": clientSecret}, OperatorSecrets: map[string]string{"onur": clientSecret}, Audit: recorder},
+		{Broker: "test-broker", Store: store, ClientSecrets: map[string]string{"bob": clientSecret}},
 	} {
 		if _, err := New(options); err == nil {
 			t.Fatalf("New(%+v) unexpectedly succeeded", options)

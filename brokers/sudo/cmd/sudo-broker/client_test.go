@@ -22,7 +22,7 @@ func TestRunCommandUsesAgentLifecycle(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer server.Close()
-	t.Setenv("SUDO_BROKER_URL", server.URL)
+	t.Setenv("SUDO_BROKER_AGENT_ENDPOINT", strings.Replace(server.URL, "http://", "tcp://", 1))
 	t.Setenv("SUDO_BROKER_SHARED_SECRET", "sudo-client-secret-abcdefghijklmnopqrstuvwxyz")
 	var stdout, stderr bytes.Buffer
 	if err := runCommand(t.Context(), []string{"scale", "--as", "root", "--reason", "release", "--operation-id", "test", "--arg-json", "replicas=2"}, &stdout, &stderr); err != nil {
@@ -39,7 +39,7 @@ func TestCommandClientValidationAndResult(t *testing.T) {
 			t.Fatalf("runCommand(%v) succeeded", args)
 		}
 	}
-	t.Setenv("SUDO_BROKER_URL", "https://example.com")
+	t.Setenv("SUDO_BROKER_AGENT_ENDPOINT", "tcp://192.0.2.1:443")
 	t.Setenv("SUDO_BROKER_SHARED_SECRET", "sudo-client-secret-abcdefghijklmnopqrstuvwxyz")
 	if _, err := loadAgentClient(); err == nil {
 		t.Fatal("non-local broker URL accepted")

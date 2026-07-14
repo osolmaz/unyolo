@@ -96,6 +96,7 @@ func TestNewWithTelegramConfigStartsPoller(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = New(Options{
+		Audit:   testAuditRecorder(),
 		Context: ctx,
 		Config: config.Config{
 			HFToken:          testToken,

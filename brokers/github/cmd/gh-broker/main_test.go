@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/serverhttp"
 )
 
 func TestRunWithArgsVersion(t *testing.T) {
@@ -86,6 +87,7 @@ func TestLoadGitHubDoctorConfigReadsInstalledEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := "GH_BROKER_CLIENT_ID=bob\n" +
+		"GH_BROKER_AGENT_ENDPOINT=unix:///run/gh-broker/agent.sock\n" +
 		"GH_BROKER_SECRETS_FILE=" + secretsFile + "\n" +
 		"GH_BROKER_GITHUB_TOKEN_FILE=" + tokenFile + "\n" +
 		"GH_BROKER_SCOPE_FILE=" + filepath.Join(dir, "scope.json") + "\n" +
@@ -133,7 +135,7 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 	err = runWithArgs(t.Context(), []string{
 		"setup", "client",
 		"--client", "bob",
-		"--url", "http://127.0.0.1:8081",
+		"--endpoint", "unix:///run/gh-broker/agent.sock",
 		"--secret-file", secretFile,
 		"--home-dir", dir,
 	}, &stdout, ioDiscard{})
@@ -146,8 +148,8 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "GH_BROKER_URL='http://127.0.0.1:8081'") {
-		t.Fatalf("client env missing URL: %q", text)
+	if !strings.Contains(text, "GH_BROKER_ENDPOINT='unix:///run/gh-broker/agent.sock'") {
+		t.Fatalf("client env missing endpoint: %q", text)
 	}
 	if !strings.Contains(text, "GH_BROKER_SHARED_SECRET='"+secret+"'") {
 		t.Fatalf("client env missing secret: %q", text)
@@ -162,7 +164,7 @@ func TestSetupClientParsingAndValidation(t *testing.T) {
 	t.Setenv("HOME", home)
 	opts, err := parseSetupClient(ioDiscard{}, []string{
 		"--client", "bob",
-		"--url", "http://127.0.0.1:8081",
+		"--endpoint", "unix:///run/gh-broker/agent.sock",
 		"--secret-file", filepath.Join(t.TempDir(), "secrets"),
 	})
 	if err != nil {
@@ -188,8 +190,8 @@ func TestRunReturnsConfigError(t *testing.T) {
 }
 
 func TestRunStopsWhenContextIsCancelled(t *testing.T) {
-	t.Setenv("GH_BROKER_BIND_ADDR", "127.0.0.1")
-	t.Setenv("GH_BROKER_PORT", "0")
+	t.Setenv("GH_BROKER_DEVELOPMENT", "true")
+	t.Setenv("GH_BROKER_AGENT_ENDPOINT", "tcp://127.0.0.1:0")
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
@@ -204,87 +206,68 @@ func TestRunStopsWhenContextIsCancelled(t *testing.T) {
 }
 
 func TestRunReturnsScopeFileError(t *testing.T) {
-	t.Setenv("GH_BROKER_BIND_ADDR", "127.0.0.1")
-	t.Setenv("GH_BROKER_PORT", "0")
+	t.Setenv("GH_BROKER_DEVELOPMENT", "true")
+	t.Setenv("GH_BROKER_AGENT_ENDPOINT", "tcp://127.0.0.1:0")
 	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
 	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", 32))
 	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
 	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
 	t.Setenv("GH_BROKER_SCOPE_FILE", filepath.Join(t.TempDir(), "missing.json"))
+	t.Setenv("GH_BROKER_STATE_DIR", t.TempDir())
 	err := run(t.Context())
 	if err == nil {
 		t.Fatal("run() error = nil, want scope file error")
 	}
 }
 
-func TestBuildServerUsesConfiguredBindAddress(t *testing.T) {
-	t.Parallel()
-	server, err := buildServer(t.Context(), configForBuildTest(t))
-	if err != nil {
-		t.Fatalf("buildServer() error = %v", err)
-	}
-	if server.Addr != "127.0.0.2:9090" {
-		t.Fatalf("Addr = %q, want configured bind address", server.Addr)
-	}
-}
-
-func TestBuildServersAddsDedicatedOperatorListener(t *testing.T) {
+func TestBuildServersUseConfiguredEndpoints(t *testing.T) {
 	cfg := configForBuildTest(t)
-	cfg.OperatorID = "onur"
-	cfg.OperatorSecret = strings.Repeat("o", 32)
-	cfg.OperatorBindAddr = "127.0.0.1"
-	cfg.OperatorPort = "9091"
 	servers, err := buildServers(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(servers) != 2 || servers[0].Addr != "127.0.0.2:9090" || servers[1].Addr != "127.0.0.1:9091" || servers[1].WriteTimeout != 0 || servers[1].ReadTimeout != cfg.ReadTimeout {
+	t.Cleanup(func() { _ = serverhttp.Shutdown(servers) })
+	if len(servers) != 1 || servers[0].Listener.Addr().Network() != "unix" || servers[0].Server.ReadHeaderTimeout != 5*time.Second {
 		t.Fatalf("servers = %+v", servers)
 	}
 }
 
-func TestAgentServerTimeoutsCoverBoundedStreams(t *testing.T) {
-	cfg := config.Config{ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, GitHubStreamTimeout: 10 * time.Minute}
-	server := configuredAgentServer("127.0.0.1", "8081", http.NotFoundHandler(), cfg)
-	if server.ReadTimeout != 10*time.Minute || server.WriteTimeout != 10*time.Minute {
-		t.Fatalf("agent timeouts = read %s write %s", server.ReadTimeout, server.WriteTimeout)
+func TestBuildServersAddsDedicatedOperatorEndpoint(t *testing.T) {
+	cfg := configForBuildTest(t)
+	cfg.OperatorID = "operator-a"
+	cfg.OperatorSecret = strings.Repeat("o", 32)
+	operatorDir := t.TempDir()
+	if err := os.Chmod(operatorDir, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	operator := configuredOperatorServer("127.0.0.1", "8082", http.NotFoundHandler(), cfg)
-	if operator.ReadTimeout != 15*time.Second || operator.WriteTimeout != 0 {
-		t.Fatalf("operator timeouts = read %s write %s", operator.ReadTimeout, operator.WriteTimeout)
+	operator, err := endpoint.Parse("unix://"+filepath.Join(operatorDir, "operator.sock"), endpoint.ParseOptions{})
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestServeReturnsListenError(t *testing.T) {
-	t.Parallel()
-	server := &http.Server{
-		Addr:              "bad address",
-		Handler:           http.NotFoundHandler(),
-		ReadHeaderTimeout: time.Second,
+	cfg.OperatorEndpoint = &operator
+	servers, err := buildServers(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
 	}
-	err := serve(t.Context(), server, "127.0.0.1", "bad")
-	if err == nil {
-		t.Fatal("serve() error = nil, want listen error")
-	}
-}
-
-func TestShutdownClosesServer(t *testing.T) {
-	t.Parallel()
-	server := &http.Server{
-		Addr:              "127.0.0.1:0",
-		Handler:           http.NotFoundHandler(),
-		ReadHeaderTimeout: time.Second,
-	}
-	if err := shutdown(server); err != nil {
-		t.Fatalf("shutdown() error = %v", err)
+	t.Cleanup(func() { _ = serverhttp.Shutdown(servers) })
+	if len(servers) != 2 || servers[1].Listener.Addr().Network() != "unix" || servers[1].Server.WriteTimeout != 0 || servers[1].Server.ReadTimeout != 15*time.Second {
+		t.Fatalf("servers = %+v", servers)
 	}
 }
 
 func configForBuildTest(t *testing.T) config.Config {
 	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	agentEndpoint, err := endpoint.Parse("unix://"+filepath.Join(dir, "agent.sock"), endpoint.ParseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return config.Config{
-		BindAddr:            "127.0.0.2",
-		Port:                "9090",
+		Development:         true,
+		AgentEndpoint:       agentEndpoint,
 		ClientID:            "bob",
 		SharedSecret:        strings.Repeat("a", 32),
 		GitHubToken:         "github-token",
@@ -293,7 +276,6 @@ func configForBuildTest(t *testing.T) config.Config {
 		StateDir:            t.TempDir(),
 		GitHubHTTPTimeout:   time.Second,
 		MaxReceivePackBytes: 1,
-		ReadHeaderTimeout:   time.Second,
 	}
 }
 

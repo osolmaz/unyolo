@@ -138,6 +138,7 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -363,6 +364,7 @@ func TestApprovedAppendGrantDoesNotSpendUseOnLFSUploadSupportTraffic(t *testing.
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},

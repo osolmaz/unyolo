@@ -240,6 +240,7 @@ func TestInferenceRejectsInvalidRouterOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = New(Options{
+		Audit:  testAuditRecorder(),
 		Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}}, StateDir: t.TempDir(), HFTimeout: time.Second},
 		Scope:  scp, UpstreamBaseURL: "http://127.0.0.1:1", UpstreamRouterBaseURL: "https://user:pass@router.example.test/path?token=value",
 	})

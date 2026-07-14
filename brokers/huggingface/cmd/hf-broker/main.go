@@ -2,21 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/serverhttp"
 )
 
 var version = "dev"
@@ -114,51 +113,55 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 		return err
 	}
 	defer func() { _ = handler.Close() }()
-	servers := []*http.Server{{
-		Addr:              net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.Port)),
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}}
+	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
 	if len(cfg.Operators) > 0 {
-		servers = append(servers, &http.Server{
-			Addr:    net.JoinHostPort(cfg.OperatorBindAddr, strconv.Itoa(cfg.OperatorPort)),
-			Handler: handler.OperatorHandler(), ReadHeaderTimeout: 10 * time.Second,
-		})
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
 	}
-	return serveServersWithContext(ctx, servers, stderr)
-}
-
-func serveServersWithContext(ctx context.Context, servers []*http.Server, stderr io.Writer) error {
-	errs := make(chan error, len(servers))
-	for _, server := range servers {
-		go func(server *http.Server) { errs <- server.ListenAndServe() }(server)
-	}
-	select {
-	case <-ctx.Done():
-		if err := shutdownServers(servers); err != nil {
-			return err
-		}
-		_, _ = fmt.Fprintln(stderr, "hf-broker stopped")
-		return nil
-	case err := <-errs:
-		_ = shutdownServers(servers)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
+	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+	if err != nil {
 		return err
 	}
-}
-
-func shutdownServers(servers []*http.Server) error {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var errs []error
-	for _, server := range servers {
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			errs = append(errs, err)
+	agentServer, err := serverhttp.New(handler, serverhttp.ProfileStreaming)
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		return err
+	}
+	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if len(cfg.Operators) > 0 {
+		operatorServer, serverErr := serverhttp.New(handler.OperatorHandler(), serverhttp.ProfileOperator)
+		if serverErr != nil {
+			_ = endpoint.CloseSet(listeners)
+			return serverErr
+		}
+		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
+	}
+	if cfg.Development {
+		if err := writeReadiness(stdout, cfg, bindings); err != nil {
+			_ = serverhttp.Shutdown(bindings)
+			return err
 		}
 	}
-	return errors.Join(errs...)
+	err = serverhttp.Serve(ctx, bindings)
+	if ctx.Err() != nil && err == nil {
+		_, _ = fmt.Fprintln(stderr, "hf-broker stopped")
+	}
+	return err
+}
+
+func writeReadiness(stdout io.Writer, cfg config.Config, bindings []serverhttp.Binding) error {
+	agent, err := endpoint.Resolved(cfg.AgentEndpoint, bindings[0].Listener)
+	if err != nil {
+		return err
+	}
+	record := map[string]string{"event": "broker.ready", "agent_endpoint": agent.String()}
+	if cfg.OperatorEndpoint != nil {
+		operator, resolveErr := endpoint.Resolved(*cfg.OperatorEndpoint, bindings[1].Listener)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		record["operator_endpoint"] = operator.String()
+	}
+	return json.NewEncoder(stdout).Encode(record)
 }
 
 type exitError struct {

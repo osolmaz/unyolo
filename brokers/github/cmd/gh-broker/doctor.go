@@ -58,7 +58,10 @@ func loadGitHubDoctorConfig(environmentFile string) (config.Config, error) {
 	if err != nil {
 		return config.Config{}, err
 	}
-	return config.LoadFromLookup(func(key string) string { return values[key] })
+	return config.LoadFromLookup(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
 }
 
 func emitDoctorReport(stdout io.Writer, report bkdoctor.Report, jsonOutput bool) error {
@@ -87,7 +90,7 @@ func parseDoctorGitHub(stderr io.Writer, args []string) (doctorGitHubCommand, er
 	var output strings.Builder
 	fs := flag.NewFlagSet("gh-broker doctor github", flag.ContinueOnError)
 	fs.SetOutput(&output)
-	agentUser := fs.String("agent-user", "bob", "agent username to inspect")
+	agentUser := fs.String("agent-user", "", "agent username to inspect")
 	serviceUser := fs.String("service-user", "gh-broker", "broker service username")
 	repo := fs.String("repo", "", "configured GitHub repository as owner/name")
 	environmentFile := fs.String("env-file", "/etc/gh-broker/env", "installed broker environment file; empty uses process environment only")
@@ -100,8 +103,8 @@ func parseDoctorGitHub(stderr io.Writer, args []string) (doctorGitHubCommand, er
 		}
 		return doctorGitHubCommand{}, exitError{code: 64, message: "invalid doctor github flags"}
 	}
-	if fs.NArg() != 0 || *repo == "" {
-		return doctorGitHubCommand{}, exitError{code: 64, message: "doctor github requires --repo owner/name and no positional arguments"}
+	if fs.NArg() != 0 || *repo == "" || *agentUser == "" {
+		return doctorGitHubCommand{}, exitError{code: 64, message: "doctor github requires --repo owner/name, --agent-user name, and no positional arguments"}
 	}
 	return doctorGitHubCommand{
 		options: githubdoctor.Options{

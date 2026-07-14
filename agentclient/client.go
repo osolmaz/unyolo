@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/agentv1wire"
@@ -22,7 +21,7 @@ const maxResponseBytes = 4 * 1024 * 1024
 
 // Options configures an Agent Operations V1 client.
 type Options struct {
-	BaseURL    string
+	Endpoint   string
 	Credential string
 	HTTPClient *http.Client
 }
@@ -41,15 +40,14 @@ func (e *Error) Error() string { return e.Message }
 
 // New validates and constructs an Agent Operations V1 client.
 func New(options Options) (*Client, error) {
-	base, err := clienthttp.ParseBaseURL(options.BaseURL)
+	baseURL, httpClient, err := clienthttp.ForEndpoint(options.Endpoint, options.HTTPClient)
 	if err != nil {
 		return nil, err
 	}
 	if len(options.Credential) < 32 {
 		return nil, errors.New("agent credential is invalid")
 	}
-	httpClient := clienthttp.Secure(options.HTTPClient)
-	api, err := agentwire.NewClient(strings.TrimRight(base.String(), "/"), agentwire.WithHTTPClient(httpClient),
+	api, err := agentwire.NewClient(baseURL, agentwire.WithHTTPClient(httpClient),
 		agentwire.WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
 			request.Header.Set("Authorization", "Bearer "+options.Credential)
 			return nil

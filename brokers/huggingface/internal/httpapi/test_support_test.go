@@ -27,6 +27,8 @@ import (
 	"github.com/osolmaz/brokerkit/notify"
 )
 
+func testAuditRecorder() audit.Recorder { return audit.New(io.Discard) }
+
 func newTestBroker(t *testing.T, dir, upstreamURL string, auditWriter io.Writer, scopeJSON string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(newTestHandler(t, dir, upstreamURL, auditWriter, scopeJSON))

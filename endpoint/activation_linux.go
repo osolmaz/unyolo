@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func activationListener(name string) (listener interfaceListener, err error) {
+func activationListeners(expected []string) (map[string]interfaceListener, error) {
 	rawPID, rawCount := os.Getenv("LISTEN_PID"), os.Getenv("LISTEN_FDS")
 	pid, pidErr := strconv.Atoi(rawPID)
 	count, countErr := strconv.Atoi(rawCount)
@@ -18,20 +18,37 @@ func activationListener(name string) (listener interfaceListener, err error) {
 		return nil, errors.New("systemd activation environment is invalid")
 	}
 	names := strings.Split(os.Getenv("LISTEN_FDNAMES"), ":")
-	if len(names) != count {
+	if len(names) != count || count != len(expected) {
 		return nil, errors.New("systemd activation listener names are incomplete")
 	}
-	found := -1
-	for index, candidate := range names {
-		if candidate == name {
-			if found >= 0 {
-				return nil, fmt.Errorf("systemd activation listener %q is duplicated", name)
-			}
-			found = index
+	wanted := make(map[string]struct{}, len(expected))
+	for _, name := range expected {
+		if _, exists := wanted[name]; exists {
+			return nil, fmt.Errorf("systemd activation listener %q is duplicated", name)
 		}
+		wanted[name] = struct{}{}
 	}
-	if found < 0 {
-		return nil, fmt.Errorf("systemd activation listener %q is unavailable", name)
+	listeners := make(map[string]interfaceListener, len(names))
+	for index, name := range names {
+		if _, exists := wanted[name]; !exists {
+			return nil, closeActivatedListeners(listeners, fmt.Errorf("unexpected systemd activation listener %q", name))
+		}
+		if _, exists := listeners[name]; exists {
+			return nil, closeActivatedListeners(listeners, fmt.Errorf("systemd activation listener %q is duplicated", name))
+		}
+		listener, err := listenerFromFD(3 + index)
+		if err != nil {
+			return nil, closeActivatedListeners(listeners, err)
+		}
+		listeners[name] = listener
 	}
-	return listenerFromFD(3 + found)
+	return listeners, nil
+}
+
+func closeActivatedListeners(listeners map[string]interfaceListener, cause error) error {
+	values := []error{cause}
+	for _, listener := range listeners {
+		values = append(values, listener.Close())
+	}
+	return errors.Join(values...)
 }

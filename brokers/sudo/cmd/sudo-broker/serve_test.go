@@ -15,26 +15,22 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/routes"
+	"github.com/osolmaz/brokerkit/serverhttp"
 )
 
 func TestParseServeOptionsAndHTTPServerHardening(t *testing.T) {
 	t.Parallel()
 	args := []string{"--policy", "/etc/sudo/policy", "--catalog", "/etc/sudo/catalog", "--secrets", "/etc/sudo/secrets",
 		"--operator-secrets", "/etc/sudo/operators", "--state", "/var/lib/sudo",
-		"--helper-socket", "/run/sudo/helper.sock", "--bind", "127.0.0.1:9000", "--operator-bind", "127.0.0.1:9001"}
+		"--helper-socket", "/run/sudo/helper.sock", "--agent-endpoint", "tcp://127.0.0.1:9000", "--operator-endpoint", "tcp://127.0.0.1:9001"}
 	opts, err := parseServeOptions(args)
-	if err != nil || opts.bindAddress != "127.0.0.1:9000" {
+	if err != nil || opts.agentEndpoint.String() != "tcp://127.0.0.1:9000" {
 		t.Fatalf("parseServeOptions() = %+v, %v", opts, err)
 	}
-	agent := httpServer(opts.bindAddress, http.NotFoundHandler(), false)
-	operator := httpServer(opts.operatorAddress, http.NotFoundHandler(), true)
-	if agent.ReadHeaderTimeout != 5*time.Second || agent.WriteTimeout == 0 || operator.WriteTimeout != 0 {
+	agent, _ := serverhttp.New(http.NotFoundHandler(), serverhttp.ProfileStreaming)
+	operator, _ := serverhttp.New(http.NotFoundHandler(), serverhttp.ProfileOperator)
+	if agent.ReadHeaderTimeout != 5*time.Second || agent.WriteTimeout != 0 || operator.WriteTimeout != 0 {
 		t.Fatalf("server timeouts agent=%+v operator=%+v", agent, operator)
-	}
-	for _, address := range []string{"0.0.0.0:80", "example.com:80", "127.0.0.1:0", "bad"} {
-		if err := validateLoopbackAddress(address); err == nil {
-			t.Fatalf("address %q was accepted", address)
-		}
 	}
 }
 
@@ -44,7 +40,7 @@ func TestRunServeOrchestrationFailsBeforeListening(t *testing.T) {
 		t.Fatal("root frontend was accepted")
 	}
 	args := []string{"--policy", "/p", "--catalog", "/c", "--secrets", "/s", "--operator-secrets", "/o",
-		"--state", "/state", "--helper-socket", "/run/helper.sock"}
+		"--state", "/state", "--helper-socket", "/run/helper.sock", "--agent-endpoint", "tcp://127.0.0.1:9000", "--operator-endpoint", "tcp://127.0.0.1:9001"}
 	want := errors.New("build failed")
 	err := runServeWith(t.Context(), args, io.Discard, io.Discard, func() int { return 1000 },
 		func(serveOptions, io.Writer) (*routes.Server, error) { return nil, want }, serveHTTP)
@@ -99,13 +95,18 @@ func TestBuildServerAssemblesBrokerkitRuntime(t *testing.T) {
 		_ = executorprotocol.WriteResponse(connection, executorprotocol.Response{Version: executorprotocol.Version, Status: executorprotocol.StatusReady})
 	}()
 	args := []string{"--policy", policyPath, "--catalog", catalogPath, "--secrets", secretsPath, "--operator-secrets", operatorsPath,
-		"--state", opts.stateDirectory, "--helper-socket", opts.helperSocket}
+		"--state", opts.stateDirectory, "--helper-socket", opts.helperSocket,
+		"--agent-endpoint", "unix://" + filepath.Join(directory, "agent.sock"), "--operator-endpoint", "unix://" + filepath.Join(directory, "operator.sock"), "--development"}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	var output bytes.Buffer
 	err = runServeWith(t.Context(), args, &output, &bytes.Buffer{}, func() int { return 1000 },
 		func(serveOptions, io.Writer) (*routes.Server, error) { return server, nil },
-		func(_ context.Context, servers []*http.Server) error {
-			if len(servers) != 2 {
-				t.Fatalf("HTTP servers = %d", len(servers))
+		func(_ context.Context, bindings []serverhttp.Binding) error {
+			defer func() { _ = serverhttp.Shutdown(bindings) }()
+			if len(bindings) != 2 {
+				t.Fatalf("HTTP bindings = %d", len(bindings))
 			}
 			return nil
 		})
@@ -116,10 +117,10 @@ func TestBuildServerAssemblesBrokerkitRuntime(t *testing.T) {
 
 func TestParseServeOptionsRejectsUnsafeCombinations(t *testing.T) {
 	t.Parallel()
-	base := []string{"--policy", "/p", "--catalog", "/c", "--secrets", "/s", "--state", "/state", "--helper-socket", "/run/helper.sock"}
+	base := []string{"--policy", "/p", "--catalog", "/c", "--secrets", "/s", "--state", "/state", "--helper-socket", "/run/helper.sock", "--agent-endpoint", "tcp://127.0.0.1:9000"}
 	for _, extra := range [][]string{
 		nil,
-		{"--operator-secrets", "/o", "--bind", "127.0.0.1:8084", "--operator-bind", "127.0.0.1:8084"},
+		{"--operator-secrets", "/o", "--operator-endpoint", "tcp://127.0.0.1:9000"},
 		{"--operator-secrets", "/o", "--helper-socket", "relative"},
 		{"--operator-secrets", "/o", "--telegram-token-file", "/t"},
 	} {
@@ -139,17 +140,9 @@ func TestStatusRecorderAndShutdown(t *testing.T) {
 	if recorder.status != http.StatusTeapot {
 		t.Fatalf("recorder status = %d", recorder.status)
 	}
-	server := &http.Server{}
-	if err := shutdownHTTP([]*http.Server{server}); err != nil {
-		t.Fatal(err)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := serveHTTP(ctx, nil); err != nil && !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("serveHTTP canceled = %v", err)
-	}
-	badServer := &http.Server{Addr: "invalid-address"}
-	if err := serveHTTP(context.Background(), []*http.Server{badServer}); err == nil {
-		t.Fatal("invalid HTTP listen address was accepted")
+	if err := serveHTTP(ctx, nil); err == nil {
+		t.Fatal("empty HTTP bindings were accepted")
 	}
 }

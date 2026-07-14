@@ -54,6 +54,46 @@ func TestEphemeralTCPRequiresDevelopmentOption(t *testing.T) {
 	if err != nil || value.Address() != "127.0.0.1:0" {
 		t.Fatalf("Parse() = %#v, %v", value, err)
 	}
+	listener, err := Listen(value, ListenOptions{Development: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+	resolved, err := Resolved(value, listener)
+	if err != nil || resolved.Address() == "127.0.0.1:0" || resolved.Exposure() != ExposureLoopback {
+		t.Fatalf("Resolved() = %#v, %v", resolved, err)
+	}
+}
+
+func TestListenSetAcquiresAndClosesCompleteSet(t *testing.T) {
+	agent, _ := Parse("tcp://127.0.0.1:0", ParseOptions{AllowEphemeralTCP: true})
+	operator, _ := Parse("tcp://127.0.0.1:0", ParseOptions{AllowEphemeralTCP: true})
+	listeners, err := ListenSet([]Named{{Name: "agent", Endpoint: agent}, {Name: "operator", Endpoint: operator}}, ListenOptions{Development: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listeners) != 2 || listeners["agent"] == nil || listeners["operator"] == nil {
+		t.Fatalf("listeners = %+v", listeners)
+	}
+	if err := CloseSet(listeners); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ListenSet([]Named{{Name: "agent", Endpoint: agent}, {Name: "agent", Endpoint: operator}}, ListenOptions{Development: true}); err == nil {
+		t.Fatal("duplicate logical listener was accepted")
+	}
+}
+
+func TestNetworkTCPIsNotAPlaintextClientEndpoint(t *testing.T) {
+	value, err := Parse("tcp://192.0.2.4:443", ParseOptions{AllowNetworkTCP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := HTTPBaseURL(value); err == nil {
+		t.Fatal("HTTPBaseURL(network TCP) succeeded")
+	}
+	if _, err := HTTPTransport(value, nil); err == nil {
+		t.Fatal("HTTPTransport(network TCP) succeeded")
+	}
 }
 
 func TestUnixListenerAndTransport(t *testing.T) {

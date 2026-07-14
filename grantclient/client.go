@@ -25,7 +25,7 @@ type Decoder[T any] func([]byte) (T, error)
 
 // Options configures a temporary-grant client.
 type Options[T any] struct {
-	BaseURL      string
+	Endpoint     string
 	Credential   string
 	HTTPClient   *http.Client
 	Decode       Decoder[T]
@@ -52,19 +52,22 @@ func (e *Error) Error() string {
 
 // New validates and constructs a grant client.
 func New[T any](options Options[T]) (*Client[T], error) {
-	base, err := clienthttp.ParseBaseURL(options.BaseURL)
+	baseURL, httpClient, err := clienthttp.ForEndpoint(options.Endpoint, options.HTTPClient)
 	if err != nil {
 		return nil, err
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, errors.New("grant client endpoint is invalid")
 	}
 	if len(options.Credential) < 32 || options.Decode == nil || options.Terminal == nil {
 		return nil, errors.New("grant client credential, decoder, and terminal predicate are required")
 	}
-	options.HTTPClient = clienthttp.Secure(options.HTTPClient)
 	if options.PollInterval <= 0 {
 		options.PollInterval = time.Second
 	}
 	return &Client[T]{
-		base: base, credential: options.Credential, http: options.HTTPClient,
+		base: base, credential: options.Credential, http: httpClient,
 		decode: options.Decode, terminal: options.Terminal, pollInterval: options.PollInterval,
 	}, nil
 }

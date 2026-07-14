@@ -50,10 +50,7 @@ func TestClientSubmitGetAndWait(t *testing.T) {
 
 func TestClientWaitReturnsLastOperationOnCancellation(t *testing.T) {
 	t.Parallel()
-	client := newTestClient(t, "http://127.0.0.1:1", &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		<-request.Context().Done()
-		return nil, request.Context().Err()
-	})})
+	client := newTestClient(t, "tcp://127.0.0.1:1", nil)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	initial := domainOperation(agentv1.StatePending)
@@ -136,7 +133,8 @@ func TestClientReadsLargestValidStoredOperation(t *testing.T) {
 
 func newTestClient(t *testing.T, baseURL string, httpClient *http.Client) *Client {
 	t.Helper()
-	client, err := New(Options{BaseURL: baseURL, Credential: testCredential, HTTPClient: httpClient})
+	endpoint := strings.Replace(baseURL, "http://", "tcp://", 1)
+	client, err := New(Options{Endpoint: endpoint, Credential: testCredential, HTTPClient: httpClient})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +153,3 @@ func testOperation(state agentv1.State) map[string]any {
 		"presentation": map[string]any{"title": "Test"},
 	}
 }
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }

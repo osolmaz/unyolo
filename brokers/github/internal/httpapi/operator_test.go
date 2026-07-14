@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,7 +46,10 @@ func TestOperatorHandlerSharesCanonicalGitHubGrantState(t *testing.T) {
 	server, cfg := newOperatorTestServer(t, clientSecret, operatorSecret)
 	result := requestOperatorTestGrant(t, server)
 	operatorServer := newOperatorHTTPServer(t, server, cfg)
-	client := &operatorclient.Client{BaseURL: operatorServer.URL, Token: operatorSecret, HTTPClient: operatorServer.Client()}
+	client, err := operatorclient.New(strings.Replace(operatorServer.URL, "http://", "tcp://", 1), operatorSecret, operatorServer.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
 	page, err := client.List(t.Context(), operatorv1.Query{Status: grants.StatusGroupPending})
 	if err != nil || len(page.Requests) != 1 || len(page.Requests[0].Presentation.Facts) == 0 {
 		t.Fatalf("List() = %+v, %v", page, err)

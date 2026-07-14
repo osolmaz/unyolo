@@ -16,6 +16,9 @@ func HTTPBaseURL(value Endpoint) (string, error) {
 	case SchemeUnix:
 		return "http://brokerkit.local", nil
 	case SchemeTCP:
+		if value.exposure != ExposureLoopback {
+			return "", errors.New("direct TCP clients require a loopback endpoint")
+		}
 		return "http://" + value.Address(), nil
 	default:
 		return "", errors.New("endpoint cannot be dialed by a client")
@@ -26,6 +29,9 @@ func HTTPBaseURL(value Endpoint) (string, error) {
 func HTTPTransport(value Endpoint, base *http.Transport) (*http.Transport, error) {
 	if !value.ClientCapable() {
 		return nil, errors.New("endpoint cannot be dialed by a client")
+	}
+	if value.scheme == SchemeTCP && value.exposure != ExposureLoopback {
+		return nil, errors.New("direct TCP clients require a loopback endpoint")
 	}
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport)

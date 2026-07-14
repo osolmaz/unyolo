@@ -33,6 +33,36 @@ func TestRenderSystemd(t *testing.T) {
 	}
 }
 
+func TestRenderSystemdSocket(t *testing.T) {
+	body, err := RenderSystemdSocket(SystemdSocketUnit{
+		Description: "test agent listener", ListenStream: "/run/brokerkit/test/agent/broker.sock",
+		Service: "test-broker.service", FileDescriptorName: "agent", SocketUser: "root",
+		SocketGroup: "test-broker-agent", SocketMode: 0o660, DirectoryMode: 0o750,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ListenStream=/run/brokerkit/test/agent/broker.sock", "FileDescriptorName=agent", "SocketGroup=test-broker-agent", "SocketMode=0660", "DirectoryMode=0750", "Service=test-broker.service", "WantedBy=sockets.target"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("socket unit missing %q:\n%s", want, body)
+		}
+	}
+	for _, mutate := range []func(*SystemdSocketUnit){
+		func(unit *SystemdSocketUnit) { unit.ListenStream = "relative.sock" },
+		func(unit *SystemdSocketUnit) { unit.FileDescriptorName = "bad/name" },
+		func(unit *SystemdSocketUnit) { unit.SocketGroup = "bad=name" },
+		func(unit *SystemdSocketUnit) { unit.SocketMode = 0o666 },
+		func(unit *SystemdSocketUnit) { unit.DirectoryMode = 0o751 },
+		func(unit *SystemdSocketUnit) { unit.Service = "bad.socket" },
+	} {
+		unit := SystemdSocketUnit{Description: "test", ListenStream: "/run/test.sock", Service: "test.service", FileDescriptorName: "agent", SocketUser: "root", SocketGroup: "agent", SocketMode: 0o660, DirectoryMode: 0o750}
+		mutate(&unit)
+		if _, err := RenderSystemdSocket(unit); err == nil {
+			t.Fatalf("RenderSystemdSocket(%+v) error = nil", unit)
+		}
+	}
+}
+
 func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 	base := SystemdUnit{
 		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",

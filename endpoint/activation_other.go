@@ -7,6 +7,6 @@ import (
 	"net"
 )
 
-func activationListener(string) (net.Listener, error) {
+func activationListeners([]string) (map[string]net.Listener, error) {
 	return nil, errors.New("named listener activation is unsupported on this platform")
 }

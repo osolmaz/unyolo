@@ -4,12 +4,10 @@ package controlplane
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
@@ -53,17 +51,15 @@ func New(options Options) (*Runtime, error) {
 	if options.Store == nil {
 		return nil, errors.New("grant store is required")
 	}
+	if options.Audit == nil {
+		return nil, errors.New("audit recorder is required")
+	}
 	clients, err := auth.New(options.ClientSecrets, auth.Options{})
 	if err != nil {
 		return nil, err
 	}
-	recorder := options.Audit
-	if recorder == nil {
-		recorder = audit.New(io.Discard)
-	}
-	options.Audit = recorder
 	decisions, err := decision.New(decision.Options{
-		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: recorder,
+		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: options.Audit,
 	})
 	if err != nil {
 		return nil, err
@@ -88,12 +84,8 @@ func operatorHandler(options Options, decisions *decision.Service) (http.Handler
 	if err != nil {
 		return nil, err
 	}
-	recorder := options.Audit
-	if recorder == nil {
-		recorder = audit.New(io.Discard)
-	}
 	return operatorapi.New(operatorapi.Options{
-		Inbox: inbox, Decisions: decisions, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: recorder,
+		Inbox: inbox, Decisions: decisions, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: options.Audit,
 		NewCorrelationID: options.NewCorrelationID,
 	})
 }

@@ -18,6 +18,78 @@ type ListenOptions struct {
 	SocketMode  os.FileMode
 }
 
+// Named identifies one logical server listener.
+type Named struct {
+	Name     string
+	Endpoint Endpoint
+}
+
+// ListenSet acquires a complete logical listener set. Named activation is
+// validated as one set so missing, duplicate, and unexpected descriptors fail
+// startup before any server begins accepting requests.
+func ListenSet(values []Named, options ListenOptions) (map[string]net.Listener, error) {
+	listeners := make(map[string]net.Listener, len(values))
+	activationNames := make([]string, 0, len(values))
+	activationKeys := make(map[string]string, len(values))
+	for _, value := range values {
+		if !validName(value.Name) {
+			return nil, closeListeners(listeners, errors.New("logical listener name is invalid"))
+		}
+		if _, exists := listeners[value.Name]; exists {
+			return nil, closeListeners(listeners, fmt.Errorf("logical listener %q is duplicated", value.Name))
+		}
+		listeners[value.Name] = nil
+		if value.Endpoint.scheme == SchemeActivation {
+			if _, exists := activationKeys[value.Endpoint.name]; exists {
+				return nil, closeListeners(listeners, fmt.Errorf("activation listener %q is duplicated", value.Endpoint.name))
+			}
+			activationNames = append(activationNames, value.Endpoint.name)
+			activationKeys[value.Endpoint.name] = value.Name
+		}
+	}
+	if len(activationNames) > 0 {
+		activated, err := activationListeners(activationNames)
+		if err != nil {
+			return nil, closeListeners(listeners, err)
+		}
+		for name, listener := range activated {
+			listeners[activationKeys[name]] = listener
+		}
+	}
+	for _, value := range values {
+		if value.Endpoint.scheme == SchemeActivation {
+			continue
+		}
+		listener, err := Listen(value.Endpoint, options)
+		if err != nil {
+			return nil, closeListeners(listeners, err)
+		}
+		listeners[value.Name] = listener
+	}
+	return listeners, nil
+}
+
+func closeListeners(listeners map[string]net.Listener, cause error) error {
+	errorsToJoin := []error{cause}
+	for _, listener := range listeners {
+		if listener != nil {
+			errorsToJoin = append(errorsToJoin, listener.Close())
+		}
+	}
+	return errors.Join(errorsToJoin...)
+}
+
+// CloseSet closes every acquired listener and joins close failures.
+func CloseSet(listeners map[string]net.Listener) error {
+	var failures []error
+	for _, listener := range listeners {
+		if listener != nil {
+			failures = append(failures, listener.Close())
+		}
+	}
+	return errors.Join(failures...)
+}
+
 // Listen acquires and verifies one server listener.
 func Listen(value Endpoint, options ListenOptions) (net.Listener, error) {
 	switch value.scheme {
@@ -28,7 +100,8 @@ func Listen(value Endpoint, options ListenOptions) (net.Listener, error) {
 	case SchemeFD:
 		return listenerFromFD(value.fd)
 	case SchemeActivation:
-		return activationListener(value.name)
+		listeners, err := activationListeners([]string{value.name})
+		return listeners[value.name], err
 	default:
 		return nil, errors.New("endpoint is not initialized")
 	}

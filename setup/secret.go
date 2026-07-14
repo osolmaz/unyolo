@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/auth"
 )
 
 const (
@@ -69,8 +71,8 @@ func GenerateSecret() (string, error) {
 
 func validateSecret(value string) (string, error) {
 	secret := strings.TrimSpace(value)
-	if len(secret) < 32 {
-		return "", errors.New("secret must be at least 32 characters")
+	if len([]byte(secret)) < auth.MinimumSecretBytes {
+		return "", fmt.Errorf("secret must be at least %d bytes", auth.MinimumSecretBytes)
 	}
 	if strings.ContainsAny(secret, "\r\n\x00") {
 		return "", errors.New("secret must be one nonempty line")

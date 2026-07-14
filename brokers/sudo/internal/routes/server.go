@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -84,6 +83,9 @@ func New(opts Options) (*Server, error) {
 	if opts.Policy == nil || opts.Catalog == nil || opts.Database == nil || opts.Identities == nil || opts.Helper == nil {
 		return nil, errors.New("sudo broker dependencies are required")
 	}
+	if opts.Audit == nil {
+		return nil, errors.New("audit recorder is required")
+	}
 	plans, err := plan.NewStore(opts.Database)
 	if err != nil {
 		return nil, err
@@ -101,17 +103,13 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	auditWriter := opts.Audit
-	if auditWriter == nil {
-		auditWriter = audit.New(io.Discard)
-	}
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
 	e.Use(middleware.Recover(), noStore)
 	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: grantStore, plans: plans,
 		identities: opts.Identities, helper: opts.Helper, validator: validator, notifier: opts.Notifier, poller: opts.Poller,
-		audit: auditWriter, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
+		audit: opts.Audit, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
 		database: opts.Database, operations: agentops.New(opts.Database)}
 	server.agentAPI, err = agentapi.New(agentapi.Options{Store: server.operations, Authenticate: control.Clients.AuthenticateHeader,
 		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "sudo-broker"})

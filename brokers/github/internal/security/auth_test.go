@@ -10,6 +10,8 @@ import (
 	bkauth "github.com/osolmaz/brokerkit/auth"
 )
 
+const expectedSecret = "expected-shared-secret-1234567890"
+
 func TestTokenAuthAllowsValidBearerToken(t *testing.T) {
 	t.Parallel()
 	auth := testTokenAuth(t, "bob")
@@ -23,7 +25,7 @@ func TestTokenAuthAllowsValidBearerToken(t *testing.T) {
 	})
 	e := echo.New()
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
-	request.Header.Set(echo.HeaderAuthorization, "Bearer expected-shared-secret")
+	request.Header.Set(echo.HeaderAuthorization, "Bearer "+expectedSecret)
 	response := httptest.NewRecorder()
 	if err := handler(e.NewContext(request, response)); err != nil {
 		t.Fatalf("handler() error = %v", err)
@@ -43,7 +45,7 @@ func TestTokenAuthAllowsValidBasicPassword(t *testing.T) {
 	})
 	e := echo.New()
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
-	request.Header.Set(echo.HeaderAuthorization, "Basic "+base64.StdEncoding.EncodeToString([]byte("git:expected-shared-secret")))
+	request.Header.Set(echo.HeaderAuthorization, "Basic "+base64.StdEncoding.EncodeToString([]byte("git:"+expectedSecret)))
 	response := httptest.NewRecorder()
 	if err := handler(e.NewContext(request, response)); err != nil {
 		t.Fatalf("handler() error = %v", err)
@@ -79,7 +81,7 @@ func TestFromAuthenticatorRejectsNil(t *testing.T) {
 
 func testTokenAuth(t *testing.T, client string) TokenAuth {
 	t.Helper()
-	authenticator, err := bkauth.New(map[string]string{client: "expected-shared-secret"}, bkauth.Options{})
+	authenticator, err := bkauth.New(map[string]string{client: expectedSecret}, bkauth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

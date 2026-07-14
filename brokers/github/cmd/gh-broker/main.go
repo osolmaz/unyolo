@@ -5,18 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubsurface"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/serverhttp"
 )
 
 var version = "dev"
@@ -100,7 +99,7 @@ func runServer(ctx context.Context) error {
 	return serveServers(ctx, servers)
 }
 
-func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error) {
+func buildServers(ctx context.Context, cfg config.Config) ([]serverhttp.Binding, error) {
 	if err := githubsurface.Validate(); err != nil {
 		return nil, fmt.Errorf("validate generated GitHub surface: %w", err)
 	}
@@ -113,86 +112,38 @@ func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error
 		return nil, err
 	}
 	api.Start(ctx)
-	servers := []*http.Server{configuredAgentServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
+	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
 	if cfg.OperatorSecret != "" {
-		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, api.OperatorHandler(), cfg))
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
 	}
-	for _, server := range servers {
-		server.RegisterOnShutdown(func() { _ = api.Close() })
+	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+	if err != nil {
+		_ = api.Close()
+		return nil, err
+	}
+	agentServer, err := serverhttp.New(api.Handler(), serverhttp.ProfileStreaming)
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		_ = api.Close()
+		return nil, err
+	}
+	servers := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if cfg.OperatorSecret != "" {
+		operatorServer, serverErr := serverhttp.New(api.OperatorHandler(), serverhttp.ProfileOperator)
+		if serverErr != nil {
+			_ = endpoint.CloseSet(listeners)
+			_ = api.Close()
+			return nil, serverErr
+		}
+		servers = append(servers, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
+	}
+	var closeOnce sync.Once
+	for _, binding := range servers {
+		binding.Server.RegisterOnShutdown(func() { closeOnce.Do(func() { _ = api.Close() }) })
 	}
 	return servers, nil
 }
 
-func configuredOperatorServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
-	server := configuredHTTPServer(bindAddr, port, handler, cfg)
-	server.WriteTimeout = 0
-	return server
-}
-
-func buildServer(ctx context.Context, cfg config.Config) (*http.Server, error) {
-	servers, err := buildServers(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return servers[0], nil
-}
-
-func configuredHTTPServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
-	return &http.Server{
-		Addr:              net.JoinHostPort(bindAddr, port),
-		Handler:           handler,
-		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
-		ReadTimeout:       cfg.ReadTimeout,
-		WriteTimeout:      cfg.WriteTimeout,
-		IdleTimeout:       cfg.IdleTimeout,
-	}
-}
-
-func configuredAgentServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
-	server := configuredHTTPServer(bindAddr, port, handler, cfg)
-	server.ReadTimeout = max(server.ReadTimeout, cfg.GitHubStreamTimeout)
-	server.WriteTimeout = max(server.WriteTimeout, cfg.GitHubStreamTimeout)
-	return server
-}
-
-func serve(ctx context.Context, server *http.Server, bindAddr string, port string) error {
-	server.Addr = net.JoinHostPort(bindAddr, port)
-	return serveServers(ctx, []*http.Server{server})
-}
-
-func serveServers(ctx context.Context, servers []*http.Server) error {
-	errCh := make(chan error, len(servers))
-	for _, server := range servers {
-		server := server
-		go func() {
-			log.Printf("gh-broker listening on %s", server.Addr)
-			errCh <- server.ListenAndServe()
-		}()
-	}
-	select {
-	case err := <-errCh:
-		_ = shutdownServers(servers)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		return shutdownServers(servers)
-	}
-}
-
-func shutdown(server *http.Server) error {
-	return shutdownServers([]*http.Server{server})
-}
-
-func shutdownServers(servers []*http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	var errs []error
-	for _, server := range servers {
-		if err := server.Shutdown(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("shutdown server: %w", err))
-		}
-	}
-	return errors.Join(errs...)
+func serveServers(ctx context.Context, servers []serverhttp.Binding) error {
+	return serverhttp.Serve(ctx, servers)
 }

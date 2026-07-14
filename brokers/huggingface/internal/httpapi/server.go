@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -184,11 +183,13 @@ func prepareServer(opts Options) (*Server, context.Context, error) {
 	for _, client := range opts.Config.Clients {
 		clients[client.Name] = client.Secret
 	}
-	auditLogger := opts.Audit
-	if auditLogger == nil {
-		auditLogger = audit.New(io.Discard)
+	if opts.Audit == nil {
+		return nil, nil, errors.New("audit recorder is required")
 	}
-	server, err := newServer(opts, upstream, routerUpstream, clients, auditLogger)
+	if opts.OperatorAudit == nil {
+		opts.OperatorAudit = opts.Audit
+	}
+	server, err := newServer(opts, upstream, routerUpstream, clients, opts.Audit)
 	if err != nil {
 		return nil, nil, err
 	}

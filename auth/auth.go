@@ -10,7 +10,9 @@ import (
 	"github.com/osolmaz/brokerkit/internal/secretset"
 )
 
-const defaultMinSecretBytes = 16
+// MinimumSecretBytes is the broker-wide minimum for client and operator
+// shared secrets.
+const MinimumSecretBytes = 32
 
 var (
 	// ErrMissing means no usable credential was presented.
@@ -21,9 +23,7 @@ var (
 
 // Options configures an Authenticator.
 type Options struct {
-	// MinSecretBytes is the minimum accepted client secret length. The default
-	// is intentionally modest so existing broker deployments can cut over
-	// without weakening production guidance.
+	// MinSecretBytes is the minimum accepted client secret length.
 	MinSecretBytes int
 }
 
@@ -35,7 +35,7 @@ type Authenticator struct {
 // New builds an Authenticator from client id to shared secret.
 func New(secrets map[string]string, opts Options) (*Authenticator, error) {
 	if opts.MinSecretBytes <= 0 {
-		opts.MinSecretBytes = defaultMinSecretBytes
+		opts.MinSecretBytes = MinimumSecretBytes
 	}
 	clients, err := secretset.New("client", secrets, opts.MinSecretBytes, nil)
 	if err != nil {

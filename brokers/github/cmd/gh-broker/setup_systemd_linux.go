@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	bkservice "github.com/osolmaz/brokerkit/service"
+	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
 const (
@@ -112,6 +112,10 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
+	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, ghUnitFileName)
+	if err != nil {
+		return bkservice.SystemdInstallPlan{}, err
+	}
 	removeFiles := []bkservice.ManagedFileRef(nil)
 	if plan.opts.DevTokenFallback {
 		removeFiles = append(removeFiles,
@@ -133,22 +137,26 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	var readyCheck bkservice.ReadinessCheck
 	if plan.opts.TelegramBotTokenFile == "" {
 		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName})
-		readyCheck = bkservice.HTTPReadyCheck(brokerURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", bkservice.LocalHTTPClient())
+		readyCheck = bkservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
 	}
 	return bkservice.SystemdInstallPlan{
-		User:         plan.opts.User,
-		Group:        plan.opts.Group,
-		ConfigDir:    plan.opts.ConfigDir,
-		StateDir:     plan.opts.StateDir,
-		SystemdDir:   plan.opts.SystemdDir,
-		UnitName:     ghUnitFileName,
-		Files:        files,
-		RemoveFiles:  removeFiles,
-		ReadyCheck:   readyCheck,
-		Unit:         systemdUnit(plan),
-		NoStart:      plan.opts.NoStart,
-		AllowNonRoot: plan.opts.AllowNonRoot,
-		Runner:       plan.opts.CommandRunner,
+		User:             plan.opts.User,
+		Group:            plan.opts.Group,
+		AdditionalGroups: activation.Groups,
+		GroupMembers:     activation.GroupMembers,
+		ConfigDir:        plan.opts.ConfigDir,
+		StateDir:         plan.opts.StateDir,
+		SystemdDir:       plan.opts.SystemdDir,
+		UnitName:         ghUnitFileName,
+		Files:            files,
+		RemoveFiles:      removeFiles,
+		ReadyCheck:       readyCheck,
+		Unit:             systemdUnit(plan),
+		SocketUnits:      activation.Sockets,
+		ActivationUnits:  activation.ActivationUnits,
+		NoStart:          plan.opts.NoStart,
+		AllowNonRoot:     plan.opts.AllowNonRoot,
+		Runner:           plan.opts.CommandRunner,
 	}, nil
 }
 
@@ -235,17 +243,15 @@ func readRequiredSetupFile(path string, label string) ([]byte, error) {
 
 func renderEnvFile(plan systemdPlan) string {
 	opts := plan.opts
-	body := "GH_BROKER_ENVIRONMENT=local\n" +
-		"GH_BROKER_BIND_ADDR=" + opts.BindAddr + "\n" +
-		"GH_BROKER_PORT=" + strconv.Itoa(opts.Port) + "\n" +
+	body := "GH_BROKER_DEVELOPMENT=false\n" +
+		"GH_BROKER_AGENT_ENDPOINT=activation://agent\n" +
 		"GH_BROKER_CLIENT_ID=" + opts.ClientName + "\n" +
 		"GH_BROKER_SECRETS_FILE=" + plan.secretsPath + "\n" +
 		"GH_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
 		"GH_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
 		"GH_BROKER_OPERATOR_ID=" + opts.OperatorID + "\n" +
 		"GH_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +
-		"GH_BROKER_OPERATOR_BIND_ADDR=" + opts.OperatorBindAddr + "\n" +
-		"GH_BROKER_OPERATOR_PORT=" + strconv.Itoa(opts.OperatorPort) + "\n" +
+		"GH_BROKER_OPERATOR_ENDPOINT=activation://operator\n" +
 		"GH_BROKER_GITHUB_HTTP_TIMEOUT=30\n" +
 		"GH_BROKER_GITHUB_STREAM_TIMEOUT=600\n" +
 		"GH_BROKER_MAX_RECEIVE_PACK_BYTES=26214400\n"
@@ -301,7 +307,15 @@ func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
 }
 
 func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
-	_, err := fmt.Fprintf(stdout, `Would configure gh-broker systemd service:
+	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, ghUnitFileName)
+	if err != nil {
+		return err
+	}
+	sockets, err := bkservice.RenderSystemdSockets(activation.Sockets)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, `Would configure gh-broker systemd service:
   user:            %s
   group:           %s
   token fallback:  %t
@@ -316,8 +330,10 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   env file:        %s
   state dir:       %s
   unit file:       %s
-  broker URL:      %s
-`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), showPath(plan.opts.TelegramBotTokenFile != "", plan.telegramTokenPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port))
+  broker endpoint: %s
+  agent access:    %s (%s)
+  operator access: %s (%s)
+%s`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), showPath(plan.opts.TelegramBotTokenFile != "", plan.telegramTokenPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, plan.opts.Endpoint, plan.opts.AgentUser, plan.opts.AgentAccessGroup, plan.opts.OperatorUser, plan.opts.OperatorAccessGroup, sockets)
 	return err
 }
 
@@ -328,18 +344,10 @@ func showPath(enabled bool, path string) string {
 	return path
 }
 
-func brokerURL(bindAddr string, port int) string {
-	host := bindAddr
-	if host == "0.0.0.0" || host == "::" {
-		host = "127.0.0.1"
-	}
-	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
-}
-
 func printSystemdSummary(stdout io.Writer, plan systemdPlan) {
 	_, _ = fmt.Fprintf(stdout, `gh-broker systemd service configured.
 
-Broker URL:
+Broker endpoint:
   %s
 
 Broker client:
@@ -347,12 +355,12 @@ Broker client:
   secret file: %s
 
 Operator inbox:
-  url: %s
+  endpoint: %s
   credential file: %s
 
 Write the client config with:
-  gh-broker setup client --client %s --url %s --secret-file %s --home-dir %s
-`, brokerURL(plan.opts.BindAddr, plan.opts.Port), plan.opts.ClientName, plan.secretsPath, brokerURL(plan.opts.OperatorBindAddr, plan.opts.OperatorPort), plan.operatorSecretsPath, shellQuote(plan.opts.ClientName), shellQuote(brokerURL(plan.opts.BindAddr, plan.opts.Port)), shellQuote(plan.secretsPath), shellQuote(filepath.Join("/home", plan.opts.ClientName)))
+  gh-broker setup client --client %s --endpoint %s --secret-file %s --home-dir %s
+`, plan.opts.Endpoint, plan.opts.ClientName, plan.secretsPath, plan.opts.OperatorEndpoint, plan.operatorSecretsPath, shellQuote(plan.opts.ClientName), shellQuote(plan.opts.Endpoint), shellQuote(plan.secretsPath), shellQuote(filepath.Join("/home", plan.opts.ClientName)))
 }
 
 func shellQuote(value string) string {

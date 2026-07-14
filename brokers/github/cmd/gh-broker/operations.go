@@ -261,7 +261,7 @@ func runStream(ctx context.Context, stdout io.Writer, args []string) error {
 
 //nolint:cyclop // Download integrity and atomic replacement checks remain explicit at the file boundary.
 func (connection operationConnection) downloadStream(ctx context.Context, id, output string) error {
-	base, err := clienthttp.ParseBaseURL(connection.baseURL)
+	base, err := url.Parse(connection.baseURL)
 	if err != nil {
 		return err
 	}
@@ -272,7 +272,7 @@ func (connection operationConnection) downloadStream(ctx context.Context, id, ou
 	}
 	request.Header.Set("Authorization", "Bearer "+connection.secret)
 	// #nosec G704 -- the validated broker origin is intentional; Secure disables credential-forwarding redirects.
-	response, err := clienthttp.Secure(&http.Client{Timeout: 10 * time.Minute}).Do(request)
+	response, err := connection.streamClient(10 * time.Minute).Do(request)
 	if err != nil {
 		return errors.New("download stream")
 	}
@@ -313,12 +313,14 @@ func loadOperationClient(getenv func(string) string) (*agentclient.Client, error
 }
 
 type operationConnection struct {
-	baseURL string
-	secret  string
+	endpoint string
+	baseURL  string
+	secret   string
+	http     *http.Client
 }
 
 func loadOperationConnection(getenv func(string) string) (operationConnection, error) {
-	baseURL := strings.TrimSpace(getenv("GH_BROKER_URL"))
+	endpointURI := strings.TrimSpace(getenv("GH_BROKER_AGENT_ENDPOINT"))
 	secret := strings.TrimSpace(getenv("GH_BROKER_SHARED_SECRET"))
 	if secret == "" {
 		path := strings.TrimSpace(getenv("GH_BROKER_SHARED_SECRET_FILE"))
@@ -330,14 +332,29 @@ func loadOperationConnection(getenv func(string) string) (operationConnection, e
 			secret = strings.TrimSpace(string(data))
 		}
 	}
-	if baseURL == "" || secret == "" {
-		return operationConnection{}, errors.New("GH Broker client URL and credential are not configured")
+	if endpointURI == "" || secret == "" {
+		return operationConnection{}, errors.New("GH Broker client endpoint and credential are not configured")
 	}
-	return operationConnection{baseURL: baseURL, secret: secret}, nil
+	baseURL, httpClient, err := clienthttp.ForEndpoint(endpointURI, nil)
+	if err != nil {
+		return operationConnection{}, err
+	}
+	return operationConnection{endpoint: endpointURI, baseURL: baseURL, secret: secret, http: httpClient}, nil
 }
 
 func (connection operationConnection) client() (*agentclient.Client, error) {
-	return agentclient.New(agentclient.Options{BaseURL: connection.baseURL, Credential: connection.secret})
+	return agentclient.New(agentclient.Options{Endpoint: connection.endpoint, Credential: connection.secret})
+}
+
+func (connection operationConnection) streamClient(timeout time.Duration) *http.Client {
+	if connection.http == nil {
+		client := clienthttp.Secure(nil)
+		client.Timeout = timeout
+		return client
+	}
+	client := *connection.http
+	client.Timeout = timeout
+	return &client
 }
 
 //nolint:cyclop // Mutually exclusive sealed, credential, and stream input forms fail closed in one boundary.
@@ -411,7 +428,7 @@ func (connection operationConnection) wrapSealedArguments(ctx context.Context, o
 }
 
 func (connection operationConnection) uploadSealedPayload(ctx context.Context, operation, requestKey string, payload []byte) (sealedstore.Reference, error) {
-	base, err := clienthttp.ParseBaseURL(connection.baseURL)
+	base, err := url.Parse(connection.baseURL)
 	if err != nil {
 		return sealedstore.Reference{}, err
 	}
@@ -423,7 +440,7 @@ func (connection operationConnection) uploadSealedPayload(ctx context.Context, o
 	request.Header.Set("Content-Type", "application/octet-stream")
 	request.Header.Set("X-Broker-Operation", operation)
 	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	response, err := clienthttp.Secure(&http.Client{Timeout: 30 * time.Second}).Do(request)
+	response, err := connection.streamClient(30 * time.Second).Do(request)
 	if err != nil {
 		return sealedstore.Reference{}, errors.New("upload sealed payload")
 	}
@@ -454,7 +471,7 @@ func (connection operationConnection) uploadStream(ctx context.Context, operatio
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > bindings[0].RequestBytesLimit {
 		return streamstore.Reference{}, errors.New("stream upload file exceeds its bounded size")
 	}
-	base, err := clienthttp.ParseBaseURL(connection.baseURL)
+	base, err := url.Parse(connection.baseURL)
 	if err != nil {
 		return streamstore.Reference{}, err
 	}
@@ -467,7 +484,7 @@ func (connection operationConnection) uploadStream(ctx context.Context, operatio
 	request.Header.Set("Content-Type", mediaType)
 	request.Header.Set("X-Broker-Operation", operation)
 	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	response, err := clienthttp.Secure(&http.Client{Timeout: 10 * time.Minute}).Do(request)
+	response, err := connection.streamClient(10 * time.Minute).Do(request)
 	if err != nil {
 		return streamstore.Reference{}, errors.New("upload stream")
 	}

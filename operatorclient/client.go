@@ -8,14 +8,14 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/brokerkit/clienthttp"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/optional"
@@ -28,33 +28,22 @@ import (
 const maxResponseBytes = 2 * 1024 * 1024
 
 type Client struct {
-	BaseURL    string
-	Token      string
-	HTTPClient *http.Client
+	baseURL    string
+	token      string
+	httpClient *http.Client
 }
 
-// NewUnix returns a Source client connected to an operator-only Unix socket.
-func NewUnix(socketPath, token string) (*Client, error) {
-	if socketPath == "" || !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath || strings.ContainsRune(socketPath, '\x00') {
-		return nil, errors.New("operator Unix socket path is invalid")
+// New returns a Source client connected through one explicit endpoint URI.
+func New(endpointURI, token string, provided *http.Client) (*Client, error) {
+	if token != "" && len([]byte(token)) < auth.MinimumSecretBytes {
+		return nil, fmt.Errorf("operator token must be at least %d bytes", auth.MinimumSecretBytes)
 	}
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "unix", socketPath)
-		},
+	baseURL, configured, err := clienthttp.ForEndpoint(endpointURI, provided)
+	if err != nil {
+		return nil, err
 	}
-	return &Client{
-		BaseURL: "http://brokerkit",
-		Token:   token,
-		HTTPClient: &http.Client{
-			Transport: transport,
-			Timeout:   30 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
-	}, nil
+	configured.Timeout = 0
+	return &Client{baseURL: baseURL, token: token, httpClient: configured}, nil
 }
 
 type Error struct {
@@ -181,14 +170,14 @@ func (c *Client) Watch(ctx context.Context, cursor string) (operatorv1.EventStre
 }
 
 func (c *Client) api() (operatorwire.ClientInterface, error) {
-	base, err := parseBaseURL(c.BaseURL)
+	base, err := parseBaseURL(c.baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return operatorwire.NewClient(base.String(), operatorwire.WithHTTPClient(c.httpClient()),
+	return operatorwire.NewClient(base.String(), operatorwire.WithHTTPClient(c.httpClient),
 		operatorwire.WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
-			if c.Token != "" {
-				request.Header.Set("Authorization", "Bearer "+c.Token)
+			if c.token != "" {
+				request.Header.Set("Authorization", "Bearer "+c.token)
 			}
 			return nil
 		}))
@@ -293,13 +282,6 @@ func parseBaseURL(value string) (*url.URL, error) {
 
 func validBaseURL(base *url.URL) bool {
 	return (base.Scheme == "http" || base.Scheme == "https") && base.Host != "" && base.User == nil && base.RawQuery == "" && base.Fragment == ""
-}
-
-func (c *Client) httpClient() *http.Client {
-	if c.HTTPClient != nil {
-		return c.HTTPClient
-	}
-	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 func decodeAPIError(response *http.Response) error {

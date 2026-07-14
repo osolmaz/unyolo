@@ -8,8 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,6 +17,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/clientconfig"
+	"github.com/osolmaz/brokerkit/endpoint"
 	bkpolicy "github.com/osolmaz/brokerkit/policy"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
@@ -37,8 +36,7 @@ type sudoSystemdOptions struct {
 	OperatorID           string
 	OperatorSecretFile   string
 	OperatorSecret       string
-	OperatorBindAddr     string
-	OperatorPort         int
+	OperatorEndpoint     string
 	TelegramBotTokenFile string
 	TelegramChatID       int64
 }
@@ -69,18 +67,18 @@ func runSetupSystemd(ctx context.Context, args []string, stdout io.Writer, stder
 	if err := bkservice.InstallSystemd(ctx, frontendPlan); err != nil {
 		return fmt.Errorf("install unprivileged frontend: %w", err)
 	}
-	_, err = fmt.Fprintf(stdout, "sudo-broker installed\n  broker: http://%s\n  operator: http://%s\n  helper socket: %s\n  client secrets: %s\n",
-		net.JoinHostPort(opts.BindAddr, strconv.Itoa(opts.Port)), net.JoinHostPort(opts.OperatorBindAddr, strconv.Itoa(opts.OperatorPort)), opts.HelperSocket, paths.secrets)
+	_, err = fmt.Fprintf(stdout, "sudo-broker installed\n  broker endpoint: %s\n  operator endpoint: %s\n  helper socket: %s\n  client secrets: %s\n",
+		opts.Endpoint, opts.OperatorEndpoint, opts.HelperSocket, paths.secrets)
 	return err
 }
 
 func parseSudoSystemdOptions(args []string, stderr io.Writer, stdin io.Reader) (sudoSystemdOptions, bool, error) {
 	common := bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
-		BrokerName: "sudo-broker", User: "sudo-broker", Group: "sudo-broker", ClientName: "bob", BindAddr: "127.0.0.1", Port: 8084,
+		BrokerName: "sudo-broker", User: "sudo-broker", Group: "sudo-broker", Endpoint: "unix:///run/brokerkit/sudo/agent/broker.sock",
 	})
 	common.StateDir = "/var/lib/sudo-broker/frontend"
 	opts := sudoSystemdOptions{SystemdOptions: common, HelperStateDir: "/var/lib/sudo-broker/helper",
-		HelperSocket: "/run/sudo-broker/helper.sock", OperatorID: "onur", OperatorBindAddr: "127.0.0.1", OperatorPort: 8085}
+		HelperSocket: "/run/sudo-broker/helper.sock", OperatorEndpoint: "unix:///run/brokerkit/sudo/operator/broker.sock"}
 	var output strings.Builder
 	flags := flag.NewFlagSet("sudo-broker setup systemd", flag.ContinueOnError)
 	flags.SetOutput(&output)
@@ -92,8 +90,7 @@ func parseSudoSystemdOptions(args []string, stderr io.Writer, stdin io.Reader) (
 	flags.StringVar(&opts.HelperSocket, "helper-socket", opts.HelperSocket, "frontend-to-helper Unix socket")
 	flags.StringVar(&opts.OperatorID, "operator", opts.OperatorID, "operator identity")
 	flags.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "operator secret source")
-	flags.StringVar(&opts.OperatorBindAddr, "operator-bind-addr", opts.OperatorBindAddr, "operator listen address")
-	flags.IntVar(&opts.OperatorPort, "operator-port", opts.OperatorPort, "operator listen port")
+	flags.StringVar(&opts.OperatorEndpoint, "operator-endpoint", opts.OperatorEndpoint, "operator endpoint URI")
 	flags.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "Telegram bot token source")
 	flags.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram approval chat id")
 	if err := flags.Parse(args); err != nil {
@@ -150,11 +147,15 @@ func validateSudoSystemdOptions(opts sudoSystemdOptions) error {
 			return fmt.Errorf("%s must be an absolute normalized path", name)
 		}
 	}
-	if opts.HelperStateDir == opts.StateDir || opts.OperatorPort == opts.Port || opts.OperatorPort < 1 || opts.OperatorPort > 65535 {
-		return errors.New("helper/frontend state and agent/operator ports must differ")
+	if opts.HelperStateDir == opts.StateDir {
+		return errors.New("helper and frontend state directories must differ")
 	}
-	if err := validateLoopbackAddress(net.JoinHostPort(opts.OperatorBindAddr, strconv.Itoa(opts.OperatorPort))); err != nil {
-		return fmt.Errorf("operator listener: %w", err)
+	operatorEndpoint, err := endpoint.Parse(opts.OperatorEndpoint, endpoint.ParseOptions{})
+	if err != nil {
+		return fmt.Errorf("operator endpoint: %w", err)
+	}
+	if operatorEndpoint.Scheme() == endpoint.SchemeFD || operatorEndpoint.String() == opts.Endpoint {
+		return errors.New("agent and operator endpoints must be distinct named endpoints")
 	}
 	if err := clientconfig.ValidateClientName(opts.OperatorID); err != nil {
 		return err
@@ -183,6 +184,10 @@ func sudoPaths(opts sudoSystemdOptions) sudoInstallPaths {
 }
 
 func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservice.SystemdInstallPlan, bkservice.SystemdInstallPlan, error) {
+	activation, err := bksetup.BuildSystemdActivation(opts.SystemdOptions, opts.OperatorEndpoint, "sudo-broker.service")
+	if err != nil {
+		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
+	}
 	snapshot, err := catalog.Load(opts.CatalogFile)
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
@@ -210,7 +215,7 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 	frontendUnit := bkservice.SystemdUnit{Description: "sudo-broker approval frontend", User: opts.User, Group: opts.Group,
 		EnvironmentFile: paths.frontendEnv, ExecStart: frontendExec(opts, paths), StateDir: opts.StateDir, ConfigDir: opts.ConfigDir,
 		PathValidation: pathValidation, AfterUnits: []string{"sudo-broker-exec.service"}, RequiresUnits: []string{"sudo-broker-exec.service"},
-		ExtraDirectives: hardeningDirectives(true)}
+		ExtraDirectives: hardeningDirectives(true), RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750}
 	sharedStateDir := sharedStateDirectory(opts.StateDir, opts.HelperStateDir)
 	helperPlan := bkservice.SystemdInstallPlan{User: "root", Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.HelperStateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker-exec.service", NoStart: true, Unit: helperUnit,
@@ -233,7 +238,8 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 	}
 	frontendPlan := bkservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker.service", NoStart: opts.NoStart, Unit: frontendUnit, Files: frontendFiles,
-		ReadyCheck: bkservice.HTTPReadyCheck("http://"+net.JoinHostPort(opts.BindAddr, strconv.Itoa(opts.Port))+"/readyz", localHTTPClient())}
+		AdditionalGroups: activation.Groups, GroupMembers: activation.GroupMembers, SocketUnits: activation.Sockets,
+		ActivationUnits: activation.ActivationUnits, ReadyCheck: bkservice.EndpointReadyCheck(opts.Endpoint, "/readyz")}
 	return helperPlan, frontendPlan, nil
 }
 
@@ -252,8 +258,8 @@ func frontendSecretFile(name string, data []byte) bkservice.ManagedFile {
 func frontendExec(opts sudoSystemdOptions, paths sudoInstallPaths) string {
 	values := []string{opts.BinaryPath, "serve", "--policy", paths.policy, "--catalog", paths.catalog, "--secrets", paths.secrets,
 		"--operator-secrets", paths.operators, "--state", opts.StateDir,
-		"--helper-socket", opts.HelperSocket, "--bind", net.JoinHostPort(opts.BindAddr, strconv.Itoa(opts.Port)),
-		"--operator-bind", net.JoinHostPort(opts.OperatorBindAddr, strconv.Itoa(opts.OperatorPort))}
+		"--helper-socket", opts.HelperSocket, "--agent-endpoint", "activation://agent",
+		"--operator-endpoint", "activation://operator"}
 	if opts.TelegramBotTokenFile != "" {
 		values = append(values, "--telegram-token-file", paths.telegram, "--telegram-chat-id", strconv.FormatInt(opts.TelegramChatID, 10))
 	}
@@ -289,12 +295,6 @@ func readSetupFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-func localHTTPClient() *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	return &http.Client{Transport: transport}
-}
-
 func printSudoSystemdPlan(stdout io.Writer, opts sudoSystemdOptions, paths sudoInstallPaths, helper bkservice.SystemdInstallPlan, frontend bkservice.SystemdInstallPlan) error {
 	helperUnit, err := bkservice.RenderSystemd(helper.Unit)
 	if err != nil {
@@ -304,6 +304,10 @@ func printSudoSystemdPlan(stdout io.Writer, opts sudoSystemdOptions, paths sudoI
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "Would install sudo-broker\n  frontend user: %s\n  frontend state: %s\n  helper user: root\n  helper state: %s\n  helper socket: %s\n  policy: %s\n  catalog: %s\n\n%s\n%s", opts.User, opts.StateDir, opts.HelperStateDir, opts.HelperSocket, paths.policy, paths.catalog, helperUnit, frontendUnit)
+	sockets, err := bkservice.RenderSystemdSockets(frontend.SocketUnits)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "Would install sudo-broker\n  frontend user: %s\n  frontend state: %s\n  helper user: root\n  helper state: %s\n  helper socket: %s\n  policy: %s\n  catalog: %s\n  agent access: %s (%s)\n  operator access: %s (%s)\n\n%s\n%s%s", opts.User, opts.StateDir, opts.HelperStateDir, opts.HelperSocket, paths.policy, paths.catalog, opts.AgentUser, opts.AgentAccessGroup, opts.OperatorUser, opts.OperatorAccessGroup, helperUnit, frontendUnit, sockets)
 	return err
 }

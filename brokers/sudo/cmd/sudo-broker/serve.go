@@ -6,11 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,24 +19,27 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/routes"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
+	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/secretfile"
+	"github.com/osolmaz/brokerkit/serverhttp"
 	"github.com/osolmaz/brokerkit/state"
 )
 
 type serveOptions struct {
-	policyPath      string
-	catalogPath     string
-	secretsPath     string
-	operatorSecrets string
-	stateDirectory  string
-	helperSocket    string
-	bindAddress     string
-	operatorAddress string
-	telegramToken   string
-	telegramChatID  int64
+	policyPath       string
+	catalogPath      string
+	secretsPath      string
+	operatorSecrets  string
+	stateDirectory   string
+	helperSocket     string
+	agentEndpoint    endpoint.Endpoint
+	operatorEndpoint *endpoint.Endpoint
+	telegramToken    string
+	telegramChatID   int64
+	development      bool
 }
 
 func runServe(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
@@ -46,7 +47,7 @@ func runServe(ctx context.Context, args []string, stdout io.Writer, stderr io.Wr
 }
 
 func runServeWith(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, geteuid func() int,
-	build func(serveOptions, io.Writer) (*routes.Server, error), serve func(context.Context, []*http.Server) error) error {
+	build func(serveOptions, io.Writer) (*routes.Server, error), serve func(context.Context, []serverhttp.Binding) error) error {
 	if geteuid == nil || build == nil || serve == nil {
 		return errors.New("serve runtime dependencies are required")
 	}
@@ -67,14 +68,32 @@ func runServeWith(ctx context.Context, args []string, stdout io.Writer, stderr i
 	}
 	defer func() { _ = server.Close() }()
 	server.Start(ctx)
-	servers := []*http.Server{httpServer(opts.bindAddress, server.Handler(), false)}
+	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: opts.agentEndpoint}}
 	if server.OperatorHandler() != nil {
-		servers = append(servers, httpServer(opts.operatorAddress, server.OperatorHandler(), true))
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *opts.operatorEndpoint})
 	}
-	for _, value := range servers {
-		_, _ = fmt.Fprintf(stdout, "sudo-broker listening on http://%s\n", value.Addr)
+	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: opts.development})
+	if err != nil {
+		return err
 	}
-	return serve(ctx, servers)
+	agentServer, err := serverhttp.New(server.Handler(), serverhttp.ProfileStreaming)
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		return err
+	}
+	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if server.OperatorHandler() != nil {
+		operatorServer, serverErr := serverhttp.New(server.OperatorHandler(), serverhttp.ProfileOperator)
+		if serverErr != nil {
+			_ = endpoint.CloseSet(listeners)
+			return serverErr
+		}
+		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
+	}
+	for _, value := range bindings {
+		_, _ = fmt.Fprintf(stdout, "sudo-broker listening on %s\n", value.Listener.Addr())
+	}
+	return serve(ctx, bindings)
 }
 
 func parseServeOptions(args []string) (serveOptions, error) {
@@ -86,26 +105,32 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	flags.StringVar(&opts.operatorSecrets, "operator-secrets", "", "named operator secret file")
 	flags.StringVar(&opts.stateDirectory, "state", "", "BrokerKit state directory")
 	flags.StringVar(&opts.helperSocket, "helper-socket", "", "privileged helper Unix socket")
-	flags.StringVar(&opts.bindAddress, "bind", "127.0.0.1:8084", "agent listener")
-	flags.StringVar(&opts.operatorAddress, "operator-bind", "127.0.0.1:8085", "operator listener")
+	var agentEndpoint, operatorEndpoint string
+	flags.StringVar(&agentEndpoint, "agent-endpoint", "", "agent endpoint URI")
+	flags.StringVar(&operatorEndpoint, "operator-endpoint", "", "operator endpoint URI")
 	flags.StringVar(&opts.telegramToken, "telegram-token-file", "", "private Telegram bot token file")
 	flags.Int64Var(&opts.telegramChatID, "telegram-chat-id", 0, "Telegram approval chat id")
+	flags.BoolVar(&opts.development, "development", false, "enable foreground development path rules")
 	if err := flags.Parse(args); err != nil {
 		return serveOptions{}, err
 	}
-	if flags.NArg() != 0 || opts.policyPath == "" || opts.catalogPath == "" || opts.secretsPath == "" || opts.stateDirectory == "" || opts.helperSocket == "" {
-		return serveOptions{}, errors.New("--policy, --catalog, --secrets, --state, and --helper-socket are required")
+	if flags.NArg() != 0 || opts.policyPath == "" || opts.catalogPath == "" || opts.secretsPath == "" || opts.stateDirectory == "" || opts.helperSocket == "" || agentEndpoint == "" {
+		return serveOptions{}, errors.New("--policy, --catalog, --secrets, --state, --helper-socket, and --agent-endpoint are required")
 	}
-	if err := validateLoopbackAddress(opts.bindAddress); err != nil {
-		return serveOptions{}, fmt.Errorf("agent listener: %w", err)
+	parsedAgent, err := endpoint.Parse(agentEndpoint, endpoint.ParseOptions{})
+	if err != nil {
+		return serveOptions{}, fmt.Errorf("agent endpoint: %w", err)
 	}
+	opts.agentEndpoint = parsedAgent
 	if opts.operatorSecrets != "" {
-		if err := validateLoopbackAddress(opts.operatorAddress); err != nil {
-			return serveOptions{}, fmt.Errorf("operator listener: %w", err)
+		parsedOperator, parseErr := endpoint.Parse(operatorEndpoint, endpoint.ParseOptions{})
+		if parseErr != nil {
+			return serveOptions{}, fmt.Errorf("operator endpoint: %w", parseErr)
 		}
-		if opts.operatorAddress == opts.bindAddress {
+		if parsedOperator.String() == parsedAgent.String() {
 			return serveOptions{}, errors.New("agent and operator listeners must differ")
 		}
+		opts.operatorEndpoint = &parsedOperator
 	}
 	if !filepath.IsAbs(opts.helperSocket) {
 		return serveOptions{}, errors.New("helper socket path must be absolute")
@@ -215,56 +240,6 @@ func (r *statusRecorder) Write(value []byte) (int, error) {
 }
 func (r *statusRecorder) WriteHeader(status int) { r.status = status }
 
-func httpServer(address string, handler http.Handler, operator bool) *http.Server {
-	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 60 * time.Second}
-	if operator {
-		server.WriteTimeout = 0
-	}
-	return server
-}
-
-func serveHTTP(ctx context.Context, servers []*http.Server) error {
-	errorsChannel := make(chan error, len(servers))
-	for _, server := range servers {
-		go func(value *http.Server) { errorsChannel <- value.ListenAndServe() }(server)
-	}
-	select {
-	case err := <-errorsChannel:
-		_ = shutdownHTTP(servers)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		return shutdownHTTP(servers)
-	}
-}
-
-func shutdownHTTP(servers []*http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var values []error
-	for _, server := range servers {
-		values = append(values, server.Shutdown(ctx))
-	}
-	return errors.Join(values...)
-}
-
-func validateLoopbackAddress(value string) error {
-	host, port, err := net.SplitHostPort(value)
-	if err != nil {
-		return errors.New("address must be host:port")
-	}
-	parsedPort, err := strconv.Atoi(port)
-	if err != nil || parsedPort < 1 || parsedPort > 65535 {
-		return errors.New("port is invalid")
-	}
-	if host == "localhost" {
-		return nil
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		return errors.New("address must be loopback-only")
-	}
-	return nil
+func serveHTTP(ctx context.Context, bindings []serverhttp.Binding) error {
+	return serverhttp.Serve(ctx, bindings)
 }

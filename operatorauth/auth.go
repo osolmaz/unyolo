@@ -9,8 +9,6 @@ import (
 	"github.com/osolmaz/brokerkit/internal/secretset"
 )
 
-const defaultMinSecretBytes = 24
-
 var (
 	ErrMissing = errors.New("operator authentication required")
 	ErrInvalid = errors.New("invalid operator credentials")
@@ -30,7 +28,7 @@ type Authenticator struct {
 // New validates operator credentials and rejects reuse of any client secret.
 func New(secrets map[string]string, options Options) (*Authenticator, error) {
 	if options.MinSecretBytes <= 0 {
-		options.MinSecretBytes = defaultMinSecretBytes
+		options.MinSecretBytes = auth.MinimumSecretBytes
 	}
 	identities, err := secretset.New("operator", secrets, options.MinSecretBytes, secretset.Hashes(options.ClientSecrets))
 	if err != nil {

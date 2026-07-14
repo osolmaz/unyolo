@@ -12,13 +12,13 @@ func TestRenderClientEnv(t *testing.T) {
 	body, err := Render(Config{
 		BrokerName: "gh-broker",
 		EnvPrefix:  "GH_BROKER_",
-		URL:        "http://127.0.0.1:8081",
+		Endpoint:   "unix:///run/brokerkit/github/agent.sock",
 		Secret:     "secret-with-'quote'",
 	})
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	want := "export GH_BROKER_URL='http://127.0.0.1:8081'\nexport GH_BROKER_SHARED_SECRET='secret-with-'\\''quote'\\'''\n"
+	want := "export GH_BROKER_ENDPOINT='unix:///run/brokerkit/github/agent.sock'\nexport GH_BROKER_SHARED_SECRET='secret-with-'\\''quote'\\'''\n"
 	if string(body) != want {
 		t.Fatalf("Render() = %q, want %q", body, want)
 	}
@@ -26,7 +26,7 @@ func TestRenderClientEnv(t *testing.T) {
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command("sh", "-c", `. "$1" && test "$GH_BROKER_URL" = 'http://127.0.0.1:8081' && test "$GH_BROKER_SHARED_SECRET" = "secret-with-'quote'" && env | grep -q '^GH_BROKER_URL=' && env | grep -q '^GH_BROKER_SHARED_SECRET='`, "sh", path) // #nosec G204 -- fixed test command and generated temp path.
+	command := exec.Command("sh", "-c", `. "$1" && test "$GH_BROKER_ENDPOINT" = 'unix:///run/brokerkit/github/agent.sock' && test "$GH_BROKER_SHARED_SECRET" = "secret-with-'quote'" && env | grep -q '^GH_BROKER_ENDPOINT=' && env | grep -q '^GH_BROKER_SHARED_SECRET='`, "sh", path) // #nosec G204 -- fixed test command and generated temp path.
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("source rendered client env: %v: %s", err, output)
 	}
@@ -37,7 +37,7 @@ func TestWriteClientEnv(t *testing.T) {
 	path, err := Write(Config{
 		BrokerName: "hf-broker",
 		EnvPrefix:  "HF_BROKER",
-		URL:        "https://broker.example.test",
+		Endpoint:   "unix:///run/brokerkit/huggingface/agent.sock",
 		Secret:     "client-secret",
 		HomeDir:    home,
 	})
@@ -60,8 +60,8 @@ func TestWriteClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "export HF_BROKER_URL='https://broker.example.test'\n") {
-		t.Fatalf("client env missing URL: %q", text)
+	if !strings.Contains(text, "export HF_BROKER_ENDPOINT='unix:///run/brokerkit/huggingface/agent.sock'\n") {
+		t.Fatalf("client env missing endpoint: %q", text)
 	}
 	if !strings.Contains(text, "export HF_BROKER_SHARED_SECRET='client-secret'\n") {
 		t.Fatalf("client env missing secret: %q", text)
@@ -73,7 +73,7 @@ func TestWriteForHomeOwnerWritesClientEnv(t *testing.T) {
 	path, err := WriteForHomeOwner(Config{
 		BrokerName: "gh-broker",
 		EnvPrefix:  "GH_BROKER",
-		URL:        "http://127.0.0.1:8081",
+		Endpoint:   "unix:///run/brokerkit/github/agent.sock",
 		Secret:     "client-secret",
 		HomeDir:    home,
 	})
@@ -100,7 +100,7 @@ func TestWriteForHomeOwnerRejectsSymlinkedConfigPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := WriteForHomeOwner(Config{
-			BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1:8081",
+			BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock",
 			Secret: "client-secret", HomeDir: home,
 		})
 		if err == nil {
@@ -120,7 +120,7 @@ func TestWriteForHomeOwnerRejectsSymlinkedHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := WriteForHomeOwner(Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1:8081",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock",
 		Secret: "client-secret", HomeDir: linkedHome,
 	})
 	if err == nil {
@@ -142,7 +142,7 @@ func TestWriteForHomeOwnerReplacesClientFileSymlinkInsideHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := WriteForHomeOwner(Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1:8081",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock",
 		Secret: "client-secret", HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -229,13 +229,11 @@ func TestSecretsFromFileRejectsOversizedInput(t *testing.T) {
 
 func TestValidation(t *testing.T) {
 	cases := map[string]Config{
-		"bad broker":   {BrokerName: "../bad", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1", Secret: "s"},
-		"bad prefix":   {BrokerName: "gh-broker", EnvPrefix: "gh-broker", URL: "http://127.0.0.1", Secret: "s"},
-		"bad url":      {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "ftp://127.0.0.1", Secret: "s"},
-		"url userinfo": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://user:credential@broker.example", Secret: "s"},  // #nosec G101 -- credential-bearing URL is the rejection fixture.
-		"url query":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://broker.example?token=credential", Secret: "s"}, // #nosec G101 -- credential-bearing URL is the rejection fixture.
-		"url fragment": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "https://broker.example#credential", Secret: "s"},       // #nosec G101 -- credential-bearing URL is the rejection fixture.
-		"no secret":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", URL: "http://127.0.0.1"},
+		"bad broker":      {BrokerName: "../bad", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock", Secret: "s"},
+		"bad prefix":      {BrokerName: "gh-broker", EnvPrefix: "gh-broker", Endpoint: "unix:///run/brokerkit/github/agent.sock", Secret: "s"},
+		"bad endpoint":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "http://127.0.0.1", Secret: "s"},
+		"server endpoint": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "activation://agent", Secret: "s"},
+		"no secret":       {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock"},
 	}
 	for name, cfg := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -49,6 +49,7 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -93,6 +94,7 @@ func TestConcurrentIdempotentGrantRequestsSendOneNotification(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -167,6 +169,7 @@ func TestCallbackWinningNotificationRaceKeepsMessageActive(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir: filepath.Join(dir, "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second,
@@ -209,6 +212,7 @@ func TestConcurrentGrantRetrySeesNotificationFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -285,6 +289,7 @@ func TestStaleNotifierFailureDoesNotCancelNewerNotification(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -361,6 +366,7 @@ func TestGrantRequestRejectsNonEditableNotifier(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},

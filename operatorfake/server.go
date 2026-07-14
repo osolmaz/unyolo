@@ -3,10 +3,10 @@ package operatorfake
 
 import (
 	"errors"
-	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 
-	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
@@ -39,11 +39,11 @@ func New(options Options) (*Server, error) {
 	if len(options.OperatorSecrets) == 0 {
 		return nil, errors.New("at least one operator secret is required")
 	}
+	if options.Audit == nil {
+		return nil, errors.New("test audit recorder is required")
+	}
 	if options.Broker == "" {
 		options.Broker = "fake-broker"
-	}
-	if options.Audit == nil {
-		options.Audit = audit.New(io.Discard)
 	}
 	clientSecrets := options.ClientSecrets
 	if len(clientSecrets) == 0 {
@@ -63,8 +63,15 @@ func New(options Options) (*Server, error) {
 
 // Client returns a client configured for this fake server.
 func (s *Server) Client(token string) *operatorclient.Client {
-	return &operatorclient.Client{BaseURL: s.server.URL, Token: token, HTTPClient: s.server.Client()}
+	client, err := operatorclient.New(strings.Replace(s.server.URL, "http://", "tcp://", 1), token, s.server.Client())
+	if err != nil {
+		panic(err)
+	}
+	return client
 }
+
+// HTTPClient returns the in-process server transport for raw protocol tests.
+func (s *Server) HTTPClient() *http.Client { return s.server.Client() }
 
 // URL returns the fake server base URL for non-Go fixture consumers.
 func (s *Server) URL() string { return s.server.URL }

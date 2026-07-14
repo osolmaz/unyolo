@@ -15,8 +15,17 @@ import (
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
+const (
+	testGHAgentEndpoint    = "unix:///run/brokerkit/github/agent/broker.sock"
+	testGHOperatorEndpoint = "unix:///run/brokerkit/github/operator/broker.sock"
+)
+
+func requiredGHSetupArgs(args ...string) []string {
+	return append([]string{"--client", "agent-a", "--operator", "operator-a", "--agent-user", "agent-user", "--operator-user", "operator-user"}, args...)
+}
+
 func TestParseSetupSystemdRequiresScope(t *testing.T) {
-	_, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), nil)
+	_, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), requiredGHSetupArgs())
 	if err == nil || !strings.Contains(err.Error(), "--scope-file") {
 		t.Fatalf("parseSetupSystemd() error = %v, want scope requirement", err)
 	}
@@ -26,18 +35,18 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	dir := t.TempDir()
 	tokenFile := writeFixture(t, dir, "github-token", "ghp_token\n")
 	scopeFile := writeFixture(t, dir, "scope.json", minimalScopeJSON())
-	opts, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), []string{
+	opts, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), requiredGHSetupArgs(
 		"--scope-file", scopeFile,
 		"--github-token-file", tokenFile,
 		"--dev-token-fallback",
-	})
+	))
 	if err != nil {
 		t.Fatalf("parseSetupSystemd() error = %v", err)
 	}
 	if len(opts.SharedSecret) != 64 {
 		t.Fatalf("generated secret length = %d, want 64", len(opts.SharedSecret))
 	}
-	if len(opts.OperatorSecret) != 64 || opts.OperatorID != "onur" || opts.OperatorPort != 8082 {
+	if len(opts.OperatorSecret) != 64 || opts.OperatorID != "operator-a" || opts.OperatorEndpoint != testGHOperatorEndpoint {
 		t.Fatalf("generated operator config = %+v", opts)
 	}
 }
@@ -47,24 +56,24 @@ func TestParseSetupSystemdReadsSharedSecretFromFileAndStdin(t *testing.T) {
 	tokenFile := writeFixture(t, dir, "github-token", "ghp_token\n")
 	scopeFile := writeFixture(t, dir, "scope.json", minimalScopeJSON())
 	secretFile := writeFixture(t, dir, "client-secret", strings.Repeat("s", 32)+"\n")
-	opts, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), []string{
+	opts, err := parseSetupSystemd(ioDiscard{}, strings.NewReader(""), requiredGHSetupArgs(
 		"--scope-file", scopeFile,
 		"--github-token-file", tokenFile,
 		"--dev-token-fallback",
 		"--shared-secret-file", secretFile,
-	})
+	))
 	if err != nil {
 		t.Fatalf("parseSetupSystemd(file) error = %v", err)
 	}
 	if opts.SharedSecret != strings.Repeat("s", 32) {
 		t.Fatalf("SharedSecret from file = %q", opts.SharedSecret)
 	}
-	opts, err = parseSetupSystemd(ioDiscard{}, strings.NewReader(strings.Repeat("t", 32)+"\n"), []string{
+	opts, err = parseSetupSystemd(ioDiscard{}, strings.NewReader(strings.Repeat("t", 32)+"\n"), requiredGHSetupArgs(
 		"--scope-file", scopeFile,
 		"--github-token-file", tokenFile,
 		"--dev-token-fallback",
 		"--shared-secret-stdin",
-	})
+	))
 	if err != nil {
 		t.Fatalf("parseSetupSystemd(stdin) error = %v", err)
 	}
@@ -80,12 +89,12 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
-			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, DryRun: true,
+			ClientName: "agent-a", Endpoint: testGHAgentEndpoint, DryRun: true,
 		},
 		GitHubTokenFile: "/tmp/github-token",
 		ScopeFile:       "/tmp/scope.json",
 		SharedSecret:    strings.Repeat("s", 32),
-		OperatorID:      "onur", OperatorSecret: strings.Repeat("o", 32), OperatorBindAddr: "127.0.0.1", OperatorPort: 8082,
+		OperatorID:      "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
 		DevTokenFallback: true,
 	})
 	if err != nil {
@@ -95,7 +104,7 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 		"gh-broker systemd service",
 		"token fallback:  true",
 		"github token:    /etc/gh-broker/github-token",
-		"broker URL:      http://127.0.0.1:8081",
+		"broker endpoint: " + testGHAgentEndpoint,
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("dry-run missing %q:\n%s", want, stdout.String())
@@ -110,13 +119,14 @@ func TestSetupSystemdDryRunForGitHubAppFiles(t *testing.T) {
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
-			ClientName: "bob", BindAddr: "0.0.0.0", Port: 8081, DryRun: true,
+			ClientName: "agent-a", Endpoint: testGHAgentEndpoint, DryRun: true,
 		},
 		GitHubAppIDFile:         "/tmp/app-id",
 		GitHubAppPrivateKeyFile: "/tmp/private-key.pem",
 		GitHubWebhookSecretFile: "/tmp/webhook-secret",
 		ScopeFile:               "/tmp/scope.json",
 		SharedSecret:            strings.Repeat("s", 32),
+		OperatorID:              "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
 	})
 	if err != nil {
 		t.Fatalf("runSetupSystemd() error = %v", err)
@@ -125,7 +135,7 @@ func TestSetupSystemdDryRunForGitHubAppFiles(t *testing.T) {
 		"token fallback:  false",
 		"app id file:     /etc/gh-broker/github-app-id",
 		"app private key: /etc/gh-broker/github-app-private-key.pem",
-		"broker URL:      http://127.0.0.1:8081",
+		"broker endpoint: " + testGHAgentEndpoint,
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("dry-run missing %q:\n%s", want, stdout.String())
@@ -146,15 +156,14 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 			BrokerName: "gh-broker", User: currentUser.Username, Group: currentGroup.Name,
 			ConfigDir: filepath.Join(dir, "etc", "gh-broker"), StateDir: filepath.Join(dir, "var", "lib", "gh-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
-			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, AllowNonRoot: true, NoStart: true,
+			ClientName: "agent-a", Endpoint: testGHAgentEndpoint, AllowNonRoot: true, NoStart: true,
 		},
 		GitHubTokenFile:      tokenFile,
 		ScopeFile:            scopeFile,
 		SharedSecret:         strings.Repeat("s", 32),
-		OperatorID:           "onur",
+		OperatorID:           "operator-a",
 		OperatorSecret:       strings.Repeat("o", 32),
-		OperatorBindAddr:     "127.0.0.1",
-		OperatorPort:         8082,
+		OperatorEndpoint:     testGHOperatorEndpoint,
 		TelegramBotTokenFile: telegramTokenFile,
 		TelegramChatID:       123,
 		DevTokenFallback:     true,
@@ -166,7 +175,10 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	if !strings.Contains(stdout.String(), "gh-broker systemd service configured") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
-	if got := strings.Join(runner.calls, "\n"); got != "getent group "+currentGroup.Name+"\nid -u "+currentUser.Username {
+	wantCalls := "getent group " + currentGroup.Name + "\nid -u " + currentUser.Username +
+		"\ngetent group gh-broker-agent\nid -u " + currentUser.Username + "\nusermod --append --groups gh-broker-agent " + currentUser.Username +
+		"\ngetent group gh-broker-operator\nid -u " + currentUser.Username + "\nusermod --append --groups gh-broker-operator " + currentUser.Username
+	if got := strings.Join(runner.calls, "\n"); got != wantCalls {
 		t.Fatalf("setup runner calls:\n%s", got)
 	}
 	for _, path := range []string{
@@ -177,6 +189,8 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 		filepath.Join(dir, "etc", "gh-broker", "scope.json"),
 		filepath.Join(dir, "etc", "gh-broker", "env"),
 		filepath.Join(dir, "systemd", "gh-broker.service"),
+		filepath.Join(dir, "systemd", "gh-broker-agent.socket"),
+		filepath.Join(dir, "systemd", "gh-broker-operator.socket"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s: %v", path, err)
@@ -192,7 +206,8 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 		"GH_BROKER_GITHUB_TOKEN_FILE=",
 		"GH_BROKER_STATE_DIR=",
 		"GH_BROKER_OPERATOR_SECRETS_FILE=",
-		"GH_BROKER_OPERATOR_PORT=8082",
+		"GH_BROKER_AGENT_ENDPOINT=activation://agent",
+		"GH_BROKER_OPERATOR_ENDPOINT=activation://operator",
 		"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE=",
 		"GH_BROKER_TELEGRAM_CHAT_ID=123",
 	} {
@@ -223,7 +238,7 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			ConfigDir: filepath.Join(dir, "etc", "gh-broker"), StateDir: filepath.Join(dir, "var", "lib", "gh-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
-			ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081, NoStart: true,
+			ClientName: "agent-a", Endpoint: testGHAgentEndpoint, NoStart: true,
 		},
 		GitHubAppIDFile:           appIDFile,
 		GitHubAppPrivateKeyFile:   privateKeyFile,
@@ -233,10 +248,9 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 		GitHubWebhookSecretFile:   webhookSecretFile,
 		ScopeFile:                 writeFixture(t, dir, "scope.json", minimalScopeJSON()),
 		SharedSecret:              strings.Repeat("s", 32),
-		OperatorID:                "onur",
+		OperatorID:                "operator-a",
 		OperatorSecret:            strings.Repeat("o", 32),
-		OperatorBindAddr:          "127.0.0.1",
-		OperatorPort:              8082,
+		OperatorEndpoint:          testGHOperatorEndpoint,
 	})
 	installPlan, err := brokerkitSystemdInstallPlan(plan)
 	if err != nil {
@@ -283,7 +297,9 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 		ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
 		SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
-		ClientName: "bob", BindAddr: "127.0.0.1", Port: 8081,
+		ClientName: "agent-a", Endpoint: testGHAgentEndpoint,
+		AgentUser: "agent-user", OperatorUser: "operator-user",
+		AgentAccessGroup: "gh-broker-agent", OperatorAccessGroup: "gh-broker-operator",
 	}
 	valid := setupSystemdOptions{
 		SystemdOptions:   base,
@@ -291,7 +307,7 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		GitHubTokenFile:  "/tmp/token",
 		SharedSecret:     strings.Repeat("s", 32),
 		DevTokenFallback: true,
-		OperatorID:       "onur", OperatorSecret: strings.Repeat("o", 32), OperatorBindAddr: "127.0.0.1", OperatorPort: 8082,
+		OperatorID:       "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
 	}
 	if err := validateSetupSystemdOptions(valid); err != nil {
 		t.Fatalf("validateSetupSystemdOptions() error = %v", err)
@@ -303,7 +319,7 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		GitHubAppPrivateKeyFile: "/tmp/key",
 		GitHubWebhookSecretFile: "/tmp/webhook",
 		SharedSecret:            strings.Repeat("s", 32),
-		OperatorID:              "onur", OperatorSecret: strings.Repeat("o", 32), OperatorBindAddr: "127.0.0.1", OperatorPort: 8082,
+		OperatorID:              "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
 	}
 	if err := validateSetupSystemdOptions(validApp); err != nil {
 		t.Fatalf("validateSetupSystemdOptions(app) error = %v", err)
@@ -322,10 +338,10 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		func(opts *setupSystemdOptions) { opts.GitHubTokenFile = "" },
 		func(opts *setupSystemdOptions) { opts.ClientName = "bad=name" },
 		func(opts *setupSystemdOptions) { opts.SharedSecret = "short" },
-		func(opts *setupSystemdOptions) { opts.Port = 0 },
+		func(opts *setupSystemdOptions) { opts.Endpoint = "" },
 		func(opts *setupSystemdOptions) { opts.OperatorID = "bad=name" },
-		func(opts *setupSystemdOptions) { opts.OperatorBindAddr = "" },
-		func(opts *setupSystemdOptions) { opts.OperatorPort = opts.Port },
+		func(opts *setupSystemdOptions) { opts.OperatorEndpoint = "" },
+		func(opts *setupSystemdOptions) { opts.OperatorEndpoint = opts.Endpoint },
 		func(opts *setupSystemdOptions) { opts.OperatorSecret = opts.SharedSecret },
 		func(opts *setupSystemdOptions) { opts.TelegramBotTokenFile = "/tmp/token" },
 		func(opts *setupSystemdOptions) { opts.TelegramChatID = 123 },

@@ -172,3 +172,23 @@ func (e Endpoint) Address() string {
 
 // ClientCapable reports whether clients can dial the endpoint directly.
 func (e Endpoint) ClientCapable() bool { return e.scheme == SchemeUnix || e.scheme == SchemeTCP }
+
+// Resolved returns the concrete endpoint represented by an acquired listener.
+// It resolves development port zero while preserving stable Unix and activated names.
+func Resolved(configured Endpoint, listener net.Listener) (Endpoint, error) {
+	if listener == nil {
+		return Endpoint{}, errors.New("listener is required")
+	}
+	if configured.scheme != SchemeTCP || configured.port != 0 {
+		return configured, nil
+	}
+	address, ok := listener.Addr().(*net.TCPAddr)
+	if !ok || address.Port < 1 {
+		return Endpoint{}, errors.New("ephemeral TCP listener has an invalid address")
+	}
+	host := configured.host
+	if host == "" {
+		host = address.IP.String()
+	}
+	return Endpoint{scheme: SchemeTCP, host: host, port: address.Port, exposure: configured.exposure}, nil
+}

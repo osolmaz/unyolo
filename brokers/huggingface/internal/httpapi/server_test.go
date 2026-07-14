@@ -543,7 +543,7 @@ func TestHTTPErrorPaths(t *testing.T) {
 	if _, err := New(Options{Config: cfg, Scope: scp, UpstreamBaseURL: "://bad"}); err == nil {
 		t.Fatalf("New() accepted invalid upstream URL")
 	}
-	handler, err := New(Options{Config: cfg, Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1"})
+	handler, err := New(Options{Config: cfg, Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,7 +559,7 @@ func TestHTTPErrorPaths(t *testing.T) {
 	if err := handler.Close(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err = New(Options{Config: cfg, Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1"})
+	handler, err = New(Options{Config: cfg, Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -700,6 +700,7 @@ func TestForwardReceivePackKeepsAcceptedOutcomeOnClientWriteError(t *testing.T) 
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},

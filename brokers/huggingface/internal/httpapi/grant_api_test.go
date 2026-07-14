@@ -30,6 +30,7 @@ func TestGrantRequestAcceptsConfiguredGitCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -96,6 +97,7 @@ func TestGrantRequestAcceptsAppendPushWhenRequestable(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -139,6 +141,7 @@ func TestGrantRequestAcceptsExplicitUnlimitedUseBudget(t *testing.T) {
 	}
 	notifier := &captureGrantNotifier{}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second,
@@ -372,6 +375,7 @@ func TestOperatorInboxSurvivesTelegramNotificationFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 			Operators: []config.Client{{Name: "operator", Secret: "operator-secret-abcdefghijklmnopqrstuvwxyz"}},
@@ -437,7 +441,7 @@ func TestBucketWindowGrantPersistsExactKeyScope(t *testing.T) {
 	}
 	handler, err := New(Options{Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 		StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
-		Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: &captureGrantNotifier{}})
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: &captureGrantNotifier{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,6 +571,7 @@ func TestAPIGrantResponsesPersistGrantMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -628,6 +633,7 @@ func TestAPIGrantNotifierFailureIsJSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -700,6 +706,7 @@ func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing
 	stateDir := filepath.Join(dir, "state")
 	newHandler := func() *Server {
 		handler, err := New(Options{
+			Audit: testAuditRecorder(),
 			Config: config.Config{
 				HFToken:      testToken,
 				Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
