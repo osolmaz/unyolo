@@ -3,10 +3,17 @@ package agentv1
 
 import (
 	"encoding/json"
+	"regexp"
 	"time"
 )
 
 const APIVersion = "brokerkit.io/agent/v1"
+
+var idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+// ValidIdempotencyKey reports whether a key can be represented by every Agent
+// V1 and MCP recovery surface.
+func ValidIdempotencyKey(value string) bool { return idempotencyKeyPattern.MatchString(value) }
 
 type State string
 

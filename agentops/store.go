@@ -237,7 +237,8 @@ func normalizeListOptions(clientID string, options agentv1.ListOptions) (string,
 }
 
 func validListIdentity(clientID string, options agentv1.ListOptions) bool {
-	return clientID != "" && len(options.IdempotencyKey) <= 128 && len(options.Cursor) <= 128
+	validKey := options.IdempotencyKey == "" || agentv1.ValidIdempotencyKey(options.IdempotencyKey)
+	return clientID != "" && validKey && len(options.Cursor) <= 128
 }
 
 func validListSelection(options agentv1.ListOptions) bool {
@@ -572,7 +573,7 @@ func validSubmitIdentity(input Submit) bool {
 	return (input.ID == "" || validOperationID(input.ID)) &&
 		validRequiredValue(input.Broker, 64) &&
 		validRequiredValue(input.ClientID, 128) &&
-		validRequiredValue(input.IdempotencyKey, 128) &&
+		agentv1.ValidIdempotencyKey(input.IdempotencyKey) &&
 		validRequiredValue(input.Operation, 128)
 }
 

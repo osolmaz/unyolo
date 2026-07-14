@@ -340,6 +340,7 @@ func TestStoreRejectsInvalidInputsAndState(t *testing.T) {
 	store := newTestStore(t, time.Now, randomID)
 	invalid := []Submit{
 		{},
+		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "bad value", Operation: "repo.create", Target: json.RawMessage(`{}`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Create"}},
 		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create", Target: json.RawMessage(`[]`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Create"}},
 		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create", Target: json.RawMessage(`{"a":1,"a":2}`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Create"}},
 		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create", Target: json.RawMessage(`{}`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{}},

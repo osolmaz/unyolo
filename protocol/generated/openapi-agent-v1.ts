@@ -110,8 +110,9 @@ export interface components {
       code: string;
       message: string;
     };
+    IdempotencyKey: string;
     SubmitRequest: {
-      idempotency_key: string;
+      idempotency_key: components["schemas"]["IdempotencyKey"];
       operation: string;
       target: Record<string, never>;
       arguments: Record<string, never>;
@@ -123,7 +124,7 @@ export interface components {
       id: string;
       broker: string;
       client_id: string;
-      idempotency_key: string;
+      idempotency_key: components["schemas"]["IdempotencyKey"];
       operation: string;
       target: Record<string, never>;
       arguments: Record<string, never>;
@@ -154,7 +155,7 @@ export interface components {
       id: string;
       broker: string;
       client_id: string;
-      idempotency_key: string;
+      idempotency_key: components["schemas"]["IdempotencyKey"];
       operation: string;
       state: components["schemas"]["State"];
       revision: number;
@@ -214,7 +215,7 @@ export interface operations {
   listAgentOperations: {
     parameters: {
       query?: {
-        idempotency_key?: string;
+        idempotency_key?: components["schemas"]["IdempotencyKey"];
         state?: components["schemas"]["State"];
         limit?: number;
         cursor?: string;

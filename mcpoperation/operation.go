@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 	"time"
 
@@ -26,8 +25,6 @@ const (
 	DefaultListLimit    = 20
 	MaxListLimit        = 50
 )
-
-var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
 type Presentation struct {
 	Title   string `json:"title"`
@@ -109,7 +106,7 @@ func ResolveRequestID(value string) (string, error) { return resolveRequestID(va
 func resolveRequestID(value string, entropy io.Reader) (string, error) {
 	value = strings.TrimSpace(value)
 	if value != "" {
-		if !requestIDPattern.MatchString(value) {
+		if !agentv1.ValidIdempotencyKey(value) {
 			return "", errors.New("request_id is invalid")
 		}
 		return value, nil
@@ -148,7 +145,7 @@ func Project(operation agentv1.Operation, projector ResultProjector) (Operation,
 }
 
 func projectSummary(operation agentv1.OperationSummary) (Operation, error) {
-	if !requestIDPattern.MatchString(operation.IdempotencyKey) {
+	if !agentv1.ValidIdempotencyKey(operation.IdempotencyKey) {
 		return Operation{}, errors.New("operation request_id is invalid")
 	}
 	return Operation{
@@ -245,7 +242,7 @@ func validListParameters(requestID, cursor string, limit int) bool {
 	if len(requestID) > 128 || len(cursor) > 128 {
 		return false
 	}
-	if requestID != "" && !requestIDPattern.MatchString(requestID) {
+	if requestID != "" && !agentv1.ValidIdempotencyKey(requestID) {
 		return false
 	}
 	return limit >= 1 && limit <= MaxListLimit
@@ -275,7 +272,7 @@ func Conflict(ctx context.Context, client Client, requestID string, cause error)
 		return fmt.Errorf("could not recover request_id conflict: %w", cause)
 	}
 	existing := page.Operations[0]
-	if !requestIDPattern.MatchString(existing.IdempotencyKey) || existing.ID == "" || existing.Operation == "" ||
+	if !agentv1.ValidIdempotencyKey(existing.IdempotencyKey) || existing.ID == "" || existing.Operation == "" ||
 		existing.Revision < 1 || !existing.State.Valid() {
 		return fmt.Errorf("could not recover request_id conflict: %w", cause)
 	}

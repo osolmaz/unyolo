@@ -148,6 +148,7 @@ func TestSubmitStrictBoundaryAndErrors(t *testing.T) {
 		`{"idempotency_key":"one","operation":"repo.create","operation":"repo.create","target":{},"arguments":{},"reason":"test"}`,
 		valid + `{}`,
 		`{"idempotency_key":"","operation":"repo.create","target":{},"arguments":{},"reason":"test"}`,
+		`{"idempotency_key":"bad value","operation":"repo.create","target":{},"arguments":{},"reason":"test"}`,
 		`{"idempotency_key":"one","operation":"repo.create","target":{},"arguments":{},"reason":""}`,
 		`{"idempotency_key":"one","operation":"repo.create","target":{},"arguments":{},"reason":"test","unknown":true}`,
 	}
@@ -225,7 +226,7 @@ func TestListOperations(t *testing.T) {
 	if response.StatusCode != http.StatusOK || !strings.Contains(body, `"operations":[{"api_version":"brokerkit.io/agent/v1"`) || !strings.Contains(body, `"next_cursor":null`) {
 		t.Fatalf("list = %d %s", response.StatusCode, body)
 	}
-	for _, query := range []string{"limit=0", "limit=51", "state=unknown", "cursor=", "idempotency_key="} {
+	for _, query := range []string{"limit=0", "limit=51", "limit=nope", "state=unknown", "cursor=", "idempotency_key=", "idempotency_key=bad%20value"} {
 		response, body = request(t, server, http.MethodGet, operationsPath+"?"+query, "Bearer good", nil)
 		if response.StatusCode != http.StatusBadRequest || !strings.Contains(body, "invalid_request") {
 			t.Fatalf("invalid list %q = %d %s", query, response.StatusCode, body)

@@ -131,6 +131,9 @@ type ErrorEnvelope struct {
 	Error OperationError `json:"error"`
 }
 
+// IdempotencyKey defines model for IdempotencyKey.
+type IdempotencyKey = string
+
 // Operation defines model for Operation.
 type Operation struct {
 	ApiVersion     OperationApiVersion     `json:"api_version"`
@@ -141,7 +144,7 @@ type Operation struct {
 	CreatedAt      time.Time               `json:"created_at"`
 	Error          *OperationError         `json:"error,omitempty"`
 	Id             string                  `json:"id"`
-	IdempotencyKey string                  `json:"idempotency_key"`
+	IdempotencyKey IdempotencyKey          `json:"idempotency_key"`
 	Operation      string                  `json:"operation"`
 	PlanDigest     *string                 `json:"plan_digest,omitempty"`
 	Presentation   Presentation            `json:"presentation"`
@@ -180,7 +183,7 @@ type OperationSummary struct {
 	ClientId       string                     `json:"client_id"`
 	CreatedAt      time.Time                  `json:"created_at"`
 	Id             string                     `json:"id"`
-	IdempotencyKey string                     `json:"idempotency_key"`
+	IdempotencyKey IdempotencyKey             `json:"idempotency_key"`
 	Operation      string                     `json:"operation"`
 	Presentation   Presentation               `json:"presentation"`
 	Revision       int                        `json:"revision"`
@@ -204,7 +207,7 @@ type State string
 // SubmitRequest defines model for SubmitRequest.
 type SubmitRequest struct {
 	Arguments      map[string]interface{} `json:"arguments"`
-	IdempotencyKey string                 `json:"idempotency_key"`
+	IdempotencyKey IdempotencyKey         `json:"idempotency_key"`
 	Operation      string                 `json:"operation"`
 	Reason         string                 `json:"reason"`
 	Target         map[string]interface{} `json:"target"`
@@ -221,10 +224,10 @@ type agentBearerContextKey string
 
 // ListAgentOperationsParams defines parameters for ListAgentOperations.
 type ListAgentOperationsParams struct {
-	IdempotencyKey *string `form:"idempotency_key,omitempty" json:"idempotency_key,omitempty"`
-	State          *State  `form:"state,omitempty" json:"state,omitempty"`
-	Limit          *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	Cursor         *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	IdempotencyKey *IdempotencyKey `form:"idempotency_key,omitempty" json:"idempotency_key,omitempty"`
+	State          *State          `form:"state,omitempty" json:"state,omitempty"`
+	Limit          *int            `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor         *string         `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // WaitForAgentOperationParams defines parameters for WaitForAgentOperation.

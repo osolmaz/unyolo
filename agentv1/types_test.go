@@ -27,3 +27,16 @@ func TestStateValid(t *testing.T) {
 		}
 	}
 }
+
+func TestValidIdempotencyKey(t *testing.T) {
+	for _, value := range []string{"request", "req_1.2:3", "A"} {
+		if !ValidIdempotencyKey(value) {
+			t.Fatalf("valid key rejected: %q", value)
+		}
+	}
+	for _, value := range []string{"", "bad value", "-leading", string(make([]byte, 129))} {
+		if ValidIdempotencyKey(value) {
+			t.Fatalf("invalid key accepted: %q", value)
+		}
+	}
+}

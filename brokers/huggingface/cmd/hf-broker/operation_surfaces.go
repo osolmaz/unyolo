@@ -208,12 +208,16 @@ func validateOperationClientOptions(descriptor opcatalog.Descriptor, options ope
 }
 
 func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, target, arguments json.RawMessage, sealedFile string, sealed json.RawMessage, credentialSlot, reason, idempotencyKey string) (agentv1.SubmitRequest, error) {
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if idempotencyKey == "" {
 		var err error
 		idempotencyKey, err = randomClientID()
 		if err != nil {
 			return agentv1.SubmitRequest{}, err
 		}
+	}
+	if !agentv1.ValidIdempotencyKey(idempotencyKey) {
+		return agentv1.SubmitRequest{}, errors.New("request-id is invalid")
 	}
 	if descriptor.Sealed {
 		if sealedFile != "" {
@@ -315,6 +319,10 @@ func runCatalogGrant(ctx context.Context, client *hfGrantClient, stdout, stderr 
 			return err
 		}
 	}
+	if !agentv1.ValidIdempotencyKey(strings.TrimSpace(idempotencyKey)) {
+		return errors.New("request-id is invalid")
+	}
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	request := hfGrantRequest{Operation: policy.Operation(descriptor.Name), Target: target, Attrs: options.attrs,
 		Minutes: options.minutes, Reason: strings.TrimSpace(options.reason), ClientRequestID: idempotencyKey}
 	if options.maxUses.set {

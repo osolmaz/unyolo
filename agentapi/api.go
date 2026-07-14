@@ -86,7 +86,24 @@ func New(options Options) (*Handler, error) {
 }
 
 // Register installs only the generated Agent V1 routes on router.
-func (h *Handler) Register(router *echo.Echo) { agentwire.RegisterHandlers(router, h) }
+func (h *Handler) Register(router *echo.Echo) {
+	middleware := []echo.MiddlewareFunc{generatedBindingErrors}
+	agentwire.RegisterHandlersWithOptions(router, h, agentwire.RegisterHandlersOptions{OperationMiddlewares: map[string][]echo.MiddlewareFunc{
+		"discoverAgent": middleware, "listAgentOperations": middleware, "submitAgentOperation": middleware,
+		"getAgentOperation": middleware, "cancelAgentOperation": middleware, "waitForAgentOperation": middleware,
+	}})
+}
+
+func generatedBindingErrors(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		err := next(c)
+		var httpError *echo.HTTPError
+		if errors.As(err, &httpError) && httpError.Code == http.StatusBadRequest {
+			return writeError(c, &Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: "Invalid agent request"})
+		}
+		return err
+	}
+}
 
 func (h *Handler) DiscoverAgent(c echo.Context) error {
 	return h.withAuthenticated(c, func(string) error {
@@ -203,7 +220,7 @@ func readSubmit(request *http.Request) (agentv1.SubmitRequest, error) {
 		return agentv1.SubmitRequest{}, errors.New("agent operation request is invalid")
 	}
 	result, err := agentv1wire.SubmitFromWire(wire)
-	if err != nil || strings.TrimSpace(result.IdempotencyKey) == "" || len(result.IdempotencyKey) > 128 ||
+	if err != nil || !agentv1.ValidIdempotencyKey(strings.TrimSpace(result.IdempotencyKey)) ||
 		strings.TrimSpace(result.Reason) == "" || len(result.Reason) > 2000 {
 		return agentv1.SubmitRequest{}, errors.New("idempotency key and reason are required")
 	}
@@ -253,6 +270,9 @@ func listOptionsFromParams(params agentwire.ListAgentOperationsParams) agentv1.L
 
 func validateListOptions(params agentwire.ListAgentOperationsParams, options agentv1.ListOptions) *Error {
 	if invalidOptionalListValue(params.IdempotencyKey, options.IdempotencyKey) {
+		return invalidListQueryError()
+	}
+	if options.IdempotencyKey != "" && !agentv1.ValidIdempotencyKey(options.IdempotencyKey) {
 		return invalidListQueryError()
 	}
 	if invalidOptionalListValue(params.Cursor, options.Cursor) {

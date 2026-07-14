@@ -220,7 +220,9 @@ func operationRecord(record dbsql.Operation, err error) (OperationRecord, error)
 	}, nil
 }
 
-func formatTime(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
+const sortableTimeLayout = "2006-01-02T15:04:05.000000000Z"
+
+func formatTime(value time.Time) string { return value.UTC().Format(sortableTimeLayout) }
 
 func parseTime(value string) (time.Time, error) { return time.Parse(time.RFC3339Nano, value) }
 

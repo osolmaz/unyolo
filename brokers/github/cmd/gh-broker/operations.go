@@ -152,6 +152,10 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 		}
 		*key = generated
 	}
+	if !agentv1.ValidIdempotencyKey(strings.TrimSpace(*key)) {
+		return exitError{code: 64, message: "request-id is invalid"}
+	}
+	*key = strings.TrimSpace(*key)
 	connection, err := loadOperationConnection(os.Getenv)
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
