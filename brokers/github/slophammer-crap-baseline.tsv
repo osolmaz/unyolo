@@ -61,7 +61,6 @@ brokers/github/internal/githubauth/app.go	githubauth:(*appProvider).installation
 brokers/github/internal/githubauth/installation.go	githubauth:(*installationProvider).resolveRepository	crap	9.5
 brokers/github/internal/githubauth/user.go	githubauth:(*userProvider).credential	crap	9.4
 brokers/github/internal/githubauth/generic.go	githubauth:(*Manager).ExecuteRESTDownload	crap	9.2
-brokers/github/internal/policy/core.go	policy:coreTarget	crap	9.2
 brokers/github/internal/githubauth/manager.go	githubauth:normalizeWebURL	crap	9.1
 brokers/github/internal/githubauth/generic.go	githubauth:projectByPath	crap	9.0
 brokers/github/cmd/gh-broker/operations.go	main:runOperation	crap	9.0

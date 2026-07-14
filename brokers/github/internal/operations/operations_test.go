@@ -76,6 +76,39 @@ func TestRESTAdapterRejectsEscapeHatchesAndExecutes(t *testing.T) {
 	assertJSONEqual(t, outcome.Result, `{"id":1,"node_id":"R_1","name":"brokerkit"}`)
 }
 
+func TestRepositoryContentsPreservesBoundedFileAndDirectoryResults(t *testing.T) {
+	for name, response := range map[string]string{
+		"file":      `{"type":"file","name":"README.md","path":"README.md","sha":"abc","encoding":"base64","content":"Y2FuYXJ5","url":"https://api.github.test/content"}`,
+		"directory": `[{"type":"file","name":"README.md","path":"README.md","sha":"abc","url":"https://api.github.test/content"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/repos/osolmaz/brokerkit/contents/README.md" {
+					t.Fatalf("path = %q", request.URL.Path)
+				}
+				_, _ = w.Write([]byte(response))
+			}))
+			t.Cleanup(server.Close)
+			adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "repo.contents.read")
+			input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"path":"README.md"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := adapter.Resolve(t.Context(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outcome, err := adapter.Execute(t.Context(), plan)
+			if err != nil || !outcome.Proven || !bytes.Contains(outcome.Result, []byte(`"path":"README.md"`)) {
+				t.Fatalf("outcome = %s err = %v", outcome.Result, err)
+			}
+			if name == "file" && !bytes.Contains(outcome.Result, []byte(`"content":"Y2FuYXJ5"`)) {
+				t.Fatalf("file content was projected out: %s", outcome.Result)
+			}
+		})
+	}
+}
+
 func TestGraphQLOperationsRequireReviewedTargetBindings(t *testing.T) {
 	descriptor, found := opcatalog.ByName("repo.read_repository")
 	if !found || descriptor.AgentFacing || descriptor.Implementation != capability.StatusOperatorOnly || descriptor.MCPTool != nil || descriptor.CLICommand != nil {
@@ -298,7 +331,7 @@ func TestGeneratedAdapterCleanupAndInvalidStoredPlans(t *testing.T) {
 	}
 	streamAdapter, _ := registry.Lookup("release.repos_upload_release_asset")
 	streamWrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"asset.bin"}`), "stream_input": streamReference})
-	streamInput, err := streamAdapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","name":"brokerkit"}`), streamWrapper)
+	streamInput, err := streamAdapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), streamWrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +571,7 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 	registry, _ := NewRegistry(adapters...)
 	adapter, _ := registry.Lookup("release.repos_upload_release_asset")
 	wrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"artifact.bin"}`), "stream_input": reference})
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","name":"brokerkit"}`), wrapper)
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), wrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,6 +617,7 @@ func TestStreamDownloadStoresBoundedResultForOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan.Authorization.Client = "bob"
+	plan.ExecutionID = "operation-1"
 	outcome, err := adapter.Execute(context.Background(), plan)
 	if err != nil || !outcome.Proven || bytes.Contains(outcome.Result, content[:32]) {
 		t.Fatalf("outcome = %s err = %v", outcome.Result, err)
@@ -602,6 +636,17 @@ func TestStreamDownloadStoresBoundedResultForOwner(t *testing.T) {
 	_ = file.Close()
 	if !bytes.Equal(stored, content) {
 		t.Fatal("download stream content drifted")
+	}
+	plan.ExecutionID = "operation-2"
+	second, err := adapter.Execute(context.Background(), plan)
+	if err != nil || !second.Proven {
+		t.Fatalf("second outcome = %s err = %v", second.Result, err)
+	}
+	var secondResult struct {
+		Stream streamstore.Reference `json:"stream"`
+	}
+	if json.Unmarshal(second.Result, &secondResult) != nil || secondResult.Stream.ID == result.Stream.ID {
+		t.Fatalf("second stream = %+v, want a distinct execution result", secondResult.Stream)
 	}
 }
 

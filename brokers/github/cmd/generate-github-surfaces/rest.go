@@ -124,7 +124,7 @@ func canonicalRESTOperations(operationID, path string) []string {
 	}
 	family := semanticRESTFamily(category, action, path)
 	if family == "" {
-		family = targetKindFromPath(path)
+		family = targetKindForREST(path, "installation")
 	}
 	if mapped := familyByCategory[category]; mapped != "" && categoryName(family) != category {
 		action = category + "-" + action
@@ -207,7 +207,7 @@ func categoryName(family string) string {
 func descriptorForREST(name, method, path string, operation restOperation, disposition, credential string, permissions map[string]string, classes []string, components map[string]any) opcatalog.Descriptor {
 	mutation := method != http.MethodGet && method != http.MethodHead
 	credentialOutput := runnerCredentialOutput(operation.OperationID)
-	target := targetKindFromPath(path)
+	target := targetKindForREST(path, credential)
 	sealedInputPaths := sensitiveTopLevelPaths(argumentsSchemaForREST(method, path, operation, target, components))
 	if mutation && slices.Contains(classes, "secret") && len(operation.RequestBody) > 0 && !slices.Contains(sealedInputPaths, "input") {
 		sealedInputPaths = append(sealedInputPaths, "input")
@@ -414,7 +414,8 @@ func containsAny(value string, terms []string) bool {
 	return false
 }
 
-func targetKindFromPath(path string) string {
+//nolint:cyclop // Resource path precedence and credential-authority fallback are one closed classification table.
+func targetKindForREST(path, credential string) string {
 	checks := []struct{ token, kind string }{
 		{"{enterprise}", "enterprise"}, {"{org}", "organization"}, {"{installation_id}", "installation"},
 		{"{team_slug}", "team"}, {"{team_id}", "team"}, {"{pull_number}", "pull_request"}, {"{issue_number}", "issue"},
@@ -429,7 +430,7 @@ func targetKindFromPath(path string) string {
 			return check.kind
 		}
 	}
-	if strings.Contains(path, "/repos/{owner}/{repo}") {
+	if strings.Contains(path, "{owner}") && strings.Contains(path, "{repo}") {
 		return "repo"
 	}
 	if strings.HasPrefix(path, "/installation") {
@@ -444,7 +445,14 @@ func targetKindFromPath(path string) string {
 	if strings.HasPrefix(path, "/app") {
 		return "app"
 	}
-	return "repo"
+	switch credential {
+	case "user":
+		return "user"
+	case "installation":
+		return "installation"
+	default:
+		return "app"
+	}
 }
 
 func normalizeIdentifier(value string) string {

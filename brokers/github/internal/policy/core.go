@@ -130,20 +130,10 @@ func coreTarget(target Target, kind string) map[string]string {
 	if kind == "installation" && target.ID == 0 && strings.TrimSpace(target.NodeID) == "" {
 		return result
 	}
-	if target.ID > 0 {
-		result["id"] = fmt.Sprintf("%d", target.ID)
-	}
-	if target.Number > 0 {
-		result["number"] = fmt.Sprintf("%d", target.Number)
-	}
-	if strings.TrimSpace(target.NodeID) != "" {
-		result["node_id"] = target.NodeID
-	}
-	if strings.TrimSpace(target.Owner) != "" {
-		result["owner"] = target.Owner
-	}
-	if strings.TrimSpace(target.Name) != "" {
-		result["name"] = target.Name
+	for field, values := range targetFields(target) {
+		if len(values) > 0 {
+			result[field] = values[0]
+		}
 	}
 	return result
 }
@@ -226,6 +216,7 @@ func normalizeRequest(request Request) Request {
 			ID:     request.Target.ID,
 			NodeID: strings.TrimSpace(request.Target.NodeID),
 			Owner:  strings.TrimSpace(request.Target.Owner),
+			Repo:   strings.TrimSpace(request.Target.Repo),
 			Name:   strings.TrimSpace(request.Target.Name),
 			Number: request.Target.Number,
 		},
@@ -264,14 +255,10 @@ func targetFields(target Target) map[string][]string {
 	if target.Number > 0 {
 		fields["number"] = []string{fmt.Sprintf("%d", target.Number)}
 	}
-	if strings.TrimSpace(target.NodeID) != "" {
-		fields["node_id"] = []string{target.NodeID}
-	}
-	if strings.TrimSpace(target.Owner) != "" {
-		fields["owner"] = []string{target.Owner}
-	}
-	if strings.TrimSpace(target.Name) != "" {
-		fields["name"] = []string{target.Name}
+	for name, value := range map[string]string{"node_id": target.NodeID, "owner": target.Owner, "repo": target.Repo, "name": target.Name} {
+		if value = strings.TrimSpace(value); value != "" {
+			fields[name] = []string{value}
+		}
 	}
 	if len(fields) == 0 {
 		return nil

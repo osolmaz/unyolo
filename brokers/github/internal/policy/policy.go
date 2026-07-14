@@ -53,6 +53,7 @@ type Target struct {
 	ID     int64  `json:"id,omitempty"`
 	NodeID string `json:"node_id,omitempty"`
 	Owner  string `json:"owner,omitempty"`
+	Repo   string `json:"repo,omitempty"`
 	Name   string `json:"name,omitempty"`
 	Number int64  `json:"number,omitempty"`
 }
@@ -206,7 +207,7 @@ func targetHasIdentity(target Target) bool {
 	if target.ID > 0 || strings.TrimSpace(target.NodeID) != "" {
 		return true
 	}
-	return strings.TrimSpace(target.Name) != "" || strings.TrimSpace(target.Owner) != "" || target.Number > 0
+	return strings.TrimSpace(target.Name) != "" || strings.TrimSpace(target.Owner) != "" || strings.TrimSpace(target.Repo) != "" || target.Number > 0
 }
 
 // mutate4go-manifest-begin

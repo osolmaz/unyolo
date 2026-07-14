@@ -28,6 +28,10 @@ func TestRepositoryIdentity(t *testing.T) {
 	if _, _, ok := RepositoryIdentity(map[string]any{"owner": "acme"}); ok {
 		t.Fatal("incomplete repository identity accepted")
 	}
+	owner, repo, ok = RepositoryIdentity(map[string]any{"owner": "acme", "repo": "project", "name": "production"})
+	if !ok || owner != "acme" || repo != "project" {
+		t.Fatalf("nested RepositoryIdentity() = %q, %q, %t", owner, repo, ok)
+	}
 }
 
 func TestRegistryLoadFailsClosed(t *testing.T) {

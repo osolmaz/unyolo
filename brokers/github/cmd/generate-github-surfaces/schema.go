@@ -21,19 +21,9 @@ func targetSchemas() map[string]map[string]any {
 			"kind":    map[string]any{"const": kind},
 			"id":      map[string]any{"type": "integer", "minimum": 1},
 			"node_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 256},
-			"owner":   nameSchema(), "name": nameSchema(), "number": map[string]any{"type": "integer", "minimum": 1},
+			"owner":   nameSchema(), "repo": nameSchema(), "name": nameSchema(), "number": map[string]any{"type": "integer", "minimum": 1},
 		}
 		required := []string{"kind"}
-		switch kind {
-		case "repo":
-			required = append(required, "owner", "name")
-		case "organization", "enterprise", "user":
-			required = append(required, "name")
-		case "issue", "pull_request", "alert":
-			required = append(required, "number")
-		default:
-			required = append(required, "id")
-		}
 		result[kind] = map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": properties, "required": required, "additionalProperties": false}
 	}
 	return result
@@ -46,7 +36,7 @@ func nameSchema() map[string]any {
 func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 	result := make([]targetDescriptor, 0, len(schemas))
 	for kind := range schemas {
-		fields := []string{"id", "node_id", "owner", "name", "number"}
+		fields := []string{"id", "node_id", "owner", "repo", "name", "number"}
 		result = append(result, targetDescriptor{Kind: kind, Schema: "target." + kind + ".v1", PolicyFields: fields})
 	}
 	slices.SortFunc(result, func(a, b targetDescriptor) int { return strings.Compare(a.Kind, b.Kind) })
@@ -56,7 +46,7 @@ func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 func schemasForREST(name, method, path string, operation restOperation, targetKind string, components map[string]any) operationSchemas {
 	arguments := argumentsSchemaForREST(method, path, operation, targetKind, components)
 	upstreamResult := responseSchema(operation, components)
-	result := projectedResponseSchema(upstreamResult, responseProjection(upstreamResult))
+	result := projectedResponseSchema(upstreamResult, responseProjection(name, upstreamResult))
 	if runnerCredentialOutput(operation.OperationID) != nil {
 		result = map[string]any{
 			"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
@@ -214,6 +204,9 @@ func projectResponseProperties(result map[string]any, allowed map[string]bool, p
 }
 
 func flattenComposedObjectForProjection(schema map[string]any) {
+	if hasNonObjectCompositionBranch(schema) {
+		return
+	}
 	properties, _ := schema["properties"].(map[string]any)
 	if properties == nil {
 		properties = map[string]any{}
@@ -244,6 +237,21 @@ func flattenComposedObjectForProjection(schema map[string]any) {
 	delete(schema, "anyOf")
 	delete(schema, "allOf")
 	delete(schema, "required")
+}
+
+func hasNonObjectCompositionBranch(schema map[string]any) bool {
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		branches, _ := schema[keyword].([]any)
+		for _, value := range branches {
+			branch, _ := value.(map[string]any)
+			if branch["type"] != "object" {
+				if _, object := branch["properties"].(map[string]any); !object {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func mediaSchema(container map[string]any, components map[string]any) map[string]any {
@@ -447,13 +455,13 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 			requestLimit = 256 << 20
 		}
 	}
-	projection := responseProjection(responseSchema(operation, components))
+	projection := responseProjection(name, responseSchema(operation, components))
 	rootType := responseRootType(responseSchema(operation, components))
 	return restBinding{
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
 		MediaType: "application/vnd.github+json", PathParameters: pathParameters, TargetPathParameters: targetParameters, ArgumentParameters: arguments,
-		AuthenticatedUserTarget: authenticatedUserTarget(operation.OperationID, descriptor.TargetKind, path, targetParameters),
+		AuthenticatedUserTarget: authenticatedUserTarget(operation.OperationID, descriptor.TargetKind, descriptor.CredentialKind, path, targetParameters),
 		RequestSchema:           descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
 		ResponseRootType: rootType, ServerRole: serverRole(operation),
 		RequestBytesLimit: requestLimit, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
@@ -462,9 +470,12 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 	}
 }
 
-func authenticatedUserTarget(operationID, targetKind, path string, targetParameters []targetParameter) bool {
-	if targetKind != "user" || !strings.HasPrefix(path, "/user") || len(targetParameters) != 0 {
+func authenticatedUserTarget(operationID, targetKind, credentialKind, path string, targetParameters []targetParameter) bool {
+	if targetKind != "user" || len(targetParameters) != 0 {
 		return false
+	}
+	if !strings.HasPrefix(path, "/user") {
+		return credentialKind == "user" && len(pathParameterNames(path)) == 0
 	}
 	normalized := strings.ReplaceAll(operationID, "_", "-")
 	return strings.Contains(normalized, "authenticated-user") || strings.HasSuffix(normalized, "authenticated")
@@ -503,19 +514,19 @@ func serverRole(operation restOperation) string {
 
 //nolint:cyclop // Target ownership is an explicit closed mapping from official path templates.
 func targetPathField(name, targetKind, path string) (string, bool) {
-	if strings.HasPrefix(path, "/repos/{owner}/{repo}") || strings.HasPrefix(path, "/agents/repos/{owner}/{repo}") {
+	if targetKind == "organization" && name == "org" {
+		return "name", true
+	}
+	if strings.Contains(path, "{owner}") && strings.Contains(path, "{repo}") {
 		switch name {
 		case "owner":
 			return "owner", true
 		case "repo":
+			if targetKind != "repo" {
+				return "repo", true
+			}
 			return "name", true
 		}
-	}
-	if strings.HasPrefix(path, "/orgs/{org}") && name == "org" {
-		if targetKind == "organization" {
-			return "name", true
-		}
-		return "owner", true
 	}
 	if targetKind == "enterprise" && name == "enterprise" || targetKind == "user" && (name == "username" || name == "user") {
 		return "name", true
@@ -526,6 +537,9 @@ func targetPathField(name, targetKind, path string) (string, bool) {
 		return "name", true
 	}
 	idParameters := map[string]string{"check": "check_run_id"}
+	if targetKind == "user" && name == "account_id" {
+		return "id", true
+	}
 	if name == targetKind+"_id" || idParameters[targetKind] == name {
 		return "id", true
 	}
@@ -546,9 +560,12 @@ func pathParameterNames(path string) []string {
 	return result
 }
 
-func responseProjection(schema map[string]any) []string {
+func responseProjection(operation string, schema map[string]any) []string {
 	allowed := map[string]bool{"id": true, "node_id": true, "name": true, "number": true, "state": true, "status": true,
 		"type": true, "sha": true, "url": true, "created_at": true, "updated_at": true}
+	if operation == "repo.contents.read" {
+		allowed["content"], allowed["encoding"], allowed["path"] = true, true, true
+	}
 	paths := map[string]bool{}
 	collectResponseProjection(schema, allowed, "", paths, 0)
 	result := make([]string, 0, len(paths))
@@ -562,6 +579,7 @@ func responseProjection(schema map[string]any) []string {
 	return result
 }
 
+//nolint:cyclop // Projection traversal covers every bounded JSON Schema composition shape.
 func collectResponseProjection(schema map[string]any, allowed map[string]bool, prefix string, paths map[string]bool, depth int) {
 	if depth > 32 {
 		return
@@ -588,6 +606,15 @@ func collectResponseProjection(schema map[string]any, allowed map[string]bool, p
 	}
 	if items, ok := projectable["items"].(map[string]any); ok {
 		collectResponseProjection(items, allowed, prefix, paths, depth+1)
+	}
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		if branches, ok := projectable[keyword].([]any); ok {
+			for _, value := range branches {
+				if child, childOK := value.(map[string]any); childOK {
+					collectResponseProjection(child, allowed, prefix, paths, depth+1)
+				}
+			}
+		}
 	}
 }
 

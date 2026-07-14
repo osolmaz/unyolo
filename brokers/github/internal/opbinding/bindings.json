@@ -231,7 +231,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -273,7 +273,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -315,7 +315,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -392,7 +392,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -765,7 +765,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "workflow_id",
@@ -807,7 +807,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "cache_id",
@@ -898,7 +898,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "artifact_id",
@@ -1011,7 +1011,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -1055,7 +1055,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -1387,7 +1387,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -1430,7 +1430,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -1539,7 +1539,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "workflow_id",
@@ -1582,7 +1582,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "artifact_id",
@@ -1625,7 +1625,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "job_id",
@@ -1669,7 +1669,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -1712,7 +1712,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -1821,7 +1821,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "workflow_id",
@@ -1863,7 +1863,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -2065,6 +2065,12 @@
     "path_parameters": [
       "org"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.cache.actions_get_actions_cache_retention_limit_for_organization.v1",
     "response_schema": "result.cache.actions_get_actions_cache_retention_limit_for_organization.v1",
     "response_projection": [
@@ -2159,6 +2165,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "org"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "request_schema": "arguments.cache.actions_get_actions_cache_storage_limit_for_organization.v1",
     "response_schema": "result.cache.actions_get_actions_cache_storage_limit_for_organization.v1",
@@ -2481,7 +2493,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "artifact_id",
@@ -2682,7 +2694,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -2727,7 +2739,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -2772,7 +2784,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -3218,7 +3230,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "job_id",
@@ -3369,7 +3381,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -3603,7 +3615,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -3824,7 +3836,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -3878,7 +3890,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -3920,7 +3932,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -3974,7 +3986,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "workflow_id",
@@ -4016,7 +4028,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "workflow_id",
@@ -4167,7 +4179,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -4290,7 +4302,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -4344,7 +4356,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -4488,7 +4500,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -4545,7 +4557,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -5518,7 +5530,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -5668,7 +5680,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "workflow_id",
@@ -5758,7 +5770,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "job_id",
@@ -5800,7 +5812,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -5842,7 +5854,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -6174,7 +6186,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -6216,7 +6228,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "run_id",
@@ -6285,6 +6297,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "org"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "request_schema": "arguments.cache.actions_set_actions_cache_retention_limit_for_organization.v1",
     "response_schema": "result.cache.actions_set_actions_cache_retention_limit_for_organization.v1",
@@ -6380,6 +6398,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "org"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "request_schema": "arguments.cache.actions_set_actions_cache_storage_limit_for_organization.v1",
     "response_schema": "result.cache.actions_set_actions_cache_storage_limit_for_organization.v1",
@@ -7245,7 +7269,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -7419,7 +7443,16 @@
       "owner",
       "repo"
     ],
-    "authenticated_user_target": true,
+    "target_path_parameters": [
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.notification.activity_check_repo_is_starred_by_authenticated_user.v1",
     "response_schema": "result.notification.activity_check_repo_is_starred_by_authenticated_user.v1",
     "response_projection": [
@@ -7667,6 +7700,12 @@
       "username",
       "org"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "argument_parameters": [
       {
         "name": "per_page",
@@ -7705,6 +7744,16 @@
     "path_parameters": [
       "owner",
       "repo"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "name"
+      }
     ],
     "argument_parameters": [
       {
@@ -8143,7 +8192,18 @@
     "request_schema": "arguments.notification.activity_list_repos_starred_by_user.v1",
     "response_schema": "result.notification.activity_list_repos_starred_by_user.v1",
     "response_projection": [
-      "$none"
+      "created_at",
+      "id",
+      "name",
+      "node_id",
+      "repo.created_at",
+      "repo.id",
+      "repo.name",
+      "repo.node_id",
+      "repo.updated_at",
+      "repo.url",
+      "updated_at",
+      "url"
     ],
     "response_root_type": "array",
     "server_role": "api",
@@ -8237,7 +8297,16 @@
     "request_schema": "arguments.notification.activity_list_stargazers_for_repo.v1",
     "response_schema": "result.notification.activity_list_stargazers_for_repo.v1",
     "response_projection": [
-      "$none"
+      "id",
+      "name",
+      "node_id",
+      "type",
+      "url",
+      "user.id",
+      "user.name",
+      "user.node_id",
+      "user.type",
+      "user.url"
     ],
     "response_root_type": "array",
     "server_role": "api",
@@ -8351,7 +8420,16 @@
       "owner",
       "repo"
     ],
-    "authenticated_user_target": true,
+    "target_path_parameters": [
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.notification.activity_star_repo_for_authenticated_user.v1",
     "response_schema": "result.notification.activity_star_repo_for_authenticated_user.v1",
     "response_projection": [
@@ -8379,7 +8457,16 @@
       "owner",
       "repo"
     ],
-    "authenticated_user_target": true,
+    "target_path_parameters": [
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.notification.activity_unstar_repo_for_authenticated_user.v1",
     "response_schema": "result.notification.activity_unstar_repo_for_authenticated_user.v1",
     "response_projection": [
@@ -11429,6 +11516,12 @@
     "path_parameters": [
       "org"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.organization.billing_create_organization_budget.v1",
     "response_schema": "result.organization.billing_create_organization_budget.v1",
     "response_projection": [
@@ -11456,6 +11549,12 @@
       "org",
       "budget_id"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.organization.billing_delete_budget_org.v1",
     "response_schema": "result.organization.billing_delete_budget_org.v1",
     "response_projection": [
@@ -11482,6 +11581,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "org"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "argument_parameters": [
       {
@@ -11529,6 +11634,12 @@
       "org",
       "budget_id"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.organization.billing_get_budget_org.v1",
     "response_schema": "result.organization.billing_get_budget_org.v1",
     "response_projection": [
@@ -11554,6 +11665,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "org"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "argument_parameters": [
       {
@@ -11661,6 +11778,12 @@
     "path_parameters": [
       "org"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "argument_parameters": [
       {
         "name": "year",
@@ -11767,6 +11890,12 @@
     "path_parameters": [
       "org"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "argument_parameters": [
       {
         "name": "year",
@@ -11852,6 +11981,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "org"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "argument_parameters": [
       {
@@ -11963,6 +12098,12 @@
     "path_parameters": [
       "org",
       "budget_id"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "request_schema": "arguments.organization.billing_update_budget_org.v1",
     "response_schema": "result.organization.billing_update_budget_org.v1",
@@ -13137,7 +13278,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -13179,7 +13320,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -13345,7 +13486,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -13431,7 +13572,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -13675,7 +13816,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -14030,7 +14171,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -15087,7 +15228,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -18459,7 +18600,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -19282,7 +19423,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -20252,6 +20393,7 @@
     "credential_kind": "user",
     "api_version": "2026-03-10",
     "media_type": "application/vnd.github+json",
+    "authenticated_user_target": true,
     "request_schema": "arguments.gist.gists_create.v1",
     "response_schema": "result.gist.gists_create.v1",
     "response_projection": [
@@ -22145,7 +22287,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22194,7 +22336,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22243,7 +22385,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22285,7 +22427,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22330,7 +22472,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22380,7 +22522,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22460,7 +22602,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22633,7 +22775,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -22677,7 +22819,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -22797,7 +22939,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -22969,7 +23111,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23018,7 +23160,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23181,7 +23323,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23241,7 +23383,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23300,7 +23442,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23409,7 +23551,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23467,7 +23609,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23762,7 +23904,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -23915,7 +24057,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24035,7 +24177,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24174,7 +24316,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24216,7 +24358,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -24262,7 +24404,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24305,7 +24447,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24355,7 +24497,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24409,7 +24551,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24454,7 +24596,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24503,7 +24645,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24552,7 +24694,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24594,7 +24736,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24639,7 +24781,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -24681,7 +24823,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -24723,7 +24865,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -24854,7 +24996,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -27179,6 +27321,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "org"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
     ],
     "request_schema": "arguments.member.orgs_get_membership_for_authenticated_user.v1",
     "response_schema": "result.member.orgs_get_membership_for_authenticated_user.v1",
@@ -29542,6 +29690,12 @@
     "path_parameters": [
       "org"
     ],
+    "target_path_parameters": [
+      {
+        "name": "org",
+        "field": "name"
+      }
+    ],
     "request_schema": "arguments.member.orgs_update_membership_for_authenticated_user.v1",
     "response_schema": "result.member.orgs_update_membership_for_authenticated_user.v1",
     "response_projection": [
@@ -31667,7 +31821,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -31710,7 +31864,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -31756,7 +31910,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -31802,7 +31956,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -31890,7 +32044,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -31935,7 +32089,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -31979,7 +32133,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32023,7 +32177,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -32070,7 +32224,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32114,7 +32268,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32163,7 +32317,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32219,7 +32373,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32273,7 +32427,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32326,7 +32480,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32440,7 +32594,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32508,7 +32662,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32635,7 +32789,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32677,7 +32831,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32726,7 +32880,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32775,7 +32929,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32819,7 +32973,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32861,7 +33015,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -32908,7 +33062,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -32952,7 +33106,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "pull_number",
@@ -33023,7 +33177,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33067,7 +33221,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33111,7 +33265,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -33155,7 +33309,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33199,7 +33353,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -33244,7 +33398,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33287,7 +33441,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33330,7 +33484,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -33373,7 +33527,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33416,7 +33570,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -33458,7 +33612,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33516,7 +33670,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33574,7 +33728,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "issue_number",
@@ -33632,7 +33786,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -33690,7 +33844,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -34533,7 +34687,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -34578,7 +34732,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -34621,7 +34775,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "deployment_id",
@@ -34855,7 +35009,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -35393,7 +35547,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -35514,7 +35668,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -35636,7 +35790,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -35679,7 +35833,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "deployment_id",
@@ -35955,7 +36109,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -35998,7 +36152,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ruleset_id",
@@ -36157,7 +36311,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -36653,7 +36807,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -36969,7 +37123,7 @@
     "request_schema": "arguments.branch.repos_get_branch_rules.v1",
     "response_schema": "result.branch.repos_get_branch_rules.v1",
     "response_projection": [
-      "$none"
+      "type"
     ],
     "response_root_type": "array",
     "server_role": "api",
@@ -37248,7 +37402,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -37431,7 +37585,10 @@
     "request_schema": "arguments.repo.contents.read.v1",
     "response_schema": "result.repo.contents.read.v1",
     "response_projection": [
+      "content",
+      "encoding",
       "name",
+      "path",
       "sha",
       "type",
       "url"
@@ -37508,7 +37665,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -37592,7 +37749,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -37638,7 +37795,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "deployment_id",
@@ -37685,7 +37842,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "deployment_id",
@@ -37732,7 +37889,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -38531,7 +38688,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -38683,7 +38840,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ruleset_id",
@@ -38736,7 +38893,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ruleset_id",
@@ -38779,7 +38936,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ruleset_id",
@@ -39891,7 +40048,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -39993,7 +40150,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -40048,7 +40205,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "deployment_id",
@@ -40717,7 +40874,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -41863,7 +42020,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "comment_id",
@@ -41910,7 +42067,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "environment_name",
@@ -42152,7 +42309,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -42199,7 +42356,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ruleset_id",
@@ -42742,7 +42899,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "release_id",
@@ -43184,7 +43341,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -43523,7 +43680,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -43607,7 +43764,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "alert_number",
@@ -43685,7 +43842,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ghsa_id",
@@ -43772,7 +43929,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ghsa_id",
@@ -43888,7 +44045,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ghsa_id",
@@ -44159,7 +44316,7 @@
       },
       {
         "name": "repo",
-        "field": "name"
+        "field": "repo"
       },
       {
         "name": "ghsa_id",
@@ -44304,6 +44461,14 @@
       {
         "name": "org",
         "field": "name"
+      },
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "repo"
       }
     ],
     "request_schema": "arguments.team.teams_add_or_update_repo_permissions_in_org.v1",
@@ -44338,6 +44503,14 @@
       {
         "name": "team_id",
         "field": "id"
+      },
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "repo"
       }
     ],
     "request_schema": "arguments.team.teams_add_or_update_repo_permissions_legacy.v1",
@@ -44373,6 +44546,14 @@
       {
         "name": "org",
         "field": "name"
+      },
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "repo"
       }
     ],
     "request_schema": "arguments.team.teams_check_permissions_for_repo_in_org.v1",
@@ -44412,6 +44593,14 @@
       {
         "name": "team_id",
         "field": "id"
+      },
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "repo"
       }
     ],
     "request_schema": "arguments.team.teams_check_permissions_for_repo_legacy.v1",
@@ -45307,6 +45496,14 @@
       {
         "name": "org",
         "field": "name"
+      },
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "repo"
       }
     ],
     "request_schema": "arguments.team.teams_remove_repo_in_org.v1",
@@ -45342,6 +45539,14 @@
       {
         "name": "team_id",
         "field": "id"
+      },
+      {
+        "name": "owner",
+        "field": "owner"
+      },
+      {
+        "name": "repo",
+        "field": "repo"
       }
     ],
     "request_schema": "arguments.team.teams_remove_repo_legacy.v1",
@@ -45995,6 +46200,12 @@
     "media_type": "application/vnd.github+json",
     "path_parameters": [
       "account_id"
+    ],
+    "target_path_parameters": [
+      {
+        "name": "account_id",
+        "field": "id"
+      }
     ],
     "request_schema": "arguments.member.users_get_by_id.v1",
     "response_schema": "result.member.users_get_by_id.v1",

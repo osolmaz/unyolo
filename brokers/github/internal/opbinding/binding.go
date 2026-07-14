@@ -118,7 +118,7 @@ func Validate(values []Binding) error {
 			return fmt.Errorf("GitHub REST binding %q stream metadata drifted", value.ID)
 		}
 		for _, parameter := range value.TargetPathParameters {
-			if !slices.Contains(value.PathParameters, parameter.Name) || !slices.Contains([]string{"id", "number", "owner", "name"}, parameter.Field) {
+			if !slices.Contains(value.PathParameters, parameter.Name) || !slices.Contains([]string{"id", "number", "owner", "repo", "name"}, parameter.Field) {
 				return fmt.Errorf("GitHub REST binding %q has invalid target path ownership", value.ID)
 			}
 		}
@@ -126,7 +126,7 @@ func Validate(values []Binding) error {
 			return fmt.Errorf("GitHub REST binding %q has no safe response projection", value.ID)
 		}
 		for _, field := range value.ResponseProjection {
-			if !safeResponseField(field) {
+			if !safeResponseField(value.Operation, field) {
 				return fmt.Errorf("GitHub REST binding %q exposes unsafe response field %q", value.ID, field)
 			}
 		}
@@ -173,14 +173,14 @@ func validAuthenticatedUserOwnership(value Binding) bool {
 	if !value.AuthenticatedUserTarget {
 		return true
 	}
-	return strings.HasPrefix(value.PathTemplate, "/user") && len(value.TargetPathParameters) == 0
+	return len(value.TargetPathParameters) == 0 && (strings.HasPrefix(value.PathTemplate, "/user") || value.CredentialKind == "user")
 }
 
 func bindingByID(values []Binding, id string) (Binding, bool) {
 	return sortedlookup.String(values, id, func(value Binding) string { return value.ID })
 }
 
-func safeResponseField(field string) bool {
+func safeResponseField(operation, field string) bool {
 	if field == "$none" {
 		return true
 	}
@@ -193,6 +193,8 @@ func safeResponseField(field string) bool {
 	switch parts[len(parts)-1] {
 	case "id", "node_id", "name", "number", "state", "status", "type", "sha", "url", "created_at", "updated_at":
 		return true
+	case "content", "encoding", "path":
+		return operation == "repo.contents.read"
 	default:
 		return false
 	}

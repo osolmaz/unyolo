@@ -129,7 +129,7 @@ func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations
 	if err != nil || string(credential.Kind) != envelope.CredentialSelector.Kind {
 		return operations.Plan{}, errors.New("operation credential binding is invalid")
 	}
-	plan := operations.Plan{Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
+	plan := operations.Plan{ExecutionID: operation.ID, Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
 		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Credential: credential, Presentation: envelope.Presentation,
 		PolicyDecision: operations.PolicyDecision{Effect: envelope.Authorization.PolicyEffect, RuleIDs: envelope.Authorization.PolicyRuleIDs}}
 	input, err := adapter.Decode(plan.Target, plan.Arguments)

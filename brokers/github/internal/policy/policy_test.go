@@ -686,6 +686,9 @@ func TestPolicyRequestEffectAndAllowsHelper(t *testing.T) {
 	if !p.Allows(repoRequest(Operation("repo.contents.read"), "openclaw", "openclaw", map[string]string{"path": "README.md"})) {
 		t.Fatal("Allows() = false, want wildcard allow")
 	}
+	if p.Allows(repoRequest(Operation("repo.delete"), "openclaw", "openclaw", nil)) {
+		t.Fatal("global wildcard authorized an explicit-only operation")
+	}
 }
 
 func TestPolicyRejectsIncompleteRequest(t *testing.T) {

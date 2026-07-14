@@ -277,6 +277,11 @@ func targetSchemaForOperation(name string, operation Operation) (map[string]any,
 			required[parameter.Field] = true
 		}
 	}
+	if len(required) == 1 {
+		for _, field := range defaultTargetFields(strings.TrimSuffix(strings.TrimPrefix(operation.Target, "target."), ".v1")) {
+			required[field] = true
+		}
+	}
 	values := make([]string, 0, len(required))
 	for field := range required {
 		values = append(values, field)
@@ -288,6 +293,19 @@ func targetSchemaForOperation(name string, operation Operation) (map[string]any,
 	}
 	target["required"] = encoded
 	return target, true
+}
+
+var defaultTargetFieldsByKind = map[string][]string{
+	"repo": {"owner", "name"}, "organization": {"name"}, "enterprise": {"name"}, "user": {"name"}, "team": {"name"},
+	"environment": {"name"}, "package": {"name"}, "codespace": {"name"}, "advisory": {"name"}, "ref": {"name"},
+	"installation": nil, "issue": {"number"}, "pull_request": {"number"}, "alert": {"number"},
+}
+
+func defaultTargetFields(kind string) []string {
+	if fields, found := defaultTargetFieldsByKind[kind]; found {
+		return fields
+	}
+	return []string{"id"}
 }
 
 func stringSet(value any) map[string]bool {

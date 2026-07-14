@@ -64,6 +64,9 @@ func String(values map[string]any, key string) string {
 // RepositoryIdentity returns the canonical owner/name pair when both fields
 // are present.
 func RepositoryIdentity(values map[string]any) (string, string, bool) {
-	owner, repo := String(values, "owner"), String(values, "name")
+	owner, repo := String(values, "owner"), String(values, "repo")
+	if repo == "" {
+		repo = String(values, "name")
+	}
 	return owner, repo, owner != "" && repo != ""
 }

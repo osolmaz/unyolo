@@ -57,6 +57,19 @@ func TestBindingsSeparateSelfUsersFromExplicitUsersAndNumbersFromIDs(t *testing.
 	}
 }
 
+func TestBindingsUseDistinctAuthoritativeTargetFields(t *testing.T) {
+	t.Parallel()
+	organization := ByOperation("member.orgs_update_membership_for_authenticated_user")
+	if len(organization) != 1 || !slices.Contains(organization[0].TargetPathParameters, TargetParameter{Name: "org", Field: "name"}) {
+		t.Fatalf("organization binding = %+v", organization)
+	}
+	environment := ByOperation("environment.repos_create_or_update_environment")
+	want := []TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "repo"}, {Name: "environment_name", Field: "name"}}
+	if len(environment) != 1 || !slices.Equal(environment[0].TargetPathParameters, want) {
+		t.Fatalf("environment binding = %+v, want %+v", environment, want)
+	}
+}
+
 func pathNumberParameter(operation string) string {
 	if operation == "issue.issues_update" {
 		return "issue_number"

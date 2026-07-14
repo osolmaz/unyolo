@@ -43,6 +43,29 @@ func TestRepositoryUpdateSchemasRemainFieldSplit(t *testing.T) {
 	}
 }
 
+func TestGlobalAndNestedOperationsUseRealTargets(t *testing.T) {
+	for name, want := range map[string]string{
+		"gist.gists_create": "user", "repo.search_code": "installation",
+		"member.orgs_update_membership_for_authenticated_user": "organization",
+		"environment.repos_create_or_update_environment":       "environment",
+	} {
+		descriptor, found := opcatalog.ByName(name)
+		if !found || descriptor.TargetKind != want {
+			t.Fatalf("%s target = %q, want %q", name, descriptor.TargetKind, want)
+		}
+	}
+	operation, found := ForOperation("repo.contents.read")
+	if !found {
+		t.Fatal("repo.contents.read schema is missing")
+	}
+	encoded, _ := json.Marshal(operation.Result)
+	for _, field := range []string{`"content"`, `"encoding"`, `"path"`, `"oneOf"`, `"type":"array"`} {
+		if !bytes.Contains(encoded, []byte(field)) {
+			t.Fatalf("repo.contents.read result schema is missing %s", field)
+		}
+	}
+}
+
 func TestSubmissionValidationRejectsRawAndUnknownFields(t *testing.T) {
 	validTarget := []byte(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`)
 	if err := ValidateSubmission("pull_request.create", validTarget, []byte(`{"input":{"title":"Coverage","head":"feature","base":"main"}}`)); err != nil {

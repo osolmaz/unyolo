@@ -11,6 +11,7 @@ import (
 type operationInfo struct {
 	spec              corepolicy.OperationSpec
 	familyGlobAllowed bool
+	globalGlobAllowed bool
 }
 
 func registry() corepolicy.Registry {
@@ -48,18 +49,21 @@ func operationInfos() map[Operation]operationInfo {
 				GrantMode:   mode,
 			},
 			familyGlobAllowed: descriptor.FamilyGlobAllowed,
+			globalGlobAllowed: !descriptor.ExplicitOnly,
 		}
 	}
 	for operation, spec := range protocolOperationSpecs() {
-		result[operation] = operationInfo{spec: spec, familyGlobAllowed: true}
+		result[operation] = operationInfo{spec: spec, familyGlobAllowed: true, globalGlobAllowed: true}
 	}
 	return result
 }
 
 func allOperations() []Operation {
 	ops := make([]Operation, 0, len(operationInfos()))
-	for op := range operationInfos() {
-		ops = append(ops, op)
+	for op, info := range operationInfos() {
+		if info.globalGlobAllowed {
+			ops = append(ops, op)
+		}
 	}
 	slices.Sort(ops)
 	return ops

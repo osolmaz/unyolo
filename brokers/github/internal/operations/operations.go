@@ -41,6 +41,7 @@ type Authorization struct {
 }
 
 type Plan struct {
+	ExecutionID       string
 	Operation         string
 	OperationRevision int
 	Target            json.RawMessage
@@ -510,7 +511,7 @@ func (a generatedAdapter) executeStreamUpload(ctx context.Context, plan Plan, ta
 }
 
 func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
-	if a.binding == nil || plan.Authorization.Client == "" {
+	if a.binding == nil || plan.Authorization.Client == "" || strings.TrimSpace(plan.ExecutionID) == "" {
 		return Outcome{}, errors.New("GitHub stream download plan is invalid")
 	}
 	response, err := a.manager.ExecuteRESTDownload(ctx, plan.Credential, *a.binding, target, arguments)
@@ -518,11 +519,7 @@ func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, 
 		return Outcome{}, classifyExecutionError(a.binding.Method, err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	mediaType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
-	if mediaType == "" {
-		mediaType = "application/octet-stream"
-	}
-	reference, err := a.options.StreamStore.Put(plan.Authorization.Client, a.descriptor.Name, a.descriptor.Name+"-result", mediaType,
+	reference, err := a.options.StreamStore.Put(plan.Authorization.Client, a.descriptor.Name, plan.ExecutionID+"-result", downloadMediaType(response.Header.Get("Content-Type")),
 		response.Body, a.binding.ResponseBytesLimit, time.Now().Add(15*time.Minute))
 	if err != nil {
 		return Outcome{}, err
@@ -533,6 +530,14 @@ func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, 
 		return Outcome{}, err
 	}
 	return Outcome{Proven: true, Result: encoded}, nil
+}
+
+func downloadMediaType(value string) string {
+	mediaType := strings.TrimSpace(strings.Split(value, ";")[0])
+	if mediaType == "" {
+		return "application/octet-stream"
+	}
+	return mediaType
 }
 
 //nolint:cyclop // Sealed payload consumption, zeroing, merge, and schema checks form one security boundary.
@@ -716,7 +721,7 @@ func authorizeDescriptor(descriptor opcatalog.Descriptor, target, arguments map[
 
 func authorizationTargetFields(target map[string]any) map[string][]string {
 	fields := map[string][]string{}
-	for _, key := range []string{"owner", "name", "node_id"} {
+	for _, key := range []string{"owner", "repo", "name", "node_id"} {
 		if value := stringValue(target, key); value != "" {
 			fields[key] = []string{value}
 		}

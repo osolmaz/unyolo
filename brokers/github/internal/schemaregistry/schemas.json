@@ -32,11 +32,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -71,11 +76,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "number"
+        "kind"
       ],
       "type": "object"
     },
@@ -110,11 +120,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -149,11 +164,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -188,11 +208,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -227,11 +252,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -266,11 +296,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -305,11 +340,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -344,11 +384,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -383,11 +428,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -422,11 +472,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -461,11 +516,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "name"
+        "kind"
       ],
       "type": "object"
     },
@@ -500,11 +560,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -539,11 +604,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -578,11 +648,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -617,11 +692,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "number"
+        "kind"
       ],
       "type": "object"
     },
@@ -656,11 +736,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -695,11 +780,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -734,11 +824,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -773,11 +868,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -812,11 +912,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -851,11 +956,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "name"
+        "kind"
       ],
       "type": "object"
     },
@@ -890,11 +1000,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -929,11 +1044,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -968,11 +1088,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "number"
+        "kind"
       ],
       "type": "object"
     },
@@ -1007,11 +1132,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1046,11 +1176,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1085,11 +1220,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1124,12 +1264,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "owner",
-        "name"
+        "kind"
       ],
       "type": "object"
     },
@@ -1164,11 +1308,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1203,11 +1352,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1242,11 +1396,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1281,11 +1440,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1320,11 +1484,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "name"
+        "kind"
       ],
       "type": "object"
     },
@@ -1359,11 +1528,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     },
@@ -1398,11 +1572,16 @@
           "minLength": 1,
           "pattern": "^[^/\\x00-\\x1f]+$",
           "type": "string"
+        },
+        "repo": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\x00-\\x1f]+$",
+          "type": "string"
         }
       },
       "required": [
-        "kind",
-        "id"
+        "kind"
       ],
       "type": "object"
     }
@@ -3318,7 +3497,7 @@
       }
     },
     "advisory.security_advisories_list_global_advisories": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -3985,7 +4164,7 @@
       }
     },
     "agent_task.agent_tasks_get_task_by_id": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -4117,7 +4296,7 @@
       }
     },
     "agent_task.agent_tasks_list_tasks": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -5890,7 +6069,7 @@
       }
     },
     "app.apps_get_subscription_plan_for_account": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -5926,7 +6105,7 @@
       }
     },
     "app.apps_get_subscription_plan_for_account_stubbed": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -5962,7 +6141,7 @@
       }
     },
     "app.apps_list_accounts_for_plan": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6031,7 +6210,7 @@
       }
     },
     "app.apps_list_accounts_for_plan_stubbed": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6100,7 +6279,7 @@
       }
     },
     "app.apps_list_plans": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6154,7 +6333,7 @@
       }
     },
     "app.apps_list_plans_stubbed": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6937,7 +7116,7 @@
       }
     },
     "app.meta_get": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6954,7 +7133,7 @@
       }
     },
     "app.meta_get_all_versions": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6973,7 +7152,7 @@
       }
     },
     "app.meta_get_octocat": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -6994,7 +7173,7 @@
       }
     },
     "app.meta_get_zen": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7010,7 +7189,7 @@
       }
     },
     "app.meta_root": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -7025,7 +7204,7 @@
       }
     },
     "app.rate_limit_get": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -8028,6 +8207,307 @@
         "items": {
           "additionalProperties": false,
           "description": "A repository rule with ruleset details.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "creation"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "update"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "deletion"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "required_linear_history"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "merge_queue"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "required_deployments"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "required_signatures"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "pull_request"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "required_status_checks"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "non_fast_forward"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "commit_message_pattern"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "commit_author_email_pattern"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "committer_email_pattern"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "branch_name_pattern"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "tag_name_pattern"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "workflows"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "code_scanning"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "copilot_code_review"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "license_compliance_scanning"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "file_path_restriction"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "max_file_path_length"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "file_extension_restriction"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "max_file_size"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          ],
           "properties": {},
           "title": "Repository Rule",
           "type": "object"
@@ -10174,15 +10654,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "org"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -10233,15 +10705,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "org"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -10379,15 +10843,10 @@
             },
             "title": "Actions cache retention limit for an organization",
             "type": "object"
-          },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "org"
+          "input"
         ],
         "type": "object"
       },
@@ -10480,15 +10939,10 @@
             },
             "title": "Actions cache storage limit for an organization",
             "type": "object"
-          },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "org"
+          "input"
         ],
         "type": "object"
       },
@@ -14739,6 +15193,64 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "name": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "Team"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        ],
         "description": "A collaborator (user or team) of a Copilot Space",
         "properties": {
           "id": {
@@ -14792,6 +15304,64 @@
             "description": "The list of collaborators for this Copilot Space.",
             "items": {
               "additionalProperties": false,
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "node_id": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "type": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "url": {
+                      "format": "uri",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "node_id": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "Team"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "url": {
+                      "format": "uri",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ],
               "description": "A collaborator (user or team) of a Copilot Space",
               "properties": {
                 "id": {
@@ -14851,6 +15421,64 @@
             "description": "The list of collaborators for this Copilot Space.",
             "items": {
               "additionalProperties": false,
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "node_id": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "type": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "url": {
+                      "format": "uri",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "node_id": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "Team"
+                      ],
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "url": {
+                      "format": "uri",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ],
               "description": "A collaborator (user or team) of a Copilot Space",
               "properties": {
                 "id": {
@@ -14977,6 +15605,64 @@
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "name": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "node_id": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "Team"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        ],
         "description": "A collaborator (user or team) of a Copilot Space",
         "properties": {
           "id": {
@@ -17588,7 +18274,7 @@
       }
     },
     "commit.search_commits": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -18036,7 +18722,7 @@
       }
     },
     "credential.credentials_revoke": {
-      "target": "target.repo.v1",
+      "target": "target.app.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -26046,7 +26732,7 @@
       }
     },
     "gist.gists_create": {
-      "target": "target.repo.v1",
+      "target": "target.user.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -26280,7 +26966,7 @@
       }
     },
     "gist.gists_list": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -26501,7 +27187,7 @@
       }
     },
     "gist.gists_list_public": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -26564,7 +27250,7 @@
       }
     },
     "gist.gists_list_starred": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -30460,7 +31146,7 @@
       }
     },
     "issue.issues_list": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -35852,7 +36538,7 @@
       }
     },
     "label.search_labels": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -37232,15 +37918,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "org"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -37670,15 +38348,10 @@
               "state"
             ],
             "type": "object"
-          },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "input",
-          "org"
+          "input"
         ],
         "type": "object"
       },
@@ -38773,14 +39446,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "account_id": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "account_id"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -41028,24 +41694,11 @@
       }
     },
     "notification.activity_check_repo_is_starred_by_authenticated_user": {
-      "target": "target.user.v1",
+      "target": "target.repo.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -41057,7 +41710,7 @@
       }
     },
     "notification.activity_get_feeds": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -41233,7 +41886,7 @@
       }
     },
     "notification.activity_get_thread": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -41270,7 +41923,7 @@
       }
     },
     "notification.activity_get_thread_subscription_for_authenticated_user": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -41353,7 +42006,7 @@
       }
     },
     "notification.activity_list_notifications_for_authenticated_user": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -41418,7 +42071,7 @@
       }
     },
     "notification.activity_list_public_events": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -41471,10 +42124,6 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "page": {
             "default": 1,
             "maximum": 10000,
@@ -41486,16 +42135,8 @@
             "maximum": 100,
             "minimum": 1,
             "type": "integer"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -41910,7 +42551,45 @@
             "items": {
               "additionalProperties": false,
               "description": "Starred Repository",
-              "properties": {},
+              "properties": {
+                "repo": {
+                  "additionalProperties": false,
+                  "description": "A repository on GitHub.",
+                  "properties": {
+                    "created_at": {
+                      "format": "date-time",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "id": {
+                      "description": "Unique identifier of the repository",
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "description": "The name of the repository.",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "node_id": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "format": "date-time",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "url": {
+                      "format": "uri",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "title": "Repository",
+                  "type": "object"
+                }
+              },
               "title": "Starred Repository",
               "type": "object"
             },
@@ -41921,7 +42600,37 @@
             "items": {
               "additionalProperties": false,
               "description": "A repository on GitHub.",
-              "properties": {},
+              "properties": {
+                "created_at": {
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "Unique identifier of the repository",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "name": {
+                  "description": "The name of the repository.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "updated_at": {
+                  "format": "date-time",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "url": {
+                  "format": "uri",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
               "title": "Repository",
               "type": "object"
             },
@@ -42021,7 +42730,29 @@
             "items": {
               "additionalProperties": false,
               "description": "A GitHub user.",
-              "properties": {},
+              "properties": {
+                "id": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "name": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "node_id": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "type": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "url": {
+                  "format": "uri",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
               "title": "Simple User",
               "type": "object"
             },
@@ -42032,7 +42763,37 @@
             "items": {
               "additionalProperties": false,
               "description": "Stargazer",
-              "properties": {},
+              "properties": {
+                "user": {
+                  "additionalProperties": false,
+                  "description": "A GitHub user.",
+                  "properties": {
+                    "id": {
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "node_id": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "type": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    },
+                    "url": {
+                      "format": "uri",
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "title": "Simple User",
+                  "type": "object"
+                }
+              },
               "title": "Stargazer",
               "type": "object"
             },
@@ -42161,24 +42922,11 @@
       }
     },
     "notification.activity_star_repo_for_authenticated_user": {
-      "target": "target.user.v1",
+      "target": "target.repo.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -42190,24 +42938,11 @@
       }
     },
     "notification.activity_unstar_repo_for_authenticated_user": {
-      "target": "target.user.v1",
+      "target": "target.repo.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -43474,10 +44209,6 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "page": {
             "default": 1,
             "maximum": 10000,
@@ -43496,7 +44227,6 @@
           }
         },
         "required": [
-          "org",
           "username"
         ],
         "type": "object"
@@ -43727,15 +44457,8 @@
               }
             },
             "type": "object"
-          },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "org"
-        ],
         "type": "object"
       },
       "result": {
@@ -43766,15 +44489,10 @@
           "budget_id": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "budget_id",
-          "org"
+          "budget_id"
         ],
         "type": "object"
       },
@@ -43797,10 +44515,6 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "page": {
             "default": 1,
             "maximum": 10000,
@@ -43830,9 +44544,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "org"
-        ],
         "type": "object"
       },
       "result": {
@@ -43880,15 +44591,10 @@
           "budget_id": {
             "maxLength": 1048576,
             "type": "string"
-          },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
-          "budget_id",
-          "org"
+          "budget_id"
         ],
         "type": "object"
       },
@@ -43921,10 +44627,6 @@
           "month": {
             "type": "integer"
           },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "product": {
             "maxLength": 1048576,
             "type": "string"
@@ -43937,9 +44639,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "org"
-        ],
         "type": "object"
       },
       "result": {
@@ -43998,10 +44697,6 @@
           "month": {
             "type": "integer"
           },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "product": {
             "maxLength": 1048576,
             "type": "string"
@@ -44014,9 +44709,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "org"
-        ],
         "type": "object"
       },
       "result": {
@@ -44071,17 +44763,10 @@
           "month": {
             "type": "integer"
           },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "year": {
             "type": "integer"
           }
         },
-        "required": [
-          "org"
-        ],
         "type": "object"
       },
       "result": {
@@ -44128,10 +44813,6 @@
           "month": {
             "type": "integer"
           },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "product": {
             "maxLength": 1048576,
             "type": "string"
@@ -44148,9 +44829,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "org"
-        ],
         "type": "object"
       },
       "result": {
@@ -44293,16 +44971,11 @@
               }
             },
             "type": "object"
-          },
-          "org": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
         "required": [
           "budget_id",
-          "input",
-          "org"
+          "input"
         ],
         "type": "object"
       },
@@ -44842,7 +45515,7 @@
       }
     },
     "organization.classroom_get_a_classroom": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -44881,7 +45554,7 @@
       }
     },
     "organization.classroom_get_an_assignment": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -44919,7 +45592,7 @@
       }
     },
     "organization.classroom_get_assignment_grades": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -44947,7 +45620,7 @@
       }
     },
     "organization.classroom_list_accepted_assignments_for_an_assignment": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -44992,7 +45665,7 @@
       }
     },
     "organization.classroom_list_assignments_for_a_classroom": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -45046,7 +45719,7 @@
       }
     },
     "organization.classroom_list_classrooms": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -49962,7 +50635,7 @@
       }
     },
     "organization.list": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -61303,7 +61976,7 @@
       }
     },
     "pull_request.search_issues_and_pull_requests": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -64839,7 +65512,6 @@
       },
       "result": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
         "discriminator": {
           "mapping": {
             "array": "#/components/schemas/content-directory",
@@ -64849,29 +65521,155 @@
           },
           "propertyName": "type"
         },
-        "properties": {
-          "name": {
-            "maxLength": 1048576,
-            "type": "string"
+        "oneOf": [
+          {
+            "description": "A list of directory items",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "path": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "sha": {
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "dir",
+                    "file",
+                    "submodule",
+                    "symlink"
+                  ],
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "url": {
+                  "format": "uri",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "maxItems": 100,
+            "title": "Content Directory",
+            "type": "array"
           },
-          "sha": {
-            "maxLength": 1048576,
-            "type": "string"
+          {
+            "additionalProperties": false,
+            "description": "Content File",
+            "properties": {
+              "content": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "encoding": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "path": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "sha": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "file"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "title": "Content File",
+            "type": "object"
           },
-          "type": {
-            "enum": [
-              "file"
-            ],
-            "maxLength": 1048576,
-            "type": "string"
+          {
+            "additionalProperties": false,
+            "description": "An object describing a symlink",
+            "properties": {
+              "name": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "path": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "sha": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "symlink"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "title": "Symlink Content",
+            "type": "object"
           },
-          "url": {
-            "format": "uri",
-            "maxLength": 1048576,
-            "type": "string"
+          {
+            "additionalProperties": false,
+            "description": "An object describing a submodule",
+            "properties": {
+              "name": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "path": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "sha": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "submodule"
+                ],
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "title": "Submodule Content",
+            "type": "object"
           }
-        },
-        "type": "object"
+        ]
       }
     },
     "repo.create_attestation": {
@@ -67676,7 +68474,7 @@
       }
     },
     "repo.create_using_template": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -70622,7 +71420,7 @@
       }
     },
     "repo.licenses_get": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -70661,7 +71459,7 @@
       }
     },
     "repo.licenses_get_all_commonly_used": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -71487,7 +72285,7 @@
       }
     },
     "repo.list_public": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -74641,7 +75439,7 @@
       }
     },
     "repo.search_code": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -74718,7 +75516,7 @@
       }
     },
     "repo.search_repos": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -74811,7 +75609,7 @@
       }
     },
     "repo.search_topics": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -74873,7 +75671,7 @@
       }
     },
     "repo.search_users": {
-      "target": "target.repo.v1",
+      "target": "target.installation.v1",
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -93092,22 +93890,12 @@
             },
             "type": "object"
           },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "team_slug": {
             "maxLength": 1048576,
             "type": "string"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "team_slug"
         ],
         "type": "object"
@@ -93141,20 +93929,8 @@
               }
             },
             "type": "object"
-          },
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
           }
         },
-        "required": [
-          "owner",
-          "repo"
-        ],
         "type": "object"
       },
       "result": {
@@ -93171,22 +93947,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "team_slug": {
             "maxLength": 1048576,
             "type": "string"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "team_slug"
         ],
         "type": "object"
@@ -93234,20 +94000,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {
@@ -94400,22 +95153,12 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
           "team_slug": {
             "maxLength": 1048576,
             "type": "string"
           }
         },
         "required": [
-          "owner",
-          "repo",
           "team_slug"
         ],
         "type": "object"
@@ -94433,20 +95176,7 @@
       "arguments": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "properties": {
-          "owner": {
-            "maxLength": 1048576,
-            "type": "string"
-          },
-          "repo": {
-            "maxLength": 1048576,
-            "type": "string"
-          }
-        },
-        "required": [
-          "owner",
-          "repo"
-        ],
+        "properties": {},
         "type": "object"
       },
       "result": {

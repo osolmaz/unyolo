@@ -240,7 +240,7 @@ func TestStreamUploadSubmissionAndDownloadCLI(t *testing.T) {
 	descriptor, _ := opcatalog.ByName(operation)
 	var output bytes.Buffer
 	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
-		"--target-json", `{"kind":"release","id":9,"owner":"osolmaz","name":"brokerkit"}`,
+		"--target-json", `{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`,
 		"--arguments-json", `{"name":"asset.bin"}`, "--stream-file", input, "--stream-media-type", "application/octet-stream",
 		"--idempotency-key", "asset-request", "--reason", "upload release asset",
 	})

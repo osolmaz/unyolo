@@ -35,15 +35,15 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `advisory.security_advisories_create_repository_advisory_cve_request` | medium | implemented | installation | advisory | typed CLI/MCP |
 | `advisory.security_advisories_get_global_advisory` | low | implemented | installation | advisory | typed CLI/MCP |
 | `advisory.security_advisories_get_repository_advisory` | low | implemented | installation | advisory | typed CLI/MCP |
-| `advisory.security_advisories_list_global_advisories` | low | implemented | installation | repo | typed CLI/MCP |
+| `advisory.security_advisories_list_global_advisories` | low | implemented | installation | installation | typed CLI/MCP |
 | `advisory.security_advisories_list_repository_advisories` | low | implemented | installation | repo | typed CLI/MCP |
 | `advisory.security_advisories_update_repository_advisory` | medium | implemented | installation | advisory | typed CLI/MCP |
 | `agent_task.add_selected_repo_to_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
 | `agent_task.add_selected_repo_to_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
 | `agent_task.agent_tasks_create_task_in_repo` | medium | implemented | installation | repo | typed CLI/MCP |
-| `agent_task.agent_tasks_get_task_by_id` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.agent_tasks_get_task_by_id` | low | implemented | installation | installation | typed CLI/MCP |
 | `agent_task.agent_tasks_get_task_by_repo_and_id` | low | implemented | installation | repo | typed CLI/MCP |
-| `agent_task.agent_tasks_list_tasks` | low | implemented | installation | repo | typed CLI/MCP |
+| `agent_task.agent_tasks_list_tasks` | low | implemented | installation | installation | typed CLI/MCP |
 | `agent_task.agent_tasks_list_tasks_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
 | `agent_task.create_or_update_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
 | `agent_task.create_or_update_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
@@ -79,22 +79,22 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `app.apps_delete_token` | critical | operator-only | app-jwt | app | no |
 | `app.apps_get_authenticated` | low | operator-only | app-jwt | app | no |
 | `app.apps_get_by_slug` | low | operator-only | app-jwt | app | no |
-| `app.apps_get_subscription_plan_for_account` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.apps_get_subscription_plan_for_account_stubbed` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.apps_list_accounts_for_plan` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.apps_list_accounts_for_plan_stubbed` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.apps_list_plans` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.apps_list_plans_stubbed` | low | implemented | installation | repo | typed CLI/MCP |
+| `app.apps_get_subscription_plan_for_account` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.apps_get_subscription_plan_for_account_stubbed` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.apps_list_accounts_for_plan` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.apps_list_accounts_for_plan_stubbed` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.apps_list_plans` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.apps_list_plans_stubbed` | low | implemented | installation | installation | typed CLI/MCP |
 | `app.apps_list_subscriptions_for_authenticated_user` | low | implemented | installation | user | typed CLI/MCP |
 | `app.apps_list_subscriptions_for_authenticated_user_stubbed` | low | implemented | installation | user | typed CLI/MCP |
 | `app.apps_reset_token` | critical | operator-only | app-jwt | app | no |
 | `app.apps_scope_token` | critical | operator-only | app-jwt | app | no |
-| `app.meta_get` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.meta_get_all_versions` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.meta_get_octocat` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.meta_get_zen` | low | implemented | installation | repo | typed CLI/MCP |
-| `app.meta_root` | low | internal | installation | repo | no |
-| `app.rate_limit_get` | low | internal | installation | repo | no |
+| `app.meta_get` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.meta_get_all_versions` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.meta_get_octocat` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.meta_get_zen` | low | implemented | installation | installation | typed CLI/MCP |
+| `app.meta_root` | low | internal | installation | installation | no |
+| `app.rate_limit_get` | low | internal | installation | installation | no |
 | `artifact.actions_delete_artifact` | critical | implemented | installation | artifact | typed CLI/MCP |
 | `artifact.actions_download_artifact` | low | protocol | installation | artifact | typed CLI/MCP |
 | `artifact.actions_get_artifact` | low | implemented | installation | artifact | typed CLI/MCP |
@@ -279,14 +279,14 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `commit.repos_list_branches_for_head_commit` | low | implemented | installation | repo | typed CLI/MCP |
 | `commit.repos_list_commit_statuses_for_ref` | low | implemented | installation | repo | typed CLI/MCP |
 | `commit.repos_list_commits` | low | implemented | installation | repo | typed CLI/MCP |
-| `commit.search_commits` | low | implemented | installation | repo | typed CLI/MCP |
+| `commit.search_commits` | low | implemented | installation | installation | typed CLI/MCP |
 | `copilot.copilot_spaces_get_for_user` | low | implemented | installation | user | typed CLI/MCP |
 | `copilot.copilot_spaces_get_resource_for_user` | low | implemented | installation | user | typed CLI/MCP |
 | `copilot.copilot_spaces_list_for_user` | low | implemented | installation | user | typed CLI/MCP |
 | `copilot.copilot_spaces_list_resources_for_user` | low | implemented | installation | user | typed CLI/MCP |
 | `copilot.copilot_spaces_update_for_user` | medium | implemented | installation | user | typed CLI/MCP |
 | `copilot.get_copilot_cloud_agent_configuration` | low | implemented | installation | repo | typed CLI/MCP |
-| `credential.credentials_revoke` | critical | internal | development-token | repo | no |
+| `credential.credentials_revoke` | critical | internal | development-token | app | no |
 | `dependabot.add_selected_repo_to_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
 | `dependabot.create_or_update_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
 | `dependabot.create_or_update_repo_secret` | critical | implemented | installation | repo | typed CLI/MCP |
@@ -421,17 +421,17 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `environment.repos_list_deployment_branch_policies` | low | implemented | installation | environment | typed CLI/MCP |
 | `environment.repos_update_deployment_branch_policy` | medium | implemented | installation | environment | typed CLI/MCP |
 | `gist.gists_check_is_starred` | low | implemented | installation | gist | typed CLI/MCP |
-| `gist.gists_create` | medium | implemented | user | repo | typed CLI/MCP |
+| `gist.gists_create` | medium | implemented | user | user | typed CLI/MCP |
 | `gist.gists_delete` | critical | implemented | user | gist | typed CLI/MCP |
 | `gist.gists_fork` | medium | implemented | user | gist | typed CLI/MCP |
 | `gist.gists_get` | low | implemented | installation | gist | typed CLI/MCP |
 | `gist.gists_get_revision` | low | implemented | installation | gist | typed CLI/MCP |
-| `gist.gists_list` | low | implemented | installation | repo | typed CLI/MCP |
+| `gist.gists_list` | low | implemented | installation | installation | typed CLI/MCP |
 | `gist.gists_list_commits` | low | implemented | installation | gist | typed CLI/MCP |
 | `gist.gists_list_for_user` | low | implemented | installation | user | typed CLI/MCP |
 | `gist.gists_list_forks` | low | implemented | installation | gist | typed CLI/MCP |
-| `gist.gists_list_public` | low | implemented | installation | repo | typed CLI/MCP |
-| `gist.gists_list_starred` | low | implemented | installation | repo | typed CLI/MCP |
+| `gist.gists_list_public` | low | implemented | installation | installation | typed CLI/MCP |
+| `gist.gists_list_starred` | low | implemented | installation | installation | typed CLI/MCP |
 | `gist.gists_star` | medium | implemented | user | gist | typed CLI/MCP |
 | `gist.gists_unstar` | medium | implemented | user | gist | typed CLI/MCP |
 | `gist.gists_update` | medium | implemented | user | gist | typed CLI/MCP |
@@ -482,7 +482,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `issue.issues_get` | low | implemented | installation | issue | typed CLI/MCP |
 | `issue.issues_get_event` | low | implemented | installation | repo | typed CLI/MCP |
 | `issue.issues_get_parent` | low | implemented | installation | issue | typed CLI/MCP |
-| `issue.issues_list` | low | implemented | installation | repo | typed CLI/MCP |
+| `issue.issues_list` | low | implemented | installation | installation | typed CLI/MCP |
 | `issue.issues_list_assignees` | low | implemented | installation | repo | typed CLI/MCP |
 | `issue.issues_list_dependencies_blocked_by` | low | implemented | installation | issue | typed CLI/MCP |
 | `issue.issues_list_dependencies_blocking` | low | implemented | installation | issue | typed CLI/MCP |
@@ -544,7 +544,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `label.issues_set_labels` | medium | implemented | installation | issue | typed CLI/MCP |
 | `label.issues_update_label` | medium | implemented | installation | repo | typed CLI/MCP |
 | `label.remove_labels_from_labelable` | critical | operator-only | user | label | no |
-| `label.search_labels` | low | implemented | installation | repo | typed CLI/MCP |
+| `label.search_labels` | low | implemented | installation | installation | typed CLI/MCP |
 | `label.update_label` | medium | operator-only | user | label | no |
 | `member.cancel_sponsorship` | critical | operator-only | user | member | no |
 | `member.codespaces_delete_from_organization` | critical | implemented | installation | organization | typed CLI/MCP |
@@ -637,14 +637,14 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `milestone.issues_get_milestone` | low | implemented | installation | repo | typed CLI/MCP |
 | `milestone.issues_list_milestones` | low | implemented | installation | repo | typed CLI/MCP |
 | `milestone.issues_update_milestone` | medium | implemented | installation | repo | typed CLI/MCP |
-| `notification.activity_check_repo_is_starred_by_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
-| `notification.activity_get_feeds` | low | implemented | installation | repo | typed CLI/MCP |
+| `notification.activity_check_repo_is_starred_by_authenticated_user` | low | implemented | user | repo | typed CLI/MCP |
+| `notification.activity_get_feeds` | low | implemented | installation | installation | typed CLI/MCP |
 | `notification.activity_get_repo_subscription` | low | implemented | installation | repo | typed CLI/MCP |
-| `notification.activity_get_thread` | low | implemented | installation | repo | typed CLI/MCP |
-| `notification.activity_get_thread_subscription_for_authenticated_user` | low | implemented | installation | repo | typed CLI/MCP |
+| `notification.activity_get_thread` | low | implemented | installation | installation | typed CLI/MCP |
+| `notification.activity_get_thread_subscription_for_authenticated_user` | low | implemented | installation | installation | typed CLI/MCP |
 | `notification.activity_list_events_for_authenticated_user` | low | implemented | installation | user | typed CLI/MCP |
-| `notification.activity_list_notifications_for_authenticated_user` | low | implemented | installation | repo | typed CLI/MCP |
-| `notification.activity_list_public_events` | low | implemented | installation | repo | typed CLI/MCP |
+| `notification.activity_list_notifications_for_authenticated_user` | low | implemented | installation | installation | typed CLI/MCP |
+| `notification.activity_list_public_events` | low | implemented | installation | installation | typed CLI/MCP |
 | `notification.activity_list_public_events_for_repo_network` | low | implemented | installation | repo | typed CLI/MCP |
 | `notification.activity_list_public_events_for_user` | low | implemented | installation | user | typed CLI/MCP |
 | `notification.activity_list_received_events_for_user` | low | implemented | installation | user | typed CLI/MCP |
@@ -657,8 +657,8 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `notification.activity_list_stargazers_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
 | `notification.activity_list_watched_repos_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
 | `notification.activity_list_watchers_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
-| `notification.activity_star_repo_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
-| `notification.activity_unstar_repo_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
+| `notification.activity_star_repo_for_authenticated_user` | medium | implemented | user | repo | typed CLI/MCP |
+| `notification.activity_unstar_repo_for_authenticated_user` | medium | implemented | user | repo | typed CLI/MCP |
 | `organization.actions_add_selected_repo_to_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
 | `organization.actions_add_selected_repo_to_org_variable` | high | implemented | installation | organization | typed CLI/MCP |
 | `organization.actions_create_or_update_org_secret` | critical | implemented | installation | organization | typed CLI/MCP |
@@ -714,12 +714,12 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `organization.campaigns_update_campaign` | high | implemented | installation | organization | typed CLI/MCP |
 | `organization.cancel_invitation` | critical | implemented | installation | organization | typed CLI/MCP |
 | `organization.check_blocked_user` | low | implemented | installation | organization | typed CLI/MCP |
-| `organization.classroom_get_a_classroom` | low | implemented | installation | repo | typed CLI/MCP |
-| `organization.classroom_get_an_assignment` | low | implemented | installation | repo | typed CLI/MCP |
-| `organization.classroom_get_assignment_grades` | low | implemented | installation | repo | typed CLI/MCP |
-| `organization.classroom_list_accepted_assignments_for_an_assignment` | low | implemented | installation | repo | typed CLI/MCP |
-| `organization.classroom_list_assignments_for_a_classroom` | low | implemented | installation | repo | typed CLI/MCP |
-| `organization.classroom_list_classrooms` | low | implemented | installation | repo | typed CLI/MCP |
+| `organization.classroom_get_a_classroom` | low | implemented | installation | installation | typed CLI/MCP |
+| `organization.classroom_get_an_assignment` | low | implemented | installation | installation | typed CLI/MCP |
+| `organization.classroom_get_assignment_grades` | low | implemented | installation | installation | typed CLI/MCP |
+| `organization.classroom_list_accepted_assignments_for_an_assignment` | low | implemented | installation | installation | typed CLI/MCP |
+| `organization.classroom_list_assignments_for_a_classroom` | low | implemented | installation | installation | typed CLI/MCP |
+| `organization.classroom_list_classrooms` | low | implemented | installation | installation | typed CLI/MCP |
 | `organization.code_security_attach_configuration` | high | implemented | installation | organization | typed CLI/MCP |
 | `organization.code_security_create_configuration` | high | implemented | installation | organization | typed CLI/MCP |
 | `organization.code_security_delete_configuration` | critical | implemented | installation | organization | typed CLI/MCP |
@@ -808,7 +808,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `organization.interactions_set_restrictions_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
 | `organization.interactions_set_restrictions_for_org` | high | implemented | installation | organization | typed CLI/MCP |
 | `organization.interactions_set_restrictions_for_repo` | medium | implemented | installation | repo | typed CLI/MCP |
-| `organization.list` | low | implemented | installation | repo | typed CLI/MCP |
+| `organization.list` | low | implemented | installation | installation | typed CLI/MCP |
 | `organization.list_app_installations` | low | implemented | installation | organization | typed CLI/MCP |
 | `organization.list_attestation_repositories` | low | implemented | installation | organization | typed CLI/MCP |
 | `organization.list_attestations` | low | implemented | installation | organization | typed CLI/MCP |
@@ -973,7 +973,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `pull_request.repos_list_pull_requests_associated_with_commit` | low | implemented | installation | repo | typed CLI/MCP |
 | `pull_request.request_reviewers` | medium | implemented | installation | pull_request | typed CLI/MCP |
 | `pull_request.revert_pull_request` | medium | operator-only | user | pull_request | no |
-| `pull_request.search_issues_and_pull_requests` | low | implemented | installation | repo | typed CLI/MCP |
+| `pull_request.search_issues_and_pull_requests` | low | implemented | installation | installation | typed CLI/MCP |
 | `pull_request.submit_pull_request_review` | medium | operator-only | user | pull_request | no |
 | `pull_request.unarchive_pull_request` | critical | operator-only | user | pull_request | no |
 | `pull_request.update` | medium | implemented | installation | pull_request | typed CLI/MCP |
@@ -1051,7 +1051,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `repo.create_repository` | medium | operator-only | user | repo | no |
 | `repo.create_repository_custom_property` | medium | operator-only | user | repo | no |
 | `repo.create_repository_ruleset` | medium | operator-only | user | repo | no |
-| `repo.create_using_template` | medium | implemented | installation | repo | typed CLI/MCP |
+| `repo.create_using_template` | medium | implemented | installation | installation | typed CLI/MCP |
 | `repo.custom_properties_for_repos_create_or_update_repository_values` | medium | implemented | installation | repo | typed CLI/MCP |
 | `repo.custom_properties_for_repos_get_repository_values` | low | implemented | installation | repo | typed CLI/MCP |
 | `repo.decline_invitation_for_authenticated_user` | medium | implemented | user | user | typed CLI/MCP |
@@ -1098,8 +1098,8 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `repo.get_top_referrers` | low | implemented | installation | repo | typed CLI/MCP |
 | `repo.get_views` | low | implemented | installation | repo | typed CLI/MCP |
 | `repo.grant_migrator_role` | high | operator-only | user | repo | no |
-| `repo.licenses_get` | low | implemented | installation | repo | typed CLI/MCP |
-| `repo.licenses_get_all_commonly_used` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.licenses_get` | low | implemented | installation | installation | typed CLI/MCP |
+| `repo.licenses_get_all_commonly_used` | low | implemented | installation | installation | typed CLI/MCP |
 | `repo.licenses_get_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
 | `repo.link_project_v2_to_repository` | medium | operator-only | user | repo | no |
 | `repo.list_activities` | low | implemented | installation | repo | typed CLI/MCP |
@@ -1113,7 +1113,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `repo.list_invitations` | low | implemented | installation | repo | typed CLI/MCP |
 | `repo.list_invitations_for_authenticated_user` | low | implemented | user | user | typed CLI/MCP |
 | `repo.list_languages` | low | implemented | installation | repo | typed CLI/MCP |
-| `repo.list_public` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.list_public` | low | implemented | installation | installation | typed CLI/MCP |
 | `repo.lock_lockable` | medium | operator-only | user | repo | no |
 | `repo.mark_file_as_viewed` | medium | operator-only | user | repo | no |
 | `repo.marketplace_listing` | low | operator-only | user | repo | no |
@@ -1159,10 +1159,10 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `repo.resolve_review_thread` | medium | operator-only | user | repo | no |
 | `repo.revoke_migrator_role` | critical | operator-only | user | repo | no |
 | `repo.search` | low | operator-only | user | repo | no |
-| `repo.search_code` | low | implemented | installation | repo | typed CLI/MCP |
-| `repo.search_repos` | low | implemented | installation | repo | typed CLI/MCP |
-| `repo.search_topics` | low | implemented | installation | repo | typed CLI/MCP |
-| `repo.search_users` | low | implemented | installation | repo | typed CLI/MCP |
+| `repo.search_code` | low | implemented | installation | installation | typed CLI/MCP |
+| `repo.search_repos` | low | implemented | installation | installation | typed CLI/MCP |
+| `repo.search_topics` | low | implemented | installation | installation | typed CLI/MCP |
+| `repo.search_users` | low | implemented | installation | installation | typed CLI/MCP |
 | `repo.security.update` | high | implemented | installation | repo | typed CLI/MCP |
 | `repo.set_repository_custom_property_values` | medium | operator-only | user | repo | no |
 | `repo.set_repository_interaction_limit` | medium | operator-only | user | repo | no |
