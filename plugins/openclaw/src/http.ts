@@ -4,6 +4,10 @@ import path from "node:path";
 import { pluginErrorCode } from "./errors.js";
 import type { BrokerRuntime, DecisionOptions } from "./runtime.js";
 import type { Action } from "./types.js";
+import {
+  BROWSER_SESSION_HEADER,
+  validBrowserSession,
+} from "./browser-session.js";
 
 export function createHttpHandler(
   runtime: (() => BrokerRuntime) | undefined,
@@ -33,10 +37,12 @@ async function handleApi(
 ): Promise<boolean> {
   if (!runtime || !capability)
     return json(res, 404, { error: { code: "not_found" } });
-  if (!authorized(req.headers.authorization, capability))
-    return json(res, 401, { error: { code: "not_authorized" } });
   if (req.headers.origin !== "null")
     return json(res, 403, { error: { code: "not_authorized" } });
+  if (req.method === "OPTIONS") return preflight(req, res);
+  corsHeaders(res);
+  if (!authorized(browserSession(req), capability))
+    return json(res, 401, { error: { code: "not_authorized" } });
   if (!rateLimit(req.socket.remoteAddress ?? "local"))
     return json(res, 429, { error: { code: "rate_limited" } });
   try {
@@ -156,11 +162,63 @@ function serveUi(
   return true;
 }
 
-function authorized(header: string | undefined, capability: string): boolean {
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : "";
-  const left = Buffer.from(token);
+function authorized(token: string | undefined, capability: string): boolean {
+  const left = Buffer.from(token ?? "");
   const right = Buffer.from(capability);
   return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function browserSession(
+  req: import("node:http").IncomingMessage,
+): string | undefined {
+  const values: string[] = [];
+  for (let index = 0; index < req.rawHeaders.length; index += 2) {
+    if (
+      req.rawHeaders[index]?.toLowerCase() ===
+      BROWSER_SESSION_HEADER.toLowerCase()
+    )
+      values.push(req.rawHeaders[index + 1] ?? "");
+  }
+  if (values.length !== 1 || !validBrowserSession(values[0] ?? ""))
+    return undefined;
+  return values[0];
+}
+
+function preflight(
+  req: import("node:http").IncomingMessage,
+  res: import("node:http").ServerResponse,
+): true {
+  const method = req.headers["access-control-request-method"];
+  const requested = String(req.headers["access-control-request-headers"] ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const allowedHeaders = new Set([
+    BROWSER_SESSION_HEADER.toLowerCase(),
+    "content-type",
+  ]);
+  if (
+    (method !== "GET" && method !== "POST") ||
+    requested.length === 0 ||
+    requested.some((value) => !allowedHeaders.has(value))
+  )
+    return json(res, 403, { error: { code: "not_authorized" } });
+  res.statusCode = 204;
+  corsHeaders(res);
+  res.setHeader("access-control-allow-methods", "GET, POST");
+  res.setHeader(
+    "access-control-allow-headers",
+    `${BROWSER_SESSION_HEADER}, Content-Type`,
+  );
+  res.setHeader("cache-control", "no-store");
+  securityHeaders(res);
+  res.end();
+  return true;
+}
+
+function corsHeaders(res: import("node:http").ServerResponse): void {
+  res.setHeader("access-control-allow-origin", "null");
+  res.setHeader("vary", "Origin");
 }
 
 async function readJSON(

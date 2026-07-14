@@ -2,7 +2,7 @@
 
 Date: 2026-07-14
 
-Status: ready to implement
+Status: implemented
 
 ## Contract At A Glance
 
@@ -108,6 +108,7 @@ Rules:
 - send the raw token with no authentication-scheme prefix;
 - reject an empty, repeated, combined, malformed, or oversized value;
 - keep the existing maximum token size of 4096 bytes;
+- accept opaque tokens as visible ASCII except comma and whitespace;
 - never log, trace, persist, reflect, or include the value in an error;
 - never copy it to an upstream BrokerKit operator request; and
 - treat it only as a trusted-host delegated session, never as an operator or
