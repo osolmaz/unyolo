@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/sealedstore"
+	"github.com/osolmaz/brokerkit/streamstore"
 )
 
 func mcpTestEnv(values map[string]string) func(string) string {
@@ -51,6 +53,37 @@ func TestMCPRejectsUnknownOrUnadvertisedTool(t *testing.T) {
 	_, err := callMCP(t.Context(), mcpTestEnv(nil), mcpToolCall{Name: "gh_http_request", Arguments: json.RawMessage(`{}`)})
 	if err == nil || !strings.Contains(err.Error(), "not advertised") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestPrepareMCPArgumentModes(t *testing.T) {
+	streamDescriptor, _ := opcatalog.ByName("release.repos_upload_release_asset")
+	streamInput := mcpOperationInput{
+		Target: json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), Arguments: json.RawMessage(`{"name":"asset.bin"}`),
+		StreamInput: &streamstore.Reference{ID: "stream_012345678901234567890123"},
+	}
+	if err := prepareMCPArguments(t.Context(), streamDescriptor, &streamInput, operationConnection{}); err != nil || !bytes.Contains(streamInput.Arguments, []byte("stream_input")) {
+		t.Fatalf("stream arguments = %s, %v", streamInput.Arguments, err)
+	}
+	streamInput.StreamInput = nil
+	if err := prepareMCPStreamArguments(streamDescriptor, &streamInput); err == nil {
+		t.Fatal("missing stream input accepted")
+	}
+
+	readDescriptor, _ := opcatalog.ByName("repo.metadata.read")
+	readInput := mcpOperationInput{Target: json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), Arguments: json.RawMessage(`{}`)}
+	if err := prepareMCPArguments(t.Context(), readDescriptor, &readInput, operationConnection{}); err != nil {
+		t.Fatal(err)
+	}
+	readInput.CredentialSlot = "unexpected"
+	if err := prepareMCPArguments(t.Context(), readDescriptor, &readInput, operationConnection{}); err == nil {
+		t.Fatal("credential slot accepted for read")
+	}
+
+	secretDescriptor, _ := opcatalog.ByName("workflow.actions_create_or_update_repo_secret")
+	secretInput := mcpOperationInput{Target: readInput.Target, Arguments: json.RawMessage(`{"secret_name":"TOKEN"}`)}
+	if err := prepareMCPSealedArguments(t.Context(), secretDescriptor, &secretInput, operationConnection{}); err == nil {
+		t.Fatal("required sealed arguments omitted")
 	}
 }
 
@@ -163,6 +196,36 @@ func TestMCPSealedToolUsesOneTimePayloadBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bytes.Contains(submitted, []byte("Y2FuYXJ5")) || !bytes.Contains(submitted, []byte(`"sealed_payload"`)) {
+		t.Fatalf("submitted = %s", submitted)
+	}
+}
+
+func TestMCPOptionalSealedInputDoesNotCreatePayload(t *testing.T) {
+	const operation = "organization.update_webhook"
+	var submitted []byte
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/agent/v1/operations" {
+			t.Fatalf("unexpected route %s", request.URL.Path)
+		}
+		submitted, _ = io.ReadAll(request.Body)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StatePending))
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_MCP_EXACT_OPERATIONS": operation, "GH_BROKER_MCP_CLIENT_OPERATIONS": operation,
+		"GH_BROKER_MCP_POLICY_OPERATIONS": operation, "GH_BROKER_MCP_RUNTIME_OPERATIONS": operation,
+	}
+	_, err := callMCP(t.Context(), mcpTestEnv(env), mcpToolCall{
+		Name:      "gh_organization_update_webhook",
+		Arguments: json.RawMessage(`{"target":{"kind":"organization","name":"osolmaz"},"arguments":{"hook_id":1},"reason":"leave unchanged","idempotency_key":"optional-secret","wait_seconds":0}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(submitted, []byte(`"arguments":{"public":{"hook_id":1}}`)) || bytes.Contains(submitted, []byte("sealed_payload")) {
 		t.Fatalf("submitted = %s", submitted)
 	}
 }

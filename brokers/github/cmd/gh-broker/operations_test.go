@@ -278,6 +278,24 @@ func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 	if err := submitCatalogOperation(t.Context(), &output, sealed, []string{"--target-json", `{"kind":"repo","owner":"o","name":"r"}`}); err == nil {
 		t.Fatal("accepted sealed operation")
 	}
+	optionalSealed, _ := opcatalog.ByName("organization.update_webhook")
+	if err := validateOperationInput(optionalSealed, json.RawMessage(`{"kind":"organization","name":"o"}`), json.RawMessage(`{"hook_id":1}`), "", "", "", ""); err != nil {
+		t.Fatalf("optional sealed input rejected: %v", err)
+	}
+	plain, _ := opcatalog.ByName("repo.metadata.read")
+	prepared, err := prepareCLIArguments(t.Context(), operationConnection{}, plain, "key", json.RawMessage(`{}`), "", "", "", "")
+	if err != nil || string(prepared) != `{}` {
+		t.Fatalf("plain CLI arguments = %s, %v", prepared, err)
+	}
+	prepared, err = prepareCLIArguments(t.Context(), operationConnection{}, optionalSealed, "key", json.RawMessage(`{"hook_id":1}`), "", "", "", "")
+	if err != nil || !bytes.Contains(prepared, []byte(`"public"`)) {
+		t.Fatalf("optional sealed CLI arguments = %s, %v", prepared, err)
+	}
+	credentialOutput, _ := opcatalog.ByName("runner.actions_create_registration_token_for_repo")
+	prepared, err = prepareCLIArguments(t.Context(), operationConnection{}, credentialOutput, "key", json.RawMessage(`{}`), "", "ci-runner", "", "")
+	if err != nil || !bytes.Contains(prepared, []byte(`"credential_slot":"ci-runner"`)) {
+		t.Fatalf("credential CLI arguments = %s, %v", prepared, err)
+	}
 
 	if _, err := loadOperationClient(func(string) string { return "" }); err == nil {
 		t.Fatal("accepted empty client configuration")

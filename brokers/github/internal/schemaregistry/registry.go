@@ -197,6 +197,16 @@ func ValidateSealedArguments(name string, argumentsRaw json.RawMessage) error {
 	return validateNamedRaw(argumentsRaw, sealed, "sealed arguments")
 }
 
+// SealedArgumentsRequired reports whether an operation's protected argument
+// schema requires a top-level value.
+func SealedArgumentsRequired(name string) (bool, error) {
+	_, _, sealed, err := sealedSchemas(name)
+	if err != nil {
+		return false, err
+	}
+	return len(capability.RequiredPropertyNames(sealed)) > 0, nil
+}
+
 func sealedSchemas(name string) (map[string]any, map[string]any, map[string]any, error) {
 	descriptor, found := opcatalog.ByName(name)
 	if !found || !descriptor.Sealed {

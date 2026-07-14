@@ -188,6 +188,12 @@ func TestSpecializedValidationBoundaries(t *testing.T) {
 	if err := ValidateSealedArguments(sealedOperation, json.RawMessage(`{"input":{"encrypted_value":"YWJjZA==","key_id":"key-1"}}`)); err != nil {
 		t.Fatal(err)
 	}
+	if required, err := SealedArgumentsRequired(sealedOperation); err != nil || !required {
+		t.Fatalf("required sealed arguments = %t, %v", required, err)
+	}
+	if required, err := SealedArgumentsRequired("organization.update_webhook"); err != nil || required {
+		t.Fatalf("optional sealed arguments = %t, %v", required, err)
+	}
 	if err := ValidateArguments("repo.metadata.read", json.RawMessage(`{}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -216,8 +222,12 @@ func TestSpecializedValidationBoundaries(t *testing.T) {
 		"public target": func() error {
 			return ValidatePublicSubmission(sealedOperation, json.RawMessage(`{}`), json.RawMessage(`{"secret_name":"x"}`))
 		},
-		"public arguments":  func() error { return ValidatePublicSubmission(sealedOperation, target, json.RawMessage(`{}`)) },
-		"sealed unknown":    func() error { return ValidateSealedArguments("repo.metadata.read", json.RawMessage(`{}`)) },
+		"public arguments": func() error { return ValidatePublicSubmission(sealedOperation, target, json.RawMessage(`{}`)) },
+		"sealed unknown":   func() error { return ValidateSealedArguments("repo.metadata.read", json.RawMessage(`{}`)) },
+		"required unknown": func() error {
+			_, err := SealedArgumentsRequired("repo.metadata.read")
+			return err
+		},
 		"sealed invalid":    func() error { return ValidateSealedArguments(sealedOperation, json.RawMessage(`{"input":{}}`)) },
 		"arguments unknown": func() error { return ValidateArguments("not.real", json.RawMessage(`{}`)) },
 		"arguments invalid": func() error { return ValidateArguments("repo.metadata.read", json.RawMessage(`{"extra":true}`)) },

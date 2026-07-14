@@ -156,29 +156,9 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	if streamDirectionForOperation(descriptor.Name) == "upload" {
-		reference, uploadErr := connection.uploadStream(ctx, descriptor.Name, *key, *streamFile, *streamMediaType)
-		if uploadErr != nil {
-			return uploadErr
-		}
-		arguments, err = json.Marshal(map[string]any{"public": arguments, "stream_input": reference})
-		if err != nil {
-			return err
-		}
-	} else if descriptor.CredentialOutputKind != nil {
-		arguments, err = json.Marshal(map[string]any{"public": arguments, "credential_slot": *credentialSlot})
-		if err != nil {
-			return err
-		}
-	} else if descriptor.Sealed {
-		sealed, readErr := readSealedArguments(*sealedFile)
-		if readErr != nil {
-			return exitError{code: 64, message: readErr.Error()}
-		}
-		arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, *key, arguments, sealed)
-		if err != nil {
-			return err
-		}
+	arguments, err = prepareCLIArguments(ctx, connection, descriptor, *key, arguments, *sealedFile, *credentialSlot, *streamFile, *streamMediaType)
+	if err != nil {
+		return err
 	}
 	client, err := connection.client()
 	if err != nil {
@@ -197,6 +177,36 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 		}
 	}
 	return writeJSONOutput(stdout, operation)
+}
+
+func prepareCLIArguments(ctx context.Context, connection operationConnection, descriptor opcatalog.Descriptor, key string, arguments json.RawMessage,
+	sealedFile, credentialSlot, streamFile, streamMediaType string) (json.RawMessage, error) {
+	switch {
+	case streamDirectionForOperation(descriptor.Name) == "upload":
+		reference, err := connection.uploadStream(ctx, descriptor.Name, key, streamFile, streamMediaType)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{"public": arguments, "stream_input": reference})
+	case descriptor.CredentialOutputKind != nil:
+		return json.Marshal(map[string]any{"public": arguments, "credential_slot": credentialSlot})
+	case descriptor.Sealed:
+		return prepareCLISealedArguments(ctx, connection, descriptor.Name, key, arguments, sealedFile)
+	default:
+		return arguments, nil
+	}
+}
+
+func prepareCLISealedArguments(ctx context.Context, connection operationConnection, operation, key string, arguments json.RawMessage,
+	sealedFile string) (json.RawMessage, error) {
+	if sealedFile == "" {
+		return json.Marshal(map[string]any{"public": arguments})
+	}
+	sealed, err := readSealedArguments(sealedFile)
+	if err != nil {
+		return nil, exitError{code: 64, message: err.Error()}
+	}
+	return connection.wrapSealedArguments(ctx, operation, key, arguments, sealed)
 }
 
 func runOperationLifecycle(ctx context.Context, stdout io.Writer, action string, args []string) error {
@@ -344,15 +354,23 @@ func validateOperationInput(descriptor opcatalog.Descriptor, target, public json
 		return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
 	}
 	if descriptor.Sealed {
-		if sealedFile == "" || credentialSlot != "" {
-			return errors.New("sealed operation requires --sealed-file")
-		}
-		return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
+		return validateSealedOperationInput(descriptor, target, public, sealedFile, credentialSlot)
 	}
 	if sealedFile != "" || credentialSlot != "" {
 		return errors.New("operation does not accept --sealed-file")
 	}
 	return schemaregistry.ValidateSubmission(descriptor.Name, target, public)
+}
+
+func validateSealedOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot string) error {
+	required, err := schemaregistry.SealedArgumentsRequired(descriptor.Name)
+	if err != nil {
+		return err
+	}
+	if credentialSlot != "" || required && sealedFile == "" {
+		return errors.New("sealed operation requires --sealed-file for required protected arguments")
+	}
+	return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
 }
 
 func streamDirectionForOperation(operation string) string {

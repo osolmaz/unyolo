@@ -12,7 +12,7 @@ import (
 
 var baseCatalogAttributeNames = []string{
 	"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method",
-	"path", "permission", "ref", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref",
+	"path", "permission", "ref", "release_state", "resource_id", "resource_name", "resource_owner", "role", "visibility", "workflow", "workflow_ref",
 	"credential_kind", "credential_slot",
 }
 

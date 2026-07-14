@@ -171,6 +171,22 @@ func (s *Store) OpenStream(reference Reference) (*os.File, error) {
 }
 
 func (s *Store) Consume(owner, id string) (*os.File, Reference, error) {
+	file, reference, err := s.OpenOwned(owner, id)
+	if err != nil {
+		return nil, Reference{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.removeConsumed(id); err != nil {
+		_ = file.Close()
+		return nil, Reference{}, err
+	}
+	return file, reference, nil
+}
+
+// OpenOwned opens a verified stream for its owner without consuming it. The
+// caller deletes the stream only after the complete response is delivered.
+func (s *Store) OpenOwned(owner, id string) (*os.File, Reference, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	reference, err := s.loadLocked(id)
@@ -182,10 +198,6 @@ func (s *Store) Consume(owner, id string) (*os.File, Reference, error) {
 	}
 	file, err := s.openVerified(reference)
 	if err != nil {
-		return nil, Reference{}, err
-	}
-	if err := s.removeConsumed(id); err != nil {
-		_ = file.Close()
 		return nil, Reference{}, err
 	}
 	return file, reference, nil

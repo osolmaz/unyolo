@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
 func TestGeneratedPolicyRegistryCoversAgentCatalog(t *testing.T) {
@@ -30,5 +31,26 @@ func TestGeneratedPolicyRegistryCoversAgentCatalog(t *testing.T) {
 		if _, found := registry.Attrs[forbidden]; found {
 			t.Fatalf("unsafe policy attr %q", forbidden)
 		}
+	}
+}
+
+func TestGeneratedPolicyRegistryAcceptsCreatedResourceIdentity(t *testing.T) {
+	registry, err := CatalogRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := corepolicy.Request{
+		Client:    "bob",
+		Operation: "organization.repos_create_in_org",
+		Target: corepolicy.Target{Kind: "organization", Fields: map[string][]string{
+			"name": {"osolmaz"},
+		}},
+		Attrs: map[string][]string{
+			"resource_name":  {"brokerkit-next"},
+			"resource_owner": {"osolmaz"},
+		},
+	}
+	if err := registry.ValidateRequest(request); err != nil {
+		t.Fatalf("created resource identity rejected: %v", err)
 	}
 }

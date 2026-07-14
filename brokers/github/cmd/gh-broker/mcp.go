@@ -40,6 +40,16 @@ type mcpToolCall struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
 }
+type mcpOperationInput struct {
+	Target          json.RawMessage        `json:"target"`
+	Arguments       json.RawMessage        `json:"arguments"`
+	SealedArguments json.RawMessage        `json:"sealed_arguments"`
+	CredentialSlot  string                 `json:"credential_slot"`
+	StreamInput     *streamstore.Reference `json:"stream_input"`
+	Reason          string                 `json:"reason"`
+	IdempotencyKey  string                 `json:"idempotency_key"`
+	WaitSeconds     int                    `json:"wait_seconds"`
+}
 
 func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout io.Writer, args []string) error {
 	if len(args) != 0 {
@@ -185,16 +195,7 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 	if !found {
 		return nil, errors.New("tool is not advertised for this client and deployment")
 	}
-	var input struct {
-		Target          json.RawMessage        `json:"target"`
-		Arguments       json.RawMessage        `json:"arguments"`
-		SealedArguments json.RawMessage        `json:"sealed_arguments"`
-		CredentialSlot  string                 `json:"credential_slot"`
-		StreamInput     *streamstore.Reference `json:"stream_input"`
-		Reason          string                 `json:"reason"`
-		IdempotencyKey  string                 `json:"idempotency_key"`
-		WaitSeconds     int                    `json:"wait_seconds"`
-	}
+	var input mcpOperationInput
 	if strictjson.Decode(call.Arguments, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 ||
 		input.IdempotencyKey == "" || input.WaitSeconds < 0 || input.WaitSeconds > 900 {
 		return nil, errors.New("invalid typed tool arguments")
@@ -206,50 +207,8 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 	if err != nil {
 		return nil, err
 	}
-	if streamDirectionForOperation(descriptor.Name) == "upload" {
-		if input.StreamInput == nil || len(input.SealedArguments) != 0 || input.CredentialSlot != "" {
-			return nil, errors.New("stream_input is required")
-		}
-		if err := schemaregistry.ValidateStreamPublic(descriptor.Name, input.Target, input.Arguments); err != nil {
-			return nil, err
-		}
-		input.Arguments, err = json.Marshal(map[string]any{"public": input.Arguments, "stream_input": input.StreamInput})
-		if err != nil {
-			return nil, err
-		}
-	} else if descriptor.Sealed {
-		if descriptor.CredentialOutputKind != nil {
-			if len(input.SealedArguments) != 0 || !credentialstore.ValidSlot(input.CredentialSlot) {
-				return nil, errors.New("credential_slot is required and sealed_arguments are not accepted")
-			}
-			if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
-				return nil, err
-			}
-			input.Arguments, err = json.Marshal(map[string]any{"public": input.Arguments, "credential_slot": input.CredentialSlot})
-			if err != nil {
-				return nil, err
-			}
-		} else if len(input.SealedArguments) == 0 {
-			return nil, errors.New("sealed_arguments are required")
-		} else {
-			if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
-				return nil, err
-			}
-			if err := schemaregistry.ValidateSealedArguments(descriptor.Name, input.SealedArguments); err != nil {
-				return nil, err
-			}
-			input.Arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, input.IdempotencyKey, input.Arguments, input.SealedArguments)
-			if err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		if len(input.SealedArguments) != 0 || input.CredentialSlot != "" || input.StreamInput != nil {
-			return nil, errors.New("operation does not accept sealed_arguments")
-		}
-		if err := schemaregistry.ValidateSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
-			return nil, err
-		}
+	if err := prepareMCPArguments(ctx, descriptor, &input, connection); err != nil {
+		return nil, err
 	}
 	client, err := connection.client()
 	if err != nil {
@@ -266,6 +225,68 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 		return updated, nil
 	}
 	return updated, waitErr
+}
+
+func prepareMCPArguments(ctx context.Context, descriptor opcatalog.Descriptor, input *mcpOperationInput, connection operationConnection) error {
+	switch {
+	case streamDirectionForOperation(descriptor.Name) == "upload":
+		return prepareMCPStreamArguments(descriptor, input)
+	case descriptor.CredentialOutputKind != nil:
+		return prepareMCPCredentialArguments(descriptor, input)
+	case descriptor.Sealed:
+		return prepareMCPSealedArguments(ctx, descriptor, input, connection)
+	default:
+		if len(input.SealedArguments) != 0 || input.CredentialSlot != "" || input.StreamInput != nil {
+			return errors.New("operation does not accept sealed_arguments")
+		}
+		return schemaregistry.ValidateSubmission(descriptor.Name, input.Target, input.Arguments)
+	}
+}
+
+func prepareMCPStreamArguments(descriptor opcatalog.Descriptor, input *mcpOperationInput) error {
+	if input.StreamInput == nil || len(input.SealedArguments) != 0 || input.CredentialSlot != "" {
+		return errors.New("stream_input is required")
+	}
+	if err := schemaregistry.ValidateStreamPublic(descriptor.Name, input.Target, input.Arguments); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(map[string]any{"public": input.Arguments, "stream_input": input.StreamInput})
+	input.Arguments = encoded
+	return err
+}
+
+func prepareMCPCredentialArguments(descriptor opcatalog.Descriptor, input *mcpOperationInput) error {
+	if len(input.SealedArguments) != 0 || !credentialstore.ValidSlot(input.CredentialSlot) {
+		return errors.New("credential_slot is required and sealed_arguments are not accepted")
+	}
+	if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(map[string]any{"public": input.Arguments, "credential_slot": input.CredentialSlot})
+	input.Arguments = encoded
+	return err
+}
+
+func prepareMCPSealedArguments(ctx context.Context, descriptor opcatalog.Descriptor, input *mcpOperationInput, connection operationConnection) error {
+	if err := schemaregistry.ValidatePublicSubmission(descriptor.Name, input.Target, input.Arguments); err != nil {
+		return err
+	}
+	required, err := schemaregistry.SealedArgumentsRequired(descriptor.Name)
+	if err != nil {
+		return err
+	}
+	if required && len(input.SealedArguments) == 0 {
+		return errors.New("sealed_arguments are required")
+	}
+	if len(input.SealedArguments) == 0 {
+		input.Arguments, err = json.Marshal(map[string]any{"public": input.Arguments})
+		return err
+	}
+	if err := schemaregistry.ValidateSealedArguments(descriptor.Name, input.SealedArguments); err != nil {
+		return err
+	}
+	input.Arguments, err = connection.wrapSealedArguments(ctx, descriptor.Name, input.IdempotencyKey, input.Arguments, input.SealedArguments)
+	return err
 }
 
 func readMCPResource(raw json.RawMessage) (map[string]any, error) {

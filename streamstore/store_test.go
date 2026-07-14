@@ -34,6 +34,39 @@ func TestStoreStreamsBoundedSingleUseFiles(t *testing.T) {
 	}
 }
 
+func TestOwnedStreamRemainsAvailableUntilDeliveryIsAcknowledged(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference, err := store.Put("bob", "archive.download", "request-1", "application/zip", strings.NewReader("archive"), 32, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, opened, err := store.OpenOwned("bob", reference.ID)
+	if err != nil || opened != reference {
+		t.Fatalf("open = %+v, %v", opened, err)
+	}
+	buffer := make([]byte, 1)
+	_, _ = file.Read(buffer)
+	_ = file.Close()
+	if store.Validate(reference) != nil {
+		t.Fatal("interrupted delivery consumed the stream")
+	}
+	file, _, err = store.OpenOwned("bob", reference.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := io.ReadAll(file)
+	_ = file.Close()
+	if string(data) != "archive" || store.Delete(reference) != nil {
+		t.Fatalf("retry data = %q", data)
+	}
+	if _, _, err := store.OpenOwned("bob", reference.ID); err == nil {
+		t.Fatal("acknowledged stream remained available")
+	}
+}
+
 func TestStoreRejectsOversizeAndSweepsExpiry(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	if _, err := store.Put("bob", "release.upload", "request-1", "application/octet-stream", strings.NewReader("oversize"), 3, time.Now().Add(time.Hour)); err == nil {

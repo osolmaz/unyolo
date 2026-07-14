@@ -33,10 +33,11 @@ func TargetSummary(target policy.Target) string {
 	kind := strings.TrimSpace(target.Kind)
 	owner := policy.FirstValue(target.Fields["owner"])
 	name := policy.FirstValue(target.Fields["name"])
+	repo := policy.FirstValue(target.Fields["repo"])
 	if kind == "repo" {
 		return repositoryTarget(owner, name)
 	}
-	locator := targetLocator(target, owner, name)
+	locator := targetLocator(target, owner, repo, name)
 	if kind == "" || locator == "" {
 		return ""
 	}
@@ -50,11 +51,14 @@ func repositoryTarget(owner, name string) string {
 	return owner + "/" + name
 }
 
-func targetLocator(target policy.Target, owner, name string) string {
-	return appendTargetQualifier(baseTargetLocator(target, owner, name), target)
+func targetLocator(target policy.Target, owner, repo, name string) string {
+	return appendTargetQualifier(baseTargetLocator(target, owner, repo, name), target)
 }
 
-func baseTargetLocator(target policy.Target, owner, name string) string {
+func baseTargetLocator(target policy.Target, owner, repo, name string) string {
+	if owner != "" && repo != "" {
+		return repositoryTarget(owner, repo)
+	}
 	locator := name
 	if owner != "" && name != "" {
 		return repositoryTarget(owner, name)
@@ -83,9 +87,9 @@ func appendTargetQualifier(locator string, target policy.Target) string {
 // DisplayFields returns the exact target and closed policy vocabulary used by every approval surface.
 func DisplayFields(grant grants.Grant) []operatorinbox.DisplayField {
 	fields := []operatorinbox.DisplayField{{Label: "Operation", Value: grant.Operation}, {Label: "Target", Value: TargetSummary(grant.Target)}}
-	targetLabels := map[string]string{"owner": "Target owner", "name": "Target name", "number": "Target number", "id": "Target ID", "node_id": "Target node ID",
+	targetLabels := map[string]string{"owner": "Target owner", "repo": "Target repository", "name": "Target name", "number": "Target number", "id": "Target ID", "node_id": "Target node ID",
 		"installation_id": "Installation ID", "installation_account": "Installation account"}
-	for _, key := range []string{"owner", "name", "number", "id", "node_id", "installation_id", "installation_account"} {
+	for _, key := range []string{"owner", "repo", "name", "number", "id", "node_id", "installation_id", "installation_account"} {
 		if values := grant.Target.Fields[key]; len(values) > 0 {
 			fields = append(fields, operatorinbox.DisplayField{Label: targetLabels[key], Value: strings.Join(values, ", ")})
 		}

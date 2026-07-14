@@ -23,7 +23,6 @@ brokers/github/internal/operations/operations.go	operations:NewGeneratedAdapters
 brokers/github/internal/httpapi/streams.go	httpapi:(*Server).uploadStream	crap	14.1
 brokers/github/internal/operations/operations.go	operations:(generatedAdapter).materializeArguments	crap	14.1
 brokers/github/internal/policy/registry.go	policy:expandFamilyOperation	crap	13.6
-brokers/github/internal/operations/operations.go	operations:(generatedAdapter).ValidateClient	crap	13.4
 brokers/github/internal/operations/operations.go	operations:(generatedAdapter).executeCredentialOutput	crap	13.2
 brokers/github/internal/mcpcatalog/catalog.go	mcpcatalog:Selected	crap	13.1
 brokers/github/internal/githubauth/generic.go	githubauth:(*Manager).ExecuteRESTUpload	crap	12.6

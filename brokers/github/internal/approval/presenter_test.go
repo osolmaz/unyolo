@@ -28,7 +28,7 @@ func TestPresenterShowsConcreteGeneratedTargetsAndSecurityAttributes(t *testing.
 	grant := grants.Grant{
 		ID: "grant-2", Operation: "action_run.actions_cancel_workflow_run",
 		Target: policy.Target{Kind: "run", Fields: map[string][]string{
-			"owner": {"osolmaz"}, "name": {"brokerkit"}, "id": {"123"},
+			"owner": {"osolmaz"}, "repo": {"brokerkit"}, "id": {"123"},
 		}},
 		Attrs: map[string][]string{"workflow_ref": {"deploy.yml@main"}, "environment": {"production"}},
 	}
@@ -39,7 +39,7 @@ func TestPresenterShowsConcreteGeneratedTargetsAndSecurityAttributes(t *testing.
 	if presentation.Target != "run osolmaz/brokerkit 123" {
 		t.Fatalf("target = %q", presentation.Target)
 	}
-	want := map[string]string{"Target": presentation.Target, "Target owner": "osolmaz", "Target name": "brokerkit", "Target ID": "123",
+	want := map[string]string{"Target": presentation.Target, "Target owner": "osolmaz", "Target repository": "brokerkit", "Target ID": "123",
 		"Environment": "production", "Workflow ref": "deploy.yml@main"}
 	for _, field := range presentation.Fields {
 		if expected, found := want[field.Label]; found {
@@ -100,7 +100,7 @@ func TestTargetSummaryRejectsKindOnlyAndFormatsNamedTargets(t *testing.T) {
 		t.Fatalf("user target = %q", got)
 	}
 	if got := TargetSummary(policy.Target{Kind: "issue", Fields: map[string][]string{
-		"owner": {"osolmaz"}, "name": {"brokerkit"}, "number": {"38"},
+		"owner": {"osolmaz"}, "repo": {"brokerkit"}, "number": {"38"},
 	}}); got != "issue osolmaz/brokerkit #38" {
 		t.Fatalf("issue target = %q", got)
 	}

@@ -405,6 +405,70 @@ func TestMutationExecuteClassifiesAmbiguousFailuresWithoutRetry(t *testing.T) {
 	}
 }
 
+func TestResolveVerifiesUnboundImmutableTargetIdentity(t *testing.T) {
+	var mutations int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/repos/osolmaz/brokerkit/issues/7" {
+			t.Fatalf("request path = %s", request.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch request.Method {
+		case http.MethodGet:
+			_, _ = io.WriteString(w, `{"id":99,"node_id":"I_99","number":7,"state":"open","url":"https://api.github.test/issues/7"}`)
+		case http.MethodPatch:
+			mutations++
+			_, _ = io.WriteString(w, `{"id":99,"node_id":"I_99","number":7,"state":"closed","url":"https://api.github.test/issues/7"}`)
+		default:
+			t.Fatalf("request method = %s", request.Method)
+		}
+	}))
+	t.Cleanup(server.Close)
+	adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "issue.issues_update")
+	arguments := json.RawMessage(`{"input":{"state":"closed"}}`)
+	spoofed, err := adapter.Decode(json.RawMessage(`{"kind":"issue","owner":"osolmaz","repo":"brokerkit","number":7,"id":98,"node_id":"I_99"}`), arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Resolve(t.Context(), spoofed); err == nil {
+		t.Fatal("spoofed immutable target identity was authorized")
+	}
+	verified, err := adapter.Decode(json.RawMessage(`{"kind":"issue","owner":"osolmaz","repo":"brokerkit","number":7,"id":99,"node_id":"I_99"}`), arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := adapter.Resolve(t.Context(), verified)
+	if err != nil || !slices.Equal(plan.Authorization.TargetFields["id"], []string{"99"}) ||
+		!slices.Equal(plan.Authorization.TargetFields["node_id"], []string{"I_99"}) {
+		t.Fatalf("verified plan = %+v, %v", plan, err)
+	}
+	if _, err := adapter.Execute(t.Context(), plan); err != nil || mutations != 1 {
+		t.Fatalf("verified execution mutations = %d, %v", mutations, err)
+	}
+}
+
+func TestOptionalSealedArgumentsExecuteWithoutPayloadReference(t *testing.T) {
+	adapter := mustLookupGenerated(t, newOperationsManager(t, "http://127.0.0.1:1"), "organization.update_webhook")
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"organization","name":"osolmaz"}`), json.RawMessage(`{"public":{"hook_id":1}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.(ClientBoundAdapter).ValidateClient(input, "bob", "optional-secret"); err != nil {
+		t.Fatalf("optional sealed input validation = %v", err)
+	}
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil || string(plan.Arguments) != `{"public":{"hook_id":1}}` {
+		t.Fatalf("optional sealed plan = %+v, %v", plan, err)
+	}
+	required := mustLookupGenerated(t, newOperationsManager(t, "http://127.0.0.1:1"), "workflow.actions_create_or_update_repo_secret").(generatedAdapter)
+	if err := required.validateSealedEnvelope(sealedArguments{}); err == nil {
+		t.Fatal("required sealed envelope accepted without a payload")
+	}
+	credential := mustLookupGenerated(t, newOperationsManager(t, "http://127.0.0.1:1"), "runner.actions_create_registration_token_for_repo").(generatedAdapter)
+	if err := credential.validateSealedEnvelope(sealedArguments{CredentialSlot: "invalid/slot"}); err == nil {
+		t.Fatal("invalid credential destination accepted")
+	}
+}
+
 func TestDocumentedAcceptedMutationIsSuccessful(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/repos/osolmaz/brokerkit/deployments" {
@@ -579,6 +643,7 @@ func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
 		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/brokerkit/actions/runners/registration-token" {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
+		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"token":"` + token + `","expires_at":"2026-07-14T12:00:00Z"}`))
 	}))
 	t.Cleanup(server.Close)
@@ -607,7 +672,7 @@ func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
 		t.Fatalf("plan = %+v err = %v", plan, err)
 	}
 	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK || strings.Contains(string(outcome.Result), token) {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusCreated || strings.Contains(string(outcome.Result), token) {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
 	stored, metadata, err := credentials.Get("ci-runner", "github-runner-token")
@@ -620,12 +685,20 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 	const content = "release-asset-canary"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/brokerkit/releases/9/assets" ||
-			request.URL.Query().Get("name") != "artifact.bin" || request.Header.Get("Content-Type") != "application/octet-stream" {
+			request.Header.Get("Content-Type") != "application/octet-stream" {
 			t.Fatalf("request = %s %s query=%s headers=%v", request.Method, request.URL.Path, request.URL.RawQuery, request.Header)
 		}
 		body, _ := io.ReadAll(request.Body)
 		if string(body) != content {
 			t.Fatalf("body = %q", body)
+		}
+		w.WriteHeader(http.StatusCreated)
+		if request.URL.Query().Get("name") == "malformed.bin" {
+			_, _ = w.Write([]byte(`{"id":"not-an-integer"}`))
+			return
+		}
+		if request.URL.Query().Get("name") != "artifact.bin" {
+			t.Fatalf("asset name = %q", request.URL.Query().Get("name"))
 		}
 		_, _ = w.Write([]byte(`{"id":10,"node_id":"asset-10","name":"artifact.bin","state":"uploaded","url":"https://api.github.test/assets/10"}`))
 	}))
@@ -662,7 +735,7 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 	}
 	plan.Authorization.Client = "bob"
 	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusCreated {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
 	if streams.Validate(reference) != nil {
@@ -675,6 +748,23 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 		strings.NewReader(content), 1024, time.Now().Add(time.Hour))
 	if err != nil || replayed != reference {
 		t.Fatalf("terminal upload replay = %+v, %v; want %+v", replayed, err, reference)
+	}
+	invalidReference, err := streams.Put("bob", "release.repos_upload_release_asset", "asset-invalid", "application/octet-stream",
+		strings.NewReader(content), 1024, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidWrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"malformed.bin"}`), "stream_input": invalidReference})
+	invalidInput, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), invalidWrapper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidPlan, err := adapter.Resolve(t.Context(), invalidInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Execute(t.Context(), invalidPlan); !IsPossiblePartial(err) {
+		t.Fatalf("invalid successful upload response = %v", err)
 	}
 }
 

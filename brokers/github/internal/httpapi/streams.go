@@ -50,7 +50,7 @@ func (s *Server) downloadStream(c echo.Context) error {
 	if !ok {
 		return nil
 	}
-	file, reference, err := s.streamStore.Consume(client, c.Param("id"))
+	file, reference, err := s.streamStore.OpenOwned(client, c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "stream is unavailable")
 	}
@@ -63,5 +63,5 @@ func (s *Server) downloadStream(c echo.Context) error {
 	if err != nil || written != reference.Size {
 		return errors.New("stream response interrupted")
 	}
-	return nil
+	return s.streamStore.Delete(reference)
 }

@@ -10,7 +10,11 @@ import (
 )
 
 func operationPolicyTarget(auth operations.Authorization) string {
-	values := []string{auth.TargetKind, firstValue(auth.TargetFields["owner"]), firstValue(auth.TargetFields["name"])}
+	name := firstValue(auth.TargetFields["name"])
+	if repo := firstValue(auth.TargetFields["repo"]); repo != "" {
+		name = repo
+	}
+	values := []string{auth.TargetKind, firstValue(auth.TargetFields["owner"]), name}
 	if id := firstValue(auth.TargetFields["id"]); id != "" {
 		values = append(values, id)
 	} else if number := firstValue(auth.TargetFields["number"]); number != "" {

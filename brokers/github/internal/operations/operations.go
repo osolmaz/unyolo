@@ -64,8 +64,6 @@ type PolicyDecision struct {
 type Outcome = operationruntime.Outcome
 type PossiblePartialError = operationruntime.PossiblePartialError
 
-var IsPossiblePartial = operationruntime.IsPossiblePartial
-
 type Adapter = operationruntime.Adapter[Input, Plan, Authorization]
 type Runtime = operationruntime.Runtime[Input, Plan, Authorization]
 type RuntimeOptions = operationruntime.Options[Input, Plan, Authorization]
@@ -227,7 +225,6 @@ func targetFieldPresent(field string, target map[string]any) bool {
 	return stringValue(target, field) != ""
 }
 
-//nolint:cyclop // Public, sealed, credential-output, and stream envelopes are mutually exclusive trust forms.
 func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
 	if a.streamDirection() == "upload" {
 		var stream streamArguments
@@ -246,16 +243,16 @@ func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (js
 		}
 		return cloneRaw(arguments), arguments, nil
 	}
+	return a.decodeSealedArguments(target, arguments)
+}
+
+func (a generatedAdapter) decodeSealedArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
 	var protected sealedArguments
 	if err := strictjson.Decode(arguments, &protected, true); err != nil || len(protected.Public) == 0 {
 		return nil, nil, errors.New("GitHub sealed operation arguments are invalid")
 	}
-	if a.descriptor.CredentialOutputKind != nil {
-		if protected.SealedPayload != nil || !credentialstore.ValidSlot(protected.CredentialSlot) {
-			return nil, nil, errors.New("GitHub credential output requires one valid destination slot")
-		}
-	} else if protected.SealedPayload == nil || protected.CredentialSlot != "" {
-		return nil, nil, errors.New("GitHub sealed operation arguments are invalid")
+	if err := a.validateSealedEnvelope(protected); err != nil {
+		return nil, nil, err
 	}
 	if err := schemaregistry.ValidatePublicSubmission(a.descriptor.Name, target, protected.Public); err != nil {
 		return nil, nil, err
@@ -267,28 +264,52 @@ func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (js
 	return encoded, protected.Public, nil
 }
 
-//nolint:cyclop // Stored sealed and stream references must match every client-owned binding.
+func (a generatedAdapter) validateSealedEnvelope(protected sealedArguments) error {
+	if a.descriptor.CredentialOutputKind != nil {
+		if protected.SealedPayload != nil || !credentialstore.ValidSlot(protected.CredentialSlot) {
+			return errors.New("GitHub credential output requires one valid destination slot")
+		}
+		return nil
+	}
+	required, err := schemaregistry.SealedArgumentsRequired(a.descriptor.Name)
+	if err != nil || protected.CredentialSlot != "" || required && protected.SealedPayload == nil {
+		return errors.New("GitHub sealed operation arguments are invalid")
+	}
+	return nil
+}
+
 func (a generatedAdapter) ValidateClient(input Input, client, requestKey string) error {
 	if a.streamDirection() == "upload" {
-		stream, err := decodeStreamArguments(input.Arguments)
-		if err != nil {
-			return err
-		}
-		reference := stream.StreamInput
-		if reference.Owner != client || reference.Purpose != a.descriptor.Name || reference.RequestKey != requestKey {
-			return errors.New("stream input does not belong to this client, operation, and request")
-		}
-		return a.options.StreamStore.Validate(*reference)
+		return a.validateStreamClient(input, client, requestKey)
 	}
 	if !a.descriptor.Sealed {
 		return nil
 	}
+	return a.validateSealedClient(input, client, requestKey)
+}
+
+func (a generatedAdapter) validateStreamClient(input Input, client, requestKey string) error {
+	stream, err := decodeStreamArguments(input.Arguments)
+	if err != nil {
+		return err
+	}
+	reference := stream.StreamInput
+	if reference.Owner != client || reference.Purpose != a.descriptor.Name || reference.RequestKey != requestKey {
+		return errors.New("stream input does not belong to this client, operation, and request")
+	}
+	return a.options.StreamStore.Validate(*reference)
+}
+
+func (a generatedAdapter) validateSealedClient(input Input, client, requestKey string) error {
 	arguments, err := decodeSealedArguments(input.Arguments)
 	if err != nil {
 		return err
 	}
 	reference := arguments.SealedPayload
 	if a.descriptor.CredentialOutputKind != nil {
+		return nil
+	}
+	if reference == nil {
 		return nil
 	}
 	if reference.Owner != client || reference.Purpose != a.descriptor.Name || reference.RequestKey != requestKey {
@@ -313,7 +334,7 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	if err != nil {
 		return Plan{}, errors.New("GitHub operation arguments are invalid")
 	}
-	credential, err := a.resolveCredential(ctx, targetMap)
+	targetMap, credential, canonicalTarget, err := a.resolveTarget(ctx, targetMap, argumentsMap)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -331,21 +352,13 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	return Plan{
 		Operation:         a.descriptor.Name,
 		OperationRevision: a.descriptor.OperationRevision,
-		Target:            cloneRaw(input.Target),
+		Target:            canonicalTarget,
 		Arguments:         cloneRaw(input.Arguments),
 		Preconditions:     credentialPreconditions(credential),
 		Credential:        credential,
 		Presentation:      presentation,
 		Authorization:     authorization,
 	}, nil
-}
-
-func (a generatedAdapter) resolveCredential(ctx context.Context, target map[string]any) (githubauth.Metadata, error) {
-	credential, err := a.manager.SelectMetadata(ctx, a.descriptor, target, a.options.RequestingUserID)
-	if err != nil || a.binding == nil || !a.binding.AuthenticatedUserTarget {
-		return credential, err
-	}
-	return credential, a.manager.ValidateAuthenticatedUserTarget(ctx, credential, target)
 }
 
 func (a generatedAdapter) Authorize(plan Plan) Authorization {
@@ -366,7 +379,6 @@ func (a generatedAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentDescriptor(a.descriptor, targetMap)
 }
 
-//nolint:cyclop // Executor dispatch stays closed over catalog-declared REST, GraphQL, and stream kinds.
 func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	targetMap, err := decodeObject(plan.Target)
 	if err != nil {
@@ -395,27 +407,10 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 		if err != nil {
 			return Outcome{}, classifyExecutionError(a.binding.Method, err)
 		}
-		if err := executionStatusError(*a.binding, result.StatusCode); err != nil {
-			return Outcome{}, err
-		}
-		if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
-			return Outcome{}, classifyResponseValidationError(a.binding.Method, err)
-		}
-		return Outcome{Proven: true, Result: result.Body, UpstreamStatus: result.StatusCode}, nil
+		return validatedExecutionResult(*a.binding, a.descriptor.Name, result)
 	default:
 		return Outcome{}, errors.New("GitHub adapter is incomplete")
 	}
-}
-
-func executionStatusError(binding opbinding.Binding, status int) error {
-	if slices.Contains(binding.SuccessStatusCodes, status) {
-		return nil
-	}
-	unexpected := githubauth.APIError{Code: "unexpected_success_status", StatusCode: status}
-	if binding.Method == "GET" || binding.Method == "HEAD" {
-		return unexpected
-	}
-	return &PossiblePartialError{Err: unexpected}
 }
 
 func (a generatedAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
@@ -517,10 +512,7 @@ func (a generatedAdapter) executeStreamUpload(ctx context.Context, plan Plan, ta
 	if err != nil {
 		return Outcome{}, classifyExecutionError(a.binding.Method, err)
 	}
-	if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
-		return Outcome{}, err
-	}
-	return Outcome{Proven: true, Result: result.Body, UpstreamStatus: result.StatusCode}, nil
+	return validatedExecutionResult(*a.binding, a.descriptor.Name, result)
 }
 
 func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
@@ -602,7 +594,6 @@ func decodeSealedArguments(raw json.RawMessage) (sealedArguments, error) {
 	return arguments, nil
 }
 
-//nolint:cyclop // Credential extraction, encrypted storage, zeroing, and redacted result checks stay atomic.
 func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
 	protected, err := decodeSealedArguments(plan.Arguments)
 	if err != nil || !credentialstore.ValidSlot(protected.CredentialSlot) || a.binding == nil || a.descriptor.CredentialOutputKind == nil {
@@ -613,12 +604,9 @@ func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan
 		return Outcome{}, classifyExecutionError(a.binding.Method, err)
 	}
 	defer zero(result.Body)
-	var upstream struct {
-		Token     string `json:"token"`
-		ExpiresAt string `json:"expires_at"`
-	}
-	if strictjson.Decode(result.Body, &upstream, true) != nil || upstream.Token == "" || upstream.ExpiresAt == "" {
-		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
+	upstream, err := decodeCredentialResponse(*a.binding, result)
+	if err != nil {
+		return Outcome{}, err
 	}
 	token := []byte(upstream.Token)
 	defer zero(token)
@@ -628,7 +616,7 @@ func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan
 	}
 	encoded, _ := json.Marshal(map[string]any{"stored": true, "slot": stored.Slot, "kind": stored.Kind})
 	if err := schemaregistry.ValidateResult(a.descriptor.Name, encoded); err != nil {
-		return Outcome{}, err
+		return Outcome{}, classifyResponseValidationError(a.binding.Method, err)
 	}
 	return Outcome{Proven: true, Result: encoded, UpstreamStatus: result.StatusCode}, nil
 }
