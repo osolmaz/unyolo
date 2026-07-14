@@ -4,14 +4,18 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 	bkservice "github.com/osolmaz/brokerkit/service"
 )
 
@@ -21,6 +25,8 @@ const (
 	secretsFileName         = "secrets"
 	operatorSecretsFileName = "operator-secrets"
 	scopeFileName           = "scope.json"
+	policyProfileFileName   = "policy-profile.json"
+	policyManifestFileName  = "policy-manifest.json"
 	envFileName             = "env"
 	unitFileName            = "hf-broker.service"
 	maxHFTokenBytes         = 64 * 1024
@@ -36,6 +42,9 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 	}
 	if opts.DryRun {
 		return printSystemdDryRun(stdout, plan)
+	}
+	if err := checkPolicyReplacement(stdout, plan); err != nil {
+		return err
 	}
 	installPlan, err := brokerkitSystemdInstallPlan(plan)
 	if err != nil {
@@ -60,6 +69,8 @@ type systemdPlan struct {
 	tokenPath           string
 	secretsPath         string
 	scopePath           string
+	policyProfilePath   string
+	policyManifestPath  string
 	envPath             string
 	unitPath            string
 	telegramTokenPath   string
@@ -72,6 +83,8 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 		tokenPath:           filepath.Join(opts.ConfigDir, hfTokenFileName),
 		secretsPath:         filepath.Join(opts.ConfigDir, secretsFileName),
 		scopePath:           filepath.Join(opts.ConfigDir, scopeFileName),
+		policyProfilePath:   filepath.Join(opts.ConfigDir, policyProfileFileName),
+		policyManifestPath:  filepath.Join(opts.ConfigDir, policyManifestFileName),
 		envPath:             filepath.Join(opts.ConfigDir, envFileName),
 		unitPath:            filepath.Join(opts.SystemdDir, unitFileName),
 		telegramTokenPath:   filepath.Join(opts.ConfigDir, telegramTokenFileName),
@@ -84,7 +97,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
-	scope, err := renderScopeJSON(plan.opts.Repo, plan.opts.RepoType)
+	policyFiles, err := renderSetupPolicy(plan)
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
@@ -92,10 +105,23 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
 		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
 		{Area: bkservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		{Area: bkservice.ManagedFileConfig, Name: scopeFileName, Data: scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
-		{Area: bkservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	}
 	var removeFiles []bkservice.ManagedFileRef
+	if policyFiles.managedPreset {
+		files = append(files,
+			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: policyProfileFileName, Data: policyFiles.profile, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: policyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+		)
+	} else {
+		removeFiles = append(removeFiles,
+			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: policyProfileFileName},
+			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: policyManifestFileName},
+		)
+	}
+	files = append(files,
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: scopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+	)
 	var readyCheck bkservice.ReadinessCheck
 	if plan.opts.TelegramBotTokenFile != "" {
 		telegramToken, readErr := readSetupTokenFile(plan.opts.TelegramBotTokenFile, "--telegram-bot-token-file")
@@ -104,7 +130,9 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		}
 		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
 	} else {
-		removeFiles = []bkservice.ManagedFileRef{{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName}}
+		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName})
+	}
+	if len(removeFiles) > 0 {
 		readyCheck = bkservice.HTTPReadyCheck(brokerBaseURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", bkservice.LocalHTTPClient())
 	}
 	return bkservice.SystemdInstallPlan{
@@ -122,6 +150,146 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		AllowNonRoot: plan.opts.AllowNonRoot,
 		Runner:       plan.opts.CommandRunner,
 	}, nil
+}
+
+type setupPolicyFiles struct {
+	scope         []byte
+	profile       []byte
+	manifest      []byte
+	counts        *policypreset.OperationCounts
+	policyDigest  string
+	managedPreset bool
+}
+
+func renderSetupPolicy(plan systemdPlan) (setupPolicyFiles, error) {
+	if plan.opts.Repo != "" {
+		scope, err := renderScopeJSON(plan.opts.Repo, plan.opts.RepoType)
+		return setupPolicyFiles{scope: scope, policyDigest: setupPolicyDigest(scope)}, err
+	}
+	deniedOperations, err := setupDeniedOperations(plan)
+	if err != nil {
+		return setupPolicyFiles{}, err
+	}
+	artifacts, err := policypreset.Render(policypreset.Profile{
+		Version: policypreset.ProfileVersion, Preset: plan.opts.PolicyPreset,
+		Clients: []string{plan.opts.ClientName}, DeniedOperations: deniedOperations,
+	})
+	if err != nil {
+		return setupPolicyFiles{}, err
+	}
+	counts := artifacts.Manifest.OperationCounts
+	return setupPolicyFiles{
+		scope: artifacts.PolicyJSON, profile: artifacts.ProfileJSON,
+		manifest: artifacts.ManifestJSON, counts: &counts,
+		policyDigest: artifacts.Manifest.PolicyDigest, managedPreset: true,
+	}, nil
+}
+
+func setupDeniedOperations(plan systemdPlan) ([]string, error) {
+	if plan.opts.ResetDeniedOperations {
+		return slices.Clone(plan.opts.DeniedOperations), nil
+	}
+	installed, err := installedPolicyArtifacts(plan)
+	if err != nil {
+		return nil, err
+	}
+	if installed == nil {
+		return slices.Clone(plan.opts.DeniedOperations), nil
+	}
+	report := policypreset.Check(installed.profile, installed.manifest, installed.scope)
+	if report.Status != policypreset.DriftCurrent && report.Status != policypreset.DriftStale {
+		return nil, fmt.Errorf("installed policy artifacts are %s; run hf-broker doctor policy or use --reset-denied-operations", report.Status)
+	}
+	profile, err := policypreset.ParseInstalledProfile(installed.profile)
+	if err != nil {
+		return nil, fmt.Errorf("parse installed policy profile: %w", err)
+	}
+	return mergeDeniedOperations(profile.DeniedOperations, plan.opts.DeniedOperations), nil
+}
+
+type installedSetupPolicy struct {
+	profile  []byte
+	manifest []byte
+	scope    []byte
+}
+
+func installedPolicyArtifacts(plan systemdPlan) (*installedSetupPolicy, error) {
+	profile, manifest, found, err := readInstalledPolicyPair(plan)
+	if err != nil || !found {
+		return nil, err
+	}
+	scope, err := os.ReadFile(plan.scopePath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if err != nil {
+		return nil, fmt.Errorf("read installed policy scope: %w", err)
+	}
+	return &installedSetupPolicy{profile: profile, manifest: manifest, scope: scope}, nil
+}
+
+func readInstalledPolicyPair(plan systemdPlan) ([]byte, []byte, bool, error) {
+	profile, profileFound, err := readOptionalSetupPolicyArtifact(plan.policyProfilePath, "profile")
+	if err != nil {
+		return nil, nil, false, err
+	}
+	manifest, manifestFound, err := readOptionalSetupPolicyArtifact(plan.policyManifestPath, "manifest")
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if !profileFound && !manifestFound {
+		return nil, nil, false, nil
+	}
+	if !profileFound || !manifestFound {
+		return nil, nil, false, errors.New("installed managed policy artifacts are incomplete; restore both profile and manifest or use --reset-denied-operations")
+	}
+	return profile, manifest, true, nil
+}
+
+func readOptionalSetupPolicyArtifact(path, name string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read installed policy %s: %w", name, err)
+	}
+	return data, true, nil
+}
+
+func mergeDeniedOperations(installed, requested []string) []string {
+	unique := make(map[string]struct{}, len(installed)+len(requested))
+	for _, operation := range append(slices.Clone(installed), requested...) {
+		unique[operation] = struct{}{}
+	}
+	merged := make([]string, 0, len(unique))
+	for operation := range unique {
+		merged = append(merged, operation)
+	}
+	slices.Sort(merged)
+	return merged
+}
+
+func requirePolicyReplacement(plan systemdPlan) error {
+	_, err := os.Stat(plan.scopePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect existing policy: %w", err)
+	}
+	if !plan.opts.ReplacePolicy {
+		return exitError{code: 64, message: "managed policy already exists; inspect it first or rerun with --replace-policy"}
+	}
+	return nil
+}
+
+func checkPolicyReplacement(stdout io.Writer, plan systemdPlan) error {
+	err := requirePolicyReplacement(plan)
+	if err == nil || plan.opts.ReplacePolicy {
+		return err
+	}
+	if previewErr := printPolicyReplacementPreview(stdout, plan); previewErr != nil {
+		return exitError{code: 64, message: previewErr.Error()}
+	}
+	return err
 }
 
 func readHFTokenFile(path string) ([]byte, error) {
@@ -233,6 +401,10 @@ func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
 }
 
 func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
+	policyDescription := "preset " + plan.opts.PolicyPreset
+	if plan.opts.Repo != "" {
+		policyDescription = "restricted repository " + plan.opts.Repo
+	}
 	_, err := fmt.Fprintf(stdout, `Would configure hf-broker systemd service:
   user:         %s
   group:        %s
@@ -240,18 +412,98 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   secrets file: %s
   operator file:%s
   scope file:   %s
+  policy:       %s
   env file:     %s
   state dir:    %s
   unit file:    %s
   broker URL:   %s
-`, plan.opts.User, plan.opts.Group, plan.tokenPath, plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, brokerURL(plan.opts.BindAddr, plan.opts.Port, plan.opts.RepoType, plan.opts.Repo))
+`, plan.opts.User, plan.opts.Group, plan.tokenPath, plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, policyDescription, plan.envPath, plan.opts.StateDir, plan.unitPath, setupBrokerURL(plan.opts))
+	if err != nil {
+		return err
+	}
+	return printPolicyReplacementPreview(stdout, plan)
+}
+
+func printPolicyReplacementPreview(stdout io.Writer, plan systemdPlan) error {
+	preview, err := buildPolicyReplacementPreview(plan)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(stdout, preview)
 	return err
 }
 
+func buildPolicyReplacementPreview(plan systemdPlan) (string, error) {
+	candidate, err := renderSetupPolicy(plan)
+	if err != nil {
+		return "", err
+	}
+	currentDigest, currentCounts, err := currentPolicyPreview(plan)
+	if err != nil {
+		return "", err
+	}
+	var output strings.Builder
+	output.WriteString("\nPolicy replacement preview:\n")
+	fmt.Fprintf(&output, "  current digest:   %s\n", currentDigest)
+	fmt.Fprintf(&output, "  candidate digest: %s\n", candidate.policyDigest)
+	writeOperationCountPreview(&output, currentCounts, candidate.counts)
+	return output.String(), nil
+}
+
+func currentPolicyPreview(plan systemdPlan) (string, *policypreset.OperationCounts, error) {
+	scope, err := os.ReadFile(plan.scopePath) // #nosec G304 -- fixed file beneath the operator-selected config directory.
+	if errors.Is(err, os.ErrNotExist) {
+		return "(none)", nil, nil
+	}
+	if err != nil {
+		return "", nil, fmt.Errorf("read installed policy scope: %w", err)
+	}
+	installed, err := installedPolicyArtifacts(plan)
+	if err != nil {
+		return "", nil, err
+	}
+	if installed == nil {
+		return setupPolicyDigest(scope), nil, nil
+	}
+	manifest, err := policypreset.ParseManifest(installed.manifest)
+	if err != nil {
+		return "", nil, fmt.Errorf("parse installed policy manifest: %w", err)
+	}
+	counts := manifest.OperationCounts
+	return setupPolicyDigest(scope), &counts, nil
+}
+
+func writeOperationCountPreview(output *strings.Builder, current, candidate *policypreset.OperationCounts) {
+	if candidate == nil {
+		output.WriteString("  operation counts: custom policy\n")
+		return
+	}
+	if current == nil {
+		fmt.Fprintf(output, "  candidate counts: allow=%d request=%d deny=%d total=%d\n",
+			candidate.Allow, candidate.Request, candidate.Deny, candidate.Total)
+		return
+	}
+	fmt.Fprintf(output, "  operation counts: allow %d -> %d; request %d -> %d; deny %d -> %d; total %d -> %d\n",
+		current.Allow, candidate.Allow, current.Request, candidate.Request,
+		current.Deny, candidate.Deny, current.Total, candidate.Total)
+}
+
+func setupPolicyDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("sha256:%x", sum)
+}
+
 func printSystemdSummary(stdout io.Writer, opts setupSystemdOptions) {
+	policySummary := "Safe reads and inference run directly; mutations and administration require approval; credential-output operations are denied."
+	if opts.Repo != "" {
+		policySummary = "Only the configured repository policy is installed."
+	}
 	_, _ = fmt.Fprintf(stdout, `hf-broker systemd service configured.
 
 Broker URL:
+  %s
+
+Policy:
   %s
 
 Operator inbox URL:
@@ -262,7 +514,14 @@ Operator credential file:
 
 Configure a client without exposing its secret:
   sudo hf-broker setup client --client %s --url %s --secret-file %s --home-dir '/home/<user>'
-`, brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo), brokerBaseURL(opts.OperatorBindAddr, opts.OperatorPort), filepath.Join(opts.ConfigDir, operatorSecretsFileName), shellQuote(opts.ClientName), shellQuote(brokerBaseURL(opts.BindAddr, opts.Port)), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
+`, setupBrokerURL(opts), policySummary, brokerBaseURL(opts.OperatorBindAddr, opts.OperatorPort), filepath.Join(opts.ConfigDir, operatorSecretsFileName), shellQuote(opts.ClientName), shellQuote(brokerBaseURL(opts.BindAddr, opts.Port)), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
+}
+
+func setupBrokerURL(opts setupSystemdOptions) string {
+	if opts.Repo == "" {
+		return brokerBaseURL(opts.BindAddr, opts.Port)
+	}
+	return brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo)
 }
 
 func shellQuote(value string) string {

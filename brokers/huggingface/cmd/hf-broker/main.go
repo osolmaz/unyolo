@@ -73,8 +73,15 @@ func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr 
 	case "__doctor-isolation-probe":
 		return runDoctorIsolationProbe(stdout, stderr, args[1:])
 	default:
-		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|client|mcp]"}
+		return runAuxiliaryCommand(ctx, stdout, stderr, args)
 	}
+}
+
+func runAuxiliaryCommand(ctx context.Context, stdout, stderr io.Writer, args []string) error {
+	if args[0] == "policy" {
+		return runPolicy(ctx, stdout, stderr, args[1:])
+	}
+	return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp]"}
 }
 
 func runClientCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {

@@ -136,8 +136,9 @@ Repository requests use repeatable `--ref` flags. The broker validates the
 operation, target, attributes, duration, and use budget against the exact
 matched policy rule before creating an approval.
 
-Inference defaults to denied. This rule allows one client to list Router models
-and call models under one owner:
+Without a matching rule, inference is denied. The default policy preset allows
+registered inference operations; this manual example narrows inference to one
+owner:
 
 ```json
 {
@@ -203,13 +204,12 @@ bob       = agent account, no sudo or docker
 hf-broker = service account that can read the real Hugging Face token
 ```
 
-After installing the binary, create a token file and configure systemd:
+After installing the binary, create a token file and configure systemd. A fresh
+setup uses the provider-owned `request-all-agent-operations` preset:
 
 ```sh
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
-  --repo osolmaz/scraped-news \
-  --repo-type dataset \
   --telegram-bot-token-file ./telegram-bot-token \
   --telegram-chat-id 123456789 \
   --client bob
@@ -222,7 +222,9 @@ The setup command creates:
 /etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
 /etc/hf-broker/operator-secrets
+/etc/hf-broker/policy-profile.json
 /etc/hf-broker/scope.json
+/etc/hf-broker/policy-manifest.json
 /etc/hf-broker/env
 /var/lib/hf-broker
 /etc/systemd/system/hf-broker.service
@@ -237,6 +239,22 @@ on the operator listener at `http://127.0.0.1:8081`. The agent receives
 only the broker client secret through `setup client`. Omit both Telegram flags
 to run without Telegram; pending requests remain available in the operator
 inbox and the Telegram flags must otherwise be set together.
+
+The default preset allows safe reads, discovery, and inference directly;
+requires approval for writes, administration, and destructive operations; and
+denies internal and credential-output operations. Add repeatable
+`--deny-operation <exact-name>` flags to disable more operations. Setup refuses
+to overwrite an existing policy unless `--replace-policy` is supplied, so a
+binary upgrade cannot silently widen an installation. See
+[Policy presets](docs/POLICY_PRESETS.md) for rendering and drift checks.
+Before replacement, setup previews the current and candidate policy digests and
+operation-count changes; `--dry-run` shows the same information without writes.
+Existing deny overrides remain in effect during replacement unless the operator
+also supplies `--reset-denied-operations`.
+
+To create an intentionally narrow policy for one repository instead, supply
+both `--repo owner/name` and `--repo-type model|dataset|space`. This is an
+explicit alternative to the default preset.
 
 To supply an existing broker client secret, use `--shared-secret-file` or
 `--shared-secret-stdin`. Raw secret command-line flags are not accepted.
@@ -263,9 +281,16 @@ Use `--dry-run` to preview the service setup without writing files:
 ```sh
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
-  --repo osolmaz/scraped-news \
-  --repo-type dataset \
   --dry-run
+```
+
+Check whether generated policy artifacts still match the current catalog:
+
+```sh
+hf-broker doctor policy \
+  --profile /etc/hf-broker/policy-profile.json \
+  --scope /etc/hf-broker/scope.json \
+  --manifest /etc/hf-broker/policy-manifest.json
 ```
 
 ## Check Local Isolation

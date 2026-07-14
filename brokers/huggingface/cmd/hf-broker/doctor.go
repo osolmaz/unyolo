@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/isolation"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 )
 
 func runDoctor(ctx context.Context, stdout, stderr io.Writer, args []string) error {
@@ -22,9 +23,153 @@ func runDoctor(ctx context.Context, stdout, stderr io.Writer, args []string) err
 	switch args[0] {
 	case "isolation":
 		return runDoctorIsolation(ctx, stdout, stderr, args[1:])
+	case "policy":
+		return runDoctorPolicy(stdout, stderr, args[1:])
 	default:
-		return exitError{code: 64, message: "usage: hf-broker doctor [isolation] [flags]"}
+		return exitError{code: 64, message: "usage: hf-broker doctor [isolation|policy] [flags]"}
 	}
+}
+
+func runDoctorPolicy(stdout, stderr io.Writer, args []string) error {
+	command, err := parseDoctorPolicy(stderr, args)
+	if err != nil {
+		return err
+	}
+	artifacts, err := readDoctorPolicyArtifacts(command)
+	if err != nil {
+		report := policypreset.DriftReport{
+			Status: policypreset.DriftInvalid, Details: []string{err.Error()},
+			AddedOperations: []string{}, RemovedOperations: []string{}, ChangedOperations: []string{},
+		}
+		if writeErr := writeDoctorPolicyReport(stdout, report, command.jsonOutput); writeErr != nil {
+			return writeErr
+		}
+		return doctorPolicyStatusError(report.Status)
+	}
+	report := policypreset.Check(artifacts.profile, artifacts.manifest, artifacts.policy)
+	if err := writeDoctorPolicyReport(stdout, report, command.jsonOutput); err != nil {
+		return err
+	}
+	return doctorPolicyStatusError(report.Status)
+}
+
+type doctorPolicyCommand struct {
+	profilePath  string
+	manifestPath string
+	policyPath   string
+	jsonOutput   bool
+}
+
+func parseDoctorPolicy(stderr io.Writer, args []string) (doctorPolicyCommand, error) {
+	var command doctorPolicyCommand
+	var flagOutput bytes.Buffer
+	fs := flag.NewFlagSet("hf-broker doctor policy", flag.ContinueOnError)
+	fs.SetOutput(&flagOutput)
+	fs.StringVar(&command.profilePath, "profile", "", "policy profile path")
+	fs.StringVar(&command.manifestPath, "manifest", "", "policy manifest path")
+	fs.StringVar(&command.policyPath, "scope", "", "rendered scope policy path")
+	fs.BoolVar(&command.jsonOutput, "json", false, "write JSON output")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = io.Copy(stderr, &flagOutput)
+			return doctorPolicyCommand{}, exitError{code: 0}
+		}
+		return doctorPolicyCommand{}, exitError{code: 64, message: "invalid doctor policy flags"}
+	}
+	if err := validateDoctorPolicyCommand(fs, command); err != nil {
+		return doctorPolicyCommand{}, err
+	}
+	return command, nil
+}
+
+func validateDoctorPolicyCommand(fs *flag.FlagSet, command doctorPolicyCommand) error {
+	if fs.NArg() != 0 || command.profilePath == "" || command.manifestPath == "" || command.policyPath == "" {
+		return exitError{code: 64, message: "doctor policy requires --profile, --manifest, and --scope"}
+	}
+	return nil
+}
+
+type doctorPolicyArtifacts struct {
+	profile  []byte
+	manifest []byte
+	policy   []byte
+}
+
+func readDoctorPolicyArtifacts(command doctorPolicyCommand) (doctorPolicyArtifacts, error) {
+	profileData, err := readDoctorPolicyFile("profile", command.profilePath)
+	if err != nil {
+		return doctorPolicyArtifacts{}, err
+	}
+	manifestData, err := readDoctorPolicyFile("manifest", command.manifestPath)
+	if err != nil {
+		return doctorPolicyArtifacts{}, err
+	}
+	policyData, err := readDoctorPolicyFile("scope", command.policyPath)
+	if err != nil {
+		return doctorPolicyArtifacts{}, err
+	}
+	return doctorPolicyArtifacts{profile: profileData, manifest: manifestData, policy: policyData}, nil
+}
+
+func doctorPolicyStatusError(status policypreset.DriftStatus) error {
+	switch status {
+	case policypreset.DriftCurrent:
+		return nil
+	case policypreset.DriftInvalid:
+		return exitError{code: 2}
+	default:
+		return exitError{code: 1}
+	}
+}
+
+func readDoctorPolicyFile(label, path string) ([]byte, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- operator-supplied diagnostic path.
+	if err != nil {
+		return nil, fmt.Errorf("read policy %s: %w", label, err)
+	}
+	return data, nil
+}
+
+func writeDoctorPolicyReport(stdout io.Writer, report policypreset.DriftReport, jsonOutput bool) error {
+	if jsonOutput {
+		encoder := json.NewEncoder(stdout)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(report)
+	}
+	return writeDoctorPolicyText(stdout, report)
+}
+
+func writeDoctorPolicyText(stdout io.Writer, report policypreset.DriftReport) error {
+	if _, err := fmt.Fprintf(stdout, "Policy status: %s\n", report.Status); err != nil {
+		return err
+	}
+	for _, detail := range report.Details {
+		if _, err := fmt.Fprintf(stdout, "- %s\n", detail); err != nil {
+			return err
+		}
+	}
+	return writeDoctorOperationGroups(stdout, []struct {
+		label      string
+		operations []string
+	}{
+		{"Added operations", report.AddedOperations},
+		{"Removed operations", report.RemovedOperations},
+		{"Changed operations", report.ChangedOperations},
+	})
+}
+
+func writeDoctorOperationGroups(stdout io.Writer, groups []struct {
+	label      string
+	operations []string
+}) error {
+	for _, group := range groups {
+		if len(group.operations) > 0 {
+			if _, err := fmt.Fprintf(stdout, "%s: %s\n", group.label, strings.Join(group.operations, ", ")); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func runDoctorIsolation(ctx context.Context, stdout, stderr io.Writer, args []string) error {

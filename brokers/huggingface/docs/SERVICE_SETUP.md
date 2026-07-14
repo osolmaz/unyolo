@@ -43,8 +43,6 @@ Then configure the broker service:
 ```sh
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
-  --repo osolmaz/scraped-news \
-  --repo-type dataset \
   --telegram-bot-token-file ./telegram-bot-token \
   --telegram-chat-id 123456789 \
   --client bob
@@ -57,7 +55,9 @@ The setup command creates:
 /etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
 /etc/hf-broker/operator-secrets
+/etc/hf-broker/policy-profile.json
 /etc/hf-broker/scope.json
+/etc/hf-broker/policy-manifest.json
 /etc/hf-broker/env
 /var/lib/hf-broker
 /etc/systemd/system/hf-broker.service
@@ -66,6 +66,22 @@ The setup command creates:
 Brokerkit performs the privileged host installation. hf-broker supplies the
 Hugging Face-specific file contents and service definition; it does not keep a
 second account, ownership, file-install, or systemctl implementation.
+
+Fresh setup renders the provider-owned `request-all-agent-operations` preset.
+Safe reads, discovery, and inference are allowed; mutations and administration
+are requestable through the approval flow; internal and credential-output
+operations are denied. Add `--deny-operation <exact-name>` to hard-deny more
+operations. To install a narrow single-repository policy instead, explicitly
+set both `--repo owner/name` and `--repo-type model|dataset|space`.
+
+Setup refuses to replace an existing `scope.json` unless the operator supplies
+`--replace-policy`. A binary update therefore cannot silently expand policy.
+The refused command and `--dry-run` both show the current and candidate policy
+digests and operation-count changes for review before replacement.
+Preset deny overrides are preserved during replacement. Clearing them requires
+the additional explicit `--reset-denied-operations` flag.
+See [Policy presets](POLICY_PRESETS.md) for standalone rendering and drift
+diagnostics.
 
 The real Hugging Face token is copied to:
 
@@ -138,3 +154,12 @@ hf-broker doctor \
 ```
 
 The doctor should report `ok` before trusting a same-host deployment.
+
+Check generated policy integrity and catalog drift:
+
+```sh
+hf-broker doctor policy \
+  --profile /etc/hf-broker/policy-profile.json \
+  --scope /etc/hf-broker/scope.json \
+  --manifest /etc/hf-broker/policy-manifest.json
+```

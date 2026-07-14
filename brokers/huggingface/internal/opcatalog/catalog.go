@@ -41,6 +41,17 @@ const (
 	RiskCritical Risk = "critical"
 )
 
+// DefaultPolicyEffect is the provider-owned baseline for a generated policy.
+// It is stored explicitly in the catalog so policy generation never infers
+// authorization from names, risk labels, or implementation details.
+type DefaultPolicyEffect string
+
+const (
+	DefaultEffectAllow   DefaultPolicyEffect = "allow"
+	DefaultEffectRequest DefaultPolicyEffect = "request"
+	DefaultEffectDeny    DefaultPolicyEffect = "deny"
+)
+
 // Descriptor is the provider-owned registration record consumed by every HF
 // broker surface. It contains no credentials or requester-controlled values.
 type Descriptor struct {
@@ -54,6 +65,7 @@ type Descriptor struct {
 	Internal             bool                 `json:"internal"`
 	Implementation       ImplementationStatus `json:"implementation_status"`
 	Risk                 Risk                 `json:"risk"`
+	DefaultPolicyEffect  DefaultPolicyEffect  `json:"default_policy_effect"`
 	TargetKind           string               `json:"target_kind"`
 	MaxUses              int                  `json:"max_uses"`
 	RequestTTLSeconds    int                  `json:"request_ttl_seconds"`
@@ -159,6 +171,9 @@ func validateDescriptor(value Descriptor) error {
 	if !validStatus(value.Implementation) || !validRisk(value.Risk) || value.RequestTTLSeconds <= 0 || value.ApprovalTTLSeconds <= 0 {
 		return fmt.Errorf("operation %q has invalid lifecycle metadata", value.Name)
 	}
+	if err := validateDefaultPolicyEffect(value); err != nil {
+		return err
+	}
 	if value.AuthorizationMode == ModeExecution {
 		if value.MaxUses != 1 || !strings.Contains(value.Disposition, "E") {
 			return fmt.Errorf("execution operation %q must be one-use E", value.Name)
@@ -187,6 +202,30 @@ func validateDescriptor(value Descriptor) error {
 		}
 	}
 	return nil
+}
+
+func validateDefaultPolicyEffect(value Descriptor) error {
+	if !slices.Contains([]DefaultPolicyEffect{DefaultEffectAllow, DefaultEffectRequest, DefaultEffectDeny}, value.DefaultPolicyEffect) {
+		return fmt.Errorf("operation %q has invalid default policy effect", value.Name)
+	}
+	if operationRequiresDefaultDeny(value) && value.DefaultPolicyEffect != DefaultEffectDeny {
+		return fmt.Errorf("operation %q must be denied by default", value.Name)
+	}
+	if value.DefaultPolicyEffect == DefaultEffectAllow && operationIsUnsafeDefaultAllow(value) {
+		return fmt.Errorf("dangerous operation %q cannot be allowed by default", value.Name)
+	}
+	return nil
+}
+
+func operationRequiresDefaultDeny(value Descriptor) bool {
+	return value.Internal || !value.AgentFacing || value.CredentialOutputKind != nil
+}
+
+func operationIsUnsafeDefaultAllow(value Descriptor) bool {
+	if value.Risk == RiskHigh || value.Risk == RiskCritical {
+		return true
+	}
+	return value.AuthorizationMode == ModeExecution || value.ExplicitOnly || value.Sealed
 }
 
 func validStatus(value ImplementationStatus) bool {

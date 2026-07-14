@@ -16,6 +16,7 @@ component documentation.
 ## Components
 
 - [Hugging Face broker](../brokers/huggingface/README.md)
+- [Hugging Face policy presets](../brokers/huggingface/docs/POLICY_PRESETS.md)
 - [GitHub broker](../brokers/github/README.md)
 - [sudo broker](../brokers/sudo/README.md)
 - [OpenClaw plugin](../plugins/openclaw/README.md)
@@ -27,4 +28,5 @@ component documentation.
 
 ## Active Work
 
+- [HF Broker request-all policy preset plan](2026-07-14-hf-broker-request-all-policy-preset-plan.md)
 - [Refactor plan](2026-07-12-refactor-plan.md)

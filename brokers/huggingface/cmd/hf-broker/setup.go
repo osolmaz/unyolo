@@ -14,31 +14,38 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 	"github.com/osolmaz/brokerkit/clientconfig"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
 const setupUsage = `usage:
-  hf-broker setup systemd --hf-token-file <path> --repo <owner/name> --repo-type <model|dataset|space> [flags]
+	  hf-broker setup systemd --hf-token-file <path> [--policy-preset request-all-agent-operations] [flags]
+	  hf-broker setup systemd --hf-token-file <path> --repo <owner/name> --repo-type <model|dataset|space> [flags]
   hf-broker setup client --client <name> --url <url> --secret-file <path> [--home-dir <path>]`
 
 var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type setupSystemdOptions struct {
 	bksetup.SystemdOptions
-	HFTokenFile          string
-	TelegramBotTokenFile string
-	TelegramChatID       int64
-	Repo                 string
-	RepoType             string
-	SharedSecret         string
-	OperatorName         string
-	OperatorSecretFile   string
-	OperatorSecret       string
-	OperatorBindAddr     string
-	OperatorPort         int
-	CommandRunner        bkservice.CommandRunner
+	HFTokenFile           string
+	TelegramBotTokenFile  string
+	TelegramChatID        int64
+	Repo                  string
+	RepoType              string
+	PolicyPreset          string
+	DeniedOperations      stringListFlag
+	ResetDeniedOperations bool
+	PolicyPresetExplicit  bool
+	ReplacePolicy         bool
+	SharedSecret          string
+	OperatorName          string
+	OperatorSecretFile    string
+	OperatorSecret        string
+	OperatorBindAddr      string
+	OperatorPort          int
+	CommandRunner         bkservice.CommandRunner
 }
 
 func runSetup(ctx context.Context, stdout, stderr io.Writer, args []string) error {
@@ -85,6 +92,10 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.StringVar(&opts.HFTokenFile, "hf-token-file", "", "file containing the upstream Hugging Face token")
 	fs.StringVar(&opts.Repo, "repo", "", "allowed Hub repo as owner/name")
 	fs.StringVar(&opts.RepoType, "repo-type", "", "Hub repo type: model, dataset, or space")
+	fs.StringVar(&opts.PolicyPreset, "policy-preset", policypreset.RequestAllAgentOperations, "provider-owned policy preset")
+	fs.Var(&opts.DeniedOperations, "deny-operation", "exact operation to deny in the preset; repeatable")
+	fs.BoolVar(&opts.ResetDeniedOperations, "reset-denied-operations", false, "discard installed deny overrides before applying --deny-operation flags")
+	fs.BoolVar(&opts.ReplacePolicy, "replace-policy", false, "replace an existing managed policy")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	fs.StringVar(&opts.OperatorName, "operator", "onur", "operator identity for the protected inbox")
@@ -101,6 +112,7 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	if fs.NArg() != 0 {
 		return setupSystemdOptions{}, exitError{code: 64, message: "setup systemd does not accept positional arguments"}
 	}
+	opts.PolicyPresetExplicit = flagProvided(fs, "policy-preset")
 	finalized, err := bksetup.FinalizeSystemd(opts.SystemdOptions)
 	if err != nil {
 		return setupSystemdOptions{}, exitError{code: 64, message: err.Error()}
@@ -137,12 +149,6 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 func validateSetupRequired(opts setupSystemdOptions) error {
 	if opts.HFTokenFile == "" {
 		return exitError{code: 64, message: "--hf-token-file is required"}
-	}
-	if opts.Repo == "" {
-		return exitError{code: 64, message: "--repo is required"}
-	}
-	if opts.RepoType == "" {
-		return exitError{code: 64, message: "--repo-type is required"}
 	}
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return exitError{code: 64, message: "--telegram-bot-token-file and --telegram-chat-id must be set together"}
@@ -184,6 +190,41 @@ func validateOperatorListener(opts setupSystemdOptions) error {
 }
 
 func validateSetupRepo(opts setupSystemdOptions) error {
+	if (opts.Repo == "") != (opts.RepoType == "") {
+		return exitError{code: 64, message: "--repo and --repo-type must be set together"}
+	}
+	if opts.Repo == "" {
+		return validateSetupPreset(opts)
+	}
+	return validateSetupNarrowRepo(opts)
+}
+
+func validateSetupPreset(opts setupSystemdOptions) error {
+	if opts.PolicyPreset != policypreset.RequestAllAgentOperations {
+		return exitError{code: 64, message: fmt.Sprintf("unknown --policy-preset %q", opts.PolicyPreset)}
+	}
+	if opts.ResetDeniedOperations && !opts.ReplacePolicy {
+		return exitError{code: 64, message: "--reset-denied-operations requires --replace-policy"}
+	}
+	if _, err := policypreset.Render(policypreset.Profile{
+		Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
+		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
+	}); err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
+	return nil
+}
+
+func validateSetupNarrowRepo(opts setupSystemdOptions) error {
+	if opts.PolicyPresetExplicit {
+		return exitError{code: 64, message: "--policy-preset cannot be combined with --repo and --repo-type"}
+	}
+	if len(opts.DeniedOperations) > 0 {
+		return exitError{code: 64, message: "--deny-operation requires preset policy mode without --repo"}
+	}
+	if opts.ResetDeniedOperations {
+		return exitError{code: 64, message: "--reset-denied-operations requires preset policy mode without --repo"}
+	}
 	if !validRepo(opts.Repo) {
 		return exitError{code: 64, message: "--repo must be owner/name"}
 	}
