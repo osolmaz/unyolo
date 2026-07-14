@@ -51,6 +51,9 @@ func runPolicyRender(stdout, stderr io.Writer, args []string) error {
 	if fs.NArg() != 0 || *output == "" || *profileOutput == "" || *manifestOutput == "" {
 		return exitError{code: 64, message: "policy render requires --output, --profile-out, and --manifest-out"}
 	}
+	if *output == *profileOutput || *output == *manifestOutput || *profileOutput == *manifestOutput {
+		return exitError{code: 64, message: "policy render output paths must be distinct"}
+	}
 	if len(clients) == 0 {
 		clients = []string{"agent"}
 	}

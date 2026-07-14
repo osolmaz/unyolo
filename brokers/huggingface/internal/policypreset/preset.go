@@ -167,6 +167,12 @@ func Check(profileData, manifestData, policyData []byte) DriftReport {
 		report.Details = append(report.Details, "operation catalog changed since this policy was rendered")
 	}
 	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Manifest.Operations)
+	if manifest.OperationCounts != current.Manifest.OperationCounts || len(report.AddedOperations)+len(report.RemovedOperations)+len(report.ChangedOperations) > 0 {
+		if report.Status == DriftCurrent {
+			report.Status = DriftModified
+		}
+		report.Details = append(report.Details, "manifest operation summary does not match the rendered profile and current catalog")
+	}
 	if report.Status == DriftCurrent {
 		report.Details = append(report.Details, "profile, policy, manifest, and operation catalog match")
 	}
@@ -357,6 +363,9 @@ func parseManifest(data []byte) (Manifest, error) {
 	}
 	if manifest.CatalogDigest == "" || manifest.ProfileDigest == "" || manifest.PolicyDigest == "" {
 		return Manifest{}, errors.New("policy manifest is missing digests")
+	}
+	if manifest.OperationCounts.Total != len(manifest.Operations) {
+		return Manifest{}, errors.New("policy manifest operation count is inconsistent")
 	}
 	return manifest, nil
 }

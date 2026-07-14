@@ -16,6 +16,7 @@ component documentation.
 ## Components
 
 - [Hugging Face broker](../brokers/huggingface/README.md)
+- [Hugging Face policy presets](../brokers/huggingface/docs/POLICY_PRESETS.md)
 - [GitHub broker](../brokers/github/README.md)
 - [sudo broker](../brokers/sudo/README.md)
 - [OpenClaw plugin](../plugins/openclaw/README.md)

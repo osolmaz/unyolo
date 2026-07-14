@@ -77,3 +77,13 @@ func TestDoctorPolicyReportsModifiedPolicyAsJSON(t *testing.T) {
 		t.Fatalf("doctor modified result: output=%q error=%v", stdout.String(), err)
 	}
 }
+
+func TestPolicyRenderRejectsDuplicateOutputPaths(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "artifact.json")
+	err := runWithArgs(context.Background(), nil, ioDiscard{}, ioDiscard{}, []string{
+		"policy", "render", "--profile-out", path, "--output", path, "--manifest-out", path + ".manifest",
+	})
+	if err == nil || !strings.Contains(err.Error(), "must be distinct") {
+		t.Fatalf("duplicate output error = %v", err)
+	}
+}

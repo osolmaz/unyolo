@@ -445,8 +445,11 @@ directly. Arbitrary partial operation globs such as `repo.*.read` or
 | `git.ref.delete` | window | Branch or non-tag ref deletion. |
 | `git.tag.update` | window | Tag move or tag deletion. |
 
-The complete operation list, authorization mode, risk, explicit-only flag, and
-implementation disposition are generated in `docs/generated/capabilities.json`.
+The complete operation list, authorization mode, risk, explicit-only flag,
+implementation disposition, and explicit `default_policy_effect` are generated
+in `docs/generated/capabilities.json`. The default effect is provider-owned
+catalog data used by local policy preset rendering; runtime policy evaluation
+still uses only the concrete rules in `scope.json`.
 Registration makes an operation understandable; policy no-match still denies
 it. Execution operations are one-use. Secret-bearing operations use sealed
 payload references, and generated credentials are written to an approved
@@ -989,8 +992,9 @@ Invalid policy examples:
 - rule, target, client, operation, glob, or id count beyond the hard
   limits
 
-Policy is loaded only from local disk. There is no broker endpoint to
-read, update, or reload policy.
+Policy is loaded only from local disk. Operators may edit it or render it with
+the local `hf-broker policy` command. There is no broker endpoint to read,
+update, or reload policy.
 
 Startup diagnostics must include rule ids and field paths, for example:
 
