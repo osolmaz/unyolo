@@ -71,7 +71,7 @@ func TestRESTAdapterRejectsEscapeHatchesAndExecutes(t *testing.T) {
 		t.Fatalf("plan = %+v err=%v", plan, err)
 	}
 	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK {
 		t.Fatalf("execute = %+v err=%v", outcome, err)
 	}
 	assertJSONEqual(t, outcome.Result, `{"id":1,"node_id":"R_1","name":"brokerkit"}`)
@@ -422,7 +422,7 @@ func TestDocumentedAcceptedMutationIsSuccessful(t *testing.T) {
 		t.Fatal(err)
 	}
 	outcome, err := adapter.Execute(t.Context(), plan)
-	if err != nil || !outcome.Proven || !strings.Contains(string(outcome.Result), `"id":7`) {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusAccepted || !strings.Contains(string(outcome.Result), `"id":7`) {
 		t.Fatalf("outcome = %+v, err = %v", outcome, err)
 	}
 }
@@ -552,7 +552,7 @@ func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) 
 		t.Fatal("secret was retained in the immutable plan")
 	}
 	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusNoContent {
 		t.Fatalf("execute = %+v err=%v", outcome, err)
 	}
 	if _, err := store.Consume(reference); err == nil {
@@ -594,7 +594,7 @@ func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
 		t.Fatalf("plan = %+v err = %v", plan, err)
 	}
 	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven || strings.Contains(string(outcome.Result), token) {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK || strings.Contains(string(outcome.Result), token) {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
 	stored, metadata, err := credentials.Get("ci-runner", "github-runner-token")
@@ -649,7 +649,7 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 	}
 	plan.Authorization.Client = "bob"
 	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
 	if streams.Validate(reference) != nil {
@@ -692,7 +692,7 @@ func TestStreamDownloadStoresBoundedResultForOwner(t *testing.T) {
 	plan.Authorization.Client = "bob"
 	plan.ExecutionID = "operation-1"
 	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven || bytes.Contains(outcome.Result, content[:32]) {
+	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK || bytes.Contains(outcome.Result, content[:32]) {
 		t.Fatalf("outcome = %s err = %v", outcome.Result, err)
 	}
 	var result struct {

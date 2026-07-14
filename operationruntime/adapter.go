@@ -18,8 +18,9 @@ import (
 // Outcome is the stable result of execution or reconciliation. Proven must be
 // true before the runtime records a successful operation.
 type Outcome struct {
-	Proven bool
-	Result json.RawMessage
+	Proven         bool
+	Result         json.RawMessage
+	UpstreamStatus int
 }
 
 // PossiblePartialError marks a multi-call operation that may have changed

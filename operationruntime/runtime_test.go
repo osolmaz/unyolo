@@ -37,6 +37,7 @@ type runtimeAdapter struct {
 	reconcileErr      error
 	resolveCount      int
 	cleanupCount      int
+	recordedStatus    int
 	clientErr         error
 	resolveErr        error
 }
@@ -63,7 +64,7 @@ func (a *runtimeAdapter) Execute(context.Context, runtimePlan) (Outcome, error) 
 	if a.executeErr != nil {
 		return Outcome{}, a.executeErr
 	}
-	return Outcome{Proven: true, Result: json.RawMessage(`{"created":true}`)}, nil
+	return Outcome{Proven: true, Result: json.RawMessage(`{"created":true}`), UpstreamStatus: 201}, nil
 }
 func (a *runtimeAdapter) Reconcile(context.Context, runtimePlan) (Outcome, error) {
 	a.reconciled = true
@@ -73,7 +74,7 @@ func (a *runtimeAdapter) Reconcile(context.Context, runtimePlan) (Outcome, error
 	if a.reconcileUnproven {
 		return Outcome{Proven: false}, nil
 	}
-	return Outcome{Proven: true, Result: json.RawMessage(`{"reconciled":true}`)}, nil
+	return Outcome{Proven: true, Result: json.RawMessage(`{"reconciled":true}`), UpstreamStatus: 204}, nil
 }
 func (a *runtimeAdapter) Cleanup(runtimePlan) error {
 	a.cleanupCount++
@@ -95,8 +96,8 @@ func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
 	}
 	runtime.Advance(t.Context(), operation)
 	completed, err := operations.Get("agent", operation.ID)
-	if err != nil || completed.State != agentv1.StateSucceeded || string(completed.Result) != `{"created":true}` {
-		t.Fatalf("completed = %+v, %v", completed, err)
+	if err != nil || completed.State != agentv1.StateSucceeded || string(completed.Result) != `{"created":true}` || adapter.cleanupCount != 1 || adapter.recordedStatus != 201 {
+		t.Fatalf("completed = %+v cleanup=%d status=%d err=%v", completed, adapter.cleanupCount, adapter.recordedStatus, err)
 	}
 }
 
@@ -110,8 +111,8 @@ func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 	}
 	runtime.Advance(t.Context(), operation)
 	completed, err := operations.Get("agent", operation.ID)
-	if err != nil || completed.State != agentv1.StateSucceeded || !adapter.reconciled {
-		t.Fatalf("completed = %+v, reconciled=%v, err=%v", completed, adapter.reconciled, err)
+	if err != nil || completed.State != agentv1.StateSucceeded || !adapter.reconciled || adapter.cleanupCount != 1 || adapter.recordedStatus != 204 {
+		t.Fatalf("completed = %+v, reconciled=%v cleanup=%d status=%d err=%v", completed, adapter.reconciled, adapter.cleanupCount, adapter.recordedStatus, err)
 	}
 }
 
@@ -750,6 +751,7 @@ func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, poli
 		Notifier:          notifier, ApprovalMessage: func(grant grants.Grant, token string) notify.ApprovalMessage {
 			return notify.ApprovalMessage{GrantID: grant.ID, DecisionToken: token, Operation: grant.Operation}
 		}, OperatorConfigured: operatorConfigured,
+		RecordOutcome: func(_ agentv1.Operation, _ runtimePlan, _, _ string, status int) { adapter.recordedStatus = status },
 	})
 	if err != nil {
 		_ = database.Close()

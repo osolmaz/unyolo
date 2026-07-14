@@ -523,9 +523,10 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 
 func TestStreamRequestsUseTransferTimeout(t *testing.T) {
 	t.Parallel()
+	apiURL, _ := url.Parse("https://api.github.test/")
 	manager := &Manager{
-		client: &http.Client{Timeout: time.Second}, streamTimeout: 10 * time.Minute,
-		development: &Credential{metadata: Metadata{Kind: KindDevelopmentToken}, token: []byte("token")},
+		apiURL: apiURL, client: &http.Client{Timeout: time.Second}, streamTimeout: 10 * time.Minute,
+		development: &Credential{metadata: Metadata{Kind: KindDevelopmentToken, APIHost: apiURL.Host}, token: []byte("token")},
 	}
 	client, credential, err := manager.requestClient(t.Context(), manager.development.Metadata(), manager.streamTimeout)
 	if err != nil || credential != manager.development || client.Timeout != 10*time.Minute || manager.client.Timeout != time.Second {
@@ -544,14 +545,14 @@ func TestCredentialClientsAndTransportFailures(t *testing.T) {
 	manager := &Manager{apiURL: apiURL, client: baseClient, app: &appProvider{round: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return responseForTest(http.StatusOK, `{}`), nil
 	})}}
-	if client, credential, err := manager.clientForMetadata(t.Context(), Metadata{Kind: KindAppJWT}); err != nil || client == nil || credential != nil {
+	if client, credential, err := manager.clientForMetadata(t.Context(), Metadata{Kind: KindAppJWT, APIHost: apiURL.Host}); err != nil || client == nil || credential != nil {
 		t.Fatalf("app client = %v, %v, %v", client, credential, err)
 	}
 	for kind, selector := range map[Kind]Metadata{
-		KindInstallation:     {Kind: KindInstallation, InstallationID: 1},
-		KindUser:             {Kind: KindUser, UserID: 1},
-		KindDevelopmentToken: {Kind: KindDevelopmentToken},
-		Kind("unknown"):      {Kind: Kind("unknown")},
+		KindInstallation:     {Kind: KindInstallation, InstallationID: 1, APIHost: apiURL.Host},
+		KindUser:             {Kind: KindUser, UserID: 1, APIHost: apiURL.Host},
+		KindDevelopmentToken: {Kind: KindDevelopmentToken, APIHost: apiURL.Host},
+		Kind("unknown"):      {Kind: Kind("unknown"), APIHost: apiURL.Host},
 	} {
 		if _, _, err := manager.clientForMetadata(t.Context(), selector); err == nil {
 			t.Fatalf("unavailable %s credential client succeeded", kind)
@@ -561,11 +562,14 @@ func TestCredentialClientsAndTransportFailures(t *testing.T) {
 	if client, credential, err := development.clientForMetadata(t.Context(), development.development.Metadata()); err != nil || client == nil || credential == nil {
 		t.Fatalf("development client = %v, %v, %v", client, credential, err)
 	}
+	if _, _, err := manager.clientForMetadata(t.Context(), Metadata{Kind: KindAppJWT, APIHost: "api.other.test"}); err == nil {
+		t.Fatal("credential selector crossed its immutable API host")
+	}
 	request := httptest.NewRequest(http.MethodGet, "https://api.github.test/repos", http.NoBody)
-	if _, err := manager.doAPIRequest(t.Context(), Metadata{Kind: KindAppJWT}, request); err == nil {
+	if _, err := manager.doAPIRequest(t.Context(), Metadata{Kind: KindAppJWT, APIHost: apiURL.Host}, request); err == nil {
 		t.Fatal("transport failure was accepted")
 	}
-	if _, err := manager.doAPI(t.Context(), Metadata{Kind: KindAppJWT}, request.Clone(t.Context())); err == nil {
+	if _, err := manager.doAPI(t.Context(), Metadata{Kind: KindAppJWT, APIHost: apiURL.Host}, request.Clone(t.Context())); err == nil {
 		t.Fatal("API transport failure was accepted")
 	}
 }

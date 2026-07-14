@@ -602,7 +602,7 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 func (r *Runtime[I, P, A]) executeReserved(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P, reserved bool) {
 	execution, executionErr := adapter.Execute(ctx, plan)
 	if executionErr == nil && execution.Proven {
-		r.succeed(operation, plan, execution.Result, reserved, "")
+		r.succeed(operation, plan, execution.Result, reserved, "", execution.UpstreamStatus)
 		return
 	}
 	if r.options.DefinitiveFailure(executionErr) {
@@ -621,7 +621,10 @@ func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation age
 		if len(outcome.Result) == 0 {
 			outcome.Result = execution.Result
 		}
-		r.succeed(operation, plan, outcome.Result, reserved, "")
+		if outcome.UpstreamStatus == 0 {
+			outcome.UpstreamStatus = execution.UpstreamStatus
+		}
+		r.succeed(operation, plan, outcome.Result, reserved, "", outcome.UpstreamStatus)
 		return
 	}
 	if r.settleApproval(operation, reserved, true) {
@@ -629,7 +632,7 @@ func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation age
 	}
 }
 
-func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string) {
+func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string, upstreamStatus int) {
 	result = NormalizedResult(operation.Operation, result)
 	if !r.settleApproval(operation, reserved, false) {
 		return
@@ -638,14 +641,15 @@ func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result j
 		r.fail(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Operation ran but its result could not be stored")
 		return
 	}
+	r.cleanupStored(operation)
 	if r.options.RecordOutcome != nil {
-		r.options.RecordOutcome(operation, plan, "allowed", detail, http.StatusOK)
+		r.options.RecordOutcome(operation, plan, "allowed", detail, normalizedUpstreamStatus(upstreamStatus))
 	}
 }
 
 // Succeed records a proven provider result and settles reserved authority.
 func (r *Runtime[I, P, A]) Succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string) {
-	r.succeed(operation, plan, result, reserved, detail)
+	r.succeed(operation, plan, result, reserved, detail, http.StatusOK)
 }
 
 func (r *Runtime[I, P, A]) settleApproval(operation agentv1.Operation, reserved, retain bool) bool {
@@ -683,12 +687,20 @@ func (r *Runtime[I, P, A]) ReconcileInterrupted(ctx context.Context, operation a
 			r.fail(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Operation ran but its result could not be stored")
 			return
 		}
+		r.cleanup(adapter, plan)
 		if r.options.RecordOutcome != nil {
-			r.options.RecordOutcome(operation, plan, "allowed", "reconciled after restart", http.StatusOK)
+			r.options.RecordOutcome(operation, plan, "allowed", "reconciled after restart", normalizedUpstreamStatus(outcome.UpstreamStatus))
 		}
 		return
 	}
 	r.fail(operation.ID, agentv1.StateFailed, "upstream_result_unknown", "Operation result could not be proven after restart")
+}
+
+func normalizedUpstreamStatus(status int) int {
+	if status >= 100 && status <= 599 {
+		return status
+	}
+	return http.StatusOK
 }
 
 func (r *Runtime[I, P, A]) settleRecoveredApproval(operation agentv1.Operation) bool {

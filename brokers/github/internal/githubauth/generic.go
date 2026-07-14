@@ -449,12 +449,12 @@ func (m *Manager) streamClient() *http.Client {
 }
 
 func (m *Manager) clientForMetadata(ctx context.Context, selector Metadata) (*http.Client, *Credential, error) {
+	if !m.matchesAPIHost(selector.APIHost) {
+		return nil, nil, errors.New("GitHub credential API host does not match the immutable plan")
+	}
 	switch selector.Kind {
 	case KindAppJWT:
-		if m.app == nil || m.app.round == nil {
-			return nil, nil, errors.New("GitHub App credential is unavailable")
-		}
-		return cloneHTTPClient(m.client, versionTransport{base: m.app.round}), nil, nil
+		return m.appClient()
 	case KindInstallation:
 		credential, err := m.installationCredential(ctx, selector.InstallationID, selector.RepositoryIDs, selector.Permissions, selector.AllowEmptyPermissions)
 		return m.client, credential, err
@@ -462,13 +462,28 @@ func (m *Manager) clientForMetadata(ctx context.Context, selector Metadata) (*ht
 		credential, err := m.UserCredential(ctx, selector.UserID)
 		return m.client, credential, err
 	case KindDevelopmentToken:
-		if m.development == nil {
-			return nil, nil, errors.New("GitHub development credential is unavailable")
-		}
-		return m.client, m.development, nil
+		return m.developmentClient()
 	default:
 		return nil, nil, errors.New("GitHub credential selector is invalid")
 	}
+}
+
+func (m *Manager) matchesAPIHost(host string) bool {
+	return m != nil && m.apiURL != nil && strings.EqualFold(strings.TrimSpace(host), m.apiURL.Host)
+}
+
+func (m *Manager) appClient() (*http.Client, *Credential, error) {
+	if m.app == nil || m.app.round == nil {
+		return nil, nil, errors.New("GitHub App credential is unavailable")
+	}
+	return cloneHTTPClient(m.client, versionTransport{base: m.app.round}), nil, nil
+}
+
+func (m *Manager) developmentClient() (*http.Client, *Credential, error) {
+	if m.development == nil {
+		return nil, nil, errors.New("GitHub development credential is unavailable")
+	}
+	return m.client, m.development, nil
 }
 
 func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (ExecutionResult, error) {

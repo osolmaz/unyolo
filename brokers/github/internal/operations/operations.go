@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -400,7 +401,7 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 		if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
 			return Outcome{}, err
 		}
-		return Outcome{Proven: true, Result: result.Body}, nil
+		return Outcome{Proven: true, Result: result.Body, UpstreamStatus: result.StatusCode}, nil
 	default:
 		return Outcome{}, errors.New("GitHub adapter is incomplete")
 	}
@@ -433,18 +434,18 @@ func (a generatedAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, er
 	if err != nil {
 		return Outcome{}, errors.New("GitHub reconciliation arguments are invalid")
 	}
-	_, err = a.manager.ExecuteREST(ctx, plan.Credential, *a.reconciliation, target, arguments)
+	execution, err := a.manager.ExecuteREST(ctx, plan.Credential, *a.reconciliation, target, arguments)
 	if githubauth.IsNotFound(err) {
 		result := json.RawMessage(`{}`)
 		if validationErr := schemaregistry.ValidateResult(a.descriptor.Name, result); validationErr != nil {
 			return Outcome{}, validationErr
 		}
-		return Outcome{Proven: true, Result: result}, nil
+		return Outcome{Proven: true, Result: result, UpstreamStatus: http.StatusNotFound}, nil
 	}
 	if err != nil {
 		return Outcome{}, err
 	}
-	return Outcome{Proven: false}, nil
+	return Outcome{Proven: false, UpstreamStatus: execution.StatusCode}, nil
 }
 
 func (a generatedAdapter) Cleanup(plan Plan) error {
@@ -519,7 +520,7 @@ func (a generatedAdapter) executeStreamUpload(ctx context.Context, plan Plan, ta
 	if err := schemaregistry.ValidateResult(a.descriptor.Name, result.Body); err != nil {
 		return Outcome{}, err
 	}
-	return Outcome{Proven: true, Result: result.Body}, nil
+	return Outcome{Proven: true, Result: result.Body, UpstreamStatus: result.StatusCode}, nil
 }
 
 func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
@@ -541,7 +542,7 @@ func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, 
 		_ = a.options.StreamStore.Delete(reference)
 		return Outcome{}, err
 	}
-	return Outcome{Proven: true, Result: encoded}, nil
+	return Outcome{Proven: true, Result: encoded, UpstreamStatus: response.StatusCode}, nil
 }
 
 func downloadMediaType(value string) string {
@@ -629,7 +630,7 @@ func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan
 	if err := schemaregistry.ValidateResult(a.descriptor.Name, encoded); err != nil {
 		return Outcome{}, err
 	}
-	return Outcome{Proven: true, Result: encoded}, nil
+	return Outcome{Proven: true, Result: encoded, UpstreamStatus: result.StatusCode}, nil
 }
 
 func mergeObjects(destination, source map[string]any) error {
