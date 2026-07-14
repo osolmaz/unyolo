@@ -94,6 +94,44 @@ func TestCapturedResultsAreTranscriptSafe(t *testing.T) {
 	}
 }
 
+func TestMCPCompatibilityManifestMatchesCatalog(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/generated/mcp-compatibility.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		APIVersion                string   `json:"api_version"`
+		Provider                  string   `json:"provider"`
+		HostProfiles              []string `json:"host_profiles"`
+		AgentFacingOperations     int      `json:"agent_facing_operations"`
+		OperationTools            int      `json:"operation_tools"`
+		UtilityTools              int      `json:"utility_tools"`
+		ProjectedOperations       []string `json:"projected_operations"`
+		ProjectedWindowOperations int      `json:"projected_window_operations"`
+		UnresolvedCollisions      int      `json:"unresolved_collisions"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	projected, windows := []string{}, 0
+	for _, descriptor := range agentFacingDescriptors() {
+		projection := mcpprojection.ForOperation(descriptor)
+		if descriptor.AuthorizationMode == opcatalog.ModeWindow {
+			windows++
+		}
+		if !projection.Arguments.Empty() {
+			projected = append(projected, descriptor.Name)
+		}
+	}
+	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "huggingface" ||
+		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1-beta.5"}) ||
+		manifest.AgentFacingOperations != len(agentFacingDescriptors()) || manifest.OperationTools != len(agentFacingDescriptors()) ||
+		manifest.UtilityTools != 3 || !slices.Equal(manifest.ProjectedOperations, projected) ||
+		manifest.ProjectedWindowOperations != windows || manifest.UnresolvedCollisions != 0 {
+		t.Fatalf("compatibility manifest drifted: %+v", manifest)
+	}
+}
+
 type mcpTestRegexp regexp2.Regexp
 
 func (regexp *mcpTestRegexp) MatchString(value string) bool {

@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-var exactSensitiveFields = []string{"encrypted_value", "password", "private_key", "secret", "token"}
+var exactSensitiveFields = []string{
+	"access_token", "app_secret", "auth_token", "authorization", "client_secret", "credential", "encrypted_value",
+	"hook_token", "id_token", "invitation_token", "password", "private_key", "refresh_token", "secret", "token",
+}
 var sensitiveSuffixes = []string{"_password", "_private_key", "_secret", "_token"}
 
 // SensitiveTopLevelFields returns sorted top-level fields that contain a
@@ -69,9 +72,26 @@ func IsSensitiveField(name string, schema map[string]any) bool {
 	if schema["type"] == "boolean" {
 		return false
 	}
-	normalized := strings.ToLower(name)
+	normalized := normalizeFieldName(name)
 	if slices.Contains(exactSensitiveFields, normalized) {
 		return true
 	}
 	return slices.ContainsFunc(sensitiveSuffixes, func(suffix string) bool { return strings.HasSuffix(normalized, suffix) })
+}
+
+func normalizeFieldName(name string) string {
+	var result strings.Builder
+	for index, character := range name {
+		if character == '-' {
+			character = '_'
+		}
+		if character >= 'A' && character <= 'Z' {
+			if index > 0 && result.Len() > 0 {
+				result.WriteByte('_')
+			}
+			character += 'a' - 'A'
+		}
+		result.WriteRune(character)
+	}
+	return result.String()
 }

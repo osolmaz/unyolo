@@ -1,6 +1,9 @@
 package schemaregistry_test
 
 import (
+	"encoding/json"
+	"os"
+	"slices"
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
@@ -9,15 +12,12 @@ import (
 	"github.com/osolmaz/brokerkit/capability"
 )
 
-func TestEveryAgentFacingGitHubSchemaIsTranscriptSafe(t *testing.T) {
+func TestEveryGeneratedGitHubSchemaIsTranscriptSafe(t *testing.T) {
 	descriptors := opcatalog.MustAll()
 	if len(descriptors) != opcatalog.ExpectedCount {
 		t.Fatalf("catalog count = %d", len(descriptors))
 	}
 	for _, descriptor := range descriptors {
-		if !descriptor.AgentFacing {
-			continue
-		}
 		projection := mcpprojection.ForOperation(descriptor.Descriptor)
 		target, arguments, _ := schemaregistry.InputSchemas(descriptor.Descriptor)
 		assertProjectedSchemaSafe(t, descriptor.Name+" target", target, projection.Target)
@@ -30,6 +30,44 @@ func TestEveryAgentFacingGitHubSchemaIsTranscriptSafe(t *testing.T) {
 		if descriptor.CredentialOutputKind == nil {
 			assertProjectedSchemaSafe(t, descriptor.Name+" result", operation.Result, projection.Result)
 		}
+	}
+}
+
+func TestCompatibilityManifestMatchesCatalog(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/generated/mcp-compatibility.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		APIVersion            string   `json:"api_version"`
+		Provider              string   `json:"provider"`
+		HostProfiles          []string `json:"host_profiles"`
+		AgentFacingOperations int      `json:"agent_facing_operations"`
+		AuditedOperations     int      `json:"audited_operations"`
+		OperationTools        int      `json:"operation_tools"`
+		UtilityTools          int      `json:"utility_tools"`
+		ProjectedOperations   []string `json:"projected_operations"`
+		UnresolvedCollisions  int      `json:"unresolved_collisions"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	agentFacing, projected := 0, []string{}
+	for _, descriptor := range opcatalog.MustAll() {
+		if descriptor.AgentFacing {
+			agentFacing++
+		}
+		projection := mcpprojection.ForOperation(descriptor.Descriptor)
+		if !projection.Target.Empty() || !projection.Arguments.Empty() || !projection.Attrs.Empty() || !projection.Result.Empty() {
+			projected = append(projected, descriptor.Name)
+		}
+	}
+	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "github" ||
+		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1-beta.5"}) ||
+		manifest.AgentFacingOperations != agentFacing || manifest.AuditedOperations != opcatalog.ExpectedCount ||
+		manifest.OperationTools != agentFacing || manifest.UtilityTools != 3 ||
+		!slices.Equal(manifest.ProjectedOperations, projected) || manifest.UnresolvedCollisions != 0 {
+		t.Fatalf("compatibility manifest drifted: manifest=%+v projected=%v agent_facing=%d", manifest, projected, agentFacing)
 	}
 }
 

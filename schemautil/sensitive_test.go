@@ -22,6 +22,11 @@ func TestSensitiveFields(t *testing.T) {
 	if schemautil.IsSensitiveField("token", map[string]any{"type": "boolean"}) {
 		t.Fatal("boolean token field classified as secret")
 	}
+	for _, name := range []string{"accessToken", "refresh-token", "vcsPassword", "invitation_token"} {
+		if !schemautil.IsSensitiveField(name, map[string]any{"type": "string"}) {
+			t.Fatalf("%q was not classified as secret", name)
+		}
+	}
 	if schemautil.ContainsSensitiveField(map[string]any{"oneOf": []any{map[string]any{"properties": map[string]any{
 		"private_key": map[string]any{"type": "string"},
 	}}}}) != true {
