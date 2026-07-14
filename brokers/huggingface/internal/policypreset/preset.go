@@ -129,17 +129,7 @@ func ParseProfile(data []byte) (Profile, error) {
 }
 
 func decodeProfile(data []byte) (Profile, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	var profile Profile
-	if err := decoder.Decode(&profile); err != nil {
-		return Profile{}, fmt.Errorf("parse policy profile: %w", err)
-	}
-	var trailing struct{}
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return Profile{}, errors.New("parse policy profile: trailing content")
-	}
-	return profile, nil
+	return decodeStrictArtifact[Profile](data, "policy profile")
 }
 
 // Check reports drift without changing any operator-owned files.
@@ -208,26 +198,19 @@ func checkArtifactDigests(report *DriftReport, profileData, policyData []byte, m
 
 func checkCatalogDrift(report *DriftReport, manifest, current Manifest) {
 	if manifest.CatalogDigest != current.CatalogDigest {
-		markCatalogStale(report)
+		markDrift(report, DriftStale, "operation catalog changed since this policy was rendered")
 	}
 	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Operations)
 	if manifest.OperationCounts != current.OperationCounts || reportHasOperationDrift(*report) {
-		markManifestModified(report)
+		markDrift(report, DriftModified, "manifest operation summary does not match the rendered profile and current catalog")
 	}
 }
 
-func markCatalogStale(report *DriftReport) {
+func markDrift(report *DriftReport, status DriftStatus, detail string) {
 	if report.Status == DriftCurrent {
-		report.Status = DriftStale
+		report.Status = status
 	}
-	report.Details = append(report.Details, "operation catalog changed since this policy was rendered")
-}
-
-func markManifestModified(report *DriftReport) {
-	if report.Status == DriftCurrent {
-		report.Status = DriftModified
-	}
-	report.Details = append(report.Details, "manifest operation summary does not match the rendered profile and current catalog")
+	report.Details = append(report.Details, detail)
 }
 
 func reportHasOperationDrift(report DriftReport) bool {
@@ -276,7 +259,7 @@ func renderCatalog(profile Profile, descriptors []opcatalog.Descriptor) (policyD
 	manifest := Manifest{Version: ManifestVersion, Preset: profile.Preset, Operations: make([]OperationFingerprint, 0, len(descriptors))}
 	for _, descriptor := range descriptors {
 		effect := descriptor.DefaultPolicyEffect
-		if denied[descriptor.Name] {
+		if _, isDenied := denied[descriptor.Name]; isDenied {
 			effect = opcatalog.DefaultEffectDeny
 		}
 		document.Rules = append(document.Rules, renderRule(profile.Clients, descriptor, effect))
@@ -287,10 +270,10 @@ func renderCatalog(profile Profile, descriptors []opcatalog.Descriptor) (policyD
 	return document, manifest
 }
 
-func deniedOperationSet(operations []string) map[string]bool {
-	denied := make(map[string]bool, len(operations))
+func deniedOperationSet(operations []string) map[string]struct{} {
+	denied := make(map[string]struct{}, len(operations))
 	for _, operation := range operations {
-		denied[operation] = true
+		denied[operation] = struct{}{}
 	}
 	return denied
 }
@@ -447,17 +430,21 @@ func parseManifest(data []byte) (Manifest, error) {
 }
 
 func decodeManifest(data []byte) (Manifest, error) {
+	return decodeStrictArtifact[Manifest](data, "policy manifest")
+}
+
+func decodeStrictArtifact[T any](data []byte, name string) (T, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	var manifest Manifest
-	if err := decoder.Decode(&manifest); err != nil {
-		return Manifest{}, fmt.Errorf("parse policy manifest: %w", err)
+	var value T
+	if err := decoder.Decode(&value); err != nil {
+		return value, fmt.Errorf("parse %s: %w", name, err)
 	}
 	var trailing struct{}
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return Manifest{}, errors.New("parse policy manifest: trailing content")
+		return value, fmt.Errorf("parse %s: trailing content", name)
 	}
-	return manifest, nil
+	return value, nil
 }
 
 func validateManifest(manifest Manifest) error {

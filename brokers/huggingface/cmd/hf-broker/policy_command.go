@@ -242,8 +242,7 @@ func writeStagedPolicyArtifact(file *os.File, output policyArtifactOutput) error
 	steps := []func() error{
 		func() error { return stagedPolicyChmod(file, output.path) },
 		func() error { return stagedPolicyWrite(file, output) },
-		func() error { return stagedPolicySync(file, output.path) },
-		func() error { return stagedPolicyClose(file, output.path) },
+		func() error { return finalizeStagedPolicyFile(file, output.path) },
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -268,14 +267,10 @@ func stagedPolicyWrite(file *os.File, output policyArtifactOutput) error {
 	return nil
 }
 
-func stagedPolicySync(file *os.File, path string) error {
+func finalizeStagedPolicyFile(file *os.File, path string) error {
 	if err := file.Sync(); err != nil {
 		return fmt.Errorf("sync staged policy output %s: %w", path, err)
 	}
-	return nil
-}
-
-func stagedPolicyClose(file *os.File, path string) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close staged policy output %s: %w", path, err)
 	}
