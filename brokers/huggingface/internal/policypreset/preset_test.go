@@ -1,0 +1,101 @@
+package policypreset
+
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+)
+
+func TestRenderRequestAllAgentOperations(t *testing.T) {
+	artifacts, err := Render(NewProfile([]string{"agent"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifacts.Manifest.OperationCounts != (OperationCounts{Total: 258, Allow: 93, Request: 160, Deny: 5}) {
+		t.Fatalf("operation counts = %+v", artifacts.Manifest.OperationCounts)
+	}
+	if _, err := policy.Parse(artifacts.PolicyJSON); err != nil {
+		t.Fatalf("rendered policy is invalid: %v", err)
+	}
+	assertRuleEffect(t, artifacts.PolicyJSON, "repo.contents.read", "allow")
+	assertRuleEffect(t, artifacts.PolicyJSON, "repo.create", "request")
+	assertRuleEffect(t, artifacts.PolicyJSON, "repo.delete", "request")
+	assertRuleEffect(t, artifacts.PolicyJSON, "service_account.token.create", "deny")
+	assertRuleEffect(t, artifacts.PolicyJSON, "sandbox.port.proxy", "deny")
+}
+
+func TestRenderIsDeterministicAndNormalizesInputs(t *testing.T) {
+	first, err := Render(NewProfile([]string{"worker", "agent"}, []string{"repo.delete", "repo.create"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Render(NewProfile([]string{"agent", "worker"}, []string{"repo.create", "repo.delete"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first.ProfileJSON, second.ProfileJSON) || !bytes.Equal(first.PolicyJSON, second.PolicyJSON) || !bytes.Equal(first.ManifestJSON, second.ManifestJSON) {
+		t.Fatal("equivalent profiles produced different artifacts")
+	}
+	if first.Manifest.OperationCounts.Request != 158 || first.Manifest.OperationCounts.Deny != 7 {
+		t.Fatalf("override counts = %+v", first.Manifest.OperationCounts)
+	}
+	assertRuleEffect(t, first.PolicyJSON, "repo.create", "deny")
+}
+
+func TestProfileRejectsInvalidAndAmbiguousInputs(t *testing.T) {
+	tests := []Profile{
+		{},
+		{Version: 2, Preset: RequestAllAgentOperations, Clients: []string{"agent"}},
+		{Version: 1, Preset: "unknown", Clients: []string{"agent"}},
+		NewProfile(nil, nil),
+		NewProfile([]string{"agent", "agent"}, nil),
+		NewProfile([]string{" agent"}, nil),
+		NewProfile([]string{"agent"}, []string{"repo.unknown"}),
+		NewProfile([]string{"agent"}, []string{"repo.delete", "repo.delete"}),
+	}
+	for _, profile := range tests {
+		if _, err := Render(profile); err == nil {
+			t.Fatalf("Render(%+v) accepted invalid profile", profile)
+		}
+	}
+	if _, err := ParseProfile([]byte(`{"version":1,"preset":"request-all-agent-operations","clients":["agent"],"denied_operations":[],"extra":true}`)); err == nil {
+		t.Fatal("ParseProfile accepted unknown field")
+	}
+}
+
+func TestCatalogNeverDefaultsDangerousOperationsToAllow(t *testing.T) {
+	for _, descriptor := range opcatalog.MustAll() {
+		if descriptor.DefaultPolicyEffect != opcatalog.DefaultEffectAllow {
+			continue
+		}
+		if descriptor.Risk == opcatalog.RiskHigh || descriptor.Risk == opcatalog.RiskCritical || descriptor.AuthorizationMode == opcatalog.ModeExecution || descriptor.ExplicitOnly || descriptor.Sealed || descriptor.Internal || descriptor.CredentialOutputKind != nil || !descriptor.AgentFacing {
+			t.Fatalf("dangerous operation defaults to allow: %+v", descriptor)
+		}
+	}
+}
+
+func assertRuleEffect(t *testing.T, data []byte, operation, effect string) {
+	t.Helper()
+	var document struct {
+		Rules []struct {
+			Effect     string   `json:"effect"`
+			Operations []string `json:"operations"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range document.Rules {
+		if len(rule.Operations) == 1 && rule.Operations[0] == operation {
+			if rule.Effect != effect {
+				t.Fatalf("%s effect = %q, want %q", operation, rule.Effect, effect)
+			}
+			return
+		}
+	}
+	t.Fatalf("operation %s missing from policy containing %s", operation, strings.TrimSpace(string(data)))
+}

@@ -20,6 +20,9 @@ func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
 	if !ok || deleteRepo.AuthorizationMode != ModeExecution || !deleteRepo.ExplicitOnly || deleteRepo.MaxUses != 1 || deleteRepo.MCPTool == nil {
 		t.Fatalf("repo.delete = %+v, %v", deleteRepo, ok)
 	}
+	if deleteRepo.DefaultPolicyEffect != DefaultEffectRequest {
+		t.Fatalf("repo.delete default effect = %q", deleteRepo.DefaultPolicyEffect)
+	}
 	secret, ok := ByName("space.secret.set")
 	if !ok || !secret.Sealed || secret.Risk != RiskCritical {
 		t.Fatalf("space.secret.set = %+v, %v", secret, ok)
@@ -27,6 +30,13 @@ func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
 	internal, ok := ByName("sandbox.port.proxy")
 	if !ok || !internal.Internal || internal.AgentFacing || internal.MCPTool != nil {
 		t.Fatalf("sandbox.port.proxy = %+v, %v", internal, ok)
+	}
+	if internal.DefaultPolicyEffect != DefaultEffectDeny {
+		t.Fatalf("sandbox.port.proxy default effect = %q", internal.DefaultPolicyEffect)
+	}
+	read, ok := ByName("repo.contents.read")
+	if !ok || read.DefaultPolicyEffect != DefaultEffectAllow {
+		t.Fatalf("repo.contents.read = %+v, %v", read, ok)
 	}
 }
 
@@ -38,13 +48,22 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 		"invalid mode":     func(items []Descriptor) { items[0].AuthorizationMode = "other" },
 		"invalid status":   func(items []Descriptor) { items[0].Implementation = "other" },
 		"missing risk":     func(items []Descriptor) { items[0].Risk = "" },
+		"missing effect":   func(items []Descriptor) { items[0].DefaultPolicyEffect = "" },
 		"missing target":   func(items []Descriptor) { items[0].TargetKind = "" },
 		"invalid ttl":      func(items []Descriptor) { items[0].RequestTTLSeconds = 0 },
 		"family glob":      func(items []Descriptor) { item := find(items, "repo.delete"); item.FamilyGlobAllowed = true },
 		"execution uses":   func(items []Descriptor) { item := find(items, "repo.create"); item.MaxUses = 2 },
 		"sealed window":    func(items []Descriptor) { item := find(items, "space.secret.set"); item.AuthorizationMode = ModeWindow },
 		"internal exposed": func(items []Descriptor) { item := find(items, "sandbox.port.proxy"); item.AgentFacing = true },
-		"missing MCP":      func(items []Descriptor) { item := find(items, "repo.create"); item.MCPTool = nil },
+		"internal allowed": func(items []Descriptor) {
+			item := find(items, "sandbox.port.proxy")
+			item.DefaultPolicyEffect = DefaultEffectAllow
+		},
+		"critical allowed": func(items []Descriptor) {
+			item := find(items, "repo.delete")
+			item.DefaultPolicyEffect = DefaultEffectAllow
+		},
+		"missing MCP": func(items []Descriptor) { item := find(items, "repo.create"); item.MCPTool = nil },
 		"duplicate CLI": func(items []Descriptor) {
 			item := find(items, "repo.delete")
 			other := find(items, "repo.create")
