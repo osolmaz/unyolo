@@ -138,7 +138,6 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 
 func (m *Manager) ExecuteREST(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (ExecutionResult, error) {
 	for attempt := 0; ; attempt++ {
-		//nolint:bodyclose // decodeRESTResponse consumes the final body; accepted reads are closed before retry.
 		response, err := m.executeREST(ctx, selector, binding, target, arguments)
 		if err != nil {
 			return ExecutionResult{}, err

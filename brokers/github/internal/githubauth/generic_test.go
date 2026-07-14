@@ -453,7 +453,7 @@ func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 		{[]any{map[string]any{"secret": "hidden"}}, `[{}]`},
 		{[]any{[]any{float64(1), float64(2)}}, `[[1,2]]`},
 	} {
-		projected, ok = projectJSON(test.value, []string{"$none"})
+		_, ok = projectJSON(test.value, []string{"$none"})
 		if ok {
 			t.Fatal("$none unexpectedly retained a projected field")
 		}

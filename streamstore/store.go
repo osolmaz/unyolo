@@ -66,21 +66,33 @@ func (s *Store) Put(owner, purpose, requestKey, mediaType string, source io.Read
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.putLocked(owner, purpose, requestKey, mediaType, source, limit, expires)
+}
+
+func (s *Store) putLocked(owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) (Reference, error) {
 	if _, err := s.sweepExpiredLocked(s.now()); err != nil {
 		return Reference{}, err
 	}
 	if existing, found, err := s.findRequestLocked(owner, purpose, requestKey); err != nil {
 		return Reference{}, err
 	} else if found {
-		size, digest, digestErr := digestStream(source, limit)
-		if digestErr != nil || existing.Digest != digest || existing.Size != size || existing.MediaType != mediaType {
-			return Reference{}, errors.New("stream idempotency conflict")
-		}
-		return existing, nil
+		return replayStream(existing, mediaType, source, limit)
 	}
 	if err := s.checkQuotaLocked(limit); err != nil {
 		return Reference{}, err
 	}
+	return s.createLocked(owner, purpose, requestKey, mediaType, source, limit, expires)
+}
+
+func replayStream(existing Reference, mediaType string, source io.Reader, limit int64) (Reference, error) {
+	size, digest, err := digestStream(source, limit)
+	if err != nil || existing.Digest != digest || existing.Size != size || existing.MediaType != mediaType {
+		return Reference{}, errors.New("stream idempotency conflict")
+	}
+	return existing, nil
+}
+
+func (s *Store) createLocked(owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) (Reference, error) {
 	id, err := newID()
 	if err != nil {
 		return Reference{}, err
