@@ -65,6 +65,36 @@ type SubmitRequest struct {
 	Reason         string          `json:"reason"`
 }
 
+// ListOptions selects one bounded page of operations owned by a client.
+// Cursor values are opaque to callers and are validated by the store.
+type ListOptions struct {
+	IdempotencyKey string
+	State          State
+	Limit          int
+	Cursor         string
+}
+
+type OperationSummary struct {
+	APIVersion     string       `json:"api_version"`
+	ID             string       `json:"id"`
+	Broker         string       `json:"broker"`
+	ClientID       string       `json:"client_id"`
+	IdempotencyKey string       `json:"idempotency_key"`
+	Operation      string       `json:"operation"`
+	State          State        `json:"state"`
+	Revision       int64        `json:"revision"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	TerminalAt     *time.Time   `json:"terminal_at,omitempty"`
+	Presentation   Presentation `json:"presentation"`
+}
+
+type OperationPage struct {
+	APIVersion string             `json:"api_version"`
+	Operations []OperationSummary `json:"operations"`
+	NextCursor *string            `json:"next_cursor"`
+}
+
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`

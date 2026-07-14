@@ -76,6 +76,27 @@ func (c *Client) Get(ctx context.Context, id string) (agentv1.Operation, error) 
 	return c.operationByID(ctx, id, c.api.GetAgentOperation)
 }
 
+// List returns one authenticated newest-first operation summary page.
+func (c *Client) List(ctx context.Context, options agentv1.ListOptions) (agentv1.OperationPage, error) {
+	params := &agentwire.ListAgentOperationsParams{}
+	if options.IdempotencyKey != "" {
+		params.IdempotencyKey = &options.IdempotencyKey
+	}
+	if options.State != "" {
+		state := agentwire.State(options.State)
+		params.State = &state
+	}
+	if options.Limit != 0 {
+		params.Limit = &options.Limit
+	}
+	if options.Cursor != "" {
+		params.Cursor = &options.Cursor
+	}
+	//nolint:bodyclose // decodePageResponse owns and closes generated responses.
+	response, err := c.api.ListAgentOperations(ctx, params)
+	return decodePageResponse(response, err)
+}
+
 // Cancel cancels requester-owned work that has not started executing.
 func (c *Client) Cancel(ctx context.Context, id string) (agentv1.Operation, error) {
 	return c.operationByID(ctx, id, c.api.CancelAgentOperation)
@@ -120,6 +141,32 @@ func decodeHTTPResponse(response *http.Response, err error) (agentv1.Operation, 
 		return agentv1.Operation{}, err
 	}
 	return decodeResponse(response.StatusCode, data)
+}
+
+func decodePageResponse(response *http.Response, err error) (agentv1.OperationPage, error) {
+	if err != nil {
+		return agentv1.OperationPage{}, err
+	}
+	if response == nil {
+		return agentv1.OperationPage{}, errors.New("agent source returned no response")
+	}
+	defer func() { _ = response.Body.Close() }()
+	data, err := httpx.ReadLimited(response.Body, maxResponseBytes)
+	if err != nil {
+		return agentv1.OperationPage{}, err
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return agentv1.OperationPage{}, decodeError(response.StatusCode, data)
+	}
+	var wire agentwire.OperationPage
+	if strictjson.Decode(data, &wire, false) != nil {
+		return agentv1.OperationPage{}, errors.New("agent source returned an invalid operation page")
+	}
+	page := agentv1wire.OperationPageFromWire(wire)
+	if page.APIVersion != agentv1.APIVersion || len(page.Operations) > 50 {
+		return agentv1.OperationPage{}, errors.New("agent source returned an invalid operation page")
+	}
+	return page, nil
 }
 
 func decodeResponse(status int, data []byte) (agentv1.Operation, error) {

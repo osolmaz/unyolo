@@ -88,6 +88,45 @@ func OperationFromWire(input agentwire.Operation) (agentv1.Operation, error) {
 	return result, nil
 }
 
+func OperationPageToWire(input agentv1.OperationPage) agentwire.OperationPage {
+	operations := make([]agentwire.OperationSummary, 0, len(input.Operations))
+	for _, operation := range input.Operations {
+		operations = append(operations, operationSummaryToWire(operation))
+	}
+	return agentwire.OperationPage{
+		ApiVersion: agentwire.OperationPageApiVersionBrokerkitIoagentv1,
+		Operations: operations, NextCursor: input.NextCursor,
+	}
+}
+
+func OperationPageFromWire(input agentwire.OperationPage) agentv1.OperationPage {
+	operations := make([]agentv1.OperationSummary, 0, len(input.Operations))
+	for _, operation := range input.Operations {
+		operations = append(operations, operationSummaryFromWire(operation))
+	}
+	return agentv1.OperationPage{APIVersion: string(input.ApiVersion), Operations: operations, NextCursor: input.NextCursor}
+}
+
+func operationSummaryToWire(input agentv1.OperationSummary) agentwire.OperationSummary {
+	return agentwire.OperationSummary{
+		ApiVersion: agentwire.OperationSummaryApiVersionBrokerkitIoagentv1,
+		Id:         input.ID, Broker: input.Broker, ClientId: input.ClientID, IdempotencyKey: input.IdempotencyKey,
+		Operation: input.Operation, State: agentwire.State(input.State), Revision: int(input.Revision),
+		CreatedAt: input.CreatedAt, UpdatedAt: input.UpdatedAt, TerminalAt: input.TerminalAt,
+		Presentation: agentwire.Presentation{Title: input.Presentation.Title, Summary: optional.NonZero(input.Presentation.Summary)},
+	}
+}
+
+func operationSummaryFromWire(input agentwire.OperationSummary) agentv1.OperationSummary {
+	return agentv1.OperationSummary{
+		APIVersion: string(input.ApiVersion), ID: input.Id, Broker: input.Broker, ClientID: input.ClientId,
+		IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, State: agentv1.State(input.State),
+		Revision: int64(input.Revision), CreatedAt: input.CreatedAt, UpdatedAt: input.UpdatedAt,
+		TerminalAt:   input.TerminalAt,
+		Presentation: agentv1.Presentation{Title: input.Presentation.Title, Summary: optional.Value(input.Presentation.Summary)},
+	}
+}
+
 func decodeObject(raw []byte) (map[string]interface{}, error) {
 	value := map[string]interface{}{}
 	if err := strictjson.Decode(raw, &value, false); err != nil {

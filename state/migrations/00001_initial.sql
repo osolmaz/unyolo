@@ -75,6 +75,8 @@ CREATE TABLE operations (
 ) STRICT;
 
 CREATE INDEX operations_unfinished_idx ON operations(state, updated_at, id);
+CREATE INDEX operations_client_created_idx ON operations(client_id, created_at DESC, id DESC);
+CREATE INDEX operations_client_state_created_idx ON operations(client_id, state, created_at DESC, id DESC);
 
 CREATE TABLE lifecycle_events (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,

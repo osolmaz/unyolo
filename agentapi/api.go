@@ -23,6 +23,7 @@ const maxSubmitBytes = 2 * 1024 * 1024
 // Store is the durable operation lifecycle required by the HTTP boundary.
 type Store interface {
 	Get(clientID, id string) (agentv1.Operation, error)
+	List(clientID string, options agentv1.ListOptions) (agentv1.OperationPage, error)
 	Wait(context.Context, string, string, int64) (agentv1.Operation, error)
 	Cancel(clientID, id string) (agentv1.Operation, error)
 }
@@ -107,6 +108,22 @@ func (h *Handler) SubmitAgentOperation(c echo.Context) error {
 		return writeSubmitError(c, err)
 	}
 	return writeOperation(c, operation, created)
+}
+
+func (h *Handler) ListAgentOperations(c echo.Context, params agentwire.ListAgentOperationsParams) error {
+	client, ok := h.authenticateRequest(c)
+	if !ok {
+		return nil
+	}
+	options, err := listOptions(params)
+	if err != nil {
+		return writeError(c, err)
+	}
+	page, listErr := h.store.List(client, options)
+	if listErr != nil {
+		return writeStoreError(c, listErr, "list")
+	}
+	return c.JSON(http.StatusOK, agentv1wire.OperationPageToWire(page))
 }
 
 func (h *Handler) GetAgentOperation(c echo.Context, id agentwire.OperationID) error {
@@ -207,6 +224,41 @@ func waitOptions(params agentwire.WaitForAgentOperationParams) (int64, time.Dura
 		return 0, 0, &Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: "Invalid operation wait query"}
 	}
 	return int64(after), time.Duration(seconds) * time.Second, nil
+}
+
+func listOptions(params agentwire.ListAgentOperationsParams) (agentv1.ListOptions, *Error) {
+	options := agentv1.ListOptions{Limit: 20}
+	if params.IdempotencyKey != nil {
+		options.IdempotencyKey = strings.TrimSpace(*params.IdempotencyKey)
+	}
+	if params.State != nil {
+		options.State = agentv1.State(*params.State)
+	}
+	if params.Limit != nil {
+		options.Limit = *params.Limit
+	}
+	if params.Cursor != nil {
+		options.Cursor = strings.TrimSpace(*params.Cursor)
+	}
+	if (params.IdempotencyKey != nil && options.IdempotencyKey == "") || len(options.IdempotencyKey) > 128 ||
+		(params.Cursor != nil && options.Cursor == "") || len(options.Cursor) > 128 || options.Limit < 1 || options.Limit > 50 ||
+		!validStateFilter(options.State) {
+		return agentv1.ListOptions{}, &Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: "Invalid operation list query"}
+	}
+	return options, nil
+}
+
+func validStateFilter(state agentv1.State) bool {
+	if state == "" {
+		return true
+	}
+	switch state {
+	case agentv1.StatePending, agentv1.StateApproved, agentv1.StateExecuting, agentv1.StateSucceeded,
+		agentv1.StateFailed, agentv1.StateDenied, agentv1.StateExpired, agentv1.StateCanceled:
+		return true
+	default:
+		return false
+	}
 }
 
 func writeOperation(c echo.Context, operation agentv1.Operation, created bool) error {

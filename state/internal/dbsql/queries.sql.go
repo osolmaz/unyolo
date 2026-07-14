@@ -709,6 +709,92 @@ func (q *Queries) ListNotificationOutbox(ctx context.Context) ([]NotificationOut
 	return items, nil
 }
 
+const listOperationsForClient = `-- name: ListOperationsForClient :many
+SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations
+WHERE client_id = ?1
+  AND (CAST(?2 AS TEXT) = '' OR idempotency_key = CAST(?2 AS TEXT))
+  AND (CAST(?3 AS TEXT) = '' OR state = CAST(?3 AS TEXT))
+  AND (
+    CAST(?4 AS TEXT) = ''
+    OR created_at < CAST(?4 AS TEXT)
+    OR (created_at = CAST(?4 AS TEXT) AND id < ?5)
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT ?6
+`
+
+type ListOperationsForClientParams struct {
+	ClientID        string
+	IdempotencyKey  string
+	State           string
+	CursorCreatedAt string
+	CursorID        string
+	PageSize        int64
+}
+
+// ListOperationsForClient
+//
+//	SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations
+//	WHERE client_id = ?1
+//	  AND (CAST(?2 AS TEXT) = '' OR idempotency_key = CAST(?2 AS TEXT))
+//	  AND (CAST(?3 AS TEXT) = '' OR state = CAST(?3 AS TEXT))
+//	  AND (
+//	    CAST(?4 AS TEXT) = ''
+//	    OR created_at < CAST(?4 AS TEXT)
+//	    OR (created_at = CAST(?4 AS TEXT) AND id < ?5)
+//	  )
+//	ORDER BY created_at DESC, id DESC
+//	LIMIT ?6
+func (q *Queries) ListOperationsForClient(ctx context.Context, arg ListOperationsForClientParams) ([]Operation, error) {
+	rows, err := q.db.QueryContext(ctx, listOperationsForClient,
+		arg.ClientID,
+		arg.IdempotencyKey,
+		arg.State,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Operation{}
+	for rows.Next() {
+		var i Operation
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApiVersion,
+			&i.Broker,
+			&i.ClientID,
+			&i.IdempotencyKey,
+			&i.Operation,
+			&i.TargetJson,
+			&i.ArgumentsJson,
+			&i.Reason,
+			&i.State,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TerminalAt,
+			&i.ApprovalID,
+			&i.PresentationJson,
+			&i.ResultJson,
+			&i.ErrorJson,
+			&i.PlanDigest,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnfinishedOperations = `-- name: ListUnfinishedOperations :many
 SELECT id, api_version, broker, client_id, idempotency_key, operation, target_json, arguments_json, reason, state, revision, created_at, updated_at, terminal_at, approval_id, presentation_json, result_json, error_json, plan_digest FROM operations
 WHERE state NOT IN ('succeeded','failed','denied','expired','canceled')

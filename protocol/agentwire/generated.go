@@ -52,6 +52,36 @@ func (e OperationApiVersion) Valid() bool {
 	}
 }
 
+// Defines values for OperationPageApiVersion.
+const (
+	OperationPageApiVersionBrokerkitIoagentv1 OperationPageApiVersion = "brokerkit.io/agent/v1"
+)
+
+// Valid indicates whether the value is a known member of the OperationPageApiVersion enum.
+func (e OperationPageApiVersion) Valid() bool {
+	switch e {
+	case OperationPageApiVersionBrokerkitIoagentv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OperationSummaryApiVersion.
+const (
+	OperationSummaryApiVersionBrokerkitIoagentv1 OperationSummaryApiVersion = "brokerkit.io/agent/v1"
+)
+
+// Valid indicates whether the value is a known member of the OperationSummaryApiVersion enum.
+func (e OperationSummaryApiVersion) Valid() bool {
+	switch e {
+	case OperationSummaryApiVersionBrokerkitIoagentv1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for State.
 const (
 	Approved  State = "approved"
@@ -133,6 +163,35 @@ type OperationError struct {
 	Message string `json:"message"`
 }
 
+// OperationPage defines model for OperationPage.
+type OperationPage struct {
+	ApiVersion OperationPageApiVersion `json:"api_version"`
+	NextCursor *string                 `json:"next_cursor"`
+	Operations []OperationSummary      `json:"operations"`
+}
+
+// OperationPageApiVersion defines model for OperationPage.ApiVersion.
+type OperationPageApiVersion string
+
+// OperationSummary defines model for OperationSummary.
+type OperationSummary struct {
+	ApiVersion     OperationSummaryApiVersion `json:"api_version"`
+	Broker         string                     `json:"broker"`
+	ClientId       string                     `json:"client_id"`
+	CreatedAt      time.Time                  `json:"created_at"`
+	Id             string                     `json:"id"`
+	IdempotencyKey string                     `json:"idempotency_key"`
+	Operation      string                     `json:"operation"`
+	Presentation   Presentation               `json:"presentation"`
+	Revision       int                        `json:"revision"`
+	State          State                      `json:"state"`
+	TerminalAt     *time.Time                 `json:"terminal_at,omitempty"`
+	UpdatedAt      time.Time                  `json:"updated_at"`
+}
+
+// OperationSummaryApiVersion defines model for OperationSummary.ApiVersion.
+type OperationSummaryApiVersion string
+
 // Presentation defines model for Presentation.
 type Presentation struct {
 	Summary *string `json:"summary,omitempty"`
@@ -159,6 +218,14 @@ type ErrorResponse = ErrorEnvelope
 
 // agentBearerContextKey is the context key for agentBearer security scheme
 type agentBearerContextKey string
+
+// ListAgentOperationsParams defines parameters for ListAgentOperations.
+type ListAgentOperationsParams struct {
+	IdempotencyKey *string `form:"idempotency_key,omitempty" json:"idempotency_key,omitempty"`
+	State          *State  `form:"state,omitempty" json:"state,omitempty"`
+	Limit          *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor         *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
 
 // WaitForAgentOperationParams defines parameters for WaitForAgentOperation.
 type WaitForAgentOperationParams struct {
@@ -246,6 +313,9 @@ type ClientInterface interface {
 	// DiscoverAgent performs a GET /.well-known/brokerkit-agent (the `DiscoverAgent` operationId) request.
 	DiscoverAgent(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAgentOperations performs a GET /api/agent/v1/operations (the `ListAgentOperations` operationId) request.
+	ListAgentOperations(ctx context.Context, params *ListAgentOperationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SubmitAgentOperationWithBody performs a POST /api/agent/v1/operations (the `SubmitAgentOperation` operationId) request,
 	// with any type of body and a specified content type.
 	SubmitAgentOperationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -267,6 +337,19 @@ type ClientInterface interface {
 // DiscoverAgent performs a GET /.well-known/brokerkit-agent (the `DiscoverAgent` operationId) request.
 func (c *Client) DiscoverAgent(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDiscoverAgentRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAgentOperations performs a GET /api/agent/v1/operations (the `ListAgentOperations` operationId) request.
+func (c *Client) ListAgentOperations(ctx context.Context, params *ListAgentOperationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentOperationsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -361,6 +444,96 @@ func NewDiscoverAgentRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAgentOperationsRequest constructs an http.Request for the ListAgentOperations method
+func NewListAgentOperationsRequest(server string, params *ListAgentOperationsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/agent/v1/operations")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.IdempotencyKey != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "idempotency_key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -601,6 +774,11 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	DiscoverAgentWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverAgentResponse, error)
 
+	// ListAgentOperationsWithResponse performs a GET /api/agent/v1/operations (the `ListAgentOperations` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ListAgentOperationsWithResponse(ctx context.Context, params *ListAgentOperationsParams, reqEditors ...RequestEditorFn) (*ListAgentOperationsResponse, error)
+
 	// SubmitAgentOperationWithBodyWithResponse performs a POST /api/agent/v1/operations (the `SubmitAgentOperation` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -669,6 +847,54 @@ func (r DiscoverAgentResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DiscoverAgentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAgentOperationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OperationPage
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAgentOperationsResponse) GetJSON200() *OperationPage {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListAgentOperationsResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAgentOperationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentOperationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentOperationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAgentOperationsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -885,6 +1111,17 @@ func (c *ClientWithResponses) DiscoverAgentWithResponse(ctx context.Context, req
 	return ParseDiscoverAgentResponse(rsp)
 }
 
+// ListAgentOperationsWithResponse performs a GET /api/agent/v1/operations (the `ListAgentOperations` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ListAgentOperationsWithResponse(ctx context.Context, params *ListAgentOperationsParams, reqEditors ...RequestEditorFn) (*ListAgentOperationsResponse, error) {
+	rsp, err := c.ListAgentOperations(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentOperationsResponse(rsp)
+}
+
 // SubmitAgentOperationWithBodyWithResponse performs a POST /api/agent/v1/operations (the `SubmitAgentOperation` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -956,6 +1193,39 @@ func ParseDiscoverAgentResponse(rsp *http.Response) (*DiscoverAgentResponse, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Descriptor
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentOperationsResponse parses an HTTP response from a ListAgentOperationsWithResponse call
+func ParseListAgentOperationsResponse(rsp *http.Response) (*ListAgentOperationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentOperationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OperationPage
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1118,6 +1388,9 @@ type ServerInterface interface {
 	// (GET /.well-known/brokerkit-agent)
 	DiscoverAgent(ctx echo.Context) error
 
+	// (GET /api/agent/v1/operations)
+	ListAgentOperations(ctx echo.Context, params ListAgentOperationsParams) error
+
 	// (POST /api/agent/v1/operations)
 	SubmitAgentOperation(ctx echo.Context) error
 
@@ -1144,6 +1417,47 @@ func (w *ServerInterfaceWrapper) DiscoverAgent(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.DiscoverAgent(ctx)
+	return err
+}
+
+// ListAgentOperations converts echo context to params.
+func (w *ServerInterfaceWrapper) ListAgentOperations(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(string(AgentBearerScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAgentOperationsParams
+	// ------------- Optional query parameter "idempotency_key" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "idempotency_key", ctx.QueryParams(), &params.IdempotencyKey, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter idempotency_key: %s", err))
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", ctx.QueryParams(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter state: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", ctx.QueryParams(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter cursor: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListAgentOperations(ctx, params)
 	return err
 }
 
@@ -1276,6 +1590,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	}
 
 	router.GET(options.BaseURL+"/.well-known/brokerkit-agent", wrapper.DiscoverAgent, options.OperationMiddlewares["discoverAgent"]...)
+	router.GET(options.BaseURL+"/api/agent/v1/operations", wrapper.ListAgentOperations, options.OperationMiddlewares["listAgentOperations"]...)
 	router.POST(options.BaseURL+"/api/agent/v1/operations", wrapper.SubmitAgentOperation, options.OperationMiddlewares["submitAgentOperation"]...)
 	router.GET(options.BaseURL+"/api/agent/v1/operations/:id", wrapper.GetAgentOperation, options.OperationMiddlewares["getAgentOperation"]...)
 	router.POST(options.BaseURL+"/api/agent/v1/operations/:id/cancel", wrapper.CancelAgentOperation, options.OperationMiddlewares["cancelAgentOperation"]...)

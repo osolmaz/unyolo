@@ -6,6 +6,16 @@
       "get": {"operationId": "discoverAgent", "security": [{"agentBearer": []}], "responses": {"200": {"description": "Agent Operations V1 discovery", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Descriptor"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}}
     },
     "/api/agent/v1/operations": {
+      "get": {
+        "operationId": "listAgentOperations", "security": [{"agentBearer": []}],
+        "parameters": [
+          {"name": "idempotency_key", "in": "query", "schema": {"type": "string", "minLength": 1, "maxLength": 128}},
+          {"name": "state", "in": "query", "schema": {"$ref": "#/components/schemas/State"}},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}},
+          {"name": "cursor", "in": "query", "schema": {"type": "string", "minLength": 1, "maxLength": 128}}
+        ],
+        "responses": {"200": {"description": "Newest requester-owned operations", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OperationPage"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}
+      },
       "post": {
         "operationId": "submitAgentOperation", "security": [{"agentBearer": []}],
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitRequest"}}}},
@@ -48,6 +58,24 @@
           "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "target": {"type": "object", "maxProperties": 32}, "arguments": {"type": "object", "maxProperties": 128}, "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
           "state": {"$ref": "#/components/schemas/State"}, "revision": {"type": "integer", "minimum": 1}, "approval_id": {"type": "string", "minLength": 1, "maxLength": 128}, "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}, "terminal_at": {"type": "string", "format": "date-time"},
           "presentation": {"$ref": "#/components/schemas/Presentation"}, "plan_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "result": {"type": "object", "maxProperties": 128}, "error": {"$ref": "#/components/schemas/OperationError"}
+        }
+      },
+      "OperationPage": {
+        "type": "object", "additionalProperties": false,
+        "required": ["api_version", "operations", "next_cursor"],
+        "properties": {
+          "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"},
+          "operations": {"type": "array", "maxItems": 50, "items": {"$ref": "#/components/schemas/OperationSummary"}},
+          "next_cursor": {"type": ["string", "null"], "minLength": 1, "maxLength": 128}
+        }
+      },
+      "OperationSummary": {
+        "type": "object", "additionalProperties": false,
+        "required": ["api_version", "id", "broker", "client_id", "idempotency_key", "operation", "state", "revision", "created_at", "updated_at", "presentation"],
+        "properties": {
+          "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"}, "id": {"type": "string", "minLength": 1, "maxLength": 128}, "broker": {"type": "string", "minLength": 1, "maxLength": 64}, "client_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "state": {"$ref": "#/components/schemas/State"}, "revision": {"type": "integer", "minimum": 1},
+          "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}, "terminal_at": {"type": "string", "format": "date-time"}, "presentation": {"$ref": "#/components/schemas/Presentation"}
         }
       },
       "ErrorEnvelope": {"type": "object", "additionalProperties": false, "required": ["error"], "properties": {"error": {"$ref": "#/components/schemas/OperationError"}}}

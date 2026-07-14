@@ -29,6 +29,22 @@ type fakeStore struct {
 	waitAfter int64
 }
 
+func (s *fakeStore) List(clientID string, options agentv1.ListOptions) (agentv1.OperationPage, error) {
+	if s.getErr != nil {
+		return agentv1.OperationPage{}, s.getErr
+	}
+	if clientID != "agent" {
+		return agentv1.OperationPage{}, agentops.ErrNotFound
+	}
+	summary := agentv1.OperationSummary{
+		APIVersion: agentv1.APIVersion, ID: s.operation.ID, Broker: s.operation.Broker, ClientID: clientID,
+		IdempotencyKey: s.operation.IdempotencyKey, Operation: s.operation.Operation, State: s.operation.State,
+		Revision: s.operation.Revision, CreatedAt: s.operation.CreatedAt, UpdatedAt: s.operation.UpdatedAt,
+		Presentation: s.operation.Presentation,
+	}
+	return agentv1.OperationPage{APIVersion: agentv1.APIVersion, Operations: []agentv1.OperationSummary{summary}}, nil
+}
+
 func (s *fakeStore) Get(clientID, id string) (agentv1.Operation, error) {
 	if s.getErr != nil {
 		return agentv1.Operation{}, s.getErr
@@ -195,6 +211,25 @@ func TestGetWaitAndStoreErrors(t *testing.T) {
 	response, body = request(t, server, http.MethodGet, operationsPath+"/op/events?wait_seconds=0", "Bearer good", nil)
 	if response.StatusCode != http.StatusInternalServerError || strings.Contains(body, "wait secret") {
 		t.Fatalf("wait error = %d %s", response.StatusCode, body)
+	}
+}
+
+func TestListOperations(t *testing.T) {
+	store := &fakeStore{operation: validOperation("op", agentv1.StatePending)}
+	server := newTestServer(t, store, allowAuth, func(context.Context, string, agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
+		return agentv1.Operation{}, false, nil
+	}, nil)
+	defer server.Close()
+
+	response, body := request(t, server, http.MethodGet, operationsPath+"?idempotency_key=one&state=pending&limit=1", "Bearer good", nil)
+	if response.StatusCode != http.StatusOK || !strings.Contains(body, `"operations":[{"api_version":"brokerkit.io/agent/v1"`) || !strings.Contains(body, `"next_cursor":null`) {
+		t.Fatalf("list = %d %s", response.StatusCode, body)
+	}
+	for _, query := range []string{"limit=0", "limit=51", "state=unknown", "cursor=", "idempotency_key="} {
+		response, body = request(t, server, http.MethodGet, operationsPath+"?"+query, "Bearer good", nil)
+		if response.StatusCode != http.StatusBadRequest || !strings.Contains(body, "invalid_request") {
+			t.Fatalf("invalid list %q = %d %s", query, response.StatusCode, body)
+		}
 	}
 }
 
