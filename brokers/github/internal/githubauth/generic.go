@@ -451,10 +451,14 @@ func limitedBody(body io.Reader, limit int64) ([]byte, error) {
 }
 
 func restPath(binding opbinding.Binding, target, arguments map[string]any) (string, error) {
-	parts := make([]string, 0, len(binding.TargetPathParameters)*2)
-	for _, name := range binding.TargetPathParameters {
-		value, err := targetPathValue(name, target)
-		if err != nil {
+	parts := make([]string, 0, len(binding.PathParameters)*2)
+	for _, name := range binding.PathParameters {
+		field, targetOwned := targetFieldForPath(name, binding.TargetPathParameters)
+		var value string
+		var err error
+		if targetOwned {
+			value, err = targetPathValue(name, field, target)
+		} else {
 			value, err = argumentPathValue(name, arguments)
 		}
 		if err != nil {
@@ -525,38 +529,24 @@ func addQueryValue(values url.Values, name string, value any) error {
 	return nil
 }
 
-func targetPathValue(name string, target map[string]any) (string, error) {
-	kind := stringField(target, "kind")
-	candidates := map[string][]string{"owner": {"owner"}, "repo": {"name"}, "org": {"owner"}}
-	if name == "org" && kind == "organization" {
-		candidates[name] = append(candidates[name], "name")
-	}
-	kindNames := map[string]string{
-		"enterprise": "enterprise", "username": "user", "user": "user", "team_slug": "team",
-		"environment_name": "environment", "package_name": "package", "codespace_name": "codespace",
-		"ghsa_id": "advisory", "ref": "ref",
-	}
-	if kindNames[name] == kind {
-		candidates[name] = append(candidates[name], "name")
-	}
-	if keys, ok := candidates[name]; ok {
-		for _, key := range keys {
-			if value := stringField(target, key); value != "" {
-				return value, nil
-			}
-		}
-	}
-	if strings.HasSuffix(name, "_id") {
-		if value := int64Field(target, "id"); value > 0 {
+func targetPathValue(name, field string, target map[string]any) (string, error) {
+	if field == "id" || field == "number" {
+		if value := int64Field(target, field); value > 0 {
 			return strconv.FormatInt(value, 10), nil
 		}
-	}
-	if strings.HasSuffix(name, "_number") || name == "number" {
-		if value := int64Field(target, "number"); value > 0 {
-			return strconv.FormatInt(value, 10), nil
-		}
+	} else if value := stringField(target, field); value != "" {
+		return value, nil
 	}
 	return "", fmt.Errorf("GitHub target is missing path parameter %q", name)
+}
+
+func targetFieldForPath(name string, parameters []opbinding.TargetParameter) (string, bool) {
+	for _, parameter := range parameters {
+		if parameter.Name == name {
+			return parameter.Field, true
+		}
+	}
+	return "", false
 }
 
 func repositoryIdentity(target map[string]any) (string, string, bool) {

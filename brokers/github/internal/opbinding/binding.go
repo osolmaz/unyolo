@@ -17,27 +17,33 @@ type Parameter struct {
 	In   string `json:"in"`
 }
 
+type TargetParameter struct {
+	Name  string `json:"name"`
+	Field string `json:"field"`
+}
+
 type Binding struct {
-	ID                   string      `json:"id"`
-	Operation            string      `json:"operation"`
-	UpstreamOperationID  string      `json:"upstream_operation_id"`
-	Method               string      `json:"method"`
-	PathTemplate         string      `json:"path_template"`
-	CredentialKind       string      `json:"credential_kind"`
-	APIVersion           string      `json:"api_version"`
-	MediaType            string      `json:"media_type"`
-	TargetPathParameters []string    `json:"target_path_parameters,omitempty"`
-	ArgumentParameters   []Parameter `json:"argument_parameters,omitempty"`
-	RequestSchema        string      `json:"request_schema"`
-	ResponseSchema       string      `json:"response_schema"`
-	ResponseProjection   []string    `json:"response_projection,omitempty"`
-	RequestBytesLimit    int64       `json:"request_bytes_limit"`
-	ResponseBytesLimit   int64       `json:"response_bytes_limit"`
-	Pagination           string      `json:"pagination"`
-	ConditionalRequest   bool        `json:"conditional_request"`
-	RedirectPolicy       string      `json:"redirect_policy"`
-	StreamDirection      string      `json:"stream_direction,omitempty"`
-	Reconciliation       string      `json:"reconciliation"`
+	ID                   string            `json:"id"`
+	Operation            string            `json:"operation"`
+	UpstreamOperationID  string            `json:"upstream_operation_id"`
+	Method               string            `json:"method"`
+	PathTemplate         string            `json:"path_template"`
+	CredentialKind       string            `json:"credential_kind"`
+	APIVersion           string            `json:"api_version"`
+	MediaType            string            `json:"media_type"`
+	PathParameters       []string          `json:"path_parameters,omitempty"`
+	TargetPathParameters []TargetParameter `json:"target_path_parameters,omitempty"`
+	ArgumentParameters   []Parameter       `json:"argument_parameters,omitempty"`
+	RequestSchema        string            `json:"request_schema"`
+	ResponseSchema       string            `json:"response_schema"`
+	ResponseProjection   []string          `json:"response_projection,omitempty"`
+	RequestBytesLimit    int64             `json:"request_bytes_limit"`
+	ResponseBytesLimit   int64             `json:"response_bytes_limit"`
+	Pagination           string            `json:"pagination"`
+	ConditionalRequest   bool              `json:"conditional_request"`
+	RedirectPolicy       string            `json:"redirect_policy"`
+	StreamDirection      string            `json:"stream_direction,omitempty"`
+	Reconciliation       string            `json:"reconciliation"`
 }
 
 //go:embed bindings.json
@@ -95,6 +101,11 @@ func Validate(values []Binding) error {
 		}
 		if (value.StreamDirection != "") != (value.RedirectPolicy == "github-download-host-allowlist") {
 			return fmt.Errorf("GitHub REST binding %q stream metadata drifted", value.ID)
+		}
+		for _, parameter := range value.TargetPathParameters {
+			if !slices.Contains(value.PathParameters, parameter.Name) || !slices.Contains([]string{"id", "number", "owner", "name"}, parameter.Field) {
+				return fmt.Errorf("GitHub REST binding %q has invalid target path ownership", value.ID)
+			}
 		}
 		if len(value.ResponseProjection) == 0 {
 			return fmt.Errorf("GitHub REST binding %q has no safe response projection", value.ID)

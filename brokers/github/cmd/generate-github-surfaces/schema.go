@@ -79,8 +79,10 @@ func argumentsSchemaForREST(_ string, path string, operation restOperation, targ
 		if location == "header" || parameterName == "per_page" || parameterName == "page" {
 			continue
 		}
-		if location == "path" && pathParameterComesFromTarget(parameterName, targetKind, path) {
-			continue
+		if location == "path" {
+			if _, owned := targetPathField(parameterName, targetKind, path); owned {
+				continue
+			}
 		}
 		schema, _ := parameter["schema"].(map[string]any)
 		properties[parameterName] = closeOpenAPISchema(schema, components, map[string]bool{}, 0)
@@ -290,7 +292,7 @@ func resolveComponentPointer(components map[string]any, pointer string) (map[str
 func closeOpenAPISchema(schema map[string]any, components map[string]any, resolving map[string]bool, depth int) map[string]any {
 	reference, _ := schema["$ref"].(string)
 	if strings.HasPrefix(reference, "#/components/") {
-		if resolving[reference] || depth > 12 {
+		if resolving[reference] || depth > 32 {
 			return map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false, "maxProperties": 0}
 		}
 		resolved, ok := resolveComponentPointer(components, strings.TrimPrefix(reference, "#/components/"))
@@ -305,20 +307,56 @@ func closeOpenAPISchema(schema map[string]any, components map[string]any, resolv
 		return closeOpenAPISchema(resolved, components, next, depth+1)
 	}
 	closed := closeSchema(schema, depth)
-	for key, value := range closed {
-		switch typed := value.(type) {
-		case map[string]any:
-			closed[key] = closeOpenAPISchema(typed, components, resolving, depth+1)
-		case []any:
-			for index, item := range typed {
-				if child, ok := item.(map[string]any); ok {
-					typed[index] = closeOpenAPISchema(child, components, resolving, depth+1)
+	for _, keyword := range []string{"properties", "$defs"} {
+		if values, ok := closed[keyword].(map[string]any); ok {
+			for name, value := range values {
+				if child, childOK := value.(map[string]any); childOK {
+					values[name] = closeOpenAPISchema(child, components, resolving, depth+1)
+				}
+			}
+		}
+	}
+	for _, keyword := range []string{"items", "additionalProperties", "not", "if", "then", "else", "contains", "propertyNames"} {
+		if child, ok := closed[keyword].(map[string]any); ok {
+			closed[keyword] = closeOpenAPISchema(child, components, resolving, depth+1)
+		}
+	}
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		if branches, ok := closed[keyword].([]any); ok {
+			for index, value := range branches {
+				if child, childOK := value.(map[string]any); childOK {
+					branches[index] = closeOpenAPISchema(child, components, resolving, depth+1)
 				}
 			}
 		}
 	}
 	delete(closed, "nullable")
+	normalizeComposedObjectProperties(closed)
 	return closed
+}
+
+func normalizeComposedObjectProperties(schema map[string]any) {
+	if schema["type"] != "object" || schema["additionalProperties"] != false {
+		return
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	if properties == nil {
+		properties = map[string]any{}
+	}
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		if branches, ok := schema[keyword].([]any); ok {
+			for _, value := range branches {
+				branch, _ := value.(map[string]any)
+				branchProperties, _ := branch["properties"].(map[string]any)
+				for name, child := range branchProperties {
+					if _, found := properties[name]; !found {
+						properties[name] = child
+					}
+				}
+			}
+		}
+	}
+	schema["properties"] = properties
 }
 
 //nolint:cyclop // Closed-schema hardening is clearer as explicit keyword checks.
@@ -330,7 +368,7 @@ func closeSchema(schema map[string]any, depth int) map[string]any {
 	var result map[string]any
 	_ = json.Unmarshal(data, &result)
 	delete(result, "example")
-	if depth > 8 {
+	if depth > 32 {
 		return map[string]any{"type": "string", "maxLength": 4096}
 	}
 	if result["type"] == "object" {
@@ -341,18 +379,8 @@ func closeSchema(schema map[string]any, depth int) map[string]any {
 			result["maxProperties"] = 100
 			result["propertyNames"] = map[string]any{"type": "string", "minLength": 1, "maxLength": 255}
 		}
-		if properties, ok := result["properties"].(map[string]any); ok {
-			for name, value := range properties {
-				if child, ok := value.(map[string]any); ok {
-					properties[name] = closeSchema(child, depth+1)
-				}
-			}
-		}
 	}
 	if result["type"] == "array" {
-		if child, ok := result["items"].(map[string]any); ok {
-			result["items"] = closeSchema(child, depth+1)
-		}
 		if _, present := result["maxItems"]; !present {
 			result["maxItems"] = 100
 		}
@@ -367,6 +395,12 @@ func closeSchema(schema map[string]any, depth int) map[string]any {
 
 func bindingForREST(name, method, path string, operation restOperation, descriptor capability.Descriptor, components map[string]any) restBinding {
 	pathParameters := pathParameterNames(path)
+	targetParameters := []targetParameter{}
+	for _, parameter := range pathParameters {
+		if field, owned := targetPathField(parameter, descriptor.TargetKind, path); owned {
+			targetParameters = append(targetParameters, targetParameter{Name: parameter, Field: field})
+		}
+	}
 	arguments := []parameterBinding{}
 	pagination := "none"
 	conditional := false
@@ -398,7 +432,7 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 	return restBinding{
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
-		MediaType: "application/vnd.github+json", TargetPathParameters: pathParameters, ArgumentParameters: arguments,
+		MediaType: "application/vnd.github+json", PathParameters: pathParameters, TargetPathParameters: targetParameters, ArgumentParameters: arguments,
 		RequestSchema: descriptor.ArgumentSchema, ResponseSchema: descriptor.ResultSchema, ResponseProjection: projection,
 		RequestBytesLimit: requestLimit, ResponseBytesLimit: responseLimit, Pagination: pagination, ConditionalRequest: conditional,
 		RedirectPolicy: redirectPolicy(descriptor.ExecutorKind), Reconciliation: descriptor.ReconcilerKind,
@@ -406,21 +440,38 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 	}
 }
 
-func pathParameterComesFromTarget(name, targetKind, path string) bool {
-	if strings.HasPrefix(path, "/repos/{owner}/{repo}") && (name == "owner" || name == "repo") {
-		return true
+func targetPathField(name, targetKind, path string) (string, bool) {
+	if strings.HasPrefix(path, "/repos/{owner}/{repo}") || strings.HasPrefix(path, "/agents/repos/{owner}/{repo}") {
+		switch name {
+		case "owner":
+			return "owner", true
+		case "repo":
+			return "name", true
+		}
 	}
 	if strings.HasPrefix(path, "/orgs/{org}") && name == "org" {
-		return true
+		if targetKind == "organization" {
+			return "name", true
+		}
+		return "owner", true
 	}
-	if (targetKind == "organization" && name == "org") || (targetKind == "enterprise" && name == "enterprise") ||
-		(targetKind == "user" && (name == "username" || name == "user")) {
-		return true
+	if targetKind == "enterprise" && name == "enterprise" || targetKind == "user" && (name == "username" || name == "user") {
+		return "name", true
 	}
-	if strings.HasSuffix(name, "_number") || name == "number" {
-		return true
+	nameParameters := map[string]string{"team": "team_slug", "environment": "environment_name", "package": "package_name",
+		"codespace": "codespace_name", "advisory": "ghsa_id", "ref": "ref"}
+	if nameParameters[targetKind] == name {
+		return "name", true
 	}
-	return name == targetKind+"_id" || (name == targetKind+"_name" && targetKind != "repo")
+	idParameters := map[string]string{"check": "check_run_id", "pull_request": "pull_number", "issue": "issue_number", "alert": "alert_number"}
+	if name == targetKind+"_id" || idParameters[targetKind] == name {
+		return "id", true
+	}
+	numberParameters := map[string]string{"pull_request": "pull_number", "issue": "issue_number", "project": "project_number", "discussion": "discussion_number"}
+	if name == targetKind+"_number" || numberParameters[targetKind] == name {
+		return "number", true
+	}
+	return "", false
 }
 
 func pathParameterNames(path string) []string {

@@ -39,7 +39,8 @@ func TestExecuteRESTBindsPathQueryBodyAndHeaders(t *testing.T) {
 		Method:               http.MethodPost,
 		PathTemplate:         "/repos/{owner}/{repo}/pulls",
 		MediaType:            "application/vnd.github+json",
-		TargetPathParameters: []string{"owner", "repo"},
+		PathParameters:       []string{"owner", "repo"},
+		TargetPathParameters: []opbinding.TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "name"}},
 		ArgumentParameters:   []opbinding.Parameter{{Name: "draft", In: "query"}},
 		RequestBytesLimit:    1024,
 		ResponseBytesLimit:   1024,
@@ -68,7 +69,8 @@ func TestExecuteRESTEnforcesLimitsAndClassifiesErrors(t *testing.T) {
 			Method:               http.MethodGet,
 			PathTemplate:         "/repos/{owner}/{repo}",
 			MediaType:            "application/vnd.github+json",
-			TargetPathParameters: []string{"owner", "repo"},
+			PathParameters:       []string{"owner", "repo"},
+			TargetPathParameters: []opbinding.TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "name"}},
 			ResponseBytesLimit:   16,
 			ResponseProjection:   []string{"id"},
 		}, map[string]any{"owner": "acme", "name": "demo"}, map[string]any{})
@@ -89,7 +91,8 @@ func TestExecuteRESTEnforcesLimitsAndClassifiesErrors(t *testing.T) {
 			Method:               http.MethodGet,
 			PathTemplate:         "/repos/{owner}/{repo}",
 			MediaType:            "application/vnd.github+json",
-			TargetPathParameters: []string{"owner", "repo"},
+			PathParameters:       []string{"owner", "repo"},
+			TargetPathParameters: []opbinding.TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "name"}},
 			ResponseBytesLimit:   1024,
 			ResponseProjection:   []string{"id"},
 		}, map[string]any{"owner": "acme", "name": "demo"}, map[string]any{})
@@ -116,7 +119,9 @@ func TestExecuteRESTDownloadFollowsOnlyCredentialFreeAllowedRedirects(t *testing
 	t.Cleanup(server.Close)
 	manager := newDevelopmentManager(t, server.URL)
 	binding := opbinding.Binding{Method: http.MethodGet, PathTemplate: "/repos/{owner}/{repo}/zipball/{ref}",
-		TargetPathParameters: []string{"owner", "repo", "ref"}, StreamDirection: "download", ResponseBytesLimit: 1024}
+		PathParameters:       []string{"owner", "repo", "ref"},
+		TargetPathParameters: []opbinding.TargetParameter{{Name: "owner", Field: "owner"}, {Name: "repo", Field: "name"}},
+		StreamDirection:      "download", ResponseBytesLimit: 1024}
 	response, err := manager.ExecuteRESTDownload(t.Context(), manager.development.Metadata(), binding,
 		map[string]any{"kind": "repo", "owner": "acme", "name": "demo"}, map[string]any{"ref": "main"})
 	if err != nil {

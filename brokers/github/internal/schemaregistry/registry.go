@@ -12,6 +12,7 @@ import (
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/capability"
@@ -85,7 +86,10 @@ func InputSchemas(descriptor capability.Descriptor) (map[string]any, map[string]
 	if !found {
 		panic("missing GitHub operation schema: " + descriptor.Name)
 	}
-	target, found := Target(descriptor.TargetKind)
+	if operation.Target != "target."+descriptor.TargetKind+".v1" {
+		panic("GitHub operation target schema drifted: " + descriptor.Name)
+	}
+	target, found := targetSchemaForOperation(descriptor.Name, operation)
 	if !found {
 		panic("missing GitHub target schema: " + descriptor.TargetKind)
 	}
@@ -166,7 +170,7 @@ func ValidateSubmission(name string, targetRaw, argumentsRaw json.RawMessage) er
 	if !found {
 		return errors.New("unknown GitHub operation")
 	}
-	target, found := targetSchemaForID(operation.Target)
+	target, found := targetSchemaForOperation(name, operation)
 	if !found {
 		return errors.New("missing GitHub target schema")
 	}
@@ -222,7 +226,7 @@ func ValidateStreamPublic(name string, targetRaw, argumentsRaw json.RawMessage) 
 	if !found {
 		return errors.New("unknown GitHub stream operation")
 	}
-	target, found := targetSchemaForID(operation.Target)
+	target, found := targetSchemaForOperation(name, operation)
 	if !found {
 		return errors.New("missing GitHub target schema")
 	}
@@ -256,6 +260,48 @@ func targetSchemaForID(id string) (map[string]any, bool) {
 		return nil, false
 	}
 	return Target(strings.TrimSuffix(strings.TrimPrefix(id, prefix), suffix))
+}
+
+func targetSchemaForOperation(name string, operation Operation) (map[string]any, bool) {
+	target, found := targetSchemaForID(operation.Target)
+	if !found {
+		return nil, false
+	}
+	required := stringSet(target["required"])
+	bindings := opbinding.ByOperation(name)
+	if len(bindings) == 1 {
+		for _, parameter := range bindings[0].TargetPathParameters {
+			required[parameter.Field] = true
+		}
+	}
+	values := make([]string, 0, len(required))
+	for field := range required {
+		values = append(values, field)
+	}
+	slices.Sort(values)
+	encoded := make([]any, len(values))
+	for index, field := range values {
+		encoded[index] = field
+	}
+	target["required"] = encoded
+	return target, true
+}
+
+func stringSet(value any) map[string]bool {
+	result := map[string]bool{}
+	switch values := value.(type) {
+	case []any:
+		for _, item := range values {
+			if field, ok := item.(string); ok {
+				result[field] = true
+			}
+		}
+	case []string:
+		for _, field := range values {
+			result[field] = true
+		}
+	}
+	return result
 }
 
 func validateRaw(raw json.RawMessage, schema map[string]any) error {

@@ -69,7 +69,8 @@ type restBinding struct {
 	CredentialKind       string             `json:"credential_kind"`
 	APIVersion           string             `json:"api_version"`
 	MediaType            string             `json:"media_type"`
-	TargetPathParameters []string           `json:"target_path_parameters,omitempty"`
+	PathParameters       []string           `json:"path_parameters,omitempty"`
+	TargetPathParameters []targetParameter  `json:"target_path_parameters,omitempty"`
 	ArgumentParameters   []parameterBinding `json:"argument_parameters,omitempty"`
 	RequestSchema        string             `json:"request_schema"`
 	ResponseSchema       string             `json:"response_schema"`
@@ -81,6 +82,11 @@ type restBinding struct {
 	RedirectPolicy       string             `json:"redirect_policy"`
 	StreamDirection      string             `json:"stream_direction,omitempty"`
 	Reconciliation       string             `json:"reconciliation"`
+}
+
+type targetParameter struct {
+	Name  string `json:"name"`
+	Field string `json:"field"`
 }
 
 type parameterBinding struct {

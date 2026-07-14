@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -188,13 +189,14 @@ func (a generatedAdapter) Decode(target, arguments json.RawMessage) (Input, erro
 		if err != nil {
 			return Input{}, errors.New("GitHub operation target is invalid")
 		}
-		for _, name := range a.binding.TargetPathParameters {
+		for _, name := range a.binding.PathParameters {
 			_, argumentFound := argumentMap[name]
-			targetFound := targetSuppliesPathParameter(name, targetMap)
-			if argumentFound && targetFound {
+			field, targetOwned := targetFieldForPath(name, a.binding.TargetPathParameters)
+			targetFound := targetOwned && targetFieldPresent(field, targetMap)
+			if targetOwned && argumentFound {
 				return Input{}, fmt.Errorf("GitHub path parameter %q must come from the validated target", name)
 			}
-			if !argumentFound && !targetFound {
+			if !targetOwned && !argumentFound || targetOwned && !targetFound {
 				return Input{}, fmt.Errorf("GitHub path parameter %q is missing", name)
 			}
 		}
@@ -202,25 +204,19 @@ func (a generatedAdapter) Decode(target, arguments json.RawMessage) (Input, erro
 	return Input{Target: cloneRaw(target), Arguments: decodedArguments}, nil
 }
 
-func targetSuppliesPathParameter(name string, target map[string]any) bool {
-	kind := stringValue(target, "kind")
-	switch name {
-	case "owner":
-		return stringValue(target, "owner") != ""
-	case "repo":
-		return stringValue(target, "name") != ""
-	case "org":
-		return stringValue(target, "owner") != "" || kind == "organization" && stringValue(target, "name") != ""
+func targetFieldForPath(name string, parameters []opbinding.TargetParameter) (string, bool) {
+	index := slices.IndexFunc(parameters, func(parameter opbinding.TargetParameter) bool { return parameter.Name == name })
+	if index < 0 {
+		return "", false
 	}
-	kindNames := map[string]string{"enterprise": "enterprise", "username": "user", "user": "user", "team_slug": "team",
-		"environment_name": "environment", "package_name": "package", "codespace_name": "codespace", "ghsa_id": "advisory", "ref": "ref"}
-	if kindNames[name] == kind && stringValue(target, "name") != "" {
-		return true
+	return parameters[index].Field, true
+}
+
+func targetFieldPresent(field string, target map[string]any) bool {
+	if field == "id" || field == "number" {
+		return integerString(target, field) != ""
 	}
-	if strings.HasSuffix(name, "_id") {
-		return integerString(target, "id") != ""
-	}
-	return (strings.HasSuffix(name, "_number") || name == "number") && integerString(target, "number") != ""
+	return stringValue(target, field) != ""
 }
 
 func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
