@@ -517,18 +517,57 @@ func countManifestOperations(operations []OperationFingerprint) (OperationCounts
 			return OperationCounts{}, fmt.Errorf("policy manifest contains duplicate operation %q", operation.Name)
 		}
 		names[operation.Name] = struct{}{}
-		if !validPolicyEffect(operation.DefaultEffect) {
-			return OperationCounts{}, fmt.Errorf("policy manifest operation %q has invalid default effect %q", operation.Name, operation.DefaultEffect)
-		}
-		if !validPolicyEffect(operation.Effect) {
-			return OperationCounts{}, fmt.Errorf("policy manifest operation %q has invalid effect %q", operation.Name, operation.Effect)
-		}
-		if operation.Effect != operation.DefaultEffect && operation.Effect != opcatalog.DefaultEffectDeny {
-			return OperationCounts{}, fmt.Errorf("policy manifest operation %q has impossible effect override", operation.Name)
+		if err := validateOperationFingerprint(operation); err != nil {
+			return OperationCounts{}, err
 		}
 		counts.add(operation.Effect)
 	}
 	return counts, nil
+}
+
+func validateOperationFingerprint(operation OperationFingerprint) error {
+	checks := []struct {
+		valid bool
+		field string
+	}{
+		{operation.OperationRevision >= 1, "operation revision"},
+		{validPolicyEffect(operation.DefaultEffect) && validPolicyEffect(operation.Effect), "policy effect"},
+		{operation.Effect == operation.DefaultEffect || operation.Effect == opcatalog.DefaultEffectDeny, "effect override"},
+		{validRisk(operation.Risk) && validAuthorizationMode(operation.AuthorizationMode), "authorization metadata"},
+		{validLifecycle(operation), "lifecycle metadata"},
+	}
+	for _, check := range checks {
+		if !check.valid {
+			return fingerprintError(operation.Name, check.field)
+		}
+	}
+	return nil
+}
+
+func validRisk(risk opcatalog.Risk) bool {
+	return risk == opcatalog.RiskLow || risk == opcatalog.RiskMedium || risk == opcatalog.RiskHigh || risk == opcatalog.RiskCritical
+}
+
+func validAuthorizationMode(mode opcatalog.AuthorizationMode) bool {
+	return mode == opcatalog.ModeWindow || mode == opcatalog.ModeExecution
+}
+
+func validLifecycle(operation OperationFingerprint) bool {
+	if operation.MaxUses < 1 || operation.MaxUses > policy.MaxGrantUses {
+		return false
+	}
+	if operation.AuthorizationMode == opcatalog.ModeExecution && operation.MaxUses != 1 {
+		return false
+	}
+	return validLifecycleDuration(operation.RequestTTLSeconds) && validLifecycleDuration(operation.ApprovalTTLSeconds)
+}
+
+func validLifecycleDuration(seconds int) bool {
+	return seconds >= 60 && seconds <= policy.MaxGrantMinutes*60 && seconds%60 == 0
+}
+
+func fingerprintError(operation, field string) error {
+	return fmt.Errorf("policy manifest operation %q has invalid %s", operation, field)
 }
 
 func validPolicyEffect(effect opcatalog.DefaultPolicyEffect) bool {

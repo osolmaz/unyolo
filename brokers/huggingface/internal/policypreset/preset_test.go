@@ -264,11 +264,35 @@ func TestParseManifestRejectsMalformedArtifacts(t *testing.T) {
 	impossibleOverride.Operations = slices.Clone(artifacts.Manifest.Operations)
 	impossibleOverride.Operations[0].DefaultEffect = opcatalog.DefaultEffectDeny
 	impossibleOverride.Operations[0].Effect = opcatalog.DefaultEffectAllow
+	invalidRevision := artifacts.Manifest
+	invalidRevision.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidRevision.Operations[0].OperationRevision = 0
+	invalidRisk := artifacts.Manifest
+	invalidRisk.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidRisk.Operations[0].Risk = "invalid"
+	invalidMode := artifacts.Manifest
+	invalidMode.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidMode.Operations[0].AuthorizationMode = "invalid"
+	invalidUses := artifacts.Manifest
+	invalidUses.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidUses.Operations[0].MaxUses = policy.MaxGrantUses + 1
+	invalidExecutionUses := artifacts.Manifest
+	invalidExecutionUses.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidExecutionUses.Operations[0].AuthorizationMode = opcatalog.ModeExecution
+	invalidExecutionUses.Operations[0].MaxUses = 2
+	invalidRequestTTL := artifacts.Manifest
+	invalidRequestTTL.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidRequestTTL.Operations[0].RequestTTLSeconds = 61
+	invalidApprovalTTL := artifacts.Manifest
+	invalidApprovalTTL.Operations = slices.Clone(artifacts.Manifest.Operations)
+	invalidApprovalTTL.Operations[0].ApprovalTTLSeconds = policy.MaxGrantMinutes*60 + 60
 	tests := [][]byte{[]byte("{"), append(append([]byte(nil), artifacts.ManifestJSON...), []byte("{}")...)}
 	for _, manifest := range []Manifest{
 		wrongVersion, missingDigest, malformedCatalogDigest, malformedProfileDigest,
 		malformedPolicyDigest, wrongCount, wrongEffectCount, negativeCount,
 		invalidEffect, invalidDefaultEffect, duplicateOperation, emptyOperation, impossibleOverride,
+		invalidRevision, invalidRisk, invalidMode, invalidUses, invalidExecutionUses,
+		invalidRequestTTL, invalidApprovalTTL,
 	} {
 		data, _ := marshalCanonical(manifest)
 		tests = append(tests, data)

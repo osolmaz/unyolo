@@ -319,7 +319,7 @@ func backupPolicyArtifact(artifact *stagedPolicyArtifact) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Rename(artifact.output.path, backup); err != nil {
+	if err := os.Link(artifact.output.path, backup); err != nil {
 		return fmt.Errorf("backup policy output %s: %w", artifact.output.path, err)
 	}
 	artifact.backup = backup
@@ -356,10 +356,24 @@ func rollbackPolicyArtifactOutputs(staged []*stagedPolicyArtifact) error {
 }
 
 func rollbackPolicyArtifact(artifact *stagedPolicyArtifact) error {
+	if !artifact.committed {
+		return removePolicyArtifactBackup(artifact)
+	}
 	if err := rollbackCommittedPolicyArtifact(artifact); err != nil {
 		return err
 	}
 	return restorePolicyArtifactBackup(artifact)
+}
+
+func removePolicyArtifactBackup(artifact *stagedPolicyArtifact) error {
+	if artifact.backup == "" {
+		return nil
+	}
+	if err := os.Remove(artifact.backup); err != nil {
+		return fmt.Errorf("remove policy output backup %s: %w", artifact.output.path, err)
+	}
+	artifact.backup = ""
+	return nil
 }
 
 func rollbackCommittedPolicyArtifact(artifact *stagedPolicyArtifact) error {
