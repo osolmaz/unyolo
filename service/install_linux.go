@@ -13,34 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
-
-// SystemdInstallPlan describes one complete broker systemd installation.
-type SystemdInstallPlan struct {
-	User             string
-	Group            string
-	AdditionalGroups []string
-	GroupMembers     map[string][]string
-	ConfigDir        string
-	StateDir         string
-	SharedStateDir   string
-	SystemdDir       string
-	UnitName         string
-	Files            []ManagedFile
-	RemoveFiles      []ManagedFileRef
-	ReadyCheck       ReadinessCheck
-	ReadyTimeout     time.Duration
-	ReadyInterval    time.Duration
-	Unit             SystemdUnit
-	SocketUnits      []SystemdSocketInstall
-	ActivationUnits  []string
-	NoStart          bool
-	AllowNonRoot     bool
-	Runner           CommandRunner
-}
 
 // InstallSystemd installs one broker service from a validated typed plan.
 func InstallSystemd(ctx context.Context, plan SystemdInstallPlan) error {

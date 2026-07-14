@@ -50,3 +50,27 @@ type ManagedFileRef struct {
 // ReadinessCheck confirms that a restarted broker initialized with its new
 // configuration before retired credentials are deleted.
 type ReadinessCheck func(context.Context) error
+
+// SystemdInstallPlan describes one complete broker systemd installation.
+type SystemdInstallPlan struct {
+	User             string
+	Group            string
+	AdditionalGroups []string
+	GroupMembers     map[string][]string
+	ConfigDir        string
+	StateDir         string
+	SharedStateDir   string
+	SystemdDir       string
+	UnitName         string
+	Files            []ManagedFile
+	RemoveFiles      []ManagedFileRef
+	ReadyCheck       ReadinessCheck
+	ReadyTimeout     time.Duration
+	ReadyInterval    time.Duration
+	Unit             SystemdUnit
+	SocketUnits      []SystemdSocketInstall
+	ActivationUnits  []string
+	NoStart          bool
+	AllowNonRoot     bool
+	Runner           CommandRunner
+}

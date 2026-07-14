@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package main
 
@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -59,6 +60,9 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 }
 
 func requireRootForSystemd(opts setupSystemdOptions) error {
+	if runtime.GOOS != "linux" {
+		return exitError{code: 64, message: "setup systemd is only supported on Linux"}
+	}
 	if os.Geteuid() == 0 || opts.AllowNonRoot || opts.DryRun {
 		return nil
 	}

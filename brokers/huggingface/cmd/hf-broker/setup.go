@@ -22,6 +22,7 @@ import (
 const setupUsage = `usage:
 	  hf-broker setup systemd --hf-token-file <path> [--policy-preset request-all-agent-operations] [flags]
 	  hf-broker setup systemd --hf-token-file <path> --repo <owner/name> --repo-type <model|dataset|space> [flags]
+  hf-broker setup launchd --hf-token-file <path> [--policy-preset request-all-agent-operations] [flags]
   hf-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
 
 var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -61,6 +62,8 @@ func runSetupInput(ctx context.Context, stdin io.Reader, stdout, stderr io.Write
 			return err
 		}
 		return runSetupSystemd(ctx, stdout, opts)
+	case "launchd":
+		return runSetupLaunchdCommand(ctx, stdin, stdout, stderr, args[1:])
 	case "client":
 		opts, err := parseSetupClient(stderr, args[1:])
 		if err != nil {
