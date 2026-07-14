@@ -591,13 +591,12 @@ func addQueryValue(values url.Values, name string, value any) error {
 	switch typed := value.(type) {
 	case string:
 		values.Add(name, typed)
-	case float64:
-		values.Add(name, strconv.FormatFloat(typed, 'f', -1, 64))
-	case json.Number:
-		if _, err := typed.Float64(); err != nil {
-			return errors.New("invalid numeric query value")
+	case float64, json.Number:
+		encoded, err := formatQueryNumber(typed)
+		if err != nil {
+			return err
 		}
-		values.Add(name, typed.String())
+		values.Add(name, encoded)
 	case bool:
 		values.Add(name, strconv.FormatBool(typed))
 	case nil:
@@ -612,6 +611,18 @@ func addQueryValue(values url.Values, name string, value any) error {
 		return errors.New("unsupported query value")
 	}
 	return nil
+}
+
+func formatQueryNumber(value any) (string, error) {
+	switch typed := value.(type) {
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64), nil
+	case json.Number:
+		if _, err := typed.Float64(); err == nil {
+			return typed.String(), nil
+		}
+	}
+	return "", errors.New("invalid numeric query value")
 }
 
 func targetPathValue(name, field string, target map[string]any) (string, error) {

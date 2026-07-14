@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -55,6 +56,7 @@ var raw []byte
 var once sync.Once
 var values []Binding
 var loadErr error
+var safeProjectionSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,255}$`)
 
 func All() ([]Binding, error) {
 	once.Do(func() {
@@ -169,13 +171,5 @@ func safeResponseField(field string) bool {
 }
 
 func safeProjectionSegment(value string) bool {
-	if value == "" || len(value) > 255 {
-		return false
-	}
-	for _, character := range value {
-		if character != '_' && character != '-' && (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') && (character < '0' || character > '9') {
-			return false
-		}
-	}
-	return true
+	return safeProjectionSegmentPattern.MatchString(value)
 }

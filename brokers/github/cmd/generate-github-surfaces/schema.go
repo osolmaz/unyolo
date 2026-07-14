@@ -152,6 +152,17 @@ func projectedResponseSchema(schema map[string]any, projection []string) map[str
 func projectResponseSchema(schema map[string]any, allowed map[string]bool, prefix string, root bool) (map[string]any, bool) {
 	result := copyx.JSONMap(schema)
 	flattenComposedObjectForProjection(result)
+	retained := projectResponseBranches(result, allowed, prefix)
+	if projectResponseProperties(result, allowed, prefix) {
+		retained = true
+	}
+	if root {
+		result["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+	}
+	return result, retained
+}
+
+func projectResponseBranches(result map[string]any, allowed map[string]bool, prefix string) bool {
 	retained := false
 	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
 		if alternatives, ok := result[keyword].([]any); ok {
@@ -169,35 +180,35 @@ func projectResponseSchema(schema map[string]any, allowed map[string]bool, prefi
 		result["items"] = projected
 		retained = retained || keep
 	}
+	return retained
+}
+
+func projectResponseProperties(result map[string]any, allowed map[string]bool, prefix string) bool {
 	properties, object := result["properties"].(map[string]any)
-	if object {
-		selected := map[string]any{}
-		for name, value := range properties {
-			path := name
-			if prefix != "" {
-				path = prefix + "." + name
-			}
-			child, childOK := value.(map[string]any)
-			projected, childRetained := child, false
-			if childOK {
-				projected, childRetained = projectResponseSchema(child, allowed, path, false)
-			}
-			if allowed[path] {
-				selected[name] = value
-				retained = true
-			} else if childRetained {
-				selected[name] = projected
-				retained = true
-			}
+	if !object {
+		return false
+	}
+	selected := map[string]any{}
+	for name, value := range properties {
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
 		}
-		result["properties"] = selected
-		result["additionalProperties"] = false
-		delete(result, "required")
+		child, childOK := value.(map[string]any)
+		projected, childRetained := child, false
+		if childOK {
+			projected, childRetained = projectResponseSchema(child, allowed, path, false)
+		}
+		if allowed[path] {
+			selected[name] = value
+		} else if childRetained {
+			selected[name] = projected
+		}
 	}
-	if root {
-		result["$schema"] = "https://json-schema.org/draft/2020-12/schema"
-	}
-	return result, retained
+	result["properties"] = selected
+	result["additionalProperties"] = false
+	delete(result, "required")
+	return len(selected) > 0
 }
 
 func flattenComposedObjectForProjection(schema map[string]any) {
