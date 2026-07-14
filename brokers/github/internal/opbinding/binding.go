@@ -151,10 +151,31 @@ func bindingByID(values []Binding, id string) (Binding, bool) {
 }
 
 func safeResponseField(field string) bool {
-	switch field {
+	if field == "$none" {
+		return true
+	}
+	parts := strings.Split(field, ".")
+	for _, part := range parts {
+		if !safeProjectionSegment(part) {
+			return false
+		}
+	}
+	switch parts[len(parts)-1] {
 	case "id", "node_id", "name", "number", "state", "status", "type", "sha", "url", "created_at", "updated_at":
 		return true
 	default:
 		return false
 	}
+}
+
+func safeProjectionSegment(value string) bool {
+	if value == "" || len(value) > 255 {
+		return false
+	}
+	for _, character := range value {
+		if character != '_' && character != '-' && (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') && (character < '0' || character > '9') {
+			return false
+		}
+	}
+	return true
 }

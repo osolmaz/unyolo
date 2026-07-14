@@ -6,7 +6,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.abort_queued_migrations",
     "required_credential": "user",
-    "persisted_digest": "b7b75b767bd46342818d4d0296e2680d1f2ad0c5e37257a53d87790eb99fc758",
+    "persisted_digest": "9693e90f41f333fd467611ab40518ddcd17429c760df450fbc7210d56de1f080",
     "reviewed": true
   },
   {
@@ -16,7 +16,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.abort_repository_migration",
     "required_credential": "user",
-    "persisted_digest": "9ce8700e141b355511287ee1f068493418605a6081c7186488035919e318fc9d",
+    "persisted_digest": "c159d734886f276971f56bdf4aa54fcdc3a46dd13bc3d6c74840d95b624a6855",
     "reviewed": true
   },
   {
@@ -26,7 +26,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.accept_enterprise_administrator_invitation",
     "required_credential": "user",
-    "persisted_digest": "66d744ad31ddd47d7240cc84cc09206a2f58436a86e5657605459375c9a6505a",
+    "persisted_digest": "61866d0ffc9db3b16d852b102f0087224123ddcf13f703a63b7280dd415fe494",
     "reviewed": true
   },
   {
@@ -36,7 +36,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.accept_enterprise_member_invitation",
     "required_credential": "user",
-    "persisted_digest": "47b2caeb4bf4c9915c720c0910575021d0d838cc0d46a0ae20f4bf9f36ef89d6",
+    "persisted_digest": "f598cff9466bf6b01ecb26c0c8a36b1438e0d928a8bc4739f88c8accc4c67697",
     "reviewed": true
   },
   {
@@ -46,7 +46,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.accept_topic_suggestion",
     "required_credential": "user",
-    "persisted_digest": "d5c89f7cf864fd3a2fbdc1d8f2d8b8f8815edb620705fab137cb7b160b78a6f4",
+    "persisted_digest": "eb5b29f0b56495e0d24e0b1ae3aae711444bca0ec9f13afbfd1487e17a3ac9f8",
     "reviewed": true
   },
   {
@@ -56,7 +56,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.access_user_namespace_repository",
     "required_credential": "user",
-    "persisted_digest": "8b36399652b388a928ba28ec079a1b4945385784fa815e484dc7bbc4cd696bd9",
+    "persisted_digest": "c3206b9ad8dd78591c1a67bc9507bec9555d0c3b6d2efbeba06e08dafb08bebc",
     "reviewed": true
   },
   {
@@ -66,7 +66,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.add_assignees_to_assignable",
     "required_credential": "user",
-    "persisted_digest": "967d4a5ef83b618396f664dd2407c3bd0075aef1a2e131872641a81242b16fa8",
+    "persisted_digest": "2b55d377a23fbb4fd28289f0e0e1ee9904fc6b74ff43d9b901b1cc1c088a6a0e",
     "reviewed": true
   },
   {
@@ -76,7 +76,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.add_blocked_by",
     "required_credential": "user",
-    "persisted_digest": "8aef3923b3dd31af393251532a175b2289a63f4e4737573c15116d7156b0720e",
+    "persisted_digest": "5ebd9de86a5de98488ea22a7afa7232b46a13b4aa7b6bf14a4a9fa0aa5d90bd0",
     "reviewed": true
   },
   {
@@ -86,7 +86,7 @@
     "disposition": "graphql",
     "catalog_operation": "comment.add_comment",
     "required_credential": "user",
-    "persisted_digest": "859f958e57e904a4bb764ba772d1350cebecb154c51c216d32ec710e2776ff55",
+    "persisted_digest": "54e909a149084c7bc04c5b4b253980f4671ac699e35040d8c9a45ff453479dca",
     "reviewed": true
   },
   {
@@ -96,7 +96,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.add_discussion_comment",
     "required_credential": "user",
-    "persisted_digest": "34bf3a51123e94c389840bfd4a0ad00c1e3859927972bcc0c52abf5c5beeecbe",
+    "persisted_digest": "1751833fc7bd56f54a14f258111fe740bbc988e712c3097a34e4527a3cb64ffa",
     "reviewed": true
   },
   {
@@ -106,7 +106,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.add_discussion_poll_vote",
     "required_credential": "user",
-    "persisted_digest": "17462258d834e0d80a0db50cd8004b70c9a094376c0b8162af2e8db8a2101600",
+    "persisted_digest": "e30d57cd8b70fb7a3fad16384a1efea9c6c9b54efb0f87cde96df8cb76461784",
     "reviewed": true
   },
   {
@@ -116,7 +116,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.add_enterprise_organization_member",
     "required_credential": "user",
-    "persisted_digest": "41a6d31e7fed7e0d9a78366fcd59addac097425796ef98420d9e536956eb6705",
+    "persisted_digest": "53f644c397c1f245eb887470999cd33472af2db4e29263a2e302b3fe1628553f",
     "reviewed": true
   },
   {
@@ -126,7 +126,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.add_enterprise_support_entitlement",
     "required_credential": "user",
-    "persisted_digest": "b41d21cc18310192855980af0c8154f0e9e5b84b82a58e6933f89292a171fe18",
+    "persisted_digest": "037c76594b3125553faad41d94b34421b7388b9c74c0951270048e43ece6d9f3",
     "reviewed": true
   },
   {
@@ -136,7 +136,7 @@
     "disposition": "graphql",
     "catalog_operation": "label.add_labels_to_labelable",
     "required_credential": "user",
-    "persisted_digest": "545b90d80aef4f61ce0a53573c65a120fbfdeeebf51dc45206754e217ecbf9df",
+    "persisted_digest": "01756a5ae34e4c519c17fb6f88485024b5ab5713c29f8b57e8bfa5a992db5a13",
     "reviewed": true
   },
   {
@@ -162,7 +162,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.add_project_v2_draft_issue",
     "required_credential": "user",
-    "persisted_digest": "f0933e7655645732f9f20f14b830febc7bc75912ae2ecf57c911e2c42fcd3650",
+    "persisted_digest": "7de7e0602c81d0fd464bc1575cf71d1952efa428ab09918941a586ef33d28b46",
     "reviewed": true
   },
   {
@@ -172,7 +172,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.add_project_v2_item_by_id",
     "required_credential": "user",
-    "persisted_digest": "bf59737a48d3e14248e6ba75fe5bb025a3ba97bacb1382adf5ffe3c5443b0430",
+    "persisted_digest": "45c0c1207e0d8ef46cd9858ee38dbf5a914f0b8f0b069d7f119fb98784fd080a",
     "reviewed": true
   },
   {
@@ -182,7 +182,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.add_pull_request_creation_cap_bypass_users",
     "required_credential": "user",
-    "persisted_digest": "e3f3bcec6fcbbbefc8645a9f5e9f103e5b87bd42fbe06cc6155834582594867f",
+    "persisted_digest": "de3066c389d6a2e6cb4f07ac0b0b2dff4a10011e0ad6c11a8397bc5b4c428ede",
     "reviewed": true
   },
   {
@@ -192,7 +192,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.add_pull_request_review",
     "required_credential": "user",
-    "persisted_digest": "9d2c7d0e78b17a8bb721ccdf5787bde7a9242f44b795bc6f0d6a33220bb53738",
+    "persisted_digest": "b58822f7ab199b37924431bc2bb28263246e32e16dc434fe66a4b32dcb109fc0",
     "reviewed": true
   },
   {
@@ -202,7 +202,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.add_pull_request_review_comment",
     "required_credential": "user",
-    "persisted_digest": "8cf24aa5d86c205c31ea346ecc6b4a90c78fceda19d3a5bfb723574c1e2f4c1b",
+    "persisted_digest": "63bc240e6001f27dd6579398b2b17c2786581799f2df9eceb14472d8b4f9353f",
     "reviewed": true
   },
   {
@@ -212,7 +212,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.add_pull_request_review_thread",
     "required_credential": "user",
-    "persisted_digest": "2cf0500a7238eaacec5259f4be8539ad0c4dad08f2edd4be853a2407b516e31f",
+    "persisted_digest": "75df5e9e3fe6e3b58f4b3a9db83735c740d914594582414ba9926a5d2fffc6ec",
     "reviewed": true
   },
   {
@@ -222,7 +222,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.add_pull_request_review_thread_reply",
     "required_credential": "user",
-    "persisted_digest": "a3e9dabf21a8ca445a649253d3ebcbb12cb498b91948aa59438786bf376a29ae",
+    "persisted_digest": "24faad37e8eaf4e1273e62351b360148f8e6d1e05628d7e3c5f815ee0411e204",
     "reviewed": true
   },
   {
@@ -232,7 +232,7 @@
     "disposition": "graphql",
     "catalog_operation": "reaction.add_reaction",
     "required_credential": "user",
-    "persisted_digest": "e468f46f82c8d965ee78db0eac7db556e6c8b37edbfb55adb68d245cb6ea5b9e",
+    "persisted_digest": "09a4cb8317800544265d5ff8354cbd397ef4905d9db54ab1276ebd04acb1fe0d",
     "reviewed": true
   },
   {
@@ -242,7 +242,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.add_star",
     "required_credential": "user",
-    "persisted_digest": "bdfa2d3328328043c4f182c7f9ac7c7aa95c9f5cd47135274a1dc0066cb22534",
+    "persisted_digest": "2daccfbc4c7ce50217fab10e00d955c3c02da2ced8be7cf0b1e17bf211c1ca38",
     "reviewed": true
   },
   {
@@ -252,7 +252,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.add_sub_issue",
     "required_credential": "user",
-    "persisted_digest": "d52ba7ffad896d1b869ec0141dede6f7d4e8c6a25ab97ac9c2d0a44b22b2c71e",
+    "persisted_digest": "cec140f970289418aade0f00935484c32549ed865469497f06731dc71fba707a",
     "reviewed": true
   },
   {
@@ -262,7 +262,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.add_upvote",
     "required_credential": "user",
-    "persisted_digest": "b7ebaad99c6f79ab5415f225f9e2a01e97978ba242ac41dd18c0df2633ecfb56",
+    "persisted_digest": "c0ffce9240e5305f601cb47d9b50781a323c858ce2a868a09958f2cafb6fa48d",
     "reviewed": true
   },
   {
@@ -272,7 +272,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.add_verifiable_domain",
     "required_credential": "user",
-    "persisted_digest": "676c3ccdd70c0f8ee63ef5f89e73013e825b94771abe44e3d2d4a6f9a000b657",
+    "persisted_digest": "6280ef8221b75459e581c4c2107937925bcab1429f73c5d35de868bbc85c7656",
     "reviewed": true
   },
   {
@@ -282,7 +282,7 @@
     "disposition": "graphql",
     "catalog_operation": "deployment.approve_deployments",
     "required_credential": "user",
-    "persisted_digest": "17543fa16af669f52412c3bdd563a534d1e5335e67cc7fe3ffcffeed88fd2c4d",
+    "persisted_digest": "8ef702e930c93f89661e77096cda587ebacfac36b132f12e21080ff6c598f5b6",
     "reviewed": true
   },
   {
@@ -292,7 +292,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.approve_verifiable_domain",
     "required_credential": "user",
-    "persisted_digest": "81e94cea3c350bcfd45b55d6e688c510adc6b27386887651a7d6963448a1ce2a",
+    "persisted_digest": "7846d1ba5c542eb099846b3534a9e2ec5409f4698d091e5a99d3c099ea1ef574",
     "reviewed": true
   },
   {
@@ -302,7 +302,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.archive_project_v2_item",
     "required_credential": "user",
-    "persisted_digest": "fab5415c15ea8987ab0f69bd9eaef66261e2d80e5d14eef16fe5ecbe1a258f11",
+    "persisted_digest": "5f633741dd63bff3d1184d0ee3bf386d9f5ad8d19721d3d5f90bbe6f1f8edfda",
     "reviewed": true
   },
   {
@@ -312,7 +312,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.archive_pull_request",
     "required_credential": "user",
-    "persisted_digest": "bac13fa8f0a2797f36caa11a2185c294b1df8f546eb92ef030de52478832f8fd",
+    "persisted_digest": "1dc5141cc5bda78c4fe8071b22f6c1e8744289c37354c9d4364107bfcb9fd29e",
     "reviewed": true
   },
   {
@@ -322,7 +322,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.archive_repository",
     "required_credential": "user",
-    "persisted_digest": "0f424bfd477e3aacc796263f7a5ce72c0b3dac27d97e3decb4179403c2e69a1d",
+    "persisted_digest": "ec984f525c69b59cd52ff5acadb0d9beddfefc3094900b5f152d0a552cb47e1b",
     "reviewed": true
   },
   {
@@ -332,7 +332,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.cancel_enterprise_admin_invitation",
     "required_credential": "user",
-    "persisted_digest": "e326e2d19cff31e2f3325d49fa60a3dba94b07a1cf8d02f8894793e5e81e35a0",
+    "persisted_digest": "40722a753b7a71e951dfc3fcf36892677ca396a5ed9376af06f708fcecf9159b",
     "reviewed": true
   },
   {
@@ -342,7 +342,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.cancel_enterprise_member_invitation",
     "required_credential": "user",
-    "persisted_digest": "5fe0ecce30cbafadde17343ebb6665c40d05926714ba3426ae5baeeaf2cc8c0f",
+    "persisted_digest": "666186568d95ffe945184884da22129cf18487331ac5b77b64ce8be274e2e8e1",
     "reviewed": true
   },
   {
@@ -352,7 +352,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.cancel_sponsorship",
     "required_credential": "user",
-    "persisted_digest": "3cd804a3fd8b32b608e06c6cef5b7ade2be48a8fa608524f3e2e8f06eab4e423",
+    "persisted_digest": "e0b2c36bd869de93b4e13347e9b49c45ec3bf2d09764d752f0b9fb54dff906f1",
     "reviewed": true
   },
   {
@@ -362,7 +362,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.change_user_status",
     "required_credential": "user",
-    "persisted_digest": "ca08978817a09abcd2b68d763f3c4e4d6a7da8bc213f77dbe61e38335ce2ab35",
+    "persisted_digest": "f1642190e4b43a8330a2f7239fc2da4d7384758fd896b3d192832d5372463efd",
     "reviewed": true
   },
   {
@@ -372,7 +372,7 @@
     "disposition": "graphql",
     "catalog_operation": "label.clear_labels_from_labelable",
     "required_credential": "user",
-    "persisted_digest": "424a1c6ce7830f57abd16136d15640b0a75c4f04e461727f464ae1cabfd76983",
+    "persisted_digest": "713842a5b84856e91b983d34eceda905de0572e9221fe32cb80c53ead47b6581",
     "reviewed": true
   },
   {
@@ -382,7 +382,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.clear_project_v2_item_field_value",
     "required_credential": "user",
-    "persisted_digest": "808d97d4f4c028663fd05aa6912c71278708f6b38fe6739ab3f88a1ed3c9695b",
+    "persisted_digest": "75a2a1a668359bb2d1ec6f53df96c74176f4ffc190a197f45a89c612885ce2c3",
     "reviewed": true
   },
   {
@@ -400,7 +400,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.clone_template_repository",
     "required_credential": "user",
-    "persisted_digest": "24377ac766332527f89acb6ca653b9064c7c3dbd0d92b55cf7395ec20b1e658a",
+    "persisted_digest": "bf40430bb56bffce814f473ebc217740c69fbe4c709037cc1fa3a8bb037ff5c9",
     "reviewed": true
   },
   {
@@ -410,7 +410,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.close_discussion",
     "required_credential": "user",
-    "persisted_digest": "707469a2ad5e78443c54ee878b0ec25eccdb1a5ca8c9df794882fbb2989efcdc",
+    "persisted_digest": "98a0fd61ee9e57870dd56499f0f97c9a99ec5e9ba50525c8382c6a4e690db6b8",
     "reviewed": true
   },
   {
@@ -420,7 +420,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.close_issue",
     "required_credential": "user",
-    "persisted_digest": "94a7466bfc3497fdca3b52fdaaa182b7468ac962c9bcdabe42dfc3a1accad226",
+    "persisted_digest": "f5894e2e58ab2bc027f5cb138cf872a60053d77ec25bb6788b0a0f9ecb456296",
     "reviewed": true
   },
   {
@@ -430,7 +430,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.close_pull_request",
     "required_credential": "user",
-    "persisted_digest": "44ed4487dfc365648c80397d7ab559bacb030e9a262358527f4e6793b29f5489",
+    "persisted_digest": "ea68dc24786cb0d32b343b7f73043238fe814faf7a7c34119bb0b095116281b5",
     "reviewed": true
   },
   {
@@ -448,7 +448,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.convert_project_v2_draft_issue_item_to_issue",
     "required_credential": "user",
-    "persisted_digest": "b341e89140018ca0b06268bf921d083d124ad489002342719f321315905dfbbe",
+    "persisted_digest": "babdd1829fa5153a3629eb13fc038ad3d5811a42c22463154e364e3ba6f0312d",
     "reviewed": true
   },
   {
@@ -458,7 +458,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.convert_pull_request_to_draft",
     "required_credential": "user",
-    "persisted_digest": "88337eb2874f79a8bd134623537527f8a5eb6ced1e2f3214fbd2e4dbc983eda6",
+    "persisted_digest": "33d6521d0f310f818010420a73473824672fe45029fbfa072e779f7d2839855a",
     "reviewed": true
   },
   {
@@ -468,7 +468,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.copy_project_v2",
     "required_credential": "user",
-    "persisted_digest": "cc27ebba42f492a90eea7423d37c7d8fcf9975c3d81c278750acff078ae994d2",
+    "persisted_digest": "2219504c14e2ab8a7d0a35871630edd5a47223bd471d66f8a9386fd8dbed48ca",
     "reviewed": true
   },
   {
@@ -478,7 +478,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_attribution_invitation",
     "required_credential": "user",
-    "persisted_digest": "20b2d5356be73c3df61b7229187d34c6438efb2ebd279811b0c71db927bbd978",
+    "persisted_digest": "e9a2b75d0df91cfee2e7ce5dbb17c6b9090a4abb2e8ef68677f529a54bca9a2f",
     "reviewed": true
   },
   {
@@ -488,7 +488,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_branch_protection_rule",
     "required_credential": "user",
-    "persisted_digest": "0de73a2fd4e38ba3fe28af07ae5e44acd97514074eb6047c3d5316468e7bb87c",
+    "persisted_digest": "a32748c424b2f366f236adec43bc4897f3ce99e9cd85b205ec9e55015d1df1f6",
     "reviewed": true
   },
   {
@@ -498,7 +498,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_check_run",
     "required_credential": "user",
-    "persisted_digest": "e504fb965906157021b8bb463dc29c3ce629bb7eb7edc5013ca0b6d83c49d837",
+    "persisted_digest": "58d41b2212228a1f953db6111bde6e4dd47cd67f7914a153d9d7f218af47ac18",
     "reviewed": true
   },
   {
@@ -508,7 +508,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_check_suite",
     "required_credential": "user",
-    "persisted_digest": "34e848e9439234441dd0a32d896b6a4bb3a8a4f10bbefcc974d13d8ee4ae8214",
+    "persisted_digest": "94299bdc62485b6b9414ef929898aaa25717e0e7f914aee58ab14f1c46ff45e1",
     "reviewed": true
   },
   {
@@ -518,7 +518,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_commit_on_branch",
     "required_credential": "user",
-    "persisted_digest": "5622b3392a4c631ab2645dbe2d7cc1a6b7371cc6c6b1c708b374f4b18a653955",
+    "persisted_digest": "83a029d59c5220cd77d450af12fcab2616b4f4420a46e517e506d96c4675f351",
     "reviewed": true
   },
   {
@@ -528,7 +528,7 @@
     "disposition": "graphql",
     "catalog_operation": "deployment.create_deployment",
     "required_credential": "user",
-    "persisted_digest": "e6166bc3133bc7b7c4a28391dfb592a97a51f44b17e4b52a30b761d9e73255a0",
+    "persisted_digest": "7fef30467b7244f591af3462eee972801f11fdcd951990a4dda5ad0fe460223b",
     "reviewed": true
   },
   {
@@ -538,7 +538,7 @@
     "disposition": "graphql",
     "catalog_operation": "deployment.create_deployment_status",
     "required_credential": "user",
-    "persisted_digest": "2632d60dacce7d2b5fac6310d423c7dc8597c6a9aed8a1054845e53276d1e122",
+    "persisted_digest": "2099112f26a89a168fa4c4bfc5686032397839b3ffbecf631d7dc228077b9885",
     "reviewed": true
   },
   {
@@ -548,7 +548,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.create_discussion",
     "required_credential": "user",
-    "persisted_digest": "b022891b996f8abe04246d2aafe59cd32316e7541d969d61767aeb92c53d5713",
+    "persisted_digest": "dc6af50da5e2bbb461f6eb98a6abd9c84b9dde3329c5eb174e0b321ba19b316f",
     "reviewed": true
   },
   {
@@ -558,7 +558,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.create_enterprise_organization",
     "required_credential": "user",
-    "persisted_digest": "b0bdf55fe32bcf741957b94e27fbe768981694be6c4313ad9bd2b56d0cfd8335",
+    "persisted_digest": "aee34936d61ebb25ea5287c6e14738a7fbd9d077f27cb261aa1ac5eba9120c30",
     "reviewed": true
   },
   {
@@ -568,7 +568,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_environment",
     "required_credential": "user",
-    "persisted_digest": "bd212b83a455da432dfd421cb545d2191c3779dcc63fd599b21ce005f4733452",
+    "persisted_digest": "fd5c8f4077ee8a1258064ae61a3f6468eada1b49b93db9d7a5ea9ebebcf76ea1",
     "reviewed": true
   },
   {
@@ -578,7 +578,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_ip_allow_list_entry",
     "required_credential": "user",
-    "persisted_digest": "4b53961012fa2509ee56cfaca86afdbdb47af61a699633266d828c444a687d0b",
+    "persisted_digest": "0eae66e86cc39dd54c46902c1eea17afd0ce67bd09e70e01a8f01f18a91c4573",
     "reviewed": true
   },
   {
@@ -588,7 +588,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.create_issue",
     "required_credential": "user",
-    "persisted_digest": "7dbc59b18b2f903c46ead1a59eb6888075f6201566e8acf59938d0a4e01f44f0",
+    "persisted_digest": "fc5fde7911647aa431aeeb1abe32f310aa36324b6bd164e83e3fb8abe1733064",
     "reviewed": true
   },
   {
@@ -598,7 +598,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.create_issue_field",
     "required_credential": "user",
-    "persisted_digest": "ddd96c9d67b01ff2012afac7feaa3a5c3ba5086baa9c822aef12840cee9403d7",
+    "persisted_digest": "e5fc380d64b3b6e4b9012cad059e30b78f29a15d0c93258e1d6a9d01d800631c",
     "reviewed": true
   },
   {
@@ -608,7 +608,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.create_issue_field_value",
     "required_credential": "user",
-    "persisted_digest": "de27f8bd726283620b395998a14ed085affed1d184335ad58206fd851d185a02",
+    "persisted_digest": "94ae0740b4ea1158b65dc8b416e612dc87640ce7c1c9c8cd8af3d4eeab4d9f28",
     "reviewed": true
   },
   {
@@ -618,7 +618,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.create_issue_type",
     "required_credential": "user",
-    "persisted_digest": "676c47157d78b2d92c674e448395bbe672e69c4fff74fe3f96500ba391c5cbab",
+    "persisted_digest": "52409879c9a6f074aed192504d07c1b6c79dad4a0f297c7a5b393ade9c382a0a",
     "reviewed": true
   },
   {
@@ -628,7 +628,7 @@
     "disposition": "graphql",
     "catalog_operation": "label.create_label",
     "required_credential": "user",
-    "persisted_digest": "12a2bb4054d92bda6419fe3bb26f32a829d84de243d960bf225bbefb63783bf7",
+    "persisted_digest": "153e45d14cb57ddc811d47d2ac573b06503f260c53ed1d019f2336f0bcd46084",
     "reviewed": true
   },
   {
@@ -638,7 +638,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_linked_branch",
     "required_credential": "user",
-    "persisted_digest": "c0162ccb4eb8deabb4549d23b77e5c1c8bd47696148ffb4b7e29db57342bb8e1",
+    "persisted_digest": "3502fa941391b3f77a6d5448bc974aa6bfd568ab5e5ffe40fe0706a26577b629",
     "reviewed": true
   },
   {
@@ -648,7 +648,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_migration_source",
     "required_credential": "user",
-    "persisted_digest": "e0700f8e888ce21ada91fc9610aebc716558e0d56eba75fef1dde38e909c6616",
+    "persisted_digest": "524558f02da5ac875746c55481a95e6f21fd3c1a983178778c54a613e1dd0991",
     "reviewed": true
   },
   {
@@ -666,7 +666,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.create_project_v2",
     "required_credential": "user",
-    "persisted_digest": "dc14c2045bcbc3cbc8848d768f90bbe265b71f724cdaf1b6d0b817657b11fcad",
+    "persisted_digest": "470741e59c70e9416a4798e19f1f6202d73c17ec212ec1beb1cbdf30975faebc",
     "reviewed": true
   },
   {
@@ -676,7 +676,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.create_project_v2_field",
     "required_credential": "user",
-    "persisted_digest": "b335cd56c79439c5a2072a04bd086415d6b5f94558e5e6e335bb330fa2291e16",
+    "persisted_digest": "4abb4c1333cf9dfad72ded55c43f688c840fa7a1e5c949d8415cddfef936ed81",
     "reviewed": true
   },
   {
@@ -686,7 +686,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.create_project_v2_issue_field",
     "required_credential": "user",
-    "persisted_digest": "efdf13e16e3117961d782d0fef4f39a63766a60fbe17b40f9c006a3f38df41cf",
+    "persisted_digest": "523188a39ccb02e0155e3201cea380e699616c480e08fd0619624ef32b665ebd",
     "reviewed": true
   },
   {
@@ -696,7 +696,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.create_project_v2_status_update",
     "required_credential": "user",
-    "persisted_digest": "64aa8c14bd38dbee1592b4112443a8d929d64ce2eacbbae8855b10ff6e451345",
+    "persisted_digest": "478bbaa1cb84695e63ac97d23107bd22c00a76dfaa02a411848eab699d8d7a70",
     "reviewed": true
   },
   {
@@ -706,7 +706,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.create_pull_request",
     "required_credential": "user",
-    "persisted_digest": "6cd7ddfe26dc9530ea89ff97cc1b20046f013e0f80eb33c8e741835cd2a319f5",
+    "persisted_digest": "2e6b9053c5e33065d978a65cef35e3a5992ec36702b4d5987a2392b5fbbd1a4c",
     "reviewed": true
   },
   {
@@ -716,7 +716,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_ref",
     "required_credential": "user",
-    "persisted_digest": "4fad059fe1f6aff9300ab83f776b9cd1f5745972b2ea2fcdf20c0c6332a1114f",
+    "persisted_digest": "90c24de7e328e52c6b4c0296f6c23d6d9b1f84ac8236db75c32daa0e2df7a55d",
     "reviewed": true
   },
   {
@@ -726,7 +726,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_repository",
     "required_credential": "user",
-    "persisted_digest": "fdac2d5e1800a47d6afd401cabe0107a716711a6fbfe2aacac49619ee1a2a79f",
+    "persisted_digest": "df98299519e726dc147da2e516ecc321c50f69749587d269ada7da746c744256",
     "reviewed": true
   },
   {
@@ -736,7 +736,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_repository_custom_property",
     "required_credential": "user",
-    "persisted_digest": "e4638b12bf086ff8699d2a61e5f87f1a8a9f05c4c21740661caf3efb1c769a35",
+    "persisted_digest": "c2f81c7b74588a1f348f64cf88055b1c89c8d550abf2da089b9a9b508472ff09",
     "reviewed": true
   },
   {
@@ -746,7 +746,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.create_repository_ruleset",
     "required_credential": "user",
-    "persisted_digest": "6938358e3a611756176042182b9957fa060b65ac24fdcbc8989ec861c057f8c8",
+    "persisted_digest": "4a75c01688d4ee251e0908dd4dd9a0826a7e044d4243c7c8c740e5bef32dc1ce",
     "reviewed": true
   },
   {
@@ -756,7 +756,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.create_sponsors_listing",
     "required_credential": "user",
-    "persisted_digest": "a2cb7890e2bbad14df2d5da9a93647c6880c9f3d6591d8c403832e0ec5d2486b",
+    "persisted_digest": "4ca975b67b0387886f993de871af7a9e67218e860b2bdc90bdd6a11580f11202",
     "reviewed": true
   },
   {
@@ -766,7 +766,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.create_sponsors_tier",
     "required_credential": "user",
-    "persisted_digest": "954a50beca5f593317112a85a10f605874717fdc9550c3f2ee6c6d455e8da365",
+    "persisted_digest": "ce23548a9d7cd361d0702aa0a246c69b416d73916c0e01b39f256d35296f3d7a",
     "reviewed": true
   },
   {
@@ -776,7 +776,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.create_sponsorship",
     "required_credential": "user",
-    "persisted_digest": "53a6ff611107830af81e2651d39185d650988024caf3b4b0b00c0265a6543db5",
+    "persisted_digest": "257931196061d39249c6446c0536e0521c0dc1e66ddc78b7f4d02a22485d96a8",
     "reviewed": true
   },
   {
@@ -786,7 +786,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.create_sponsorships",
     "required_credential": "user",
-    "persisted_digest": "49dae9006a0f889bb2c5f8243b3d4777e890cc23a4a4c9e0a81113b16b808003",
+    "persisted_digest": "294184b6751aa9e1d3f9bc7becbc8dfee7dc56adf53803dd81a1d1386030b943",
     "reviewed": true
   },
   {
@@ -796,7 +796,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.create_user_list",
     "required_credential": "user",
-    "persisted_digest": "2e5f75fdacbf97410f5a319a758f10b27a93b168fa1d6c280bba076aab6aec5d",
+    "persisted_digest": "58e048daabd6aa8fbaebfb5b4f527ebe60e132a1409a9b7c137375337940670d",
     "reviewed": true
   },
   {
@@ -806,7 +806,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.decline_topic_suggestion",
     "required_credential": "user",
-    "persisted_digest": "b826b543eeb698c41a73628965a3bd2395a8530cf06447125ab7d39c5888339e",
+    "persisted_digest": "e0c53f791f51226b986aeabe013809fae87eac2edda363fb3c113776c5987c2b",
     "reviewed": true
   },
   {
@@ -816,7 +816,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_branch_protection_rule",
     "required_credential": "user",
-    "persisted_digest": "494dd62435873cbe3d40e244fd211f10859010ce64c31a947a5db0c5e00f7aa3",
+    "persisted_digest": "aaa2ba8f1df68cba2116d1bf2da89f4529ca2f7207e819166a73baa09307e6b0",
     "reviewed": true
   },
   {
@@ -826,7 +826,7 @@
     "disposition": "graphql",
     "catalog_operation": "deployment.delete_deployment",
     "required_credential": "user",
-    "persisted_digest": "b5e6a19c9742794f05742d2cbcdd9443776add5f85438053bd599ef22391023c",
+    "persisted_digest": "e0f4691687bdfba0be8843a650b2219d67205b5d525db3afbebf0aa0f4ce2f5d",
     "reviewed": true
   },
   {
@@ -836,7 +836,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.delete_discussion",
     "required_credential": "user",
-    "persisted_digest": "c319173b0f929e3ed9d69f9156d43280428b67ec910de89bfdf011e93383c9c5",
+    "persisted_digest": "89f6b059c06796ecc4bc5d9b161090d063e8e5fa8ede5932545bfca47c4f19ac",
     "reviewed": true
   },
   {
@@ -846,7 +846,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.delete_discussion_comment",
     "required_credential": "user",
-    "persisted_digest": "ba539a103638dcebf20bb484c2ad95ff6cc0c21fbecfd67fe4b8d3310b0dc6c9",
+    "persisted_digest": "635d1076aeab450c7c9c7e344e56d16e0bd826e03d36e3a74089e079f791b785",
     "reviewed": true
   },
   {
@@ -856,7 +856,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_environment",
     "required_credential": "user",
-    "persisted_digest": "baa37dae703c52eeef9aab4080a74f7da655a459c8f1067b959a23a3e3cc8cea",
+    "persisted_digest": "a8d431a3aa21adabf758d71f69cf75a7e672c859abf7bff37c2caadb96e91bbc",
     "reviewed": true
   },
   {
@@ -866,7 +866,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_ip_allow_list_entry",
     "required_credential": "user",
-    "persisted_digest": "a8d87a640fe8fb2447e0c968570eab90d61f508c4d1b48baafb490a978537e9e",
+    "persisted_digest": "2ef858576ec79efc3ab07adefe9b5a9d2381219d5a8b3ef091dc149528a3a552",
     "reviewed": true
   },
   {
@@ -876,7 +876,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.delete_issue",
     "required_credential": "user",
-    "persisted_digest": "dead57f56f42fd50b99d69e5c89181b56d7408cceff560cf3f62aace46fe1636",
+    "persisted_digest": "97943264b088332daf5bb8b5890b83f638af955c287512e63c9668819ed9c10b",
     "reviewed": true
   },
   {
@@ -886,7 +886,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.delete_issue_comment",
     "required_credential": "user",
-    "persisted_digest": "b84cf2a40bd9e69022b9ebb60cf084b312e04375af31ca4a0b33cba588d7ccaf",
+    "persisted_digest": "3823bf08cc7375b24a24ff937f137206d8fc5499dd1dd24b17b05b699e182409",
     "reviewed": true
   },
   {
@@ -896,7 +896,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.delete_issue_field",
     "required_credential": "user",
-    "persisted_digest": "f33623244d2c2f0fd1d9990686940e146e79c7c1a36c8762edc30df100b3898a",
+    "persisted_digest": "1205e0dbfd0d66190b4dad3dcea12e2ee844fa777eaef1a7f1ceff1cd77195e8",
     "reviewed": true
   },
   {
@@ -906,7 +906,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.delete_issue_field_value",
     "required_credential": "user",
-    "persisted_digest": "baf7da4e477f574b1137a3f3749555fc38842b17c879d172b7b7ab6136e2c05c",
+    "persisted_digest": "345137353e8e0cb45662942233d4bf1b7f8a1da57f88f45ab4d6aac3c6bea40e",
     "reviewed": true
   },
   {
@@ -916,7 +916,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.delete_issue_type",
     "required_credential": "user",
-    "persisted_digest": "2829492988fafc54f9629737bb2997eb1b1c77db572f7ffebbbe0ad97beb3513",
+    "persisted_digest": "7316525685a2aa535d08ce44def74bd7e7c6490e626a9c9f3bf299bad3513fe7",
     "reviewed": true
   },
   {
@@ -926,7 +926,7 @@
     "disposition": "graphql",
     "catalog_operation": "label.delete_label",
     "required_credential": "user",
-    "persisted_digest": "9a3f89a2ef4ad6e6b75fcd9d66af3b9aabfe2fdaa554e730b16a56dd8c3417cb",
+    "persisted_digest": "81605d028546111077c316359fbc6d9ffd23019e0d2a82688465505bf5128c25",
     "reviewed": true
   },
   {
@@ -936,7 +936,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_linked_branch",
     "required_credential": "user",
-    "persisted_digest": "776463ce31b722b842ff534eaf883ba7b73329d05714460735053c78332354d6",
+    "persisted_digest": "ec50d985c3bc2d9682a08290e79511c874ed1301f9b97aa0f962926434fbc1f7",
     "reviewed": true
   },
   {
@@ -946,7 +946,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_package_version",
     "required_credential": "user",
-    "persisted_digest": "198e267f4b6d61c1f3742d6da71dfe155757e324508521e599e447bbc7c21c34",
+    "persisted_digest": "b78dbd40975c13a6b6c373384ee1dcf8290f2eececdef69b7a62cc0f55337d1b",
     "reviewed": true
   },
   {
@@ -980,7 +980,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.delete_project_v2",
     "required_credential": "user",
-    "persisted_digest": "0cccb54242c36ba701dbb6ab8813606a84f8905315d923ac2af235f5a7d7758d",
+    "persisted_digest": "745d4c560504f0dc39505e6ba28751bf95801e4c8de14039d408a74612bd88d1",
     "reviewed": true
   },
   {
@@ -990,7 +990,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.delete_project_v2_field",
     "required_credential": "user",
-    "persisted_digest": "f0a04f41da5f25015607ae886fd7cd519e83adb18e961ae635dcb162a03ae5b8",
+    "persisted_digest": "cee223d0fd8b74606d9f0710a553c4ef3a1da70d8031c3c2df03338a511e6e09",
     "reviewed": true
   },
   {
@@ -1000,7 +1000,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.delete_project_v2_item",
     "required_credential": "user",
-    "persisted_digest": "2d6d99fabc1c6e987ebb0e44972e431e9bdf6ea01ddffdfc9cda769d99b13be3",
+    "persisted_digest": "1f5bdf61324940c4795b5314476cd6b51353e27ed18bcee7115e930f77275919",
     "reviewed": true
   },
   {
@@ -1010,7 +1010,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.delete_project_v2_status_update",
     "required_credential": "user",
-    "persisted_digest": "e9992a355a18e75f1458a45c619151ea68a901554104afab73f277e23dd2520f",
+    "persisted_digest": "fe24a4fceba2a8ffc58acf11727dbb62b789df2bbde4cce2009ff9e6e41356db",
     "reviewed": true
   },
   {
@@ -1020,7 +1020,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.delete_project_v2_workflow",
     "required_credential": "user",
-    "persisted_digest": "fafe670b98830ee4f85035f2af48a038b2d7772a1be994fcedba801d176f6c32",
+    "persisted_digest": "7f2014434b4e09020c7f100bd74a319f08dc8ac452de16104893f8d4529449de",
     "reviewed": true
   },
   {
@@ -1030,7 +1030,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.delete_pull_request_review",
     "required_credential": "user",
-    "persisted_digest": "12302e69a1a221caf149582e8491430e7e4bfe6ed7c28826a9347a9326dcbb6b",
+    "persisted_digest": "52c984e5642b898831dedcb43bab6ff942951e6f45336542279043981f680010",
     "reviewed": true
   },
   {
@@ -1040,7 +1040,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.delete_pull_request_review_comment",
     "required_credential": "user",
-    "persisted_digest": "b7264c7b6dd7c04b037506c5516ddad464f553bb48984dd6605adcbc478041da",
+    "persisted_digest": "6a9d52610d590d015eed9ff52bc142c32e491ddea0237ac463be053d132820bf",
     "reviewed": true
   },
   {
@@ -1050,7 +1050,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_ref",
     "required_credential": "user",
-    "persisted_digest": "4babd0d0fe9a6ff4bfd7255828b6d3af5d9cc4f9146103998ff3851ef560e94f",
+    "persisted_digest": "79837013731755e7f563f7acf43afe3aaaf572fbe331db2aea10212959f73dca",
     "reviewed": true
   },
   {
@@ -1060,7 +1060,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_repository_custom_property",
     "required_credential": "user",
-    "persisted_digest": "b0a9e5c5e7f40154f9395c9c094dcf7fdbef7b69adebe2f46677c0b42dc932f2",
+    "persisted_digest": "f47478c7ad92e0b701033c25d5adc3b708ad6ef8682c6fd9b46be8c22c381e65",
     "reviewed": true
   },
   {
@@ -1070,7 +1070,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_repository_ruleset",
     "required_credential": "user",
-    "persisted_digest": "11ebc44e2616a7c2f6ca20e1f66dddd7a6e93b80b4a37c3911b0d7c06c7c874a",
+    "persisted_digest": "0ae32e5cf9c21945e94b6d536a1f9c1c19e0d3d9e0bd272a74e7c67c4218bf3f",
     "reviewed": true
   },
   {
@@ -1080,7 +1080,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.delete_user_list",
     "required_credential": "user",
-    "persisted_digest": "96d7d7fdcc2d504a77deb3f8241f5c0af44983e0a740fa32a614cb65a8b1028d",
+    "persisted_digest": "7d072c1ad0da377185cfb2255368eb312f9415a650e7848552880087b09e5f25",
     "reviewed": true
   },
   {
@@ -1090,7 +1090,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.delete_verifiable_domain",
     "required_credential": "user",
-    "persisted_digest": "597eeed0df28e7101e0fbf05899c588ec633f970ea932a90f389b4acee0f9685",
+    "persisted_digest": "7745742f442554f7627641f327a4de9a24865c2b771a86392c82f72becf18c0e",
     "reviewed": true
   },
   {
@@ -1100,7 +1100,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.dequeue_pull_request",
     "required_credential": "user",
-    "persisted_digest": "a6c5c18e00893e66f235dff31aa7319305826efc24875392d076c80921986ef6",
+    "persisted_digest": "97a0c5f5fcad8989c470929efd2538eb3e892c31997fec16b690953493e3c043",
     "reviewed": true
   },
   {
@@ -1110,7 +1110,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.disable_pull_request_auto_merge",
     "required_credential": "user",
-    "persisted_digest": "ddf5908893fbd6f116bb7039253200fbd7b735bd5bdf7da40431dd479e728811",
+    "persisted_digest": "7109572b634f4552cd03fae332f285478f866a0383c4b0ad4ad177773b69d962",
     "reviewed": true
   },
   {
@@ -1120,7 +1120,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.dismiss_pull_request_review",
     "required_credential": "user",
-    "persisted_digest": "4b60fd0543ab6541fe6ca622f26c92d21156a87546648e7a5746dabbb188c861",
+    "persisted_digest": "ff74ae75226644ac9204c0e2c09f7d69b8688e5261b50582cd411d28e2875235",
     "reviewed": true
   },
   {
@@ -1130,7 +1130,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.dismiss_repository_vulnerability_alert",
     "required_credential": "user",
-    "persisted_digest": "453ebc190ab284b669a5c43c8b085ac9849fb0d11947b18a8c9b0411aa3a3cc4",
+    "persisted_digest": "f150019a85405c8023e33d97c750b14c7d1e6be3afaf26a206058ad7124b7b8a",
     "reviewed": true
   },
   {
@@ -1140,7 +1140,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.enable_pull_request_auto_merge",
     "required_credential": "user",
-    "persisted_digest": "ccbb26aaef7639f50e64eee271d40d8b0f377b45062b3fb323f2efa095b4c826",
+    "persisted_digest": "9d0e61e858f5af9085010ba041988625404aa3594021b880a52646a18382059d",
     "reviewed": true
   },
   {
@@ -1150,7 +1150,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.enqueue_pull_request",
     "required_credential": "user",
-    "persisted_digest": "a4a1a35db06b874055114929bf040084a44c8ee8009bdca3bd421a1324ebe829",
+    "persisted_digest": "9f5ae2c7974644691d385b24a09df3defa4c22ba8740604b1edb8c5fcbffef41",
     "reviewed": true
   },
   {
@@ -1160,7 +1160,7 @@
     "disposition": "graphql",
     "catalog_operation": "organization.follow_organization",
     "required_credential": "user",
-    "persisted_digest": "c7471333801828d108fbe660cb09512875bd87ead5b53951641ed5813330a30c",
+    "persisted_digest": "3998673c88aaa9fcc6da994cece33342deedc3e577098582e7a6398e960275cf",
     "reviewed": true
   },
   {
@@ -1170,7 +1170,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.follow_user",
     "required_credential": "user",
-    "persisted_digest": "a22e108eb75cbeffe1fdaedbcae4323a9596ad8067135b3814989c1e8a3aebf3",
+    "persisted_digest": "60d1268e91c2fe90a50f50c08b5af3a983797562bdfcf470c55b7f909ceb9869",
     "reviewed": true
   },
   {
@@ -1180,7 +1180,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.grant_enterprise_organizations_migrator_role",
     "required_credential": "user",
-    "persisted_digest": "86082b0ef813de2ab59ce96f80e03adc3aa4061d3edf8d579896733e1c0c109c",
+    "persisted_digest": "f0ffc97a07ab85574eba6e39622a50ddb8682c7fa166ebaa1dbf47439ed4bc80",
     "reviewed": true
   },
   {
@@ -1190,7 +1190,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.grant_migrator_role",
     "required_credential": "user",
-    "persisted_digest": "90b305444d523c7c0da5377107b8bc839f37ad07e6598472b19a02996d035ebe",
+    "persisted_digest": "be43e1737b660f3b806186f2caa8da526c8b16699c4b76737960059c102da5a7",
     "reviewed": true
   },
   {
@@ -1208,7 +1208,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.invite_enterprise_admin",
     "required_credential": "user",
-    "persisted_digest": "6cbdcccf54ce25de4b6e27fe540ebd9e30c797fbbc9941b9024cbe6520f8984a",
+    "persisted_digest": "eac94611504ae7cef305959da35566c66214c86bdf82f1f58a1c809174f69536",
     "reviewed": true
   },
   {
@@ -1218,7 +1218,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.invite_enterprise_member",
     "required_credential": "user",
-    "persisted_digest": "582dba1c0b376d53f3246299c070d8544b456a0b442ccb375de09b38a1e19e93",
+    "persisted_digest": "3d1087b9349671584033e97a155c7eedfa797d9df625c296333510e8a2ff4db5",
     "reviewed": true
   },
   {
@@ -1228,7 +1228,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.link_project_v2_to_repository",
     "required_credential": "user",
-    "persisted_digest": "bc33ee6be14804b0572ddbce8065f7728e84ad392d6e5c044abaf6e0fee8b484",
+    "persisted_digest": "7d69cf5fd08479048c2ada05a46a5e2f70ed8defa9d112b46882eee51434f36e",
     "reviewed": true
   },
   {
@@ -1238,7 +1238,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.link_project_v2_to_team",
     "required_credential": "user",
-    "persisted_digest": "ca6e6b828263021f3fe5c64306db93f1bcbce052e13633a797f71aa081bb4aba",
+    "persisted_digest": "9d84e7268f783372fe2cfaca5fb411f38eb76b0b9f5a9b51ffeaf3d3b7f40b6a",
     "reviewed": true
   },
   {
@@ -1256,7 +1256,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.lock_lockable",
     "required_credential": "user",
-    "persisted_digest": "c0b154d5e3e18c7c09686c6c6a056f86166de3bed92415a4aa7a7bcd878df1fb",
+    "persisted_digest": "7018091a3e7c7d7b8adcc90cfe02f81c525f07b89a2dec0fc26589fcc926304a",
     "reviewed": true
   },
   {
@@ -1266,7 +1266,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.mark_discussion_comment_as_answer",
     "required_credential": "user",
-    "persisted_digest": "a90e648ae02d30e36f61505ba57639e8b83b6f2b0bbd276c835082a549d53244",
+    "persisted_digest": "ceb165cce0f732f4937c7f42f4f3cc537e31e920415588b456955f5e01da1d40",
     "reviewed": true
   },
   {
@@ -1276,7 +1276,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.mark_file_as_viewed",
     "required_credential": "user",
-    "persisted_digest": "77771a90abc9c26c6da4fac6d73e168159c73d09fbd39fd3a3d2ed2e701edb76",
+    "persisted_digest": "48bfe94d0a2030a8815d17bda74fafc386889565da46da48c91c600f90624c57",
     "reviewed": true
   },
   {
@@ -1286,7 +1286,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.mark_project_v2_as_template",
     "required_credential": "user",
-    "persisted_digest": "dae133fdee1ab936109824e3dc40f07c6854efb94032be031924065bcd18ed31",
+    "persisted_digest": "b5ecc03610600502b65e6f0a9f5d01eac4c119877b93b00ddfc0076a1874da1a",
     "reviewed": true
   },
   {
@@ -1296,7 +1296,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.mark_pull_request_ready_for_review",
     "required_credential": "user",
-    "persisted_digest": "3a95635429e95ac72d21c4a96e931f4606f378c5bbd6623a233146c8c1041023",
+    "persisted_digest": "afbf5ec06f9df8f8fdd786823fc3b85441ea12fc7df091283c2d3b36a502a79d",
     "reviewed": true
   },
   {
@@ -1306,7 +1306,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.merge_branch",
     "required_credential": "user",
-    "persisted_digest": "c2c0df4b8ca047c7107022e349fd941d6e965699d62a4a1a7ab5e5381ae09c68",
+    "persisted_digest": "defb6d9e7c3a2b8e289571b0197faddd85ed2e7718f9d82c98cdeccfbc3e68eb",
     "reviewed": true
   },
   {
@@ -1316,7 +1316,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.merge_pull_request",
     "required_credential": "user",
-    "persisted_digest": "0e0d2418fd689b2d30e418afb535c1a31179c8e66f48c2ab3d546e0a048d3038",
+    "persisted_digest": "112ae291f11dbe98d741de150bce3a921e6e21ec4f9c8aba2cda6e3751d267a6",
     "reviewed": true
   },
   {
@@ -1326,7 +1326,7 @@
     "disposition": "graphql",
     "catalog_operation": "comment.minimize_comment",
     "required_credential": "user",
-    "persisted_digest": "9bf3f78321763d69803cdbb68fba4e06bd773d293319507a5b037166df6e2387",
+    "persisted_digest": "b21e096e835ef7341c8c2a011a57ede6f56bec0db5a0a7a3e8fa4651dd6516fe",
     "reviewed": true
   },
   {
@@ -1352,7 +1352,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.pin_environment",
     "required_credential": "user",
-    "persisted_digest": "ac2be8618fb8d2f0dc48ee763f189ba8c0c76e91148da28d9c13e13487fa96e0",
+    "persisted_digest": "bf0e999d8af84cb07947b17bcfc4a6e134dd6b78e37fd0be9cef942bbcc2395f",
     "reviewed": true
   },
   {
@@ -1362,7 +1362,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.pin_issue",
     "required_credential": "user",
-    "persisted_digest": "9086175f4d78e4dd84de0563486a909f91751a8a376f3bad7ce32b8f6e8b244e",
+    "persisted_digest": "a5947c838b33a5e11838ebabc38d2fc8255491b19159e26c38638057caff1927",
     "reviewed": true
   },
   {
@@ -1372,7 +1372,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.pin_issue_comment",
     "required_credential": "user",
-    "persisted_digest": "a966c3a88d3f0356b1efd6ba40579d719f9faf75d8010b54f6b5c13aa8647085",
+    "persisted_digest": "64fb80444452c1769a6973e261397331da27fc107ab3a82d91fb67626b71c829",
     "reviewed": true
   },
   {
@@ -1382,7 +1382,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.promote_repository_custom_property",
     "required_credential": "user",
-    "persisted_digest": "dae43c070ba3373d669d4dd71348c6a70c214dbfd723d818a588cc3c220078b1",
+    "persisted_digest": "26b57889e240c11e330fc480e987d331325d43343040c358c4e94e4db8f9c651",
     "reviewed": true
   },
   {
@@ -1392,7 +1392,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.publish_sponsors_tier",
     "required_credential": "user",
-    "persisted_digest": "5a3a4484c6678b32b94b4654a3e16ddd28e92e512ae50f9d61a7dc1c745bc921",
+    "persisted_digest": "cba73e8e717875d6357f259ab61210c4eb343f19db943d84ccc70b74a1626c9c",
     "reviewed": true
   },
   {
@@ -1402,7 +1402,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.regenerate_enterprise_identity_provider_recovery_codes",
     "required_credential": "user",
-    "persisted_digest": "de99e73bad47b79675d20cb8c400f20670469e3925cd3227f747067cd61c140f",
+    "persisted_digest": "cbe960dfa9399e637caddae89091dd47622d61ccb0e016a029db20e588841f70",
     "reviewed": true
   },
   {
@@ -1412,7 +1412,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.regenerate_verifiable_domain_token",
     "required_credential": "user",
-    "persisted_digest": "8953fe8f2b2fe002822a4a19c374bf8bf10826f67a3bb86d0062f05949ee47d8",
+    "persisted_digest": "a1823edbd8e1b67d3755a8a8c3d920a6e170d19ad548f749d307d7393f18043b",
     "reviewed": true
   },
   {
@@ -1422,7 +1422,7 @@
     "disposition": "graphql",
     "catalog_operation": "deployment.reject_deployments",
     "required_credential": "user",
-    "persisted_digest": "599bf26ae0879a6bd1c1fc223db7c88cb11a1b687b0a538955b959a930007902",
+    "persisted_digest": "79bf98f5c43624059a14e4decb1029d0f4b905249e3548dc39b7237e89119176",
     "reviewed": true
   },
   {
@@ -1432,7 +1432,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.remove_assignees_from_assignable",
     "required_credential": "user",
-    "persisted_digest": "ac5fc7ddddf62fecb8f4e50a5d6273c5dbb71cbb6d3efb5ce2b66ec609985117",
+    "persisted_digest": "fcf06762939d935d9041452adad0f465db961929b5495a89328846833d580248",
     "reviewed": true
   },
   {
@@ -1442,7 +1442,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.remove_blocked_by",
     "required_credential": "user",
-    "persisted_digest": "3a1c8755259e829a79e6db3338cd5c4375d2fb2a38f085373d25d6f97fe06bb9",
+    "persisted_digest": "97a56941c0d12842e2f831cf50c96b3142ec44682382b7f40affe1e1f6438a9a",
     "reviewed": true
   },
   {
@@ -1452,7 +1452,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.remove_enterprise_admin",
     "required_credential": "user",
-    "persisted_digest": "fc55538a4efba240aff19c95b6852151fb0957e11048a0dda59b271aed01e6f9",
+    "persisted_digest": "339a9efac4b8af685e3896056934a7239fb5dc039b37bcfef410a1a4eb43e289",
     "reviewed": true
   },
   {
@@ -1462,7 +1462,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.remove_enterprise_identity_provider",
     "required_credential": "user",
-    "persisted_digest": "8950bd677e11ab64e85ee1b89c6f56c14cdfb9efd873dc102c465d0e300de9d1",
+    "persisted_digest": "90a08d6f0193d0597bfbb424af3f33a4dd402def134141e9b55defe0fba33b01",
     "reviewed": true
   },
   {
@@ -1472,7 +1472,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.remove_enterprise_member",
     "required_credential": "user",
-    "persisted_digest": "71eef0037b3457891773f2054cd3f2f3604fc7b94daa4ee11d165658dda54024",
+    "persisted_digest": "c25abd6b12208f4fbf509c722a6813392e07fd3aca901f6c30649749cc576c19",
     "reviewed": true
   },
   {
@@ -1482,7 +1482,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.remove_enterprise_organization",
     "required_credential": "user",
-    "persisted_digest": "2805af4fd95e9454bf6fe8669515a90f675830d84740345cc015164cd6a1176e",
+    "persisted_digest": "dcbc31bc065021e25b9a1edbb632a84dd63579eb6f85bb4eba55eeb4f61f6a23",
     "reviewed": true
   },
   {
@@ -1492,7 +1492,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.remove_enterprise_support_entitlement",
     "required_credential": "user",
-    "persisted_digest": "1302b9c43fc8c6f714b209f6856d64ccd326a745c5b99adf26fff12a92f29963",
+    "persisted_digest": "3cafde5709a160d4b3e59002010d4ef3209df35ec2e88137d38e43c82e23a582",
     "reviewed": true
   },
   {
@@ -1502,7 +1502,7 @@
     "disposition": "graphql",
     "catalog_operation": "label.remove_labels_from_labelable",
     "required_credential": "user",
-    "persisted_digest": "75d4eb4e6cc48383606e7a6d45df30f497f18b828505a8a9e54fa2a2dfbc21f7",
+    "persisted_digest": "3843d8a09a147556298772cf7c4399d9709e7ec699328eacbfe252737095ebe2",
     "reviewed": true
   },
   {
@@ -1512,7 +1512,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.remove_outside_collaborator",
     "required_credential": "user",
-    "persisted_digest": "557d8cf1540e86361f3cf83464c7b283ad66d75b9498cc5f03ce1dd3f0bcf111",
+    "persisted_digest": "82908ef45bf166c4b82b01964d6140e24dd2c12b7375a49857b06552065ca741",
     "reviewed": true
   },
   {
@@ -1522,7 +1522,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.remove_pull_request_creation_cap_bypass_users",
     "required_credential": "user",
-    "persisted_digest": "4ffe872cfdf6928bcef00a3cfddd7212aa1df300e3fbfb37faca57738a3ebd99",
+    "persisted_digest": "03686d79b529785d5df4d861334b2e6b5330dfd14255a1d0fae94dd076354298",
     "reviewed": true
   },
   {
@@ -1532,7 +1532,7 @@
     "disposition": "graphql",
     "catalog_operation": "reaction.remove_reaction",
     "required_credential": "user",
-    "persisted_digest": "cad256608c0e714dc10b3cabdfdec88e3940e10ee6ce7009ed4fbd7bbde116f6",
+    "persisted_digest": "b7728167e53ebd0d98b11fcc428be3085a53b8151e5f446922a49c1fcc78627f",
     "reviewed": true
   },
   {
@@ -1542,7 +1542,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.remove_star",
     "required_credential": "user",
-    "persisted_digest": "03b7874784e8af8301aa9d017d548ebb009d527f2d4e60f3c17f49806ca4d5b8",
+    "persisted_digest": "a8f42fb8b19be6a2adc0bbf799d9f2253da88595d4f4dd6a7d924781b5c7630a",
     "reviewed": true
   },
   {
@@ -1552,7 +1552,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.remove_sub_issue",
     "required_credential": "user",
-    "persisted_digest": "97ff8df6eb8b63a10eb77fc8db1e37aeb99e4cf7495a0878f76a41501e70cd6c",
+    "persisted_digest": "6efffa4b8ab75ca89c4b8b0a0dd82523e242a25f442fc4aeaa351379124c2dd5",
     "reviewed": true
   },
   {
@@ -1562,7 +1562,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.remove_upvote",
     "required_credential": "user",
-    "persisted_digest": "d19fdfc9c8aac99d25b28842857515a9352b64ed7d3de577849141ea416d86da",
+    "persisted_digest": "bc143ede447cce9a12224e40b884f222d85c53fce77a88fa18bab85e035dfea4",
     "reviewed": true
   },
   {
@@ -1572,7 +1572,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.reopen_discussion",
     "required_credential": "user",
-    "persisted_digest": "6bc09c7223b69dc38e97f6bd0779b977c76c5d9dc2c4fc31d1c64231f13f6e3b",
+    "persisted_digest": "965ea4080efbe8760e4f0eafd7ee2655804bd9dd9596ac803f57dd0847401434",
     "reviewed": true
   },
   {
@@ -1582,7 +1582,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.reopen_issue",
     "required_credential": "user",
-    "persisted_digest": "91fdc09c318e0a26d284df071a12645f56939cc266f828ca4d71509b6ed9e7cb",
+    "persisted_digest": "1933a14898eac9e96e9b0c1ce2e834aae71458def69c2495b06163459db537b4",
     "reviewed": true
   },
   {
@@ -1592,7 +1592,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.reopen_pull_request",
     "required_credential": "user",
-    "persisted_digest": "ac11cec69d6b2409f5026dbba7ae9724148d89557188484d7b7591db4999bf6f",
+    "persisted_digest": "e20cfba9d89e93c14e63cf8e47916232613538b0b601b1a0d8db81b3edf4aba2",
     "reviewed": true
   },
   {
@@ -1602,7 +1602,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.reorder_environment",
     "required_credential": "user",
-    "persisted_digest": "56db2c13bba1e7f44ade8ebeb5e68df7af312ce8cb888e7755edfbb9d448bf12",
+    "persisted_digest": "75390a93d7ac294b99dd108f7aeb7e8ddaad7a7af8d539be8ebe5628f8cf686e",
     "reviewed": true
   },
   {
@@ -1612,7 +1612,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.replace_actors_for_assignable",
     "required_credential": "user",
-    "persisted_digest": "5886970ba139b41deb1ef828d8f8e93b643f072a9264e0a71ccfdc3fe28bf50d",
+    "persisted_digest": "5628bfa54786ad10e4997280f4271604e62e440a9e614092a8a9b60a08519a59",
     "reviewed": true
   },
   {
@@ -1622,7 +1622,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.reprioritize_sub_issue",
     "required_credential": "user",
-    "persisted_digest": "dd83876ccdd0107bdb202ff906d03057e7afc060a098a5dcdd25bc2e89414061",
+    "persisted_digest": "443cd8575909bce10b4a7b52d11945c0ac6dded8f85143af0a204b91037e90e0",
     "reviewed": true
   },
   {
@@ -1632,7 +1632,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.request_reviews",
     "required_credential": "user",
-    "persisted_digest": "e1e73124577fabcd823b7d77ccb5028dc2a1d9b9bf77f6e68950f2089703f3be",
+    "persisted_digest": "031125e01a62a9ac22dc1b65336df0b58c7394b2a97bf9602e6c737bd726716c",
     "reviewed": true
   },
   {
@@ -1642,7 +1642,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.request_reviews_by_login",
     "required_credential": "user",
-    "persisted_digest": "e63994a7c8b3b5e0bccacdb3c4ebc5525a117f8609de73185435602368d1c79e",
+    "persisted_digest": "cfc8f8b4d2d8688264c844280cc9789683af863d809b0505d28f034203f2a6cd",
     "reviewed": true
   },
   {
@@ -1652,7 +1652,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.rerequest_check_suite",
     "required_credential": "user",
-    "persisted_digest": "0608ba378758a0b0476bfa2fbb309f50163b699f22127ee4e05946174c8a103b",
+    "persisted_digest": "981443dac71ca76a8d5cd1d9d155cb93a467869084ac81d06cd764155f668b69",
     "reviewed": true
   },
   {
@@ -1662,7 +1662,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.resolve_review_thread",
     "required_credential": "user",
-    "persisted_digest": "7e40b2c1b7d9f3387722bcaca6c9bfb48b464135dc706b7754d553c23c003ec0",
+    "persisted_digest": "692b7990e5aaaefbd843c1144b7ea4bd6dc2f1867b73c384a4e873da932cbf19",
     "reviewed": true
   },
   {
@@ -1672,7 +1672,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.retire_sponsors_tier",
     "required_credential": "user",
-    "persisted_digest": "39825b1cb5b60c3373b450f1ae20fef37ad0587ddf8b8e27b0c38a04a9ebc25f",
+    "persisted_digest": "36c4581e9397822d24a277b485e257bb43be529ca14672a1e4588b4b60a70fbb",
     "reviewed": true
   },
   {
@@ -1682,7 +1682,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.revert_pull_request",
     "required_credential": "user",
-    "persisted_digest": "f0e0acd24794a864e00e5133e9e28ebdf30b13e26513984124c7ea3e107e5015",
+    "persisted_digest": "682e3248f0c315d31f1c73b69b024ea30650a4e63ceeb26feb25b7bc1151af6e",
     "reviewed": true
   },
   {
@@ -1692,7 +1692,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.revoke_enterprise_organizations_migrator_role",
     "required_credential": "user",
-    "persisted_digest": "32c9da88b45f5aa8c622bcefc6e301b23ec469f0a03d004afbdd97d8c0cd1e77",
+    "persisted_digest": "c5b811a7e6928364d268961d61cfe797a495674d8c4ab67348b96b6b22e7e5a4",
     "reviewed": true
   },
   {
@@ -1702,7 +1702,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.revoke_migrator_role",
     "required_credential": "user",
-    "persisted_digest": "ddebaff8d26fdfab483211f5e17152be266149b9783ff87b4b6f57b94ab2c5ec",
+    "persisted_digest": "984d38a0144e7b91d13243b0f847349dff5d88e7e5dff484e3ebae9cdd59c64a",
     "reviewed": true
   },
   {
@@ -1712,7 +1712,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.set_enterprise_identity_provider",
     "required_credential": "user",
-    "persisted_digest": "e5abfe33a96d984304bdca0ded85a840b5507dcadf0867e4b900ed44b51b13e5",
+    "persisted_digest": "b5bf06351f47454ace22fd0951597ee69e541ff6d8a90a7d7b3e3ad521576be7",
     "reviewed": true
   },
   {
@@ -1722,7 +1722,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.set_issue_field_value",
     "required_credential": "user",
-    "persisted_digest": "63ec231685c2690e840001d9355d9b376e9fe941d51248fb0aa8765892131a29",
+    "persisted_digest": "2f93dd09e6d773298fe9d637e248b49110fc75cfd02729b9541c7de5daf54278",
     "reviewed": true
   },
   {
@@ -1732,7 +1732,7 @@
     "disposition": "graphql",
     "catalog_operation": "organization.set_organization_interaction_limit",
     "required_credential": "user",
-    "persisted_digest": "fb291bd0c309108114ecab2ed278ef918375051fc44eddb598eb77604cb581b2",
+    "persisted_digest": "fceec7c1c96a08547c334f82547ad9ab3a145f4c9ab48b3fd1056c555b732ae7",
     "reviewed": true
   },
   {
@@ -1742,7 +1742,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.set_repository_custom_property_values",
     "required_credential": "user",
-    "persisted_digest": "ae27a1d6fbe91e07cfc7a00679249ea20dd2af638f7aa1f1b9b9c33bd5f0ebcf",
+    "persisted_digest": "89f461da6357a60ce4c7d20b1f3c31961b515e9d44ce23f6da3841b5f26243f5",
     "reviewed": true
   },
   {
@@ -1752,7 +1752,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.set_repository_interaction_limit",
     "required_credential": "user",
-    "persisted_digest": "8f3107c93a70db471887e8d9669ad4a1d97006d414e6da4679e933a54d2d2fd7",
+    "persisted_digest": "1343374bfb56648a63137f2656a154ead480a868c1a6dd2fa4302743bb04a198",
     "reviewed": true
   },
   {
@@ -1762,7 +1762,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.set_user_interaction_limit",
     "required_credential": "user",
-    "persisted_digest": "ad0443f5aa6159ec08d64cfd3deaee7db2eb0275de39b8b39d64d52609fa8058",
+    "persisted_digest": "f88f9529682d26b1f2b183804e155c1961176289933569cde2de8f31e2d565f9",
     "reviewed": true
   },
   {
@@ -1772,7 +1772,7 @@
     "disposition": "graphql",
     "catalog_operation": "organization.start_organization_migration",
     "required_credential": "user",
-    "persisted_digest": "d09beb95e9b8c8bff9ecf23467946929f8e90694bc342a36ecdd7017841b3131",
+    "persisted_digest": "d1b20b050fd07aedd905d37da0a6cf5775c7ca93ca226c84edc306affd1ccf14",
     "reviewed": true
   },
   {
@@ -1782,7 +1782,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.start_repository_migration",
     "required_credential": "user",
-    "persisted_digest": "3f7406109973ba0b50d9389ce639c9ee4504e663e31c7c23fd204e9123c57bab",
+    "persisted_digest": "c95232ec5b89741eb701fc7a84f8ed86d4286a9d657a5e0c3a76012c4a50c402",
     "reviewed": true
   },
   {
@@ -1792,7 +1792,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.submit_pull_request_review",
     "required_credential": "user",
-    "persisted_digest": "5971ea8152153ce81c6547742576b3f1c48c7d1ca3e4c99bb60c933cf60d3737",
+    "persisted_digest": "11d95f9b2ca6d6bfb6ffc8e40d1c21b88ba48441057ed1384161e422dbbd5e6f",
     "reviewed": true
   },
   {
@@ -1802,7 +1802,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.transfer_enterprise_organization",
     "required_credential": "user",
-    "persisted_digest": "937362789501be6e9593bb676f48668c1e78f3ffcdc6b492f6be5b6c89df2058",
+    "persisted_digest": "551f81db5639160dbc09ace320847449bf787d20022e17d021b426fa429a91ae",
     "reviewed": true
   },
   {
@@ -1812,7 +1812,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.transfer_issue",
     "required_credential": "user",
-    "persisted_digest": "41ecd4db238937acc2834506568cd6e3e9e753f25095da90a6ec6ae3244e3882",
+    "persisted_digest": "d1114384ff525ae35cf5e364d9c306160c9f789f3a356a9cdfeb5c014f9ff59d",
     "reviewed": true
   },
   {
@@ -1822,7 +1822,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.unarchive_project_v2_item",
     "required_credential": "user",
-    "persisted_digest": "2a1719bcb727ad4f81e5893145984eed5ec1aff4c6a6305c7a9b0d1ba0ae4251",
+    "persisted_digest": "654609fe90b34e8db08e183688c7511ff591debc5d6b5d8e3b4e3475e76b2470",
     "reviewed": true
   },
   {
@@ -1832,7 +1832,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.unarchive_pull_request",
     "required_credential": "user",
-    "persisted_digest": "86653120514ed4655a80b0ad4cb9ce4caf76a17eaeaa388db77d660f3380070e",
+    "persisted_digest": "fa94380fb4b06d525fb38865c6793cc01d3733fe66c6b287a9c05caad6777e41",
     "reviewed": true
   },
   {
@@ -1842,7 +1842,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.unarchive_repository",
     "required_credential": "user",
-    "persisted_digest": "5c788d94240d15dec16ffa375b8100b9637da30f99d4cf3cb8a004adb9ee0444",
+    "persisted_digest": "9b0becfb9167ea01856e38df34cc02f303f7998a8e7110aa3dd0058688d35375",
     "reviewed": true
   },
   {
@@ -1852,7 +1852,7 @@
     "disposition": "graphql",
     "catalog_operation": "organization.unfollow_organization",
     "required_credential": "user",
-    "persisted_digest": "c118c65c9c5897bbc0de52fde1c722294ee11ce63f25aab0b538f5f270d57546",
+    "persisted_digest": "1900f44bb59bfc443e565b87a39f7bfb5f329bc87609853c5aaab5904c10f191",
     "reviewed": true
   },
   {
@@ -1862,7 +1862,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.unfollow_user",
     "required_credential": "user",
-    "persisted_digest": "8eef874afe0a1af4a380fe58425a6cf3ee703f58b79f8b5f4e93062c12a9401e",
+    "persisted_digest": "2be4521ca1f1824b946635b75dfe26768df8835b850366a279df012bd5c4bbec",
     "reviewed": true
   },
   {
@@ -1872,7 +1872,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.unlink_project_v2_from_repository",
     "required_credential": "user",
-    "persisted_digest": "febadead7a445f372a1cc3fce3345d00ee1f3ec692bdbb8e80250f5f65aa75fe",
+    "persisted_digest": "b133d071249b3370a3ba52fc9def2b32add6a564dc02a01a6ad56b10555f9844",
     "reviewed": true
   },
   {
@@ -1882,7 +1882,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.unlink_project_v2_from_team",
     "required_credential": "user",
-    "persisted_digest": "159bab2454a58e577c3d5ee823cd6c1b6e7bdcf6f3d08695e72f9632434e1449",
+    "persisted_digest": "1c1a533eba0114f9576fb9d16b715b6964121dbf8cdb496e6a86b3cc9fab1d8f",
     "reviewed": true
   },
   {
@@ -1900,7 +1900,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.unlock_lockable",
     "required_credential": "user",
-    "persisted_digest": "2d48b824d1b358f5e943f9c483f297a4e541ccf24003b3a838ac388ba5d2474f",
+    "persisted_digest": "a56985c97bfbcfc3aa868e873e8e001a3c050af91f52ad779aeec6d9801247c6",
     "reviewed": true
   },
   {
@@ -1910,7 +1910,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.unmark_discussion_comment_as_answer",
     "required_credential": "user",
-    "persisted_digest": "8a2d25308034f36caae44411122d1458c5688adfd9bf589bed5d07671378103e",
+    "persisted_digest": "46b986ca4a85d346fe194287fada7b9d95bab3c6cd97acb8e6b8c2b3eb836f57",
     "reviewed": true
   },
   {
@@ -1920,7 +1920,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.unmark_file_as_viewed",
     "required_credential": "user",
-    "persisted_digest": "baa112c6356e267213cad65763bf8f7d540f0657261f14a86f910e7a31ee9885",
+    "persisted_digest": "c7706e598870e6070343c1f6ad8aa7ddb50af54dc4c7a488a93b3066a66e98cf",
     "reviewed": true
   },
   {
@@ -1930,7 +1930,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.unmark_issue_as_duplicate",
     "required_credential": "user",
-    "persisted_digest": "d9b8301290f5818b23adda2dc2f37d5fc387bd6a77d9a92e5978f872791b56dd",
+    "persisted_digest": "cbaa070533ecec2e04861b00d86733e9fa479d8801e4b68f66975c25127ce1ee",
     "reviewed": true
   },
   {
@@ -1940,7 +1940,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.unmark_project_v2_as_template",
     "required_credential": "user",
-    "persisted_digest": "069c9a8c8947e29011881df0504f2cf7f95cfeea178ca4ac03b9994f08bdd692",
+    "persisted_digest": "ec11cd42769f46bac153440c89b8dde62b146cfc95f802354de5472b4d9de46c",
     "reviewed": true
   },
   {
@@ -1950,7 +1950,7 @@
     "disposition": "graphql",
     "catalog_operation": "comment.unminimize_comment",
     "required_credential": "user",
-    "persisted_digest": "cad227dc16e7c813ce150c6ce8a041e8a3ef5179e3228612a4637a4c063ca9c7",
+    "persisted_digest": "cfb57dd4ddf309a5a6e7e47ddb64b31466d55d392c2e8f617cb2e9bcdd1565d4",
     "reviewed": true
   },
   {
@@ -1960,7 +1960,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.unpin_issue",
     "required_credential": "user",
-    "persisted_digest": "386faa2e56463cee75cf09ca41bcf09127a31d3233c46cee2af190d2ee9af5db",
+    "persisted_digest": "806fdd49e7b9958b7b6bb7e11ea3b765094a89ad903323ee797c1910346ff231",
     "reviewed": true
   },
   {
@@ -1970,7 +1970,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.unpin_issue_comment",
     "required_credential": "user",
-    "persisted_digest": "8f15382214f376531f23e5cd5a111f92a3dcc1995fd371783a925b09f03f0fc7",
+    "persisted_digest": "26de823891b9e754b0b7fbe10615e0933ba737879e6a13c917519682eb37ef71",
     "reviewed": true
   },
   {
@@ -1980,7 +1980,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.unresolve_review_thread",
     "required_credential": "user",
-    "persisted_digest": "4e1dfb1f2b36882d1a572773b6d6c009c67d343cfa9eb876eacdc0757082e0bd",
+    "persisted_digest": "b66af824fda28bfad0dcc210b6ad64bfe9cb2ea76b3a04d9a34da018e78795a6",
     "reviewed": true
   },
   {
@@ -1990,7 +1990,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_branch_protection_rule",
     "required_credential": "user",
-    "persisted_digest": "7d9af35b0629e6a0e147c417e0824a30b70522a1a55de3d3c475a1e1ac6e7826",
+    "persisted_digest": "828a2e6077e8c7137024ebc2882c4e677797f4a00efa88987d11ca112d16558b",
     "reviewed": true
   },
   {
@@ -2000,7 +2000,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_check_run",
     "required_credential": "user",
-    "persisted_digest": "7b42811d22f60bc5b6920a012317a7d66e44040703fece91c0360a7417169f9d",
+    "persisted_digest": "a4669d0fad719c54b51d37f882668e80f507be8dad8bf29a09d3f3ce9cdafcbb",
     "reviewed": true
   },
   {
@@ -2010,7 +2010,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_check_suite_preferences",
     "required_credential": "user",
-    "persisted_digest": "7209308d5e3e85c14a13d887e78f12eb4b7a956ab631ca928b028d01c0007726",
+    "persisted_digest": "3e0c36b94c01aaba3a4dc2726a45b53f1fb3f2dfd58c5a9fd5dccdcbcef51527",
     "reviewed": true
   },
   {
@@ -2020,7 +2020,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.update_discussion",
     "required_credential": "user",
-    "persisted_digest": "916730e5760c16abb95d665eb2f7c807527c47e08158530455ee2c007407bc12",
+    "persisted_digest": "05d63d628837075a20f93f42ce2549cd45a76260ecb359a5ab9ad5a9a8680e06",
     "reviewed": true
   },
   {
@@ -2030,7 +2030,7 @@
     "disposition": "graphql",
     "catalog_operation": "discussion.update_discussion_comment",
     "required_credential": "user",
-    "persisted_digest": "fbcf6d85e2affb3d8b16e1e3f8dedeef71a0ccf6da18eed0df5cbe4275cfb900",
+    "persisted_digest": "3608689658f3e57c24d1e0c4ef6347c303300edf3688464abf09537e3b2bdb7b",
     "reviewed": true
   },
   {
@@ -2040,7 +2040,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_administrator_role",
     "required_credential": "user",
-    "persisted_digest": "f3f3b159374a7b84c14fec1f838fc25b9b00ac1f19ec54a2525b44908263c39b",
+    "persisted_digest": "1fbb1a73d12b392979a209bd9ea75b3dbbad38e32f9163003001262ecaa0aa38",
     "reviewed": true
   },
   {
@@ -2050,7 +2050,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_allow_private_repository_forking_setting",
     "required_credential": "user",
-    "persisted_digest": "27ae00f6ae9224787f030bd8ae100cafa8c721c790273a95cc812780f825b29c",
+    "persisted_digest": "b39f47ad798b929128fa15e8550888c07821a6049b59583b69c6c0470b3720a7",
     "reviewed": true
   },
   {
@@ -2060,7 +2060,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_default_repository_permission_setting",
     "required_credential": "user",
-    "persisted_digest": "f86a862386a1cca7164667b53106c4d020ce853a18d05a882f9710af68d213ce",
+    "persisted_digest": "5d04e62747b1725d5559873da214166eaba4cfa4b7e457f60d9179fee16f9bca",
     "reviewed": true
   },
   {
@@ -2070,7 +2070,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_deploy_key_setting",
     "required_credential": "user",
-    "persisted_digest": "74d0a8594a12bc18c487829316f0442c76884324fa9149e7045a0d71fcd796b8",
+    "persisted_digest": "d4652bdbe8f8bb7ad612f2bc821518ca058185ad0ad8d8083dfde2977fc3cd61",
     "reviewed": true
   },
   {
@@ -2080,7 +2080,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_change_repository_visibility_setting",
     "required_credential": "user",
-    "persisted_digest": "d4efc4b6051603d34ee7251ec994f545ff92fe6151bd623807dd5ed094897e9b",
+    "persisted_digest": "ccc5606dc66f08cec03205e23982b8528825adae03659962da7ab2c4b297d911",
     "reviewed": true
   },
   {
@@ -2090,7 +2090,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_create_repositories_setting",
     "required_credential": "user",
-    "persisted_digest": "c928c997000bbd4ee3ccc33cd04859db4c5dfed8e9bf9eef57d57f9eae1c9f8e",
+    "persisted_digest": "6703c55e2555f42b55b0b0f9d1cb6459623fb749fa781ffe4d95e397a7b479cd",
     "reviewed": true
   },
   {
@@ -2100,7 +2100,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_delete_issues_setting",
     "required_credential": "user",
-    "persisted_digest": "550619a0a41a12d7babb73e17455c4ca77c87decd1d073b9fd5b7ce1eccd2371",
+    "persisted_digest": "42526b14f805f1ce73fb99f39747d7a29d9be18f05852db788d1f79a7c0eb744",
     "reviewed": true
   },
   {
@@ -2110,7 +2110,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_delete_repositories_setting",
     "required_credential": "user",
-    "persisted_digest": "1a1acb5fc0673ca8cc84c30c0d297897afc887d11de94fd35eb74c4a176727a7",
+    "persisted_digest": "193eb835696cb01b010774745a72a93f51477a2e22a9020d102253a0cce600ba",
     "reviewed": true
   },
   {
@@ -2120,7 +2120,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_invite_collaborators_setting",
     "required_credential": "user",
-    "persisted_digest": "ed7cf3c90786e890a134dedeb74a75bd625fd45652cb4047937c25979ec28492",
+    "persisted_digest": "a50c9baeb96e1a714f210bbbcaae3e94c85b7eb667c1ed0366440bf48f142090",
     "reviewed": true
   },
   {
@@ -2130,7 +2130,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_make_purchases_setting",
     "required_credential": "user",
-    "persisted_digest": "027b95d406f891055f37c6c5ca409aa4119bde06e4f84496b4b349a607c57f7c",
+    "persisted_digest": "73cedc6c8e055d8579be303da61fcfa49546b8f49c32c2848236e0eb46a4a5a0",
     "reviewed": true
   },
   {
@@ -2140,7 +2140,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_update_protected_branches_setting",
     "required_credential": "user",
-    "persisted_digest": "dedde957e91bbbbb1f2bf694b697bf86d181ed5204981a3b81b0a48344b9a782",
+    "persisted_digest": "e80dde1c8a203bb8588083772fa63fd5ec32f57df1661f680d9a9a6ee8da1c57",
     "reviewed": true
   },
   {
@@ -2150,7 +2150,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_members_can_view_dependency_insights_setting",
     "required_credential": "user",
-    "persisted_digest": "eb63e35c26cc5418d98bd74f7f75c5aa0c11cdba496f63f9922934af6365ff03",
+    "persisted_digest": "c9e1af54d77e75e3666b05e5023d91e1715684da6d18e631fb37897eea09588b",
     "reviewed": true
   },
   {
@@ -2160,7 +2160,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_organization_projects_setting",
     "required_credential": "user",
-    "persisted_digest": "8485bddd3dfbb614a750bd2f66ec812a436278dc03a9af78307ff30aeb9c39fe",
+    "persisted_digest": "9cd02933770d7def88c1b8084be8375e7f714effedad0b6a900ba12a2ab5c11d",
     "reviewed": true
   },
   {
@@ -2170,7 +2170,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_owner_organization_role",
     "required_credential": "user",
-    "persisted_digest": "e43d787a645d1a1377b03173b5329850658887ff62bb6dd29801f7a9c9202ccc",
+    "persisted_digest": "bc1f4ecbb42215edd9b0af19023d12b002f5796c59114328961c2137ed36541a",
     "reviewed": true
   },
   {
@@ -2180,7 +2180,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_profile",
     "required_credential": "user",
-    "persisted_digest": "be9c358c7b4b4147326285ee6a2772d3fcf092ba11d63d011138daf5336a0814",
+    "persisted_digest": "3a0e3d6df00ac1af15196dbe6052be6bbd9305df02a0a4c8a2546b0917184bb5",
     "reviewed": true
   },
   {
@@ -2190,7 +2190,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_repository_projects_setting",
     "required_credential": "user",
-    "persisted_digest": "fcf87887d5b599b1ec1b6bd0e74eba9b8fecd06433d38e4daa1bc83c20b4b684",
+    "persisted_digest": "d451619317a37a5120e7946262a095248cf98fca305d3397411332bdfbc2beab",
     "reviewed": true
   },
   {
@@ -2200,7 +2200,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_two_factor_authentication_disallowed_methods_setting",
     "required_credential": "user",
-    "persisted_digest": "d8f74a88f60137aad673d2be8964cc3027733983e0310030a738702d926967e2",
+    "persisted_digest": "8d38f1a19bf2a1dbe8938dd9a8b114d391af024de8cbffa8821a96dc873a0db5",
     "reviewed": true
   },
   {
@@ -2210,7 +2210,7 @@
     "disposition": "graphql",
     "catalog_operation": "enterprise.update_enterprise_two_factor_authentication_required_setting",
     "required_credential": "user",
-    "persisted_digest": "f00ecfc2813b74f9734330bc0a0d868e066c8c44648bbdadc1717add3c1f5c34",
+    "persisted_digest": "5ec0e1c63b8395dff6295cd94b6ecbc60cefab93c3957968c9d985eb529539bb",
     "reviewed": true
   },
   {
@@ -2220,7 +2220,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_environment",
     "required_credential": "user",
-    "persisted_digest": "ed4e4b8811c5d067453899ad94ab237a020105ae4171e762a7b7e0a75f6d2fbd",
+    "persisted_digest": "77d1902999284019e23d1ba8828c2ad037f08bc85bc09f64c25d37362d7edb66",
     "reviewed": true
   },
   {
@@ -2230,7 +2230,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_ip_allow_list_enabled_setting",
     "required_credential": "user",
-    "persisted_digest": "40c6eb6a5d3583038128d6aa43492cba2c318350baef3761e503a359dc472fb0",
+    "persisted_digest": "d7aa73fa33aaa3cd0442b30817d3909c93470093997f812e1188e94dcefe9b84",
     "reviewed": true
   },
   {
@@ -2240,7 +2240,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_ip_allow_list_entry",
     "required_credential": "user",
-    "persisted_digest": "0952103fdf680d20f19af2c6a6ec2396e78f6a935f63c9d5eace15315c8d32d5",
+    "persisted_digest": "ac7fc85ed519d6a487ed4af4620104e666f62aea1d48086e3a277a3ca698de95",
     "reviewed": true
   },
   {
@@ -2250,7 +2250,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_ip_allow_list_for_installed_apps_enabled_setting",
     "required_credential": "user",
-    "persisted_digest": "393f248cbc8954bad7985330e5d9ef25d452593ac084ac564de925fe23745b2d",
+    "persisted_digest": "394e44e3360a4cfd7e7b15f8028680588d5d057872db5ba1bacb4045c9eef5d3",
     "reviewed": true
   },
   {
@@ -2260,7 +2260,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.update_ip_allow_list_user_level_enforcement_enabled_setting",
     "required_credential": "user",
-    "persisted_digest": "c66d7058ae05f89b71763e7c21d5d3ca4428eac06d0d75402dfd24c345ee7522",
+    "persisted_digest": "b8ac28564b4c7375803b33eafef586ad97f57ac485338800f06461dea1f0ac9a",
     "reviewed": true
   },
   {
@@ -2270,7 +2270,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.update_issue",
     "required_credential": "user",
-    "persisted_digest": "f2e743e53b18b3fe8c9212107456cf1fa4733f5b1c978777e53bb27779d68d45",
+    "persisted_digest": "bc8103215275734a0c79a3293ced44bcfdfbed01515adb00019bd13890b34110",
     "reviewed": true
   },
   {
@@ -2280,7 +2280,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.update_issue_comment",
     "required_credential": "user",
-    "persisted_digest": "2fd0007df8e5dec7262b7e0fabd0f2c9af2d2f9a8af8166aed097cab9ebfbbd2",
+    "persisted_digest": "d9c57c2c6615fd2c533b8a813ce7430b79da00a82e309a56f77dac7faa38238b",
     "reviewed": true
   },
   {
@@ -2290,7 +2290,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.update_issue_field",
     "required_credential": "user",
-    "persisted_digest": "6086c67b9151ff797cc4c73376a1111a641732da1e9e4e0c962d47a4f1aec345",
+    "persisted_digest": "cbced922fa86d36a03520d491371b6f6b592c0e9cb4fcdaa21ca6572048befdd",
     "reviewed": true
   },
   {
@@ -2300,7 +2300,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.update_issue_field_value",
     "required_credential": "user",
-    "persisted_digest": "4badf7f4873dea8be8675d309d4ec2b1d24bdd8ff247e30ba7d83b218cb67812",
+    "persisted_digest": "90074f8f7eb00b62895d23ddeb60219586a890ea778d3923c77254b2692a2a8b",
     "reviewed": true
   },
   {
@@ -2310,7 +2310,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.update_issue_issue_type",
     "required_credential": "user",
-    "persisted_digest": "834a8239905b13383197cb11619c2266bb72af3e26d51fc144e6aadc104aaffe",
+    "persisted_digest": "d4a6f64ca93c3c5931f968453146b83049fef1444865d82279d911855b613f02",
     "reviewed": true
   },
   {
@@ -2320,7 +2320,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.update_issue_type",
     "required_credential": "user",
-    "persisted_digest": "772b335833a34c3e18a3c8e042b65af344ce88998a02d3ee10a940c6b0b84807",
+    "persisted_digest": "71254530f9cecd443872e330db315b910d27f8d9d3512fb093ae29eba51f31f4",
     "reviewed": true
   },
   {
@@ -2330,7 +2330,7 @@
     "disposition": "graphql",
     "catalog_operation": "label.update_label",
     "required_credential": "user",
-    "persisted_digest": "93848f0ff5a71e1b6afa492a2505057ba147a654cd9958674e5be5e29564be66",
+    "persisted_digest": "87caac132720ca78a26a16fd1156b0090e4ea0f721841cb59f0528b2a5392729",
     "reviewed": true
   },
   {
@@ -2340,7 +2340,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_notification_restriction_setting",
     "required_credential": "user",
-    "persisted_digest": "3e3d6653a09626c04d9cf9459f0169ddaca05e2412abf9e258a91a4782d0ef43",
+    "persisted_digest": "b9ec058bc5486f10eaab0c57aaa911a620d18eb6b87f1d21fb9814ed84e39889",
     "reviewed": true
   },
   {
@@ -2350,7 +2350,7 @@
     "disposition": "graphql",
     "catalog_operation": "organization.update_organization_allow_private_repository_forking_setting",
     "required_credential": "user",
-    "persisted_digest": "3d9283698ab32781e9120ea4ec94ba4de34efd0b04dd2c4c4d7327701931a9a2",
+    "persisted_digest": "a666b75f9d359fe26c4e97a43dc6f083946c919cd04a7eabc4181cbd63f417ce",
     "reviewed": true
   },
   {
@@ -2360,7 +2360,7 @@
     "disposition": "graphql",
     "catalog_operation": "organization.update_organization_web_commit_signoff_setting",
     "required_credential": "user",
-    "persisted_digest": "7f884232a6e8972627cc561d3d78de8412236f635bddb8e801b6ab13b04e0bc8",
+    "persisted_digest": "41e4c4c9b9fabd624fa418d4265f946998a68e4564d7112e521a182c74d709f8",
     "reviewed": true
   },
   {
@@ -2370,7 +2370,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.update_patreon_sponsorability",
     "required_credential": "user",
-    "persisted_digest": "318c8abf00c123c546a14e29729025eee084cd872cf562871357863fa5b58d8a",
+    "persisted_digest": "1af77fc8904566f2ecddc63304ea082138b557e07102017adc3c9c3d2226c853",
     "reviewed": true
   },
   {
@@ -2404,7 +2404,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.update_project_v2",
     "required_credential": "user",
-    "persisted_digest": "6866c4089a90ca7866d004dd29e98b9d10e8aa247f83820cf1b76b93e07f62db",
+    "persisted_digest": "cd7bf9ffbe8575f335ed426269fa79dff2a5208fc1df7cf9f6bf7486daa4b76a",
     "reviewed": true
   },
   {
@@ -2414,7 +2414,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.update_project_v2_collaborators",
     "required_credential": "user",
-    "persisted_digest": "228b00de3743b204010d7ae70190ba83675045ef11c97d4c811a8bef003507c5",
+    "persisted_digest": "6aac11d81a7b19d872a6d60f95a875a3041af24ff4f65c4c45f52c8850f5e008",
     "reviewed": true
   },
   {
@@ -2424,7 +2424,7 @@
     "disposition": "graphql",
     "catalog_operation": "issue.update_project_v2_draft_issue",
     "required_credential": "user",
-    "persisted_digest": "827c3132d5f5134d05ab74b2db0b3ac912af03ad1ea52cb94397a5ec6fb9019e",
+    "persisted_digest": "b1e1510ffaa40202c42add6fce57ab092f202298eeace987153e926aadd94894",
     "reviewed": true
   },
   {
@@ -2434,7 +2434,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.update_project_v2_field",
     "required_credential": "user",
-    "persisted_digest": "1c2441daed7fc59a4d4a71182a0a344223bab54887314c30e0c0caee8d419dfd",
+    "persisted_digest": "5477d8cb2a9fb15c599e994c2d0f45fdcb72c854fa8fa8e72d24c9b7a39d98b2",
     "reviewed": true
   },
   {
@@ -2444,7 +2444,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.update_project_v2_item_field_value",
     "required_credential": "user",
-    "persisted_digest": "06560d3f4d43856a1d251c03441e0ddc3260e9dcec3c3fe7f1d4b119762084a7",
+    "persisted_digest": "19425a425dae8f8b1ee83d48df2522aeee87501ce00baa099ffa664c4e59396e",
     "reviewed": true
   },
   {
@@ -2454,7 +2454,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.update_project_v2_item_position",
     "required_credential": "user",
-    "persisted_digest": "dc5cf38444b8dfeae8d54c8c049ac6f07b90ae1af3b394772daeda8cff089133",
+    "persisted_digest": "5708c833c29d2d409cb29d3b32027b72049bfd522b52ebc6bd66b34cc4d0a50c",
     "reviewed": true
   },
   {
@@ -2464,7 +2464,7 @@
     "disposition": "graphql",
     "catalog_operation": "project.update_project_v2_status_update",
     "required_credential": "user",
-    "persisted_digest": "1bf0fe265b5490a891a04016da58d2b11005b6154bdd8d2928b711218c74d45d",
+    "persisted_digest": "f9ddd5d19db12d5204dd1009116a9c8d5328b9a54999e8d9ca269b5685dbad97",
     "reviewed": true
   },
   {
@@ -2474,7 +2474,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.update_pull_request",
     "required_credential": "user",
-    "persisted_digest": "a4c1b499e217a7e20be1ce0da274b9680e8af144305db7256a656bf8fb8f58a4",
+    "persisted_digest": "1d8bfb13c7f1b595f237d598da02e7b962c3e223d4a05937ea10f0ff62121832",
     "reviewed": true
   },
   {
@@ -2484,7 +2484,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.update_pull_request_branch",
     "required_credential": "user",
-    "persisted_digest": "42853a896e5434297b8809b85bf55207d8887ea42051d6e4f4a4316b29c836fc",
+    "persisted_digest": "b95ae804db53a3047b834d9ada685aa9b3c7c539c7868039d5c38f9b59f67fcb",
     "reviewed": true
   },
   {
@@ -2494,7 +2494,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.update_pull_request_review",
     "required_credential": "user",
-    "persisted_digest": "b80fc64c37743c2301ea58411dd20d4d5abf27daeb601e323c2a7938c7cb8623",
+    "persisted_digest": "1ca09e8f68348b8000ee692e1da024ee9bd99066ea58049a8e9fff6238d3407b",
     "reviewed": true
   },
   {
@@ -2504,7 +2504,7 @@
     "disposition": "graphql",
     "catalog_operation": "pull_request.update_pull_request_review_comment",
     "required_credential": "user",
-    "persisted_digest": "954224307ac2547a8dbe43d1b2039bdc41daf52115403cf88eab3a85f1f5a635",
+    "persisted_digest": "97db8060f507a3c2c9b3b86a2e821e04cda8bf196c77b7989849671471b73db9",
     "reviewed": true
   },
   {
@@ -2514,7 +2514,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_ref",
     "required_credential": "user",
-    "persisted_digest": "650a86a5277ad27e9648e214fd5f4a74e42e94968139a5ffe8fda89c54012820",
+    "persisted_digest": "80fc768b0f74c183ff4bc3a02093c6ff514fab6ada3b59a634adc80d04469d17",
     "reviewed": true
   },
   {
@@ -2524,7 +2524,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_refs",
     "required_credential": "user",
-    "persisted_digest": "c4134f408313853920b36c6a80bf3a25ca90251ff6437e49fc064998f20c6c15",
+    "persisted_digest": "d5a616fab20589c9ddd397e68bc0b2ba73e043934f8203b783e7ecc85f29b39a",
     "reviewed": true
   },
   {
@@ -2534,7 +2534,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_repository",
     "required_credential": "user",
-    "persisted_digest": "33a77ee519934959425363d3832bf0a486393faf98f16b78a349fa02959fe6e5",
+    "persisted_digest": "5f09ff42c217bf4151bc1e245f2b06f2c5cd095a8120e15921e962aabbde65c5",
     "reviewed": true
   },
   {
@@ -2544,7 +2544,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_repository_custom_property",
     "required_credential": "user",
-    "persisted_digest": "7df5ad69b69e2da5697d830493dc3c4f91fea5048282c9702d196c8ae1a28be8",
+    "persisted_digest": "942029a4da68313e4a5d5829ea0abaebb20ceac853ef9700113b765f1e17aafd",
     "reviewed": true
   },
   {
@@ -2554,7 +2554,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_repository_ruleset",
     "required_credential": "user",
-    "persisted_digest": "d2eba29011426e6de1bf14e39f43828ba69452b7357d41690defe9cdbdc36547",
+    "persisted_digest": "894a0cfdd064409ca7edc40c7cd54f36512e8c2c1695fc2b3d460cf54ca01e7c",
     "reviewed": true
   },
   {
@@ -2564,7 +2564,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_repository_web_commit_signoff_setting",
     "required_credential": "user",
-    "persisted_digest": "c338c700e5dbd83d6715e294819d73ba7929d2c12dc4145be671d90879ef9728",
+    "persisted_digest": "a43ce97d94fcd5692d85d9d8e3ae90e9c1a26cc615b0c09ab475c858ccaaf0fd",
     "reviewed": true
   },
   {
@@ -2574,7 +2574,7 @@
     "disposition": "graphql",
     "catalog_operation": "member.update_sponsorship_preferences",
     "required_credential": "user",
-    "persisted_digest": "c6c7d4e001c15efd9060d99ed7efa1706fba68469a1e9149cd612bdbadc8e2c6",
+    "persisted_digest": "7d95990c7f1d21cccc8db44812883814d67db13d6299f7cdd3ad0f00558fdd23",
     "reviewed": true
   },
   {
@@ -2584,7 +2584,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_subscription",
     "required_credential": "user",
-    "persisted_digest": "20dfbd087c3e673cb0d2cb5b7e7006209bfe93e692fbe06b52c47a5046b30659",
+    "persisted_digest": "540e249925848b4060619a3bd2c71285c324cb94162bec6c5463545666e6d312",
     "reviewed": true
   },
   {
@@ -2594,7 +2594,7 @@
     "disposition": "graphql",
     "catalog_operation": "team.update_team_review_assignment",
     "required_credential": "user",
-    "persisted_digest": "3233d3027493f250d30fe4f46e9d16fb910bad01c5bba5e73eec2d50fb1a756d",
+    "persisted_digest": "2854aaa1384e6b6d7f8a9466111bda724600ddf89df1f8a812ea0af87a03cb2c",
     "reviewed": true
   },
   {
@@ -2604,7 +2604,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_teams_repository",
     "required_credential": "user",
-    "persisted_digest": "42e9f5ed355cac98545baecc630108bb8eb151286beef4cc927f82fe41219b2e",
+    "persisted_digest": "a7e778a5ffcc43f6b617b86d5caa09c561271b462b0a291fede958af801c3785",
     "reviewed": true
   },
   {
@@ -2614,7 +2614,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.update_topics",
     "required_credential": "user",
-    "persisted_digest": "b53105758aac0bb803f030b5f79a81935182b64375649f97a57d696133d9a5fb",
+    "persisted_digest": "f9f33ddfd2b56c49fc2313cfa29963ec8ef932fe8a9c3c8e2ae6f7decc09c8a8",
     "reviewed": true
   },
   {
@@ -2624,7 +2624,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.update_user_list",
     "required_credential": "user",
-    "persisted_digest": "a347e9b7a296e92b21d9a2b3b067c2c955747d4723dfda83c6438e0b95d1b4af",
+    "persisted_digest": "eaff87f2697d8ae008a5302a4ad8c051604b09ee85b6967249b44b89bb3fae40",
     "reviewed": true
   },
   {
@@ -2634,7 +2634,7 @@
     "disposition": "graphql",
     "catalog_operation": "user.update_user_lists_for_item",
     "required_credential": "user",
-    "persisted_digest": "03680d3a5822aea11111c083848a23f6847e0407aa6ec2969d1bc843e8d46fe1",
+    "persisted_digest": "b7e74f84204a911abea576ee3caf55e7b11f267281e7a05d8a9e47cfc16d5b7f",
     "reviewed": true
   },
   {
@@ -2644,7 +2644,7 @@
     "disposition": "graphql",
     "catalog_operation": "repo.verify_verifiable_domain",
     "required_credential": "user",
-    "persisted_digest": "15994ee0dfd522650c7825c4ccb15c8ad254d1a1a95802e8b5dbf28b778c8494",
+    "persisted_digest": "a0396ea9d5b573612b9ec908532057f7c1c63cb3041d06eeb68306bcff58e3f0",
     "reviewed": true
   },
   {

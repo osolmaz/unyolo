@@ -80,11 +80,14 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 		flags += "/S"
 	}
 	internal := disposition == "internal"
+	agentFacing := false // GraphQL roots require reviewed target-variable bindings before agent exposure.
 	if internal {
 		flags += "/I"
+	} else {
+		flags += "/O"
 	}
 	var tool, command *string
-	if !internal {
+	if agentFacing {
 		toolName := "gh_" + strings.ReplaceAll(name, ".", "_")
 		commandName := strings.ReplaceAll(name, ".", " ")
 		tool, command = &toolName, &commandName
@@ -92,9 +95,9 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	target := graphqlTargetKind(field.Name)
 	return opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: name, OperationRevision: 1, Summary: nonEmpty(field.Description, "GitHub GraphQL "+field.Name),
 		Disposition: flags, AuthorizationMode: mode, ExplicitOnly: explicit, Sealed: sealed,
-		Implementation: implementationStatus(disposition, "persisted-graphql", !internal), Risk: riskFor(classes, map[bool]string{true: "POST", false: "GET"}[mutation]),
+		Implementation: map[bool]capability.ImplementationStatus{true: capability.StatusInternal, false: capability.StatusOperatorOnly}[internal], Risk: riskFor(classes, map[bool]string{true: "POST", false: "GET"}[mutation]),
 		TargetKind: target, MaxUses: maxUses, RequestTTLSeconds: 300, ApprovalTTLSeconds: 600,
-		Internal: internal, FamilyGlobAllowed: !explicit, AgentFacing: !internal, MCPTool: tool, CLICommand: command,
+		Internal: internal, FamilyGlobAllowed: !explicit, AgentFacing: agentFacing, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
 		CredentialKind: "user", SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"graphql:" + digest},
 		ExecutorKind: "persisted-graphql", ReconcilerKind: "none"}}
@@ -194,7 +197,7 @@ func graphqlSelection(ref typeRef, types map[string]introspectionType) string {
 	}
 	for _, field := range types[base.Name].Fields {
 		if field.Name == "clientMutationId" {
-			return " { clientMutationId }"
+			return " { __typename clientMutationId }"
 		}
 	}
 	return " { __typename }"

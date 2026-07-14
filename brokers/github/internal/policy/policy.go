@@ -159,15 +159,15 @@ func AuthorizationRegistry() (corepolicy.Registry, error) { return CatalogRegist
 
 // AuthorizationRequest projects generated GitHub adapter metadata into the
 // shared policy model.
-func AuthorizationRequest(client, operation, targetKind string, targetFields, attrs map[string]string) corepolicy.Request {
+func AuthorizationRequest(client, operation, targetKind string, targetFields, attrs map[string][]string) corepolicy.Request {
 	return corepolicy.Request{
 		Client:    strings.TrimSpace(client),
 		Operation: strings.TrimSpace(operation),
 		Target: corepolicy.Target{
 			Kind:   strings.TrimSpace(targetKind),
-			Fields: corepolicy.SingletonValues(targetFields),
+			Fields: targetFields,
 		},
-		Attrs: corepolicy.SingletonValues(attrs),
+		Attrs: attrs,
 	}
 }
 

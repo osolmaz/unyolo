@@ -191,9 +191,6 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 		SealedArguments json.RawMessage        `json:"sealed_arguments"`
 		CredentialSlot  string                 `json:"credential_slot"`
 		StreamInput     *streamstore.Reference `json:"stream_input"`
-		Attrs           map[string]any         `json:"attrs"`
-		Minutes         int                    `json:"minutes"`
-		MaxUses         json.RawMessage        `json:"max_uses"`
 		Reason          string                 `json:"reason"`
 		IdempotencyKey  string                 `json:"idempotency_key"`
 		WaitSeconds     int                    `json:"wait_seconds"`

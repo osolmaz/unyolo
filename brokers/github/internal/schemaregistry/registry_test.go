@@ -150,6 +150,12 @@ func TestSpecializedValidationBoundaries(t *testing.T) {
 	if err := ValidateResult("repo.metadata.read", json.RawMessage(`{"id":1,"name":"brokerkit"}`)); err != nil {
 		t.Fatal(err)
 	}
+	if err := ValidateResult("artifact.actions_list_artifacts_for_repo", json.RawMessage(`{"artifacts":[{"id":1,"name":"build"}]}`)); err != nil {
+		t.Fatalf("bounded container result rejected: %v", err)
+	}
+	if err := ValidateResult("issue.issues_update", json.RawMessage(`{"id":1,"state":"open"}`)); err != nil {
+		t.Fatalf("composed projected result rejected: %v", err)
+	}
 
 	for name, call := range map[string]func() error{
 		"public unknown": func() error { return ValidatePublicSubmission("repo.metadata.read", target, json.RawMessage(`{}`)) },

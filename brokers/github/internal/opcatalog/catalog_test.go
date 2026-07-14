@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/osolmaz/brokerkit/capability"
 )
 
 func TestCatalogValidatesAndContainsCanonicalOperations(t *testing.T) {
@@ -31,6 +33,25 @@ func TestCatalogValidatesAndContainsCanonicalOperations(t *testing.T) {
 		if _, found := ByName(removed); found {
 			t.Fatalf("legacy or raw operation %q survived", removed)
 		}
+	}
+}
+
+func TestPersistedGraphQLRequiresReviewedTargetBindings(t *testing.T) {
+	count := 0
+	for _, descriptor := range MustAll() {
+		if descriptor.ExecutorKind != "persisted-graphql" {
+			continue
+		}
+		count++
+		if descriptor.AgentFacing || descriptor.MCPTool != nil || descriptor.CLICommand != nil {
+			t.Fatalf("unbound GraphQL operation %q is agent-facing", descriptor.Name)
+		}
+		if descriptor.Implementation != capability.StatusOperatorOnly && descriptor.Implementation != capability.StatusInternal {
+			t.Fatalf("unbound GraphQL operation %q has status %q", descriptor.Name, descriptor.Implementation)
+		}
+	}
+	if count != 284 {
+		t.Fatalf("persisted GraphQL operations=%d, want 284", count)
 	}
 }
 

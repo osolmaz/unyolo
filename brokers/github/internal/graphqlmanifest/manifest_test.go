@@ -31,6 +31,13 @@ func TestKnownRootUsesPersistedDigest(t *testing.T) {
 	}
 }
 
+func TestMutationSelectionsMatchGeneratedResults(t *testing.T) {
+	value, found := ByOperation("comment.add_comment")
+	if !found || !strings.Contains(value.Document, "{ __typename clientMutationId }") {
+		t.Fatalf("mutation selection does not include validated fields: %+v", value)
+	}
+}
+
 func TestPinnedRootFieldParsing(t *testing.T) {
 	if _, err := pinnedRootFields([]byte(`not-json`)); err == nil {
 		t.Fatal("invalid introspection accepted")

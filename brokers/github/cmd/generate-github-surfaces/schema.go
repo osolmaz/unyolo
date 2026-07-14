@@ -53,7 +53,8 @@ func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 
 func schemasForREST(name, method, path string, operation restOperation, targetKind string, components map[string]any) operationSchemas {
 	arguments := argumentsSchemaForREST(method, path, operation, targetKind, components)
-	result := projectedResponseSchema(responseSchema(operation, components), responseProjection(operation))
+	upstreamResult := responseSchema(operation, components)
+	result := projectedResponseSchema(upstreamResult, responseProjection(upstreamResult))
 	if runnerCredentialOutput(operation.OperationID) != nil {
 		result = map[string]any{
 			"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
@@ -144,29 +145,49 @@ func projectedResponseSchema(schema map[string]any, projection []string) map[str
 	for _, name := range projection {
 		allowed[name] = true
 	}
-	return projectResponseSchema(schema, allowed, true)
+	result, _ := projectResponseSchema(schema, allowed, "", true)
+	return result
 }
 
-func projectResponseSchema(schema map[string]any, allowed map[string]bool, root bool) map[string]any {
+func projectResponseSchema(schema map[string]any, allowed map[string]bool, prefix string, root bool) (map[string]any, bool) {
 	result := copyx.JSONMap(schema)
+	flattenComposedObjectForProjection(result)
+	retained := false
 	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
 		if alternatives, ok := result[keyword].([]any); ok {
 			for index, alternative := range alternatives {
 				if child, childOK := alternative.(map[string]any); childOK {
-					alternatives[index] = projectResponseSchema(child, allowed, false)
+					projected, keep := projectResponseSchema(child, allowed, prefix, false)
+					alternatives[index] = projected
+					retained = retained || keep
 				}
 			}
 		}
 	}
 	if items, ok := result["items"].(map[string]any); ok {
-		result["items"] = projectResponseSchema(items, allowed, false)
+		projected, keep := projectResponseSchema(items, allowed, prefix, false)
+		result["items"] = projected
+		retained = retained || keep
 	}
 	properties, object := result["properties"].(map[string]any)
 	if object {
 		selected := map[string]any{}
 		for name, value := range properties {
-			if allowed[name] {
+			path := name
+			if prefix != "" {
+				path = prefix + "." + name
+			}
+			child, childOK := value.(map[string]any)
+			projected, childRetained := child, false
+			if childOK {
+				projected, childRetained = projectResponseSchema(child, allowed, path, false)
+			}
+			if allowed[path] {
 				selected[name] = value
+				retained = true
+			} else if childRetained {
+				selected[name] = projected
+				retained = true
 			}
 		}
 		result["properties"] = selected
@@ -176,7 +197,40 @@ func projectResponseSchema(schema map[string]any, allowed map[string]bool, root 
 	if root {
 		result["$schema"] = "https://json-schema.org/draft/2020-12/schema"
 	}
-	return result
+	return result, retained
+}
+
+func flattenComposedObjectForProjection(schema map[string]any) {
+	properties, _ := schema["properties"].(map[string]any)
+	if properties == nil {
+		properties = map[string]any{}
+	}
+	object := schema["type"] == "object"
+	for _, keyword := range []string{"oneOf", "anyOf", "allOf"} {
+		branches, _ := schema[keyword].([]any)
+		for _, value := range branches {
+			branch, _ := value.(map[string]any)
+			branchProperties, _ := branch["properties"].(map[string]any)
+			if branch["type"] == "object" || branchProperties != nil {
+				object = true
+			}
+			for name, child := range branchProperties {
+				if _, found := properties[name]; !found {
+					properties[name] = child
+				}
+			}
+		}
+	}
+	if !object {
+		return
+	}
+	schema["type"] = "object"
+	schema["properties"] = properties
+	schema["additionalProperties"] = false
+	delete(schema, "oneOf")
+	delete(schema, "anyOf")
+	delete(schema, "allOf")
+	delete(schema, "required")
 }
 
 func mediaSchema(container map[string]any, components map[string]any) map[string]any {
@@ -380,7 +434,7 @@ func bindingForREST(name, method, path string, operation restOperation, descript
 			requestLimit = 256 << 20
 		}
 	}
-	projection := responseProjection(operation)
+	projection := responseProjection(responseSchema(operation, components))
 	return restBinding{
 		ID: "rest:" + operation.OperationID + ":" + name, Operation: name, UpstreamOperationID: operation.OperationID,
 		Method: method, PathTemplate: path, CredentialKind: descriptor.CredentialKind, APIVersion: apiVersion,
@@ -436,10 +490,49 @@ func pathParameterNames(path string) []string {
 	return result
 }
 
-func responseProjection(operation restOperation) []string {
-	// Projection is intentionally conservative until the typed executors land.
-	// These fields are safe metadata shared by GitHub resource responses.
-	return []string{"id", "node_id", "name", "number", "state", "status", "type", "sha", "url", "created_at", "updated_at"}
+func responseProjection(schema map[string]any) []string {
+	allowed := map[string]bool{"id": true, "node_id": true, "name": true, "number": true, "state": true, "status": true,
+		"type": true, "sha": true, "url": true, "created_at": true, "updated_at": true}
+	paths := map[string]bool{}
+	collectResponseProjection(schema, allowed, "", paths, 0)
+	result := make([]string, 0, len(paths))
+	for path := range paths {
+		result = append(result, path)
+	}
+	if len(result) == 0 {
+		return []string{"$none"}
+	}
+	slices.Sort(result)
+	return result
+}
+
+func collectResponseProjection(schema map[string]any, allowed map[string]bool, prefix string, paths map[string]bool, depth int) {
+	if depth > 32 {
+		return
+	}
+	projectable := copyx.JSONMap(schema)
+	flattenComposedObjectForProjection(projectable)
+	properties, _ := projectable["properties"].(map[string]any)
+	hasDirectProjection := false
+	for name := range properties {
+		hasDirectProjection = hasDirectProjection || allowed[name]
+	}
+	for name, value := range properties {
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		if allowed[name] {
+			paths[path] = true
+			continue
+		}
+		if child, ok := value.(map[string]any); ok && !hasDirectProjection {
+			collectResponseProjection(child, allowed, path, paths, depth+1)
+		}
+	}
+	if items, ok := projectable["items"].(map[string]any); ok {
+		collectResponseProjection(items, allowed, prefix, paths, depth+1)
+	}
 }
 
 func redirectPolicy(executor string) string {

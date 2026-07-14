@@ -12,11 +12,12 @@ type InputSchemas func(Descriptor) (map[string]any, map[string]any, map[string]a
 // SurfaceOptions configures descriptor-driven CLI and MCP generation without
 // embedding provider vocabulary in the shared package.
 type SurfaceOptions struct {
-	Descriptors           []Descriptor
-	Schemas               InputSchemas
-	AttributeNames        []string
-	ToolDescription       func(Descriptor) string
-	CredentialSlotPattern string
+	Descriptors            []Descriptor
+	Schemas                InputSchemas
+	AttributeNames         []string
+	ToolDescription        func(Descriptor) string
+	CredentialSlotPattern  string
+	WindowSubmitsOperation bool
 }
 
 // AgentFacing returns the descriptors exposed to authenticated agent clients.
@@ -74,7 +75,7 @@ func MCPToolSchema(descriptor Descriptor, options SurfaceOptions) map[string]any
 		"wait_seconds":    map[string]any{"type": "integer", "minimum": 0, "maximum": 900},
 	}
 	required := []string{"target", "reason", "idempotency_key"}
-	if descriptor.AuthorizationMode == ModeExecution {
+	if descriptor.AuthorizationMode == ModeExecution || options.WindowSubmitsOperation {
 		properties["arguments"] = argumentsSchema
 		required = append(required, "arguments")
 		if descriptor.Sealed {

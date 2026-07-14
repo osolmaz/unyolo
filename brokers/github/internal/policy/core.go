@@ -181,7 +181,7 @@ func canonicalAttr(key string) (string, bool) {
 	case "path", "paths":
 		return "path", true
 	case "actor_id", "actor_login", "arguments_digest", "content_digest", "credential_kind", "environment", "label", "merge_method",
-		"permission", "ref_change", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref":
+		"credential_slot", "permission", "ref_change", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref":
 		return strings.TrimSpace(key), true
 	default:
 		return "", false

@@ -48,6 +48,14 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 	if windowProperties["attrs"] == nil || windowProperties["minutes"] == nil || windowProperties["max_uses"] == nil {
 		t.Fatalf("window schema = %#v", window)
 	}
+	operationWindowOptions := options
+	operationWindowOptions.WindowSubmitsOperation = true
+	operationWindow := MCPToolSchema(descriptors[0], operationWindowOptions)
+	operationProperties := operationWindow["properties"].(map[string]any)
+	if operationProperties["arguments"] == nil || operationProperties["attrs"] != nil || operationProperties["minutes"] != nil ||
+		operationProperties["max_uses"] != nil || !slices.Contains(RequiredPropertyNames(operationWindow), "arguments") {
+		t.Fatalf("operation window schema = %#v", operationWindow)
+	}
 	secret := MCPToolSchema(descriptors[1], options)
 	if !slices.Contains(RequiredPropertyNames(secret), "sealed_arguments") {
 		t.Fatalf("sealed schema = %#v", secret)

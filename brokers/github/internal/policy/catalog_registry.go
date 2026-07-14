@@ -9,6 +9,7 @@ import (
 var catalogAttributeNames = []string{
 	"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method",
 	"path", "permission", "ref", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref",
+	"credential_kind", "credential_slot",
 }
 
 // CatalogRegistry is the generated stage-3 policy vocabulary. The current

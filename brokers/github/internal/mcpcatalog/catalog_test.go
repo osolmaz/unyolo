@@ -28,6 +28,10 @@ func TestMCPExposureProfilesAreFilteredAndTyped(t *testing.T) {
 		if schema["additionalProperties"] != false {
 			t.Fatalf("tool schema is open: %#v", tool)
 		}
+		properties := schema["properties"].(map[string]any)
+		if properties["arguments"] == nil || properties["attrs"] != nil || properties["minutes"] != nil || properties["max_uses"] != nil {
+			t.Fatalf("GitHub operation tool uses grant-request fields: %#v", tool)
+		}
 	}
 	family, err := Selected(Exposure{Families: []string{"repo.*"}}, enabled)
 	if err != nil || len(family) == 0 {

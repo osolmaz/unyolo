@@ -421,7 +421,7 @@ func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (Exe
 	if err := strictjson.Decode(body, &value, false); err != nil {
 		return ExecutionResult{}, errors.New("GitHub API response is invalid")
 	}
-	projected, ok := projectRESTResponse(value, binding.ResponseProjection)
+	projected, ok := projectJSON(value, binding.ResponseProjection)
 	if !ok {
 		projected = map[string]any{}
 	}
@@ -593,6 +593,11 @@ func addQueryValue(values url.Values, name string, value any) error {
 		values.Add(name, typed)
 	case float64:
 		values.Add(name, strconv.FormatFloat(typed, 'f', -1, 64))
+	case json.Number:
+		if _, err := typed.Float64(); err != nil {
+			return errors.New("invalid numeric query value")
+		}
+		values.Add(name, typed.String())
 	case bool:
 		values.Add(name, strconv.FormatBool(typed))
 	case nil:

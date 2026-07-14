@@ -10,13 +10,20 @@ import (
 )
 
 func operationPolicyTarget(auth operations.Authorization) string {
-	values := []string{auth.TargetKind, auth.TargetFields["owner"], auth.TargetFields["name"]}
-	if id := auth.TargetFields["id"]; id != "" {
+	values := []string{auth.TargetKind, firstValue(auth.TargetFields["owner"]), firstValue(auth.TargetFields["name"])}
+	if id := firstValue(auth.TargetFields["id"]); id != "" {
 		values = append(values, id)
-	} else if number := auth.TargetFields["number"]; number != "" {
+	} else if number := firstValue(auth.TargetFields["number"]); number != "" {
 		values = append(values, number)
 	}
 	return strings.Join(nonemptyStrings(values), "/")
+}
+
+func firstValue(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 func nonemptyStrings(values []string) []string {

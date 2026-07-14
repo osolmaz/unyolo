@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +22,7 @@ import (
 	"github.com/osolmaz/brokerkit/streamstore"
 )
 
-func TestGeneratedRegistryCoversAgentFacingRESTAndGraphQL(t *testing.T) {
+func TestGeneratedRegistryCoversAgentFacingOperations(t *testing.T) {
 	adapters, err := NewGeneratedAdapters(nil, newAdapterOptions(t))
 	if err != nil {
 		t.Fatal(err)
@@ -38,8 +40,8 @@ func TestGeneratedRegistryCoversAgentFacingRESTAndGraphQL(t *testing.T) {
 	if _, found := registry.Lookup("repo.metadata.read"); !found {
 		t.Fatal("implemented REST operation is missing")
 	}
-	if _, found := registry.Lookup("repo.read_repository"); !found {
-		t.Fatal("persisted GraphQL operation is missing")
+	if _, found := registry.Lookup("repo.read_repository"); found {
+		t.Fatal("unbound persisted GraphQL operation was registered")
 	}
 }
 
@@ -64,7 +66,7 @@ func TestRESTAdapterRejectsEscapeHatchesAndExecutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan, err := adapter.Resolve(context.Background(), input)
-	if err != nil || plan.Credential.Kind != githubauth.KindDevelopmentToken || plan.Authorization.TargetFields["owner"] != "osolmaz" {
+	if err != nil || plan.Credential.Kind != githubauth.KindDevelopmentToken || !slices.Equal(plan.Authorization.TargetFields["owner"], []string{"osolmaz"}) {
 		t.Fatalf("plan = %+v err=%v", plan, err)
 	}
 	outcome, err := adapter.Execute(context.Background(), plan)
@@ -74,33 +76,19 @@ func TestRESTAdapterRejectsEscapeHatchesAndExecutes(t *testing.T) {
 	assertJSONEqual(t, outcome.Result, `{"id":1,"node_id":"R_1","name":"brokerkit"}`)
 }
 
-func TestGraphQLAdapterExecutesPersistedDocument(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/graphql" {
-			t.Fatalf("request = %s %s", r.Method, r.URL.String())
-		}
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := body["query"].(string); !ok || body["operationName"] == "" {
-			t.Fatalf("graphql body = %#v", body)
-		}
-		_, _ = w.Write([]byte(`{"data":{"repository":{"__typename":"Repository"}}}`))
-	}))
-	t.Cleanup(server.Close)
-	adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "repo.read_repository")
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"owner":"osolmaz","name":"brokerkit"}`))
+func TestGraphQLOperationsRequireReviewedTargetBindings(t *testing.T) {
+	descriptor, found := opcatalog.ByName("repo.read_repository")
+	if !found || descriptor.AgentFacing || descriptor.Implementation != capability.StatusOperatorOnly || descriptor.MCPTool != nil || descriptor.CLICommand != nil {
+		t.Fatalf("GraphQL descriptor is exposed before target binding review: %+v", descriptor)
+	}
+	adapters, err := NewGeneratedAdapters(newOperationsManager(t, "http://127.0.0.1"), newAdapterOptions(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := adapter.Resolve(context.Background(), input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	outcome, err := adapter.Execute(context.Background(), plan)
-	if err != nil || !outcome.Proven || !strings.Contains(string(outcome.Result), "Repository") {
-		t.Fatalf("execute = %+v err=%v", outcome, err)
+	for _, adapter := range adapters {
+		if adapter.Descriptor().Name == descriptor.Name {
+			t.Fatal("GraphQL adapter is registered before target binding review")
+		}
 	}
 }
 
@@ -117,8 +105,8 @@ func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
 	}
 	authorization := adapter.Authorize(plan)
 	presentation := adapter.Present(plan)
-	if authorization.Operation != "pull_request.create" || authorization.TargetFields["owner"] != "osolmaz" ||
-		authorization.Attrs["head_ref"] != "agent/work" || presentation.Title == "" {
+	if authorization.Operation != "pull_request.create" || !slices.Equal(authorization.TargetFields["owner"], []string{"osolmaz"}) ||
+		!slices.Equal(authorization.Attrs["head_ref"], []string{"agent/work"}) || presentation.Title == "" {
 		t.Fatalf("authorization = %+v presentation = %+v", authorization, presentation)
 	}
 	if err := adapter.(PlanCleaner).Cleanup(plan); err != nil {
@@ -161,9 +149,16 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 	}
 	presentation := presentDescriptor(descriptor, map[string]any{"number": float64(7)})
 	authorization := authorizeDescriptor(descriptor, map[string]any{"owner": "osolmaz", "name": "brokerkit", "id": float64(3)},
-		map[string]any{"ref": "main", "input": map[string]any{"base": "main", "head": "feature"}})
-	if presentation.Title != "Test operation" || authorization.TargetFields["id"] != "3" || authorization.Attrs["base_ref"] != "main" {
+		map[string]any{"ref": "main", "input": map[string]any{"base": "main", "head": "feature", "merge_method": "squash",
+			"labels": []any{"bug", "urgent"}, "permission": "maintain"}})
+	if presentation.Title != "Test operation" || !slices.Equal(authorization.TargetFields["id"], []string{"3"}) ||
+		!slices.Equal(authorization.Attrs["base_ref"], []string{"main"}) {
 		t.Fatalf("presentation = %+v authorization = %+v", presentation, authorization)
+	}
+	if !slices.Equal(authorization.Attrs["label"], []string{"bug", "urgent"}) ||
+		!slices.Equal(authorization.Attrs["merge_method"], []string{"squash"}) ||
+		!slices.Equal(authorization.Attrs["permission"], []string{"maintain"}) {
+		t.Fatalf("nested authorization attrs = %+v", authorization.Attrs)
 	}
 	if fields := authorizationTargetFields(map[string]any{}); fields != nil {
 		t.Fatalf("empty target fields = %+v", fields)
@@ -199,6 +194,25 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 		if classified == nil {
 			t.Fatal("execution error disappeared")
 		}
+	}
+}
+
+func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
+	attrs := authorizationAttrs(map[string]any{"input": map[string]any{
+		"actorId": "1", "actorLogin": "alice", "base": "main", "environmentName": "production", "head": "feature",
+		"labels": []any{"bug", "urgent"}, "mergeMethod": "squash", "paths": []any{"README.md", "docs/guide.md"},
+		"permission": "maintain", "ref": "refs/heads/main", "releaseState": "draft", "resourceId": "R_1", "role": "admin",
+		"visibility": "private", "workflow": "ci", "workflowRef": "ci.yml@main",
+	}})
+	want := map[string][]string{
+		"actor_id": {"1"}, "actor_login": {"alice"}, "base_ref": {"main"}, "environment": {"production"},
+		"head_ref": {"feature"}, "label": {"bug", "urgent"}, "merge_method": {"squash"},
+		"path": {"README.md", "docs/guide.md"}, "permission": {"maintain"}, "ref": {"refs/heads/main"},
+		"release_state": {"draft"}, "resource_id": {"R_1"}, "role": {"admin"}, "visibility": {"private"},
+		"workflow": {"ci"}, "workflow_ref": {"ci.yml@main"},
+	}
+	if !maps.EqualFunc(attrs, want, slices.Equal) {
+		t.Fatalf("authorization attrs = %+v, want %+v", attrs, want)
 	}
 }
 

@@ -36,8 +36,8 @@ type Authorization struct {
 	Client         string
 	Operation      string
 	TargetKind     string
-	TargetFields   map[string]string
-	Attrs          map[string]string
+	TargetFields   map[string][]string
+	Attrs          map[string][]string
 	CredentialKind string
 }
 
@@ -326,10 +326,10 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	if a.descriptor.CredentialOutputKind != nil {
 		protected, _ := decodeSealedArguments(input.Arguments)
 		if authorization.Attrs == nil {
-			authorization.Attrs = map[string]string{}
+			authorization.Attrs = map[string][]string{}
 		}
-		authorization.Attrs["credential_slot"] = protected.CredentialSlot
-		authorization.Attrs["credential_kind"] = *a.descriptor.CredentialOutputKind
+		authorization.Attrs["credential_slot"] = []string{protected.CredentialSlot}
+		authorization.Attrs["credential_kind"] = []string{*a.descriptor.CredentialOutputKind}
 		presentation.Summary += " into broker credential slot " + protected.CredentialSlot
 	}
 	return Plan{
@@ -733,16 +733,16 @@ func authorizeDescriptor(descriptor opcatalog.Descriptor, target, arguments map[
 	}
 }
 
-func authorizationTargetFields(target map[string]any) map[string]string {
-	fields := map[string]string{}
+func authorizationTargetFields(target map[string]any) map[string][]string {
+	fields := map[string][]string{}
 	for _, key := range []string{"owner", "name", "node_id"} {
 		if value := stringValue(target, key); value != "" {
-			fields[key] = value
+			fields[key] = []string{value}
 		}
 	}
 	for _, key := range []string{"id", "number"} {
 		if value := integerString(target, key); value != "" {
-			fields[key] = value
+			fields[key] = []string{value}
 		}
 	}
 	if len(fields) == 0 {
@@ -751,32 +751,71 @@ func authorizationTargetFields(target map[string]any) map[string]string {
 	return fields
 }
 
-func authorizationAttrs(arguments map[string]any) map[string]string {
-	fields := map[string]string{}
-	for _, key := range []string{"ref", "path", "base", "head", "base_ref", "head_ref"} {
-		if value := stringValue(arguments, key); value != "" {
-			fields[key] = value
-		}
-	}
-	if input, ok := arguments["input"].(map[string]any); ok {
-		for _, pair := range []struct {
-			source string
-			dest   string
-		}{
-			{"base", "base_ref"},
-			{"head", "head_ref"},
-			{"path", "path"},
-			{"ref", "ref"},
-		} {
-			if value := stringValue(input, pair.source); value != "" {
-				fields[pair.dest] = value
-			}
-		}
+func authorizationAttrs(arguments map[string]any) map[string][]string {
+	fields := map[string][]string{}
+	collectAuthorizationAttrs(arguments, fields)
+	for key, values := range fields {
+		slices.Sort(values)
+		fields[key] = slices.Compact(values)
 	}
 	if len(fields) == 0 {
 		return nil
 	}
 	return fields
+}
+
+// collectAuthorizationAttrs walks only decoded, schema-validated input and
+// maps reviewed GitHub field names into the closed policy vocabulary.
+func collectAuthorizationAttrs(value any, fields map[string][]string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for name, child := range typed {
+			if attribute, found := authorizationAttributeName(name); found {
+				fields[attribute] = append(fields[attribute], scalarStrings(child)...)
+			}
+			collectAuthorizationAttrs(child, fields)
+		}
+	case []any:
+		for _, child := range typed {
+			collectAuthorizationAttrs(child, fields)
+		}
+	}
+}
+
+func authorizationAttributeName(name string) (string, bool) {
+	aliases := map[string]string{
+		"actor_id": "actor_id", "actorId": "actor_id", "actor_login": "actor_login", "actorLogin": "actor_login",
+		"base": "base_ref", "base_ref": "base_ref", "baseRef": "base_ref", "environment": "environment",
+		"environment_name": "environment", "environmentName": "environment", "head": "head_ref", "head_ref": "head_ref",
+		"headRef": "head_ref", "label": "label", "labels": "label", "merge_method": "merge_method", "mergeMethod": "merge_method",
+		"path": "path", "paths": "path", "permission": "permission", "ref": "ref", "release_state": "release_state",
+		"releaseState": "release_state", "resource_id": "resource_id", "resourceId": "resource_id", "role": "role",
+		"visibility": "visibility", "workflow": "workflow", "workflow_ref": "workflow_ref", "workflowRef": "workflow_ref",
+	}
+	attribute, found := aliases[name]
+	return attribute, found
+}
+
+func scalarStrings(value any) []string {
+	switch typed := value.(type) {
+	case string:
+		if value := strings.TrimSpace(typed); value != "" {
+			return []string{value}
+		}
+	case json.Number:
+		return []string{typed.String()}
+	case float64:
+		return []string{fmt.Sprintf("%g", typed)}
+	case bool:
+		return []string{fmt.Sprintf("%t", typed)}
+	case []any:
+		values := []string{}
+		for _, child := range typed {
+			values = append(values, scalarStrings(child)...)
+		}
+		return values
+	}
+	return nil
 }
 
 func classifyExecutionError(method string, err error) error {

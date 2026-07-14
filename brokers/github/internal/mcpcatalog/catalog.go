@@ -42,7 +42,8 @@ func Tools(exposure Exposure, enabled Enabled) ([]map[string]any, error) {
 		return nil, err
 	}
 	tools := capability.MCPTools(capability.SurfaceOptions{Descriptors: opcatalog.CapabilityDescriptors(descriptors), Schemas: schemaregistry.InputSchemas,
-		AttributeNames: []string{"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method", "path", "permission", "ref", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref"},
+		AttributeNames:         []string{"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method", "path", "permission", "ref", "release_state", "resource_id", "role", "visibility", "workflow", "workflow_ref"},
+		WindowSubmitsOperation: true,
 		ToolDescription: func(descriptor capability.Descriptor) string {
 			return descriptor.Summary + " GitHub credentials remain inside GH Broker."
 		}})

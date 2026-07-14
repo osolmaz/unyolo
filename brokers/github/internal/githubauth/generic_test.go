@@ -395,6 +395,10 @@ func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	if _, err := restQuery(binding, map[string]any{"labels": map[string]any{"bad": true}}); err == nil {
 		t.Fatal("invalid query value accepted")
 	}
+	query, err = restQuery(binding, map[string]any{"page": json.Number("2"), "active": true})
+	if err != nil || query.Encode() != "active=true&page=2" {
+		t.Fatalf("json.Number query = %q, %v", query.Encode(), err)
+	}
 	if _, err := restPath(binding, map[string]any{"owner": "acme", "name": "demo"}, map[string]any{"issue_number": 1.5}); err == nil {
 		t.Fatal("fractional path value accepted")
 	}
@@ -424,6 +428,11 @@ func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	encoded, _ = json.Marshal(projected)
 	if !ok || string(encoded) != `[{"id":7}]` {
 		t.Fatalf("REST list projection = %s, %t", encoded, ok)
+	}
+	projected, ok = projectJSON(map[string]any{"total_count": 1, "artifacts": []any{map[string]any{"id": 7, "secret": "hidden"}}}, []string{"id"})
+	encoded, _ = json.Marshal(projected)
+	if !ok || string(encoded) != `{"artifacts":[{"id":7}]}` {
+		t.Fatalf("REST container projection = %s, %t", encoded, ok)
 	}
 }
 

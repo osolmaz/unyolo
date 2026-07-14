@@ -147,7 +147,8 @@ Each REST operation receives exactly one disposition:
 - `implemented`: exposed as a typed broker operation;
 - `protocol`: implemented by Git smart HTTP, a bounded binary stream, or
   another non-JSON protocol adapter;
-- `graphql`: implemented by a named persisted GraphQL document;
+- `graphql`: represented by a named persisted GraphQL document and exposed only
+  after every variable that selects authority is bound to the validated target;
 - `internal`: required for broker credential, installation, webhook, health,
   or reconciliation machinery and never agent-facing;
 - `operator-only`: available only on the protected operator surface;
@@ -363,6 +364,14 @@ transport primitive, not authorization logic.
 GraphQL support consists only of reviewed persisted documents stored with an
 exact digest, operation name, variable schema, response projection, cost bound,
 credential kind, and catalog binding.
+
+A persisted document is not agent-facing until it also has a reviewed target
+binding for every owner, repository, node, and nested mutation-input identifier
+that selects authority. Catalog coverage alone is not execution support. The
+current pinned GraphQL roots remain operator-only because their generated
+target classifications do not yet prove those bindings. This fail-closed
+disposition prevents an allowed display target from authorizing variables that
+access or mutate a different GitHub resource.
 
 Use GraphQL when it provides a capability absent from REST, stronger immutable
 preconditions, a safe atomic mutation, or a materially smaller bounded read.
@@ -781,9 +790,11 @@ The cutover is complete only when:
 ## Implementation Result
 
 The cutover shipped as one catalog-driven platform with 1,436 GitHub
-capabilities, of which 1,410 are agent-facing. The reviewed catalog contains
-1,121 REST-backed operations, 281 persisted GraphQL operations, eight protocol
-operations, 19 operator-only operations, and seven internal operations. The
+capabilities, of which 1,129 are agent-facing. The reviewed catalog contains
+1,121 agent-facing REST-backed operations, eight agent-facing protocol
+operations, 281 persisted GraphQL operations held operator-only pending
+reviewed target-variable bindings, 19 other operator-only operations, and seven
+internal operations. The
 credential split is 1,035 installation-token operations, 380 user-token
 operations, 20 app-JWT operations, and one explicit development-token mode.
 
@@ -795,9 +806,8 @@ The implementation now provides:
   durability, Telegram and operator-inbox decisions, use budgets, sealed
   inputs, credential outputs, streams, restart recovery, and reconciliation;
 - narrowed `ghinstallation` transports and typed `go-github` operations with
-  bounded projections, no raw REST or GraphQL caller surface, and strict target
-  binding for repository, organization, installation, and authenticated-user
-  credentials;
+  bounded nested projections, no raw REST or GraphQL caller surface, strict
+  REST target binding, and authenticated-user identity checks;
 - 110 absence-proof reconcilers, bounded upload and download handling, and
   generated pagination for 277 bindings; and
 - architecture, generated-artifact, coverage, secret, DRY, and exact
