@@ -25,8 +25,10 @@ import (
 var idPattern = regexp.MustCompile(`^stream_[A-Za-z0-9_-]{24}$`)
 
 const (
-	maxStoredFiles = 64
-	maxStoredBytes = int64(1 << 30)
+	maxStoredFiles         = 64
+	maxStoredBytes         = int64(1 << 30)
+	maxStoredFilesPerOwner = 16
+	maxStoredBytesPerOwner = int64(256 << 20)
 )
 
 type Reference struct {
@@ -46,11 +48,13 @@ type replayMarker struct {
 }
 
 type Store struct {
-	dir      string
-	mu       sync.Mutex
-	now      func() time.Time
-	maxFiles int
-	maxBytes int64
+	dir           string
+	mu            sync.Mutex
+	now           func() time.Time
+	maxFiles      int
+	maxBytes      int64
+	maxOwnerFiles int
+	maxOwnerBytes int64
 }
 
 func Open(stateDir string) (*Store, error) {
@@ -62,7 +66,8 @@ func Open(stateDir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil || os.Chmod(dir, 0o700) != nil {
 		return nil, errors.New("secure stream directory")
 	}
-	return &Store{dir: dir, now: time.Now, maxFiles: maxStoredFiles, maxBytes: maxStoredBytes}, nil
+	return &Store{dir: dir, now: time.Now, maxFiles: maxStoredFiles, maxBytes: maxStoredBytes,
+		maxOwnerFiles: maxStoredFilesPerOwner, maxOwnerBytes: maxStoredBytesPerOwner}, nil
 }
 
 func (s *Store) Put(owner, purpose, requestKey, mediaType string, source io.Reader, limit int64, expires time.Time) (Reference, error) {
@@ -83,7 +88,7 @@ func (s *Store) putLocked(owner, purpose, requestKey, mediaType string, source i
 	} else if found {
 		return replayStream(existing, mediaType, source, limit)
 	}
-	if err := s.checkQuotaLocked(limit); err != nil {
+	if err := s.checkQuotaLocked(owner, limit); err != nil {
 		return Reference{}, err
 	}
 	return s.createLocked(owner, purpose, requestKey, mediaType, source, limit, expires)
@@ -366,29 +371,64 @@ func (s *Store) referenceForEntryLocked(entry os.DirEntry) (Reference, bool) {
 	return Reference{}, false
 }
 
-func (s *Store) checkQuotaLocked(additionalBytes int64) error {
-	entries, err := os.ReadDir(s.dir)
+type streamQuotaUsage struct {
+	count      int
+	bytes      int64
+	ownerCount int
+	ownerBytes int64
+}
+
+func (s *Store) checkQuotaLocked(owner string, additionalBytes int64) error {
+	usage, err := s.quotaUsageLocked(owner)
 	if err != nil {
-		return errors.New("inspect stream quota")
+		return err
 	}
-	count := 0
-	var total int64
-	for _, entry := range entries {
-		_, ok := streamEntryID(entry, ".bin")
-		if !ok {
-			continue
-		}
-		size, statErr := streamEntrySize(entry)
-		if statErr != nil {
-			return errors.New("inspect stream quota")
-		}
-		count++
-		total += size
-	}
-	if !withinStreamQuota(count, total, additionalBytes, s.maxFiles, s.maxBytes) {
+	globalOK := withinStreamQuota(usage.count, usage.bytes, additionalBytes, s.maxFiles, s.maxBytes)
+	ownerOK := withinStreamQuota(usage.ownerCount, usage.ownerBytes, additionalBytes, s.maxOwnerFiles, s.maxOwnerBytes)
+	if !globalOK || !ownerOK {
 		return errors.New("stream quota exceeded")
 	}
 	return nil
+}
+
+func (s *Store) quotaUsageLocked(owner string) (streamQuotaUsage, error) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return streamQuotaUsage{}, errors.New("inspect stream quota")
+	}
+	var usage streamQuotaUsage
+	for _, entry := range entries {
+		reference, size, included, entryErr := s.quotaEntryLocked(entry)
+		if entryErr != nil {
+			return streamQuotaUsage{}, entryErr
+		}
+		if !included {
+			continue
+		}
+		usage.count++
+		usage.bytes += size
+		if reference.Owner == owner {
+			usage.ownerCount++
+			usage.ownerBytes += size
+		}
+	}
+	return usage, nil
+}
+
+func (s *Store) quotaEntryLocked(entry os.DirEntry) (Reference, int64, bool, error) {
+	id, ok := streamEntryID(entry, ".bin")
+	if !ok {
+		return Reference{}, 0, false, nil
+	}
+	size, err := streamEntrySize(entry)
+	if err != nil {
+		return Reference{}, 0, false, errors.New("inspect stream quota")
+	}
+	reference, err := s.loadLocked(id)
+	if err != nil {
+		return Reference{}, 0, false, errors.New("inspect stream quota")
+	}
+	return reference, size, true, nil
 }
 
 func withinStreamQuota(count int, total, additionalBytes int64, maxFiles int, maxBytes int64) bool {

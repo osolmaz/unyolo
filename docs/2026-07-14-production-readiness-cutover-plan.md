@@ -368,6 +368,12 @@ capacity, and refusals return stable `429` codes with `Retry-After`. Remaining
 work here is configuration and override plumbing plus stream, sealed-payload,
 notification, and reserved recovery-capacity accounting.
 
+Stream and sealed-payload stores now enforce both global and per-client
+file/byte caps after expiry cleanup. Their idempotency lookup runs before
+quota accounting, so exact upload replays remain available at capacity. The
+remaining admission work is configuration overrides, notification-attempt
+bounds, and explicit recovery-capacity tests.
+
 ### Credential replacement and revocation
 
 Define one shared credential lifecycle for broker client secrets, operator
