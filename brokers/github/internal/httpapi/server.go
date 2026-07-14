@@ -619,63 +619,6 @@ func isZeroOID(value string) bool {
 	return true
 }
 
-func headNameToRef(head string) (string, error) {
-	if strings.Contains(head, ":") {
-		return "", errors.New("fork-qualified pull request heads are not supported")
-	}
-	return branchNameToRef(head)
-}
-
-func branchNameToRef(branch string) (string, error) {
-	branch = strings.TrimSpace(branch)
-	if err := validateBranchName(branch); err != nil {
-		return "", err
-	}
-	return "refs/heads/" + branch, nil
-}
-
-func validateBranchName(branch string) error {
-	for _, validate := range []func(string) error{
-		requireBranchName,
-		validateBranchPath,
-		validateBranchGitSyntax,
-		validateBranchChars,
-	} {
-		if err := validate(branch); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func requireBranchName(branch string) error {
-	if branch == "" {
-		return errors.New("branch is required")
-	}
-	return nil
-}
-
-func validateBranchPath(branch string) error {
-	if strings.HasPrefix(branch, "/") || strings.HasSuffix(branch, "/") || strings.Contains(branch, "//") {
-		return errors.New("branch path is malformed")
-	}
-	return nil
-}
-
-func validateBranchGitSyntax(branch string) error {
-	if strings.Contains(branch, "..") || strings.Contains(branch, "@{") {
-		return errors.New("branch contains unsupported git syntax")
-	}
-	return nil
-}
-
-func validateBranchChars(branch string) error {
-	if strings.ContainsAny(branch, " \t\r\n~^:?*[\\") {
-		return errors.New("branch contains unsupported characters")
-	}
-	return nil
-}
-
 func copyUpstreamResponse(c echo.Context, response *http.Response) error {
 	c.Response().WriteHeader(response.StatusCode)
 	_, err := io.Copy(c.Response(), response.Body)

@@ -5,7 +5,6 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 )
@@ -80,37 +79,9 @@ func (s *Server) recordOperationPolicyDecision(client, operation, target, decisi
 	s.recordOperationAudit(event)
 }
 
-func (s *Server) recordOperationGrantUsed(client, operation, target string, upstreamStatus int, grantIDs []string) {
-	planDigest := ""
-	if len(grantIDs) > 0 {
-		if grant, err := s.grants.Get(grantIDs[0]); err == nil {
-			planDigest = grant.Metadata[ghplan.MetadataDigest]
-		}
-	}
-	s.recordOperationAudit(bkaudit.Event{
-		Broker:              "gh-broker",
-		Client:              client,
-		Operation:           operation,
-		Target:              target,
-		Decision:            bkaudit.DecisionGrantUsed,
-		Reason:              "operator grant used",
-		UpstreamStatus:      upstreamStatus,
-		MatchedGrantRuleIDs: grantIDs,
-		GrantID:             firstString(grantIDs),
-		PlanDigest:          planDigest,
-	})
-}
-
 func (s *Server) recordOperationAudit(event bkaudit.Event) {
 	if s.auditWriter == nil {
 		return
 	}
 	_ = s.auditWriter.Record(event)
-}
-
-func firstString(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
 }
