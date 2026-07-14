@@ -62,25 +62,36 @@ func installSystemdForIdentity(ctx context.Context, runner CommandRunner, plan S
 		return err
 	}
 	defer roots.close()
-	steps := []func() error{
-		func() error { return writeManagedFiles(roots, plan, serviceUID, serviceGID) },
-		func() error { return writeSystemdUnits(roots.systemd, plan) },
+	snapshot, err := captureSystemdInstall(roots, plan)
+	if err != nil {
+		return err
 	}
-	for _, step := range steps {
-		if err := step(); err != nil {
-			return err
-		}
+	defer snapshot.clear()
+	return applySystemdInstall(ctx, runner, roots, plan, serviceUID, serviceGID, snapshot)
+}
+
+func applySystemdInstall(ctx context.Context, runner CommandRunner, roots installRoots, plan SystemdInstallPlan,
+	serviceUID, serviceGID uint64, snapshot *systemdInstallSnapshot) error {
+	if err := writeSystemdInstall(roots, plan, serviceUID, serviceGID); err != nil {
+		return errors.Join(err, snapshot.restore())
 	}
 	if err := startInstalledSystemdUnit(ctx, runner, plan); err != nil {
-		return err
+		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
 	}
 	if plan.NoStart {
 		return nil
 	}
 	if err := waitForSystemdReady(ctx, plan); err != nil {
-		return err
+		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
 	}
 	return removeManagedFiles(roots, plan.RemoveFiles)
+}
+
+func writeSystemdInstall(roots installRoots, plan SystemdInstallPlan, serviceUID, serviceGID uint64) error {
+	if err := writeManagedFiles(roots, plan, serviceUID, serviceGID); err != nil {
+		return err
+	}
+	return writeSystemdUnits(roots.systemd, plan)
 }
 
 func startInstalledSystemdUnit(ctx context.Context, runner CommandRunner, plan SystemdInstallPlan) error {

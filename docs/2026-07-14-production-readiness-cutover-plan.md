@@ -408,6 +408,15 @@ dual-secret compatibility is not. Test interrupted staging, failed readiness,
 stale clients, immediate old-secret rejection, provider revocation failure, and
 Telegram replacement.
 
+Implemented on the production-readiness branch: the shared systemd and launchd
+installers snapshot the bounded managed-file set before an exact replacement.
+Write, activation, and readiness failures restore the previous credentials and
+service definition, then reactivate the previous installation when one
+existed. Successful readiness retires obsolete files, and rollback copies are
+cleared before setup exits. Broker and client readers still accept only one
+current secret. Provider-side revocation automation, credential age/expiry
+doctor reporting, and credential-lifecycle audit events remain.
+
 ### Observability contract
 
 Audit is evidence of security decisions, not a substitute for operational

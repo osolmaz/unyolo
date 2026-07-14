@@ -17,17 +17,54 @@ import (
 
 // InstallLaunchd installs one system LaunchDaemon from a validated typed plan.
 func InstallLaunchd(ctx context.Context, plan LaunchdInstallPlan) error {
-	if err := validateLaunchdExecution(plan); err != nil {
+	runner, uid, gid, err := prepareLaunchdInstall(ctx, plan)
+	if err != nil {
 		return err
+	}
+	snapshot, err := captureLaunchdInstall(plan)
+	if err != nil {
+		return err
+	}
+	defer snapshot.clear()
+	return applyLaunchdInstall(ctx, runner, plan, uid, gid, snapshot)
+}
+
+func prepareLaunchdInstall(ctx context.Context, plan LaunchdInstallPlan) (CommandRunner, int, int, error) {
+	if err := validateLaunchdExecution(plan); err != nil {
+		return nil, 0, 0, err
 	}
 	runner := plan.Runner
 	if runner == nil {
 		runner = launchdCommandRunner{}
 	}
-	if err := installLaunchdPayload(ctx, runner, plan); err != nil {
-		return err
+	if err := ensureLaunchdAccounts(ctx, runner, plan); err != nil {
+		return nil, 0, 0, err
 	}
-	return startLaunchdInstallation(ctx, runner, plan)
+	uid, gid, err := launchdIdentityIDs(plan.User, plan.Group)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	if err := prepareLaunchdDirectories(plan, uid, gid); err != nil {
+		return nil, 0, 0, err
+	}
+	return runner, uid, gid, nil
+}
+
+func applyLaunchdInstall(ctx context.Context, runner CommandRunner, plan LaunchdInstallPlan, uid, gid int,
+	snapshot *launchdInstallSnapshot) error {
+	if err := writeLaunchdInstallation(plan, uid, gid); err != nil {
+		return errors.Join(err, snapshot.restore())
+	}
+	if plan.NoStart {
+		return nil
+	}
+	if err := bootstrapLaunchd(ctx, runner, plan); err != nil {
+		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
+	}
+	if err := waitForLaunchdReady(ctx, plan); err != nil {
+		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
+	}
+	return removeLaunchdManagedFiles(plan)
 }
 
 func validateLaunchdExecution(plan LaunchdInstallPlan) error {
@@ -38,36 +75,6 @@ func validateLaunchdExecution(plan LaunchdInstallPlan) error {
 		return errors.New("launchd installation must run as root")
 	}
 	return nil
-}
-
-func installLaunchdPayload(ctx context.Context, runner CommandRunner, plan LaunchdInstallPlan) error {
-	if err := ensureLaunchdAccounts(ctx, runner, plan); err != nil {
-		return err
-	}
-	uid, gid, err := launchdIdentityIDs(plan.User, plan.Group)
-	if err != nil {
-		return err
-	}
-	if err := prepareLaunchdDirectories(plan, uid, gid); err != nil {
-		return err
-	}
-	if err := writeLaunchdInstallation(plan, uid, gid); err != nil {
-		return err
-	}
-	return nil
-}
-
-func startLaunchdInstallation(ctx context.Context, runner CommandRunner, plan LaunchdInstallPlan) error {
-	if plan.NoStart {
-		return nil
-	}
-	if err := bootstrapLaunchd(ctx, runner, plan); err != nil {
-		return err
-	}
-	if err := waitForLaunchdReady(ctx, plan); err != nil {
-		return err
-	}
-	return removeLaunchdManagedFiles(plan)
 }
 
 type launchdCommandRunner struct{}

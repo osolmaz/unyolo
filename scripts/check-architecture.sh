@@ -51,6 +51,13 @@ then
   exit 1
 fi
 
+if ! grep -q 'captureSystemdInstall' service/install_linux.go ||
+  ! grep -q 'captureLaunchdInstall' service/install_darwin.go
+then
+  echo 'native service installers must preserve transactional credential rollback' >&2
+  exit 1
+fi
+
 if find . -path './brokers' -prune -o -path './.git' -prune -o -name '*.go' -type f -print0 |
   xargs -0 grep -n 'github.com/osolmaz/brokerkit/brokers/'
 then

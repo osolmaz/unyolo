@@ -48,3 +48,41 @@ func TestInstallLaunchdPreview(t *testing.T) {
 		}
 	}
 }
+
+func TestLaunchdInstallSnapshotRestoresReplacedCredentials(t *testing.T) {
+	root := t.TempDir()
+	plan := launchdInstallFixture()
+	plan.ConfigDir, plan.StateDir, plan.LaunchdDir = filepath.Join(root, "config"), filepath.Join(root, "state"), filepath.Join(root, "launchd")
+	for _, directory := range []string{plan.ConfigDir, plan.StateDir, plan.LaunchdDir} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	secretPath := filepath.Join(plan.ConfigDir, "secret")
+	plistPath := filepath.Join(plan.LaunchdDir, plan.PlistName)
+	for path, body := range map[string]string{secretPath: "old-secret", plistPath: "old-plist"} {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := captureLaunchdInstall(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snapshot.clear()
+	if err := writeAtomicLaunchdFile(secretPath, []byte("new-secret"), 0o600, os.Geteuid(), os.Getegid(), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtomicLaunchdFile(plistPath, []byte("new-plist"), 0o600, os.Geteuid(), os.Getegid(), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.restore(); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{secretPath: "old-secret", plistPath: "old-plist"} {
+		data, err := os.ReadFile(path) // #nosec G304 -- controlled test fixture.
+		if err != nil || string(data) != want {
+			t.Fatalf("restored %s = %q, %v; want %q", path, data, err, want)
+		}
+	}
+}
