@@ -30,10 +30,15 @@ type runtimePlan struct {
 }
 
 type runtimeAdapter struct {
-	descriptor   capability.Descriptor
-	executeErr   error
-	reconciled   bool
-	resolveCount int
+	descriptor        capability.Descriptor
+	executeErr        error
+	reconciled        bool
+	reconcileUnproven bool
+	reconcileErr      error
+	resolveCount      int
+	cleanupCount      int
+	clientErr         error
+	resolveErr        error
 }
 
 func (a *runtimeAdapter) Descriptor() capability.Descriptor { return a.descriptor }
@@ -42,11 +47,15 @@ func (a *runtimeAdapter) Decode(target, arguments json.RawMessage) (runtimeInput
 }
 func (a *runtimeAdapter) Resolve(_ context.Context, input runtimeInput) (runtimePlan, error) {
 	a.resolveCount++
+	if a.resolveErr != nil {
+		return runtimePlan{}, a.resolveErr
+	}
 	return runtimePlan{Target: input.Target, Arguments: input.Arguments, Authorization: policy.Request{
 		Operation: a.descriptor.Name, Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}},
 	}}, nil
 }
-func (a *runtimeAdapter) Authorize(plan runtimePlan) policy.Request { return plan.Authorization }
+func (a *runtimeAdapter) ValidateClient(runtimeInput, string, string) error { return a.clientErr }
+func (a *runtimeAdapter) Authorize(plan runtimePlan) policy.Request         { return plan.Authorization }
 func (a *runtimeAdapter) Present(runtimePlan) agentv1.Presentation {
 	return agentv1.Presentation{Title: "Create demo"}
 }
@@ -58,7 +67,17 @@ func (a *runtimeAdapter) Execute(context.Context, runtimePlan) (Outcome, error) 
 }
 func (a *runtimeAdapter) Reconcile(context.Context, runtimePlan) (Outcome, error) {
 	a.reconciled = true
+	if a.reconcileErr != nil {
+		return Outcome{}, a.reconcileErr
+	}
+	if a.reconcileUnproven {
+		return Outcome{Proven: false}, nil
+	}
 	return Outcome{Proven: true, Result: json.RawMessage(`{"reconciled":true}`)}, nil
+}
+func (a *runtimeAdapter) Cleanup(runtimePlan) error {
+	a.cleanupCount++
+	return nil
 }
 
 func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
@@ -336,6 +355,328 @@ func TestRuntimeRejectsUnknownAndInvalidSubmissions(t *testing.T) {
 	}
 	if _, err := New(Options[runtimeInput, runtimePlan, policy.Request]{}); err == nil {
 		t.Fatal("incomplete runtime was accepted")
+	}
+}
+
+func TestRuntimePolicyRefusalsAreTerminalAndCleaned(t *testing.T) {
+	for name, decide := range map[string]func(policy.Request, policy.DecisionOptions) policy.Decision{
+		"denied": func(policy.Request, policy.DecisionOptions) policy.Decision {
+			return policy.Decision{Effect: policy.EffectDeny}
+		},
+		"no match": func(policy.Request, policy.DecisionOptions) policy.Decision {
+			return policy.Decision{Effect: policy.EffectNoMatch}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, decide, nil, false)
+			defer closeRuntime()
+			operation, created, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: name,
+				Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+			if err != nil || !created {
+				t.Fatalf("submit = %+v, %t, %v", operation, created, err)
+			}
+			stored, err := operations.Get("agent", operation.ID)
+			if err != nil || stored.State != agentv1.StateDenied || stored.Error.Code != "operation_policy_denied" || adapter.cleanupCount == 0 {
+				t.Fatalf("stored = %+v cleanup=%d err=%v", stored, adapter.cleanupCount, err)
+			}
+		})
+	}
+}
+
+type emptyRefNotifier struct{}
+
+func (emptyRefNotifier) SendApproval(context.Context, notify.ApprovalMessage) (notify.MessageRef, error) {
+	return notify.MessageRef{}, nil
+}
+func (emptyRefNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error { return nil }
+
+func TestRuntimeRejectsApprovalWithoutNotificationReference(t *testing.T) {
+	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, requestDecision, emptyRefNotifier{}, false)
+	defer closeRuntime()
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "empty-ref", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := operations.Get("agent", operation.ID)
+	if err != nil || stored.State != agentv1.StateFailed || stored.Error.Code != "approval_notification_failed" || adapter.cleanupCount == 0 {
+		t.Fatalf("stored = %+v cleanup=%d err=%v", stored, adapter.cleanupCount, err)
+	}
+}
+
+func TestRuntimeCancelsPendingAndRevokesActiveGrants(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, _, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	submit := func(key string) agentv1.Operation {
+		t.Helper()
+		operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: key, Operation: "repo.create",
+			Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return operation
+	}
+	pending := submit("cancel-pending")
+	grant, err := grantStore.Get(pending.ApprovalID)
+	if err != nil || runtime.CancelGrant(grant, "agent") != nil {
+		t.Fatalf("cancel pending grant = %+v, %v", grant, err)
+	}
+	grant, _ = grantStore.Get(grant.ID)
+	if grant.Status != grants.StatusCanceled {
+		t.Fatalf("pending grant status = %s", grant.Status)
+	}
+
+	active := submit("revoke-active")
+	if _, err := grantStore.Approve(active.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	grant, _ = grantStore.Get(active.ApprovalID)
+	if err := runtime.CancelGrant(grant, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	grant, _ = grantStore.Get(grant.ID)
+	if grant.Status != grants.StatusRevoked {
+		t.Fatalf("active grant status = %s", grant.Status)
+	}
+	if err := runtime.CancelGrant(grant, "agent"); err != nil {
+		t.Fatalf("terminal grant cancellation = %v", err)
+	}
+}
+
+func TestRuntimeExplicitOutcomeSettlement(t *testing.T) {
+	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
+	defer closeRuntime()
+	submitExecuting := func(key string) agentv1.Operation {
+		t.Helper()
+		operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: key, Operation: "repo.create",
+			Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		operation, err = operations.Transition(operation.ID, agentv1.StateExecuting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return operation
+	}
+	succeeded := submitExecuting("explicit-success")
+	runtime.Succeed(succeeded, runtimePlan{}, nil, false, "test")
+	stored, _ := operations.Get("agent", succeeded.ID)
+	if stored.State != agentv1.StateSucceeded || string(stored.Result) != `{"operation":"repo.create","reconciled":true}` {
+		t.Fatalf("succeeded = %+v", stored)
+	}
+
+	failed := submitExecuting("explicit-failure")
+	runtime.FailExecution(failed, runtimePlan{}, errors.New("upstream"), errors.New("unknown"))
+	stored, _ = operations.Get("agent", failed.ID)
+	if stored.State != agentv1.StateFailed || stored.Error.Code == "" || adapter.cleanupCount == 0 {
+		t.Fatalf("failed = %+v cleanup=%d", stored, adapter.cleanupCount)
+	}
+}
+
+func TestRuntimeMissingApprovalFailsAfterRecoveryGrace(t *testing.T) {
+	runtime, _, operations, _, closeRuntime := newRuntime(t, nil, requestDecision, nil, true)
+	defer closeRuntime()
+	id, err := operations.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, _, err := operations.Submit(agentops.Submit{ID: id, Broker: "test-broker", ClientID: "agent", IdempotencyKey: "missing-approval",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo",
+		Presentation: agentv1.Presentation{Title: "Create demo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.options.Now = func() time.Time { return operation.UpdatedAt.Add(time.Minute) }
+	recovered := runtime.RecoverApproval(operation)
+	if recovered.State != agentv1.StateFailed || recovered.Error.Code != "approval_missing" {
+		t.Fatalf("recovered = %+v", recovered)
+	}
+	if _, _, err := runtime.Load(agentv1.Operation{Operation: "repo.create"}); err == nil {
+		t.Fatal("operation without plan digest loaded")
+	}
+}
+
+func TestRuntimeSynchronizesCanceledApprovalAndRejectsExecutingCancel(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "cancel-sync", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.CancelForClient(operation.ApprovalID, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.Advance(t.Context(), operation)
+	stored, _ := operations.Get("agent", operation.ID)
+	if stored.State != agentv1.StateCanceled {
+		t.Fatalf("canceled approval operation = %+v", stored)
+	}
+	if terminal, err := runtime.Cancel(t.Context(), "agent", stored.ID); err != nil || terminal.State != agentv1.StateCanceled {
+		t.Fatalf("terminal cancel = %+v, %v", terminal, err)
+	}
+
+	directRuntime, _, directOperations, _, closeDirect := newRuntime(t, nil, directDecision, nil, false)
+	defer closeDirect()
+	executing, _, err := directRuntime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "executing", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executing, err = directOperations.Transition(executing.ID, agentv1.StateExecuting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := directRuntime.Cancel(t.Context(), "agent", executing.ID); !errors.Is(err, agentops.ErrNotCancelable) {
+		t.Fatalf("executing cancel = %v", err)
+	}
+}
+
+func TestRuntimeAmbiguousApprovedExecutionRetainsUse(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, &PossiblePartialError{Err: errors.New("connection lost")}, requestDecision, notifier, true)
+	defer closeRuntime()
+	adapter.reconcileUnproven = true
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "ambiguous", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.Advance(t.Context(), operation)
+	stored, _ := operations.Get("agent", operation.ID)
+	grant, _ := grantStore.Get(operation.ApprovalID)
+	if stored.State != agentv1.StateFailed || grant.ReservedCount != 1 || !grant.ReservationRetained || grant.UsedCount != 0 {
+		t.Fatalf("ambiguous operation = %+v grant=%+v", stored, grant)
+	}
+}
+
+func TestRuntimeRestartFailsWhenOutcomeCannotBeProven(t *testing.T) {
+	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
+	defer closeRuntime()
+	adapter.reconcileUnproven = true
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-unknown", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err = operations.Transition(operation.ID, agentv1.StateExecuting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReconcileInterrupted(t.Context(), operation)
+	stored, _ := operations.Get("agent", operation.ID)
+	if stored.State != agentv1.StateFailed || stored.Error.Code != "upstream_result_unknown" {
+		t.Fatalf("restart outcome = %+v", stored)
+	}
+	adapter.reconcileUnproven = false
+	adapter.reconcileErr = errors.New("offline")
+	if _, err := adapter.Reconcile(t.Context(), runtimePlan{}); err == nil {
+		t.Fatal("reconciliation error disappeared")
+	}
+}
+
+func TestRuntimeSubmissionBoundaryFailures(t *testing.T) {
+	runtime, adapter, _, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
+	defer closeRuntime()
+	request := agentv1.SubmitRequest{IdempotencyKey: "boundary", Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`),
+		Arguments: json.RawMessage(`{}`), Reason: "create demo"}
+	adapter.clientErr = errors.New("reference owner mismatch")
+	if _, _, err := runtime.Submit(t.Context(), "agent", request); err == nil {
+		t.Fatal("client-bound validation failure accepted")
+	}
+	adapter.clientErr = nil
+	adapter.resolveErr = errors.New("resolution failed")
+	if _, _, err := runtime.Submit(t.Context(), "agent", request); err == nil {
+		t.Fatal("resolution failure accepted")
+	}
+	adapter.resolveErr = nil
+	operation, _, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Arguments = json.RawMessage(`{"changed":true}`)
+	if _, _, err := runtime.Submit(t.Context(), "agent", request); !errors.Is(err, agentops.ErrIdempotencyConflict) {
+		t.Fatalf("idempotency conflict = %v", err)
+	}
+	if loaded, err := runtime.options.Operations.GetByID(operation.ID); err != nil || loaded.ID != operation.ID {
+		t.Fatalf("stored boundary operation = %+v, %v", loaded, err)
+	}
+}
+
+func TestRuntimePlanPreparationFailuresCleanResolvedState(t *testing.T) {
+	for name, decide := range map[string]func(policy.Request, policy.DecisionOptions) policy.Decision{
+		"direct":   directDecision,
+		"approval": requestDecision,
+	} {
+		t.Run(name, func(t *testing.T) {
+			runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, decide, nil, true)
+			defer closeRuntime()
+			runtime.options.Prepare = func(Preparation[runtimePlan, policy.Request]) (authorization.GrantIntent, error) {
+				return authorization.GrantIntent{}, errors.New("prepare failed")
+			}
+			operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "prepare-" + name,
+				Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+			if name == "direct" {
+				if err == nil || operation.ID != "" {
+					t.Fatalf("direct preparation = %+v, %v", operation, err)
+				}
+			} else {
+				if err != nil || operation.State != agentv1.StateFailed {
+					t.Fatalf("approval preparation = %+v, %v", operation, err)
+				}
+				stored, getErr := operations.Get("agent", operation.ID)
+				if getErr != nil || stored.State != agentv1.StateFailed {
+					t.Fatalf("stored preparation = %+v, %v", stored, getErr)
+				}
+			}
+			if adapter.cleanupCount == 0 {
+				t.Fatal("failed preparation retained provider state")
+			}
+		})
+	}
+}
+
+func TestRuntimeRestartRequiresReservedValidAuthority(t *testing.T) {
+	for name, invalidate := range map[string]bool{"missing reservation": false, "invalid approval": true} {
+		t.Run(name, func(t *testing.T) {
+			notifier := &captureNotifier{}
+			runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+			defer closeRuntime()
+			operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-" + name,
+				Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+				t.Fatal(err)
+			}
+			operation, err = operations.Transition(operation.ID, agentv1.StateApproved)
+			if err != nil {
+				t.Fatal(err)
+			}
+			operation, err = operations.Transition(operation.ID, agentv1.StateExecuting)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if invalidate {
+				runtime.options.ValidateExecution = func(grants.Grant) error { return errors.New("stale approval") }
+			}
+			runtime.ReconcileInterrupted(t.Context(), operation)
+			stored, _ := operations.Get("agent", operation.ID)
+			want := "approval_reservation_missing"
+			if invalidate {
+				want = "approval_invalid"
+			}
+			if stored.State != agentv1.StateFailed || stored.Error.Code != want {
+				t.Fatalf("restart authority = %+v", stored)
+			}
+		})
 	}
 }
 
