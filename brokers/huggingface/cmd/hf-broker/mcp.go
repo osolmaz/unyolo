@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/usebudget"
+	"github.com/osolmaz/brokerkit/mcpoperation"
 )
 
 type mcpRequest struct {
@@ -86,7 +86,7 @@ func handleMCPRequest(ctx context.Context, client *agentClient, request mcpReque
 		}
 		result, err := callMCPTool(ctx, client, call)
 		if err != nil {
-			response.Result = mcpToolResult(map[string]any{"error": err.Error()}, true)
+			response.Result = mcpToolResult(mcpoperation.ErrorValue(err), true)
 		} else {
 			response.Result = mcpToolResult(result, false)
 		}
@@ -99,34 +99,12 @@ func handleMCPRequest(ctx context.Context, client *agentClient, request mcpReque
 func mcpTools() []map[string]any {
 	tools := catalogMCPTools()
 	return append(tools,
-		map[string]any{"name": "hf_operation_get", "description": "Get a resumable HF Broker operation by ID.", "inputSchema": mcpIDSchema("operation_id", false)},
-		map[string]any{"name": "hf_operation_wait", "description": "Wait for a resumable HF Broker operation without requesting a Hugging Face token.", "inputSchema": mcpIDSchema("operation_id", true)},
 		map[string]any{"name": "hf_operation_cancel", "description": "Cancel a pending or approved HF Broker operation.", "inputSchema": mcpIDSchema("operation_id", false)},
-		map[string]any{"name": "hf_grant_request", "description": "Request temporary, policy-bounded Hugging Face access. Never ask for a Hugging Face token.", "inputSchema": mcpGrantRequestSchema()},
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_wait", "description": "Wait for a temporary HF Broker grant decision.", "inputSchema": mcpIDSchema("grant_id", true)},
 		map[string]any{"name": "hf_grant_cancel", "description": "Cancel a pending temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_revoke", "description": "Revoke an active temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
 	)
-}
-
-func mcpGrantRequestSchema() map[string]any {
-	return map[string]any{
-		"type": "object", "additionalProperties": false,
-		"required": []string{"operation", "target", "reason", "idempotency_key"},
-		"properties": map[string]any{
-			"operation":       map[string]any{"type": "string"},
-			"target":          map[string]any{"type": "string", "description": "Exact OWNER/NAME target"},
-			"type":            map[string]any{"enum": []string{"model", "dataset", "space"}, "default": "dataset"},
-			"refs":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-			"attrs":           map[string]any{"type": "object"},
-			"reason":          map[string]any{"type": "string"},
-			"idempotency_key": map[string]any{"type": "string"},
-			"minutes":         map[string]any{"type": "integer", "minimum": 1},
-			"max_uses":        map[string]any{"type": []string{"integer", "null"}, "minimum": 1},
-			"wait_seconds":    map[string]any{"type": "integer", "minimum": 0, "maximum": 900},
-		},
-	}
 }
 
 func mcpIDSchema(idField string, wait bool) map[string]any {
@@ -142,83 +120,13 @@ func callMCPTool(ctx context.Context, client *agentClient, call mcpToolCall) (an
 		return callMCPCatalogOperation(ctx, client, descriptor, call.Arguments)
 	}
 	switch call.Name {
-	case "hf_operation_get", "hf_operation_wait", "hf_operation_cancel":
+	case "hf_operation_get", "hf_operation_wait", "hf_operation_list", "hf_operation_cancel":
 		return callMCPOperation(ctx, client, call.Name, call.Arguments)
-	case "hf_grant_request":
-		return callMCPGrantRequest(ctx, client.grantClient, call.Arguments)
 	case "hf_grant_get", "hf_grant_wait", "hf_grant_cancel", "hf_grant_revoke":
 		return callMCPGrantLifecycle(ctx, client.grantClient, call.Name, call.Arguments)
 	default:
 		return nil, fmt.Errorf("unknown tool %q", call.Name)
 	}
-}
-
-type mcpGrantRequestInput struct {
-	Operation      string             `json:"operation"`
-	Target         string             `json:"target"`
-	Type           string             `json:"type"`
-	Refs           []string           `json:"refs"`
-	Attrs          map[string]any     `json:"attrs"`
-	Reason         string             `json:"reason"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	Minutes        int                `json:"minutes"`
-	MaxUses        usebudget.Optional `json:"max_uses"`
-	WaitSeconds    int                `json:"wait_seconds"`
-}
-
-func callMCPGrantRequest(ctx context.Context, client *hfGrantClient, raw json.RawMessage) (hfClientGrant, error) {
-	request, options, err := prepareMCPGrantRequest(raw)
-	if err != nil {
-		return hfClientGrant{}, err
-	}
-	return requestMCPGrant(ctx, client, request, options)
-}
-
-func requestMCPGrant(ctx context.Context, client *hfGrantClient, request hfGrantRequest, options grantRequestOptions) (hfClientGrant, error) {
-	grant, err := client.Request(ctx, request)
-	if err != nil || !options.wait || grant.Status != "pending" {
-		return grant, err
-	}
-	return waitForMCPGrant(ctx, client, grant.ID, options.waitTimeout)
-}
-
-func prepareMCPGrantRequest(raw json.RawMessage) (hfGrantRequest, grantRequestOptions, error) {
-	var input mcpGrantRequestInput
-	if err := decodeMCPArguments(raw, &input); err != nil {
-		return hfGrantRequest{}, grantRequestOptions{}, err
-	}
-	options, err := mcpGrantRequestOptions(input)
-	if err != nil {
-		return hfGrantRequest{}, grantRequestOptions{}, err
-	}
-	request, err := buildHFGrantRequest(&options)
-	if err != nil {
-		return hfGrantRequest{}, grantRequestOptions{}, err
-	}
-	request.Attrs = input.Attrs
-	return request, options, nil
-}
-
-func mcpGrantRequestOptions(input mcpGrantRequestInput) (grantRequestOptions, error) {
-	options := grantRequestOptions{
-		operation: input.Operation, target: input.Target, repoType: input.Type,
-		refs: input.Refs, reason: input.Reason, idempotencyKey: input.IdempotencyKey,
-		minutes: input.Minutes, maxUses: optionalUseFlag{set: input.MaxUses.Specified, limit: input.MaxUses.Limit},
-		wait: input.WaitSeconds > 0, waitTimeout: time.Duration(input.WaitSeconds) * time.Second,
-	}
-	if options.repoType == "" {
-		options.repoType = "dataset"
-	}
-	if options.waitTimeout <= 0 {
-		options.waitTimeout = defaultClientWait
-	}
-	if input.WaitSeconds < 0 || input.WaitSeconds > 900 {
-		return grantRequestOptions{}, errors.New("wait_seconds must be between 0 and 900")
-	}
-	if err := validateGrantRequestOptions(options); err != nil {
-		return grantRequestOptions{}, err
-	}
-	return options, nil
 }
 
 func callMCPGrantLifecycle(ctx context.Context, client *hfGrantClient, name string, raw json.RawMessage) (hfClientGrant, error) {
@@ -269,35 +177,33 @@ func waitForMCPGrant(ctx context.Context, client *hfGrantClient, id string, time
 	return grant, err
 }
 
-//nolint:cyclop // Dispatch validation is explicit and tracked by the exact HF CRAP baseline.
-func callMCPOperation(ctx context.Context, client *agentClient, name string, raw json.RawMessage) (agentv1.Operation, error) {
-	var input struct {
-		OperationID string `json:"operation_id"`
-		WaitSeconds int    `json:"wait_seconds"`
-	}
-	if err := decodeMCPArguments(raw, &input); err != nil || input.OperationID == "" {
-		return agentv1.Operation{}, errors.New("operation_id is required")
-	}
-	operation, err := client.get(ctx, input.OperationID)
-	if name == "hf_operation_cancel" {
-		if input.WaitSeconds != 0 {
-			return agentv1.Operation{}, errors.New("wait_seconds is not valid for hf_operation_cancel")
+func callMCPOperation(ctx context.Context, client *agentClient, name string, raw json.RawMessage) (any, error) {
+	if name == "hf_operation_list" {
+		var input mcpoperation.ListInput
+		if err := decodeMCPArguments(raw, &input); err != nil {
+			return nil, err
 		}
-		return client.cancel(ctx, input.OperationID)
+		return mcpoperation.List(ctx, client.operations, input)
 	}
-	if err != nil || name == "hf_operation_get" || operation.State.Terminal() {
-		return operation, err
+	if name == "hf_operation_wait" {
+		var input mcpoperation.WaitInput
+		if err := decodeMCPArguments(raw, &input); err != nil {
+			return nil, err
+		}
+		return mcpoperation.Wait(ctx, client.operations, input, mcpprojection.ResultToMCP)
 	}
-	if input.WaitSeconds <= 0 || input.WaitSeconds > 900 {
-		input.WaitSeconds = 30
+	var input mcpoperation.GetInput
+	if err := decodeMCPArguments(raw, &input); err != nil {
+		return nil, err
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.WaitSeconds)*time.Second)
-	defer cancel()
-	operation, err = client.wait(waitCtx, operation)
-	if waitCtx.Err() != nil && operation.ID != "" {
-		return operation, nil
+	if name == "hf_operation_cancel" {
+		operation, err := client.cancel(ctx, input.OperationID)
+		if err != nil {
+			return nil, err
+		}
+		return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
 	}
-	return operation, err
+	return mcpoperation.Get(ctx, client.operations, input, mcpprojection.ResultToMCP)
 }
 
 func decodeMCPArguments(raw json.RawMessage, out any) error {

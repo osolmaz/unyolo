@@ -15,51 +15,140 @@ import (
 
 	"github.com/dlclark/regexp2"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/mcpoperation"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 	descriptors := agentFacingDescriptors()
+	if len(descriptors) != 257 {
+		t.Fatalf("descriptors=%d", len(descriptors))
+	}
+	for _, descriptor := range descriptors {
+		descriptor := descriptor
+		t.Run(descriptor.Name, func(t *testing.T) {
+			words := strings.Fields(*descriptor.CLICommand)
+			matched, consumed, found := matchCLICommand(append(words, "--json"))
+			if !found || consumed != len(words) || matched.Name != descriptor.Name {
+				t.Fatalf("CLI descriptor %q did not round trip", descriptor.Name)
+			}
+			schema := catalogMCPToolSchemaForTest(t, descriptor)
+			if schema == nil {
+				return
+			}
+			if schema["additionalProperties"] != false {
+				t.Fatalf("MCP schema %q is not closed", descriptor.Name)
+			}
+			if issues := capability.AuditMCPToolSchema(schema); len(issues) != 0 {
+				t.Fatalf("MCP schema %q has unresolved compatibility issue: %v", descriptor.Name, issues[0])
+			}
+			compiler := jsonschema.NewCompiler()
+			compiler.UseRegexpEngine(compileMCPTestRegexp)
+			location := "https://brokerkit.local/mcp/" + descriptor.Name + ".json"
+			encoded, _ := json.Marshal(schema)
+			var normalized any
+			_ = json.Unmarshal(encoded, &normalized)
+			if err := compiler.AddResource(location, normalized); err != nil {
+				t.Fatalf("MCP schema %q could not be loaded: %v", descriptor.Name, err)
+			}
+			if _, err := compiler.Compile(location); err != nil {
+				t.Fatalf("MCP schema %q could not be compiled: %v", descriptor.Name, err)
+			}
+			properties := schema["properties"].(map[string]any)
+			assertClosedSchema(t, descriptor.Name+" target", properties["target"])
+			if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+				assertClosedSchema(t, descriptor.Name+" arguments", properties["arguments"])
+			} else {
+				assertClosedSchema(t, descriptor.Name+" attrs", properties["attrs"])
+			}
+			if sealed, found := properties["sealed_arguments"]; found {
+				assertClosedSchema(t, descriptor.Name+" sealed arguments", sealed)
+			}
+		})
+	}
+	if t.Failed() {
+		return
+	}
 	tools := catalogMCPTools()
-	if len(descriptors) != 257 || len(tools) != len(descriptors) {
+	if len(tools) != len(descriptors)+3 {
 		t.Fatalf("descriptors=%d tools=%d", len(descriptors), len(tools))
 	}
-	for index, descriptor := range descriptors {
-		words := strings.Fields(*descriptor.CLICommand)
-		matched, consumed, found := matchCLICommand(append(words, "--json"))
-		if !found || consumed != len(words) || matched.Name != descriptor.Name {
-			t.Fatalf("CLI descriptor %q did not round trip", descriptor.Name)
+}
+
+func catalogMCPToolSchemaForTest(t *testing.T, descriptor opcatalog.Descriptor) (schema map[string]any) {
+	t.Helper()
+	defer func() {
+		if value := recover(); value != nil {
+			t.Errorf("MCP schema generation panicked: %v", value)
+			schema = nil
 		}
-		if tools[index]["name"] != *descriptor.MCPTool {
-			t.Fatalf("MCP descriptor %q drifted", descriptor.Name)
+	}()
+	return catalogMCPToolSchema(descriptor)
+}
+
+func TestCapturedResultsAreTranscriptSafe(t *testing.T) {
+	for _, descriptor := range agentFacingDescriptors() {
+		binding, found := opbinding.ByName(descriptor.Name)
+		if !found || !binding.CaptureResult {
+			continue
 		}
-		schema, ok := tools[index]["inputSchema"].(map[string]any)
-		if !ok || schema["additionalProperties"] != false {
-			t.Fatalf("MCP schema %q is not closed", descriptor.Name)
+		var schema map[string]any
+		if err := json.Unmarshal(binding.ResultSchema, &schema); err != nil {
+			t.Fatalf("%s result schema: %v", descriptor.Name, err)
 		}
-		compiler := jsonschema.NewCompiler()
-		compiler.UseRegexpEngine(compileMCPTestRegexp)
-		location := "https://brokerkit.local/mcp/" + descriptor.Name + ".json"
-		encoded, _ := json.Marshal(schema)
-		var normalized any
-		_ = json.Unmarshal(encoded, &normalized)
-		if err := compiler.AddResource(location, normalized); err != nil {
-			t.Fatalf("MCP schema %q could not be loaded: %v", descriptor.Name, err)
+		projection := mcpprojection.ForOperation(descriptor).Result
+		if !projection.Empty() {
+			var err error
+			schema, err = projection.MCPSchema(schema)
+			if err != nil {
+				t.Fatalf("%s result projection: %v", descriptor.Name, err)
+			}
 		}
-		if _, err := compiler.Compile(location); err != nil {
-			t.Fatalf("MCP schema %q could not be compiled: %v", descriptor.Name, err)
+		if issues := capability.AuditMCPPublicSchema(schema); len(issues) != 0 {
+			t.Fatalf("%s result schema has unresolved compatibility issue: %v", descriptor.Name, issues[0])
 		}
-		properties := schema["properties"].(map[string]any)
-		assertClosedSchema(t, descriptor.Name+" target", properties["target"])
-		if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-			assertClosedSchema(t, descriptor.Name+" arguments", properties["arguments"])
-		} else {
-			assertClosedSchema(t, descriptor.Name+" attrs", properties["attrs"])
+	}
+}
+
+func TestMCPCompatibilityManifestMatchesCatalog(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/generated/mcp-compatibility.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		APIVersion                string   `json:"api_version"`
+		Provider                  string   `json:"provider"`
+		HostProfiles              []string `json:"host_profiles"`
+		AgentFacingOperations     int      `json:"agent_facing_operations"`
+		OperationTools            int      `json:"operation_tools"`
+		UtilityTools              int      `json:"utility_tools"`
+		ProjectedOperations       []string `json:"projected_operations"`
+		ProjectedWindowOperations int      `json:"projected_window_operations"`
+		UnresolvedCollisions      int      `json:"unresolved_collisions"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	projected, windows := []string{}, 0
+	for _, descriptor := range agentFacingDescriptors() {
+		projection := mcpprojection.ForOperation(descriptor)
+		if descriptor.AuthorizationMode == opcatalog.ModeWindow {
+			windows++
 		}
-		if sealed, found := properties["sealed_arguments"]; found {
-			assertClosedSchema(t, descriptor.Name+" sealed arguments", sealed)
+		if !projection.Arguments.Empty() {
+			projected = append(projected, descriptor.Name)
 		}
+	}
+	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "huggingface" ||
+		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1-beta.5"}) ||
+		manifest.AgentFacingOperations != len(agentFacingDescriptors()) || manifest.OperationTools != len(agentFacingDescriptors()) ||
+		manifest.UtilityTools != 3 || !slices.Equal(manifest.ProjectedOperations, projected) ||
+		manifest.ProjectedWindowOperations != windows || manifest.UnresolvedCollisions != 0 {
+		t.Fatalf("compatibility manifest drifted: %+v", manifest)
 	}
 }
 
@@ -140,8 +229,8 @@ func TestMCPDestructiveOperationUsesCatalogOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_delete", Arguments: json.RawMessage(
-		`{"target":{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"},"arguments":{},"reason":"remove test repository","idempotency_key":"delete-1","wait_seconds":0}`)})
-	operation, ok := value.(agentv1.Operation)
+		`{"target":{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"},"arguments":{},"reason":"remove test repository","request_id":"delete-1"}`)})
+	operation, ok := value.(mcpoperation.Operation)
 	if err != nil || !ok || operation.Operation != "repo.delete" || submitted["operation"] != "repo.delete" {
 		t.Fatalf("operation=%#v submitted=%#v err=%v", value, submitted, err)
 	}
@@ -201,7 +290,7 @@ func TestMCPWindowOperationRequestsExactGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_contents_read", Arguments: json.RawMessage(
-		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"attrs":{},"reason":"inspect data","idempotency_key":"read-1","minutes":5,"max_uses":1,"wait_seconds":0}`)})
+		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"attrs":{},"reason":"inspect data","request_id":"read-1","minutes":5,"max_uses":1}`)})
 	grant, ok := value.(hfClientGrant)
 	if err != nil || !ok || grant.Operation != "repo.contents.read" || submitted["operation"] != "repo.contents.read" {
 		t.Fatalf("grant=%#v submitted=%#v err=%v", value, submitted, err)
@@ -237,7 +326,7 @@ func TestMCPSealedOperationSeparatesSecretFromPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = callMCPTool(context.Background(), client, mcpToolCall{Name: "hf_space_secret_set", Arguments: json.RawMessage(
-		`{"target":{"namespace":"osolmaz","repo":"app"},"arguments":{"key":"TOKEN"},"sealed_arguments":{"value":"` + secret + `"},"reason":"set deployment secret","idempotency_key":"secret-1","wait_seconds":0}`)})
+		`{"target":{"namespace":"osolmaz","repo":"app"},"arguments":{"secret_name":"TOKEN"},"sealed_arguments":{"value":"` + secret + `"},"reason":"set deployment secret","request_id":"secret-1"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +394,7 @@ func TestCatalogCLIExecutionAndWindowOperations(t *testing.T) {
 	deleteDescriptor, _ := opcatalog.ByName("repo.delete")
 	if err := runCatalogOperation(t.Context(), client, &stdout, &stderr, deleteDescriptor, []string{
 		"--target-json", `{"kind":"repo","type":"dataset","owner":"osolmaz","name":"throwaway"}`,
-		"--arguments-json", `{}`, "--idempotency-key", "delete-1", "--wait=false", "--json",
+		"--arguments-json", `{}`, "--request-id", "delete-1", "--wait=false", "--json",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +405,7 @@ func TestCatalogCLIExecutionAndWindowOperations(t *testing.T) {
 	readDescriptor, _ := opcatalog.ByName("repo.contents.read")
 	if err := runCatalogOperation(t.Context(), client, &stdout, &stderr, readDescriptor, []string{
 		"--target-json", `{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"}`,
-		"--attrs-json", `{}`, "--minutes", "5", "--max-uses", "1", "--idempotency-key", "read-1", "--wait=false", "--json",
+		"--attrs-json", `{}`, "--minutes", "5", "--max-uses", "1", "--request-id", "read-1", "--wait=false", "--json",
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -100,6 +100,19 @@ SELECT * FROM operations WHERE id = ? AND client_id = ?;
 -- name: FindOperationByIdempotency :one
 SELECT * FROM operations WHERE client_id = ? AND idempotency_key = ?;
 
+-- name: ListOperationsForClient :many
+SELECT * FROM operations
+WHERE client_id = sqlc.arg(client_id)
+  AND (CAST(sqlc.arg(idempotency_key) AS TEXT) = '' OR idempotency_key = CAST(sqlc.arg(idempotency_key) AS TEXT))
+  AND (CAST(sqlc.arg(state) AS TEXT) = '' OR state = CAST(sqlc.arg(state) AS TEXT))
+  AND (
+    CAST(sqlc.arg(cursor_created_at) AS TEXT) = ''
+    OR created_at < CAST(sqlc.arg(cursor_created_at) AS TEXT)
+    OR (created_at = CAST(sqlc.arg(cursor_created_at) AS TEXT) AND id < sqlc.arg(cursor_id))
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_size);
+
 -- name: ListUnfinishedOperations :many
 SELECT * FROM operations
 WHERE state NOT IN ('succeeded','failed','denied','expired','canceled')

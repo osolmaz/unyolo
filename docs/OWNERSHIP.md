@@ -82,6 +82,24 @@ Each broker stores grants, immutable plans, and Agent operations in its own
 shared SQLite `state.db`; provider packages must not restore JSON lifecycle
 files or filesystem plan stores.
 
+### Agent Tool Compatibility
+
+BrokerKit owns the MCP request-ID contract, secure generated IDs, immediate
+submission, transcript-safe operation/page documents, bounded get/wait/list
+recovery, structured request-ID conflicts, and host compatibility profile.
+Shared code must not branch on provider names.
+
+Each provider owns canonical-to-MCP JSON Pointer projections for its public
+false-positive fields and applies them in both directions. Providers also own
+the classification of canonical secret inputs and their sealed or credential
+slot boundary. A public key can be projected to `public_material`; an access
+token cannot be renamed around secret handling.
+
+Every generated provider schema is audited, including operations not currently
+advertised. The pinned host fixture comes from the actual OpenClaw package, and
+the concise manifests under provider `docs/generated/` are checked against the
+catalogs. Future Sudo Broker MCP surfaces must consume these shared contracts.
+
 ### Grants
 
 - pending, approved, denied, expired, consumed, canceled, and revoked states

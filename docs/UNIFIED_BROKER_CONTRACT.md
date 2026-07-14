@@ -320,6 +320,43 @@ Brokers may add platform-specific streaming and read routes, such as Git
 smart-HTTP. Discrete approved operations use the common Agent V1 lifecycle
 rather than provider-specific execution routes.
 
+## Agent MCP Lifecycle
+
+Agent-facing MCP execution submission tools use an optional `request_id`. When
+omitted, the broker generates a cryptographically random ID before durable
+admission. Supplying the same request ID with the same immutable request
+returns the existing operation; conflicting reuse returns a bounded
+`request_id_conflict`. The internal Agent V1 API continues to call this value
+`idempotency_key`, but that name is not exposed by MCP.
+
+Submission returns the transcript-safe operation immediately, including its
+`id`, `request_id`, state, revision, timestamps, and safe presentation. It
+never waits for approval. Each provider exposes `<prefix>operation_get`,
+`<prefix>operation_wait`, and `<prefix>operation_list`; waits are bounded to 25
+seconds and list/recovery is scoped to the authenticated client.
+
+The stable handle vocabulary is:
+
+```text
+request_id    exact admission/retry identity
+operation_id  durable operation lifecycle identity
+approval_id   internal approval linkage, not exposed by MCP
+transfer_id   bounded stream correlation handle
+credential_slot encrypted destination for generated credentials
+```
+
+Provider-native request and result schemas stay provider-owned. Providers
+project public names that collide with supported transcript redactors, while
+real secrets remain sealed or credential-slot-backed. The checked-in provider
+compatibility manifests summarize catalog-wide conformance against the pinned
+host profile.
+
+Window-mode capability requests are grants, not executable operations. They
+return the durable grant immediately and use the provider's grant get, wait,
+cancel, and revoke tools. They must not be wrapped in a synthetic Agent
+operation, because that would duplicate lifecycle state and consume or settle
+the grant incorrectly.
+
 ## Audit
 
 Every broker should emit JSON audit events with the same common fields:

@@ -27,7 +27,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    get: operations["listAgentOperations"];
     put?: never;
     post: operations["submitAgentOperation"];
     delete?: never;
@@ -110,8 +110,9 @@ export interface components {
       code: string;
       message: string;
     };
+    IdempotencyKey: string;
     SubmitRequest: {
-      idempotency_key: string;
+      idempotency_key: components["schemas"]["IdempotencyKey"];
       operation: string;
       target: Record<string, never>;
       arguments: Record<string, never>;
@@ -123,7 +124,7 @@ export interface components {
       id: string;
       broker: string;
       client_id: string;
-      idempotency_key: string;
+      idempotency_key: components["schemas"]["IdempotencyKey"];
       operation: string;
       target: Record<string, never>;
       arguments: Record<string, never>;
@@ -141,6 +142,30 @@ export interface components {
       plan_digest?: string;
       result?: Record<string, never>;
       error?: components["schemas"]["OperationError"];
+    };
+    OperationPage: {
+      /** @constant */
+      api_version: "brokerkit.io/agent/v1";
+      operations: components["schemas"]["OperationSummary"][];
+      next_cursor: string | null;
+    };
+    OperationSummary: {
+      /** @constant */
+      api_version: "brokerkit.io/agent/v1";
+      id: string;
+      broker: string;
+      client_id: string;
+      idempotency_key: components["schemas"]["IdempotencyKey"];
+      operation: string;
+      state: components["schemas"]["State"];
+      revision: number;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+      /** Format: date-time */
+      terminal_at?: string;
+      presentation: components["schemas"]["Presentation"];
     };
     ErrorEnvelope: {
       error: components["schemas"]["OperationError"];
@@ -182,6 +207,32 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Descriptor"];
+        };
+      };
+      default: components["responses"]["ErrorResponse"];
+    };
+  };
+  listAgentOperations: {
+    parameters: {
+      query?: {
+        idempotency_key?: components["schemas"]["IdempotencyKey"];
+        state?: components["schemas"]["State"];
+        limit?: number;
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Newest requester-owned operations */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OperationPage"];
         };
       };
       default: components["responses"]["ErrorResponse"];

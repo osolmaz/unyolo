@@ -1,0 +1,122 @@
+{
+  "$comment": "Generated from protocol/openapi/mcp-v1.yaml; do not edit.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/mcp/v1/operation.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "id",
+    "request_id",
+    "operation",
+    "state",
+    "revision",
+    "created_at",
+    "updated_at",
+    "presentation"
+  ],
+  "properties": {
+    "api_version": {
+      "type": "string",
+      "const": "brokerkit.io/mcp-operation/v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "operation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "state": {
+      "$ref": "#/$defs/State"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "terminal_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "presentation": {
+      "$ref": "#/$defs/Presentation"
+    },
+    "result": {
+      "type": "object",
+      "maxProperties": 128
+    },
+    "error": {
+      "$ref": "#/$defs/OperationError"
+    }
+  },
+  "$defs": {
+    "OperationError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    },
+    "Presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "State": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "executing",
+        "succeeded",
+        "failed",
+        "denied",
+        "expired",
+        "canceled"
+      ]
+    }
+  }
+}

@@ -27009,10 +27009,10 @@
     "name": "organization.start_organization_migration",
     "operation_revision": 1,
     "summary": "Starts a GitHub Enterprise Importer organization migration.",
-    "disposition": "E/X/O",
+    "disposition": "E/X/S/O",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "high",
@@ -27028,6 +27028,9 @@
     "argument_schema": "arguments.organization.start_organization_migration.v1",
     "result_schema": "result.organization.start_organization_migration.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "graphql:d1b20b050fd07aedd905d37da0a6cf5775c7ca93ca226c84edc306affd1ccf14"
     ],
@@ -32579,13 +32582,13 @@
     "name": "repo.create_deploy_key",
     "operation_revision": 1,
     "summary": "Create a deploy key",
-    "disposition": "E/X/S",
+    "disposition": "E/X",
     "authorization_mode": "execution",
     "explicit_only": true,
-    "sealed": true,
+    "sealed": false,
     "internal": false,
     "implementation_status": "implemented",
-    "risk": "critical",
+    "risk": "high",
     "target_kind": "repo",
     "max_uses": 1,
     "request_ttl_seconds": 300,
@@ -32598,9 +32601,6 @@
     "argument_schema": "arguments.repo.create_deploy_key.v1",
     "result_schema": "result.repo.create_deploy_key.v1",
     "credential_kind": "installation",
-    "sealed_input_paths": [
-      "input"
-    ],
     "upstream_binding_ids": [
       "rest:repos/create-deploy-key"
     ],
@@ -32801,10 +32801,10 @@
     "name": "repo.create_migration_source",
     "operation_revision": 1,
     "summary": "Creates a GitHub Enterprise Importer (GEI) migration source.",
-    "disposition": "E/O",
+    "disposition": "E/S/O",
     "authorization_mode": "execution",
     "explicit_only": false,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "medium",
@@ -32820,6 +32820,9 @@
     "argument_schema": "arguments.repo.create_migration_source.v1",
     "result_schema": "result.repo.create_migration_source.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "graphql:524558f02da5ac875746c55481a95e6f21fd3c1a983178778c54a613e1dd0991"
     ],
@@ -36532,10 +36535,10 @@
     "name": "repo.start_repository_migration",
     "operation_revision": 1,
     "summary": "Starts a GitHub Enterprise Importer (GEI) repository migration.",
-    "disposition": "E/O",
+    "disposition": "E/S/O",
     "authorization_mode": "execution",
     "explicit_only": false,
-    "sealed": false,
+    "sealed": true,
     "internal": false,
     "implementation_status": "operator-only",
     "risk": "medium",
@@ -36551,6 +36554,9 @@
     "argument_schema": "arguments.repo.start_repository_migration.v1",
     "result_schema": "result.repo.start_repository_migration.v1",
     "credential_kind": "user",
+    "sealed_input_paths": [
+      "input"
+    ],
     "upstream_binding_ids": [
       "graphql:c95232ec5b89741eb701fc7a84f8ed86d4286a9d657a5e0c3a76012c4a50c402"
     ],

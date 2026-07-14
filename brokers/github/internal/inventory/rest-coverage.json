@@ -14963,7 +14963,7 @@
     },
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
-      "secret"
+      "permission"
     ],
     "reviewed": true
   },
@@ -15467,7 +15467,7 @@
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",
     "risk_classes": [
       "destructive",
-      "secret"
+      "permission"
     ],
     "reviewed": true
   },

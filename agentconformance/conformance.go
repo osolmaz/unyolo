@@ -51,6 +51,7 @@ func RunAgentV1(t *testing.T, fixture Fixture) {
 	assertDiscovery(t, endpoint, fixture.Token)
 	assertRejectedCredential(t, endpoint)
 	operation := assertSubmission(t, client, fixture.Request)
+	assertListRecovery(t, client, operation)
 	assertErrorEnvelopes(t, endpoint, fixture.Token, operation)
 	terminal := approveAndWait(t, fixture, client, operation)
 	fixture.Verify(t, terminal)
@@ -178,6 +179,14 @@ func assertGet(t *testing.T, client *agentclient.Client, operation agentv1.Opera
 	current, err := client.Get(t.Context(), operation.ID)
 	if err != nil || current.ID != operation.ID || current.Revision != operation.Revision {
 		t.Fatalf("get operation = %+v, %v", current, err)
+	}
+}
+
+func assertListRecovery(t *testing.T, client *agentclient.Client, operation agentv1.Operation) {
+	t.Helper()
+	page, err := client.List(t.Context(), agentv1.ListOptions{IdempotencyKey: operation.IdempotencyKey, Limit: 1})
+	if err != nil || len(page.Operations) != 1 || page.Operations[0].ID != operation.ID || page.Operations[0].ClientID != operation.ClientID {
+		t.Fatalf("list operation = %+v, %v", page, err)
 	}
 }
 

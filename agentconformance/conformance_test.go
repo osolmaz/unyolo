@@ -27,6 +27,21 @@ func (s *conformanceStore) Get(clientID, id string) (agentv1.Operation, error) {
 	return s.operation, nil
 }
 
+func (s *conformanceStore) List(clientID string, options agentv1.ListOptions) (agentv1.OperationPage, error) {
+	if clientID != "agent" || s.operation.ID == "" ||
+		(options.IdempotencyKey != "" && options.IdempotencyKey != s.operation.IdempotencyKey) {
+		return agentv1.OperationPage{APIVersion: agentv1.APIVersion, Operations: []agentv1.OperationSummary{}}, nil
+	}
+	operation := s.operation
+	summary := agentv1.OperationSummary{
+		APIVersion: operation.APIVersion, ID: operation.ID, Broker: operation.Broker, ClientID: operation.ClientID,
+		IdempotencyKey: operation.IdempotencyKey, Operation: operation.Operation, State: operation.State,
+		Revision: operation.Revision, CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt,
+		TerminalAt: operation.TerminalAt, Presentation: operation.Presentation,
+	}
+	return agentv1.OperationPage{APIVersion: agentv1.APIVersion, Operations: []agentv1.OperationSummary{summary}}, nil
+}
+
 func (s *conformanceStore) Wait(_ context.Context, clientID, id string, _ int64) (agentv1.Operation, error) {
 	return s.Get(clientID, id)
 }

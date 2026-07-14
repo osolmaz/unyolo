@@ -12,7 +12,6 @@ cmd/hf-broker/operation_surfaces.go	main:callMCPCatalogOperation	crap	24.6
 cmd/hf-broker/operation_surfaces.go	main:callMCPWindowOperation	crap	11.2
 cmd/hf-broker/operation_surfaces.go	main:parseOperationClientOptions	crap	10.0
 cmd/hf-broker/operation_surfaces.go	main:readJSONOption	crap	14.6
-cmd/hf-broker/operation_surfaces.go	main:runCatalogGrant	crap	9.5
 cmd/hf-broker/operation_surfaces.go	main:runCatalogOperation	crap	8.6
 cmd/hf-broker/operation_surfaces.go	main:validateOperationClientOptions	crap	30.4
 internal/hfplan/plan.go	hfplan:planMatchesGrant	crap	10.0

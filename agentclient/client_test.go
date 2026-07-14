@@ -63,6 +63,29 @@ func TestClientWaitReturnsLastOperationOnCancellation(t *testing.T) {
 	}
 }
 
+func TestClientListsOperationSummaries(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Query().Get("idempotency_key") != "request" || request.URL.Query().Get("limit") != "1" {
+			t.Fatalf("query = %s", request.URL.RawQuery)
+		}
+		operation := testOperation(agentv1.StatePending)
+		delete(operation, "target")
+		delete(operation, "arguments")
+		delete(operation, "reason")
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"api_version": agentv1.APIVersion, "operations": []any{operation}, "next_cursor": "op",
+		})
+	}))
+	defer server.Close()
+	client := newTestClient(t, server.URL, nil)
+	page, err := client.List(t.Context(), agentv1.ListOptions{IdempotencyKey: "request", Limit: 1})
+	if err != nil || len(page.Operations) != 1 || page.Operations[0].ID != "op" || page.NextCursor == nil {
+		t.Fatalf("List() = %+v, %v", page, err)
+	}
+}
+
 func TestClientRejectsInvalidConfigurationRedirectsAndResponses(t *testing.T) {
 	t.Parallel()
 	if _, err := New(Options{}); err == nil {

@@ -405,7 +405,7 @@ func classifyRiskClasses(method, path string, operation restOperation) []string 
 		terms []string
 	}{
 		{"destructive", []string{"delete", "remove", "revoke", "transfer", "archive", "cancel", "terminate"}},
-		{"permission", []string{"permission", "role", "member", "collaborator", "access", "suspend", "block"}},
+		{"permission", []string{"permission", "role", "member", "collaborator", "access", "suspend", "block", "deploy key"}},
 		{"billing", []string{"billing", "spending", "budget", "plan"}},
 		{"organization", []string{"/orgs/", "organization"}},
 		{"enterprise", []string{"/enterprises/", "enterprise"}},
@@ -416,7 +416,7 @@ func classifyRiskClasses(method, path string, operation restOperation) []string 
 			result = append(result, rule.name)
 		}
 	}
-	if containsAny(secretText, []string{"secret", "private key", "token", "credential", "deploy key"}) {
+	if containsAny(secretText, []string{"secret", "private key", "token", "credential"}) {
 		result = append(result, "secret")
 	}
 	slices.Sort(result)

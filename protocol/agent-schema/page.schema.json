@@ -1,0 +1,140 @@
+{
+  "$comment": "Generated from protocol/openapi/agent-v1.yaml; do not edit.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/agent/v1/page.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "operations",
+    "next_cursor"
+  ],
+  "properties": {
+    "api_version": {
+      "type": "string",
+      "const": "brokerkit.io/agent/v1"
+    },
+    "operations": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/OperationSummary"
+      }
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
+  "$defs": {
+    "OperationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_version",
+        "id",
+        "broker",
+        "client_id",
+        "idempotency_key",
+        "operation",
+        "state",
+        "revision",
+        "created_at",
+        "updated_at",
+        "presentation"
+      ],
+      "properties": {
+        "api_version": {
+          "type": "string",
+          "const": "brokerkit.io/agent/v1"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "broker": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "client_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "state": {
+          "$ref": "#/$defs/State"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "terminal_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "presentation": {
+          "$ref": "#/$defs/Presentation"
+        }
+      }
+    },
+    "IdempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "Presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "State": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "executing",
+        "succeeded",
+        "failed",
+        "denied",
+        "expired",
+        "canceled"
+      ]
+    }
+  }
+}

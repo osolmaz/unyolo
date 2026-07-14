@@ -96,6 +96,50 @@ func TestStoreWaitAndStrictFile(t *testing.T) {
 	}
 }
 
+func TestStoreListPaginationFiltersAndIsolation(t *testing.T) {
+	now := time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)
+	index := 0
+	store := newTestStore(t, func() time.Time {
+		index++
+		return now.Add(time.Duration(index) * time.Second)
+	}, func() (string, error) { return fmt.Sprintf("op_%d", index), nil })
+	for _, input := range []Submit{validSubmit("one"), validSubmit("two"), validSubmit("three")} {
+		if _, _, err := store.Submit(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := validSubmit("other")
+	other.ClientID = "other-agent"
+	if _, _, err := store.Submit(other); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := store.List("agent", agentv1.ListOptions{Limit: 2})
+	if err != nil || len(page.Operations) != 2 || page.Operations[0].IdempotencyKey != "three" || page.NextCursor == nil {
+		t.Fatalf("first page = %+v, %v", page, err)
+	}
+	next, err := store.List("agent", agentv1.ListOptions{Limit: 2, Cursor: *page.NextCursor})
+	if err != nil || len(next.Operations) != 1 || next.Operations[0].IdempotencyKey != "one" || next.NextCursor != nil {
+		t.Fatalf("second page = %+v, %v", next, err)
+	}
+	exact, err := store.List("agent", agentv1.ListOptions{IdempotencyKey: "two", Limit: 20})
+	if err != nil || len(exact.Operations) != 1 || exact.Operations[0].IdempotencyKey != "two" {
+		t.Fatalf("exact page = %+v, %v", exact, err)
+	}
+	isolated, err := store.List("other-agent", agentv1.ListOptions{})
+	if err != nil || len(isolated.Operations) != 1 || isolated.Operations[0].ClientID != "other-agent" {
+		t.Fatalf("isolated page = %+v, %v", isolated, err)
+	}
+	if _, err := store.List("other-agent", agentv1.ListOptions{Cursor: *page.NextCursor}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign cursor = %v", err)
+	}
+	for _, options := range []agentv1.ListOptions{{Limit: 51}, {State: "unknown"}, {Cursor: strings.Repeat("x", 129)}} {
+		if _, err := store.List("agent", options); err == nil {
+			t.Fatalf("invalid options accepted: %+v", options)
+		}
+	}
+}
+
 func TestStoreCancelIsOwnedIdempotentAndStopsAtExecution(t *testing.T) {
 	store := newTestStore(t, time.Now, func() (string, error) { return "op_cancel", nil })
 	operation, _, err := store.Submit(validSubmit("cancel"))
@@ -296,6 +340,7 @@ func TestStoreRejectsInvalidInputsAndState(t *testing.T) {
 	store := newTestStore(t, time.Now, randomID)
 	invalid := []Submit{
 		{},
+		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "bad value", Operation: "repo.create", Target: json.RawMessage(`{}`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Create"}},
 		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create", Target: json.RawMessage(`[]`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Create"}},
 		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create", Target: json.RawMessage(`{"a":1,"a":2}`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{Title: "Create"}},
 		{Broker: "hf-broker", ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create", Target: json.RawMessage(`{}`), Arguments: json.RawMessage(`{}`), Presentation: agentv1.Presentation{}},
@@ -390,7 +435,7 @@ func TestRandomIDAndValidationHelpers(t *testing.T) {
 	if err != nil || !strings.HasPrefix(id, "op_") || len(id) < 20 {
 		t.Fatalf("random ID = %q, %v", id, err)
 	}
-	if validState(agentv1.State("unknown")) {
+	if agentv1.State("unknown").Valid() {
 		t.Fatal("unknown state accepted")
 	}
 	if validOperationError(&agentv1.OperationError{}) {

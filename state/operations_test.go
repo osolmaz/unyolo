@@ -65,6 +65,40 @@ func TestOperationRepositoryLifecycle(t *testing.T) {
 	}
 }
 
+func TestOperationPagesSortFractionalSecondsChronologically(t *testing.T) {
+	database, err := Open(t.Context(), t.TempDir(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	base := time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)
+	for _, record := range []OperationRecord{
+		testOperationRecord("op_older", base.Add(100*time.Millisecond)),
+		testOperationRecord("op_newer", base.Add(110*time.Millisecond)),
+	} {
+		if err := database.InsertOperation(t.Context(), record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := database.OperationsForClient(t.Context(), OperationListOptions{ClientID: "agent", Limit: 1})
+	if err != nil || len(page) != 1 || page[0].ID != "op_newer" {
+		t.Fatalf("first page = %+v, %v", page, err)
+	}
+	page, err = database.OperationsForClient(t.Context(), OperationListOptions{ClientID: "agent", Cursor: "op_newer", Limit: 2})
+	if err != nil || len(page) != 1 || page[0].ID != "op_older" {
+		t.Fatalf("second page = %+v, %v", page, err)
+	}
+}
+
+func testOperationRecord(id string, createdAt time.Time) OperationRecord {
+	return OperationRecord{
+		ID: id, APIVersion: "brokerkit.io/agent/v1", Broker: "test", ClientID: "agent", IdempotencyKey: id,
+		Operation: "repo.read", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), Reason: "read",
+		State: "pending", Revision: 1, CreatedAt: createdAt, UpdatedAt: createdAt,
+		PresentationJSON: []byte(`{"title":"Read"}`),
+	}
+}
+
 func TestInsertOperationWithPlanIsAtomic(t *testing.T) {
 	database, err := Open(t.Context(), t.TempDir(), Options{})
 	if err != nil {

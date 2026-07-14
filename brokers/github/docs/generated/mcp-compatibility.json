@@ -1,0 +1,33 @@
+{
+  "api_version": "brokerkit.io/mcp-compatibility-manifest/v1",
+  "provider": "github",
+  "host_profiles": ["openclaw@2026.7.1-beta.5"],
+  "agent_facing_operations": 1129,
+  "audited_operations": 1436,
+  "operation_tools": 1129,
+  "utility_tools": 3,
+  "projected_operations": [
+    "action_run.actions_download_job_logs_for_workflow_run",
+    "action_run.actions_download_workflow_run_attempt_logs",
+    "action_run.actions_download_workflow_run_logs",
+    "artifact.actions_download_artifact",
+    "cache.actions_delete_actions_cache_by_key",
+    "cache.actions_get_actions_cache_list",
+    "commit.git_create_commit",
+    "member.users_create_gpg_key_for_authenticated_user",
+    "member.users_create_public_ssh_key_for_authenticated_user",
+    "member.users_create_ssh_signing_key_for_authenticated_user",
+    "migration.migrations_get_archive_for_authenticated_user",
+    "organization.migrations_download_archive_for_org",
+    "release.repos_get_release_asset",
+    "repo.create_deploy_key",
+    "repo.download_tarball_archive",
+    "repo.download_zipball_archive",
+    "repo.read_code_of_conduct",
+    "repo.read_license",
+    "secret_scanning.secret_scanning_get_alert",
+    "secret_scanning.secret_scanning_list_alerts_for_org",
+    "secret_scanning.secret_scanning_list_alerts_for_repo"
+  ],
+  "unresolved_collisions": 0
+}

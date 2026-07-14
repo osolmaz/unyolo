@@ -25,6 +25,8 @@ const (
 	maxArgumentsBytes = 1024 * 1024
 	maxResultBytes    = 2 * 1024 * 1024
 	maxOperations     = 2048
+	defaultListLimit  = 20
+	maxListLimit      = 50
 	// TerminalRetention is the period during which completed operation keys
 	// remain replayable.
 	TerminalRetention = 30 * 24 * time.Hour
@@ -198,6 +200,76 @@ func (s *Store) GetByIdempotency(clientID, key string) (agentv1.Operation, error
 	defer s.mu.Unlock()
 	record, err := s.db.OperationByIdempotency(context.Background(), clientID, key)
 	return storedOperation(record, err)
+}
+
+// List returns one bounded, deterministic page owned by clientID.
+func (s *Store) List(clientID string, options agentv1.ListOptions) (agentv1.OperationPage, error) {
+	clientID, options, err := normalizeListOptions(clientID, options)
+	if err != nil {
+		return agentv1.OperationPage{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	records, err := s.db.OperationsForClient(context.Background(), state.OperationListOptions{
+		ClientID: clientID, IdempotencyKey: options.IdempotencyKey, State: string(options.State),
+		Cursor: options.Cursor, Limit: options.Limit + 1,
+	})
+	if err != nil {
+		return agentv1.OperationPage{}, mapStateError(err)
+	}
+	return operationPage(records, options.Limit)
+}
+
+func normalizeListOptions(clientID string, options agentv1.ListOptions) (string, agentv1.ListOptions, error) {
+	clientID = strings.TrimSpace(clientID)
+	options.IdempotencyKey = strings.TrimSpace(options.IdempotencyKey)
+	options.Cursor = strings.TrimSpace(options.Cursor)
+	if options.Limit == 0 {
+		options.Limit = defaultListLimit
+	}
+	if !validListIdentity(clientID, options) {
+		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
+	}
+	if !validListSelection(options) {
+		return "", agentv1.ListOptions{}, errors.New("operation list options are invalid")
+	}
+	return clientID, options, nil
+}
+
+func validListIdentity(clientID string, options agentv1.ListOptions) bool {
+	validKey := options.IdempotencyKey == "" || agentv1.ValidIdempotencyKey(options.IdempotencyKey)
+	return clientID != "" && validKey && len(options.Cursor) <= 128
+}
+
+func validListSelection(options agentv1.ListOptions) bool {
+	validLimit := options.Limit >= 1 && options.Limit <= maxListLimit
+	validState := options.State == "" || options.State.Valid()
+	return validLimit && validState
+}
+
+func operationPage(records []state.OperationRecord, limit int) (agentv1.OperationPage, error) {
+	page := agentv1.OperationPage{APIVersion: agentv1.APIVersion, Operations: make([]agentv1.OperationSummary, 0, min(len(records), limit))}
+	for _, record := range records[:min(len(records), limit)] {
+		operation, convertErr := operationFromRecord(record)
+		if convertErr != nil {
+			return agentv1.OperationPage{}, convertErr
+		}
+		page.Operations = append(page.Operations, operationSummary(operation))
+	}
+	if len(records) > limit {
+		cursor := page.Operations[len(page.Operations)-1].ID
+		page.NextCursor = &cursor
+	}
+	return page, nil
+}
+
+func operationSummary(operation agentv1.Operation) agentv1.OperationSummary {
+	return agentv1.OperationSummary{
+		APIVersion: operation.APIVersion, ID: operation.ID, Broker: operation.Broker, ClientID: operation.ClientID,
+		IdempotencyKey: operation.IdempotencyKey, Operation: operation.Operation, State: operation.State,
+		Revision: operation.Revision, CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt,
+		TerminalAt: operation.TerminalAt, Presentation: operation.Presentation,
+	}
 }
 
 // Cancel atomically cancels a requester-owned pending or approved operation.
@@ -501,7 +573,7 @@ func validSubmitIdentity(input Submit) bool {
 	return (input.ID == "" || validOperationID(input.ID)) &&
 		validRequiredValue(input.Broker, 64) &&
 		validRequiredValue(input.ClientID, 128) &&
-		validRequiredValue(input.IdempotencyKey, 128) &&
+		agentv1.ValidIdempotencyKey(input.IdempotencyKey) &&
 		validRequiredValue(input.Operation, 128)
 }
 
@@ -604,21 +676,11 @@ func validStoredTerminal(operation agentv1.Operation) bool {
 }
 
 func validStoredState(operation agentv1.Operation) bool {
-	return validState(operation.State) && len(operation.ApprovalID) <= 128
+	return operation.State.Valid() && len(operation.ApprovalID) <= 128
 }
 
 func validOperationError(value *agentv1.OperationError) bool {
 	return strings.TrimSpace(value.Code) != "" && len(value.Code) <= 64 && strings.TrimSpace(value.Message) != "" && len(value.Message) <= 500
-}
-
-func validState(state agentv1.State) bool {
-	switch state {
-	case agentv1.StatePending, agentv1.StateApproved, agentv1.StateExecuting, agentv1.StateSucceeded,
-		agentv1.StateFailed, agentv1.StateDenied, agentv1.StateExpired, agentv1.StateCanceled:
-		return true
-	default:
-		return false
-	}
 }
 
 func clone(operation agentv1.Operation) agentv1.Operation {

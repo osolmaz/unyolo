@@ -132,7 +132,7 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	streamFile := flags.String("stream-file", "", "bounded binary upload file")
 	streamMediaType := flags.String("stream-media-type", "", "binary upload media type")
 	reason := flags.String("reason", "Run "+descriptor.Name+" through GH Broker", "approval reason")
-	key := flags.String("idempotency-key", "", "stable retry key")
+	key := flags.String("request-id", "", "stable retry key")
 	wait := flags.Bool("wait", false, "wait for terminal state")
 	waitTimeout := flags.Duration("wait-timeout", operationWaitDefault, "maximum wait")
 	if flags.Parse(args) != nil || flags.NArg() != 0 || *targetText == "" {
@@ -152,6 +152,10 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 		}
 		*key = generated
 	}
+	if !agentv1.ValidIdempotencyKey(strings.TrimSpace(*key)) {
+		return exitError{code: 64, message: "request-id is invalid"}
+	}
+	*key = strings.TrimSpace(*key)
 	connection, err := loadOperationConnection(os.Getenv)
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}

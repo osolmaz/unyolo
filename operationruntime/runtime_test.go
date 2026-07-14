@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -444,7 +445,7 @@ func TestRuntimePolicyRefusalsAreTerminalAndCleaned(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, decide, nil, false)
 			defer closeRuntime()
-			operation, created, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: name,
+			operation, created, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: strings.ReplaceAll(name, " ", "-"),
 				Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
 			if err != nil || !created {
 				t.Fatalf("submit = %+v, %t, %v", operation, created, err)
@@ -722,7 +723,7 @@ func TestRuntimeRestartRequiresReservedValidAuthority(t *testing.T) {
 			notifier := &captureNotifier{}
 			runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
 			defer closeRuntime()
-			operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-" + name,
+			operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-" + strings.ReplaceAll(name, " ", "-"),
 				Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
 			if err != nil {
 				t.Fatal(err)

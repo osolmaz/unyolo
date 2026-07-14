@@ -34,6 +34,14 @@ type OperationRecord struct {
 	PlanDigest       string
 }
 
+type OperationListOptions struct {
+	ClientID       string
+	IdempotencyKey string
+	State          string
+	Cursor         string
+	Limit          int
+}
+
 func (d *Database) InsertOperation(ctx context.Context, record OperationRecord) error {
 	return insertOperation(ctx, d.queries, record)
 }
@@ -93,6 +101,35 @@ func (d *Database) operation(ctx context.Context, id, clientID string) (Operatio
 func (d *Database) OperationByIdempotency(ctx context.Context, clientID, key string) (OperationRecord, error) {
 	record, err := d.queries.FindOperationByIdempotency(ctx, dbsql.FindOperationByIdempotencyParams{ClientID: clientID, IdempotencyKey: key})
 	return operationRecord(record, err)
+}
+
+// OperationsForClient returns a newest-first page. Cursor is the final
+// operation ID from the preceding page and is validated against the client.
+func (d *Database) OperationsForClient(ctx context.Context, options OperationListOptions) ([]OperationRecord, error) {
+	cursorCreatedAt := ""
+	if options.Cursor != "" {
+		cursor, err := d.OperationForClient(ctx, options.Cursor, options.ClientID)
+		if err != nil {
+			return nil, err
+		}
+		cursorCreatedAt = formatTime(cursor.CreatedAt)
+	}
+	records, err := d.queries.ListOperationsForClient(ctx, dbsql.ListOperationsForClientParams{
+		ClientID: options.ClientID, IdempotencyKey: options.IdempotencyKey, State: options.State,
+		CursorCreatedAt: cursorCreatedAt, CursorID: options.Cursor, PageSize: int64(options.Limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]OperationRecord, 0, len(records))
+	for _, record := range records {
+		converted, convertErr := operationRecord(record, nil)
+		if convertErr != nil {
+			return nil, convertErr
+		}
+		result = append(result, converted)
+	}
+	return result, nil
 }
 
 func (d *Database) UnfinishedOperations(ctx context.Context) ([]OperationRecord, error) {
@@ -183,7 +220,9 @@ func operationRecord(record dbsql.Operation, err error) (OperationRecord, error)
 	}, nil
 }
 
-func formatTime(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
+const sortableTimeLayout = "2006-01-02T15:04:05.000000000Z"
+
+func formatTime(value time.Time) string { return value.UTC().Format(sortableTimeLayout) }
 
 func parseTime(value string) (time.Time, error) { return time.Parse(time.RFC3339Nano, value) }
 

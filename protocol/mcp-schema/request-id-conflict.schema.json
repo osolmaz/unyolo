@@ -1,0 +1,72 @@
+{
+  "$comment": "Generated from protocol/openapi/mcp-v1.yaml; do not edit.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/mcp/v1/request-id-conflict.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "message",
+    "existing"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "const": "request_id_conflict"
+    },
+    "message": {
+      "type": "string",
+      "const": "request_id is already bound to a different operation"
+    },
+    "existing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "request_id",
+        "operation",
+        "state",
+        "revision"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "state": {
+          "$ref": "#/$defs/State"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "State": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "executing",
+        "succeeded",
+        "failed",
+        "denied",
+        "expired",
+        "canceled"
+      ]
+    }
+  }
+}

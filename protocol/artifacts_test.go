@@ -61,7 +61,7 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 
 func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
 	files, err := filepath.Glob("agent-schema/*.schema.json")
-	if err != nil || len(files) != 4 {
+	if err != nil || len(files) != 5 {
 		t.Fatalf("agent schemas = %v, %v", files, err)
 	}
 	for _, path := range files {
@@ -95,6 +95,35 @@ func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
 			t.Fatalf("Agent OpenAPI missing %s", route)
 		}
 	}
+}
+
+func TestMCPV1ArtifactsAreClosedAndValid(t *testing.T) {
+	files, err := filepath.Glob("mcp-schema/*.schema.json")
+	if err != nil || len(files) != 3 {
+		t.Fatalf("MCP schemas = %v, %v", files, err)
+	}
+	for _, path := range files {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		var schema map[string]any
+		if json.Unmarshal(data, &schema) != nil || schema["type"] != "object" || schema["additionalProperties"] != false {
+			t.Fatalf("%s is not a closed object", path)
+		}
+		if !strings.Contains(string(data), "Generated from protocol/openapi/mcp-v1.yaml") {
+			t.Fatalf("%s is not marked as generated", path)
+		}
+	}
+	openAPI, err := os.ReadFile("openapi/mcp-v1.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if json.Unmarshal(openAPI, &document) != nil {
+		t.Fatal("MCP OpenAPI must remain machine-readable JSON/YAML")
+	}
+	assertCanonicalOpenAPI(t, document)
 }
 
 func assertCanonicalOpenAPI(t *testing.T, document map[string]any) {
