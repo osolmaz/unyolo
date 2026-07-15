@@ -2,7 +2,27 @@
 
 Date: 2026-07-14
 
-Status: ready to implement
+Status: complete
+
+## Implementation Result
+
+Completed on 2026-07-15. The coordinated cutover delivered the endpoint and
+policy-preset plans plus the remaining production hardening in this record.
+
+- Runtime configuration now requires explicit endpoints, identities, trusted
+  production paths, 32-byte credentials, and explicit audit wiring.
+- Shared packages own HTTP profiles, operation lifecycles, bounded admission,
+  state maintenance, credential lifecycle, observability, service setup, and
+  cancellable background work.
+- Linux systemd and macOS launchd paths, immutable installers and workflows,
+  GitHub upstream drift checks, and provider-owned comprehensive operation
+  catalogs are covered by CI fixtures.
+- Current-format SQLite state supports check, backup, restore, and redacted
+  export. Credential replacement, revocation, dependency diagnostics, failure
+  drills, and bounded metrics are exercised by direct tests.
+- Provider-local duplicate mechanics, fixed ports, personal defaults, stale
+  compatibility fields, quality baselines, and direct CRAP/DRY exceptions were
+  removed. Root and broker-local Slophammer gates enforce the resulting shape.
 
 ## Objective
 

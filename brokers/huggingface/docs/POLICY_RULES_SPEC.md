@@ -768,9 +768,9 @@ Grant list response:
 Operator-only decision endpoints:
 
 ```text
-POST /api/grants/{id}/approve
-POST /api/grants/{id}/deny
-POST /api/grants/{id}/revoke
+POST /api/operator/v1/requests/{id}/approve
+POST /api/operator/v1/requests/{id}/deny
+POST /api/operator/v1/requests/{id}/revoke
 ```
 
 These endpoints must not be reachable with the agent's broker secret. They are

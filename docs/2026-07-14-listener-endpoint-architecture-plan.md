@@ -2,7 +2,23 @@
 
 Date: 2026-07-14
 
-Status: ready to implement
+Status: complete
+
+## Implementation Result
+
+Completed on 2026-07-15 as part of the production-readiness cutover.
+
+- The shared `endpoint` package owns strict endpoint parsing, listener
+  acquisition, activation, client transports, and network-origin policy.
+- Linux systemd and macOS launchd setup use named, permission-separated agent
+  and operator sockets.
+- HF, GH, and sudo setup and runtime paths consume explicit endpoint URIs and
+  generated client configuration.
+- TCP has no broker-owned default; development may request loopback port `0`,
+  while Git and remote deployments select an explicit listener or ingress.
+- Fixed ports, bind/port compatibility fields, and provider-local endpoint
+  implementations were removed. Architecture and cross-provider tests enforce
+  the final contract.
 
 ## Objective
 

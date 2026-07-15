@@ -2,8 +2,22 @@
 
 Date: 2026-07-14
 
-Status: ready for implementation when the GitHub broker adds its first managed
-policy preset
+Status: complete
+
+## Implementation Result
+
+Completed on 2026-07-15 as part of the production-readiness cutover.
+
+- The root `policypreset` package owns versioned profiles and manifests,
+  canonical digests, drift reports, deny overrides, replacement previews, and
+  transactional artifact updates.
+- Hugging Face and GitHub keep provider-local catalogs, classifications,
+  renderers, target rules, and grant bounds while using the shared lifecycle.
+- Both brokers install `request-all-agent-operations` on fresh setup, require
+  explicit replacement for existing managed policy, and support deliberate
+  deny preservation or reset.
+- Cross-provider, corruption, drift, replacement, and setup tests enforce the
+  ownership boundary and fail-closed artifact behavior.
 
 ## Goal
 

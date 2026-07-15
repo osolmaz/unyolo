@@ -55,17 +55,26 @@ go install ./brokers/huggingface/cmd/hf-broker
 
 ## Run
 
+Foreground development requires an explicit endpoint and development mode. A
+loopback port of `0` asks the OS to choose an available port; the broker prints
+the resolved endpoint in its readiness record.
+
 ```sh
-export HF_BROKER_HF_TOKEN=hf_...            # upstream write token, outbound only
+export HF_BROKER_DEVELOPMENT=true
+export HF_BROKER_AGENT_ENDPOINT=tcp://127.0.0.1:0
+export HF_BROKER_HF_TOKEN=hf_...          # upstream write token, outbound only
 export HF_BROKER_SHARED_SECRET=$(openssl rand -hex 32)
-cp scope.example.json scope.json         # edit: which repos are reachable
+export HF_BROKER_SCOPE_FILE=scope.json
+export HF_BROKER_STATE_DIR=state
+cp scope.example.json scope.json          # edit: which repos are reachable
 hf-broker
 ```
 
-OpenAI-compatible clients use the broker secret as their API key:
+OpenAI-compatible clients use an explicitly configured HTTPS ingress and the
+broker secret as their API key:
 
 ```text
-base URL = http://127.0.0.1:8080/v1
+base URL = https://hf-broker.example.com/v1
 API key  = value from HF_BROKER_SHARED_SECRET
 ```
 
@@ -83,7 +92,7 @@ and MCP adapter use only a broker client secret; neither can read the upstream
 Hugging Face token.
 
 ```sh
-export HF_BROKER_URL=http://127.0.0.1:8080
+export HF_BROKER_ENDPOINT=unix:///run/brokerkit/huggingface/agent/broker.sock
 export HF_BROKER_SHARED_SECRET_FILE=/run/user/1000/hf-broker-agent-secret
 hf-broker client repo create \
   --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
@@ -200,10 +209,12 @@ fetch, and append-push one dataset repo:
 }
 ```
 
-Binding defaults to `127.0.0.1:8080`. Expose it to the agent over a
-Tailnet or equivalent — and run the broker somewhere the agent cannot
-log into, otherwise the isolation is decoration. See the specification
-for all environment variables.
+BrokerKit defines no default TCP port. Local production setup uses separate
+permission-restricted agent and operator Unix sockets. Standard Git HTTP and
+remote clients require an explicit TCP listener or HTTPS reverse proxy. Run
+the broker somewhere the agent cannot inspect its process or credential files;
+otherwise the isolation boundary does not hold. See the specification for all
+environment variables.
 
 ## Linux Service Setup
 
@@ -211,9 +222,9 @@ For a same-host setup, run the broker as a dedicated service user rather
 than as the agent or your interactive account:
 
 ```text
-onur      = admin
-bob       = agent account, no sudo or docker
-hf-broker = service account that can read the real Hugging Face token
+operator-a = administrator account
+agent-a    = agent account, no root-equivalent groups
+hf-broker  = service account that can read the real Hugging Face token
 ```
 
 After installing the binary, create a token file and configure systemd. A fresh
@@ -224,12 +235,18 @@ sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --telegram-bot-token-file ./telegram-bot-token \
   --telegram-chat-id 123456789 \
-  --client bob
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
 ```
 
-The setup command creates:
+The setup command creates protected configuration and state plus systemd
+service and socket units. The public socket paths are:
 
 ```text
+/run/brokerkit/huggingface/agent/broker.sock
+/run/brokerkit/huggingface/operator/broker.sock
 /etc/hf-broker/hf-token
 /etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
@@ -240,15 +257,18 @@ The setup command creates:
 /etc/hf-broker/env
 /var/lib/hf-broker
 /etc/systemd/system/hf-broker.service
+/etc/systemd/system/hf-broker-agent.socket
+/etc/systemd/system/hf-broker-operator.socket
 ```
 
 It also creates the `hf-broker` service user when needed, enables and
-starts the service, and prints the broker URL plus a secret-safe client setup
+starts the service, and prints the broker endpoint plus a secret-safe client setup
 command. It never prints the generated broker client secret. The real Hugging
 Face and Telegram tokens stay readable only by the service. The generated
 operator credential is separate from every agent credential and is used only
-on the operator listener at `http://127.0.0.1:8081`. The agent receives
-only the broker client secret through `setup client`. Omit both Telegram flags
+on the protected operator socket. The agent receives only the broker client
+secret and access to the agent socket through `setup client`. Omit both
+Telegram flags
 to run without Telegram; pending requests remain available in the operator
 inbox and the Telegram flags must otherwise be set together.
 
@@ -271,22 +291,22 @@ explicit alternative to the default preset.
 To supply an existing broker client secret, use `--shared-secret-file` or
 `--shared-secret-stdin`. Raw secret command-line flags are not accepted.
 Use `--operator-secret-file` to preserve or rotate the operator credential,
-and `--operator-bind-addr` / `--operator-port` to change the protected
-listener. Agent and operator listeners must use different ports.
+and `--endpoint` / `--operator-endpoint` to select deployment-owned listeners.
+Agent and operator endpoints must be distinct.
 
 Write a client config file for an agent account with:
 
 ```sh
 sudo hf-broker setup client \
-  --client bob \
-  --url http://127.0.0.1:8080 \
+  --client agent-a \
+  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
   --secret-file /etc/hf-broker/secrets \
-  --home-dir /home/bob
+  --home-dir /home/agent-a
 ```
 
-This writes `/home/bob/.config/hf-broker/client.env` with only the broker
-URL and broker shared secret. It does not print either secret and never writes
-the Hugging Face token.
+This writes `/home/agent-a/.config/hf-broker/client.env` with only the broker
+endpoint and broker shared secret. It does not print either secret and never
+writes the Hugging Face token.
 
 Use `--dry-run` to preview the service setup without writing files:
 
@@ -352,11 +372,11 @@ rather than `ok`.
 
 ## Point the agent at it
 
-On the agent machine, the broker is just a git remote; the broker secret
-is the password:
+For ordinary Git clients, expose the agent listener through an explicitly
+configured HTTPS ingress. The broker secret is the password:
 
 ```sh
-git remote set-url origin https://broker.tailnet:8080/datasets/osolmaz/scraped-news
+git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped-news
 git config credential.helper '!f() { echo username=default; echo password=$HF_BROKER_SHARED_SECRET; }; f'
 ```
 
@@ -372,12 +392,12 @@ normal. A history rewrite is refused with a message at the terminal:
 The operator listener exposes Brokerkit's shared backend:
 
 ```text
-GET  /api/grants
-GET  /api/grants/{id}
-GET  /api/grants/events
-POST /api/grants/{id}/approve
-POST /api/grants/{id}/deny
-POST /api/grants/{id}/revoke
+GET  /api/operator/v1/requests
+GET  /api/operator/v1/requests/{id}
+GET  /api/operator/v1/events
+POST /api/operator/v1/requests/{id}/approve
+POST /api/operator/v1/requests/{id}/deny
+POST /api/operator/v1/requests/{id}/revoke
 ```
 
 Authenticate with a bearer token from `/etc/hf-broker/operator-secrets`.
@@ -475,7 +495,7 @@ curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
     "max_uses": 1,
     "client_request_id": "recover-main-20260706"
   }' \
-  https://broker.tailnet:8080/api/grants
+  https://hf-broker.example.com/api/grants
 ```
 
 Other grantable git capabilities are `git.ref.delete` for non-tag

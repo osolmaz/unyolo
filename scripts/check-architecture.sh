@@ -24,6 +24,56 @@ if grep -R -n -E 'BROKERKIT_INSTALLER_REV=.*main|raw\.githubusercontent\.com/[^/
 	exit 1
 fi
 
+maintained_examples='README.md
+docs/ARCHITECTURE.md
+docs/OPERATOR_INBOX.md
+docs/OPERATIONS_RUNTIME.md
+docs/OWNERSHIP.md
+docs/POLICY_CORE.md
+docs/SYSTEMD_INSTALL_RUNTIME.md
+docs/UNIFIED_BROKER_CONTRACT.md
+brokers/github/.env.example
+brokers/github/README.md
+brokers/github/scope.example.json
+brokers/huggingface/README.md
+brokers/huggingface/docs/POLICY_PRESETS.md
+brokers/huggingface/docs/POLICY_RULES_SPEC.md
+brokers/huggingface/docs/SERVICE_SETUP.md
+brokers/huggingface/docs/SPECIFICATION.md
+brokers/sudo/README.md
+brokers/sudo/docs/operations.md
+brokers/sudo/policy.example.json
+plugins/openclaw/README.md'
+
+# Deliberate word splitting supplies the maintained path list to grep.
+# shellcheck disable=SC2086
+if grep -n -E '(^|[^0-9])(808[0-5]|1808[0-2])([^0-9]|$)' $maintained_examples 2>/dev/null; then
+	echo 'maintained examples must not assign legacy broker ports' >&2
+	exit 1
+fi
+
+# shellcheck disable=SC2086
+if grep -n -E '(^|[^[:alnum:]_-])(bob|onur)([^[:alnum:]_-]|$)' $maintained_examples 2>/dev/null; then
+	echo 'maintained examples must use neutral client and operator identities' >&2
+	exit 1
+fi
+
+# shellcheck disable=SC2086
+if grep -n -E '(_BIND_ADDR|_PORT|--bind-addr|--operator-bind-addr|--operator-port|--url([[:space:]]|$))' $maintained_examples 2>/dev/null; then
+	echo 'maintained examples must use complete endpoint URIs' >&2
+	exit 1
+fi
+
+if grep -R -n --include='*.go' --exclude='*_test.go' -E 'Endpoint:[[:space:]]*"tcp://' brokers 2>/dev/null; then
+	echo 'production broker defaults must not assign TCP endpoints' >&2
+	exit 1
+fi
+
+if grep -R -n --include='*.go' --exclude='*_test.go' -E '((HF|GH|SUDO)_BROKER_(BIND_ADDR|PORT|OPERATOR_BIND_ADDR|OPERATOR_PORT)|"(bob|onur)")' brokers 2>/dev/null; then
+	echo 'production broker code contains a retired listener field or personal identity default' >&2
+	exit 1
+fi
+
 if ! grep -q 'BROKERKIT_VERIFY_ONLY: "true"' .github/workflows/release.yml ||
   ! grep -q 'BROKERKIT_VERIFY_RELEASE_SET: "true"' .github/workflows/release.yml ||
   ! grep -q -- '--signer-workflow "$REPO/.github/workflows/release.yml"' installer/install.sh ||

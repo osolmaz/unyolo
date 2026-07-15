@@ -1,14 +1,14 @@
 # Linux Service Setup
 
 `hf-broker` is a server. For a real same-host deployment, run it as a
-dedicated service user and let the agent talk to it over HTTP.
+dedicated service user and let local clients use its protected agent socket.
 
 Recommended account model:
 
 ```text
-onur      = admin account
-bob       = agent account, no sudo and no docker
-hf-broker = service account that can read the real Hugging Face token
+operator-a = administrator account
+agent-a    = agent account, no root-equivalent groups
+hf-broker  = service account that can read the real Hugging Face token
 ```
 
 The agent should not read or store the real Hugging Face token. It should
@@ -46,7 +46,10 @@ sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --telegram-bot-token-file ./telegram-bot-token \
   --telegram-chat-id 123456789 \
-  --client bob
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
 ```
 
 The setup command creates:
@@ -62,6 +65,8 @@ The setup command creates:
 /etc/hf-broker/env
 /var/lib/hf-broker
 /etc/systemd/system/hf-broker.service
+/etc/systemd/system/hf-broker-agent.socket
+/etc/systemd/system/hf-broker-operator.socket
 ```
 
 Brokerkit performs the privileged host installation. hf-broker supplies the
@@ -93,9 +98,10 @@ The real Hugging Face token is copied to:
 That file is owned by `hf-broker:hf-broker` and mode `0600`.
 
 The operator inbox credential is generated independently at
-`/etc/hf-broker/operator-secrets`, also mode `0600`. The service exposes the
-operator API on `127.0.0.1:8081` by default. Agents receive neither this
-credential nor access to that listener through their client configuration.
+`/etc/hf-broker/operator-secrets`, also mode `0600`. Systemd owns separate
+agent and operator sockets under `/run/brokerkit/huggingface/`, with access
+controlled by distinct groups. Agents receive neither the operator credential
+nor access to the operator socket through their client configuration.
 
 When Telegram is configured, its token is copied to
 `/etc/hf-broker/telegram-bot-token` with the same ownership and mode. The
@@ -116,25 +122,30 @@ The broker client secret is stored in:
 
 That file is also owned by `hf-broker:hf-broker` and mode `0600`. Setup never
 prints the generated client secret. Use `hf-broker setup client` as an
-administrator to write the matching broker URL and client secret directly into
-the agent account's private configuration.
+administrator to write the matching broker endpoint and client secret directly
+into the agent account's private configuration.
 
 ## Agent Setup
 
-Point the agent repo at the broker URL printed by setup:
+Write the protected client configuration directly into the agent account:
 
 ```sh
-git remote set-url origin http://127.0.0.1:8080/datasets/osolmaz/scraped-news
+sudo hf-broker setup client \
+  --client agent-a \
+  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
+  --secret-file /etc/hf-broker/secrets \
+  --home-dir /home/agent-a
 ```
 
-Configure the agent's git credential helper with the broker client secret:
+Source that file before running the BrokerKit CLI or MCP adapter:
 
 ```sh
-git config credential.helper '!f() { echo username=agent; echo password=$HF_BROKER_SHARED_SECRET; }; f'
+. "$HOME/.config/hf-broker/client.env"
 ```
 
-Bob does not run the broker as Onur. Bob talks to a local server. The server
-runs as the `hf-broker` service user.
+Ordinary Git HTTP clients cannot connect directly to a Unix socket. When Git
+proxying is required, configure an explicit TCP listener or HTTPS reverse proxy
+and use that deployment-owned URL as the Git remote.
 
 ## Verify
 
@@ -142,14 +153,15 @@ Check the service:
 
 ```sh
 systemctl status hf-broker
-curl -fsS http://127.0.0.1:8080/healthz
+curl --unix-socket /run/brokerkit/huggingface/agent/broker.sock \
+  -fsS http://localhost/healthz
 ```
 
 Check local isolation:
 
 ```sh
 hf-broker doctor \
-  --agent-user bob \
+  --agent-user agent-a \
   --broker-pid "$(pgrep -x hf-broker)" \
   --token-file /etc/hf-broker/hf-token
 ```

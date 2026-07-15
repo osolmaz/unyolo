@@ -37,7 +37,7 @@ configuration; no launchd installer is claimed.
 ## Verification
 
 ```sh
-sudo sudo-broker doctor host --agent bob
+sudo sudo-broker doctor host --agent agent-a
 systemctl status sudo-broker-exec.service sudo-broker.service
 ```
 

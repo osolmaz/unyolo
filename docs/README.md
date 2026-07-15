@@ -26,14 +26,11 @@ component documentation.
 
 - [Systemd install runtime](SYSTEMD_INSTALL_RUNTIME.md)
 
-## Active Work
-
-- [Production-readiness cutover plan](2026-07-14-production-readiness-cutover-plan.md)
-- [Listener endpoint architecture plan](2026-07-14-listener-endpoint-architecture-plan.md)
-- [Provider-neutral policy presets plan](2026-07-14-provider-neutral-policy-presets-plan.md)
-
 ## Implementation Records
 
+- [Production-readiness cutover](2026-07-14-production-readiness-cutover-plan.md)
+- [Listener endpoint architecture](2026-07-14-listener-endpoint-architecture-plan.md)
+- [Provider-neutral policy presets](2026-07-14-provider-neutral-policy-presets-plan.md)
 - [Refactor plan](2026-07-12-refactor-plan.md)
 - [HF Broker request-all policy preset plan](2026-07-14-hf-broker-request-all-policy-preset-plan.md)
 - [GitHub operation coverage plan](2026-07-14-github-operation-coverage-plan.md)
