@@ -137,9 +137,21 @@ func TestTrustedStateDirectoryRequiresConfiguredServiceOwner(t *testing.T) {
 }
 
 func TestStrictSystemdExecutableValidation(t *testing.T) {
+	environmentFile, err := filepath.EvalSymlinks("/etc/passwd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateRoot, err := filepath.EvalSymlinks("/var")
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := filepath.EvalSymlinks("/usr/bin")
+	if err != nil {
+		t.Fatal(err)
+	}
 	unit := SystemdUnit{
-		Description: "test", User: "root", Group: "root", EnvironmentFile: "/etc/passwd",
-		ExecStart: "/usr/bin", StateDir: "/var/lib/brokerkit-test-missing", ConfigDir: "/etc",
+		Description: "test", User: "root", Group: "root", EnvironmentFile: environmentFile,
+		ExecStart: executable, StateDir: filepath.Join(stateRoot, "lib", "brokerkit-test-missing"), ConfigDir: filepath.Dir(environmentFile),
 	}
 	if _, err := RenderSystemd(unit); err == nil || !strings.Contains(err.Error(), "regular file") {
 		t.Fatalf("RenderSystemd(directory executable) error = %v", err)

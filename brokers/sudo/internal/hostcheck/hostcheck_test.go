@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
@@ -26,7 +27,7 @@ func TestValidateExecutionAcceptsTrustedSystemPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	strong, err := KernelExecutionSafety()
-	if err != nil || !strong {
+	if err != nil || strong != (runtime.GOOS == "linux") {
 		t.Fatalf("kernel safety = %t, %v", strong, err)
 	}
 	if err := validatePathACL("/usr/bin/true", false); err != nil {
