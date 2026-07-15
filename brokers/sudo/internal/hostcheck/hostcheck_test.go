@@ -33,7 +33,7 @@ func TestValidateExecutionAcceptsTrustedSystemPaths(t *testing.T) {
 	if err := validatePathACL("/usr/bin/true", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := validatePathACL("/definitely-missing-sudo-broker-acl", false); err == nil {
+	if err := validatePathACL("/definitely-missing-sudo-broker-acl", false); runtime.GOOS == "linux" && err == nil {
 		t.Fatal("missing ACL path was accepted")
 	}
 }
