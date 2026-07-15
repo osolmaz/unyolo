@@ -165,13 +165,21 @@ func Render(renderer Renderer, input Profile) (Artifacts, error) {
 	if err := renderer.ValidatePolicy(policyJSON); err != nil {
 		return Artifacts{}, fmt.Errorf("validate rendered policy: %w", err)
 	}
-	profileJSON, err := MarshalCanonical(profile)
+	manifest, profileJSON, manifestJSON, err := renderManifest(renderer, profile, operations, effective, counts, policyJSON)
 	if err != nil {
 		return Artifacts{}, err
 	}
+	return Artifacts{Profile: profile, Manifest: manifest, ProfileJSON: profileJSON, PolicyJSON: policyJSON, ManifestJSON: manifestJSON}, nil
+}
+
+func renderManifest(renderer Renderer, profile Profile, operations []Operation, effective []EffectiveOperation, counts OperationCounts, policyJSON []byte) (Manifest, []byte, []byte, error) {
+	profileJSON, err := MarshalCanonical(profile)
+	if err != nil {
+		return Manifest{}, nil, nil, err
+	}
 	catalogJSON, err := MarshalCanonical(operations)
 	if err != nil {
-		return Artifacts{}, err
+		return Manifest{}, nil, nil, err
 	}
 	manifest := Manifest{
 		Version: ManifestVersion, Provider: renderer.ProviderID(), Preset: renderer.PresetName(),
@@ -180,58 +188,92 @@ func Render(renderer Renderer, input Profile) (Artifacts, error) {
 	}
 	manifestJSON, err := MarshalCanonical(manifest)
 	if err != nil {
-		return Artifacts{}, err
+		return Manifest{}, nil, nil, err
 	}
-	return Artifacts{Profile: profile, Manifest: manifest, ProfileJSON: profileJSON, PolicyJSON: policyJSON, ManifestJSON: manifestJSON}, nil
+	return manifest, profileJSON, manifestJSON, nil
 }
 
 func Check(renderer Renderer, profileData, manifestData, policyData []byte) DriftReport {
-	manifest, err := ParseManifest(renderer, manifestData)
+	input, err := loadCheckInput(renderer, profileData, manifestData)
 	if err != nil {
 		return invalidReport(err)
 	}
-	profile, err := decodeStrict[Profile](profileData, "policy profile")
+	current, err := Render(renderer, input.profile)
 	if err != nil {
 		return invalidReport(err)
 	}
-	operations, err := loadOperations(renderer)
-	if err != nil {
+	report := newDriftReport()
+	compareArtifactDigests(&report, input.manifest, profileData, policyData)
+	compareOperationState(&report, input.manifest, current.Manifest)
+	catalogCurrent := input.manifest.CatalogDigest == current.Manifest.CatalogDigest
+	if err := compareCurrentPolicy(renderer, &report, catalogCurrent, current.PolicyJSON, policyData); err != nil {
 		return invalidReport(err)
-	}
-	profile, err = normalizeInstalledForManifest(renderer, profile, operations, manifest)
-	if err != nil {
-		return invalidReport(err)
-	}
-	current, err := Render(renderer, profile)
-	if err != nil {
-		return invalidReport(err)
-	}
-	report := DriftReport{Status: DriftCurrent, Details: []string{}, AddedOperations: []string{}, RemovedOperations: []string{}, ChangedOperations: []string{}}
-	if manifest.ProfileDigest != Digest(profileData) {
-		markDrift(&report, DriftModified, "profile digest does not match the manifest")
-	}
-	if manifest.PolicyDigest != Digest(policyData) {
-		markDrift(&report, DriftModified, "policy digest does not match the manifest")
-	}
-	if manifest.CatalogDigest != current.Manifest.CatalogDigest {
-		markDrift(&report, DriftStale, "operation catalog changed since this policy was rendered")
-	}
-	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Manifest.Operations)
-	if manifest.OperationCounts != current.Manifest.OperationCounts || hasOperationDrift(report) {
-		markDrift(&report, DriftModified, "manifest operation summary does not match the rendered profile and current catalog")
-	}
-	if manifest.CatalogDigest == current.Manifest.CatalogDigest {
-		if err := renderer.ValidatePolicy(policyData); err != nil {
-			return invalidReport(fmt.Errorf("parse policy: %w", err))
-		}
-		if !bytes.Equal(policyData, current.PolicyJSON) {
-			markDrift(&report, DriftModified, "policy does not match the deterministic render of its profile")
-		}
 	}
 	if report.Status == DriftCurrent {
 		report.Details = append(report.Details, "profile, policy, manifest, and operation catalog match")
 	}
 	return report
+}
+
+type checkInput struct {
+	profile  Profile
+	manifest Manifest
+}
+
+func loadCheckInput(renderer Renderer, profileData, manifestData []byte) (checkInput, error) {
+	manifest, err := ParseManifest(renderer, manifestData)
+	if err != nil {
+		return checkInput{}, err
+	}
+	profile, err := decodeStrict[Profile](profileData, "policy profile")
+	if err != nil {
+		return checkInput{}, err
+	}
+	operations, err := loadOperations(renderer)
+	if err != nil {
+		return checkInput{}, err
+	}
+	profile, err = normalizeInstalledForManifest(renderer, profile, operations, manifest)
+	if err != nil {
+		return checkInput{}, err
+	}
+	return checkInput{profile: profile, manifest: manifest}, nil
+}
+
+func newDriftReport() DriftReport {
+	return DriftReport{Status: DriftCurrent, Details: []string{}, AddedOperations: []string{}, RemovedOperations: []string{}, ChangedOperations: []string{}}
+}
+
+func compareArtifactDigests(report *DriftReport, manifest Manifest, profileData, policyData []byte) {
+	if manifest.ProfileDigest != Digest(profileData) {
+		markDrift(report, DriftModified, "profile digest does not match the manifest")
+	}
+	if manifest.PolicyDigest != Digest(policyData) {
+		markDrift(report, DriftModified, "policy digest does not match the manifest")
+	}
+}
+
+func compareOperationState(report *DriftReport, manifest, current Manifest) {
+	if manifest.CatalogDigest != current.CatalogDigest {
+		markDrift(report, DriftStale, "operation catalog changed since this policy was rendered")
+	}
+	report.AddedOperations, report.RemovedOperations, report.ChangedOperations = compareOperations(manifest.Operations, current.Operations)
+	if manifest.OperationCounts != current.OperationCounts || hasOperationDrift(*report) {
+		markDrift(report, DriftModified, "manifest operation summary does not match the rendered profile and current catalog")
+	}
+}
+
+func compareCurrentPolicy(renderer Renderer, report *DriftReport, catalogCurrent bool, currentPolicy, policyData []byte) error {
+	if !catalogCurrent || report == nil {
+		return nil
+	}
+	if err := renderer.ValidatePolicy(policyData); err != nil {
+		return fmt.Errorf("parse policy: %w", err)
+	}
+	if !bytes.Equal(policyData, currentPolicy) {
+		markDrift(report, DriftModified, "policy does not match the deterministic render of its profile")
+	}
+	return nil
 }
 
 // AuthorizationDigest canonicalizes provider-owned authorization metadata.
@@ -257,24 +299,43 @@ func Digest(data []byte) string {
 }
 
 func loadOperations(renderer Renderer) ([]Operation, error) {
-	if renderer == nil || strings.TrimSpace(renderer.ProviderID()) == "" || strings.TrimSpace(renderer.PresetName()) == "" {
-		return nil, errors.New("policy preset renderer identity is incomplete")
+	if err := validateRendererIdentity(renderer); err != nil {
+		return nil, err
 	}
 	operations, err := renderer.Operations()
 	if err != nil {
 		return nil, fmt.Errorf("load %s policy operations: %w", renderer.ProviderID(), err)
 	}
+	if err := validateOperationCatalog(operations); err != nil {
+		return nil, err
+	}
+	return slices.Clone(operations), nil
+}
+
+func validateRendererIdentity(renderer Renderer) error {
+	if renderer == nil || strings.TrimSpace(renderer.ProviderID()) == "" || strings.TrimSpace(renderer.PresetName()) == "" {
+		return errors.New("policy preset renderer identity is incomplete")
+	}
+	return nil
+}
+
+func validateOperationCatalog(operations []Operation) error {
 	if len(operations) == 0 {
-		return nil, errors.New("policy preset operation catalog is empty")
+		return errors.New("policy preset operation catalog is empty")
 	}
 	previous := ""
 	for _, operation := range operations {
-		if operation.Name == "" || previous >= operation.Name || operation.OperationRevision < 1 || !validEffect(operation.DefaultEffect) || !validDigest(operation.AuthorizationDigest) {
-			return nil, fmt.Errorf("policy preset operation %q is invalid or out of order", operation.Name)
+		if invalidCatalogOperation(operation, previous) {
+			return fmt.Errorf("policy preset operation %q is invalid or out of order", operation.Name)
 		}
 		previous = operation.Name
 	}
-	return slices.Clone(operations), nil
+	return nil
+}
+
+func invalidCatalogOperation(operation Operation, previous string) bool {
+	return operation.Name == "" || previous >= operation.Name || operation.OperationRevision < 1 ||
+		!validEffect(operation.DefaultEffect) || !validDigest(operation.AuthorizationDigest)
 }
 
 func normalizeProfile(renderer Renderer, profile Profile, known map[string]bool, dropUnknown bool) (Profile, error) {
@@ -383,24 +444,46 @@ func validateManifest(renderer Renderer, manifest Manifest) error {
 	if manifest.Version != ManifestVersion || manifest.Provider != renderer.ProviderID() || manifest.Preset != renderer.PresetName() {
 		return errors.New("policy manifest provider, version, or preset is invalid")
 	}
-	for name, value := range map[string]string{"catalog": manifest.CatalogDigest, "profile": manifest.ProfileDigest, "policy": manifest.PolicyDigest} {
-		if !validDigest(value) {
-			return fmt.Errorf("policy manifest %s digest is invalid", name)
-		}
+	if err := validateManifestDigests(manifest); err != nil {
+		return err
 	}
-	counts := OperationCounts{Total: len(manifest.Operations)}
-	previous := ""
-	for _, operation := range manifest.Operations {
-		if operation.Name == "" || previous >= operation.Name || operation.OperationRevision < 1 || !validEffect(operation.DefaultEffect) || !validEffect(operation.Effect) || !validDigest(operation.AuthorizationDigest) || (operation.Effect != operation.DefaultEffect && operation.Effect != EffectDeny) {
-			return fmt.Errorf("policy manifest operation %q is invalid or out of order", operation.Name)
-		}
-		previous = operation.Name
-		counts.add(operation.Effect)
+	counts, err := validateManifestOperations(manifest.Operations)
+	if err != nil {
+		return err
 	}
 	if counts != manifest.OperationCounts {
 		return errors.New("policy manifest operation count is inconsistent")
 	}
 	return nil
+}
+
+func validateManifestDigests(manifest Manifest) error {
+	for name, value := range map[string]string{"catalog": manifest.CatalogDigest, "profile": manifest.ProfileDigest, "policy": manifest.PolicyDigest} {
+		if !validDigest(value) {
+			return fmt.Errorf("policy manifest %s digest is invalid", name)
+		}
+	}
+	return nil
+}
+
+func validateManifestOperations(operations []OperationFingerprint) (OperationCounts, error) {
+	counts := OperationCounts{Total: len(operations)}
+	previous := ""
+	for _, operation := range operations {
+		if invalidManifestOperation(operation, previous) {
+			return OperationCounts{}, fmt.Errorf("policy manifest operation %q is invalid or out of order", operation.Name)
+		}
+		previous = operation.Name
+		counts.add(operation.Effect)
+	}
+	return counts, nil
+}
+
+func invalidManifestOperation(operation OperationFingerprint, previous string) bool {
+	return operation.Name == "" || previous >= operation.Name || operation.OperationRevision < 1 ||
+		!validEffect(operation.DefaultEffect) || !validEffect(operation.Effect) ||
+		!validDigest(operation.AuthorizationDigest) ||
+		(operation.Effect != operation.DefaultEffect && operation.Effect != EffectDeny)
 }
 
 func compareOperations(installed, current []OperationFingerprint) (added, removed, changed []string) {

@@ -17,7 +17,7 @@ type testRenderer struct {
 func (r testRenderer) ProviderID() string { return r.provider }
 func (testRenderer) PresetName() string   { return "request-all-agent-operations" }
 func (r testRenderer) Operations() ([]Operation, error) {
-	return slices.Clone(r.operations), nil
+	return r.operations, nil
 }
 func (testRenderer) RenderPolicy(profile Profile, operations []EffectiveOperation) ([]byte, error) {
 	return MarshalCanonical(struct {

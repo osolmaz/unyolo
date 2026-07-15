@@ -61,30 +61,45 @@ func validateOutputs(outputs []Output) error {
 	seen := make(map[string]bool, len(outputs))
 	for index := range outputs {
 		output := &outputs[index]
-		if output.Path == "" {
-			return errors.New("policy artifact output path must not be empty")
-		}
-		path, err := filepath.Abs(output.Path)
-		if err != nil {
-			return fmt.Errorf("resolve policy output %s: %w", output.Path, err)
-		}
-		path, err = resolveExistingPathPrefix(filepath.Clean(path))
-		if err != nil {
-			return fmt.Errorf("resolve policy output %s: %w", output.Path, err)
-		}
-		if seen[path] {
-			return fmt.Errorf("policy artifact output paths must be distinct: %s", path)
-		}
-		seen[path] = true
-		output.Path = path
-		if output.Mode == 0 {
-			output.Mode = 0o644
-		}
-		if output.Mode.Perm() != output.Mode || output.Mode&0o022 != 0 {
-			return fmt.Errorf("policy artifact output %s has unsafe mode %04o", path, output.Mode)
+		if err := validateOutput(output, seen); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func validateOutput(output *Output, seen map[string]bool) error {
+	if output.Path == "" {
+		return errors.New("policy artifact output path must not be empty")
+	}
+	path, err := normalizeOutputPath(output.Path)
+	if err != nil {
+		return err
+	}
+	if seen[path] {
+		return fmt.Errorf("policy artifact output paths must be distinct: %s", path)
+	}
+	seen[path] = true
+	output.Path = path
+	if output.Mode == 0 {
+		output.Mode = 0o644
+	}
+	if output.Mode.Perm() != output.Mode || output.Mode&0o022 != 0 {
+		return fmt.Errorf("policy artifact output %s has unsafe mode %04o", path, output.Mode)
+	}
+	return nil
+}
+
+func normalizeOutputPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve policy output %s: %w", path, err)
+	}
+	resolved, err := resolveExistingPathPrefix(filepath.Clean(absolute))
+	if err != nil {
+		return "", fmt.Errorf("resolve policy output %s: %w", path, err)
+	}
+	return resolved, nil
 }
 
 func resolveExistingPathPrefix(path string) (string, error) {
@@ -142,20 +157,25 @@ func stageOutput(output Output) (*stagedOutput, error) {
 }
 
 func writeStagedOutput(file *os.File, output Output) error {
-	if err := file.Chmod(output.Mode); err != nil {
+	if err := populateStagedOutput(file, output); err != nil {
 		_ = file.Close()
-		return fmt.Errorf("chmod staged policy output %s: %w", output.Path, err)
-	}
-	if _, err := file.Write(output.Data); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("write staged policy output %s: %w", output.Path, err)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("sync staged policy output %s: %w", output.Path, err)
+		return err
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close staged policy output %s: %w", output.Path, err)
+	}
+	return nil
+}
+
+func populateStagedOutput(file *os.File, output Output) error {
+	if err := file.Chmod(output.Mode); err != nil {
+		return fmt.Errorf("chmod staged policy output %s: %w", output.Path, err)
+	}
+	if _, err := file.Write(output.Data); err != nil {
+		return fmt.Errorf("write staged policy output %s: %w", output.Path, err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync staged policy output %s: %w", output.Path, err)
 	}
 	return nil
 }
@@ -231,24 +251,34 @@ func rollbackOutputs(staged []*stagedOutput) error {
 	var rollbackErrors []error
 	for index := len(staged) - 1; index >= 0; index-- {
 		artifact := staged[index]
-		if artifact.committed {
-			if err := removeCommittedOutput(artifact); err != nil {
-				rollbackErrors = append(rollbackErrors, err)
-				continue
-			}
-		}
-		if artifact.backup != "" {
-			if err := os.Rename(artifact.backup, artifact.output.Path); err != nil {
-				rollbackErrors = append(rollbackErrors, fmt.Errorf("restore policy output %s: %w", artifact.output.Path, err))
-			} else {
-				artifact.backup = ""
-			}
+		if err := rollbackOutput(artifact); err != nil {
+			rollbackErrors = append(rollbackErrors, err)
 		}
 	}
 	if err := syncOutputDirectories(staged); err != nil {
 		rollbackErrors = append(rollbackErrors, err)
 	}
 	return errors.Join(rollbackErrors...)
+}
+
+func rollbackOutput(artifact *stagedOutput) error {
+	if artifact.committed {
+		if err := removeCommittedOutput(artifact); err != nil {
+			return err
+		}
+	}
+	return restoreBackupOutput(artifact)
+}
+
+func restoreBackupOutput(artifact *stagedOutput) error {
+	if artifact.backup == "" {
+		return nil
+	}
+	if err := os.Rename(artifact.backup, artifact.output.Path); err != nil {
+		return fmt.Errorf("restore policy output %s: %w", artifact.output.Path, err)
+	}
+	artifact.backup = ""
+	return nil
 }
 
 func removeCommittedOutput(artifact *stagedOutput) error {
