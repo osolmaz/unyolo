@@ -73,30 +73,39 @@ func (a *bucketAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, 
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
-//nolint:cyclop // Operation-kind decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *bucketAdapter) decodeArguments(raw json.RawMessage) (any, error) {
-	switch a.descriptor.Name {
-	case "bucket.batch.apply", "bucket.sync.apply":
-		var value bucketBatchArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || hubclient.ValidateBucketBatchOperations(value.Operations) != nil {
-			return nil, errors.New("bucket batch arguments are invalid")
-		}
-		return value, nil
-	case "bucket.object.delete":
-		var value bucketDeleteArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || hubclient.ValidateBucketBatchOperations(deleteBucketOperation(value.Path)) != nil {
-			return nil, errors.New("bucket object deletion arguments are invalid")
-		}
-		return value, nil
-	case "bucket.move":
-		var value bucketMoveArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || (hubclient.BucketRef{Namespace: value.ToNamespace, Name: value.ToName}).Validate() != nil {
-			return nil, errors.New("bucket move destination is invalid")
-		}
-		return value, nil
-	default:
-		return nil, errors.New("bucket operation is not implemented")
+	return decodeNamedArguments(a.descriptor.Name, bucketArgumentDecoders, raw, "bucket operation is not implemented")
+}
+
+var bucketArgumentDecoders = map[string]func(json.RawMessage) (any, error){
+	"bucket.batch.apply":   decodeBucketBatchArguments,
+	"bucket.sync.apply":    decodeBucketBatchArguments,
+	"bucket.object.delete": decodeBucketDeleteArguments,
+	"bucket.move":          decodeBucketMoveArguments,
+}
+
+func decodeBucketBatchArguments(raw json.RawMessage) (any, error) {
+	var value bucketBatchArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || hubclient.ValidateBucketBatchOperations(value.Operations) != nil {
+		return nil, errors.New("bucket batch arguments are invalid")
 	}
+	return value, nil
+}
+
+func decodeBucketDeleteArguments(raw json.RawMessage) (any, error) {
+	var value bucketDeleteArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || hubclient.ValidateBucketBatchOperations(deleteBucketOperation(value.Path)) != nil {
+		return nil, errors.New("bucket object deletion arguments are invalid")
+	}
+	return value, nil
+}
+
+func decodeBucketMoveArguments(raw json.RawMessage) (any, error) {
+	var value bucketMoveArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || (hubclient.BucketRef{Namespace: value.ToNamespace, Name: value.ToName}).Validate() != nil {
+		return nil, errors.New("bucket move destination is invalid")
+	}
+	return value, nil
 }
 
 func (a *bucketAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
@@ -114,25 +123,41 @@ func (a *bucketAdapter) Resolve(ctx context.Context, input Input) (Plan, error) 
 	}
 	preconditions := bucketPreconditions{CredentialIdentity: identity.Name, SourceDigest: bucketInfoDigest(info)}
 	if a.descriptor.Name == "bucket.move" {
-		destination, destinationErr := decodeBucketMove(input.Arguments)
-		if destinationErr != nil {
-			return Plan{}, destinationErr
-		}
-		if destination.ref() == target.ref() {
-			return Plan{}, errors.New("bucket move destination must differ from its source")
-		}
-		if _, destinationErr = a.client.BucketInfo(ctx, destination.ref()); !hubclient.IsNotFound(destinationErr) {
-			if destinationErr != nil {
-				return Plan{}, destinationErr
-			}
-			return Plan{}, errors.New("operation target already exists")
-		}
-		preconditions.DestinationAbsent = true
+		return a.resolveBucketMove(ctx, input, target, preconditions)
 	}
 	encoded, _ := canonical(preconditions)
 	presentation, request := a.presentationAndPolicy(target, input.Arguments)
 	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
 		Arguments: input.Arguments, Preconditions: encoded, Presentation: presentation, Policy: request}, nil
+}
+
+func (a *bucketAdapter) resolveBucketMove(ctx context.Context, input Input, target bucketTarget, preconditions bucketPreconditions) (Plan, error) {
+	destination, err := decodeBucketMove(input.Arguments)
+	if err != nil {
+		return Plan{}, err
+	}
+	if destination.ref() == target.ref() {
+		return Plan{}, errors.New("bucket move destination must differ from its source")
+	}
+	if err := a.checkBucketDestinationAbsent(ctx, destination.ref()); err != nil {
+		return Plan{}, err
+	}
+	preconditions.DestinationAbsent = true
+	encoded, _ := canonical(preconditions)
+	presentation, request := a.presentationAndPolicy(target, input.Arguments)
+	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
+		Arguments: input.Arguments, Preconditions: encoded, Presentation: presentation, Policy: request}, nil
+}
+
+func (a *bucketAdapter) checkBucketDestinationAbsent(ctx context.Context, ref hubclient.BucketRef) error {
+	_, err := a.client.BucketInfo(ctx, ref)
+	if hubclient.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New("operation target already exists")
 }
 
 func (a *bucketAdapter) Authorize(plan Plan) hfpolicy.Request {
@@ -186,14 +211,21 @@ func (a *bucketAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, erro
 	}
 	_, sourceErr := a.client.BucketInfo(ctx, target.ref())
 	_, destinationErr := a.client.BucketInfo(ctx, destination.ref())
-	if sourceErr != nil && !hubclient.IsNotFound(sourceErr) {
-		return Outcome{}, sourceErr
-	}
-	if destinationErr != nil && !hubclient.IsNotFound(destinationErr) {
-		return Outcome{}, destinationErr
+	if err := bucketMoveObservationError(sourceErr, destinationErr); err != nil {
+		return Outcome{}, err
 	}
 	proven := hubclient.IsNotFound(sourceErr) && destinationErr == nil
 	return Outcome{Proven: proven, Result: json.RawMessage(`{"moved":true}`)}, nil
+}
+
+func bucketMoveObservationError(sourceErr, destinationErr error) error {
+	if sourceErr != nil && !hubclient.IsNotFound(sourceErr) {
+		return sourceErr
+	}
+	if destinationErr != nil && !hubclient.IsNotFound(destinationErr) {
+		return destinationErr
+	}
+	return nil
 }
 
 func (a *bucketAdapter) decodePlan(plan Plan) (bucketTarget, bucketPreconditions, error) {
@@ -216,19 +248,25 @@ func (a *bucketAdapter) checkPreconditions(ctx context.Context, target bucketTar
 	if identity.Name != expected.CredentialIdentity || bucketInfoDigest(info) != expected.SourceDigest {
 		return errors.New("operation_precondition_failed")
 	}
-	if expected.DestinationAbsent {
-		destination, decodeErr := decodeBucketMove(raw)
-		if decodeErr != nil {
-			return decodeErr
-		}
-		if _, destinationErr := a.client.BucketInfo(ctx, destination.ref()); !hubclient.IsNotFound(destinationErr) {
-			if destinationErr != nil {
-				return destinationErr
-			}
-			return errors.New("operation_precondition_failed")
-		}
+	if !expected.DestinationAbsent {
+		return nil
 	}
-	return nil
+	return a.checkBucketMovePrecondition(ctx, raw)
+}
+
+func (a *bucketAdapter) checkBucketMovePrecondition(ctx context.Context, raw json.RawMessage) error {
+	destination, err := decodeBucketMove(raw)
+	if err != nil {
+		return err
+	}
+	_, err = a.client.BucketInfo(ctx, destination.ref())
+	if hubclient.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New("operation_precondition_failed")
 }
 
 func (a *bucketAdapter) presentationAndPolicy(target bucketTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {

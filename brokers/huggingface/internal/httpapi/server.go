@@ -31,6 +31,7 @@ import (
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/internal/slicex"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
@@ -196,14 +197,6 @@ func prepareServer(opts Options) (*Server, context.Context, error) {
 		return nil, nil, err
 	}
 	return server, ctx, nil
-}
-
-func secretNames(values map[string]string) []string {
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
-	return names
 }
 
 func startServer(ctx context.Context, server *Server, opts Options) (*Server, error) {
@@ -425,7 +418,7 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		return nil, err
 	}
 	operationStore := agentops.New(database)
-	admissionController, err := admission.NewConfigured(secretNames(clients), opts.Config.Admission, operationStore.AdmissionUsage)
+	admissionController, err := admission.NewConfigured(slicex.Keys(clients), opts.Config.Admission, operationStore.AdmissionUsage)
 	if err != nil {
 		_ = database.Close()
 		return nil, err

@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/internal/slicex"
 	"github.com/osolmaz/brokerkit/plandigest"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
@@ -287,7 +288,7 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 	if err != nil {
 		return false, nil, nil, err
 	}
-	return false, grantUses(used), classes, nil
+	return false, slicex.Values(used), classes, nil
 }
 
 func (s *Server) refusePolicyDeniedPush(classes []gitproxy.ClassifiedCommand, client, target string, packSize int64, used map[string]grantUse) ([]gitproxy.RefFailure, error) {
@@ -547,14 +548,6 @@ func isTagRef(ref string) bool {
 
 func isReplaceRef(ref string) bool {
 	return strings.HasPrefix(ref, "refs/replace/")
-}
-
-func grantUses(used map[string]grantUse) []grantUse {
-	uses := make([]grantUse, 0, len(used))
-	for _, use := range used {
-		uses = append(uses, use)
-	}
-	return uses
 }
 
 func pushAuditOperation(classes []gitproxy.ClassifiedCommand) string {

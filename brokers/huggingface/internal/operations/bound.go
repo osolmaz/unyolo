@@ -165,6 +165,10 @@ func checkBoundPreconditions(ctx context.Context, client boundClient, operation 
 	if !observe {
 		return nil
 	}
+	return checkBoundObservation(ctx, client, operation, target, expected)
+}
+
+func checkBoundObservation(ctx context.Context, client boundClient, operation string, target json.RawMessage, expected boundPreconditions) error {
 	observed, absent, err := client.ObserveBound(ctx, operation, target)
 	if err != nil {
 		return err
