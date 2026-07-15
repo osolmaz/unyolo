@@ -1,7 +1,16 @@
 {
   "name": "openclaw-brokerkit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Provider-neutral BrokerKit approvals for OpenClaw",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osolmaz/brokerkit.git",
+    "directory": "plugins/openclaw"
+  },
+  "homepage": "https://github.com/osolmaz/brokerkit/tree/main/plugins/openclaw#readme",
+  "bugs": {
+    "url": "https://github.com/osolmaz/brokerkit/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=24.18.0 <25"
