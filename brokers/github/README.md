@@ -1,121 +1,33 @@
 # gh-broker
 
-gh-broker is a small GitHub credential broker for coding agents. It gives an agent a broker secret, keeps the real GitHub credential server-side, and allows only the Git and GitHub API operations matched by `scope.json`.
+gh-broker is a GitHub credential broker for coding agents. It gives an agent a
+broker secret, keeps the real GitHub credential server-side, and allows only
+the Git and GitHub API operations matched by `scope.json`.
 
-The central invariant is strict: gh-broker must not provide an API, log path, error path, or helper that returns original GitHub credential material.
-
-The shared install, setup, policy, approval, and release contract is in
-[BrokerKit's unified broker contract](../../docs/UNIFIED_BROKER_CONTRACT.md).
-
-## Current Shape
-
-- Echo HTTP server
-- `gh-broker --version`
-- `gh-broker setup client`
-- `gh-broker setup github-user enroll|rotate|revoke` for protected local
-  enrollment of expiring GitHub App user credentials
-- `gh-broker setup systemd` for Linux service file/config generation
-- `gh-broker doctor github` for local isolation, GitHub App, repository, and
-  default-branch protection checks
-- Shared-secret authentication for one configured client id
-- Server-side named client secrets through `GH_BROKER_SECRETS_FILE`
-- Rule-based `scope.json` with GitHub classification delegated to the shared
-  brokerkit policy engine
-- Git smart HTTP fetch and push route shape
-- Exhaustive typed Agent V1 operations generated from pinned GitHub REST and GraphQL definitions
-- Opaque broker-owned `app-jwt`, exact installation, user, and protected-file
-  development credential providers
-- Exact installation-token narrowing and cache isolation by installation,
-  repository ids, permissions, API host, and expiry behavior
-- Explicit deployment-owned endpoint URIs with Unix socket activation for
-  local production installs
-- Conservative receive-pack size cap and upstream GitHub timeouts
-- Structured audit logs without secrets, request bodies, diffs, or pack contents
-- Brokerkit-backed grants with a durable operator inbox and optional Telegram notifications
-- No credential API
-- No policy read/write API
-- Tests for auth, route shape, policy decisions, and receive-pack classification
-
-## Generated operation surface
-
-The checked-in stage 2–3 inventory classifies all 1,196 operations in the
-pinned stable GitHub REST API and all 300 roots in the pinned full GraphQL
-introspection, including 16 deprecated mutation roots. It generates 1,436
-canonical typed catalog operations, closed target/argument/result schemas,
-REST bindings, persisted GraphQL documents, policy metadata, GitHub App
-permission profiles, CLI metadata, MCP tool schemas, and capability docs.
-
-Browse the generated reference in
-[CAPABILITIES.md](docs/generated/CAPABILITIES.md) or query it locally:
-
-```sh
-gh-broker operations list --family pull_request
-gh-broker operations describe repo.visibility.update
-```
-
-The MCP server exposes the exhaustive catalog through the paged
-`github://operations` resource. `tools/list` is separately filtered by the
-authenticated client's enabled operations, policy-visible operations, runtime
-capabilities, and the operator exposure profile. With no configured
-intersection it advertises zero execution tools; it never publishes the full
-catalog as 1,000+ tools by default.
-
-MCP operation submissions accept an optional `request_id` and return a durable
-operation immediately. `gh_operation_get`, `gh_operation_wait`, and
-`gh_operation_list` provide bounded recovery after disconnects or restarts.
-GitHub-native public fields such as cache keys, public SSH material, commit
-signatures, and stream handles are projected to transcript-safe MCP names;
-tokens and other credentials remain sealed or slot-backed.
-
-Credential selection is immutable broker metadata. Callers choose an operation
-and target, never a credential kind, token scope, installation, or permission
-set. The generated operation catalog supplies the minimum GitHub App permission
-map used for installation-token minting.
-
-## Local Development
-
-```sh
-cp .env.example .env
-cp scope.example.json scope.json
-install -m 600 /dev/null github-token
-# write a development-only fine-grained token to github-token
-# edit GH_BROKER_SHARED_SECRET to a generated value with at least 32 bytes
-# edit scope.json by hand
-source .env
-make check
-make run
-```
+The central invariant is strict: gh-broker must not provide an API, log path,
+error path, or helper that returns original GitHub credential material.
+Callers choose an operation and target, never a credential kind, token scope,
+installation, or permission set.
 
 ## Install
 
 Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
-GH Broker release to its exact commit and installs to `$HOME/.local/bin`:
+GH Broker release to its exact commit, verifies release checksums, and
+installs to `$HOME/.local/bin`:
 
 ```sh
 BROKERKIT_REV=<verified-40-character-commit-sha>
 curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
 ```
 
-Pin a version from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases):
+Pin a release from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
+with `VERSION=<version>`, or choose the target directory with
+`INSTALL_DIR=/absolute/path`.
 
-```sh
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | VERSION=<version> sh
-```
+## Production setup on Linux
 
-Write a client config file from a broker secrets file:
-
-```sh
-gh-broker setup client \
-  --client agent-a \
-  --endpoint unix:///run/brokerkit/github/agent/broker.sock \
-  --secret-file /etc/gh-broker/secrets \
-  --home-dir /home/agent-a
-```
-
-The generated `client.env` contains only `GH_BROKER_ENDPOINT` and
-`GH_BROKER_SHARED_SECRET`; it does not contain GitHub credentials.
-
-Production Linux service setup with GitHub App credentials:
+Production uses GitHub App credentials. Create the App, collect its id,
+private key, and webhook secret as protected files, then run:
 
 ```sh
 sudo gh-broker setup systemd \
@@ -129,8 +41,24 @@ sudo gh-broker setup systemd \
   --operator-user operator-a
 ```
 
-To enable encrypted GitHub App user credentials, add the App's OAuth client
-files to setup:
+Setup writes protected files under `/etc/gh-broker` (`secrets`,
+`operator-secrets`, the GitHub credential files, `scope.json`, `env`),
+installs the systemd unit and sockets, and starts the service. It never
+places broker client secrets, operator secrets, GitHub credentials, or
+Telegram credentials directly in the env file. The agent and operator APIs
+use distinct Unix sockets by default; use `--endpoint`, `--operator-endpoint`,
+and `--operator-secret-file` to select deployment-owned endpoints or preserve
+an existing operator credential. Use `--no-start` to write files without
+starting the service, or `--dry-run` to preview without writing.
+
+Omitting `--scope-file` installs the managed `request-all-agent-operations`
+policy preset instead; add repeatable `--deny-operation <exact-name>` flags
+to disable operations, and `--replace-policy` to overwrite an installed
+policy after reviewing the printed digest and operation-count preview.
+macOS uses `gh-broker setup launchd` with the same credential flags.
+
+To also enable encrypted GitHub App user credentials, add the App's OAuth
+client files and the GitHub account id:
 
 ```sh
 sudo gh-broker setup systemd \
@@ -147,7 +75,36 @@ sudo gh-broker setup systemd \
   --operator-user operator-a
 ```
 
-Development setup with a token file:
+Add Telegram notifications with `--telegram-bot-token-file ./telegram-bot-token`
+and `--telegram-chat-id 123456789`. The token is copied to a service-owned
+protected file; pending requests remain available in the operator inbox
+without Telegram.
+
+Write a client config file for an agent account:
+
+```sh
+sudo gh-broker setup client \
+  --client agent-a \
+  --endpoint unix:///run/brokerkit/github/agent/broker.sock \
+  --secret-file /etc/gh-broker/secrets \
+  --home-dir /home/agent-a
+```
+
+The generated `~/.config/gh-broker/client.env` contains only
+`GH_BROKER_ENDPOINT` and `GH_BROKER_SHARED_SECRET`; it does not contain
+GitHub credentials. The typed CLI reads the endpoint as
+`GH_BROKER_AGENT_ENDPOINT`, so the agent sources its own generated file and
+maps the name (this is the current generated-file/CLI name mapping):
+
+```sh
+. "$HOME/.config/gh-broker/client.env"
+export GH_BROKER_AGENT_ENDPOINT="$GH_BROKER_ENDPOINT"
+```
+
+### Development token fallback
+
+For local development only, a fine-grained token in a protected file can
+replace the GitHub App:
 
 ```sh
 sudo gh-broker setup systemd \
@@ -162,13 +119,14 @@ sudo gh-broker setup systemd \
 
 This fallback is protected-file-only and non-production. `doctor github`
 returns an unsafe result if it is selected with
-`GH_BROKER_ENVIRONMENT=production`.
+`GH_BROKER_ENVIRONMENT=production`. Inline PAT configuration is rejected.
 
-Enroll an expiring GitHub App user credential from a local operator shell while
-the broker is stopped. The state directory must already exist with the broker
-service user's ownership; setup preserves that owner across key and slot
-writes. The input is a mode `0600` JSON file and is deleted by the operator
-after a successful enrollment:
+### Enroll a GitHub App user credential
+
+Enroll an expiring GitHub App user credential from a local operator shell
+while the broker is stopped. The state directory must already exist with the
+broker service user's ownership. The input is a mode `0600` JSON file that
+the operator deletes after a successful enrollment:
 
 ```json
 {
@@ -176,8 +134,8 @@ after a successful enrollment:
   "login": "octocat",
   "access_token": "expiring-access-token",
   "refresh_token": "expiring-refresh-token",
-  "access_expires_at": "2026-07-14T12:00:00Z",
-  "refresh_expires_at": "2026-10-14T12:00:00Z"
+  "access_expires_at": "<access expiry, RFC3339>",
+  "refresh_expires_at": "<refresh expiry, RFC3339>"
 }
 ```
 
@@ -191,54 +149,32 @@ gh-broker setup github-user enroll \
 rm user-credential.json
 ```
 
-Use the same command with `rotate` and a replacement credential file to rotate
-an enrollment. Revoke immediately with `github-user revoke --user-id 1234`
-and the same state/client flags. These commands return only the action and
-immutable user id; there is no credential readback command or API route.
+Use the same command with `rotate` and a replacement credential file to
+rotate an enrollment. Revoke immediately with
+`github-user revoke --user-id 1234` and the same state flags. These commands
+return only the action and immutable user id; there is no credential
+readback command or API route. Enrolled credentials are stored only in
+BrokerKit's encrypted credential store and refresh before expiry.
 
-Add Telegram notifications by passing the bot token as a protected file:
-
-```sh
-sudo gh-broker setup systemd \
-  --dev-token-fallback \
-  --github-token-file ./github-token \
-  --scope-file ./scope.json \
-  --telegram-bot-token-file ./telegram-bot-token \
-  --telegram-chat-id 123456789 \
-  --client agent-a \
-  --operator operator-a \
-  --agent-user agent-a \
-  --operator-user operator-a
-```
-
-Use `--no-start` to write files without enabling or starting the service.
-The setup command writes `/etc/gh-broker/secrets`,
-`/etc/gh-broker/operator-secrets`, and the optional Telegram token as protected
-files. It does not place broker client secrets, operator secrets, GitHub
-credentials, or Telegram credentials directly in the env file. The agent and
-operator APIs use distinct Unix sockets by default. Use `--endpoint`,
-`--operator-endpoint`, and `--operator-secret-file` to select deployment-owned
-endpoints or preserve an existing operator credential.
-
-Verify the installed deployment:
+### Verify the deployment
 
 ```sh
 sudo gh-broker doctor github \
-  --repo osolmaz/gh-broker \
+  --repo osolmaz/brokerkit \
   --agent-user agent-a \
   --service-user gh-broker
 ```
 
-Use `--json` for machine-readable output. Exit code `0` means safe, `1` means
-unsafe, `2` means inconclusive, and `64` means the invocation or configuration
-is invalid. Doctor reads `/etc/gh-broker/env` by default; use `--env-file` for
-a nonstandard installation or `--env-file ''` to use only the current process
-environment.
+Doctor checks local isolation, the GitHub App configuration, repository
+access, and default-branch protection. Use `--json` for machine-readable
+output. Exit code `0` means safe, `1` unsafe, `2` inconclusive, and `64`
+invalid invocation or configuration. Doctor reads `/etc/gh-broker/env` by
+default; use `--env-file` for a nonstandard installation or `--env-file ''`
+to use only the current process environment. When an env file is selected it
+is authoritative, and inline credential values are reported as inconclusive;
+protected credential files are required for a safe isolation verdict.
 
-When an env file is selected, it is authoritative; exported shell variables do
-not override the installed service configuration. Inline credential values are
-reported as inconclusive because doctor cannot prove which users have observed
-them. Protected credential files are required for a safe isolation verdict.
+## Use it
 
 Health check:
 
@@ -247,61 +183,93 @@ curl --unix-socket /run/brokerkit/github/agent/broker.sock \
   http://localhost/healthz
 ```
 
-Fetch through the broker:
+Git fetch through the broker. The broker secret is the only credential the
+agent holds:
 
 ```sh
 git -c http.extraHeader="Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  ls-remote https://github-broker.example.com/osolmaz/gh-broker.git
+  ls-remote https://github-broker.example.com/osolmaz/brokerkit.git
 ```
 
-List repositories visible to the selected GitHub user credential:
+Discrete GitHub operations use the typed Agent V1 CLI. It reads
+`GH_BROKER_AGENT_ENDPOINT` plus `GH_BROKER_SHARED_SECRET` or
+`GH_BROKER_SHARED_SECRET_FILE` from the environment; source the generated
+client config and map the endpoint name as shown above:
 
 ```sh
-gh-broker operation submit repo.list_for_authenticated_user \
-  --target-json '{"kind":"user","name":"osolmaz"}' \
-  --arguments-json '{}' \
-  --wait
-```
+. "$HOME/.config/gh-broker/client.env"
+export GH_BROKER_AGENT_ENDPOINT="$GH_BROKER_ENDPOINT"
 
-Read repository contents:
-
-```sh
 gh-broker operation submit repo.contents.read \
   --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
   --arguments-json '{"path":"README.md","ref":"main"}' \
   --wait
 ```
 
-Open a pull request through Agent V1:
+Open a pull request:
 
 ```sh
 gh-broker operation submit pull_request.create \
-  --target-json '{"kind":"repo","owner":"osolmaz","name":"gh-broker"}' \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
   --arguments-json '{"title":"agent work","head":"agent-a/work","base":"main","body":"Ready for review."}' \
   --reason "Open the reviewed feature branch" \
   --request-id open-agent-pr \
   --wait
 ```
 
+Reuse a stable `--request-id` when retrying, and resume interrupted
+operations with `gh-broker operation get|wait|cancel <id>`.
+
+### Operation catalog
+
+The operation surface is generated from pinned GitHub REST and GraphQL
+definitions into a typed catalog. Browse it in
+[docs/generated/CAPABILITIES.md](docs/generated/CAPABILITIES.md) or query it
+locally:
+
+```sh
+gh-broker operations list --family pull_request
+gh-broker operations describe repo.visibility.update
+```
+
+### MCP server
+
+`gh-broker mcp` runs a stdio MCP server backed by the same catalog and broker
+credential. `tools/list` advertises only the intersection of the client's
+enabled operations, policy-visible operations, runtime capabilities, and the
+operator exposure profile; the full catalog stays browsable through the paged
+`github://operations` resource. Submissions accept an optional `request_id`
+and return a durable operation immediately; recover after a disconnect with
+`gh_operation_get`, `gh_operation_wait`, and `gh_operation_list`. Tokens and
+other credentials remain sealed or slot-backed and never appear in tool
+output.
+
 ## Policy
 
-`scope.json` is the authorization source of truth. A request is classified into:
+`scope.json` is the authorization source of truth. A request is classified
+into:
 
 ```text
 client + operation + target + attrs -> allow | request | deny | no_match
 ```
 
-Deny rules win over allow rules. A rule matches only when the same rule matches the client, operation, target, and operation-relevant attributes. If a rule has attrs, every operation in that rule must support every attr; split rules when operations need different attrs.
+Deny rules win over allow rules. A rule matches only when the same rule
+matches the client, operation, target, and operation-relevant attributes. If
+a rule has attrs, every operation in that rule must support every attr; split
+rules when operations need different attrs. Start from
+[scope.example.json](scope.example.json).
 
 The default production-oriented workflow is:
 
 - allow fetch, repository listing, and content reads for scoped repositories
 - allow agents to push feature branches such as `refs/heads/agent-a/*`
 - allow agents to open pull requests into `refs/heads/main`
-- deny ref deletion and unsupported ref updates before forwarding
-- deny default-branch pushes unless a repository has an explicit direct-main allow rule
-- classify existing branch updates as `git.push.force` unless the broker can prove fast-forward
-- rely on GitHub rulesets or branch protections as the upstream enforcement layer after GitHub receives the pack
+- deny ref deletion and default-branch pushes unless a repository has an
+  explicit allow rule
+- classify existing branch updates as `git.push.force` unless the broker can
+  prove fast-forward
+- rely on GitHub rulesets or branch protections as the upstream enforcement
+  layer after GitHub receives the pack
 
 Example direct-main exception:
 
@@ -316,14 +284,23 @@ Example direct-main exception:
 }
 ```
 
-## Broker Routes
+Rules with `"effect": "request"` do not execute directly. Agent V1
+submissions create a durable approval request as part of the operation, and
+Git smart-HTTP pushes create a pending grant through `POST /api/grants` (each
+request must carry a unique `client_request_id`, reused on retry). Approval
+creates a short-lived grant evaluated by the same policy path; deny rules
+still win over approved grants.
+
+## Broker routes
+
+The agent listener exposes:
 
 ```text
 GET  /healthz
 
 POST /api/grants                         Git smart-HTTP protocol grant request
-GET  /api/grants                         Git smart-HTTP protocol grants
-GET  /api/grants/{id}                    Git smart-HTTP protocol grant
+GET  /api/grants
+GET  /api/grants/{id}
 
 GET  /.well-known/brokerkit-agent
 POST /api/agent/v1/operations
@@ -334,21 +311,16 @@ POST /api/agent/v1/sealed-payloads
 POST /api/agent/v1/streams
 GET  /api/agent/v1/streams/{id}
 
-GET  /{owner}/{repo}.git/info/refs?service=git-upload-pack
+GET  /{owner}/{repo}.git/info/refs
 POST /{owner}/{repo}.git/git-upload-pack
-
-GET  /{owner}/{repo}.git/info/refs?service=git-receive-pack
 POST /{owner}/{repo}.git/git-receive-pack
+
+POST /webhooks/github                    GitHub App webhooks
 ```
 
-All discrete GitHub JSON operations use Agent V1. The `/api/grants` surface is
-reserved for approval requests created while handling Git smart-HTTP protocol
-traffic. Direct repository-list and contents proxy routes are not supported.
-Compatibility aliases are not part of the production surface.
-
-## Operator Inbox
-
-The protected operator listener exposes Brokerkit's shared backend:
+All discrete GitHub JSON operations use Agent V1; there are no direct
+repository-list or contents proxy routes. The separate operator listener
+exposes the shared operator inbox:
 
 ```text
 GET  /api/operator/v1/requests
@@ -359,57 +331,32 @@ POST /api/operator/v1/requests/{id}/deny
 POST /api/operator/v1/requests/{id}/revoke
 ```
 
-Authenticate with the separate operator credential from
-`/etc/gh-broker/operator-secrets`. Agent credentials cannot use this listener.
-Telegram is an optional notification view over the same durable request, so a
-decision through either path closes the same state exactly once. A trusted web
-host keeps this credential server-side and exposes only its own
-authenticated browser session and bounded Brokerkit response fields.
+Authenticate the operator listener with the separate credential from
+`/etc/gh-broker/operator-secrets`. Agent credentials cannot use it. Telegram
+is an optional notification view over the same durable request, so a decision
+through either path closes the same state exactly once.
 
-## Security Model
+## Security model
 
-gh-broker should run behind Tailnet-only reachability, but Tailnet access is not authorization. Every broker endpoint still requires the configured shared secret.
-
-Production should use GitHub App credentials:
-
-```text
-GH_BROKER_GITHUB_APP_ID_FILE=/etc/gh-broker/github-app-id
-GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE=/etc/gh-broker/github-app-private-key.pem
-GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE=/etc/gh-broker/github-webhook-secret
-```
+Run gh-broker behind Tailnet-only or otherwise restricted reachability, but
+treat network access as transport, not authorization: every endpoint except
+`GET /healthz` still requires its route-appropriate authentication. Agent
+routes require the broker client secret, the operator listener requires the
+separate operator credential, and the webhook route requires a verified
+`X-Hub-Signature-256` payload signature.
 
 For repo-scoped requests, gh-broker resolves the GitHub App installation for
-the target repository with `go-github` and mints a short-lived token with the
-exact repository id and catalog-derived minimum permission map after broker
-policy allows the request. Cache keys include the installation id, sorted exact
-repository ids, exact permissions, API host, and refresh behavior. Broader
-credentials are never reused for narrower requests. App JWT transport is
-provided by `ghinstallation`; typed GitHub API pagination, errors, rate limits,
-installation resolution, token requests, and webhook parsing use `go-github`.
-Repository-list credentials are uncached and revoked immediately after use.
+the target repository and mints a short-lived token narrowed to the exact
+repository and the catalog-derived minimum permission map, after broker
+policy allows the request. Broader credentials are never reused for narrower
+requests.
 
-`GH_BROKER_GITHUB_TOKEN_FILE` remains available only as a protected-file local
-development fallback. Inline PAT configuration is rejected.
-
-GitHub App webhooks are accepted at:
-
-```text
-POST /webhooks/github
-```
-
-The webhook route requires `X-Hub-Signature-256`, `X-GitHub-Event`, and
-`X-GitHub-Delivery`. It verifies the payload with
-`GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE`, accepts bodies up to 1 MiB, and logs only
-audit-safe metadata such as event, delivery id, action, installation id, and
-repository name. Installation suspension/deletion, repository selection
-changes, and `github_app_authorization` revocation invalidate affected cached
-credentials immediately. Invalid or unknown signed payloads fail closed.
-
-User access and refresh credentials are stored only in BrokerKit's encrypted
-credential store. Access credentials refresh before expiry, rotating refresh
-credentials are persisted as one encrypted record, and enrollment, rotation,
-revocation, errors, plans, results, audit events, and operator surfaces never
-return credential material.
+GitHub App webhooks at `POST /webhooks/github` require
+`X-Hub-Signature-256`, `X-GitHub-Event`, and `X-GitHub-Delivery`, and are
+verified against `GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE`. Installation
+suspension or deletion, repository selection changes, and
+`github_app_authorization` revocation invalidate affected cached credentials
+immediately. Invalid or unknown signed payloads fail closed.
 
 Deployment safety settings:
 
@@ -417,41 +364,35 @@ Deployment safety settings:
   Unix socket unless the deployment explicitly selects TCP.
 - `GH_BROKER_STATE_DIR` and `GH_BROKER_SCOPE_FILE` are required and must be
   absolute in production.
-- `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
-- `GH_BROKER_GITHUB_STREAM_TIMEOUT` defaults to 600 seconds for bounded uploads and downloads.
-- `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
+- `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds;
+  `GH_BROKER_GITHUB_STREAM_TIMEOUT` defaults to 600 seconds;
+  `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
 - `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
-  Telegram notifications for requestable grants. Telegram tokens are loaded
-  only from protected files.
-- Audit logs record client, operation, owner, repo, method, path, outcome,
-  status, reason, matched rule ids, GitHub installation id when one was minted
-  for the request, and verified webhook event metadata.
-- Audit logs do not include tokens, cookies, request bodies, PR bodies, pack
-  contents, diffs, raw upstream bodies, JWTs, installation tokens, or private
-  keys, refresh tokens, PATs, or GitHub App client secrets.
+  Telegram notifications. Telegram tokens are loaded only from protected
+  files.
+- Audit logs record client, operation, target, outcome, and matched rule ids.
+  They never include tokens, cookies, request bodies, PR bodies, pack
+  contents, diffs, or any GitHub or Telegram credential material.
 
-## Grants
+See [.env.example](.env.example) for the full annotated environment.
 
-Request rules do not execute directly. Discrete GitHub operations use Agent V1,
-which creates the durable approval request as part of the submitted operation.
-Git smart-HTTP protocol handling creates a pending grant through
-`POST /api/grants`; every such request must include a unique
-`client_request_id`, and retries must reuse that value. gh-broker sends the
-approval request to Telegram when Telegram is configured, but the durable
-operator inbox remains authoritative and works without Telegram. Approval
-creates a short-lived brokerkit grant that is evaluated by the same policy path
-as static rules. Deny rules still win over approved grants.
+## Local development
 
-The editable Telegram message reference and its last delivered lifecycle state
-are stored with the grant. Once the reference is stored, status delivery
-resumes after a broker restart. A verified callback commits the decision and
-message reference in one transaction, including when the original send response
-was lost. Durable write failures leave the callback unanswered at the same
-Telegram update for retry. Ambiguous sends remain blocked for the two-minute
-claim lease; a later retry uses a fresh one-time decision token.
-Grant uses are reserved before GitHub forwarding; an ambiguous upstream result
-is retained for operator review instead of reopening the grant budget. Retained
-grants report `status: retained` and `uses_remaining: 0`.
+From a BrokerKit checkout:
+
+```sh
+cd brokers/github
+cp .env.example .env
+cp scope.example.json scope.json
+install -m 600 /dev/null github-token
+# write a development-only fine-grained token to github-token
+# set GH_BROKER_SHARED_SECRET to a generated value with at least 32 bytes
+# edit scope.json by hand
+set -a; . ./.env; set +a
+go run ./cmd/gh-broker
+```
+
+Run the tests with `go test ./...` from the repository root.
 
 ## License
 

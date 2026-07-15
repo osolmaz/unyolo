@@ -2,30 +2,29 @@
 
 hf-broker is a self-hosted credential broker between a coding agent and
 Hugging Face. It exposes only registered, policy-gated Git, LFS, repository,
-and Router operations. Broad Hugging Face credentials remain inside
-the broker; agents receive only revocable broker credentials. Dangerous
-operations can require a short-lived approval without weakening append-only or
-execution-time provider checks.
+and Router inference operations; broad Hugging Face credentials remain inside
+the broker while agents receive only revocable broker credentials. Dangerous
+operations can require a short-lived operator approval without weakening
+append-only or execution-time provider checks.
 
 The provider-specific design and threat model are in
-[docs/SPECIFICATION.md](docs/SPECIFICATION.md).
-The shared install, setup, policy, approval, and release contract is in
-[BrokerKit's unified broker contract](../../docs/UNIFIED_BROKER_CONTRACT.md).
+[docs/SPECIFICATION.md](docs/SPECIFICATION.md), including the full list of
+environment variables.
 
-## How it works
+## How the Git proxy works
 
-The broker is a git smart-HTTP proxy. Every `git push` body is parsed
-before anything is forwarded; a push is accepted only if all its ref
-updates are append-only (fast-forwards, new branches, new tags). Ancestry
-is verified against a local commits-only mirror (`--filter=tree:0`), so
-even terabyte repos cost megabytes. Accepted pushes are forwarded
-upstream with a server-side write token the agent can never read;
-refused pushes never leave the broker and `git push` prints the reason.
+The broker is a git smart-HTTP proxy. Every `git push` body is parsed before
+anything is forwarded; a push is accepted only if all its ref updates are
+append-only (fast-forwards, new branches, new tags). Ancestry is verified
+against a local commits-only mirror (`--filter=tree:0`), so even terabyte
+repos cost megabytes. Accepted pushes are forwarded upstream with a
+server-side write token the agent can never read; refused pushes never leave
+the broker and `git push` prints the reason.
 
 ## Install
 
 Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
-HF Broker release to its exact commit, verifies the release checksum, and
+HF Broker release to its exact commit, verifies release checksums, and
 installs to `$HOME/.local/bin`:
 
 ```sh
@@ -33,31 +32,22 @@ BROKERKIT_REV=<verified-40-character-commit-sha>
 curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
 ```
 
-Pin a version from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
-with `VERSION`:
+Pin a release from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
+with `VERSION=<version>`, or choose the target directory with
+`INSTALL_DIR=/absolute/path`.
 
-```sh
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | VERSION=<version> sh
-```
-
-Install to a specific directory with `INSTALL_DIR`:
-
-```sh
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | INSTALL_DIR=/absolute/path sh
-```
-
-For development, install from a BrokerKit checkout with the Go version declared
-by the root module:
+For development, install from a BrokerKit checkout with the Go version
+declared by the root module:
 
 ```sh
 go install ./brokers/huggingface/cmd/hf-broker
 ```
 
-## Run
+## Run in development
 
 Foreground development requires an explicit endpoint and development mode. A
-loopback port of `0` asks the OS to choose an available port; the broker prints
-the resolved endpoint in its readiness record.
+loopback port of `0` asks the OS to choose an available port; the broker
+prints the resolved endpoint in its readiness record.
 
 ```sh
 export HF_BROKER_DEVELOPMENT=true
@@ -70,8 +60,67 @@ cp scope.example.json scope.json          # edit: which repos are reachable
 hf-broker
 ```
 
-OpenAI-compatible clients use an explicitly configured HTTPS ingress and the
-broker secret as their API key:
+For any deployment, prefer a broker-only token file over placing the token
+value in the broker environment:
+
+```sh
+sudo install -o hf-broker -g hf-broker -m 0600 /path/to/hf-token /etc/hf-broker/hf-token
+export HF_BROKER_HF_TOKEN_FILE=/etc/hf-broker/hf-token
+```
+
+BrokerKit defines no default TCP port. Local production setup uses separate
+permission-restricted agent and operator Unix sockets; standard Git HTTP and
+remote clients require an explicit TCP listener or HTTPS reverse proxy. Run
+the broker somewhere the agent cannot inspect its process or credential
+files; otherwise the isolation boundary does not hold.
+
+## Policy
+
+`scope.json` is a manually edited rule file and the authorization source of
+truth. A request without a matching rule is denied. This minimal rule lets
+one client read, fetch, and append-push one dataset repo:
+
+```json
+{
+  "rules": [
+    {
+      "id": "allow-scraped-news",
+      "effect": "allow",
+      "clients": ["default"],
+      "operations": ["repo.contents.read", "git.fetch", "git.push.append"],
+      "targets": [
+        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
+      ]
+    }
+  ]
+}
+```
+
+See [scope.example.json](scope.example.json) for read, request, and
+inference rules, and [docs/POLICY_RULES_SPEC.md](docs/POLICY_RULES_SPEC.md)
+for the full rule vocabulary.
+
+## Point a Git client at it
+
+Expose the agent listener through an explicitly configured HTTPS ingress.
+The broker secret is the password:
+
+```sh
+git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped-news
+git config credential.helper '!f() { echo username=default; echo password=$HF_BROKER_SHARED_SECRET; }; f'
+```
+
+Clones, pulls, fast-forward pushes, new branches, and new tags work as
+normal. A history rewrite is refused with a message at the terminal:
+
+```text
+ ! [remote rejected] main -> main (hf-broker: history rewrite refused)
+```
+
+## Inference
+
+OpenAI-compatible clients use the same HTTPS ingress and the broker secret as
+their API key:
 
 ```text
 base URL = https://hf-broker.example.com/v1
@@ -79,21 +128,23 @@ API key  = value from HF_BROKER_SHARED_SECRET
 ```
 
 The agent listener exposes only `GET /v1/models` and
-`POST /v1/chat/completions` for inference. Requests are authenticated with the
-broker client secret and then evaluated against `scope.json`. They are
-forwarded to the Hugging Face Router with the real token only when an explicit
-allow rule matches. Prompts, completions, tool arguments, and credentials are
-excluded from audit output. Other `/v1/*` routes fail closed.
+`POST /v1/chat/completions`. Requests are authenticated with the broker
+client secret, evaluated against `scope.json`, and forwarded to the Hugging
+Face Router with the real token only when an explicit allow rule matches.
+Prompts, completions, tool arguments, and credentials are excluded from audit
+output. Other `/v1/*` routes fail closed.
 
 ## Agent operations
 
-Protected Hub mutations use the typed Agent Operations API. The bundled client
-and MCP adapter use only a broker client secret; neither can read the upstream
-Hugging Face token.
+Protected Hub mutations use the typed Agent Operations API. The bundled
+client and MCP adapter use only a broker client secret; neither can read the
+upstream Hugging Face token. The example sources the `client.env` generated
+by `setup client` (see [Linux service setup](#linux-service-setup)) and maps
+the endpoint name for the CLI:
 
 ```sh
-export HF_BROKER_ENDPOINT=unix:///run/brokerkit/huggingface/agent/broker.sock
-export HF_BROKER_SHARED_SECRET_FILE=/run/user/1000/hf-broker-agent-secret
+. "$HOME/.config/hf-broker/client.env"
+export HF_BROKER_AGENT_ENDPOINT="$HF_BROKER_ENDPOINT"
 hf-broker client repo create \
   --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
   --arguments-json '{"visibility":"private"}'
@@ -109,21 +160,14 @@ waits. Resume it after a disconnect with:
 hf-broker client operation wait <operation-id>
 ```
 
-Run `hf-broker mcp` as a stdio MCP server to expose one explicit tool for every
-agent-facing operation in the capability catalog, plus operation and grant
-lifecycle tools. The same catalog generates the CLI command tree and policy
-vocabulary, so these surfaces cannot drift. Tool descriptions explicitly tell
-agents not to request a Hugging Face token.
-
-MCP operation submissions accept an optional `request_id`, return immediately,
-and never expose Agent V1's internal `idempotency_key`. Recover interrupted
-calls with `hf_operation_get`, `hf_operation_wait`, or `hf_operation_list`.
-Public variable and secret names are projected to transcript-safe fields; the
-secret value itself remains sealed.
-
-Window-mode tools request temporary authorization for a later Git or HTTP
-action. They return a durable grant and use the `hf_grant_*` lifecycle tools;
-execution-mode tools return Agent operations and use `hf_operation_*`.
+Run `hf-broker mcp` as a stdio MCP server to expose one explicit tool for
+every agent-facing operation in the capability catalog, plus operation and
+grant lifecycle tools. The same catalog generates the CLI command tree and
+policy vocabulary. Tool descriptions explicitly tell agents not to request a
+Hugging Face token. MCP submissions accept an optional `request_id` and
+return immediately; recover interrupted calls with `hf_operation_get`,
+`hf_operation_wait`, or `hf_operation_list`, and use the `hf_grant_*` tools
+for temporary-grant lifecycles.
 
 ## Temporary grants
 
@@ -142,9 +186,9 @@ hf-broker client grant request git.push.force osolmaz/model \
 
 Omit `--minutes` or `--max-uses` to use the matched policy's finite default.
 `--max-uses` accepts a positive integer or `unlimited`; unlimited grants
-still expire at the approved time. The command waits for a decision by default.
-Grant state can be resumed or changed without holding the protected operation
-open:
+still expire at the approved time. The command waits for a decision by
+default. Grant state can be resumed or changed without holding the protected
+operation open:
 
 ```sh
 hf-broker client grant get <grant-id>
@@ -157,290 +201,10 @@ Repository requests use repeatable `--ref` flags. The broker validates the
 operation, target, attributes, duration, and use budget against the exact
 matched policy rule before creating an approval.
 
-Without a matching rule, inference is denied. The default policy preset allows
-registered inference operations; this manual example narrows inference to one
-owner:
-
-```json
-{
-  "rules": [
-    {
-      "id": "allow-acme-inference",
-      "effect": "allow",
-      "clients": ["default"],
-      "operations": ["inference.models.list"],
-      "targets": [{"kind": "inference", "owner": "router", "name": "models"}]
-    },
-    {
-      "id": "allow-acme-chat",
-      "effect": "allow",
-      "clients": ["default"],
-      "operations": ["inference.chat.complete"],
-      "targets": [{"kind": "inference", "owner": "acme", "name": "*"}]
-    }
-  ]
-}
-```
-
-For a hardened same-host deployment, prefer a broker-only token file
-over placing the token value in the broker environment:
-
-```sh
-sudo install -o hf-broker -g hf-broker -m 0600 /path/to/hf-token /etc/hf-broker/hf-token
-export HF_BROKER_HF_TOKEN_FILE=/etc/hf-broker/hf-token
-```
-
-`scope.json` is a rule file. This minimal rule lets one client read,
-fetch, and append-push one dataset repo:
-
-```json
-{
-  "rules": [
-    {
-      "id": "allow-scraped-news",
-      "effect": "allow",
-      "clients": ["default"],
-      "operations": ["repo.contents.read", "git.fetch", "git.push.append"],
-      "targets": [
-        {"kind": "repo", "type": "dataset", "owner": "osolmaz", "name": "scraped-news"}
-      ]
-    }
-  ]
-}
-```
-
-BrokerKit defines no default TCP port. Local production setup uses separate
-permission-restricted agent and operator Unix sockets. Standard Git HTTP and
-remote clients require an explicit TCP listener or HTTPS reverse proxy. Run
-the broker somewhere the agent cannot inspect its process or credential files;
-otherwise the isolation boundary does not hold. See the specification for all
-environment variables.
-
-## Linux Service Setup
-
-For a same-host setup, run the broker as a dedicated service user rather
-than as the agent or your interactive account:
-
-```text
-operator-a = administrator account
-agent-a    = agent account, no root-equivalent groups
-hf-broker  = service account that can read the real Hugging Face token
-```
-
-After installing the binary, create a token file and configure systemd. A fresh
-setup uses the provider-owned `request-all-agent-operations` preset:
-
-```sh
-sudo hf-broker setup systemd \
-  --hf-token-file ./hf-token \
-  --telegram-bot-token-file ./telegram-bot-token \
-  --telegram-chat-id 123456789 \
-  --client agent-a \
-  --operator operator-a \
-  --agent-user agent-a \
-  --operator-user operator-a
-```
-
-The setup command creates protected configuration and state plus systemd
-service and socket units. The public socket paths are:
-
-```text
-/run/brokerkit/huggingface/agent/broker.sock
-/run/brokerkit/huggingface/operator/broker.sock
-/etc/hf-broker/hf-token
-/etc/hf-broker/telegram-bot-token
-/etc/hf-broker/secrets
-/etc/hf-broker/operator-secrets
-/etc/hf-broker/policy-profile.json
-/etc/hf-broker/scope.json
-/etc/hf-broker/policy-manifest.json
-/etc/hf-broker/env
-/var/lib/hf-broker
-/etc/systemd/system/hf-broker.service
-/etc/systemd/system/hf-broker-agent.socket
-/etc/systemd/system/hf-broker-operator.socket
-```
-
-It also creates the `hf-broker` service user when needed, enables and
-starts the service, and prints the broker endpoint plus a secret-safe client setup
-command. It never prints the generated broker client secret. The real Hugging
-Face and Telegram tokens stay readable only by the service. The generated
-operator credential is separate from every agent credential and is used only
-on the protected operator socket. The agent receives only the broker client
-secret and access to the agent socket through `setup client`. Omit both
-Telegram flags
-to run without Telegram; pending requests remain available in the operator
-inbox and the Telegram flags must otherwise be set together.
-
-The default preset allows safe reads, discovery, and inference directly;
-requires approval for writes, administration, and destructive operations; and
-denies internal and credential-output operations. Add repeatable
-`--deny-operation <exact-name>` flags to disable more operations. Setup refuses
-to overwrite an existing policy unless `--replace-policy` is supplied, so a
-binary upgrade cannot silently widen an installation. See
-[Policy presets](docs/POLICY_PRESETS.md) for rendering and drift checks.
-Before replacement, setup previews the current and candidate policy digests and
-operation-count changes; `--dry-run` shows the same information without writes.
-Existing deny overrides remain in effect during replacement unless the operator
-also supplies `--reset-denied-operations`.
-
-To create an intentionally narrow policy for one repository instead, supply
-both `--repo owner/name` and `--repo-type model|dataset|space`. This is an
-explicit alternative to the default preset.
-
-To supply an existing broker client secret, use `--shared-secret-file` or
-`--shared-secret-stdin`. Raw secret command-line flags are not accepted.
-Use `--operator-secret-file` to preserve or rotate the operator credential,
-and `--endpoint` / `--operator-endpoint` to select deployment-owned listeners.
-Agent and operator endpoints must be distinct.
-
-Write a client config file for an agent account with:
-
-```sh
-sudo hf-broker setup client \
-  --client agent-a \
-  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
-  --secret-file /etc/hf-broker/secrets \
-  --home-dir /home/agent-a
-```
-
-This writes `/home/agent-a/.config/hf-broker/client.env` with only the broker
-endpoint and broker shared secret. It does not print either secret and never
-writes the Hugging Face token.
-
-Use `--dry-run` to preview the service setup without writing files:
-
-```sh
-sudo hf-broker setup systemd \
-  --hf-token-file ./hf-token \
-  --dry-run
-```
-
-Check whether generated policy artifacts still match the current catalog:
-
-```sh
-hf-broker doctor policy \
-  --profile /etc/hf-broker/policy-profile.json \
-  --scope /etc/hf-broker/scope.json \
-  --manifest /etc/hf-broker/policy-manifest.json
-```
-
-## Check Local Isolation
-
-If the broker and agent share a host, run the isolation doctor before
-trusting the setup:
-
-```sh
-hf-broker doctor \
-  --agent-user agent \
-  --broker-pid "$(pgrep -x hf-broker)" \
-  --token-file /etc/hf-broker/hf-token \
-  --socket /run/hf-broker/hf-broker.sock
-```
-
-`hf-broker doctor isolation` is the explicit form and behaves the same.
-If no agent identity flags are supplied, `hf-broker doctor` checks the
-live doctor process. This catches stale sessions that still carry old
-root-equivalent groups after the account has been demoted.
-
-The doctor fails closed when the agent is host root, root-equivalent
-through groups such as `sudo`, `wheel`, `admin`, `docker`, `lxd`, or
-`incus`, can read or modify the token file, can read the broker process
-environment, can write/connect to the checked Unix socket, or shares the
-broker UID.
-It can also emit JSON for deployment checks:
-
-```sh
-hf-broker doctor --agent-user agent --token-file /etc/hf-broker/hf-token --json
-```
-
-Exit codes are `0` for OK, `1` for unsafe, `2` for inconclusive, and
-`64` for invalid arguments. The doctor does not make an unsafe local
-setup safe; it verifies whether the host matches the broker threat model.
-It does not echo the `--token-file` value in findings. For file-token
-deployments, pass `--token-file`; `--broker-pid` checks broker
-environment reachability but does not verify file permissions by itself.
-
-On macOS, the doctor keeps the same CLI and JSON report shape but is
-intentionally conservative. It treats `admin` and `wheel` membership as
-root-equivalent, checks token files and Unix sockets by ownership, mode
-bits, ACLs, parent-directory writability, symlink targets, and active
-read/connect probes when it can run as the agent identity. Process
-environment facts and ACL entries that cannot be parsed conservatively
-are reported as `unknown`, which makes the overall result `inconclusive`
-rather than `ok`.
-
-## Point the agent at it
-
-For ordinary Git clients, expose the agent listener through an explicitly
-configured HTTPS ingress. The broker secret is the password:
-
-```sh
-git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped-news
-git config credential.helper '!f() { echo username=default; echo password=$HF_BROKER_SHARED_SECRET; }; f'
-```
-
-Clones, pulls, fast-forward pushes, new branches, and new tags work as
-normal. A history rewrite is refused with a message at the terminal:
-
-```text
- ! [remote rejected] main -> main (hf-broker: history rewrite refused)
-```
-
-## Operator Inbox
-
-The operator listener exposes Brokerkit's shared backend:
-
-```text
-GET  /api/operator/v1/requests
-GET  /api/operator/v1/requests/{id}
-GET  /api/operator/v1/events
-POST /api/operator/v1/requests/{id}/approve
-POST /api/operator/v1/requests/{id}/deny
-POST /api/operator/v1/requests/{id}/revoke
-```
-
-Authenticate with a bearer token from `/etc/hf-broker/operator-secrets`.
-Do not give that file or token to an agent. The listener returns bounded
-Hugging Face-specific display fields while decisions apply only to the
-canonical stored request. Lifecycle events use durable SSE cursors, so a
-trusted host can reconnect after a restart without depending on Telegram. The
-browser must authenticate to the trusted host; the host keeps
-the broker operator credential server-side.
-
-Cancellation is requester-owned and remains on the authenticated agent
-surface. Operators deny pending requests or revoke active grants; they do not
-cancel on behalf of a requester.
-
-## Telegram Grants
-
-Destructive git pushes are still refused by default. To make a narrow
-exception, add a request rule for the repo in `scope.json` and
-configure the broker host with a Telegram bot token and the single
-operator chat id:
-
-Telegram transport and callback handling come from
-`github.com/osolmaz/brokerkit`; hf-broker keeps the Hugging Face-specific
-approval message text and request classification.
-
-Policy decisions also run through `github.com/osolmaz/brokerkit/policy`.
-hf-broker keeps the Hugging Face rules-file parser, provider vocabulary, and
-request classifiers; brokerkit owns matching, precedence, ambiguity checks,
-grant bounds, and active-grant overlays. Brokerkit also owns durable grant
-state, notification claims and references, expiry, reservation recovery, and
-use accounting. hf-broker only maps HF targets and attrs and renders HF-specific
-operator text.
-
-Telegram is optional. It is a notification view over the same durable grant
-store used by the operator inbox; a decision through either path closes the
-same request exactly once.
-
-Telegram callbacks are acknowledged immediately after the durable decision.
-Status edits run through the restart-safe brokerkit grant sweep. A verified
-callback commits the decision and editable message reference in one transaction
-when Telegram delivered the prompt but the original send response was lost. A
-durable write failure is left unanswered and retried from the same Telegram
-update.
+Grantable git capabilities are `git.push.force` for history rewrites,
+`git.ref.delete` for non-tag branch/ref deletion, and `git.tag.update` for
+moving or deleting tags. Each one must be enabled separately with a
+`"effect": "request"` rule in `scope.json`:
 
 ```json
 {
@@ -463,20 +227,167 @@ update.
 }
 ```
 
-```sh
-export HF_BROKER_TELEGRAM_BOT_TOKEN=...
-export HF_BROKER_TELEGRAM_CHAT_ID=123456789
+A grant only covers the requested repo/ref, expires at the approved time, and
+is consumed after its use budget is exhausted.
+
+## Linux service setup
+
+For a same-host setup, run the broker as a dedicated service user rather
+than as the agent or your interactive account:
+
+```text
+operator-a = administrator account
+agent-a    = agent account, no root-equivalent groups
+hf-broker  = service account that can read the real Hugging Face token
 ```
 
-For a service deployment, use `--telegram-bot-token-file` during `setup
-systemd`. The installer copies the token to a service-owned `0600` file and
-puts only its path in the service environment. Rerunning setup without both
-Telegram flags disables Telegram and removes the managed token only after the
-restarted service passes its readiness check. `--no-start` does not retire the
-file.
+After installing the binary, create a token file and configure systemd:
 
-An authenticated client can then request a time-boxed grant. Every request must
-carry a unique `client_request_id`; retry the same request with the same value.
+```sh
+sudo hf-broker setup systemd \
+  --hf-token-file ./hf-token \
+  --telegram-bot-token-file ./telegram-bot-token \
+  --telegram-chat-id 123456789 \
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
+```
+
+Setup creates protected configuration under `/etc/hf-broker`, state under
+`/var/lib/hf-broker`, systemd service and socket units, and the `hf-broker`
+service user when needed, then enables and starts the service. The agent and
+operator listeners are separate Unix sockets:
+
+```text
+/run/brokerkit/huggingface/agent/broker.sock
+/run/brokerkit/huggingface/operator/broker.sock
+```
+
+It prints the broker endpoint plus a secret-safe client setup command and
+never prints the generated broker client secret. The real Hugging Face and
+Telegram tokens stay readable only by the service, and the generated operator
+credential is separate from every agent credential. Omit both Telegram flags
+to run without Telegram; pending requests remain available in the operator
+inbox. Use `--dry-run` to preview without writing files.
+
+A fresh setup installs the provider-owned `request-all-agent-operations`
+policy preset: safe reads, discovery, and inference are allowed directly;
+writes, administration, and destructive operations require approval; internal
+and credential-output operations are denied. Add repeatable
+`--deny-operation <exact-name>` flags to disable more operations. Setup
+refuses to overwrite an existing policy unless `--replace-policy` is
+supplied, so a binary upgrade cannot silently widen an installation; before
+replacement it previews the current and candidate policy digests and
+operation-count changes. Existing deny overrides remain in effect unless the
+operator also supplies `--reset-denied-operations`. See
+[Policy presets](docs/POLICY_PRESETS.md) for rendering and drift checks.
+
+To create an intentionally narrow policy for one repository instead, supply
+both `--repo owner/name` and `--repo-type model|dataset|space`.
+
+To supply an existing broker client secret, use `--shared-secret-file` or
+`--shared-secret-stdin`; raw secret command-line flags are not accepted. Use
+`--operator-secret-file` to preserve or rotate the operator credential, and
+`--endpoint` / `--operator-endpoint` to select deployment-owned listeners.
+Agent and operator endpoints must be distinct. macOS uses
+`hf-broker setup launchd` with the same credential flags.
+
+Write a client config file for an agent account with:
+
+```sh
+sudo hf-broker setup client \
+  --client agent-a \
+  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
+  --secret-file /etc/hf-broker/secrets \
+  --home-dir /home/agent-a
+```
+
+This writes `/home/agent-a/.config/hf-broker/client.env` with only
+`HF_BROKER_ENDPOINT` and `HF_BROKER_SHARED_SECRET`. It does not print either
+secret and never writes the Hugging Face token. The typed CLI reads the
+endpoint as `HF_BROKER_AGENT_ENDPOINT`, so the agent sources its own
+generated file and maps the name (this is the current generated-file/CLI
+name mapping):
+
+```sh
+. "$HOME/.config/hf-broker/client.env"
+export HF_BROKER_AGENT_ENDPOINT="$HF_BROKER_ENDPOINT"
+```
+
+Check whether generated policy artifacts still match the current catalog:
+
+```sh
+hf-broker doctor policy \
+  --profile /etc/hf-broker/policy-profile.json \
+  --scope /etc/hf-broker/scope.json \
+  --manifest /etc/hf-broker/policy-manifest.json
+```
+
+## Check local isolation
+
+If the broker and agent share a host, run the isolation doctor before
+trusting the setup:
+
+```sh
+hf-broker doctor \
+  --agent-user agent \
+  --broker-pid "$(pgrep -x hf-broker)" \
+  --token-file /etc/hf-broker/hf-token \
+  --socket /run/brokerkit/huggingface/agent/broker.sock
+```
+
+`hf-broker doctor isolation` is the explicit form and behaves the same. If no
+agent identity flags are supplied, the doctor checks the live doctor process,
+which catches stale sessions that still carry old root-equivalent groups
+after the account has been demoted.
+
+The doctor fails closed when the agent is host root, root-equivalent through
+groups such as `sudo`, `wheel`, `admin`, `docker`, `lxd`, or `incus`, can
+read or modify the token file, can read the broker process environment, can
+write/connect to the checked Unix socket, or shares the broker UID. Add
+`--json` for deployment checks. Exit codes are `0` for OK, `1` for unsafe,
+`2` for inconclusive, and `64` for invalid arguments.
+
+The doctor does not make an unsafe local setup safe; it verifies whether the
+host matches the broker threat model. It never echoes the `--token-file`
+value in findings. On macOS the doctor keeps the same CLI and JSON report
+shape but is intentionally conservative: facts it cannot establish are
+reported as `unknown`, which makes the overall result `inconclusive` rather
+than `ok`.
+
+## Operator inbox
+
+The separate operator listener exposes BrokerKit's shared inbox:
+
+```text
+GET  /api/operator/v1/requests
+GET  /api/operator/v1/requests/{id}
+GET  /api/operator/v1/events
+POST /api/operator/v1/requests/{id}/approve
+POST /api/operator/v1/requests/{id}/deny
+POST /api/operator/v1/requests/{id}/revoke
+```
+
+Authenticate with a bearer token from `/etc/hf-broker/operator-secrets`. Do
+not give that file or token to an agent. Lifecycle events use durable SSE
+cursors, so a trusted host can reconnect after a restart without depending on
+Telegram. Cancellation is requester-owned and stays on the authenticated
+agent surface; operators deny pending requests or revoke active grants.
+
+Telegram is optional. It is a notification view over the same durable grant
+store used by the operator inbox; a decision through either path closes the
+same request exactly once. For a service deployment, pass
+`--telegram-bot-token-file` and `--telegram-chat-id` during `setup systemd`.
+The broker sends approval requests to the configured operator chat with
+Approve and Deny buttons and long-polls the Bot API for the answer; there is
+no inbound Telegram callback URL, and decisions from any other chat are
+ignored. Rerunning setup without both Telegram flags disables Telegram and
+retires the managed token file after the restarted service passes its
+readiness check.
+
+Authenticated clients can also request grants over HTTP. Every request must
+carry a unique `client_request_id`, reused on retries:
 
 ```sh
 curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
@@ -493,25 +404,10 @@ curl -sS -H "Authorization: Bearer $HF_BROKER_SHARED_SECRET" \
     "reason": "recover main after a bad commit",
     "minutes": 5,
     "max_uses": 1,
-    "client_request_id": "recover-main-20260706"
+    "client_request_id": "recover-main-after-bad-commit"
   }' \
   https://hf-broker.example.com/api/grants
 ```
-
-Other grantable git capabilities are `git.ref.delete` for non-tag
-branch/ref deletion and `git.tag.update` for moving or deleting tags.
-Each one must be enabled separately in `scope.json`.
-
-The broker sends the request to Telegram with Approve and Deny buttons
-and long-polls the Bot API for the answer. There is no inbound Telegram
-callback URL. A grant only covers the requested repo/ref, expires at the
-approved time, is consumed after its use budget is exhausted, and
-decisions from any chat except the configured operator chat are ignored.
-
-If Telegram delivery returns an ambiguous error, the broker keeps the
-notification claim and fails the client request. It does not send a duplicate
-until the original two-minute claim lease expires; that retry uses a fresh
-one-time decision token. This state survives broker restarts.
 
 ## License
 
