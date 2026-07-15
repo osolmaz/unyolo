@@ -64,14 +64,11 @@ sudo sudo-broker setup client \
 ```
 
 This writes `/home/agent-a/.config/sudo-broker/client.env` with only
-`SUDO_BROKER_ENDPOINT` and `SUDO_BROKER_SHARED_SECRET`. The `run` client
-reads the endpoint as `SUDO_BROKER_AGENT_ENDPOINT`, so the agent sources its
-own generated file and maps the name (this is the current
-generated-file/CLI name mapping):
+`SUDO_BROKER_AGENT_ENDPOINT` and `SUDO_BROKER_SHARED_SECRET`. The agent loads
+it with:
 
 ```sh
 . "$HOME/.config/sudo-broker/client.env"
-export SUDO_BROKER_AGENT_ENDPOINT="$SUDO_BROKER_ENDPOINT"
 ```
 
 Verify host isolation and helper readiness:

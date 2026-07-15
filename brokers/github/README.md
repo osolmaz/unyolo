@@ -91,14 +91,11 @@ sudo gh-broker setup client \
 ```
 
 The generated `~/.config/gh-broker/client.env` contains only
-`GH_BROKER_ENDPOINT` and `GH_BROKER_SHARED_SECRET`; it does not contain
-GitHub credentials. The typed CLI reads the endpoint as
-`GH_BROKER_AGENT_ENDPOINT`, so the agent sources its own generated file and
-maps the name (this is the current generated-file/CLI name mapping):
+`GH_BROKER_AGENT_ENDPOINT` and `GH_BROKER_SHARED_SECRET`; it does not contain
+GitHub credentials. The agent loads it with:
 
 ```sh
 . "$HOME/.config/gh-broker/client.env"
-export GH_BROKER_AGENT_ENDPOINT="$GH_BROKER_ENDPOINT"
 ```
 
 ### Development token fallback
@@ -194,11 +191,10 @@ git -c http.extraHeader="Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
 Discrete GitHub operations use the typed Agent V1 CLI. It reads
 `GH_BROKER_AGENT_ENDPOINT` plus `GH_BROKER_SHARED_SECRET` or
 `GH_BROKER_SHARED_SECRET_FILE` from the environment; source the generated
-client config and map the endpoint name as shown above:
+client config as shown above:
 
 ```sh
 . "$HOME/.config/gh-broker/client.env"
-export GH_BROKER_AGENT_ENDPOINT="$GH_BROKER_ENDPOINT"
 
 gh-broker operation submit repo.contents.read \
   --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \

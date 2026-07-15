@@ -139,12 +139,10 @@ output. Other `/v1/*` routes fail closed.
 Protected Hub mutations use the typed Agent Operations API. The bundled
 client and MCP adapter use only a broker client secret; neither can read the
 upstream Hugging Face token. The example sources the `client.env` generated
-by `setup client` (see [Linux service setup](#linux-service-setup)) and maps
-the endpoint name for the CLI:
+by `setup client` (see [Linux service setup](#linux-service-setup)):
 
 ```sh
 . "$HOME/.config/hf-broker/client.env"
-export HF_BROKER_AGENT_ENDPOINT="$HF_BROKER_ENDPOINT"
 hf-broker client repo create \
   --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
   --arguments-json '{"visibility":"private"}'
@@ -304,15 +302,12 @@ sudo hf-broker setup client \
 ```
 
 This writes `/home/agent-a/.config/hf-broker/client.env` with only
-`HF_BROKER_ENDPOINT` and `HF_BROKER_SHARED_SECRET`. It does not print either
-secret and never writes the Hugging Face token. The typed CLI reads the
-endpoint as `HF_BROKER_AGENT_ENDPOINT`, so the agent sources its own
-generated file and maps the name (this is the current generated-file/CLI
-name mapping):
+`HF_BROKER_AGENT_ENDPOINT` and `HF_BROKER_SHARED_SECRET`. It does not print
+either secret and never writes the Hugging Face token. The agent loads it
+with:
 
 ```sh
 . "$HOME/.config/hf-broker/client.env"
-export HF_BROKER_AGENT_ENDPOINT="$HF_BROKER_ENDPOINT"
 ```
 
 Check whether generated policy artifacts still match the current catalog:

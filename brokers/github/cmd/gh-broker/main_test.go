@@ -148,8 +148,11 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "GH_BROKER_ENDPOINT='unix:///run/gh-broker/agent.sock'") {
+	if !strings.Contains(text, "GH_BROKER_AGENT_ENDPOINT='unix:///run/gh-broker/agent.sock'") {
 		t.Fatalf("client env missing endpoint: %q", text)
+	}
+	if strings.Contains(text, "GH_BROKER_ENDPOINT=") {
+		t.Fatalf("client env contains legacy endpoint: %q", text)
 	}
 	if !strings.Contains(text, "GH_BROKER_SHARED_SECRET='"+secret+"'") {
 		t.Fatalf("client env missing secret: %q", text)
