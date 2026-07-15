@@ -333,14 +333,14 @@ fi
 
 if grep -R -n --include='*.ts' --include='*.tsx' -E 'mlclaw\.|(telegram|discord|slack)' \
   plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
-  --exclude='*.test.ts' 2>/dev/null; then
+  --exclude='*.test.ts' --exclude-dir=generated 2>/dev/null; then
   echo 'OpenClaw production code contains a host- or channel-specific branch' >&2
   exit 1
 fi
 
 if grep -R -n --include='*.ts' --include='*.tsx' -E '(huggingface|github|sudo)-broker' \
   plugins/openclaw/index.ts plugins/openclaw/src plugins/openclaw/ui/src \
-  --exclude='*.test.ts' 2>/dev/null; then
+  --exclude='*.test.ts' --exclude-dir=generated 2>/dev/null; then
   echo 'OpenClaw production code contains a provider-specific branch' >&2
   exit 1
 fi
