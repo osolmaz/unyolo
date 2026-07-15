@@ -28,3 +28,13 @@ regexTarget = "match"
 regexes = [
   '''ZW5jcnlwdGVkLWNhbmFyeS12YWx1ZQ=='''
 ]
+
+[[allowlists]]
+description = "Synthetic authentication test credentials"
+paths = [
+  '''auth/auth_test\.go'''
+]
+regexTarget = "match"
+regexes = [
+  '''(?:bob|agent)-secret-with-enough-bytes-[0-9]+'''
+]
