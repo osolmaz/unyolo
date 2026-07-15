@@ -26,6 +26,7 @@ const setupUsage = `usage:
   gh-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
 
 type setupClientOptions = bksetup.ClientOptions
+type setupCommand func(context.Context, io.Writer, io.Writer, []string) error
 
 type setupSystemdOptions struct {
 	bksetup.SystemdOptions
@@ -62,17 +63,27 @@ func runSetupWithContext(ctx context.Context, stdout io.Writer, stderr io.Writer
 	if len(args) == 0 {
 		return errors.New(setupUsage)
 	}
-	switch args[0] {
-	case "client":
-		return runSetupClientCommand(stdout, stderr, args[1:])
-	case "systemd":
-		return runSetupSystemdCommand(ctx, stdout, stderr, os.Stdin, args[1:])
-	case "launchd":
-		return runSetupLaunchdCommand(ctx, stdout, stderr, os.Stdin, args[1:])
-	case "github-user":
-		return runSetupGitHubUser(ctx, stdout, stderr, args[1:])
-	default:
+	command, found := setupCommands()[args[0]]
+	if !found {
 		return errors.New(setupUsage)
+	}
+	return command(ctx, stdout, stderr, args[1:])
+}
+
+func setupCommands() map[string]setupCommand {
+	return map[string]setupCommand{
+		"client": func(_ context.Context, stdout io.Writer, stderr io.Writer, args []string) error {
+			return runSetupClientCommand(stdout, stderr, args)
+		},
+		"systemd": func(ctx context.Context, stdout io.Writer, stderr io.Writer, args []string) error {
+			return runSetupSystemdCommand(ctx, stdout, stderr, os.Stdin, args)
+		},
+		"launchd": func(ctx context.Context, stdout io.Writer, stderr io.Writer, args []string) error {
+			return runSetupLaunchdCommand(ctx, stdout, stderr, os.Stdin, args)
+		},
+		"github-user": func(ctx context.Context, stdout io.Writer, stderr io.Writer, args []string) error {
+			return runSetupGitHubUser(ctx, stdout, stderr, args)
+		},
 	}
 }
 
@@ -92,16 +103,12 @@ func runSetupSystemdCommand(ctx context.Context, stdout io.Writer, stderr io.Wri
 	if err != nil {
 		return err
 	}
+	if help {
+		return nil
+	}
 	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "gh-broker", "local-operator")
 	if err != nil {
 		return err
-	}
-	return runParsedSystemdSetup(ctx, stdout, opts, help)
-}
-
-func runParsedSystemdSetup(ctx context.Context, stdout io.Writer, opts setupSystemdOptions, help bool) error {
-	if help {
-		return nil
 	}
 	return runSetupSystemd(ctx, stdout, opts)
 }
@@ -130,15 +137,31 @@ func parseSetupSystemd(stderr io.Writer, stdin io.Reader, args []string) (setupS
 }
 
 func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) (setupSystemdOptions, bool, error) {
-	opts := setupSystemdOptions{
+	opts := defaultGitHubSystemdOptions()
+	var flagOutput strings.Builder
+	fs := flag.NewFlagSet("gh-broker setup systemd", flag.ContinueOnError)
+	fs.SetOutput(&flagOutput)
+	bindGitHubSystemdFlags(fs, &opts)
+	if help, err := parseGitHubSystemdFlags(fs, stderr, &flagOutput, args); err != nil || help {
+		return setupSystemdOptions{}, help, err
+	}
+	opts.PolicyPresetExplicit = flagWasProvided(fs, "policy-preset")
+	if err := finalizeGitHubSystemdOptions(&opts, stdin); err != nil {
+		return setupSystemdOptions{}, false, err
+	}
+	return opts, false, validateSetupSystemdOptions(opts)
+}
+
+func defaultGitHubSystemdOptions() setupSystemdOptions {
+	return setupSystemdOptions{
 		SystemdOptions: bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			Endpoint: "unix:///run/brokerkit/github/agent/broker.sock",
 		}),
 	}
-	var flagOutput strings.Builder
-	fs := flag.NewFlagSet("gh-broker setup systemd", flag.ContinueOnError)
-	fs.SetOutput(&flagOutput)
+}
+
+func bindGitHubSystemdFlags(fs *flag.FlagSet, opts *setupSystemdOptions) {
 	bksetup.BindSystemdFlags(fs, &opts.SystemdOptions)
 	fs.StringVar(&opts.GitHubTokenFile, "github-token-file", "", "file containing a GitHub token for dev-token fallback")
 	fs.StringVar(&opts.GitHubAppIDFile, "github-app-id-file", "", "file containing the GitHub App id")
@@ -158,52 +181,63 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/brokerkit/github/operator/broker.sock", "operator inbox endpoint URI")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
+}
+
+func parseGitHubSystemdFlags(fs *flag.FlagSet, stderr io.Writer, flagOutput *strings.Builder, args []string) (bool, error) {
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = io.Copy(stderr, strings.NewReader(flagOutput.String()))
-			return setupSystemdOptions{}, true, nil
+			return true, nil
 		}
-		return setupSystemdOptions{}, false, errors.New("invalid setup systemd flags")
+		return false, errors.New("invalid setup systemd flags")
 	}
 	if fs.NArg() != 0 {
-		return setupSystemdOptions{}, false, errors.New("setup systemd does not accept positional arguments")
+		return false, errors.New("setup systemd does not accept positional arguments")
 	}
-	opts.PolicyPresetExplicit = flagWasProvided(fs, "policy-preset")
+	return false, nil
+}
+
+func finalizeGitHubSystemdOptions(opts *setupSystemdOptions, stdin io.Reader) error {
 	finalized, err := bksetup.FinalizeSystemd(opts.SystemdOptions)
 	if err != nil {
-		return setupSystemdOptions{}, false, err
+		return err
 	}
 	opts.SystemdOptions = finalized
 	secret, err := bksetup.ResolveSecret(bksetup.SecretInput{File: opts.SharedSecretFile, Stdin: opts.SharedSecretStdin}, stdin)
 	if err != nil {
-		return setupSystemdOptions{}, false, err
+		return err
 	}
 	opts.SharedSecret = secret
 	operatorSecret, err := bksetup.ResolveSecret(bksetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
 	if err != nil {
-		return setupSystemdOptions{}, false, err
+		return err
 	}
 	opts.OperatorSecret = operatorSecret
-	return opts, false, validateSetupSystemdOptions(opts)
+	return nil
 }
 
 func validateSetupSystemdOptions(opts setupSystemdOptions) error {
-	if err := opts.Validate(); err != nil {
-		return err
+	checks := []func(setupSystemdOptions) error{
+		func(value setupSystemdOptions) error { return value.Validate() },
+		validateSetupSystemdCredentialOptions,
+		validateSetupSystemdClientOptions,
+		validateTelegramSetupOptions,
+		validateSetupOperatorCredentials,
+		validateSetupOperatorListener,
 	}
-	if err := validateSetupSystemdCredentialOptions(opts); err != nil {
-		return err
+	for _, check := range checks {
+		if err := check(opts); err != nil {
+			return err
+		}
 	}
-	if err := validateSetupSystemdClientOptions(opts); err != nil {
-		return err
-	}
+	return nil
+}
+
+func validateTelegramSetupOptions(opts setupSystemdOptions) error {
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return errors.New("--telegram-bot-token-file and --telegram-chat-id must be set together")
 	}
-	if err := validateSetupOperatorCredentials(opts); err != nil {
-		return err
-	}
-	return validateSetupOperatorListener(opts)
+	return nil
 }
 
 func validateSetupOperatorCredentials(opts setupSystemdOptions) error {
@@ -245,10 +279,7 @@ func validateSetupSystemdCredentialOptions(opts setupSystemdOptions) error {
 
 func validateSetupPolicyOptions(opts setupSystemdOptions) error {
 	if opts.ScopeFile != "" {
-		if opts.PolicyPresetExplicit || len(opts.DeniedOperations) > 0 || opts.ResetDeniedOperations {
-			return errors.New("--scope-file cannot be combined with managed policy preset flags")
-		}
-		return nil
+		return validateCustomScopePolicyOptions(opts)
 	}
 	if opts.PolicyPreset != policypreset.RequestAllAgentOperations {
 		return fmt.Errorf("unknown --policy-preset %q", opts.PolicyPreset)
@@ -261,6 +292,13 @@ func validateSetupPolicyOptions(opts setupSystemdOptions) error {
 		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
 	})
 	return err
+}
+
+func validateCustomScopePolicyOptions(opts setupSystemdOptions) error {
+	if opts.PolicyPresetExplicit || len(opts.DeniedOperations) > 0 || opts.ResetDeniedOperations {
+		return errors.New("--scope-file cannot be combined with managed policy preset flags")
+	}
+	return nil
 }
 
 func flagWasProvided(fs *flag.FlagSet, name string) bool {

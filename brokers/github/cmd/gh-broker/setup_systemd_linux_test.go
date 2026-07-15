@@ -38,6 +38,17 @@ func TestParseSetupSystemdDefaultsToManagedPreset(t *testing.T) {
 	}
 }
 
+func TestRunSetupSystemdCommandHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runSetupSystemdCommand(context.Background(), &stdout, &stderr, strings.NewReader(""), []string{"--help"})
+	if err != nil {
+		t.Fatalf("runSetupSystemdCommand(help) error = %v", err)
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "gh-broker setup systemd") {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
 func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	dir := t.TempDir()
 	tokenFile := writeFixture(t, dir, "github-token", "ghp_token\n")
@@ -117,6 +128,25 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("dry-run missing %q:\n%s", want, stdout.String())
 		}
+	}
+}
+
+func TestSetupSystemdDryRunValidatesInstallPlan(t *testing.T) {
+	var stdout bytes.Buffer
+	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- generated test secrets are not credentials.
+		SystemdOptions: bksetup.SystemdOptions{
+			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
+			ConfigDir: t.TempDir(), StateDir: "/var/lib/gh-broker",
+			SystemdDir: "/etc/systemd/system", BinaryPath: "relative/gh-broker",
+			ClientName: "agent-a", Endpoint: testGHAgentEndpoint, DryRun: true,
+		},
+		GitHubTokenFile: "/tmp/github-token", PolicyPreset: policypreset.RequestAllAgentOperations,
+		SharedSecret: strings.Repeat("s", 32), OperatorID: "operator-a",
+		OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
+		DevTokenFallback: true,
+	})
+	if err == nil {
+		t.Fatal("dry-run accepted an invalid systemd install plan")
 	}
 }
 
@@ -265,6 +295,54 @@ func TestManagedPresetArtifactsPreserveInstalledDenies(t *testing.T) {
 	want := []string{"pull_request.create", "repo.delete"}
 	if !slices.Equal(profile.DeniedOperations, want) {
 		t.Fatalf("preserved denies = %v, want %v", profile.DeniedOperations, want)
+	}
+	digest, counts, err := currentGitHubPolicyPreview(plan)
+	if err != nil {
+		t.Fatalf("currentGitHubPolicyPreview() error = %v", err)
+	}
+	if digest != first.policyDigest || counts == nil || counts.Deny != first.counts.Deny {
+		t.Fatalf("preview digest=%s counts=%+v", digest, counts)
+	}
+}
+
+func TestInstalledPolicyArtifactsRejectIncompleteManagedPair(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: bksetup.SystemdOptions{ConfigDir: configDir}})
+	if err := os.WriteFile(plan.policyProfilePath, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installedGitHubPolicyArtifacts(plan); err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("installedGitHubPolicyArtifacts() error = %v", err)
+	}
+}
+
+func TestCheckGitHubPolicyReplacementRequiresExplicitFlag(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plan := systemdSetupPlan(setupSystemdOptions{
+		SystemdOptions: bksetup.SystemdOptions{ConfigDir: configDir, ClientName: "agent-a"},
+		PolicyPreset:   policypreset.RequestAllAgentOperations,
+	})
+	if err := os.WriteFile(plan.scopePath, []byte(minimalScopeJSON()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	if err := checkGitHubPolicyReplacement(&stdout, plan); err == nil || !strings.Contains(err.Error(), "--replace-policy") {
+		t.Fatalf("checkGitHubPolicyReplacement() error = %v", err)
+	}
+	plan.opts.ReplacePolicy = true
+	if err := checkGitHubPolicyReplacement(&stdout, plan); err != nil {
+		t.Fatalf("checkGitHubPolicyReplacement(replace) error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Policy replacement preview") {
+		t.Fatalf("replacement preview missing:\n%s", stdout.String())
 	}
 }
 

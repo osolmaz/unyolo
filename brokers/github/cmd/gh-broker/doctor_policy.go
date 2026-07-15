@@ -74,27 +74,41 @@ func writeInvalidDoctorPolicy(stdout io.Writer, jsonOutput bool, cause error) er
 
 func writeDoctorPolicyReport(stdout io.Writer, report policypreset.DriftReport, jsonOutput bool) error {
 	if jsonOutput {
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(report)
+		return writeDoctorPolicyJSON(stdout, report)
 	}
 	if _, err := fmt.Fprintf(stdout, "Policy status: %s\n", report.Status); err != nil {
 		return err
 	}
-	for _, detail := range report.Details {
+	if err := writeDoctorPolicyDetails(stdout, report.Details); err != nil {
+		return err
+	}
+	return writeDoctorPolicyOperationGroups(stdout, report)
+}
+
+func writeDoctorPolicyJSON(stdout io.Writer, report policypreset.DriftReport) error {
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(report)
+}
+
+func writeDoctorPolicyDetails(stdout io.Writer, details []string) error {
+	for _, detail := range details {
 		if _, err := fmt.Fprintf(stdout, "- %s\n", detail); err != nil {
 			return err
 		}
 	}
-	groups := []struct {
+	return nil
+}
+
+func writeDoctorPolicyOperationGroups(stdout io.Writer, report policypreset.DriftReport) error {
+	for _, group := range []struct {
 		label      string
 		operations []string
 	}{
 		{"Added operations", report.AddedOperations},
 		{"Removed operations", report.RemovedOperations},
 		{"Changed operations", report.ChangedOperations},
-	}
-	for _, group := range groups {
+	} {
 		if len(group.operations) > 0 {
 			if _, err := fmt.Fprintf(stdout, "%s: %s\n", group.label, strings.Join(group.operations, ", ")); err != nil {
 				return err
