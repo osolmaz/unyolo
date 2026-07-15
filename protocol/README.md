@@ -1,24 +1,38 @@
 # BrokerKit Protocols
 
-`openapi/operator-v1.yaml` and `openapi/agent-v1.yaml` are the sole canonical
-HTTP contracts. Every payload lives under `components/schemas`. The closed
-JSON Schemas under `schema/` and `agent-schema/`, generated Go clients and Echo
-interfaces, and generated TypeScript types and validators are committed build
-artifacts. Run `scripts/generate-protocol.sh` after editing either document;
-CI runs `scripts/check-protocol.sh` and rejects stale or invalid output.
+This directory holds the canonical wire artifacts for the protocols BrokerKit
+brokers, clients, and UIs speak. The OpenAPI documents under `openapi/` are
+the sole canonical contracts; every payload lives under
+`components/schemas`. Storage structs and UI models are not wire
+specifications.
 
-Operator V1 is `brokerkit.io/operator/v1`. Provider execution plans and
-credentials are deliberately absent from this protocol.
+- `openapi/operator-v1.yaml` defines Operator V1
+  (`brokerkit.io/operator/v1`): the protected operator inbox used to list,
+  approve, deny, and revoke requests. Provider execution plans and
+  credentials are deliberately absent. The same document defines the
+  aggregate Operator UI payloads used by the packaged OpenClaw interface and
+  delegated hosts: `UISnapshot` is the full authoritative view,
+  `UISnapshotEvent` is a cursor-only invalidation for bounded authenticated
+  long polling, and `UISummary` drives host badges without exposing request
+  details.
+- `openapi/agent-v1.yaml` defines Agent Operations V1
+  (`brokerkit.io/agent/v1`): authenticated agents submit and resume typed
+  provider operations without receiving the provider credential. Providers
+  own target, argument, execution, and result validation; the shared
+  contract owns only identity, idempotency, lifecycle, presentation, and
+  safe errors.
+- `openapi/mcp-v1.yaml` defines the closed MCP operation documents
+  (`brokerkit.io/mcp-operation/v1`) that broker MCP servers return for
+  transcript-safe operation state and recovery.
 
-The same canonical document defines the aggregate Operator UI payloads used by
-the packaged OpenClaw interface and delegated hosts. `UISnapshot` is the full
-authoritative view; `UISnapshotEvent` is a cursor-only invalidation for bounded
-authenticated long polling; and `UISummary` drives host badges without exposing
-request details. Provider requests remain nested under `UIRequest` source
-metadata so their Operator V1 schema is reused rather than copied.
+The closed JSON Schemas under `schema/`, `agent-schema/`, and `mcp-schema/`,
+the generated Go clients and Echo interfaces under `operatorwire/` and
+`agentwire/`, and the generated TypeScript types and validators are committed
+build artifacts. After editing any canonical document, regenerate them with:
 
-Agent Operations V1 is `brokerkit.io/agent/v1`. It lets authenticated agents
-submit and resume typed provider operations without receiving the provider
-credential. Providers own target, argument, execution, and result validation;
-the shared contract owns only identity, idempotency, lifecycle, presentation,
-and safe errors.
+```sh
+scripts/generate-protocol.sh
+```
+
+`scripts/check-protocol.sh` validates the documents and rejects stale or
+invalid generated output.

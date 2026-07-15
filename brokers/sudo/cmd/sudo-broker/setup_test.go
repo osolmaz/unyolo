@@ -64,7 +64,9 @@ func TestSetupClientUsesSharedClientFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "SUDO_BROKER_SHARED_SECRET='") || strings.Contains(stdout.String(), secret) {
+	if !strings.Contains(string(data), "SUDO_BROKER_AGENT_ENDPOINT='unix:///run/sudo-broker/agent.sock'") ||
+		!strings.Contains(string(data), "SUDO_BROKER_SHARED_SECRET='") ||
+		strings.Contains(string(data), "SUDO_BROKER_ENDPOINT=") || strings.Contains(stdout.String(), secret) {
 		t.Fatalf("client config/output invalid: %q / %q", data, stdout.String())
 	}
 }

@@ -18,7 +18,7 @@ func TestRenderClientEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	want := "export GH_BROKER_ENDPOINT='unix:///run/brokerkit/github/agent.sock'\nexport GH_BROKER_SHARED_SECRET='secret-with-'\\''quote'\\'''\n"
+	want := "export GH_BROKER_AGENT_ENDPOINT='unix:///run/brokerkit/github/agent.sock'\nexport GH_BROKER_SHARED_SECRET='secret-with-'\\''quote'\\'''\n"
 	if string(body) != want {
 		t.Fatalf("Render() = %q, want %q", body, want)
 	}
@@ -26,7 +26,7 @@ func TestRenderClientEnv(t *testing.T) {
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command("sh", "-c", `. "$1" && test "$GH_BROKER_ENDPOINT" = 'unix:///run/brokerkit/github/agent.sock' && test "$GH_BROKER_SHARED_SECRET" = "secret-with-'quote'" && env | grep -q '^GH_BROKER_ENDPOINT=' && env | grep -q '^GH_BROKER_SHARED_SECRET='`, "sh", path) // #nosec G204 -- fixed test command and generated temp path.
+	command := exec.Command("sh", "-c", `. "$1" && test "$GH_BROKER_AGENT_ENDPOINT" = 'unix:///run/brokerkit/github/agent.sock' && test "$GH_BROKER_SHARED_SECRET" = "secret-with-'quote'" && env | grep -q '^GH_BROKER_AGENT_ENDPOINT=' && ! env | grep -q '^GH_BROKER_ENDPOINT=' && env | grep -q '^GH_BROKER_SHARED_SECRET='`, "sh", path) // #nosec G204 -- fixed test command and generated temp path.
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("source rendered client env: %v: %s", err, output)
 	}
@@ -60,8 +60,11 @@ func TestWriteClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "export HF_BROKER_ENDPOINT='unix:///run/brokerkit/huggingface/agent.sock'\n") {
+	if !strings.Contains(text, "export HF_BROKER_AGENT_ENDPOINT='unix:///run/brokerkit/huggingface/agent.sock'\n") {
 		t.Fatalf("client env missing endpoint: %q", text)
+	}
+	if strings.Contains(text, "export HF_BROKER_ENDPOINT=") {
+		t.Fatalf("client env contains legacy endpoint: %q", text)
 	}
 	if !strings.Contains(text, "export HF_BROKER_SHARED_SECRET='client-secret'\n") {
 		t.Fatalf("client env missing secret: %q", text)

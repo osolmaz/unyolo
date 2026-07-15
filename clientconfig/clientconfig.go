@@ -109,7 +109,7 @@ func Render(cfg Config) ([]byte, error) {
 		return nil, err
 	}
 	prefix := normalizeEnvPrefix(cfg.EnvPrefix)
-	body := "export " + prefix + "_ENDPOINT=" + shellQuote(cfg.Endpoint) + "\n" +
+	body := "export " + prefix + "_AGENT_ENDPOINT=" + shellQuote(cfg.Endpoint) + "\n" +
 		"export " + prefix + "_SHARED_SECRET=" + shellQuote(cfg.Secret) + "\n"
 	return []byte(body), nil
 }

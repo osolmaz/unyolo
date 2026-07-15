@@ -1,37 +1,33 @@
 # BrokerKit
 
-BrokerKit is a monorepo and Go toolkit for brokered access-control services.
-It keeps protected credentials and Unix privilege boundaries in dedicated
-services while untrusted clients receive only narrowly scoped broker access.
+BrokerKit is a Go toolkit and monorepo of brokered access-control services.
+It keeps protected credentials and Unix privilege boundaries inside dedicated
+broker processes, so untrusted clients such as coding agents receive only a
+narrowly scoped, revocable broker credential instead of the real one.
 
-This repository contains the shared runtime plus three separate broker
-executables:
+The repository ships three separate broker executables, one UI plugin, and the
+shared protocol they speak:
 
-- [HF Broker](brokers/huggingface/README.md) for Hugging Face credentials and
-  Git, LFS, Hub, and inference operations.
-- [GH Broker](brokers/github/README.md) for GitHub App credentials, repository
-  reads, Git operations, and pull requests.
-- [Sudo Broker](brokers/sudo/README.md) for approved exact-command execution as
-  another Unix user.
-- [OpenClaw BrokerKit](plugins/openclaw/README.md), an independently packaged
-  approvals UI and channel integration.
+- [hf-broker](brokers/huggingface/README.md) brokers Hugging Face credentials
+  for Git, LFS, Hub, and inference operations.
+- [gh-broker](brokers/github/README.md) brokers GitHub App credentials for
+  repository reads, Git operations, pull requests, and the wider GitHub API.
+- [sudo-broker](brokers/sudo/README.md) runs approved exact commands as
+  another Unix user through a root helper.
+- [openclaw-brokerkit](plugins/openclaw/README.md) adds a provider-neutral
+  approvals tab and `/brokerkit` commands to OpenClaw.
+- [protocol](protocol/README.md) holds the canonical Operator V1 and
+  Agent V1 wire artifacts and MCP operation documents shared by all of the
+  above.
 
-All brokers use BrokerKit for authentication, policy, grants, operator APIs,
-audit, notification state, Telegram transport, setup, and installation. Each
-broker remains a separate process with separate credentials and provider logic.
+Each broker is a separate process with its own listener, credential domain,
+state directory, release artifact, and audit stream. Install and operate them
+independently; every broker README covers its own install, setup, and
+day-to-day workflows.
 
-BrokerKit stays focused: it is not a full application framework, and it does
-not contain provider-specific Hugging Face, GitHub, or Unix privilege logic.
+## How a broker works
 
-The `controlplane` package is the standard assembly path for grant storage,
-client and operator authentication, the protected operator API, audit export,
-and approval-channel decisions. `secretfile` owns the named credential format,
-and `conformance` provides the black-box contract suite consumed by every
-broker.
-
-## Design
-
-The common broker shape is:
+Every broker handles a request the same way:
 
 ```text
 client request
@@ -42,77 +38,53 @@ classify request into client + operation + target + attrs
         ↓
 policy decision: deny / active grant / allow / request / no_match
         ↓
-optional approval grant
+optional operator approval grant
         ↓
 provider-specific executor
         ↓
 audit log
 ```
 
-brokerkit owns the reusable control plane. Each broker still owns its dangerous
-domain boundary:
+Policy lives in a manually edited rules file (`scope.json` or
+`policy.json`) that the broker loads at startup. Requests the policy engine
+cannot classify are refused: brokers fail closed. Dangerous operations can be
+marked `request`, which parks them until an operator approves a short-lived
+grant through the protected operator inbox or an optional Telegram
+notification.
 
-- `hf-broker` owns Hugging Face Git/LFS, mirrors, append-only checks, and Hub
-  token use.
-- `gh-broker` owns GitHub API/Git behavior, pull requests, installations, and
-  GitHub ruleset compatibility.
-- `sudo-broker` owns exact cataloged Unix command execution, target identity
-  switching, the privileged helper, and OS-specific host validation. V1 has no
-  shell or TTY mode.
+## Security model
 
-The canonical ownership boundary is in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
-The security boundaries and fail-closed behavior are in
-[docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md).
-The shared install, setup, policy, grant, approval, audit, doctor, and release
-contract is in
+- Secret material is write-only inside a broker. No API, log line, error, or
+  helper returns the upstream credential, and audit logs never contain
+  secrets, request bodies, or pack contents.
+- Agent and operator credentials are separate. The operator inbox runs on its
+  own listener with its own secret file; agent credentials cannot approve
+  requests.
+- Network reachability is not authorization. Every endpoint except
+  `GET /healthz` requires authentication.
+- Run a broker where its clients cannot inspect its process or credential
+  files. Each broker ships a `doctor` command that verifies this isolation
+  and fails closed.
+
+The full boundary and fail-closed behavior are in
+[docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md). The shared
+install, setup, policy, grant, approval, audit, and doctor contract that all
+brokers follow is in
 [docs/UNIFIED_BROKER_CONTRACT.md](docs/UNIFIED_BROKER_CONTRACT.md).
 
-## Shared Packages
+## Building from source
 
-The main reusable packages are:
+The monorepo is one Go module. Build any broker with the Go version declared
+in [go.mod](go.mod):
 
-- `auth`: shared-secret bearer/basic authentication for named clients
-- `policy`: generic rule evaluation with broker-owned operation registries
-- `grants`: durable short-lived grants, use reservations, crash recovery, and
-  notification delivery state
-- `agentapi`, `agentclient`, `agentconformance`, `grantclient`, and `clienthttp`:
-  shared Agent V1 server, clients and black-box contract tests, temporary-grant
-  clients, and credential-safe HTTP defaults
-- `usebudget`: finite/default/unlimited approval use-budget values
-- `audit`: secret-safe structured audit helpers
-- `httpx`: proxy-safe header filtering and bounded body helpers
-- `clientconfig`: shared client env rendering for
-  `~/.config/<broker>/client.env`
-- `setup`: shared client command parsing, secret input/generation, and common
-  systemd setup options
-- `service`: hardened provider-neutral systemd unit rendering
-- `doctor`: portable identity, root-equivalent group, service separation, and
-  fail-closed secret-path, ACL, and mode checks with secret-safe reports
-- `installer`: the canonical parameterized POSIX binary installer used by
-  thin component-local broker wrappers
-- `notify`: approval notification interfaces, callback answers, and a stateless
-  Telegram adapter with send, explicit status edit, and long-poll callbacks
-- `operatorinbox`, `operatorauth`, and `operatorapi`: bounded safe operator
-  projections, separate operator authority, typed decisions, and durable SSE
-- `operatorclient` and `operatorfake`: trusted-host integration and contract
-  testing for operator applications
-- `gitx`: generic Git smart-HTTP parsing helpers shared by HF and GH brokers
-- `store`: atomic file storage and lock helpers used by grants and audit
+```sh
+go build ./brokers/huggingface/cmd/hf-broker
+go build ./brokers/github/cmd/gh-broker
+go build ./brokers/sudo/cmd/sudo-broker ./brokers/sudo/cmd/sudo-broker-exec
+```
 
-Provider-specific execution code does not belong in brokerkit.
-
-## Status
-
-The brokers and OpenClaw plugin use the shared Operator V1 control plane.
-Telegram delivery is deliberately stateless:
-brokers persist notification references and use `brokerkit/grants` to drive
-every status transition and retry after a restart. The shared operational
-runtime is described in
-[docs/OPERATIONS_RUNTIME.md](docs/OPERATIONS_RUNTIME.md).
-
-The operator backend and trusted web-host integration contract is documented
-in [docs/OPERATOR_INBOX.md](docs/OPERATOR_INBOX.md).
-The maintained documentation map is in [docs/README.md](docs/README.md).
+For release installs, use each broker's `install.sh` bootstrap as described in
+its README.
 
 ## License
 
