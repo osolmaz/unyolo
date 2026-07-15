@@ -337,7 +337,9 @@ func (connection operationConnection) downloadStream(ctx context.Context, id, ou
 	if err != nil {
 		return err
 	}
+	// #nosec G703 -- temporary is returned by CreateTemp in the output directory.
 	defer func() { _ = os.Remove(temporary) }()
+	// #nosec G703 -- both paths are the validated output and its sibling CreateTemp result.
 	if err := os.Rename(temporary, output); err != nil {
 		return errors.New("replace stream output")
 	}
@@ -375,6 +377,7 @@ func writeStreamDownloadTemp(response *http.Response, output string) (string, er
 	temporary := file.Name()
 	if err := file.Chmod(0o600); err != nil {
 		_ = file.Close()
+		// #nosec G703 -- temporary is the name returned by CreateTemp above.
 		_ = os.Remove(temporary)
 		return "", errors.New("secure stream output")
 	}
@@ -382,6 +385,7 @@ func writeStreamDownloadTemp(response *http.Response, output string) (string, er
 	written, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(response.Body, maxStreamDownloadBytes+1))
 	closeErr := file.Close()
 	if !validStreamDownloadBody(response, hash.Sum(nil), written, copyErr, closeErr) {
+		// #nosec G703 -- temporary is the name returned by CreateTemp above.
 		_ = os.Remove(temporary)
 		return "", errors.New("stream download failed integrity validation")
 	}

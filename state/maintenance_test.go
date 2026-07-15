@@ -56,7 +56,7 @@ func TestStateCheckBackupRestoreAndOpenExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restored.Close()
+	defer func() { _ = restored.Close() }()
 	if _, err := restored.Plan(t.Context(), digest); err != nil {
 		t.Fatalf("restored plan is missing: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestBackupRejectsExistingDestination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	destination := filepath.Join(root, "backup")
 	if err := os.Mkdir(destination, 0o700); err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestStateExportIsDeterministicAndRedacted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	createdAt := time.Date(2026, time.July, 15, 1, 2, 3, 0, time.UTC)
 	canonicalSecret := "canonical-plan-secret"
 	digest, err := database.PutPlan(t.Context(), "test.io/plan/v1", []byte(`{"token":"`+canonicalSecret+`"}`), createdAt)
@@ -245,7 +245,7 @@ func TestMaintenancePathsRejectRelativeAndNestedDestinations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.Backup(t.Context(), "relative"); err == nil {
 		t.Fatal("relative backup destination accepted")
 	}

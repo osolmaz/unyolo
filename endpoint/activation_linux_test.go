@@ -131,7 +131,7 @@ func TestListenerFromFileAcceptsListenerFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer base.Close()
+	defer func() { _ = base.Close() }()
 	file, err := base.(*net.TCPListener).File()
 	if err != nil {
 		t.Fatal(err)

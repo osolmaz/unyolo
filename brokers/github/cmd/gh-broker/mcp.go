@@ -112,7 +112,10 @@ func parseMCPRequest(line []byte) (mcpRequest, bool) {
 
 func notifyMCPToolChanges(getenv func(string) string, encoder *json.Encoder, lastTools string) (string, error) {
 	currentTools, signatureErr := mcpToolSignature(getenv)
-	if signatureErr != nil || currentTools == lastTools {
+	if signatureErr != nil {
+		return lastTools, signatureErr
+	}
+	if currentTools == lastTools {
 		return lastTools, nil
 	}
 	return currentTools, encoder.Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})

@@ -131,7 +131,7 @@ func createBackupStage(stateDirectory, destination string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.Chmod(temporary, 0o700); err != nil {
+	if err := os.Chmod(temporary, 0o700); err != nil { // #nosec G302 -- this is a private directory and requires execute bits.
 		_ = os.RemoveAll(temporary)
 		return "", err
 	}
@@ -175,7 +175,7 @@ func (d *Database) backupSQLite(ctx context.Context, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	err = connection.Raw(func(driverConnection any) error { return runSQLiteBackup(ctx, driverConnection, destination) })
 	if err != nil {
 		return fmt.Errorf("back up state database: %w", err)
@@ -243,7 +243,7 @@ func Restore(ctx context.Context, stateDirectory, backupDirectory string) error 
 	if err != nil {
 		return err
 	}
-	defer lease.close()
+	defer func() { _ = lease.close() }()
 	snapshot, manifest, err := loadBackup(ctx, backupDirectory)
 	if err != nil {
 		return err
@@ -252,7 +252,7 @@ func Restore(ctx context.Context, stateDirectory, backupDirectory string) error 
 	if err != nil {
 		return err
 	}
-	defer os.Remove(stage)
+	defer func() { _ = os.Remove(stage) }()
 	if _, err := validateSnapshot(ctx, stage); err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func copySnapshot(directory, source string, expectedSize int64) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	defer input.Close()
+	defer func() { _ = input.Close() }()
 	output, err := os.CreateTemp(directory, ".state-restore-*.db")
 	if err != nil {
 		return "", err
@@ -521,7 +521,7 @@ func checkpointDatabase(path string) error {
 	if err != nil {
 		return err
 	}
-	_, checkpointErr := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	_, checkpointErr := db.ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)")
 	return errors.Join(checkpointErr, db.Close())
 }
 
@@ -567,7 +567,7 @@ func fileDigest(path string, limit int64) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	size, err := io.Copy(hash, io.LimitReader(file, limit+1))
 	if err != nil || size > limit {

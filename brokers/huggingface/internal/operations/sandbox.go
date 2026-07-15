@@ -388,7 +388,7 @@ func validEnvironmentEntry(key, value string) bool {
 func validEnvironmentKeyCharacter(index int, character rune) bool {
 	letter := asciiLetter(character)
 	digit := asciiDigit(character)
-	return !(index == 0 && digit) && (character == '_' || letter || digit)
+	return (index != 0 || !digit) && (character == '_' || letter || digit)
 }
 
 func asciiLetter(character rune) bool {

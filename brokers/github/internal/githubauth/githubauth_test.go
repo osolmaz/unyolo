@@ -888,7 +888,9 @@ func TestCredentialBoundaryHelpersFailClosed(t *testing.T) {
 	var nilProvider *installationProvider
 	nilProvider.enable(42)
 	nilProvider.invalidate(42, true)
-	nilProvider.revokeCredential(t.Context(), nil)
+	if err := nilProvider.revokeCredential(t.Context(), nil); err == nil {
+		t.Fatal("revokeCredential(nil) error = nil, want unavailable")
+	}
 	var nilOpaqueCredential *Credential
 	nilOpaqueCredential.invalidate()
 	if firstRepository(nil, nil) != nil || repositoryName(nil) != "" {

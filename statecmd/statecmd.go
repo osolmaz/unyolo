@@ -32,7 +32,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 }
 
-func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) (resultErr error) {
 	flags := flag.NewFlagSet("state check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var directory string
@@ -49,7 +49,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() { resultErr = errors.Join(resultErr, database.Close()) }()
 	report, err := database.Check(ctx, full)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	return json.NewEncoder(stdout).Encode(report)
 }
 
-func runBackup(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+func runBackup(ctx context.Context, args []string, stdout, stderr io.Writer) (resultErr error) {
 	directory, output, err := maintenanceFlags("state backup", args, stderr, "output", "absolute new backup directory")
 	if err != nil {
 		return err
@@ -66,7 +66,7 @@ func runBackup(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() { resultErr = errors.Join(resultErr, database.Close()) }()
 	manifest, err := database.Backup(ctx, output)
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func runRestore(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	return json.NewEncoder(stdout).Encode(map[string]string{"state_dir": directory, "status": "restored"})
 }
 
-func runExport(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+func runExport(ctx context.Context, args []string, stdout, stderr io.Writer) (resultErr error) {
 	directory, output, err := maintenanceFlags("state export", args, stderr, "output", "absolute new redacted JSON file")
 	if err != nil {
 		return err
@@ -97,7 +97,7 @@ func runExport(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() { resultErr = errors.Join(resultErr, database.Close()) }()
 	if err := database.Export(ctx, output); err != nil {
 		return err
 	}

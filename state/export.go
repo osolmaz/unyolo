@@ -229,7 +229,7 @@ func (d *Database) exportGrants(ctx context.Context) ([]redactedGrant, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := make([]redactedGrant, 0)
 	for rows.Next() {
 		var item redactedGrant
@@ -252,7 +252,7 @@ func (d *Database) exportOperations(ctx context.Context) ([]redactedOperation, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := make([]redactedOperation, 0)
 	for rows.Next() {
 		var item redactedOperation
@@ -273,7 +273,7 @@ func (d *Database) exportNotifications(ctx context.Context) ([]redactedNotificat
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := make([]redactedNotification, 0)
 	for rows.Next() {
 		var item redactedNotification
@@ -294,7 +294,7 @@ func (d *Database) exportAuditReferences(ctx context.Context) ([]redactedAuditRe
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := make([]redactedAuditReference, 0)
 	for rows.Next() {
 		var item redactedAuditReference
@@ -311,7 +311,7 @@ func exportRows[T any](ctx context.Context, database *sql.DB, query string, scan
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := make([]T, 0)
 	for rows.Next() {
 		item, err := scan(rows)

@@ -56,7 +56,7 @@ func TestStateCommandsCheckBackupExportAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restored.Close()
+	defer func() { _ = restored.Close() }()
 	if _, err := restored.Plan(t.Context(), digest); err != nil {
 		t.Fatalf("restored plan is missing: %v", err)
 	}

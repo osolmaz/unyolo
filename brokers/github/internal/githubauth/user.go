@@ -271,6 +271,7 @@ func (p *userProvider) requestRefresh(ctx context.Context, refreshToken []byte) 
 	if err != nil {
 		return refreshPayload{}, APIError{Code: "unavailable"}
 	}
+	defer func() { _ = response.Body.Close() }()
 	return decodeRefreshResponse(response)
 }
 
@@ -288,7 +289,6 @@ func (p *userProvider) newRefreshRequest(ctx context.Context, refreshToken []byt
 }
 
 func decodeRefreshResponse(response *http.Response) (refreshPayload, error) {
-	defer func() { _ = response.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxOAuthBodyBytes+1))
 	if err != nil || len(data) > maxOAuthBodyBytes || response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return refreshPayload{}, APIError{Code: statusCodeName(response.StatusCode), StatusCode: response.StatusCode}

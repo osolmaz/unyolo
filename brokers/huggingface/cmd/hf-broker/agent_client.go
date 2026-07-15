@@ -34,7 +34,7 @@ func runAgentClient(ctx context.Context, getenv func(string) string, stdout, std
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	if isClientOperationCommand(args) {
+	if len(args) >= 2 && isClientOperationCommand(args) {
 		return runClientOperation(ctx, client, stdout, args[1], args[2:])
 	}
 	if descriptor, consumed, found := matchCLICommand(args); found {

@@ -69,6 +69,7 @@ func NewClient(token string) *Client {
 
 // LoadPinned loads and verifies the reviewed generation inputs.
 func LoadPinned(snapshotDirectory string) (SnapshotSet, error) {
+	// #nosec G304 -- the caller selects the reviewed snapshot directory and the filename is fixed.
 	data, err := os.ReadFile(filepath.Join(snapshotDirectory, provenanceFileName))
 	if err != nil {
 		return SnapshotSet{}, err
@@ -302,6 +303,7 @@ func (c *Client) request(ctx context.Context, method, endpoint string, body io.R
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = response.Body.Close() }()
 	return readResponse(response)
 }
 
@@ -334,7 +336,6 @@ func readResponse(response *http.Response) ([]byte, error) {
 	if response == nil || response.Body == nil {
 		return nil, errors.New("official metadata response is empty")
 	}
-	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("official metadata request returned HTTP %d", response.StatusCode)
 	}

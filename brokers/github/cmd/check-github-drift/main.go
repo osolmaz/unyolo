@@ -62,6 +62,7 @@ func buildDriftReport(runtime checkRuntime) (upstreamdrift.Report, error) {
 	if err != nil {
 		return upstreamdrift.Report{}, fmt.Errorf("load reviewed GitHub snapshots: %w", err)
 	}
+	// #nosec G304 -- base is derived from the discovered repository root and the suffix is fixed.
 	query, err := os.ReadFile(filepath.Join(base, "graphql-introspection.graphql"))
 	if err != nil {
 		return upstreamdrift.Report{}, err
@@ -115,7 +116,7 @@ func writeReport(stdout io.Writer, path string, report upstreamdrift.Report) err
 		return upstreamdrift.WriteMarkdown(stdout, report)
 	}
 	directory := filepath.Dir(path)
-	if err := os.MkdirAll(directory, 0o755); err != nil {
+	if err := os.MkdirAll(directory, 0o750); err != nil {
 		return err
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // #nosec G304 -- operator-selected output is intentional.
@@ -131,7 +132,7 @@ func writeOptional(path string, data []byte, mode os.FileMode) error {
 	if path == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, mode) // #nosec G306,G304 -- operator-selected status output is intentional and private.

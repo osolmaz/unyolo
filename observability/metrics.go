@@ -138,9 +138,10 @@ func (m *Metrics) recordDependency(dependency, result, category string) {
 	result = closedValue(result, dependencyResults)
 	category = closedValue(category, errorCategories)
 	m.upstream.WithLabelValues(dependency, result, category).Inc()
-	if result == "succeeded" || result == "reconciled" || result == "delivered" {
+	switch result {
+	case "succeeded", "reconciled", "delivered":
 		m.dependencies.WithLabelValues(dependency).Set(1)
-	} else if result == "failed" || result == "ambiguous" {
+	case "failed", "ambiguous":
 		m.dependencies.WithLabelValues(dependency).Set(0)
 	}
 }

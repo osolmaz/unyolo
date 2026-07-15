@@ -83,6 +83,7 @@ func doctorExitError(report doctor.Report) error {
 }
 
 func parseDoctorOptions(args []string, stderr io.Writer) (doctorOptions, bool, error) {
+	// #nosec G101 -- these are standard filesystem paths, not hardcoded credential values.
 	opts := doctorOptions{serviceUser: "sudo-broker", catalogPath: "/etc/sudo-broker/catalog.json",
 		helperState: "/var/lib/sudo-broker/helper", helperSocket: "/run/sudo-broker/helper.sock",
 		clientSecrets: "/etc/sudo-broker/secrets", operatorSecrets: "/etc/sudo-broker/operator-secrets",

@@ -179,6 +179,7 @@ func retiredPolicyFiles(plan systemdPlan) []bkservice.ManagedFileRef {
 
 func retiredCredentialFiles(plan systemdPlan) []bkservice.ManagedFileRef {
 	if plan.opts.DevTokenFallback {
+		// #nosec G101 -- these are credential-class labels and managed filenames, not credential values.
 		return []bkservice.ManagedFileRef{
 			{Area: bkservice.ManagedFileConfig, Name: githubAppIDFileName},
 			{Area: bkservice.ManagedFileConfig, Name: githubAppPrivateKeyFileName, CredentialClass: "github-app-private-key"},
@@ -189,6 +190,7 @@ func retiredCredentialFiles(plan systemdPlan) []bkservice.ManagedFileRef {
 	}
 	removeFiles := []bkservice.ManagedFileRef{{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName, CredentialClass: "github-development"}}
 	if plan.opts.GitHubAppClientIDFile == "" {
+		// #nosec G101 -- these are credential-class labels and managed filenames, not credential values.
 		removeFiles = append(removeFiles,
 			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientIDFileName},
 			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientSecretFileName, CredentialClass: "github-app-client-secret"},
@@ -225,8 +227,7 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghPolicyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
 		)
 	}
-	files, err = appendTelegramCredentialFile(files, plan)
-	return files, nil
+	return appendTelegramCredentialFile(files, plan)
 }
 
 func appendTelegramCredentialFile(files []bkservice.ManagedFile, plan systemdPlan) ([]bkservice.ManagedFile, error) {
