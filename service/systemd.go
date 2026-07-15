@@ -26,6 +26,7 @@ type SystemdUnit struct {
 	Description          string
 	User                 string
 	Group                string
+	SupplementaryGroups  []string
 	EnvironmentFile      string
 	ExecStart            string
 	StateDir             string
@@ -244,6 +245,9 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 Type=simple
 User=%s
 Group=%s
+`, unit.User, unit.Group)
+	writeSupplementaryGroups(&body, unit.SupplementaryGroups)
+	_, _ = fmt.Fprintf(&body, `
 EnvironmentFile=%s
 ExecStart=%s
 Restart=on-failure
@@ -254,7 +258,7 @@ ProtectSystem=%s
 ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
+`, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
 	writeRuntimeDirectory(&body, unit.RuntimeDirectory, unit.RuntimeDirectoryMode)
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
@@ -262,6 +266,12 @@ ReadOnlyPaths=%s
 	}
 	body.WriteString("\n[Install]\nWantedBy=multi-user.target\n")
 	return body.String(), nil
+}
+
+func writeSupplementaryGroups(body *strings.Builder, groups []string) {
+	if len(groups) > 0 {
+		_, _ = fmt.Fprintf(body, "SupplementaryGroups=%s\n", strings.Join(groups, " "))
+	}
 }
 
 func normalizedRestartSec(value int) int {
@@ -320,6 +330,13 @@ func (unit SystemdUnit) validate() error {
 		return err
 	}
 	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
+		return err
+	}
+	groupNames := make(map[string]string, len(unit.SupplementaryGroups))
+	for index, group := range unit.SupplementaryGroups {
+		groupNames[fmt.Sprintf("supplementary group %d", index+1)] = group
+	}
+	if err := validatex.AccountNames(groupNames); err != nil {
 		return err
 	}
 	if err := validateSystemdPolicies(unit); err != nil {

@@ -54,8 +54,12 @@ func TestIngressInstallPlanManagesConfigSecretsAndAccess(t *testing.T) {
 	if err := plan.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(plan.AdditionalGroups, "hf-broker-operator") || !slices.Contains(plan.GroupMembers["hf-broker-operator"], account.Username) {
-		t.Fatalf("operator access groups = %v members=%v", plan.AdditionalGroups, plan.GroupMembers)
+	if !slices.Contains(plan.AdditionalGroups, "hf-broker-operator") || len(plan.GroupMembers) != 0 ||
+		!slices.Contains(plan.Unit.SupplementaryGroups, "hf-broker-operator") {
+		t.Fatalf("operator access groups = %v members=%v unit=%v", plan.AdditionalGroups, plan.GroupMembers, plan.Unit.SupplementaryGroups)
+	}
+	if len(plan.RemoveFiles) != 2 || plan.ReadyCheck == nil {
+		t.Fatalf("route retirement = %+v readiness=%v", plan.RemoveFiles, plan.ReadyCheck != nil)
 	}
 	configFile := managedFile(t, plan.Files, "config.json")
 	var cfg ingressConfig

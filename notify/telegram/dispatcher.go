@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/osolmaz/brokerkit/approval"
 	"github.com/osolmaz/brokerkit/grants"
@@ -34,6 +35,8 @@ var terminalDecisionAnswers = map[grants.Status]string{
 	grants.StatusCanceled: "Grant canceled",
 }
 
+const operatorDecisionTimeout = 15 * time.Second
+
 // NewDispatcher builds a single-ingress route dispatcher.
 func NewDispatcher(routes map[string]OperatorSource) (*Dispatcher, error) {
 	if len(routes) == 0 {
@@ -51,6 +54,8 @@ func NewDispatcher(routes map[string]OperatorSource) (*Dispatcher, error) {
 
 // Handle applies one routed callback through the owning broker's Operator V1 API.
 func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notify.DecisionResult {
+	ctx, cancel := context.WithTimeout(ctx, operatorDecisionTimeout)
+	defer cancel()
 	source, ok := d.routes[decision.Route]
 	if !ok {
 		return notify.DecisionResult{Answer: "Approval route is unavailable", ClearButtons: true}
@@ -70,6 +75,8 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 		ExpectedRevision: current.Revision,
 		IdempotencyKey:   callbackIdempotencyKey(decision),
 		OnBehalfOf:       approval.Actor(decision),
+		Notification: &operatorv1.NotificationDecision{Kind: "telegram", DecisionToken: decision.DecisionToken,
+			ChatID: decision.ChatID, MessageID: decision.MessageID, Text: decision.MessageText},
 	})
 	if err != nil {
 		return dispatcherErrorResult(err)
@@ -102,8 +109,11 @@ func dispatcherErrorResult(err error) notify.DecisionResult {
 		if apiError.Status == 404 {
 			return notify.DecisionResult{Answer: "Grant not found", ClearButtons: true}
 		}
+		if apiError.Code == "invalid_decision_token" {
+			return notify.DecisionResult{Answer: "Approval request was superseded", ClearButtons: true}
+		}
 	}
-	return notify.DecisionResult{Retry: true}
+	return notify.DecisionResult{Answer: "Broker temporarily unavailable; try again"}
 }
 
 func completedDecisionResult(request operatorv1.Request) notify.DecisionResult {

@@ -63,6 +63,8 @@ without replacing the message text. The broker's durable notification outbox
 then writes the authoritative terminal status. Repeated taps return the current
 terminal state and cannot create a second decision.
 
-Transient broker or socket failures leave the Telegram update unacknowledged so
-the single ingress retries it. A wrong chat cannot decide a grant. Provider
-credentials and agent credentials are never available to the ingress.
+Transient broker or socket failures leave that message's buttons available and
+ask the operator to try again. The update is acknowledged so an unavailable
+broker cannot block callbacks for healthy brokers sharing the bot. A wrong chat
+cannot decide a grant. Provider credentials and agent credentials are never
+available to the ingress.

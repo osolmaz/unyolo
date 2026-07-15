@@ -76,6 +76,11 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 		IdempotencyKey: command.IdempotencyKey,
 		Constraints:    constraints,
 	}
+	if command.Notification != nil {
+		decision.DecisionToken = command.Notification.DecisionToken
+		decision.Notification = &notify.MessageRef{Kind: command.Notification.Kind, ChatID: command.Notification.ChatID,
+			MessageID: command.Notification.MessageID, Text: command.Notification.Text}
+	}
 	result, decisionErr := s.store.ApplyOperatorDecision(ctx, decision, s.validate)
 	auditPrevious, auditCurrent := result.Previous, result.Grant
 	if auditPrevious.ID == "" {

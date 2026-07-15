@@ -14,7 +14,8 @@ import (
 func TestRenderSystemd(t *testing.T) {
 	body, err := RenderSystemd(SystemdUnit{
 		Description: "test broker", User: "broker", Group: "broker",
-		EnvironmentFile: "/etc/test/env", ExecStart: "/usr/bin/test serve",
+		SupplementaryGroups: []string{"broker-operator"},
+		EnvironmentFile:     "/etc/test/env", ExecStart: "/usr/bin/test serve",
 		StateDir: "/var/lib/test", ConfigDir: "/etc/test", PathValidation: PathValidationPreview,
 		AfterUnits: []string{"test-helper.service"}, RequiresUnits: []string{"test-helper.service"},
 		RuntimeDirectory: "test-broker", RuntimeDirectoryMode: 0o750,
@@ -24,6 +25,7 @@ func TestRenderSystemd(t *testing.T) {
 	}
 	for _, want := range []string{
 		"After=network-online.target", "EnvironmentFile=/etc/test/env", "ExecStart=/usr/bin/test serve",
+		"SupplementaryGroups=broker-operator",
 		"After=network-online.target test-helper.service", "Requires=test-helper.service", "RuntimeDirectory=test-broker", "RuntimeDirectoryMode=0750",
 		"ProtectSystem=strict", "ProtectHome=true", "ReadWritePaths=/var/lib/test", "NoNewPrivileges=true", "WantedBy=multi-user.target",
 	} {
@@ -76,6 +78,7 @@ func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 		func(unit *SystemdUnit) { unit.User = "broker\nUser=root" },
 		func(unit *SystemdUnit) { unit.User = "%u" },
 		func(unit *SystemdUnit) { unit.Group = "%g" },
+		func(unit *SystemdUnit) { unit.SupplementaryGroups = []string{"bad group"} },
 		func(unit *SystemdUnit) { unit.EnvironmentFile = "relative" },
 		func(unit *SystemdUnit) { unit.ExecStart = "test serve" },
 		func(unit *SystemdUnit) { unit.StateDir = "/var/lib/test broker" },

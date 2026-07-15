@@ -101,6 +101,27 @@ func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 	}
 }
 
+func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
+	store, _, client := newOperatorServer(t, nil)
+	result, _, err := store.Request(grants.Request{Client: "bob", Operation: "provider.write",
+		Target: policy.Target{Kind: "repository"}, Reason: "test", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := operatorv1.Decision{ExpectedRevision: result.Grant.Revision, IdempotencyKey: "telegram-stale",
+		OnBehalfOf: "telegram:42", Notification: &operatorv1.NotificationDecision{Kind: "telegram",
+			DecisionToken: "wrong", ChatID: 7, MessageID: 8, Text: "approval"}}
+	if _, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command); !hasCode(err, "invalid_decision_token") {
+		t.Fatalf("stale token error = %v", err)
+	}
+	command.IdempotencyKey = "telegram-valid"
+	command.Notification.DecisionToken = result.DecisionToken
+	approved, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command)
+	if err != nil || approved.Status != grants.StatusActive || approved.DecidedOnBehalfOf != "telegram:42" {
+		t.Fatalf("notification approval = %+v, %v", approved, err)
+	}
+}
+
 func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	rejected := errors.New("provider plan invalid")
 	store, server, client := newOperatorServer(t, decision.ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error { return rejected }))

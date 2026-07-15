@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 	"github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/operatorclient"
 	bkservice "github.com/osolmaz/brokerkit/service"
 )
 
@@ -218,7 +219,7 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 		{Area: bkservice.ManagedFileConfig, Name: "env", Data: []byte("# managed by brokerkit-telegram\n"), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	}
 	groups := make([]string, 0, len(opts.Routes))
-	members := map[string][]string{}
+	readyClients := make([]*operatorclient.Client, 0, len(opts.Routes))
 	for _, route := range configuredRoutes(opts) {
 		source := opts.Routes[route]
 		token, readErr := readSecretFile(source.TokenFile)
@@ -226,10 +227,14 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 			return bkservice.SystemdInstallPlan{}, fmt.Errorf("read route %q operator token: %w", route, readErr)
 		}
 		name := "operator-token-" + route
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: name, Data: []byte(token + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator"})
+		readyClient, clientErr := operatorclient.New(source.Endpoint, token, nil)
+		if clientErr != nil {
+			return bkservice.SystemdInstallPlan{}, fmt.Errorf("configure route %q readiness: %w", route, clientErr)
+		}
+		readyClients = append(readyClients, readyClient)
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: name, Data: []byte(token + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator-" + route})
 		managedConfig.Routes[route] = routeConfig{OperatorEndpoint: source.Endpoint, OperatorTokenFile: filepath.Join(opts.ConfigDir, name)}
 		groups = append(groups, source.AccessGroup)
-		members[source.AccessGroup] = []string{opts.User}
 	}
 	configData, err := json.MarshalIndent(managedConfig, "", "  ")
 	if err != nil {
@@ -243,15 +248,39 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 	}
 	unit := bkservice.SystemdUnit{
 		Description: "BrokerKit Telegram approval ingress", User: opts.User, Group: opts.Group,
-		EnvironmentFile: filepath.Join(opts.ConfigDir, "env"),
-		ExecStart:       opts.BinaryPath + " serve --config " + filepath.Join(opts.ConfigDir, "config.json"),
-		StateDir:        opts.StateDir, ConfigDir: opts.ConfigDir, HomeAccess: bkservice.HomeAccessDeny,
+		SupplementaryGroups: groups,
+		EnvironmentFile:     filepath.Join(opts.ConfigDir, "env"),
+		ExecStart:           opts.BinaryPath + " serve --config " + filepath.Join(opts.ConfigDir, "config.json"),
+		StateDir:            opts.StateDir, ConfigDir: opts.ConfigDir, HomeAccess: bkservice.HomeAccessDeny,
 		PathValidation: pathValidation,
 	}
 	return bkservice.SystemdInstallPlan{
-		User: opts.User, Group: opts.Group, AdditionalGroups: groups, GroupMembers: members,
+		User: opts.User, Group: opts.Group, AdditionalGroups: groups,
 		ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SystemdDir: opts.SystemdDir,
-		UnitName: ingressUnitName, Files: files, Unit: unit, NoStart: opts.NoStart,
+		UnitName: ingressUnitName, Files: files, RemoveFiles: retiredRouteCredentials(opts), Unit: unit, NoStart: opts.NoStart,
+		ReadyCheck:   ingressReadyCheck(readyClients),
 		AllowNonRoot: opts.AllowNonRoot, Runner: opts.Runner,
 	}, nil
+}
+
+func ingressReadyCheck(clients []*operatorclient.Client) bkservice.ReadinessCheck {
+	return func(ctx context.Context) error {
+		for _, client := range clients {
+			if err := client.Health(ctx); err != nil {
+				return errors.New("broker operator route is not ready")
+			}
+		}
+		return nil
+	}
+}
+
+func retiredRouteCredentials(opts setupOptions) []bkservice.ManagedFileRef {
+	result := make([]bkservice.ManagedFileRef, 0, len(opts.Routes))
+	for _, route := range []string{telegram.RouteHuggingFace, telegram.RouteGitHub, telegram.RouteSudo} {
+		if opts.Routes[route].TokenFile == "" {
+			result = append(result, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig,
+				Name: "operator-token-" + route, CredentialClass: "broker-operator-" + route})
+		}
+	}
+	return result
 }

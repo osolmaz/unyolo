@@ -85,11 +85,20 @@ type Constraints struct {
 	MaxUses         usebudget.Optional `json:"max_uses,omitempty"`
 }
 
+type NotificationDecision struct {
+	Kind          string `json:"kind"`
+	DecisionToken string `json:"decision_token"`
+	ChatID        int64  `json:"chat_id"`
+	MessageID     int    `json:"message_id"`
+	Text          string `json:"text"`
+}
+
 type Decision struct {
-	ExpectedRevision int64        `json:"expected_revision"`
-	IdempotencyKey   string       `json:"idempotency_key"`
-	OnBehalfOf       string       `json:"on_behalf_of,omitempty"`
-	Constraints      *Constraints `json:"constraints,omitempty"`
+	ExpectedRevision int64                 `json:"expected_revision"`
+	IdempotencyKey   string                `json:"idempotency_key"`
+	OnBehalfOf       string                `json:"on_behalf_of,omitempty"`
+	Constraints      *Constraints          `json:"constraints,omitempty"`
+	Notification     *NotificationDecision `json:"notification,omitempty"`
 }
 
 type Event struct {
