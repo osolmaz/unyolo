@@ -277,24 +277,31 @@ func validateInstallUnit(plan SystemdInstallPlan) error {
 func validateSocketInstallUnits(plan SystemdInstallPlan) error {
 	seen := map[string]struct{}{plan.UnitName: {}}
 	for _, socket := range plan.SocketUnits {
-		if !validSocketUnitName(socket.UnitName) {
-			return fmt.Errorf("systemd socket unit name %q must be a literal .socket basename", socket.UnitName)
-		}
-		if _, exists := seen[socket.UnitName]; exists {
-			return fmt.Errorf("duplicate systemd unit name %q", socket.UnitName)
-		}
-		seen[socket.UnitName] = struct{}{}
-		if socket.Unit.Service != plan.UnitName {
-			return fmt.Errorf("systemd socket unit %q targets an unmanaged service", socket.UnitName)
-		}
-		if _, err := RenderSystemdSocket(socket.Unit); err != nil {
-			return fmt.Errorf("render %s: %w", socket.UnitName, err)
+		if err := validateSocketInstallUnit(plan.UnitName, socket, seen); err != nil {
+			return err
 		}
 	}
 	for _, name := range plan.ActivationUnits {
 		if _, exists := seen[name]; !exists {
 			return fmt.Errorf("activation unit %q is not managed by this plan", name)
 		}
+	}
+	return nil
+}
+
+func validateSocketInstallUnit(serviceName string, socket SystemdSocketInstall, seen map[string]struct{}) error {
+	if !validSocketUnitName(socket.UnitName) {
+		return fmt.Errorf("systemd socket unit name %q must be a literal .socket basename", socket.UnitName)
+	}
+	if _, exists := seen[socket.UnitName]; exists {
+		return fmt.Errorf("duplicate systemd unit name %q", socket.UnitName)
+	}
+	seen[socket.UnitName] = struct{}{}
+	if socket.Unit.Service != serviceName {
+		return fmt.Errorf("systemd socket unit %q targets an unmanaged service", socket.UnitName)
+	}
+	if _, err := RenderSystemdSocket(socket.Unit); err != nil {
+		return fmt.Errorf("render %s: %w", socket.UnitName, err)
 	}
 	return nil
 }
@@ -424,19 +431,33 @@ func ensureSystemAccount(ctx context.Context, runner CommandRunner, plan Systemd
 
 func ensureAccessGroups(ctx context.Context, runner CommandRunner, plan SystemdInstallPlan) error {
 	for _, group := range plan.AdditionalGroups {
-		if runner.Run(ctx, "getent", "group", group) != nil {
-			if err := runner.Run(ctx, "groupadd", "--system", group); err != nil {
-				return fmt.Errorf("create access group %q: %w", group, err)
-			}
+		if err := ensureAccessGroup(ctx, runner, group, plan.GroupMembers[group]); err != nil {
+			return err
 		}
-		for _, member := range plan.GroupMembers[group] {
-			if runner.Run(ctx, "id", "-u", member) != nil {
-				return fmt.Errorf("access group member %q does not exist", member)
-			}
-			if err := runner.Run(ctx, "usermod", "--append", "--groups", group, member); err != nil {
-				return fmt.Errorf("add %q to access group %q: %w", member, group, err)
-			}
+	}
+	return nil
+}
+
+func ensureAccessGroup(ctx context.Context, runner CommandRunner, group string, members []string) error {
+	if runner.Run(ctx, "getent", "group", group) != nil {
+		if err := runner.Run(ctx, "groupadd", "--system", group); err != nil {
+			return fmt.Errorf("create access group %q: %w", group, err)
 		}
+	}
+	for _, member := range members {
+		if err := addAccessGroupMember(ctx, runner, group, member); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addAccessGroupMember(ctx context.Context, runner CommandRunner, group, member string) error {
+	if runner.Run(ctx, "id", "-u", member) != nil {
+		return fmt.Errorf("access group member %q does not exist", member)
+	}
+	if err := runner.Run(ctx, "usermod", "--append", "--groups", group, member); err != nil {
+		return fmt.Errorf("add %q to access group %q: %w", member, group, err)
 	}
 	return nil
 }

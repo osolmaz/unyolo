@@ -164,11 +164,7 @@ func (opts SystemdOptions) Validate() error {
 	if strings.TrimSpace(opts.BrokerName) == "" {
 		return errors.New("broker name is required")
 	}
-	if err := validatex.AccountNames(map[string]string{
-		"user": opts.User, "group": opts.Group, "agent user": opts.AgentUser,
-		"operator user": opts.OperatorUser, "agent access group": opts.AgentAccessGroup,
-		"operator access group": opts.OperatorAccessGroup,
-	}); err != nil {
+	if err := validateSystemdAccounts(opts); err != nil {
 		return err
 	}
 	if opts.AgentAccessGroup == opts.OperatorAccessGroup {
@@ -188,4 +184,12 @@ func (opts SystemdOptions) Validate() error {
 		return errors.New("--endpoint cannot use a raw inherited descriptor")
 	}
 	return nil
+}
+
+func validateSystemdAccounts(opts SystemdOptions) error {
+	return validatex.AccountNames(map[string]string{
+		"user": opts.User, "group": opts.Group, "agent user": opts.AgentUser,
+		"operator user": opts.OperatorUser, "agent access group": opts.AgentAccessGroup,
+		"operator access group": opts.OperatorAccessGroup,
+	})
 }

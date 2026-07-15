@@ -173,19 +173,30 @@ func recordSnapshotCredentialChanges[T any](reporter *credentiallifecycle.Report
 func captureCredentialRemovals(files []ManagedFileRef, capture func(ManagedFileRef) (bool, []byte, error)) (map[string]string, error) {
 	result := make(map[string]string)
 	for _, file := range files {
-		if file.CredentialClass == "" {
-			continue
-		}
-		exists, data, err := capture(file)
+		class, id, err := captureCredentialRemoval(file, capture)
 		if err != nil {
 			return nil, err
 		}
-		if exists {
-			result[file.CredentialClass] = credentialIdentifier(data)
+		if class != "" {
+			result[class] = id
 		}
-		clearSecretBytes(data)
 	}
 	return result, nil
+}
+
+func captureCredentialRemoval(file ManagedFileRef, capture func(ManagedFileRef) (bool, []byte, error)) (string, string, error) {
+	if file.CredentialClass == "" {
+		return "", "", nil
+	}
+	exists, data, err := capture(file)
+	if err != nil {
+		return "", "", err
+	}
+	defer clearSecretBytes(data)
+	if !exists {
+		return "", "", nil
+	}
+	return file.CredentialClass, credentialIdentifier(data), nil
 }
 
 func reverseJoin[T any](values []T, apply func(T) error) error {

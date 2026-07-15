@@ -152,6 +152,7 @@ func TestSystemdOptions(t *testing.T) {
 		func(value *SystemdOptions) { value.ConfigDir = "relative" },
 		func(value *SystemdOptions) { value.Endpoint = "tcp://0.0.0.0:1" },
 		func(value *SystemdOptions) { value.Endpoint = "fd://3" },
+		func(value *SystemdOptions) { value.OperatorAccessGroup = value.AgentAccessGroup },
 	} {
 		invalid := opts
 		mutate(&invalid)

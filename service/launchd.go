@@ -159,17 +159,12 @@ func validateLaunchdSocket(socket LaunchdSocket, seenNames, seenPaths map[string
 	if !validName(socket.Name) {
 		return errors.New("launchd socket name is invalid")
 	}
-	if _, exists := seenNames[socket.Name]; exists {
-		return fmt.Errorf("launchd socket %q is duplicated", socket.Name)
+	if err := rememberLaunchdSocketName(socket.Name, seenNames); err != nil {
+		return err
 	}
-	seenNames[socket.Name] = struct{}{}
-	if !filepath.IsAbs(socket.Path) || filepath.Clean(socket.Path) != socket.Path || socket.Path == string(filepath.Separator) {
-		return errors.New("launchd socket path must be absolute and normalized")
+	if err := rememberLaunchdSocketPath(socket.Path, seenPaths); err != nil {
+		return err
 	}
-	if _, exists := seenPaths[socket.Path]; exists {
-		return fmt.Errorf("launchd socket path %q is duplicated", socket.Path)
-	}
-	seenPaths[socket.Path] = struct{}{}
 	if err := validatex.AccountNames(map[string]string{"socket owner": socket.Owner, "socket group": socket.Group}); err != nil {
 		return err
 	}
@@ -177,6 +172,25 @@ func validateLaunchdSocket(socket LaunchdSocket, seenNames, seenPaths map[string
 		return err
 	}
 	return validateSocketMode(socket.DirectoryMode, "launchd socket directory")
+}
+
+func rememberLaunchdSocketName(name string, seen map[string]struct{}) error {
+	if _, exists := seen[name]; exists {
+		return fmt.Errorf("launchd socket %q is duplicated", name)
+	}
+	seen[name] = struct{}{}
+	return nil
+}
+
+func rememberLaunchdSocketPath(path string, seen map[string]struct{}) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == string(filepath.Separator) {
+		return errors.New("launchd socket path must be absolute and normalized")
+	}
+	if _, exists := seen[path]; exists {
+		return fmt.Errorf("launchd socket path %q is duplicated", path)
+	}
+	seen[path] = struct{}{}
+	return nil
 }
 
 func validLaunchdLabel(value string) bool {
@@ -188,11 +202,18 @@ func validEnvironmentName(value string) bool {
 		return false
 	}
 	for index, character := range value {
-		if (character < 'A' || character > 'Z') && character != '_' && (index == 0 || character < '0' || character > '9') {
+		if !validEnvironmentCharacter(index, character) {
 			return false
 		}
 	}
 	return true
+}
+
+func validEnvironmentCharacter(index int, character rune) bool {
+	if character >= 'A' && character <= 'Z' || character == '_' {
+		return true
+	}
+	return index > 0 && character >= '0' && character <= '9'
 }
 
 func normalizedLaunchdThrottle(value int) int {

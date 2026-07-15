@@ -65,21 +65,32 @@ func (plan LaunchdInstallPlan) Validate() error {
 func validateLaunchdRuntimeDirectories(values []LaunchdDirectory) error {
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
-		if !filepath.IsAbs(value.Path) || filepath.Clean(value.Path) != value.Path || value.Path == string(filepath.Separator) {
-			return errors.New("launchd runtime directory must be absolute and normalized")
-		}
-		if _, exists := seen[value.Path]; exists {
-			return fmt.Errorf("launchd runtime directory %q is duplicated", value.Path)
-		}
-		seen[value.Path] = struct{}{}
-		if err := validatex.AccountNames(map[string]string{"runtime owner": value.Owner, "runtime group": value.Group}); err != nil {
+		if err := validateLaunchdRuntimeDirectory(value, seen); err != nil {
 			return err
-		}
-		if value.Mode == 0 || value.Mode&^os.ModePerm != 0 || value.Mode.Perm()&0o007 != 0 {
-			return fmt.Errorf("launchd runtime directory %q has unsafe mode", value.Path)
 		}
 	}
 	return nil
+}
+
+func validateLaunchdRuntimeDirectory(value LaunchdDirectory, seen map[string]struct{}) error {
+	if !validLaunchdRuntimePath(value.Path) {
+		return errors.New("launchd runtime directory must be absolute and normalized")
+	}
+	if _, exists := seen[value.Path]; exists {
+		return fmt.Errorf("launchd runtime directory %q is duplicated", value.Path)
+	}
+	seen[value.Path] = struct{}{}
+	if err := validatex.AccountNames(map[string]string{"runtime owner": value.Owner, "runtime group": value.Group}); err != nil {
+		return err
+	}
+	if value.Mode == 0 || value.Mode&^os.ModePerm != 0 || value.Mode.Perm()&0o007 != 0 {
+		return fmt.Errorf("launchd runtime directory %q has unsafe mode", value.Path)
+	}
+	return nil
+}
+
+func validLaunchdRuntimePath(path string) bool {
+	return filepath.IsAbs(path) && filepath.Clean(path) == path && path != string(filepath.Separator)
 }
 
 func validateLaunchdInstallIdentity(plan LaunchdInstallPlan) error {
@@ -126,13 +137,23 @@ func validateLaunchdInstallPaths(plan LaunchdInstallPlan) error {
 	}, true); err != nil {
 		return err
 	}
-	if pathOverlaps(plan.ConfigDir, plan.StateDir) || pathOverlaps(plan.ConfigDir, plan.LaunchdDir) || pathOverlaps(plan.StateDir, plan.LaunchdDir) {
+	if launchdRootsOverlap(plan) {
 		return errors.New("launchd install roots must not overlap")
 	}
-	if filepath.Base(plan.PlistName) != plan.PlistName || !strings.HasSuffix(plan.PlistName, ".plist") || plan.PlistName != plan.Unit.Label+".plist" {
+	if !validLaunchdPlistName(plan.PlistName, plan.Unit.Label) {
 		return errors.New("launchd plist name must match the unit label")
 	}
 	return nil
+}
+
+func launchdRootsOverlap(plan LaunchdInstallPlan) bool {
+	return pathOverlaps(plan.ConfigDir, plan.StateDir) ||
+		pathOverlaps(plan.ConfigDir, plan.LaunchdDir) ||
+		pathOverlaps(plan.StateDir, plan.LaunchdDir)
+}
+
+func validLaunchdPlistName(name, label string) bool {
+	return filepath.Base(name) == name && strings.HasSuffix(name, ".plist") && name == label+".plist"
 }
 
 func pathOverlaps(left, right string) bool {
@@ -146,25 +167,39 @@ func validateLaunchdManagedFiles(plan LaunchdInstallPlan) error {
 	}
 	seen := make(map[string]struct{}, len(plan.Files)+len(plan.RemoveFiles))
 	for _, file := range plan.Files {
-		if err := validateLaunchdManagedFile(plan, file); err != nil {
+		if err := validateLaunchdManagedFileWrite(plan, file, seen); err != nil {
 			return err
 		}
-		key := string(file.Area) + "/" + file.Name
-		if _, exists := seen[key]; exists {
-			return fmt.Errorf("managed file %q is duplicated", key)
-		}
-		seen[key] = struct{}{}
 	}
 	for _, file := range plan.RemoveFiles {
-		key := string(file.Area) + "/" + file.Name
-		if file.Area != ManagedFileConfig || !validManagedFileName(file.Name) {
-			return fmt.Errorf("retired managed file %q is invalid", key)
+		if err := validateLaunchdManagedFileRemoval(file, seen); err != nil {
+			return err
 		}
-		if _, exists := seen[key]; exists {
-			return fmt.Errorf("managed file %q is both written and removed", key)
-		}
-		seen[key] = struct{}{}
 	}
+	return nil
+}
+
+func validateLaunchdManagedFileWrite(plan LaunchdInstallPlan, file ManagedFile, seen map[string]struct{}) error {
+	if err := validateLaunchdManagedFile(plan, file); err != nil {
+		return err
+	}
+	key := string(file.Area) + "/" + file.Name
+	if _, exists := seen[key]; exists {
+		return fmt.Errorf("managed file %q is duplicated", key)
+	}
+	seen[key] = struct{}{}
+	return nil
+}
+
+func validateLaunchdManagedFileRemoval(file ManagedFileRef, seen map[string]struct{}) error {
+	key := string(file.Area) + "/" + file.Name
+	if file.Area != ManagedFileConfig || !validManagedFileName(file.Name) {
+		return fmt.Errorf("retired managed file %q is invalid", key)
+	}
+	if _, exists := seen[key]; exists {
+		return fmt.Errorf("managed file %q is both written and removed", key)
+	}
+	seen[key] = struct{}{}
 	return nil
 }
 

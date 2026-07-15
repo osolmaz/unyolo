@@ -38,6 +38,21 @@ func TestLaunchdInstallPlanRejectsUnsafeValues(t *testing.T) {
 	}
 }
 
+func TestValidateLaunchdRuntimeDirectoryRejectsDuplicateAndUnsafeMode(t *testing.T) {
+	seen := map[string]struct{}{}
+	valid := LaunchdDirectory{Path: "/var/run/brokerkit/test", Owner: "root", Group: "_broker", Mode: 0o750}
+	if err := validateLaunchdRuntimeDirectory(valid, seen); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateLaunchdRuntimeDirectory(valid, seen); err == nil {
+		t.Fatal("duplicate runtime directory accepted")
+	}
+	unsafeMode := LaunchdDirectory{Path: "/var/run/brokerkit/other", Owner: "root", Group: "_broker", Mode: 0o777}
+	if err := validateLaunchdRuntimeDirectory(unsafeMode, map[string]struct{}{}); err == nil {
+		t.Fatal("unsafe runtime directory mode accepted")
+	}
+}
+
 func launchdInstallFixture() LaunchdInstallPlan {
 	return LaunchdInstallPlan{
 		User: "_broker", Group: "_broker", AdditionalGroups: []string{"broker-agent", "broker-operator"},

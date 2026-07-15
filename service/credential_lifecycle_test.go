@@ -59,3 +59,28 @@ func TestValidateCredentialClassesRejectsDuplicatesAndOpenValues(t *testing.T) {
 		t.Fatalf("unchanged credential record = %q, %v", output.String(), err)
 	}
 }
+
+func TestCaptureCredentialRemovalsSkipsAndClearsSecretData(t *testing.T) {
+	empty := ManagedFileRef{Name: "empty"}
+	classed := ManagedFileRef{Name: "secret", CredentialClass: "broker-client-secret"}
+	secret := []byte("secret-value")
+	calls := 0
+	result, err := captureCredentialRemovals([]ManagedFileRef{empty, classed}, func(file ManagedFileRef) (bool, []byte, error) {
+		calls++
+		if file.Name != classed.Name {
+			t.Fatalf("unexpected capture for %s", file.Name)
+		}
+		return true, secret, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || result[classed.CredentialClass] == "" {
+		t.Fatalf("captures=%d result=%v", calls, result)
+	}
+	for _, value := range secret {
+		if value != 0 {
+			t.Fatalf("secret data was not cleared: %q", secret)
+		}
+	}
+}
