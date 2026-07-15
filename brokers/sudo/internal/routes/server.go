@@ -80,37 +80,84 @@ type Server struct {
 }
 
 func New(opts Options) (*Server, error) {
-	if opts.Policy == nil || opts.Catalog == nil || opts.Database == nil || opts.Identities == nil || opts.Helper == nil {
-		return nil, errors.New("sudo broker dependencies are required")
+	if err := validateOptions(opts); err != nil {
+		return nil, err
 	}
-	if opts.Audit == nil {
-		return nil, errors.New("audit recorder is required")
-	}
-	plans, err := plan.NewStore(opts.Database)
+	parts, err := newServerParts(opts)
 	if err != nil {
 		return nil, err
 	}
-	now := opts.Now
-	if now == nil {
-		now = time.Now
+	server := assembleServer(opts, parts)
+	server.operationRuntime, err = server.newOperationRuntime()
+	if err != nil {
+		return nil, err
 	}
+	server.agentAPI, err = agentapi.New(agentapi.Options{Store: server.operations, Authenticate: server.control.Clients.AuthenticateHeader,
+		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "sudo-broker"})
+	if err != nil {
+		return nil, err
+	}
+	server.registerRoutes()
+	return server, nil
+}
+
+type serverParts struct {
+	echo              *echo.Echo
+	plans             *plan.Store
+	grantStore        *grants.Store
+	validator         plan.Validator
+	operationRegistry *operations.Registry
+	authorization     *bkauthorization.Coordinator
+	control           *controlplane.Runtime
+	operationStore    *agentops.Store
+	admission         *admission.Controller
+	now               func() time.Time
+}
+
+func validateOptions(opts Options) error {
+	if err := validateRequiredDependencies(opts); err != nil {
+		return err
+	}
+	return validateRequiredAudit(opts)
+}
+
+func validateRequiredDependencies(opts Options) error {
+	if opts.Policy == nil || opts.Catalog == nil || opts.Database == nil || opts.Identities == nil || opts.Helper == nil {
+		return errors.New("sudo broker dependencies are required")
+	}
+	return nil
+}
+
+func validateRequiredAudit(opts Options) error {
+	if opts.Audit == nil {
+		return errors.New("audit recorder is required")
+	}
+	return nil
+}
+
+func newServerParts(opts Options) (serverParts, error) {
+	plans, err := plan.NewStore(opts.Database)
+	if err != nil {
+		return serverParts{}, err
+	}
+	now := serverClock(opts.Now)
 	grantStore := grants.NewDatabase(opts.Database, grants.Options{Now: now})
 	validator := plan.Validator{Store: plans, Catalog: opts.Catalog, Identities: opts.Identities, Helper: opts.Helper}
 	operationRegistry, err := operations.NewRegistry(opts.Catalog, opts.Helper)
 	if err != nil {
-		return nil, err
+		return serverParts{}, err
 	}
 	authorization, err := bkauthorization.New(bkauthorization.Options{Registry: sudopolicy.Registry(opts.Catalog),
 		Decide: opts.Policy.Decide, Grants: grantStore, Now: now})
 	if err != nil {
-		return nil, err
+		return serverParts{}, err
 	}
 	control, err := controlplane.New(controlplane.Options{
 		Broker: "sudo-broker", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
 		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit, State: opts.Database,
 	})
 	if err != nil {
-		return nil, err
+		return serverParts{}, err
 	}
 	e := echo.New()
 	e.HideBanner = true
@@ -119,24 +166,26 @@ func New(opts Options) (*Server, error) {
 	operationStore := agentops.New(opts.Database)
 	admissionController, err := admission.NewConfigured(secretNames(opts.ClientSecrets), opts.Admission, operationStore.AdmissionUsage)
 	if err != nil {
-		return nil, err
+		return serverParts{}, err
 	}
 	admissionController.SetObserver(control.Metrics)
-	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: grantStore, plans: plans,
-		identities: opts.Identities, helper: opts.Helper, validator: validator, notifier: opts.Notifier, poller: opts.Poller,
-		audit: opts.Audit, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
-		database: opts.Database, operations: operationStore, admission: admissionController, authorization: authorization, operationRegistry: operationRegistry}
-	server.operationRuntime, err = server.newOperationRuntime()
-	if err != nil {
-		return nil, err
+	return serverParts{echo: e, plans: plans, grantStore: grantStore, validator: validator, operationRegistry: operationRegistry,
+		authorization: authorization, control: control, operationStore: operationStore, admission: admissionController, now: now}, nil
+}
+
+func serverClock(now func() time.Time) func() time.Time {
+	if now != nil {
+		return now
 	}
-	server.agentAPI, err = agentapi.New(agentapi.Options{Store: server.operations, Authenticate: control.Clients.AuthenticateHeader,
-		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "sudo-broker"})
-	if err != nil {
-		return nil, err
-	}
-	server.registerRoutes()
-	return server, nil
+	return time.Now
+}
+
+func assembleServer(opts Options, parts serverParts) *Server {
+	return &Server{echo: parts.echo, control: parts.control, policy: opts.Policy, catalog: opts.Catalog, grants: parts.grantStore, plans: parts.plans,
+		identities: opts.Identities, helper: opts.Helper, validator: parts.validator, notifier: opts.Notifier, poller: opts.Poller,
+		audit: opts.Audit, now: parts.now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
+		database: opts.Database, operations: parts.operationStore, admission: parts.admission, authorization: parts.authorization,
+		operationRegistry: parts.operationRegistry}
 }
 
 func secretNames(values map[string]string) []string {

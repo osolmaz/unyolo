@@ -42,6 +42,32 @@ func TestPresenterRejectsUnavailableCommand(t *testing.T) {
 	if _, err := (Presenter{}).Present(t.Context(), grants.Grant{}); err == nil {
 		t.Fatal("nil catalog was accepted")
 	}
+	snapshot, err := catalog.Parse([]byte(`{"version":1,"commands":[{
+		"id":"id","executable":"/usr/bin/printf","arguments":[],"target_users":["root"],
+		"working_directory":"/","timeout_seconds":1,"max_output_bytes":0}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Presenter{Catalog: snapshot}).Present(t.Context(), grants.Grant{
+		Attrs: map[string][]string{sudopolicy.AttrCommandID: {"id"}},
+	}); err == nil {
+		t.Fatal("grant without target user was accepted")
+	}
+}
+
+func TestRiskMapping(t *testing.T) {
+	t.Parallel()
+	tests := map[string]operatorinbox.Risk{
+		"low":      operatorinbox.RiskLow,
+		"MEDIUM":   operatorinbox.RiskMedium,
+		"high":     operatorinbox.RiskHigh,
+		"critical": operatorinbox.RiskUnknown,
+	}
+	for value, want := range tests {
+		if got := risk(value); got != want {
+			t.Fatalf("risk(%q) = %q, want %q", value, got, want)
+		}
+	}
 }
 
 func contains(value, substring string) bool {

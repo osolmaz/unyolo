@@ -109,27 +109,58 @@ func Load(path string) (*Snapshot, error) {
 }
 
 func Parse(data []byte) (*Snapshot, error) {
+	raw, err := parseDocument(data)
+	if err != nil {
+		return nil, err
+	}
+	commands, err := normalizeCommands(*raw.Commands)
+	if err != nil {
+		return nil, err
+	}
+	digest, err := commandsDigest(commands)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := &Snapshot{commands: make(map[string]Command, len(commands)), digest: digest}
+	for _, command := range commands {
+		snapshot.commands[command.ID] = cloneCommand(command)
+	}
+	return snapshot, nil
+}
+
+func parseDocument(data []byte) (document, error) {
 	if err := strictjson.RejectDuplicateKeys(data); err != nil {
-		return nil, fmt.Errorf("parse sudo catalog: %w", err)
+		return document{}, fmt.Errorf("parse sudo catalog: %w", err)
 	}
 	var raw document
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&raw); err != nil {
-		return nil, fmt.Errorf("parse sudo catalog: %w", err)
+		return document{}, fmt.Errorf("parse sudo catalog: %w", err)
 	}
 	if err := requireEOF(decoder); err != nil {
-		return nil, err
+		return document{}, err
 	}
+	if err := validateDocumentHeader(raw); err != nil {
+		return document{}, err
+	}
+	return raw, nil
+}
+
+func validateDocumentHeader(raw document) error {
 	if raw.Version != Version {
-		return nil, fmt.Errorf("sudo catalog version must be %d", Version)
+		return fmt.Errorf("sudo catalog version must be %d", Version)
 	}
 	if raw.Commands == nil || len(*raw.Commands) == 0 || len(*raw.Commands) > maxCommands {
-		return nil, fmt.Errorf("sudo catalog must contain 1-%d commands", maxCommands)
+		return fmt.Errorf("sudo catalog must contain 1-%d commands", maxCommands)
 	}
-	commands := make([]Command, 0, len(*raw.Commands))
+	return nil
+}
+
+func normalizeCommands(raw []rawCommand) ([]Command, error) {
+	commands := make([]Command, 0, len(raw))
 	seen := map[string]bool{}
-	for index, value := range *raw.Commands {
+	for index, value := range raw {
 		command, err := normalizeCommand(value)
 		if err != nil {
 			return nil, fmt.Errorf("commands[%d]: %w", index, err)
@@ -141,19 +172,19 @@ func Parse(data []byte) (*Snapshot, error) {
 		commands = append(commands, command)
 	}
 	slices.SortFunc(commands, func(left, right Command) int { return strings.Compare(left.ID, right.ID) })
+	return commands, nil
+}
+
+func commandsDigest(commands []Command) (string, error) {
 	encoded, err := json.Marshal(struct {
 		Version  int       `json:"version"`
 		Commands []Command `json:"commands"`
 	}{Version: Version, Commands: commands})
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	sum := sha256.Sum256(encoded)
-	snapshot := &Snapshot{commands: make(map[string]Command, len(commands)), digest: hex.EncodeToString(sum[:])}
-	for _, command := range commands {
-		snapshot.commands[command.ID] = cloneCommand(command)
-	}
-	return snapshot, nil
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func (s *Snapshot) Digest() string {
@@ -203,32 +234,48 @@ func (s *Snapshot) Resolve(commandID string, targetUser string, inputs map[strin
 	values := map[string]string{}
 	seen := map[string]bool{}
 	for _, spec := range command.Arguments {
-		if spec.Literal != nil {
-			argv = append(argv, *spec.Literal)
-			continue
-		}
-		raw, ok := inputs[spec.Slot]
-		if !ok {
-			return Resolved{}, fmt.Errorf("argument %q is required", spec.Slot)
-		}
-		value, err := resolveArgument(spec, raw)
+		value, slot, err := resolveCommandArgument(spec, inputs)
 		if err != nil {
-			return Resolved{}, fmt.Errorf("argument %q: %w", spec.Slot, err)
+			return Resolved{}, err
 		}
-		seen[spec.Slot] = true
-		values[spec.Slot] = value
+		if slot != "" {
+			seen[slot] = true
+			values[slot] = value
+		}
 		argv = append(argv, value)
 	}
-	for key := range inputs {
-		if !seen[key] {
-			return Resolved{}, fmt.Errorf("argument %q is not declared by command", key)
-		}
+	if err := rejectUnexpectedInputs(inputs, seen); err != nil {
+		return Resolved{}, err
 	}
 	return Resolved{
 		CommandID: command.ID, TargetUser: targetUser, Executable: command.Executable, Arguments: argv,
 		WorkingDirectory: command.WorkingDirectory, Environment: cloneMap(command.Environment), TimeoutSeconds: command.TimeoutSeconds,
 		MaxOutputBytes: command.MaxOutputBytes, SlotValues: values, CatalogDigest: s.digest,
 	}, nil
+}
+
+func resolveCommandArgument(spec Argument, inputs map[string]json.RawMessage) (string, string, error) {
+	if spec.Literal != nil {
+		return *spec.Literal, "", nil
+	}
+	raw, ok := inputs[spec.Slot]
+	if !ok {
+		return "", "", fmt.Errorf("argument %q is required", spec.Slot)
+	}
+	value, err := resolveArgument(spec, raw)
+	if err != nil {
+		return "", "", fmt.Errorf("argument %q: %w", spec.Slot, err)
+	}
+	return value, spec.Slot, nil
+}
+
+func rejectUnexpectedInputs(inputs map[string]json.RawMessage, declared map[string]bool) error {
+	for key := range inputs {
+		if !declared[key] {
+			return fmt.Errorf("argument %q is not declared by command", key)
+		}
+	}
+	return nil
 }
 
 func (s *Snapshot) ValidateResolved(resolved Resolved) error {
@@ -239,6 +286,21 @@ func (s *Snapshot) ValidateResolved(resolved Resolved) error {
 	if !ok {
 		return errors.New("resolved command no longer exists")
 	}
+	inputs, err := resolvedInputs(command, resolved)
+	if err != nil {
+		return err
+	}
+	again, err := s.Resolve(resolved.CommandID, resolved.TargetUser, inputs)
+	if err != nil {
+		return err
+	}
+	if !sameResolvedCommand(again, resolved) {
+		return errors.New("resolved command does not match the current catalog")
+	}
+	return nil
+}
+
+func resolvedInputs(command Command, resolved Resolved) (map[string]json.RawMessage, error) {
 	inputs := map[string]json.RawMessage{}
 	for _, argument := range command.Arguments {
 		if argument.Slot == "" {
@@ -246,131 +308,205 @@ func (s *Snapshot) ValidateResolved(resolved Resolved) error {
 		}
 		value, ok := resolved.SlotValues[argument.Slot]
 		if !ok {
-			return errors.New("resolved command is missing a slot value")
+			return nil, errors.New("resolved command is missing a slot value")
 		}
-		if argument.Type == "integer" {
-			inputs[argument.Slot] = json.RawMessage(value)
-		} else {
-			encoded, _ := json.Marshal(value)
-			inputs[argument.Slot] = encoded
-		}
+		inputs[argument.Slot] = resolvedInputValue(argument, value)
 	}
-	again, err := s.Resolve(resolved.CommandID, resolved.TargetUser, inputs)
-	if err != nil {
-		return err
+	return inputs, nil
+}
+
+func resolvedInputValue(argument Argument, value string) json.RawMessage {
+	if argument.Type == "integer" {
+		return json.RawMessage(value)
 	}
-	if again.Executable != resolved.Executable || !slices.Equal(again.Arguments, resolved.Arguments) ||
-		again.WorkingDirectory != resolved.WorkingDirectory || !maps.Equal(again.Environment, resolved.Environment) ||
-		again.TimeoutSeconds != resolved.TimeoutSeconds || again.MaxOutputBytes != resolved.MaxOutputBytes ||
-		!maps.Equal(again.SlotValues, resolved.SlotValues) {
-		return errors.New("resolved command does not match the current catalog")
-	}
-	return nil
+	encoded, _ := json.Marshal(value)
+	return encoded
+}
+
+func sameResolvedCommand(left Resolved, right Resolved) bool {
+	return left.Executable == right.Executable &&
+		slices.Equal(left.Arguments, right.Arguments) &&
+		left.WorkingDirectory == right.WorkingDirectory &&
+		maps.Equal(left.Environment, right.Environment) &&
+		left.TimeoutSeconds == right.TimeoutSeconds &&
+		left.MaxOutputBytes == right.MaxOutputBytes &&
+		maps.Equal(left.SlotValues, right.SlotValues)
 }
 
 func normalizeCommand(raw rawCommand) (Command, error) {
 	if !idPattern.MatchString(raw.ID) {
 		return Command{}, errors.New("id must be 1-64 lowercase alphanumeric/hyphen characters")
 	}
-	executable, err := validateExecutable(raw.Executable)
+	executable, arguments, err := normalizeCommandExecution(raw)
 	if err != nil {
 		return Command{}, err
 	}
-	if raw.Arguments == nil || len(*raw.Arguments) > maxArguments {
-		return Command{}, fmt.Errorf("arguments is required and may contain at most %d entries", maxArguments)
-	}
-	arguments := append([]Argument(nil), (*raw.Arguments)...)
-	if err := validateArguments(arguments); err != nil {
-		return Command{}, err
-	}
-	if raw.TargetUsers == nil || len(*raw.TargetUsers) == 0 || len(*raw.TargetUsers) > maxTargetUsers {
-		return Command{}, fmt.Errorf("target_users must contain 1-%d users", maxTargetUsers)
-	}
-	targetUsers, err := normalizeUsers(*raw.TargetUsers)
+	targetUsers, workingDirectory, err := normalizeCommandIdentity(raw)
 	if err != nil {
 		return Command{}, err
 	}
-	workingDirectory, err := validateDirectory(raw.WorkingDirectory)
+	risk, err := normalizeCommandMetadata(raw)
 	if err != nil {
 		return Command{}, err
-	}
-	if raw.TimeoutSeconds < 1 || raw.TimeoutSeconds > maxTimeoutSeconds {
-		return Command{}, fmt.Errorf("timeout_seconds must be between 1 and %d", maxTimeoutSeconds)
-	}
-	if raw.MaxOutputBytes == nil || *raw.MaxOutputBytes < 0 || *raw.MaxOutputBytes > maxOutputBytes {
-		return Command{}, fmt.Errorf("max_output_bytes must be between 0 and %d", maxOutputBytes)
-	}
-	if err := validateEnvironment(raw.Environment); err != nil {
-		return Command{}, err
-	}
-	if err := validateDisplayText(raw.Description, 256, "description"); err != nil {
-		return Command{}, err
-	}
-	risk := raw.Risk
-	if risk == "" {
-		risk = defaultCommandRisk
-	}
-	if risk != "low" && risk != "medium" && risk != "high" {
-		return Command{}, errors.New("risk must be low, medium, or high")
 	}
 	return Command{ID: raw.ID, Executable: executable, Arguments: arguments, TargetUsers: targetUsers,
 		WorkingDirectory: workingDirectory, TimeoutSeconds: raw.TimeoutSeconds, MaxOutputBytes: *raw.MaxOutputBytes,
 		Environment: cloneMap(raw.Environment), Description: raw.Description, Risk: risk}, nil
 }
 
+func normalizeCommandExecution(raw rawCommand) (string, []Argument, error) {
+	executable, err := validateExecutable(raw.Executable)
+	if err != nil {
+		return "", nil, err
+	}
+	if raw.Arguments == nil || len(*raw.Arguments) > maxArguments {
+		return "", nil, fmt.Errorf("arguments is required and may contain at most %d entries", maxArguments)
+	}
+	arguments := append([]Argument(nil), (*raw.Arguments)...)
+	if err := validateArguments(arguments); err != nil {
+		return "", nil, err
+	}
+	return executable, arguments, nil
+}
+
+func normalizeCommandIdentity(raw rawCommand) ([]string, string, error) {
+	if raw.TargetUsers == nil || len(*raw.TargetUsers) == 0 || len(*raw.TargetUsers) > maxTargetUsers {
+		return nil, "", fmt.Errorf("target_users must contain 1-%d users", maxTargetUsers)
+	}
+	targetUsers, err := normalizeUsers(*raw.TargetUsers)
+	if err != nil {
+		return nil, "", err
+	}
+	workingDirectory, err := validateDirectory(raw.WorkingDirectory)
+	if err != nil {
+		return nil, "", err
+	}
+	return targetUsers, workingDirectory, nil
+}
+
+func normalizeCommandMetadata(raw rawCommand) (string, error) {
+	if raw.TimeoutSeconds < 1 || raw.TimeoutSeconds > maxTimeoutSeconds {
+		return "", fmt.Errorf("timeout_seconds must be between 1 and %d", maxTimeoutSeconds)
+	}
+	if raw.MaxOutputBytes == nil || *raw.MaxOutputBytes < 0 || *raw.MaxOutputBytes > maxOutputBytes {
+		return "", fmt.Errorf("max_output_bytes must be between 0 and %d", maxOutputBytes)
+	}
+	if err := validateEnvironment(raw.Environment); err != nil {
+		return "", err
+	}
+	if err := validateDisplayText(raw.Description, 256, "description"); err != nil {
+		return "", err
+	}
+	return normalizeRisk(raw.Risk)
+}
+
+func normalizeRisk(value string) (string, error) {
+	if value == "" {
+		return defaultCommandRisk, nil
+	}
+	if value != "low" && value != "medium" && value != "high" {
+		return "", errors.New("risk must be low, medium, or high")
+	}
+	return value, nil
+}
+
 func validateArguments(arguments []Argument) error {
 	slots := map[string]bool{}
 	for index, argument := range arguments {
-		if argument.Literal != nil {
-			if argument.Slot != "" || argument.Type != "" || argument.Minimum != nil || argument.Maximum != nil || len(argument.Values) > 0 || len(argument.Roots) > 0 || argument.MustExist || argument.FileType != "" {
-				return fmt.Errorf("arguments[%d]: literal argument contains slot fields", index)
-			}
-			if err := validateValue(*argument.Literal, "literal"); err != nil {
-				return fmt.Errorf("arguments[%d]: %w", index, err)
-			}
-			continue
-		}
-		if !slotPattern.MatchString(argument.Slot) || slots[argument.Slot] {
-			return fmt.Errorf("arguments[%d]: slot is invalid or duplicated", index)
-		}
-		slots[argument.Slot] = true
-		if err := validateSlot(argument); err != nil {
-			return fmt.Errorf("arguments[%d]: %w", index, err)
+		if err := validateArgument(index, argument, slots); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
+func validateArgument(index int, argument Argument, slots map[string]bool) error {
+	if argument.Literal != nil {
+		if err := validateLiteralArgument(argument); err != nil {
+			return fmt.Errorf("arguments[%d]: %w", index, err)
+		}
+		return nil
+	}
+	if !slotPattern.MatchString(argument.Slot) || slots[argument.Slot] {
+		return fmt.Errorf("arguments[%d]: slot is invalid or duplicated", index)
+	}
+	slots[argument.Slot] = true
+	if err := validateSlot(argument); err != nil {
+		return fmt.Errorf("arguments[%d]: %w", index, err)
+	}
+	return nil
+}
+
+func validateLiteralArgument(argument Argument) error {
+	if literalHasSlotFields(argument) {
+		return errors.New("literal argument contains slot fields")
+	}
+	return validateValue(*argument.Literal, "literal")
+}
+
+func literalHasSlotFields(argument Argument) bool {
+	return argument.Slot != "" || argument.Type != "" || argument.Minimum != nil || argument.Maximum != nil ||
+		len(argument.Values) > 0 || len(argument.Roots) > 0 || argument.MustExist || argument.FileType != ""
+}
+
 func validateSlot(argument Argument) error {
 	switch argument.Type {
 	case "integer":
-		if argument.Minimum == nil || argument.Maximum == nil || *argument.Minimum > *argument.Maximum || len(argument.Values) > 0 || len(argument.Roots) > 0 || argument.MustExist || argument.FileType != "" {
-			return errors.New("integer slot requires only a valid minimum and maximum")
-		}
+		return validateIntegerSlot(argument)
 	case "enum":
-		if argument.Minimum != nil || argument.Maximum != nil || len(argument.Values) == 0 || len(argument.Values) > 256 || len(argument.Roots) > 0 || argument.MustExist || argument.FileType != "" {
-			return errors.New("enum slot requires only bounded values")
-		}
-		seen := map[string]bool{}
-		for _, value := range argument.Values {
-			if validateValue(value, "enum value") != nil || seen[value] {
-				return errors.New("enum values must be unique, bounded, non-empty strings")
-			}
-			seen[value] = true
-		}
+		return validateEnumSlot(argument)
 	case "path_beneath":
-		if argument.Minimum != nil || argument.Maximum != nil || len(argument.Values) > 0 || len(argument.Roots) == 0 || len(argument.Roots) > 16 || (argument.FileType != "regular" && argument.FileType != "directory") {
-			return errors.New("path_beneath slot requires roots and a regular or directory file_type")
-		}
-		for _, root := range argument.Roots {
-			if _, err := validateDirectory(root); err != nil {
-				return fmt.Errorf("invalid path root: %w", err)
-			}
-		}
+		return validatePathSlot(argument)
 	default:
 		return errors.New("slot type must be integer, enum, or path_beneath")
 	}
+}
+
+func validateIntegerSlot(argument Argument) error {
+	if argument.Minimum == nil || argument.Maximum == nil || *argument.Minimum > *argument.Maximum || len(argument.Values) > 0 || len(argument.Roots) > 0 || argument.MustExist || argument.FileType != "" {
+		return errors.New("integer slot requires only a valid minimum and maximum")
+	}
 	return nil
+}
+
+func validateEnumSlot(argument Argument) error {
+	if invalidEnumSlotShape(argument) {
+		return errors.New("enum slot requires only bounded values")
+	}
+	return validateEnumValues(argument.Values)
+}
+
+func invalidEnumSlotShape(argument Argument) bool {
+	return argument.Minimum != nil || argument.Maximum != nil || len(argument.Values) == 0 ||
+		len(argument.Values) > 256 || len(argument.Roots) > 0 || argument.MustExist || argument.FileType != ""
+}
+
+func validateEnumValues(values []string) error {
+	seen := map[string]bool{}
+	for _, value := range values {
+		if validateValue(value, "enum value") != nil || seen[value] {
+			return errors.New("enum values must be unique, bounded, non-empty strings")
+		}
+		seen[value] = true
+	}
+	return nil
+}
+
+func validatePathSlot(argument Argument) error {
+	if invalidPathSlotShape(argument) {
+		return errors.New("path_beneath slot requires roots and a regular or directory file_type")
+	}
+	for _, root := range argument.Roots {
+		if _, err := validateDirectory(root); err != nil {
+			return fmt.Errorf("invalid path root: %w", err)
+		}
+	}
+	return nil
+}
+
+func invalidPathSlotShape(argument Argument) bool {
+	return argument.Minimum != nil || argument.Maximum != nil || len(argument.Values) > 0 ||
+		len(argument.Roots) == 0 || len(argument.Roots) > 16 || (argument.FileType != "regular" && argument.FileType != "directory")
 }
 
 func resolveArgument(spec Argument, raw json.RawMessage) (string, error) {
@@ -379,64 +515,94 @@ func resolveArgument(spec Argument, raw json.RawMessage) (string, error) {
 	}
 	switch spec.Type {
 	case "integer":
-		value, err := strconv.ParseInt(string(raw), 10, 64)
-		if err != nil || value < *spec.Minimum || value > *spec.Maximum {
-			return "", fmt.Errorf("must be an integer between %d and %d", *spec.Minimum, *spec.Maximum)
-		}
-		return strconv.FormatInt(value, 10), nil
+		return resolveIntegerArgument(spec, raw)
 	case "enum":
-		var value string
-		if err := json.Unmarshal(raw, &value); err != nil || !slices.Contains(spec.Values, value) {
-			return "", errors.New("must be one of the declared enum values")
-		}
-		return value, nil
+		return resolveEnumArgument(spec, raw)
 	case "path_beneath":
-		var value string
-		if err := json.Unmarshal(raw, &value); err != nil {
-			return "", errors.New("must be a path string")
-		}
-		return resolvePath(spec, value)
+		return resolvePathArgument(spec, raw)
 	default:
 		return "", errors.New("unsupported argument type")
 	}
+}
+
+func resolveIntegerArgument(spec Argument, raw json.RawMessage) (string, error) {
+	value, err := strconv.ParseInt(string(raw), 10, 64)
+	if err != nil || value < *spec.Minimum || value > *spec.Maximum {
+		return "", fmt.Errorf("must be an integer between %d and %d", *spec.Minimum, *spec.Maximum)
+	}
+	return strconv.FormatInt(value, 10), nil
+}
+
+func resolveEnumArgument(spec Argument, raw json.RawMessage) (string, error) {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil || !slices.Contains(spec.Values, value) {
+		return "", errors.New("must be one of the declared enum values")
+	}
+	return value, nil
+}
+
+func resolvePathArgument(spec Argument, raw json.RawMessage) (string, error) {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", errors.New("must be a path string")
+	}
+	return resolvePath(spec, value)
 }
 
 func resolvePath(spec Argument, value string) (string, error) {
 	if !filepath.IsAbs(value) || filepath.Clean(value) != value {
 		return "", errors.New("path must be absolute and normalized")
 	}
-	resolved, err := filepath.EvalSymlinks(value)
+	resolved, err := resolveCatalogPath(value, spec.MustExist)
 	if err != nil {
-		if spec.MustExist {
-			return "", errors.New("path must exist")
-		}
-		resolved, err = resolveMissingPath(value)
-		if err != nil {
-			return "", err
-		}
+		return "", err
 	}
-	inside := false
-	for _, root := range spec.Roots {
-		resolvedRoot, rootErr := filepath.EvalSymlinks(root)
-		if rootErr == nil && pathBeneath(resolvedRoot, resolved) {
-			inside = true
-			break
-		}
-	}
-	if !inside {
+	if !insideAnyRoot(spec.Roots, resolved) {
 		return "", errors.New("path escapes declared roots")
 	}
+	return validateResolvedPathType(resolved, spec.FileType, spec.MustExist)
+}
+
+func resolveCatalogPath(value string, mustExist bool) (string, error) {
+	resolved, err := filepath.EvalSymlinks(value)
+	if err == nil {
+		return resolved, nil
+	}
+	if mustExist {
+		return "", errors.New("path must exist")
+	}
+	return resolveMissingPath(value)
+}
+
+func insideAnyRoot(roots []string, resolved string) bool {
+	for _, root := range roots {
+		resolvedRoot, rootErr := filepath.EvalSymlinks(root)
+		if rootErr == nil && pathBeneath(resolvedRoot, resolved) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateResolvedPathType(resolved string, fileType string, mustExist bool) (string, error) {
 	if info, statErr := os.Stat(resolved); statErr == nil {
-		if spec.FileType == "regular" && !info.Mode().IsRegular() {
-			return "", errors.New("path is not a regular file")
+		if err := validateExistingPathType(info, fileType); err != nil {
+			return "", err
 		}
-		if spec.FileType == "directory" && !info.IsDir() {
-			return "", errors.New("path is not a directory")
-		}
-	} else if spec.MustExist {
+	} else if mustExist {
 		return "", errors.New("path must exist")
 	}
 	return resolved, nil
+}
+
+func validateExistingPathType(info os.FileInfo, fileType string) error {
+	if fileType == "regular" && !info.Mode().IsRegular() {
+		return errors.New("path is not a regular file")
+	}
+	if fileType == "directory" && !info.IsDir() {
+		return errors.New("path is not a directory")
+	}
+	return nil
 }
 
 func resolveMissingPath(value string) (string, error) {
@@ -478,10 +644,14 @@ func validateExecutable(value string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("stat executable: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+	if !validExecutableInfo(info) {
 		return "", errors.New("executable must be a non-symlink executable regular file")
 	}
 	return value, nil
+}
+
+func validExecutableInfo(info os.FileInfo) bool {
+	return info.Mode()&os.ModeSymlink == 0 && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }
 
 func shellEquivalent(base string) bool {

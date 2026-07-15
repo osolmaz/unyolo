@@ -53,10 +53,10 @@ func runSetupSystemd(ctx context.Context, args []string, stdout io.Writer, stder
 	if err != nil || help {
 		return err
 	}
-	if os.Geteuid() != 0 && !opts.DryRun {
-		return errors.New("setup systemd must run as root; try sudo sudo-broker setup systemd")
+	if err := requireSetupPrivileges(opts); err != nil {
+		return err
 	}
-	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "sudo-broker", "local-operator")
+	opts.Lifecycle, err = newSetupLifecycle(stderr)
 	if err != nil {
 		return err
 	}
@@ -65,18 +65,45 @@ func runSetupSystemd(ctx context.Context, args []string, stdout io.Writer, stder
 	if err != nil {
 		return err
 	}
+	return finishSetupSystemd(ctx, stdout, opts, paths, helperPlan, frontendPlan)
+}
+
+func requireSetupPrivileges(opts sudoSystemdOptions) error {
+	if os.Geteuid() != 0 && !opts.DryRun {
+		return errors.New("setup systemd must run as root; try sudo sudo-broker setup systemd")
+	}
+	return nil
+}
+
+func newSetupLifecycle(stderr io.Writer) (*credentiallifecycle.Reporter, error) {
+	return credentiallifecycle.New(audit.New(stderr), "sudo-broker", "local-operator")
+}
+
+func finishSetupSystemd(ctx context.Context, stdout io.Writer, opts sudoSystemdOptions, paths sudoInstallPaths, helperPlan bkservice.SystemdInstallPlan, frontendPlan bkservice.SystemdInstallPlan) error {
 	if opts.DryRun {
 		return printSudoSystemdPlan(stdout, opts, paths, helperPlan, frontendPlan)
 	}
-	if err := bkservice.InstallSystemd(ctx, helperPlan); err != nil {
-		return fmt.Errorf("install privileged helper: %w", err)
+	if err := installSudoSystemd(ctx, helperPlan, frontendPlan); err != nil {
+		return err
 	}
-	if err := bkservice.InstallSystemd(ctx, frontendPlan); err != nil {
-		return fmt.Errorf("install unprivileged frontend: %w", err)
-	}
-	_, err = fmt.Fprintf(stdout, "sudo-broker installed\n  broker endpoint: %s\n  operator endpoint: %s\n  helper socket: %s\n  client secrets: %s\n",
+	_, err := fmt.Fprintf(stdout, "sudo-broker installed\n  broker endpoint: %s\n  operator endpoint: %s\n  helper socket: %s\n  client secrets: %s\n",
 		opts.Endpoint, opts.OperatorEndpoint, opts.HelperSocket, paths.secrets)
 	return err
+}
+
+func installSudoSystemd(ctx context.Context, helperPlan bkservice.SystemdInstallPlan, frontendPlan bkservice.SystemdInstallPlan) error {
+	return installSudoSystemdWith(ctx, helperPlan, frontendPlan, bkservice.InstallSystemd)
+}
+
+func installSudoSystemdWith(ctx context.Context, helperPlan bkservice.SystemdInstallPlan, frontendPlan bkservice.SystemdInstallPlan,
+	install func(context.Context, bkservice.SystemdInstallPlan) error) error {
+	if err := install(ctx, helperPlan); err != nil {
+		return fmt.Errorf("install privileged helper: %w", err)
+	}
+	if err := install(ctx, frontendPlan); err != nil {
+		return fmt.Errorf("install unprivileged frontend: %w", err)
+	}
+	return nil
 }
 
 func parseSudoSystemdOptions(args []string, stderr io.Writer, stdin io.Reader) (sudoSystemdOptions, bool, error) {
@@ -101,18 +128,32 @@ func parseSudoSystemdOptions(args []string, stderr io.Writer, stdin io.Reader) (
 	flags.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "Telegram bot token source")
 	flags.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram approval chat id")
 	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = io.Copy(stderr, strings.NewReader(output.String()))
-			return sudoSystemdOptions{}, true, nil
-		}
-		return sudoSystemdOptions{}, false, errors.New("invalid setup systemd flags")
+		return handleSudoSystemdParseError(err, stderr, output.String())
 	}
 	if flags.NArg() != 0 {
 		return sudoSystemdOptions{}, false, errors.New("setup systemd does not accept positional arguments")
 	}
+	if err := finalizeSudoSystemdOptions(&opts); err != nil {
+		return sudoSystemdOptions{}, false, err
+	}
+	if err := resolveSudoSystemdSecrets(&opts, stdin); err != nil {
+		return sudoSystemdOptions{}, false, err
+	}
+	return opts, false, validateSudoSystemdOptions(opts)
+}
+
+func handleSudoSystemdParseError(err error, stderr io.Writer, output string) (sudoSystemdOptions, bool, error) {
+	if errors.Is(err, flag.ErrHelp) {
+		_, _ = io.Copy(stderr, strings.NewReader(output))
+		return sudoSystemdOptions{}, true, nil
+	}
+	return sudoSystemdOptions{}, false, errors.New("invalid setup systemd flags")
+}
+
+func finalizeSudoSystemdOptions(opts *sudoSystemdOptions) error {
 	finalized, err := bksetup.FinalizeSystemd(opts.SystemdOptions)
 	if err != nil {
-		return sudoSystemdOptions{}, false, err
+		return err
 	}
 	opts.SystemdOptions = finalized
 	if opts.HelperBinary == "" {
@@ -120,18 +161,20 @@ func parseSudoSystemdOptions(args []string, stderr io.Writer, stdin io.Reader) (
 	}
 	resolvedHelper, err := filepath.EvalSymlinks(opts.HelperBinary)
 	if err != nil {
-		return sudoSystemdOptions{}, false, fmt.Errorf("resolve helper binary: %w", err)
+		return fmt.Errorf("resolve helper binary: %w", err)
 	}
 	opts.HelperBinary = resolvedHelper
+	return nil
+}
+
+func resolveSudoSystemdSecrets(opts *sudoSystemdOptions, stdin io.Reader) error {
+	var err error
 	opts.SharedSecret, err = bksetup.ResolveSecret(bksetup.SecretInput{File: opts.SharedSecretFile, Stdin: opts.SharedSecretStdin}, stdin)
 	if err != nil {
-		return sudoSystemdOptions{}, false, err
+		return err
 	}
 	opts.OperatorSecret, err = bksetup.ResolveSecret(bksetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
-	if err != nil {
-		return sudoSystemdOptions{}, false, err
-	}
-	return opts, false, validateSudoSystemdOptions(opts)
+	return err
 }
 
 func defaultHelperBinary(frontend string) string {
@@ -143,20 +186,48 @@ func defaultHelperBinary(frontend string) string {
 }
 
 func validateSudoSystemdOptions(opts sudoSystemdOptions) error {
+	if err := validateSetupRequiredOptions(opts); err != nil {
+		return err
+	}
+	if err := validateHelperPaths(opts); err != nil {
+		return err
+	}
+	if err := validateSetupStateSeparation(opts); err != nil {
+		return err
+	}
+	if err := validateOperatorEndpoint(opts); err != nil {
+		return err
+	}
+	return validateSetupCredentialsAndHelper(opts)
+}
+
+func validateSetupRequiredOptions(opts sudoSystemdOptions) error {
 	if opts.PolicyFile == "" || opts.CatalogFile == "" {
 		return errors.New("--policy-file and --catalog-file are required")
 	}
 	if opts.AllowNonRoot && !opts.DryRun {
 		return errors.New("sudo-broker systemd setup does not support non-root installation")
 	}
+	return nil
+}
+
+func validateSetupStateSeparation(opts sudoSystemdOptions) error {
+	if opts.HelperStateDir == opts.StateDir {
+		return errors.New("helper and frontend state directories must differ")
+	}
+	return nil
+}
+
+func validateHelperPaths(opts sudoSystemdOptions) error {
 	for name, value := range map[string]string{"helper binary": opts.HelperBinary, "helper state": opts.HelperStateDir, "helper socket": opts.HelperSocket} {
 		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
 			return fmt.Errorf("%s must be an absolute normalized path", name)
 		}
 	}
-	if opts.HelperStateDir == opts.StateDir {
-		return errors.New("helper and frontend state directories must differ")
-	}
+	return nil
+}
+
+func validateOperatorEndpoint(opts sudoSystemdOptions) error {
 	operatorEndpoint, err := endpoint.Parse(opts.OperatorEndpoint, endpoint.ParseOptions{})
 	if err != nil {
 		return fmt.Errorf("operator endpoint: %w", err)
@@ -164,19 +235,35 @@ func validateSudoSystemdOptions(opts sudoSystemdOptions) error {
 	if operatorEndpoint.Scheme() == endpoint.SchemeFD || operatorEndpoint.String() == opts.Endpoint {
 		return errors.New("agent and operator endpoints must be distinct named endpoints")
 	}
+	return nil
+}
+
+func validateSetupCredentialsAndHelper(opts sudoSystemdOptions) error {
 	if err := clientconfig.ValidateClientName(opts.OperatorID); err != nil {
 		return err
 	}
 	if opts.OperatorSecret == opts.SharedSecret {
 		return errors.New("operator secret must differ from the client secret")
 	}
+	if err := validateTelegramSetup(opts); err != nil {
+		return err
+	}
+	return validateTrustedHelperBinary(opts)
+}
+
+func validateTelegramSetup(opts sudoSystemdOptions) error {
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return errors.New("--telegram-bot-token-file and --telegram-chat-id must be configured together")
 	}
-	if os.Geteuid() == 0 && !opts.DryRun {
-		if err := hostcheck.ValidateRootFile(opts.HelperBinary); err != nil {
-			return fmt.Errorf("helper binary is not trusted: %w", err)
-		}
+	return nil
+}
+
+func validateTrustedHelperBinary(opts sudoSystemdOptions) error {
+	if os.Geteuid() != 0 || opts.DryRun {
+		return nil
+	}
+	if err := hostcheck.ValidateRootFile(opts.HelperBinary); err != nil {
+		return fmt.Errorf("helper binary is not trusted: %w", err)
 	}
 	return nil
 }
@@ -195,18 +282,7 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
 	}
-	snapshot, err := catalog.Load(opts.CatalogFile)
-	if err != nil {
-		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
-	}
-	if _, err := bkpolicy.LoadFile(opts.PolicyFile, sudopolicy.Registry(snapshot)); err != nil {
-		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
-	}
-	catalogData, err := readSetupFile(opts.CatalogFile)
-	if err != nil {
-		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
-	}
-	policyData, err := readSetupFile(opts.PolicyFile)
+	catalogData, policyData, err := validatedSetupSources(opts)
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
 	}
@@ -214,15 +290,8 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 	if opts.DryRun {
 		pathValidation = bkservice.PathValidationPreview
 	}
-	helperUnit := bkservice.SystemdUnit{Description: "sudo-broker privileged command executor", User: "root", Group: opts.Group,
-		EnvironmentFile: paths.helperEnv, ExecStart: strings.Join([]string{opts.HelperBinary, "--catalog", paths.catalog, "--state", filepath.Join(opts.HelperStateDir, "executions.json"), "--socket", opts.HelperSocket, "--broker-user", opts.User}, " "),
-		StateDir: opts.HelperStateDir, ConfigDir: opts.ConfigDir, PrivilegeEscalation: bkservice.PrivilegeEscalationAllow,
-		PathValidation: pathValidation, RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750,
-		ExtraDirectives: hardeningDirectives(false)}
-	frontendUnit := bkservice.SystemdUnit{Description: "sudo-broker approval frontend", User: opts.User, Group: opts.Group,
-		EnvironmentFile: paths.frontendEnv, ExecStart: frontendExec(opts, paths), StateDir: opts.StateDir, ConfigDir: opts.ConfigDir,
-		PathValidation: pathValidation, AfterUnits: []string{"sudo-broker-exec.service"}, RequiresUnits: []string{"sudo-broker-exec.service"},
-		ExtraDirectives: hardeningDirectives(true), RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750}
+	helperUnit := helperSystemdUnit(opts, paths, pathValidation)
+	frontendUnit := frontendSystemdUnit(opts, paths, pathValidation)
 	sharedStateDir := sharedStateDirectory(opts.StateDir, opts.HelperStateDir)
 	helperPlan := bkservice.SystemdInstallPlan{User: "root", Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.HelperStateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker-exec.service", NoStart: true, Unit: helperUnit,
@@ -252,6 +321,40 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 		AdditionalGroups: activation.Groups, GroupMembers: activation.GroupMembers, SocketUnits: activation.Sockets,
 		ActivationUnits: activation.ActivationUnits, ReadyCheck: bkservice.EndpointReadyCheck(opts.Endpoint, "/readyz"), Lifecycle: opts.Lifecycle}
 	return helperPlan, frontendPlan, nil
+}
+
+func validatedSetupSources(opts sudoSystemdOptions) ([]byte, []byte, error) {
+	snapshot, err := catalog.Load(opts.CatalogFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := bkpolicy.LoadFile(opts.PolicyFile, sudopolicy.Registry(snapshot)); err != nil {
+		return nil, nil, err
+	}
+	catalogData, err := readSetupFile(opts.CatalogFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	policyData, err := readSetupFile(opts.PolicyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	return catalogData, policyData, nil
+}
+
+func helperSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathValidation bkservice.PathValidation) bkservice.SystemdUnit {
+	return bkservice.SystemdUnit{Description: "sudo-broker privileged command executor", User: "root", Group: opts.Group,
+		EnvironmentFile: paths.helperEnv, ExecStart: strings.Join([]string{opts.HelperBinary, "--catalog", paths.catalog, "--state", filepath.Join(opts.HelperStateDir, "executions.json"), "--socket", opts.HelperSocket, "--broker-user", opts.User}, " "),
+		StateDir: opts.HelperStateDir, ConfigDir: opts.ConfigDir, PrivilegeEscalation: bkservice.PrivilegeEscalationAllow,
+		PathValidation: pathValidation, RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750,
+		ExtraDirectives: hardeningDirectives(false)}
+}
+
+func frontendSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathValidation bkservice.PathValidation) bkservice.SystemdUnit {
+	return bkservice.SystemdUnit{Description: "sudo-broker approval frontend", User: opts.User, Group: opts.Group,
+		EnvironmentFile: paths.frontendEnv, ExecStart: frontendExec(opts, paths), StateDir: opts.StateDir, ConfigDir: opts.ConfigDir,
+		PathValidation: pathValidation, AfterUnits: []string{"sudo-broker-exec.service"}, RequiresUnits: []string{"sudo-broker-exec.service"},
+		ExtraDirectives: hardeningDirectives(true), RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750}
 }
 
 func sharedStateDirectory(frontend string, helper string) string {

@@ -20,6 +20,12 @@ func TestRunDispatchAndMainCode(t *testing.T) {
 	if code := mainCode([]string{"version"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("version exit code = %d", code)
 	}
+	if err := runSubcommand(t.Context(), "--version", nil, &stdout, &stderr); err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	if err := runSubcommand(t.Context(), "state", []string{"unknown"}, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+		t.Fatal("state subcommand error was swallowed")
+	}
 	if code := mainCode([]string{"unknown"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "unknown command") {
 		t.Fatalf("error exit code = %d, stderr = %q", code, stderr.String())
 	}

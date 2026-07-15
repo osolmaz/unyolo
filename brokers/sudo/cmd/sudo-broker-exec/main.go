@@ -30,30 +30,50 @@ type options struct {
 func main() { os.Exit(mainCode(os.Args[1:])) }
 
 func mainCode(args []string) int {
-	handled, err := privexec.RunInternalChild(args)
-	if handled {
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "sudo-broker-exec:", err)
-			return 126
-		}
-		return 0
+	if code, handled := handleInternalChild(args); handled {
+		return code
 	}
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
-		_, _ = fmt.Fprintln(os.Stdout, version)
+	if printVersion(args) {
 		return 0
 	}
 	opts, err := parseOptions(args)
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "sudo-broker-exec:", err)
-		return 2
+		return reportExecError(err, 2)
 	}
+	return runMain(opts)
+}
+
+func handleInternalChild(args []string) (int, bool) {
+	handled, err := privexec.RunInternalChild(args)
+	if !handled {
+		return 0, false
+	}
+	if err != nil {
+		return reportExecError(err, 126), true
+	}
+	return 0, true
+}
+
+func printVersion(args []string) bool {
+	if len(args) != 1 || (args[0] != "--version" && args[0] != "version") {
+		return false
+	}
+	_, _ = fmt.Fprintln(os.Stdout, version)
+	return true
+}
+
+func runMain(opts options) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, opts); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "sudo-broker-exec:", err)
-		return 1
+		return reportExecError(err, 1)
 	}
 	return 0
+}
+
+func reportExecError(err error, code int) int {
+	_, _ = fmt.Fprintln(os.Stderr, "sudo-broker-exec:", err)
+	return code
 }
 
 func parseOptions(args []string) (options, error) {

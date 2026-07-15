@@ -26,6 +26,7 @@ func TestServerExecutesAndReplaysExactlyOnce(t *testing.T) {
 	if response.Status != executorprotocol.StatusCompleted || response.Outcome == nil || !response.Outcome.Started || runner.calls != 1 {
 		t.Fatalf("first response=%+v calls=%d", response, runner.calls)
 	}
+	server.catalog = nil
 	replay := server.execute(t.Context(), request)
 	if replay.Status != executorprotocol.StatusCompleted || replay.Outcome == nil || runner.calls != 1 {
 		t.Fatalf("replay response=%+v calls=%d", replay, runner.calls)

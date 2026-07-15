@@ -33,28 +33,49 @@ func runDoctor(ctx context.Context, args []string, stdout io.Writer, stderr io.W
 
 func runDoctorWithReport(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer,
 	reportFor func(context.Context, doctorOptions) (doctor.Report, error)) error {
-	if len(args) == 0 || args[0] != "host" {
-		return errors.New("usage: sudo-broker doctor host --agent USER [flags]")
+	rest, err := doctorHostArgs(args)
+	if err != nil {
+		return err
 	}
-	opts, help, err := parseDoctorOptions(args[1:], stderr)
+	opts, help, err := parseDoctorOptions(rest, stderr)
 	if err != nil || help {
 		return err
 	}
-	if reportFor == nil {
-		return errors.New("doctor report provider is required")
+	if err := validateDoctorReportProvider(reportFor); err != nil {
+		return err
 	}
 	report, err := reportFor(ctx, opts)
 	if err != nil {
 		return err
 	}
-	if opts.jsonOutput {
-		err = doctor.WriteJSON(stdout, report)
-	} else {
-		err = doctor.WriteText(stdout, report)
-	}
-	if err != nil {
+	if err := writeDoctorReport(stdout, report, opts.jsonOutput); err != nil {
 		return err
 	}
+	return doctorExitError(report)
+}
+
+func doctorHostArgs(args []string) ([]string, error) {
+	if len(args) == 0 || args[0] != "host" {
+		return nil, errors.New("usage: sudo-broker doctor host --agent USER [flags]")
+	}
+	return args[1:], nil
+}
+
+func validateDoctorReportProvider(reportFor func(context.Context, doctorOptions) (doctor.Report, error)) error {
+	if reportFor == nil {
+		return errors.New("doctor report provider is required")
+	}
+	return nil
+}
+
+func writeDoctorReport(stdout io.Writer, report doctor.Report, jsonOutput bool) error {
+	if jsonOutput {
+		return doctor.WriteJSON(stdout, report)
+	}
+	return doctor.WriteText(stdout, report)
+}
+
+func doctorExitError(report doctor.Report) error {
 	if code := doctor.ExitCode(report.Status); code != 0 {
 		return exitError{code: code}
 	}
@@ -86,15 +107,26 @@ func parseDoctorOptions(args []string, stderr io.Writer) (doctorOptions, bool, e
 		}
 		return doctorOptions{}, false, errors.New("invalid doctor flags")
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(opts.agentUser) == "" || opts.helperTimeout <= 0 || opts.helperTimeout > 30*time.Second {
-		return doctorOptions{}, false, errors.New("doctor host requires --agent and valid bounded flags")
-	}
-	for _, value := range []string{opts.catalogPath, opts.helperState, opts.helperSocket, opts.clientSecrets, opts.operatorSecrets, opts.telegramToken} {
-		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
-			return doctorOptions{}, false, errors.New("doctor paths must be absolute and normalized")
-		}
+	if err := validateDoctorFlagValues(flags.NArg(), opts); err != nil {
+		return doctorOptions{}, false, err
 	}
 	return opts, false, nil
+}
+
+func validateDoctorFlagValues(extraArgs int, opts doctorOptions) error {
+	if extraArgs != 0 || strings.TrimSpace(opts.agentUser) == "" || opts.helperTimeout <= 0 || opts.helperTimeout > 30*time.Second {
+		return errors.New("doctor host requires --agent and valid bounded flags")
+	}
+	return validateDoctorPaths(opts)
+}
+
+func validateDoctorPaths(opts doctorOptions) error {
+	for _, value := range []string{opts.catalogPath, opts.helperState, opts.helperSocket, opts.clientSecrets, opts.operatorSecrets, opts.telegramToken} {
+		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+			return errors.New("doctor paths must be absolute and normalized")
+		}
+	}
+	return nil
 }
 
 func sudoDoctorReport(ctx context.Context, opts doctorOptions) (doctor.Report, error) {

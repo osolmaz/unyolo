@@ -172,17 +172,32 @@ func RunInternalChild(args []string) (bool, error) {
 	if !handled || err != nil {
 		return handled, err
 	}
-	if os.Geteuid() != 0 {
-		return true, errors.New("internal execution requires root")
+	return true, runInternalPlanDescriptor(fd)
+}
+
+func runInternalPlanDescriptor(fd int) error {
+	if err := requireInternalRoot(); err != nil {
+		return err
 	}
 	value, err := readInternalPlan(fd)
 	if err != nil {
-		return true, err
+		return err
 	}
+	return executeInternalPlan(value)
+}
+
+func requireInternalRoot() error {
+	if os.Geteuid() != 0 {
+		return errors.New("internal execution requires root")
+	}
+	return nil
+}
+
+func executeInternalPlan(value plan.Plan) error {
 	if err := hostcheck.ValidateExecution(value, ^uint32(0)); err != nil {
-		return true, err
+		return err
 	}
-	return true, executePlan(value)
+	return executePlan(value)
 }
 
 func internalPlanDescriptor(args []string) (int, bool, error) {

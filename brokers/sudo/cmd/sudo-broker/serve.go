@@ -50,52 +50,86 @@ func runServe(ctx context.Context, args []string, stdout io.Writer, stderr io.Wr
 
 func runServeWith(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, geteuid func() int,
 	build func(serveOptions, io.Writer) (*routes.Server, error), serve func(context.Context, []serverhttp.Binding) error) error {
-	if geteuid == nil || build == nil || serve == nil {
-		return errors.New("serve runtime dependencies are required")
-	}
-	if geteuid() == 0 {
-		return errors.New("frontend must run as a dedicated non-root user")
-	}
-	opts, err := parseServeOptions(args)
-	if err != nil {
+	if err := validateServeRuntime(geteuid, build, serve); err != nil {
 		return err
 	}
-	server, err := build(opts, stderr)
-	if err != nil {
+	if err := rejectRootFrontend(geteuid); err != nil {
 		return err
 	}
-	if err := serverHelperReady(ctx, server); err != nil {
-		_ = server.Close()
+	opts, server, err := buildReadyServer(ctx, args, stderr, build)
+	if err != nil {
 		return err
 	}
 	defer func() { _ = server.Close() }()
 	server.Start(ctx)
+	bindings, err := listenServeBindings(opts, server)
+	if err != nil {
+		return err
+	}
+	printServeBindings(stdout, bindings)
+	return serve(ctx, bindings)
+}
+
+func validateServeRuntime(geteuid func() int, build func(serveOptions, io.Writer) (*routes.Server, error), serve func(context.Context, []serverhttp.Binding) error) error {
+	if geteuid == nil || build == nil || serve == nil {
+		return errors.New("serve runtime dependencies are required")
+	}
+	return nil
+}
+
+func rejectRootFrontend(geteuid func() int) error {
+	if geteuid() == 0 {
+		return errors.New("frontend must run as a dedicated non-root user")
+	}
+	return nil
+}
+
+func buildReadyServer(ctx context.Context, args []string, stderr io.Writer, build func(serveOptions, io.Writer) (*routes.Server, error)) (serveOptions, *routes.Server, error) {
+	opts, err := parseServeOptions(args)
+	if err != nil {
+		return serveOptions{}, nil, err
+	}
+	server, err := build(opts, stderr)
+	if err != nil {
+		return serveOptions{}, nil, err
+	}
+	if err := serverHelperReady(ctx, server); err != nil {
+		_ = server.Close()
+		return serveOptions{}, nil, err
+	}
+	return opts, server, nil
+}
+
+func listenServeBindings(opts serveOptions, server *routes.Server) ([]serverhttp.Binding, error) {
 	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: opts.agentEndpoint}}
 	if server.OperatorHandler() != nil {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *opts.operatorEndpoint})
 	}
 	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: opts.development})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	agentServer, err := serverhttp.New(server.Handler(), serverhttp.ProfileStreaming)
 	if err != nil {
 		_ = endpoint.CloseSet(listeners)
-		return err
+		return nil, err
 	}
 	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
 	if server.OperatorHandler() != nil {
 		operatorServer, serverErr := serverhttp.New(server.OperatorHandler(), serverhttp.ProfileOperator)
 		if serverErr != nil {
 			_ = endpoint.CloseSet(listeners)
-			return serverErr
+			return nil, serverErr
 		}
 		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
 	}
+	return bindings, nil
+}
+
+func printServeBindings(stdout io.Writer, bindings []serverhttp.Binding) {
 	for _, value := range bindings {
 		_, _ = fmt.Fprintf(stdout, "sudo-broker listening on %s\n", value.Listener.Addr())
 	}
-	return serve(ctx, bindings)
 }
 
 func parseServeOptions(args []string) (serveOptions, error) {
@@ -117,34 +151,57 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	if err := flags.Parse(args); err != nil {
 		return serveOptions{}, err
 	}
-	if flags.NArg() != 0 || opts.policyPath == "" || opts.catalogPath == "" || opts.secretsPath == "" || opts.stateDirectory == "" || opts.helperSocket == "" || agentEndpoint == "" {
-		return serveOptions{}, errors.New("--policy, --catalog, --secrets, --state, --helper-socket, and --agent-endpoint are required")
+	if err := validateServeRequiredFlags(flags.NArg(), opts, agentEndpoint); err != nil {
+		return serveOptions{}, err
 	}
 	parsedAgent, err := endpoint.Parse(agentEndpoint, endpoint.ParseOptions{})
 	if err != nil {
 		return serveOptions{}, fmt.Errorf("agent endpoint: %w", err)
 	}
 	opts.agentEndpoint = parsedAgent
-	if opts.operatorSecrets != "" {
-		parsedOperator, parseErr := endpoint.Parse(operatorEndpoint, endpoint.ParseOptions{})
-		if parseErr != nil {
-			return serveOptions{}, fmt.Errorf("operator endpoint: %w", parseErr)
-		}
-		if parsedOperator.String() == parsedAgent.String() {
-			return serveOptions{}, errors.New("agent and operator listeners must differ")
-		}
-		opts.operatorEndpoint = &parsedOperator
+	if err := parseServeOperatorEndpoint(&opts, operatorEndpoint, parsedAgent); err != nil {
+		return serveOptions{}, err
 	}
-	if !filepath.IsAbs(opts.helperSocket) {
-		return serveOptions{}, errors.New("helper socket path must be absolute")
-	}
-	if (opts.telegramToken == "") != (opts.telegramChatID == 0) {
-		return serveOptions{}, errors.New("telegram token file and chat id must be configured together")
-	}
-	if opts.operatorSecrets == "" && opts.telegramToken == "" {
-		return serveOptions{}, errors.New("an operator credential or Telegram approval channel is required")
+	if err := validateServeSecurityOptions(opts); err != nil {
+		return serveOptions{}, err
 	}
 	return opts, nil
+}
+
+func validateServeRequiredFlags(extraArgs int, opts serveOptions, agentEndpoint string) error {
+	if extraArgs != 0 || opts.policyPath == "" || opts.catalogPath == "" || opts.secretsPath == "" ||
+		opts.stateDirectory == "" || opts.helperSocket == "" || agentEndpoint == "" {
+		return errors.New("--policy, --catalog, --secrets, --state, --helper-socket, and --agent-endpoint are required")
+	}
+	return nil
+}
+
+func parseServeOperatorEndpoint(opts *serveOptions, operatorEndpoint string, agent endpoint.Endpoint) error {
+	if opts.operatorSecrets == "" {
+		return nil
+	}
+	parsedOperator, err := endpoint.Parse(operatorEndpoint, endpoint.ParseOptions{})
+	if err != nil {
+		return fmt.Errorf("operator endpoint: %w", err)
+	}
+	if parsedOperator.String() == agent.String() {
+		return errors.New("agent and operator listeners must differ")
+	}
+	opts.operatorEndpoint = &parsedOperator
+	return nil
+}
+
+func validateServeSecurityOptions(opts serveOptions) error {
+	if !filepath.IsAbs(opts.helperSocket) {
+		return errors.New("helper socket path must be absolute")
+	}
+	if (opts.telegramToken == "") != (opts.telegramChatID == 0) {
+		return errors.New("telegram token file and chat id must be configured together")
+	}
+	if opts.operatorSecrets == "" && opts.telegramToken == "" {
+		return errors.New("an operator credential or Telegram approval channel is required")
+	}
+	return nil
 }
 
 func buildServer(opts serveOptions, stderr io.Writer) (*routes.Server, error) {
@@ -155,70 +212,105 @@ func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootF
 	if validateRootFile == nil {
 		return nil, errors.New("security-sensitive file validator is required")
 	}
-	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken, opts.admissionConfig} {
-		if path != "" {
-			if err := validateRootFile(path); err != nil {
-				return nil, fmt.Errorf("security-sensitive file %s is unsafe: %w", path, err)
-			}
-		}
-	}
-	snapshot, err := catalog.Load(opts.catalogPath)
-	if err != nil {
+	if err := validateServeInputFiles(opts, validateRootFile); err != nil {
 		return nil, err
 	}
-	policy, err := corepolicy.LoadFile(opts.policyPath, sudopolicy.Registry(snapshot))
+	loaded, err := loadServeInputs(opts)
 	if err != nil {
 		return nil, err
-	}
-	clients, err := secretfile.Parse(opts.secretsPath)
-	if err != nil {
-		return nil, err
-	}
-	admissionConfig, err := admission.LoadFile(opts.admissionConfig, mapKeys(clients))
-	if err != nil {
-		return nil, err
-	}
-	operators := map[string]string{}
-	if opts.operatorSecrets != "" {
-		operators, err = secretfile.Parse(opts.operatorSecrets)
-		if err != nil {
-			return nil, err
-		}
 	}
 	database, err := state.Open(context.Background(), opts.stateDirectory, state.Options{})
 	if err != nil {
 		return nil, err
 	}
 	helper := &executorclient.Client{SocketPath: opts.helperSocket, Timeout: 10 * time.Second}
-	var notifier *bktelegram.Client
-	if opts.telegramToken != "" {
-		data, err := os.ReadFile(opts.telegramToken) // #nosec G304 -- validated operator-configured root-owned path.
-		if err != nil {
-			return nil, err
-		}
-		notifier, err = bktelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", bktelegram.Options{
-			ApproveText: "Approve", DenyText: "Deny", IgnoredAnswer: "Request decision ignored",
-		})
-		if err != nil {
-			return nil, err
-		}
+	notifier, err := loadTelegramNotifier(opts)
+	if err != nil {
+		_ = database.Close()
+		return nil, err
 	}
-	var notifierService notify.Notifier
-	var poller routes.DecisionPoller
-	if notifier != nil {
-		notifierService = notifier
-		poller = notifier
-	}
+	notifierService, poller := notifierDependencies(notifier)
 	server, err := routes.New(routes.Options{
-		Policy: policy, Catalog: snapshot, Database: database,
-		Identities: plan.SystemIdentityResolver{}, Helper: helper, ClientSecrets: clients, OperatorSecrets: operators,
-		Notifier: notifierService, Poller: poller, Audit: audit.New(stderr), OperatorConfigured: len(operators) > 0,
-		Admission: admissionConfig,
+		Policy: loaded.policy, Catalog: loaded.snapshot, Database: database,
+		Identities: plan.SystemIdentityResolver{}, Helper: helper, ClientSecrets: loaded.clients, OperatorSecrets: loaded.operators,
+		Notifier: notifierService, Poller: poller, Audit: audit.New(stderr), OperatorConfigured: len(loaded.operators) > 0,
+		Admission: loaded.admission,
 	})
 	if err != nil {
 		_ = database.Close()
 	}
 	return server, err
+}
+
+type serveInputs struct {
+	snapshot  *catalog.Snapshot
+	policy    *corepolicy.Policy
+	clients   map[string]string
+	operators map[string]string
+	admission admission.Config
+}
+
+func loadServeInputs(opts serveOptions) (serveInputs, error) {
+	snapshot, err := catalog.Load(opts.catalogPath)
+	if err != nil {
+		return serveInputs{}, err
+	}
+	policy, err := corepolicy.LoadFile(opts.policyPath, sudopolicy.Registry(snapshot))
+	if err != nil {
+		return serveInputs{}, err
+	}
+	clients, err := secretfile.Parse(opts.secretsPath)
+	if err != nil {
+		return serveInputs{}, err
+	}
+	admissionConfig, err := admission.LoadFile(opts.admissionConfig, mapKeys(clients))
+	if err != nil {
+		return serveInputs{}, err
+	}
+	operators, err := loadOperatorSecrets(opts.operatorSecrets)
+	if err != nil {
+		return serveInputs{}, err
+	}
+	return serveInputs{snapshot: snapshot, policy: policy, clients: clients, operators: operators, admission: admissionConfig}, nil
+}
+
+func validateServeInputFiles(opts serveOptions, validateRootFile func(string) error) error {
+	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken, opts.admissionConfig} {
+		if path == "" {
+			continue
+		}
+		if err := validateRootFile(path); err != nil {
+			return fmt.Errorf("security-sensitive file %s is unsafe: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func loadOperatorSecrets(path string) (map[string]string, error) {
+	if path == "" {
+		return map[string]string{}, nil
+	}
+	return secretfile.Parse(path)
+}
+
+func loadTelegramNotifier(opts serveOptions) (*bktelegram.Client, error) {
+	if opts.telegramToken == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(opts.telegramToken) // #nosec G304 -- validated operator-configured root-owned path.
+	if err != nil {
+		return nil, err
+	}
+	return bktelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", bktelegram.Options{
+		ApproveText: "Approve", DenyText: "Deny", IgnoredAnswer: "Request decision ignored",
+	})
+}
+
+func notifierDependencies(notifier *bktelegram.Client) (notify.Notifier, routes.DecisionPoller) {
+	if notifier == nil {
+		return nil, nil
+	}
+	return notifier, notifier
 }
 
 func mapKeys(values map[string]string) []string {

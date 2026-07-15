@@ -156,16 +156,38 @@ func (s *executionState) update(id string, mutate func(*executionRecord) error) 
 }
 
 func (s *executionState) load() (executionFile, error) {
-	dataBytes, err := os.ReadFile(s.path) // #nosec G304 -- root-owned helper state path.
-	if errors.Is(err, os.ErrNotExist) {
+	dataBytes, missing, err := readExecutionStateFile(s.path)
+	if missing {
 		return executionFile{Version: 1}, nil
 	}
 	if err != nil {
 		return executionFile{}, err
 	}
-	if len(dataBytes) == 0 || len(dataBytes) > maxStateBytes {
-		return executionFile{}, errors.New("helper execution state size is invalid")
+	data, err := decodeExecutionState(dataBytes)
+	if err != nil {
+		return executionFile{}, err
 	}
+	if err := validateExecutionFile(data); err != nil {
+		return executionFile{}, err
+	}
+	return data, nil
+}
+
+func readExecutionStateFile(path string) ([]byte, bool, error) {
+	dataBytes, err := os.ReadFile(path) // #nosec G304 -- root-owned helper state path.
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if len(dataBytes) == 0 || len(dataBytes) > maxStateBytes {
+		return nil, false, errors.New("helper execution state size is invalid")
+	}
+	return dataBytes, false, nil
+}
+
+func decodeExecutionState(dataBytes []byte) (executionFile, error) {
 	if err := strictjson.RejectDuplicateKeys(dataBytes); err != nil {
 		return executionFile{}, fmt.Errorf("decode helper execution state: %w", err)
 	}
@@ -181,17 +203,21 @@ func (s *executionState) load() (executionFile, error) {
 	if data.Version != 1 {
 		return executionFile{}, errors.New("helper execution state version is unsupported")
 	}
+	return data, nil
+}
+
+func validateExecutionFile(data executionFile) error {
 	if len(data.Executions) > maxStateRecords {
-		return executionFile{}, errors.New("helper execution state contains too many records")
+		return errors.New("helper execution state contains too many records")
 	}
 	seen := make(map[string]bool, len(data.Executions))
 	for index, record := range data.Executions {
 		if seen[record.ID] || validateExecutionRecord(record) != nil {
-			return executionFile{}, fmt.Errorf("helper execution state record %d is invalid", index)
+			return fmt.Errorf("helper execution state record %d is invalid", index)
 		}
 		seen[record.ID] = true
 	}
-	return data, nil
+	return nil
 }
 
 func (s *executionState) save(data executionFile) error {
@@ -210,29 +236,54 @@ func (s *executionState) save(data executionFile) error {
 }
 
 func validateExecutionRecord(record executionRecord) error {
-	if !boundedStateID(record.ID) || !plandigest.Valid(record.PlanDigest) || !boundedStateID(record.GrantID) || !boundedStateID(record.ReservationID) || record.ClaimedAt.IsZero() {
-		return errors.New("execution binding is invalid")
+	if err := validateExecutionBinding(record); err != nil {
+		return err
 	}
 	switch record.Status {
 	case executionClaimed:
-		if !record.StartedAt.IsZero() || !record.CompletedAt.IsZero() || record.Outcome != nil {
-			return errors.New("claimed execution fields are invalid")
-		}
+		return validateClaimedExecution(record)
 	case executionStarted:
-		if record.StartedAt.Before(record.ClaimedAt) || record.StartedAt.IsZero() || !record.CompletedAt.IsZero() || record.Outcome != nil {
-			return errors.New("started execution fields are invalid")
-		}
+		return validateStartedExecution(record)
 	case executionComplete:
-		if record.CompletedAt.Before(record.ClaimedAt) || record.CompletedAt.IsZero() || record.StartedAt.IsZero() || record.StartedAt.Before(record.ClaimedAt) || record.CompletedAt.Before(record.StartedAt) || record.Outcome == nil {
-			return errors.New("completed execution fields are invalid")
-		}
-		if err := executorprotocol.WriteResponse(io.Discard, executorprotocol.NewCompleted(record.ID, *record.Outcome)); err != nil {
-			return err
-		}
+		return validateCompletedExecution(record)
 	default:
 		return errors.New("execution status is invalid")
 	}
+}
+
+func validateExecutionBinding(record executionRecord) error {
+	if !boundedStateID(record.ID) || !plandigest.Valid(record.PlanDigest) ||
+		!boundedStateID(record.GrantID) || !boundedStateID(record.ReservationID) || record.ClaimedAt.IsZero() {
+		return errors.New("execution binding is invalid")
+	}
 	return nil
+}
+
+func validateClaimedExecution(record executionRecord) error {
+	if !record.StartedAt.IsZero() || !record.CompletedAt.IsZero() || record.Outcome != nil {
+		return errors.New("claimed execution fields are invalid")
+	}
+	return nil
+}
+
+func validateStartedExecution(record executionRecord) error {
+	if record.StartedAt.Before(record.ClaimedAt) || record.StartedAt.IsZero() ||
+		!record.CompletedAt.IsZero() || record.Outcome != nil {
+		return errors.New("started execution fields are invalid")
+	}
+	return nil
+}
+
+func validateCompletedExecution(record executionRecord) error {
+	if invalidCompletedExecutionTimes(record) || record.Outcome == nil {
+		return errors.New("completed execution fields are invalid")
+	}
+	return executorprotocol.WriteResponse(io.Discard, executorprotocol.NewCompleted(record.ID, *record.Outcome))
+}
+
+func invalidCompletedExecutionTimes(record executionRecord) bool {
+	return record.CompletedAt.Before(record.ClaimedAt) || record.CompletedAt.IsZero() ||
+		record.StartedAt.IsZero() || record.StartedAt.Before(record.ClaimedAt) || record.CompletedAt.Before(record.StartedAt)
 }
 
 func boundedStateID(value string) bool {

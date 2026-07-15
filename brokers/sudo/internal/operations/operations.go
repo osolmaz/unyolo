@@ -108,13 +108,21 @@ func LoadStored(operation agentv1.Operation, command sudoplan.Plan, snapshot *ca
 		return Plan{}, err
 	}
 	resolved, err := snapshot.Resolve(input.CommandID, input.TargetUser, input.CommandArgs)
-	if err != nil || command.RequestID != operation.ID || command.ClientID != operation.ClientID ||
-		command.Operation != operation.Operation || command.CommandID != resolved.CommandID || command.TargetUser != resolved.TargetUser ||
-		command.CatalogDigest != resolved.CatalogDigest || !equalSlots(command.SlotValues, resolved.SlotValues) {
+	if err != nil || !storedPlanMatches(operation, command, resolved) {
 		return Plan{}, errors.New("stored sudo operation does not match its immutable plan")
 	}
 	return Plan{ExecutionID: operation.ID, Target: cloneRaw(operation.Target), Arguments: cloneRaw(operation.Arguments),
 		Resolved: resolved, Authorization: sudopolicy.Request(operation.ClientID, resolved), Command: command}, nil
+}
+
+func storedPlanMatches(operation agentv1.Operation, command sudoplan.Plan, resolved catalog.Resolved) bool {
+	return command.RequestID == operation.ID &&
+		command.ClientID == operation.ClientID &&
+		command.Operation == operation.Operation &&
+		command.CommandID == resolved.CommandID &&
+		command.TargetUser == resolved.TargetUser &&
+		command.CatalogDigest == resolved.CatalogDigest &&
+		equalSlots(command.SlotValues, resolved.SlotValues)
 }
 
 type commandAdapter struct {
@@ -126,18 +134,34 @@ func (commandAdapter) Descriptor() capability.Descriptor { return commandDescrip
 func (commandAdapter) RequiresApproval() bool            { return true }
 
 func (commandAdapter) Decode(targetData, argumentData json.RawMessage) (Input, error) {
-	var target commandTarget
-	if len(targetData) == 0 || len(targetData) > maxInputBytes || strictjson.Decode(targetData, &target, true) != nil ||
-		target.Kind != sudopolicy.TargetUser || strings.TrimSpace(target.Name) == "" {
-		return Input{}, errors.New("command target must contain an exact Unix user")
+	target, err := decodeCommandTarget(targetData)
+	if err != nil {
+		return Input{}, err
 	}
-	var arguments commandArguments
-	if len(argumentData) == 0 || len(argumentData) > maxInputBytes || strictjson.Decode(argumentData, &arguments, true) != nil ||
-		strings.TrimSpace(arguments.CommandID) == "" || arguments.Arguments == nil {
-		return Input{}, errors.New("invalid command arguments")
+	arguments, err := decodeCommandArguments(argumentData)
+	if err != nil {
+		return Input{}, err
 	}
 	return Input{Target: cloneRaw(targetData), Arguments: cloneRaw(argumentData), TargetUser: strings.TrimSpace(target.Name),
 		CommandID: strings.TrimSpace(arguments.CommandID), CommandArgs: cloneArguments(arguments.Arguments)}, nil
+}
+
+func decodeCommandTarget(data json.RawMessage) (commandTarget, error) {
+	var target commandTarget
+	if len(data) == 0 || len(data) > maxInputBytes || strictjson.Decode(data, &target, true) != nil ||
+		target.Kind != sudopolicy.TargetUser || strings.TrimSpace(target.Name) == "" {
+		return commandTarget{}, errors.New("command target must contain an exact Unix user")
+	}
+	return target, nil
+}
+
+func decodeCommandArguments(data json.RawMessage) (commandArguments, error) {
+	var arguments commandArguments
+	if len(data) == 0 || len(data) > maxInputBytes || strictjson.Decode(data, &arguments, true) != nil ||
+		strings.TrimSpace(arguments.CommandID) == "" || arguments.Arguments == nil {
+		return commandArguments{}, errors.New("invalid command arguments")
+	}
+	return arguments, nil
 }
 
 func (a commandAdapter) Resolve(_ context.Context, input Input) (Plan, error) {

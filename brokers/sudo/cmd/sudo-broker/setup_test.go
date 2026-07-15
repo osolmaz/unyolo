@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -159,6 +160,53 @@ func TestFrontendSecretsRemainRootOwned(t *testing.T) {
 	file := frontendSecretFile("secrets", []byte("secret"))
 	if file.Owner != bkservice.ManagedFileOwnerRoot || file.Mode != 0o640 {
 		t.Fatalf("frontend secret ownership = owner %q mode %04o", file.Owner, file.Mode)
+	}
+}
+
+func TestInstallSudoSystemdStopsAtFirstFailure(t *testing.T) {
+	t.Parallel()
+	helper := bkservice.SystemdInstallPlan{UnitName: "sudo-broker-exec.service"}
+	frontend := bkservice.SystemdInstallPlan{UnitName: "sudo-broker.service"}
+	want := errors.New("install failed")
+	var installed []string
+	install := func(_ context.Context, plan bkservice.SystemdInstallPlan) error {
+		installed = append(installed, plan.UnitName)
+		if plan.UnitName == helper.UnitName {
+			return want
+		}
+		return nil
+	}
+	if err := installSudoSystemdWith(t.Context(), helper, frontend, install); !errors.Is(err, want) {
+		t.Fatalf("helper install error = %v", err)
+	}
+	if len(installed) != 1 || installed[0] != helper.UnitName {
+		t.Fatalf("install order after helper failure = %v", installed)
+	}
+
+	installed = nil
+	install = func(_ context.Context, plan bkservice.SystemdInstallPlan) error {
+		installed = append(installed, plan.UnitName)
+		if plan.UnitName == frontend.UnitName {
+			return want
+		}
+		return nil
+	}
+	if err := installSudoSystemdWith(t.Context(), helper, frontend, install); !errors.Is(err, want) {
+		t.Fatalf("frontend install error = %v", err)
+	}
+	if len(installed) != 2 || installed[0] != helper.UnitName || installed[1] != frontend.UnitName {
+		t.Fatalf("successful install order = %v", installed)
+	}
+
+	installed = nil
+	if err := installSudoSystemdWith(t.Context(), helper, frontend, func(_ context.Context, plan bkservice.SystemdInstallPlan) error {
+		installed = append(installed, plan.UnitName)
+		return nil
+	}); err != nil {
+		t.Fatalf("successful install = %v", err)
+	}
+	if len(installed) != 2 || installed[0] != helper.UnitName || installed[1] != frontend.UnitName {
+		t.Fatalf("successful install order = %v", installed)
 	}
 }
 
