@@ -441,6 +441,19 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 	}
 }
 
+func TestGitHubInstallReadinessFollowsManagedRetirements(t *testing.T) {
+	plan := systemdPlan{opts: setupSystemdOptions{
+		SystemdOptions:       bksetup.SystemdOptions{Endpoint: testGHAgentEndpoint},
+		TelegramBotTokenFile: "/tmp/telegram-token",
+	}}
+	if check := githubInstallReadyCheck(plan, []bkservice.ManagedFileRef{{Name: githubTokenFileName}}); check == nil {
+		t.Fatal("managed retirement with Telegram configured requires a readiness check")
+	}
+	if check := githubInstallReadyCheck(plan, nil); check != nil {
+		t.Fatal("installation without managed retirement does not require a readiness check")
+	}
+}
+
 func TestValidateSetupSystemdOptions(t *testing.T) {
 	base := bksetup.SystemdOptions{
 		BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",

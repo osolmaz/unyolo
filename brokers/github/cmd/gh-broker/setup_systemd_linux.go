@@ -135,7 +135,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		return bkservice.SystemdInstallPlan{}, err
 	}
 	removeFiles := githubRetiredManagedFiles(plan)
-	readyCheck := githubInstallReadyCheck(plan)
+	readyCheck := githubInstallReadyCheck(plan, removeFiles)
 	return bkservice.SystemdInstallPlan{
 		User:             plan.opts.User,
 		Group:            plan.opts.Group,
@@ -199,8 +199,8 @@ func retiredCredentialFiles(plan systemdPlan) []bkservice.ManagedFileRef {
 	return removeFiles
 }
 
-func githubInstallReadyCheck(plan systemdPlan) bkservice.ReadinessCheck {
-	if plan.opts.TelegramBotTokenFile != "" {
+func githubInstallReadyCheck(plan systemdPlan, removeFiles []bkservice.ManagedFileRef) bkservice.ReadinessCheck {
+	if len(removeFiles) == 0 {
 		return nil
 	}
 	return bkservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
