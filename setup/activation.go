@@ -111,10 +111,10 @@ func activationSocket(unitName, descriptor, path, group, serviceUnit string) ser
 	return service.SystemdSocketInstall{UnitName: unitName, Unit: service.SystemdSocketUnit{
 		Description:  "BrokerKit " + descriptor + " listener",
 		ListenStream: path, Service: serviceUnit, FileDescriptorName: descriptor,
-		SocketUser: "root", SocketGroup: group, SocketMode: 0o660, DirectoryMode: 0o750,
+		SocketUser: "root", SocketGroup: group, SocketMode: 0o660, DirectoryMode: 0o711,
 	}}
 }
 
 func launchdSocket(name, path, group string) service.LaunchdSocket {
-	return service.LaunchdSocket{Name: name, Path: path, Owner: "root", Group: group, Mode: 0o660, DirectoryMode: 0o750}
+	return service.LaunchdSocket{Name: name, Path: path, Owner: "root", Group: group, Mode: 0o660, DirectoryMode: 0o711}
 }

@@ -26,6 +26,7 @@ type SystemdUnit struct {
 	Description          string
 	User                 string
 	Group                string
+	SupplementaryGroups  []string
 	EnvironmentFile      string
 	ExecStart            string
 	StateDir             string
@@ -113,7 +114,7 @@ func (unit SystemdSocketUnit) validate() error {
 			return validatex.AccountNames(map[string]string{"socket user": unit.SocketUser, "socket group": unit.SocketGroup})
 		},
 		func() error { return validateSocketMode(unit.SocketMode, "socket") },
-		func() error { return validateSocketMode(unit.DirectoryMode, "socket directory") },
+		func() error { return validateSocketDirectoryMode(unit.DirectoryMode, "socket directory") },
 	}
 	for _, validate := range validators {
 		if err := validate(); err != nil {
@@ -139,6 +140,13 @@ func validateSystemdSocketAddress(unit SystemdSocketUnit) error {
 func validateSocketMode(mode os.FileMode, label string) error {
 	if mode == 0 || mode&^os.ModePerm != 0 || mode.Perm()&0o007 != 0 {
 		return fmt.Errorf("%s mode must deny all access to other users", label)
+	}
+	return nil
+}
+
+func validateSocketDirectoryMode(mode os.FileMode, label string) error {
+	if mode == 0 || mode&^os.ModePerm != 0 || mode.Perm()&0o700 != 0o700 || mode.Perm()&0o022 != 0 {
+		return fmt.Errorf("%s mode must be owner-accessible and not writable by other users", label)
 	}
 	return nil
 }
@@ -231,12 +239,15 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 	after := append([]string{"network-online.target"}, unit.AfterUnits...)
 	var body strings.Builder
 	_, _ = fmt.Fprintf(&body, "[Unit]\nDescription=%s\nAfter=%s\nWants=network-online.target\n", unit.Description, strings.Join(after, " "))
-	writeRequires(&body, unit.RequiresUnits)
+	writeUnitValues(&body, "Requires", unit.RequiresUnits)
 	_, _ = fmt.Fprintf(&body, `
 [Service]
 Type=simple
 User=%s
 Group=%s
+`, unit.User, unit.Group)
+	writeUnitValues(&body, "SupplementaryGroups", unit.SupplementaryGroups)
+	_, _ = fmt.Fprintf(&body, `
 EnvironmentFile=%s
 ExecStart=%s
 Restart=on-failure
@@ -247,7 +258,7 @@ ProtectSystem=%s
 ProtectHome=%s
 ReadWritePaths=%s
 ReadOnlyPaths=%s
-`, unit.User, unit.Group, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
+`, unit.EnvironmentFile, unit.ExecStart, restartSec, noNewPrivileges, protectSystem, protectHome, readWritePaths, unit.ConfigDir)
 	writeRuntimeDirectory(&body, unit.RuntimeDirectory, unit.RuntimeDirectoryMode)
 	for _, directive := range unit.ExtraDirectives {
 		body.WriteString(directive)
@@ -280,9 +291,9 @@ func systemdProtectionValues(unit SystemdUnit) (string, string, string) {
 	return protectSystem, readWritePaths, noNewPrivileges
 }
 
-func writeRequires(body *strings.Builder, units []string) {
-	if len(units) > 0 {
-		_, _ = fmt.Fprintf(body, "Requires=%s\n", strings.Join(units, " "))
+func writeUnitValues(body *strings.Builder, directive string, values []string) {
+	if len(values) > 0 {
+		_, _ = fmt.Fprintf(body, "%s=%s\n", directive, strings.Join(values, " "))
 	}
 }
 
@@ -315,6 +326,9 @@ func (unit SystemdUnit) validate() error {
 	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
 		return err
 	}
+	if err := validateSupplementaryGroups(unit.SupplementaryGroups); err != nil {
+		return err
+	}
 	if err := validateSystemdPolicies(unit); err != nil {
 		return err
 	}
@@ -325,6 +339,14 @@ func (unit SystemdUnit) validate() error {
 		return err
 	}
 	return validateExtraDirectives(unit.ExtraDirectives)
+}
+
+func validateSupplementaryGroups(groups []string) error {
+	values := make(map[string]string, len(groups))
+	for index, group := range groups {
+		values[fmt.Sprintf("supplementary group %d", index+1)] = group
+	}
+	return validatex.AccountNames(values)
 }
 
 func validateUnitDependencies(unit SystemdUnit) error {

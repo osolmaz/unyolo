@@ -73,7 +73,11 @@ func parseRunCommandFlags(args []string) (commandFlags, string, string, error) {
 }
 
 func buildRunSubmitRequest(commandID string, common commandFlags, operationID string, reason string) (agentv1.SubmitRequest, error) {
-	arguments, err := json.Marshal(map[string]any{"command_id": commandID, "arguments": map[string]json.RawMessage(common.arguments)})
+	commandArguments := map[string]json.RawMessage(common.arguments)
+	if commandArguments == nil {
+		commandArguments = map[string]json.RawMessage{}
+	}
+	arguments, err := json.Marshal(map[string]any{"command_id": commandID, "arguments": commandArguments})
 	if err != nil {
 		return agentv1.SubmitRequest{}, err
 	}

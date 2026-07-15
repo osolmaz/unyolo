@@ -308,8 +308,10 @@ brokerkit owns:
 - status update flows
 - atomic approve/deny plus callback-notification recovery
 - Telegram callback parsing and verification
-- unacknowledged, offset-preserving callback retry after transient durable
-  failures
+- token-bound Telegram decisions through the owning broker's canonical
+  Operator V1 path
+- transient route failures that leave the affected message retryable without
+  blocking callbacks for healthy brokers
 
 Brokers own the approval summary text and the provider-specific fields shown to
 the operator.

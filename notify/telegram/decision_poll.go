@@ -46,6 +46,16 @@ func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, h
 		if result.Retry {
 			return true
 		}
+		if result.MessageStatus != "" {
+			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
+			_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, result.MessageStatus)
+			return false
+		}
+		if result.ClearButtons {
+			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
+			_ = c.clearDecisionButtons(ctx, decision)
+			return false
+		}
 	}
 	_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
 	return false
@@ -56,7 +66,7 @@ func parseDecision(update telegramUpdate) (notify.Decision, bool) {
 		return notify.Decision{}, false
 	}
 	callback := update.CallbackQuery
-	action, grantID, token, ok := ParseCallbackData(callback.Data)
+	route, action, grantID, token, ok := parseCallbackData(callback.Data)
 	if !ok {
 		return notify.Decision{}, false
 	}
@@ -76,6 +86,7 @@ func parseDecision(update telegramUpdate) (notify.Decision, bool) {
 		return notify.Decision{}, false
 	}
 	return notify.Decision{
+		Route:         route,
 		Action:        action,
 		GrantID:       grantID,
 		DecisionToken: token,

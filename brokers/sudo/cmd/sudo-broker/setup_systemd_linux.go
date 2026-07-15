@@ -354,7 +354,7 @@ func frontendSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathVa
 	return bkservice.SystemdUnit{Description: "sudo-broker approval frontend", User: opts.User, Group: opts.Group,
 		EnvironmentFile: paths.frontendEnv, ExecStart: frontendExec(opts, paths), StateDir: opts.StateDir, ConfigDir: opts.ConfigDir,
 		PathValidation: pathValidation, AfterUnits: []string{"sudo-broker-exec.service"}, RequiresUnits: []string{"sudo-broker-exec.service"},
-		ExtraDirectives: hardeningDirectives(true), RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750}
+		ExtraDirectives: hardeningDirectives(true)}
 }
 
 func sharedStateDirectory(frontend string, helper string) string {

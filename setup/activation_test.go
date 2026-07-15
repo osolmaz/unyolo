@@ -13,6 +13,9 @@ func TestBuildSystemdActivation(t *testing.T) {
 	if len(got.Sockets) != 2 || got.Sockets[0].Unit.FileDescriptorName != "agent" || got.Sockets[1].Unit.FileDescriptorName != "operator" {
 		t.Fatalf("activation = %+v", got)
 	}
+	if got.Sockets[0].Unit.DirectoryMode != 0o711 || got.Sockets[1].Unit.DirectoryMode != 0o711 {
+		t.Fatalf("socket directories must be traversable without granting socket access: %+v", got.Sockets)
+	}
 	if got.GroupMembers[opts.AgentAccessGroup][0] != opts.AgentUser || got.GroupMembers[opts.OperatorAccessGroup][0] != opts.OperatorUser {
 		t.Fatalf("group members = %+v", got.GroupMembers)
 	}
@@ -38,6 +41,9 @@ func TestBuildLaunchdActivation(t *testing.T) {
 	}
 	if len(got.Sockets) != 2 || got.Sockets[0].Name != "agent" || got.Sockets[1].Name != "operator" {
 		t.Fatalf("BuildLaunchdActivation() sockets = %+v", got.Sockets)
+	}
+	if got.Sockets[0].DirectoryMode != 0o711 || got.Sockets[1].DirectoryMode != 0o711 {
+		t.Fatalf("launchd socket directories must be traversable: %+v", got.Sockets)
 	}
 	if got.Sockets[0].Group != "test-agent" || got.Sockets[1].Group != "test-operator" {
 		t.Fatalf("BuildLaunchdActivation() groups = %+v", got.Sockets)

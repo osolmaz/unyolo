@@ -114,6 +114,7 @@ const (
 	Forbidden              ErrorCode = "forbidden"
 	IdempotencyConflict    ErrorCode = "idempotency_conflict"
 	InternalError          ErrorCode = "internal_error"
+	InvalidDecisionToken   ErrorCode = "invalid_decision_token"
 	InvalidRequest         ErrorCode = "invalid_request"
 	InvalidTransition      ErrorCode = "invalid_transition"
 	MethodNotAllowed       ErrorCode = "method_not_allowed"
@@ -136,6 +137,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case InternalError:
 		return true
+	case InvalidDecisionToken:
+		return true
 	case InvalidRequest:
 		return true
 	case InvalidTransition:
@@ -149,6 +152,21 @@ func (e ErrorCode) Valid() bool {
 	case TemporarilyUnavailable:
 		return true
 	case Unauthorized:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationDecisionKind.
+const (
+	Telegram NotificationDecisionKind = "telegram"
+)
+
+// Valid indicates whether the value is a known member of the NotificationDecisionKind enum.
+func (e NotificationDecisionKind) Valid() bool {
+	switch e {
+	case Telegram:
 		return true
 	default:
 		return false
@@ -339,10 +357,11 @@ type Constraints struct {
 
 // Decision defines model for Decision.
 type Decision struct {
-	Constraints      *Constraints `json:"constraints,omitempty"`
-	ExpectedRevision int          `json:"expected_revision"`
-	IdempotencyKey   string       `json:"idempotency_key"`
-	OnBehalfOf       *string      `json:"on_behalf_of,omitempty"`
+	Constraints      *Constraints          `json:"constraints,omitempty"`
+	ExpectedRevision int                   `json:"expected_revision"`
+	IdempotencyKey   string                `json:"idempotency_key"`
+	Notification     *NotificationDecision `json:"notification,omitempty"`
+	OnBehalfOf       *string               `json:"on_behalf_of,omitempty"`
 }
 
 // Descriptor defines model for Descriptor.
@@ -379,6 +398,18 @@ type Fact struct {
 type Health struct {
 	Status string `json:"status"`
 }
+
+// NotificationDecision defines model for NotificationDecision.
+type NotificationDecision struct {
+	ChatId        int                      `json:"chat_id"`
+	DecisionToken string                   `json:"decision_token"`
+	Kind          NotificationDecisionKind `json:"kind"`
+	MessageId     int                      `json:"message_id"`
+	Text          string                   `json:"text"`
+}
+
+// NotificationDecisionKind defines model for NotificationDecision.Kind.
+type NotificationDecisionKind string
 
 // Presentation defines model for Presentation.
 type Presentation struct {

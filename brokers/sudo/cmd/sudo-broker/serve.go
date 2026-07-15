@@ -303,6 +303,7 @@ func loadTelegramNotifier(opts serveOptions) (*bktelegram.Client, error) {
 		return nil, err
 	}
 	return bktelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", bktelegram.Options{
+		Route:       bktelegram.RouteSudo,
 		ApproveText: "Approve", DenyText: "Deny", IgnoredAnswer: "Request decision ignored",
 	})
 }
@@ -311,7 +312,7 @@ func notifierDependencies(notifier *bktelegram.Client) (notify.Notifier, routes.
 	if notifier == nil {
 		return nil, nil
 	}
-	return notifier, notifier
+	return notifier, nil
 }
 
 func serverHelperReady(ctx context.Context, server *routes.Server) error {

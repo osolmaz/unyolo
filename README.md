@@ -52,6 +52,11 @@ marked `request`, which parks them until an operator approves a short-lived
 grant through the protected operator inbox or an optional Telegram
 notification.
 
+When Telegram is enabled, one host-level `brokerkit-telegram` process owns
+inbound updates for the shared bot and dispatches decisions to provider
+Operator V1 sockets. Provider brokers only send messages and durable status
+updates. See [Telegram approval ingress](docs/TELEGRAM_INGRESS.md).
+
 ## Security model
 
 - Secret material is write-only inside a broker. No API, log line, error, or

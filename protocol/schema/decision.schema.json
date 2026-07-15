@@ -24,6 +24,9 @@
     },
     "constraints": {
       "$ref": "#/$defs/Constraints"
+    },
+    "notification": {
+      "$ref": "#/$defs/NotificationDecision"
     }
   },
   "$defs": {
@@ -41,6 +44,40 @@
             "null"
           ],
           "minimum": 1
+        }
+      }
+    },
+    "NotificationDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "decision_token",
+        "chat_id",
+        "message_id",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "telegram"
+        },
+        "decision_token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "chat_id": {
+          "type": "integer"
+        },
+        "message_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
         }
       }
     }

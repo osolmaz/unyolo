@@ -99,6 +99,29 @@ func TestApplyOperatorDecisionFailsClosed(t *testing.T) {
 	}
 }
 
+func TestApplyOperatorDecisionValidatesNotificationTokenAtomically(t *testing.T) {
+	t.Parallel()
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	created, _, err := store.Request(Request{Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "update", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := &MessageRef{Kind: "telegram", ChatID: 7, MessageID: 8, Text: "approval"}
+	command := OperatorDecision{ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
+		OnBehalfOf: "telegram:42", ExpectedRevision: created.Grant.Revision, IdempotencyKey: "telegram-one",
+		DecisionToken: "wrong", Notification: ref}
+	if _, err := store.ApplyOperatorDecision(t.Context(), command, nil); !errors.Is(err, ErrInvalidDecisionToken) {
+		t.Fatalf("wrong token error = %v", err)
+	}
+	command.DecisionToken = created.DecisionToken
+	result, err := store.ApplyOperatorDecision(t.Context(), command, nil)
+	if err != nil || result.Grant.Status != StatusActive || result.Grant.Notification == nil ||
+		*result.Grant.Notification != *ref || result.Grant.DecidedOnBehalfOf != "telegram:42" {
+		t.Fatalf("notification decision = %+v, %v", result, err)
+	}
+}
+
 func TestApprovalMayNarrowUnlimitedUseBudget(t *testing.T) {
 	t.Parallel()
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})

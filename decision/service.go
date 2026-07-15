@@ -76,6 +76,11 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 		IdempotencyKey: command.IdempotencyKey,
 		Constraints:    constraints,
 	}
+	if command.Notification != nil {
+		decision.DecisionToken = command.Notification.DecisionToken
+		decision.Notification = &notify.MessageRef{Kind: command.Notification.Kind, ChatID: command.Notification.ChatID,
+			MessageID: command.Notification.MessageID, Text: command.Notification.Text}
+	}
 	result, decisionErr := s.store.ApplyOperatorDecision(ctx, decision, s.validate)
 	auditPrevious, auditCurrent := result.Previous, result.Grant
 	if auditPrevious.ID == "" {
@@ -113,9 +118,6 @@ func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref
 	previous, current := s.tokenAuditGrants(id, result)
 	_ = s.record(previous, current, string(grants.ActionApprove), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
 	s.observe(string(grants.ActionApprove), err, false)
-	if err != nil && !result.Changed {
-		return grants.Grant{}, err
-	}
 	return result.Grant, err
 }
 
@@ -125,9 +127,6 @@ func (s *Service) DenyToken(ctx context.Context, id, token, actor string, ref no
 	previous, current := s.tokenAuditGrants(id, result)
 	_ = s.record(previous, current, string(grants.ActionDeny), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
 	s.observe(string(grants.ActionDeny), err, false)
-	if err != nil && !result.Changed {
-		return grants.Grant{}, err
-	}
 	return result.Grant, err
 }
 

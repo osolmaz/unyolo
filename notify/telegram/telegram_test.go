@@ -88,6 +88,7 @@ func TestSendApprovalUsesBrokerTextAndButtonLabels(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{
+		Route:       RouteGitHub,
 		ApproveText: "Yes",
 		DenyText:    "No",
 	})
@@ -108,6 +109,10 @@ func TestSendApprovalUsesBrokerTextAndButtonLabels(t *testing.T) {
 	if row[0].(map[string]any)["text"] != "Yes" || row[1].(map[string]any)["text"] != "No" {
 		t.Fatalf("button row = %+v", row)
 	}
+	route, action, _, _, ok := parseCallbackData(row[0].(map[string]any)["callback_data"].(string))
+	if !ok || route != RouteGitHub || action != notify.ActionApprove {
+		t.Fatalf("routed callback = %q %q valid=%v", route, action, ok)
+	}
 }
 
 func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
@@ -122,7 +127,7 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 
 	offset, err := client.PollOnce(context.Background(), 0, func(_ context.Context, decision notify.Decision) notify.DecisionResult {
 		decisions = append(decisions, decision)
-		return notify.DecisionResult{Answer: "handled"}
+		return notify.DecisionResult{Answer: "handled", MessageStatus: "Denied. Access was not granted."}
 	})
 	if err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
@@ -132,8 +137,29 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	}
 	assertPollDecision(t, decisions)
 	assertPollAnswers(t, state.answered)
-	if len(state.edits) != 0 {
-		t.Fatalf("callback edits = %+v, want broker-owned status lifecycle", state.edits)
+	if len(state.edits) != 1 {
+		t.Fatalf("callback edits = %+v, want one terminal status edit", state.edits)
+	}
+	assertClosedDecisionMessage(t, state.edits[0], "Denied. Access was not granted.")
+}
+
+func assertClosedDecisionMessage(t *testing.T, payload map[string]any, status string) {
+	t.Helper()
+	if text, _ := payload["text"].(string); !strings.Contains(text, "Status: "+status) {
+		t.Fatalf("edited message text = %q, want status %q", text, status)
+	}
+	assertEmptyKeyboard(t, payload)
+}
+
+func assertEmptyKeyboard(t *testing.T, payload map[string]any) {
+	t.Helper()
+	markup, ok := payload["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatalf("edited message reply markup = %#v", payload["reply_markup"])
+	}
+	keyboard, ok := markup["inline_keyboard"].([]any)
+	if !ok || len(keyboard) != 0 {
+		t.Fatalf("edited message keyboard = %#v, want empty", markup["inline_keyboard"])
 	}
 }
 
@@ -155,6 +181,54 @@ func TestPollOnceLeavesRetriedDecisionPending(t *testing.T) {
 	})
 	assertRetryPollResult(t, offset, answers, err, 6, 2, false)
 	assertRetryPollOffsets(t, offsets)
+}
+
+func TestPollOnceCommitsCallbackWhenImmediateEditFails(t *testing.T) {
+	answers := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":7,"callback_query":{"id":"callback","from":{"id":2},"message":{"message_id":42,"chat":{"id":123},"text":"Approval requested"},"data":"` + CallbackData(notify.ActionApprove, "g1", "t1") + `"}}]}`))
+		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
+			answers++
+			writeOK(w)
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			http.Error(w, "temporary failure", http.StatusBadGateway)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client, err := New("test-token", 123, server.Client(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
+		return notify.DecisionResult{Answer: "Grant approved", MessageStatus: "Approved. Access is active."}
+	})
+	if err != nil || offset != 8 || answers != 1 {
+		t.Fatalf("PollOnce() offset=%d answers=%d err=%v, want committed callback", offset, answers, err)
+	}
+}
+
+func TestPollOnceClearsButtonsWithoutReplacingStatusText(t *testing.T) {
+	state := &pollServerState{}
+	server := newPollServer(t, state)
+	defer server.Close()
+	client, err := New("test-token", 123, server.Client(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
+		return notify.DecisionResult{Answer: "Grant approved", ClearButtons: true}
+	})
+	if err != nil || offset != 12 || len(state.edits) != 1 {
+		t.Fatalf("PollOnce() offset=%d edits=%d err=%v", offset, len(state.edits), err)
+	}
+	if _, hasText := state.edits[0]["text"]; hasText {
+		t.Fatalf("button-only edit replaced message text: %+v", state.edits[0])
+	}
+	assertEmptyKeyboard(t, state.edits[0])
 }
 
 func retryGrantOne(_ context.Context, decision notify.Decision) notify.DecisionResult {
@@ -256,7 +330,42 @@ func TestCallbackData(t *testing.T) {
 	}
 }
 
+func TestRoutedCallbackData(t *testing.T) {
+	data := callbackData(RouteGitHub, notify.ActionDeny, "grant-1", "token-1")
+	route, action, grantID, token, ok := parseCallbackData(data)
+	if !ok || route != RouteGitHub || action != notify.ActionDeny || grantID != "grant-1" || token != "token-1" {
+		t.Fatalf("parseCallbackData() = %q %q %q %q %v", route, action, grantID, token, ok)
+	}
+}
+
+func TestNewRejectsInvalidCallbackRoute(t *testing.T) {
+	if _, err := NewWithOptions("test-token", 123, nil, "", Options{Route: "github"}); err == nil {
+		t.Fatal("multi-character callback route was accepted")
+	}
+}
+
+func TestNormalizeOptions(t *testing.T) {
+	defaults := normalizeOptions(Options{})
+	if defaults.PollTimeoutSeconds != defaultPollTimeoutSeconds || defaults.Route != defaultRoute ||
+		defaults.IgnoredAnswer != defaultIgnoredAnswer || defaults.ApproveText != "Approve" || defaults.DenyText != "Deny" {
+		t.Fatalf("normalizeOptions(defaults) = %+v", defaults)
+	}
+	invalid := normalizeOptions(Options{PollTimeoutSeconds: -1, Route: "invalid"})
+	if invalid.PollTimeoutSeconds != defaultPollTimeoutSeconds || invalid.Route != defaultRoute {
+		t.Fatalf("normalizeOptions(invalid) = %+v", invalid)
+	}
+
+	custom := Options{PollTimeoutSeconds: 5, Route: RouteGitHub,
+		IgnoredAnswer: "ignored", ApproveText: "yes", DenyText: "no"}
+	if got := normalizeOptions(custom); got != custom {
+		t.Fatalf("normalizeOptions(custom) = %+v, want %+v", got, custom)
+	}
+}
+
 func TestCallbackDataRejectsInvalid(t *testing.T) {
+	if _, _, _, ok := ParseCallbackData(CallbackData(notify.Action("unknown"), "grant", "token")); ok {
+		t.Fatal("CallbackData(unknown action) parsed as valid")
+	}
 	if _, _, _, ok := ParseCallbackData("bad:data"); ok {
 		t.Fatal("ParseCallbackData(bad) ok = true, want false")
 	}
@@ -265,6 +374,22 @@ func TestCallbackDataRejectsInvalid(t *testing.T) {
 	}
 	if _, _, _, ok := ParseCallbackData("bk:approve::token"); ok {
 		t.Fatal("ParseCallbackData(empty grant) ok = true, want false")
+	}
+}
+
+func TestParseCallbackDataRejectsMalformedParts(t *testing.T) {
+	tests := []string{
+		"bk:d:a:Zw:dA:extra",
+		"other:d:a:Zw:dA",
+		"bk:route:a:Zw:dA",
+		"bk:d:x:Zw:dA",
+		"bk:d:a::dA",
+		"bk:d:a:Zw:",
+	}
+	for _, data := range tests {
+		if _, _, _, _, ok := parseCallbackData(data); ok {
+			t.Fatalf("parseCallbackData(%q) ok = true, want false", data)
+		}
 	}
 }
 
@@ -458,7 +583,7 @@ func newPollServer(t *testing.T, state *pollServerState) *httptest.Server {
 			payload := decodePayload(t, r)
 			state.answered = append(state.answered, payload["callback_query_id"].(string)+":"+payload["text"].(string))
 			writeOK(w)
-		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"), strings.HasSuffix(r.URL.Path, "/editMessageReplyMarkup"):
 			state.edits = append(state.edits, decodePayload(t, r))
 			writeOK(w)
 		default:

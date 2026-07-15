@@ -172,7 +172,7 @@ func validateLaunchdSocket(socket LaunchdSocket, seenNames, seenPaths map[string
 	if err := validateSocketMode(socket.Mode, "launchd socket"); err != nil {
 		return err
 	}
-	return validateSocketMode(socket.DirectoryMode, "launchd socket directory")
+	return validateSocketDirectoryMode(socket.DirectoryMode, "launchd socket directory")
 }
 
 func rememberLaunchdSocketPath(path string, seen map[string]struct{}) error {

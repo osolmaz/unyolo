@@ -45,6 +45,7 @@ type MessageRef struct {
 
 // Decision is a parsed operator decision.
 type Decision struct {
+	Route         string
 	Action        Action
 	GrantID       string
 	DecisionToken string
@@ -61,6 +62,11 @@ type Decision struct {
 type DecisionResult struct {
 	// Answer is the short callback answer shown by the approval channel.
 	Answer string
+	// MessageStatus is the durable status rendered into the approval message.
+	// A non-empty value also closes the message's decision controls.
+	MessageStatus string
+	// ClearButtons closes decision controls without replacing broker-owned status text.
+	ClearButtons bool
 	// Retry leaves the callback unanswered and its update offset uncommitted.
 	// Brokers use it when a durable decision transaction could not be saved.
 	Retry bool

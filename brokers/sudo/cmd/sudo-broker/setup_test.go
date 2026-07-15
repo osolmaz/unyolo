@@ -43,6 +43,9 @@ func TestSetupSystemdDryRunBuildsSeparatedUnits(t *testing.T) {
 			t.Fatalf("dry-run missing %q:\n%s", want, output)
 		}
 	}
+	if count := strings.Count(output, "RuntimeDirectory=sudo-broker"); count != 1 {
+		t.Fatalf("runtime directory must be owned only by the helper; found %d declarations:\n%s", count, output)
+	}
 	if strings.Contains(output, " = ") {
 		t.Fatalf("dry-run leaked a generated secret: %s", output)
 	}

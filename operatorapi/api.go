@@ -271,12 +271,25 @@ func (h *handler) decodeDecision(writer http.ResponseWriter, request *http.Reque
 		return false
 	}
 	var input operatorwire.Decision
-	if err := decodeStrictJSON(request, &input); err != nil || !validDecisionConstraints(input.Constraints) {
+	if err := decodeStrictJSON(request, &input); err != nil || !validDecisionConstraints(input.Constraints) ||
+		!validNotificationDecision(input.Notification, input.Constraints) {
 		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
 		return false
 	}
 	*command = wireDecision(input)
 	return true
+}
+
+func validNotificationDecision(value *operatorwire.NotificationDecision, constraints *operatorwire.Constraints) bool {
+	if value == nil {
+		return true
+	}
+	return constraints == nil && validNotificationFields(value)
+}
+
+func validNotificationFields(value *operatorwire.NotificationDecision) bool {
+	return value.Kind == operatorwire.NotificationDecisionKind("telegram") && value.ChatId != 0 && value.MessageId > 0 &&
+		value.DecisionToken != "" && len(value.DecisionToken) <= 200 && value.Text != "" && len(value.Text) <= 4096
 }
 
 func validDecisionConstraints(value *operatorwire.Constraints) bool {
@@ -291,6 +304,11 @@ func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 	}
 	if input.OnBehalfOf != nil {
 		result.OnBehalfOf = *input.OnBehalfOf
+	}
+	if input.Notification != nil {
+		result.Notification = &operatorv1.NotificationDecision{Kind: string(input.Notification.Kind),
+			DecisionToken: input.Notification.DecisionToken, ChatID: int64(input.Notification.ChatId),
+			MessageID: input.Notification.MessageId, Text: input.Notification.Text}
 	}
 	if input.Constraints == nil {
 		return result
@@ -535,7 +553,7 @@ func (h *handler) writeMappedError(writer http.ResponseWriter, request *http.Req
 		status, message = http.StatusBadRequest, "request is invalid"
 	case "cursor_expired":
 		status, message = http.StatusGone, "cursor is no longer retained"
-	case "idempotency_conflict", "invalid_transition", "constraint_exceeded":
+	case "idempotency_conflict", "invalid_transition", "invalid_decision_token", "constraint_exceeded":
 		status, message = http.StatusConflict, strings.ReplaceAll(code, "_", " ")
 	}
 	h.writeError(writer, status, code, message, nil)
@@ -550,6 +568,7 @@ func errorCode(err error) string {
 		{"invalid_request", []error{grants.ErrInvalidCursor, grants.ErrInvalidGrantCursor, grants.ErrInvalidQuery, grants.ErrInvalidCommand}},
 		{"cursor_expired", []error{grants.ErrCursorExpired}},
 		{"idempotency_conflict", []error{grants.ErrIdempotencyConflict}},
+		{"invalid_decision_token", []error{grants.ErrInvalidDecisionToken}},
 		{"constraint_exceeded", []error{grants.ErrConstraintExceeded}},
 		{"invalid_transition", []error{grants.ErrInvalidTransition, grants.ErrNotPending, grants.ErrNotActive}},
 	}

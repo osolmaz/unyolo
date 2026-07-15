@@ -44,6 +44,8 @@ type OperatorDecision struct {
 	ExpectedRevision int64
 	IdempotencyKey   string
 	Constraints      ApprovalConstraints
+	DecisionToken    string
+	Notification     *MessageRef
 }
 
 // ActivationCheck runs under the grant-store lock before approval commits.
@@ -118,6 +120,9 @@ func currentEventCursor(data fileData) string {
 
 func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command OperatorDecision, validate ActivationCheck) (Grant, error) {
 	now := s.opts.Now().UTC()
+	if command.DecisionToken != "" && !decisionTokenMatches(grant.DecisionTokenVerifier, command.DecisionToken) {
+		return grant, ErrInvalidDecisionToken
+	}
 	grant, err := s.applyDecisionAction(ctx, grant, command, validate, now)
 	if err != nil {
 		return grant, err
@@ -126,6 +131,7 @@ func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command 
 	grant.DecidedBy = command.Approver
 	grant.DecidedOnBehalfOf = command.OnBehalfOf
 	grant.NotificationDeliveryUnresolved = false
+	grant, _ = attachDecisionNotification(grant, command.Notification)
 	return grant, nil
 }
 
@@ -218,16 +224,38 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	command.Approver = strings.TrimSpace(command.Approver)
 	command.OnBehalfOf = strings.TrimSpace(command.OnBehalfOf)
 	command.IdempotencyKey = strings.TrimSpace(command.IdempotencyKey)
+	command.DecisionToken = strings.TrimSpace(command.DecisionToken)
 	if !operatorDecisionRequired(command) {
 		return OperatorDecision{}, fmt.Errorf("%w: id, approver, revision, and idempotency key are required", ErrInvalidCommand)
 	}
 	if !validOperatorDecisionText(command) || !validOperatorAction(command.Action) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
-	if command.Action != ActionApprove && (command.Constraints.Duration != 0 || constraintUseLimitSpecified(command.Constraints)) {
+	if !validOperatorConstraints(command) {
+		return OperatorDecision{}, ErrInvalidCommand
+	}
+	if err := validateOperatorNotification(command); err != nil {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
 	return command, nil
+}
+
+func validOperatorConstraints(command OperatorDecision) bool {
+	return command.Action == ActionApprove ||
+		(command.Constraints.Duration == 0 && !constraintUseLimitSpecified(command.Constraints))
+}
+
+func validateOperatorNotification(command OperatorDecision) error {
+	if (command.DecisionToken == "") != (command.Notification == nil) {
+		return ErrInvalidCommand
+	}
+	if command.Notification == nil {
+		return nil
+	}
+	if command.Action == ActionRevoke {
+		return ErrInvalidCommand
+	}
+	return validateMessageRef(*command.Notification)
 }
 
 func constraintUseLimitSpecified(constraints ApprovalConstraints) bool {
@@ -240,7 +268,8 @@ func operatorDecisionRequired(command OperatorDecision) bool {
 
 func validOperatorDecisionText(command OperatorDecision) bool {
 	return len(command.IdempotencyKey) <= 200 && safeOperatorIdentity(command.IdempotencyKey) &&
-		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf))
+		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf)) &&
+		len(command.DecisionToken) <= 200 && (command.DecisionToken == "" || safeOperatorIdentity(command.DecisionToken))
 }
 
 func validOperatorAction(action DecisionAction) bool {

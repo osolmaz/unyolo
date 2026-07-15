@@ -2,7 +2,7 @@
 import type { components } from "./openapi-operator-v1.js";
 
 export const OPERATOR_V1_SCHEMA_SHA256 =
-  "505ec7544ff20516193a6fff5b8110d213e98c2330a4666bbe3b8ffb36bae729";
+  "62065b7c9d09989c66379c6a81dd23f9ae468c7d1a859b69c88a1dee079aa6a6";
 export const operatorV1 = {
   apiVersion: "brokerkit.io/operator/v1",
   statuses: [
@@ -40,6 +40,7 @@ export const operatorV1 = {
     "idempotency_conflict",
     "constraint_exceeded",
     "invalid_transition",
+    "invalid_decision_token",
     "cursor_expired",
     "temporarily_unavailable",
     "internal_error",

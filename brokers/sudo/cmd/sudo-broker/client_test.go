@@ -62,3 +62,20 @@ func TestRawArgumentsRejectDuplicates(t *testing.T) {
 		t.Fatal("duplicate argument accepted")
 	}
 }
+
+func TestBuildRunSubmitRequestUsesEmptyArgumentObject(t *testing.T) {
+	request, err := buildRunSubmitRequest("show-identity", commandFlags{targetUser: "onur"}, "test", "verify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var arguments struct {
+		CommandID string                     `json:"command_id"`
+		Arguments map[string]json.RawMessage `json:"arguments"`
+	}
+	if err := json.Unmarshal(request.Arguments, &arguments); err != nil {
+		t.Fatal(err)
+	}
+	if arguments.CommandID != "show-identity" || arguments.Arguments == nil || len(arguments.Arguments) != 0 {
+		t.Fatalf("arguments = %+v", arguments)
+	}
+}

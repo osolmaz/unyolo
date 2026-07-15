@@ -305,6 +305,11 @@ func decodeAPIError(response *http.Response) error {
 func decisionToWire(input operatorv1.Decision) operatorwire.Decision {
 	result := operatorwire.Decision{ExpectedRevision: int(input.ExpectedRevision), IdempotencyKey: input.IdempotencyKey,
 		OnBehalfOf: optional.NonZero(input.OnBehalfOf)}
+	if input.Notification != nil {
+		result.Notification = &operatorwire.NotificationDecision{Kind: operatorwire.NotificationDecisionKind(input.Notification.Kind),
+			DecisionToken: input.Notification.DecisionToken, ChatId: int(input.Notification.ChatID),
+			MessageId: input.Notification.MessageID, Text: input.Notification.Text}
+	}
 	if input.Constraints != nil {
 		result.Constraints = &operatorwire.Constraints{}
 		if input.Constraints.DurationSeconds != 0 {

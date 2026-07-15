@@ -565,11 +565,12 @@ func grantReservationTimeout(hfTimeout time.Duration) time.Duration {
 	return hfTimeout + grantReservationGrace
 }
 
-func (s *Server) startTelegram(ctx context.Context, opts Options) error {
+func (s *Server) startTelegram(_ context.Context, opts Options) error {
 	if opts.Config.TelegramBotToken == "" {
 		return nil
 	}
 	telegram, err := bktelegram.NewWithOptions(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL, bktelegram.Options{
+		Route:         bktelegram.RouteHuggingFace,
 		IgnoredAnswer: "Grant decision ignored",
 		ApproveText:   "✅ Approve",
 		DenyText:      "❌ Deny",
@@ -578,7 +579,6 @@ func (s *Server) startTelegram(ctx context.Context, opts Options) error {
 		return fmt.Errorf("configure Telegram notifier: %w", err)
 	}
 	s.notifier = telegram
-	go telegram.Poll(ctx, s.control.HandleDecision)
 	return nil
 }
 

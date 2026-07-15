@@ -160,11 +160,20 @@ export interface components {
       duration_seconds?: number;
       max_uses?: number | null;
     };
+    NotificationDecision: {
+      /** @constant */
+      kind: "telegram";
+      decision_token: string;
+      chat_id: number;
+      message_id: number;
+      text: string;
+    };
     Decision: {
       expected_revision: number;
       idempotency_key: string;
       on_behalf_of?: string;
       constraints?: components["schemas"]["Constraints"];
+      notification?: components["schemas"]["NotificationDecision"];
     };
     BrokerRequest: {
       id: string;
@@ -269,6 +278,7 @@ export interface components {
         | "idempotency_conflict"
         | "constraint_exceeded"
         | "invalid_transition"
+        | "invalid_decision_token"
         | "cursor_expired"
         | "temporarily_unavailable"
         | "internal_error";

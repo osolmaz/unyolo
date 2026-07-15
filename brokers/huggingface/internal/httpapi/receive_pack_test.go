@@ -247,7 +247,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		strings.Contains(got, msg.DecisionToken) {
 		t.Fatalf("audit missing grant-used or leaked secret material:\n%s", got)
 	}
-	if replay := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionDeny, msg)); replay.Answer != "Grant is no longer pending" {
+	if replay := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionDeny, msg)); replay.Answer != "Grant already used" || replay.MessageStatus != "Used. Access is now closed." {
 		t.Fatalf("replay answer = %+v", replay)
 	}
 }
