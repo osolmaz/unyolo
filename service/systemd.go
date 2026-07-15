@@ -113,7 +113,7 @@ func (unit SystemdSocketUnit) validate() error {
 			return validatex.AccountNames(map[string]string{"socket user": unit.SocketUser, "socket group": unit.SocketGroup})
 		},
 		func() error { return validateSocketMode(unit.SocketMode, "socket") },
-		func() error { return validateSocketMode(unit.DirectoryMode, "socket directory") },
+		func() error { return validateSocketDirectoryMode(unit.DirectoryMode, "socket directory") },
 	}
 	for _, validate := range validators {
 		if err := validate(); err != nil {
@@ -139,6 +139,13 @@ func validateSystemdSocketAddress(unit SystemdSocketUnit) error {
 func validateSocketMode(mode os.FileMode, label string) error {
 	if mode == 0 || mode&^os.ModePerm != 0 || mode.Perm()&0o007 != 0 {
 		return fmt.Errorf("%s mode must deny all access to other users", label)
+	}
+	return nil
+}
+
+func validateSocketDirectoryMode(mode os.FileMode, label string) error {
+	if mode == 0 || mode&^os.ModePerm != 0 || mode.Perm()&0o700 != 0o700 || mode.Perm()&0o022 != 0 {
+		return fmt.Errorf("%s mode must be owner-accessible and not writable by other users", label)
 	}
 	return nil
 }

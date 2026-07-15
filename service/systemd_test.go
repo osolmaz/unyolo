@@ -52,7 +52,7 @@ func TestRenderSystemdSocket(t *testing.T) {
 		func(unit *SystemdSocketUnit) { unit.FileDescriptorName = "bad/name" },
 		func(unit *SystemdSocketUnit) { unit.SocketGroup = "bad=name" },
 		func(unit *SystemdSocketUnit) { unit.SocketMode = 0o666 },
-		func(unit *SystemdSocketUnit) { unit.DirectoryMode = 0o751 },
+		func(unit *SystemdSocketUnit) { unit.DirectoryMode = 0o777 },
 		func(unit *SystemdSocketUnit) { unit.Service = "bad.socket" },
 	} {
 		unit := SystemdSocketUnit{Description: "test", ListenStream: "/run/test.sock", Service: "test.service", FileDescriptorName: "agent", SocketUser: "root", SocketGroup: "agent", SocketMode: 0o660, DirectoryMode: 0o750}
