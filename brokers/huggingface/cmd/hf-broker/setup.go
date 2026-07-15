@@ -58,28 +58,40 @@ func runSetupInput(ctx context.Context, stdin io.Reader, stdout, stderr io.Write
 	if len(args) == 0 {
 		return exitError{code: 64, message: setupUsage}
 	}
-	switch args[0] {
+	return runSetupSubcommand(ctx, stdin, stdout, stderr, args[0], args[1:])
+}
+
+func runSetupSubcommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, command string, args []string) error {
+	switch command {
 	case "systemd":
-		opts, err := parseSetupSystemdInput(stderr, stdin, args[1:])
-		if err != nil {
-			return err
-		}
-		opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "hf-broker", "local-operator")
-		if err != nil {
-			return err
-		}
-		return runSetupSystemd(ctx, stdout, opts)
+		return runSetupSystemdCommand(ctx, stdin, stdout, stderr, args)
 	case "launchd":
-		return runSetupLaunchdCommand(ctx, stdin, stdout, stderr, args[1:])
+		return runSetupLaunchdCommand(ctx, stdin, stdout, stderr, args)
 	case "client":
-		opts, err := parseSetupClient(stderr, args[1:])
-		if err != nil {
-			return err
-		}
-		return runSetupClient(stdout, opts)
+		return runSetupClientCommand(stdout, stderr, args)
 	default:
 		return exitError{code: 64, message: setupUsage}
 	}
+}
+
+func runSetupSystemdCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
+	opts, err := parseSetupSystemdInput(stderr, stdin, args)
+	if err != nil {
+		return err
+	}
+	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "hf-broker", "local-operator")
+	if err != nil {
+		return err
+	}
+	return runSetupSystemd(ctx, stdout, opts)
+}
+
+func runSetupClientCommand(stdout, stderr io.Writer, args []string) error {
+	opts, err := parseSetupClient(stderr, args)
+	if err != nil {
+		return err
+	}
+	return runSetupClient(stdout, opts)
 }
 
 func parseSetupSystemd(stderr io.Writer, args []string) (setupSystemdOptions, error) {

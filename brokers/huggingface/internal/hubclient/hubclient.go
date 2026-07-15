@@ -76,8 +76,7 @@ func WithHTTPTransport(transport http.RoundTripper) Option {
 // New builds a client for one upstream base URL and one broker-held token.
 func New(baseURL, token string, options ...Option) (*Client, error) {
 	parsed, err := url.Parse(baseURL)
-	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" ||
-		parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+	if err != nil || !validBaseOrigin(parsed) {
 		return nil, errors.New("hubclient: upstream base URL must be a bare http(s) origin")
 	}
 	if strings.TrimSpace(token) == "" {
@@ -103,6 +102,15 @@ func New(baseURL, token string, options ...Option) (*Client, error) {
 	return client, nil
 }
 
+func validBaseOrigin(parsed *url.URL) bool {
+	return parsed != nil &&
+		(parsed.Scheme == "https" || parsed.Scheme == "http") &&
+		parsed.Host != "" &&
+		parsed.RawQuery == "" &&
+		parsed.Fragment == "" &&
+		parsed.User == nil
+}
+
 // callSpec is an internal, fully broker-owned request description. Paths are
 // composed only from static literals and validated, escaped identifiers.
 type callSpec struct {
@@ -125,23 +133,24 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		if spec.method == http.MethodGet {
-			return &Error{Code: CodeUnavailable}
-		}
-		return &Error{Code: CodeResultUnknown, Ambiguous: true}
+		return transportError(spec.method, 0)
 	}
 	defer func() { _ = response.Body.Close() }()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, c.maxResponseBytes+1))
 	if err != nil {
-		if spec.method == http.MethodGet {
-			return &Error{Code: CodeUnavailable, StatusCode: response.StatusCode}
-		}
-		return &Error{Code: CodeResultUnknown, StatusCode: response.StatusCode, Ambiguous: true}
+		return transportError(spec.method, response.StatusCode)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return statusError(response.StatusCode, response.Header)
 	}
 	return classifyDecodedResponse(spec.method, response.StatusCode, decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode))
+}
+
+func transportError(method string, status int) *Error {
+	if method == http.MethodGet {
+		return &Error{Code: CodeUnavailable, StatusCode: status}
+	}
+	return &Error{Code: CodeResultUnknown, StatusCode: status, Ambiguous: true}
 }
 
 func (c *Client) callContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -164,9 +173,24 @@ func classifyDecodedResponse(method string, status int, err error) error {
 	return err
 }
 
-//nolint:cyclop // Request constraints are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) newRequest(ctx context.Context, spec callSpec) (*http.Request, error) {
-	var reader io.Reader
+	reader, err := requestBodyReader(spec)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := c.requestEndpoint(spec)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, spec.method, endpoint, reader)
+	if err != nil {
+		return nil, fmt.Errorf("hubclient: request construction failed")
+	}
+	setRequestHeaders(request, c.token, spec)
+	return request, nil
+}
+
+func requestBodyReader(spec callSpec) (io.Reader, error) {
 	if spec.body != nil && len(spec.rawBody) > 0 {
 		return nil, errors.New("hubclient: request has conflicting body encodings")
 	}
@@ -174,31 +198,36 @@ func (c *Client) newRequest(ctx context.Context, spec callSpec) (*http.Request, 
 		if len(spec.rawBody) > maxRequestBodyBytes {
 			return nil, errors.New("hubclient: request body is invalid")
 		}
-		reader = bytes.NewReader(spec.rawBody)
-	} else if spec.body != nil {
-		encoded, err := json.Marshal(spec.body)
-		if err != nil || len(encoded) > maxRequestBodyBytes {
-			return nil, fmt.Errorf("hubclient: request body is invalid")
-		}
-		reader = bytes.NewReader(encoded)
+		return bytes.NewReader(spec.rawBody), nil
 	}
+	if spec.body == nil {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(spec.body)
+	if err != nil || len(encoded) > maxRequestBodyBytes {
+		return nil, fmt.Errorf("hubclient: request body is invalid")
+	}
+	return bytes.NewReader(encoded), nil
+}
+
+func (c *Client) requestEndpoint(spec callSpec) (string, error) {
 	base := c.base
 	if spec.origin != "" {
 		var found bool
 		base, found = c.origins[spec.origin]
 		if !found {
-			return nil, errors.New("hubclient: fixed upstream origin is unavailable")
+			return "", errors.New("hubclient: fixed upstream origin is unavailable")
 		}
 	}
 	endpoint := base + spec.path
 	if len(spec.query) > 0 {
 		endpoint += "?" + spec.query.Encode()
 	}
-	request, err := http.NewRequestWithContext(ctx, spec.method, endpoint, reader)
-	if err != nil {
-		return nil, fmt.Errorf("hubclient: request construction failed")
-	}
-	request.Header.Set("Authorization", "Bearer "+c.token)
+	return endpoint, nil
+}
+
+func setRequestHeaders(request *http.Request, token string, spec callSpec) {
+	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Accept", "application/json")
 	if spec.body != nil || len(spec.rawBody) > 0 {
 		contentType := spec.contentType
@@ -207,7 +236,6 @@ func (c *Client) newRequest(ctx context.Context, spec callSpec) (*http.Request, 
 		}
 		request.Header.Set("Content-Type", contentType)
 	}
-	return request, nil
 }
 
 func decodeResponse(payload []byte, out any, limit int64, status int) error {
@@ -225,26 +253,30 @@ func decodeResponse(payload []byte, out any, limit int64, status int) error {
 
 func statusError(status int, header http.Header) *Error {
 	classified := &Error{StatusCode: status}
-	switch {
-	case status == http.StatusUnauthorized:
-		classified.Code = CodeUnauthorized
-	case status == http.StatusForbidden:
-		classified.Code = CodeForbidden
-	case status == http.StatusNotFound:
-		classified.Code = CodeNotFound
-	case status == http.StatusConflict:
-		classified.Code = CodeConflict
-	case status == http.StatusTooManyRequests:
+	if code, found := exactStatusCode(status); found {
+		classified.Code = code
+	}
+	if status == http.StatusTooManyRequests {
 		classified.Code = CodeRateLimited
 		classified.RetryAfterSeconds = parseRetryAfter(header)
-	case status >= 500:
+	} else if classified.Code == "" && status >= 500 {
 		classified.Code = CodeUnavailable
-	case status >= 400:
+	} else if classified.Code == "" && status >= 400 {
 		classified.Code = CodeInvalid
-	default:
+	} else if classified.Code == "" {
 		classified.Code = CodeResponseInvalid
 	}
 	return classified
+}
+
+func exactStatusCode(status int) (ErrorCode, bool) {
+	code, found := map[int]ErrorCode{
+		http.StatusUnauthorized: CodeUnauthorized,
+		http.StatusForbidden:    CodeForbidden,
+		http.StatusNotFound:     CodeNotFound,
+		http.StatusConflict:     CodeConflict,
+	}[status]
+	return code, found
 }
 
 func parseRetryAfter(header http.Header) int {

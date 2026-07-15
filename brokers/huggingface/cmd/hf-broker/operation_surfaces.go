@@ -58,6 +58,14 @@ type mcpCatalogOperationInput struct {
 	MaxUses         usebudget.Optional `json:"max_uses"`
 }
 
+type operationFlagInputs struct {
+	targetJSON    string
+	targetFile    string
+	argumentsJSON string
+	argumentsFile string
+	attrsJSON     string
+}
+
 func agentFacingDescriptors() []opcatalog.Descriptor {
 	return capability.AgentFacing(opcatalog.MustAll())
 }
@@ -78,20 +86,25 @@ func runCatalogOperation(ctx context.Context, client *agentClient, stdout, stder
 	if err != nil {
 		return err
 	}
-	operation, err := client.submit(ctx, request)
+	operation, err := submitAndReportCatalogOperation(ctx, client, stderr, request, options)
 	if err != nil {
 		return err
 	}
-	printOperationStatus(stderr, operation, options.jsonOutput)
-	if options.wait && !operation.State.Terminal() {
-		waitCtx, cancel := context.WithTimeout(ctx, options.waitTimeout)
-		defer cancel()
-		operation, err = client.wait(waitCtx, operation)
-		if err != nil {
-			return err
-		}
-	}
 	return printClientOperation(stdout, operation, options.jsonOutput)
+}
+
+func submitAndReportCatalogOperation(ctx context.Context, client *agentClient, stderr io.Writer, request agentv1.SubmitRequest, options operationClientOptions) (agentv1.Operation, error) {
+	operation, err := client.submit(ctx, request)
+	if err != nil {
+		return operation, err
+	}
+	printOperationStatus(stderr, operation, options.jsonOutput)
+	if !options.wait || operation.State.Terminal() {
+		return operation, nil
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, options.waitTimeout)
+	defer cancel()
+	return client.wait(waitCtx, operation)
 }
 
 func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string) (operationClientOptions, error) {
@@ -102,14 +115,14 @@ func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string)
 		wait:        true,
 		waitTimeout: defaultClientWait,
 	}
-	var targetJSON, targetFile, argumentsJSON, argumentsFile, attrsJSON string
+	var inputs operationFlagInputs
 	flags := flag.NewFlagSet(*descriptor.CLICommand, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.StringVar(&targetJSON, "target-json", "", "closed target JSON")
-	flags.StringVar(&targetFile, "target-file", "", "file containing closed target JSON")
-	flags.StringVar(&argumentsJSON, "arguments-json", "", "closed public argument JSON")
-	flags.StringVar(&argumentsFile, "arguments-file", "", "file containing closed public argument JSON")
-	flags.StringVar(&attrsJSON, "attrs-json", "", "window grant attributes JSON")
+	flags.StringVar(&inputs.targetJSON, "target-json", "", "closed target JSON")
+	flags.StringVar(&inputs.targetFile, "target-file", "", "file containing closed target JSON")
+	flags.StringVar(&inputs.argumentsJSON, "arguments-json", "", "closed public argument JSON")
+	flags.StringVar(&inputs.argumentsFile, "arguments-file", "", "file containing closed public argument JSON")
+	flags.StringVar(&inputs.attrsJSON, "attrs-json", "", "window grant attributes JSON")
 	flags.StringVar(&options.sealedFile, "sealed-file", "", "file containing secret argument JSON")
 	flags.StringVar(&options.credentialSlot, "credential-slot", "", "encrypted destination for generated credentials")
 	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
@@ -122,52 +135,54 @@ func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string)
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return options, errors.New("operation arguments are invalid")
 	}
-	var err error
-	options.target, err = readJSONOption(targetJSON, targetFile, true)
-	if err != nil {
-		return options, fmt.Errorf("target: %w", err)
-	}
-	if argumentsJSON != "" || argumentsFile != "" {
-		options.arguments, err = readJSONOption(argumentsJSON, argumentsFile, true)
-		if err != nil {
-			return options, fmt.Errorf("arguments: %w", err)
-		}
-	}
-	if attrsJSON != "" {
-		if err := strictjson.Decode([]byte(attrsJSON), &options.attrs, true); err != nil {
-			return options, errors.New("attrs-json must be a closed JSON object")
-		}
-	}
-	if err := validateOperationClientOptions(descriptor, options); err != nil {
+	if err := readOperationFlagInputs(inputs, &options); err != nil {
 		return options, err
 	}
-	return options, nil
+	return options, validateOperationClientOptions(descriptor, options)
 }
 
-//nolint:cyclop // Input-source validation is explicit and tracked by the exact HF CRAP baseline.
+func readOperationFlagInputs(inputs operationFlagInputs, options *operationClientOptions) error {
+	var err error
+	options.target, err = readJSONOption(inputs.targetJSON, inputs.targetFile, true)
+	if err != nil {
+		return fmt.Errorf("target: %w", err)
+	}
+	if inputs.argumentsJSON != "" || inputs.argumentsFile != "" {
+		options.arguments, err = readJSONOption(inputs.argumentsJSON, inputs.argumentsFile, true)
+		if err != nil {
+			return fmt.Errorf("arguments: %w", err)
+		}
+	}
+	if inputs.attrsJSON != "" {
+		if err := strictjson.Decode([]byte(inputs.attrsJSON), &options.attrs, true); err != nil {
+			return errors.New("attrs-json must be a closed JSON object")
+		}
+	}
+	return nil
+}
+
 func readJSONOption(inline, path string, required bool) (json.RawMessage, error) {
 	if inline != "" && path != "" {
 		return nil, errors.New("inline JSON and JSON file are mutually exclusive")
 	}
-	var data []byte
-	if path != "" {
-		info, err := os.Stat(path)
-		if err != nil || !info.Mode().IsRegular() || info.Size() > maxOperationInputBytes {
-			return nil, errors.New("JSON file is unavailable or too large")
-		}
-		data, err = os.ReadFile(path) // #nosec G304 -- the requester explicitly selects the input file.
-		if err != nil {
-			return nil, errors.New("JSON file could not be read")
-		}
-	} else {
-		data = []byte(inline)
+	data, err := readJSONOptionBytes(inline, path)
+	if err != nil {
+		return nil, err
 	}
 	if len(data) == 0 {
-		if required {
-			return nil, errors.New("JSON value is required")
-		}
-		return nil, nil
+		return emptyJSONOption(required)
 	}
+	return boundedJSONObject(data)
+}
+
+func emptyJSONOption(required bool) (json.RawMessage, error) {
+	if required {
+		return nil, errors.New("JSON value is required")
+	}
+	return nil, nil
+}
+
+func boundedJSONObject(data []byte) (json.RawMessage, error) {
 	var object map[string]any
 	if len(data) > maxOperationInputBytes || strictjson.Decode(data, &object, true) != nil || object == nil {
 		return nil, errors.New("value must be one bounded JSON object")
@@ -175,34 +190,55 @@ func readJSONOption(inline, path string, required bool) (json.RawMessage, error)
 	return json.RawMessage(data), nil
 }
 
-//nolint:cyclop // Descriptor-specific validation is explicit and tracked by the exact HF CRAP baseline.
+func readJSONOptionBytes(inline, path string) ([]byte, error) {
+	if path == "" {
+		return []byte(inline), nil
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxOperationInputBytes {
+		return nil, errors.New("JSON file is unavailable or too large")
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- the requester explicitly selects the input file.
+	if err != nil {
+		return nil, errors.New("JSON file could not be read")
+	}
+	return data, nil
+}
+
 func validateOperationClientOptions(descriptor opcatalog.Descriptor, options operationClientOptions) error {
 	if strings.TrimSpace(options.reason) == "" || len(options.reason) > 2000 || options.waitTimeout <= 0 {
 		return errors.New("reason must contain at most 2000 characters and wait timeout must be positive")
 	}
 	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
-		if options.sealedFile != "" || options.credentialSlot != "" {
-			return errors.New("window operations do not accept sealed arguments or credential slots")
-		}
-		if options.minutes < 0 {
-			return errors.New("minutes must not be negative")
-		}
-		return nil
+		return validateWindowOperationClientOptions(options)
 	}
+	return validateExecutionOperationClientOptions(descriptor, options)
+}
+
+func validateWindowOperationClientOptions(options operationClientOptions) error {
+	if options.sealedFile != "" || options.credentialSlot != "" {
+		return errors.New("window operations do not accept sealed arguments or credential slots")
+	}
+	if options.minutes < 0 {
+		return errors.New("minutes must not be negative")
+	}
+	return nil
+}
+
+func validateExecutionOperationClientOptions(descriptor opcatalog.Descriptor, options operationClientOptions) error {
 	if options.minutes != 0 || options.maxUses.set || len(options.attrs) != 0 {
 		return errors.New("minutes, max-uses, and attrs-json apply only to window operations")
 	}
+	if err := validateSealedOperationClientOptions(descriptor, options); err != nil {
+		return err
+	}
+	return validateCredentialSelection(descriptor.CredentialOutputKind != nil, options.credentialSlot, options.sealedFile != "",
+		"this operation requires a valid credential-slot")
+}
+
+func validateSealedOperationClientOptions(descriptor opcatalog.Descriptor, options operationClientOptions) error {
 	if !descriptor.Sealed && options.sealedFile != "" {
 		return errors.New("this operation does not accept sealed arguments")
-	}
-	if descriptor.CredentialOutputKind != nil && !credentialstore.ValidSlot(options.credentialSlot) {
-		return errors.New("this operation requires a valid credential-slot")
-	}
-	if descriptor.CredentialOutputKind != nil && options.sealedFile != "" {
-		return errors.New("credential output operations do not accept sealed input")
-	}
-	if descriptor.CredentialOutputKind == nil && options.credentialSlot != "" {
-		return errors.New("this operation does not produce a credential")
 	}
 	return nil
 }
@@ -212,23 +248,35 @@ func buildOperationSubmitRequest(ctx context.Context, client *agentClient, descr
 	if err != nil {
 		return agentv1.SubmitRequest{}, err
 	}
-	if descriptor.Sealed {
-		if sealedFile != "" {
-			var err error
-			sealed, err = readJSONOption("", sealedFile, true)
-			if err != nil {
-				return agentv1.SubmitRequest{}, fmt.Errorf("sealed arguments: %w", err)
-			}
-		}
-		wrapped, err := client.wrapSealedArguments(ctx, descriptor.Name, idempotencyKey, arguments, sealed, credentialSlot)
-		if err != nil {
-			return agentv1.SubmitRequest{}, err
-		}
-		arguments = wrapped
-	} else if len(sealed) != 0 {
-		return agentv1.SubmitRequest{}, errors.New("this operation does not accept sealed arguments")
+	arguments, err = buildOperationArguments(ctx, client, descriptor, arguments, sealedFile, sealed, credentialSlot, idempotencyKey)
+	if err != nil {
+		return agentv1.SubmitRequest{}, err
 	}
 	return agentv1.SubmitRequest{IdempotencyKey: idempotencyKey, Operation: descriptor.Name, Target: target, Arguments: arguments, Reason: strings.TrimSpace(reason)}, nil
+}
+
+func buildOperationArguments(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, arguments json.RawMessage, sealedFile string, sealed json.RawMessage, credentialSlot, idempotencyKey string) (json.RawMessage, error) {
+	if descriptor.Sealed {
+		sealed, err := readSealedArguments(sealedFile, sealed)
+		if err != nil {
+			return nil, err
+		}
+		return client.wrapSealedArguments(ctx, descriptor.Name, idempotencyKey, arguments, sealed, credentialSlot)
+	} else if len(sealed) != 0 {
+		return nil, errors.New("this operation does not accept sealed arguments")
+	}
+	return arguments, nil
+}
+
+func readSealedArguments(sealedFile string, sealed json.RawMessage) (json.RawMessage, error) {
+	if sealedFile == "" {
+		return sealed, nil
+	}
+	value, err := readJSONOption("", sealedFile, true)
+	if err != nil {
+		return nil, fmt.Errorf("sealed arguments: %w", err)
+	}
+	return value, nil
 }
 
 func (client *agentClient) wrapSealedArguments(ctx context.Context, operation, idempotencyKey string, public, secret json.RawMessage, credentialSlot string) (json.RawMessage, error) {
@@ -247,23 +295,35 @@ func (client *agentClient) wrapSealedArguments(ctx context.Context, operation, i
 }
 
 func (client *agentClient) uploadSealedPayload(ctx context.Context, operation, idempotencyKey string, payload []byte) (sealedstore.Reference, error) {
-	base, err := clienthttp.ParseBaseURL(client.baseURL)
+	request, err := client.sealedPayloadRequest(ctx, operation, idempotencyKey, payload)
 	if err != nil {
 		return sealedstore.Reference{}, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+"/api/agent/v1/sealed-payloads", bytes.NewReader(payload))
-	if err != nil {
-		return sealedstore.Reference{}, errors.New("create sealed payload request")
-	}
-	request.Header.Set("Authorization", "Bearer "+client.secret)
-	request.Header.Set("Content-Type", "application/octet-stream")
-	request.Header.Set("X-Broker-Operation", operation)
-	request.Header.Set("X-Broker-Idempotency-Key", idempotencyKey)
 	response, err := client.httpClient.Do(request)
 	if err != nil {
 		return sealedstore.Reference{}, errors.New("upload sealed payload")
 	}
 	defer func() { _ = response.Body.Close() }()
+	return sealedPayloadReference(response, operation)
+}
+
+func (client *agentClient) sealedPayloadRequest(ctx context.Context, operation, idempotencyKey string, payload []byte) (*http.Request, error) {
+	base, err := clienthttp.ParseBaseURL(client.baseURL)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+"/api/agent/v1/sealed-payloads", bytes.NewReader(payload))
+	if err != nil {
+		return nil, errors.New("create sealed payload request")
+	}
+	request.Header.Set("Authorization", "Bearer "+client.secret)
+	request.Header.Set("Content-Type", "application/octet-stream")
+	request.Header.Set("X-Broker-Operation", operation)
+	request.Header.Set("X-Broker-Idempotency-Key", idempotencyKey)
+	return request, nil
+}
+
+func sealedPayloadReference(response *http.Response, operation string) (sealedstore.Reference, error) {
 	data, readErr := httpx.ReadLimited(response.Body, maxOperationInputBytes)
 	if readErr != nil || response.StatusCode != http.StatusCreated {
 		return sealedstore.Reference{}, errors.New("broker rejected sealed payload")
@@ -415,37 +475,13 @@ func descriptorByMCPTool(name string) (opcatalog.Descriptor, bool) {
 	return opcatalog.Descriptor{}, false
 }
 
-//nolint:cyclop // Catalog dispatch is explicit and tracked by the exact HF CRAP baseline.
 func callMCPCatalogOperation(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, raw json.RawMessage) (any, error) {
-	var input mcpCatalogOperationInput
-	if err := decodeMCPArguments(raw, &input); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
-		return nil, errors.New("reason is invalid")
-	}
-	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	input, requestID, err := prepareMCPCatalogInput(descriptor, raw)
 	if err != nil {
 		return nil, err
 	}
 	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
 		return callMCPWindowOperation(ctx, client.grantClient, descriptor, input, requestID)
-	}
-	if descriptor.CredentialOutputKind != nil && len(input.SealedArguments) != 0 {
-		return nil, errors.New("credential output operations do not accept sealed input")
-	}
-	if descriptor.CredentialOutputKind != nil && !credentialstore.ValidSlot(input.CredentialSlot) {
-		return nil, errors.New("credential_slot is required")
-	}
-	if descriptor.CredentialOutputKind == nil && input.CredentialSlot != "" {
-		return nil, errors.New("this operation does not produce a credential")
-	}
-	if !descriptor.Sealed && len(input.SealedArguments) != 0 {
-		return nil, errors.New("this operation does not accept sealed arguments")
-	}
-	input.Arguments, err = mcpprojection.ArgumentsToCanonical(descriptor, input.Arguments)
-	if err != nil {
-		return nil, err
 	}
 	request, err := buildOperationSubmitRequest(ctx, client, descriptor, input.Target, input.Arguments, "", input.SealedArguments, input.CredentialSlot, input.Reason, requestID)
 	if err != nil {
@@ -458,8 +494,80 @@ func callMCPCatalogOperation(ctx context.Context, client *agentClient, descripto
 	return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
 }
 
+func prepareMCPCatalogInput(descriptor opcatalog.Descriptor, raw json.RawMessage) (mcpCatalogOperationInput, string, error) {
+	var input mcpCatalogOperationInput
+	if err := decodeMCPArguments(raw, &input); err != nil {
+		return input, "", err
+	}
+	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	if err != nil {
+		return input, "", err
+	}
+	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
+		return input, requestID, nil
+	}
+	if err := validateMCPCatalogOperation(descriptor, input); err != nil {
+		return input, "", err
+	}
+	input.Arguments, err = mcpprojection.ArgumentsToCanonical(descriptor, input.Arguments)
+	return input, requestID, err
+}
+
+func validateMCPCatalogOperation(descriptor opcatalog.Descriptor, input mcpCatalogOperationInput) error {
+	if strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
+		return errors.New("reason is invalid")
+	}
+	if err := validateCredentialSelection(descriptor.CredentialOutputKind != nil, input.CredentialSlot, len(input.SealedArguments) != 0,
+		"credential_slot is required"); err != nil {
+		return err
+	}
+	return validateMCPSealedOperation(descriptor, input)
+}
+
+func validateCredentialSelection(hasOutput bool, slot string, hasSealedInput bool, missingSlotMessage string) error {
+	if !hasOutput {
+		return validateNoCredentialOutput(slot)
+	}
+	return validateCredentialOutput(slot, hasSealedInput, missingSlotMessage)
+}
+
+func validateNoCredentialOutput(slot string) error {
+	if slot != "" {
+		return errors.New("this operation does not produce a credential")
+	}
+	return nil
+}
+
+func validateCredentialOutput(slot string, hasSealedInput bool, missingSlotMessage string) error {
+	if err := validateCredentialOutputSealedInput(hasSealedInput); err != nil {
+		return err
+	}
+	return validateCredentialOutputSlot(slot, missingSlotMessage)
+}
+
+func validateCredentialOutputSealedInput(hasSealedInput bool) error {
+	if hasSealedInput {
+		return errors.New("credential output operations do not accept sealed input")
+	}
+	return nil
+}
+
+func validateCredentialOutputSlot(slot, missingSlotMessage string) error {
+	if !credentialstore.ValidSlot(slot) {
+		return errors.New(missingSlotMessage)
+	}
+	return nil
+}
+
+func validateMCPSealedOperation(descriptor opcatalog.Descriptor, input mcpCatalogOperationInput) error {
+	if !descriptor.Sealed && len(input.SealedArguments) != 0 {
+		return errors.New("this operation does not accept sealed arguments")
+	}
+	return nil
+}
+
 func callMCPWindowOperation(ctx context.Context, client *hfGrantClient, descriptor opcatalog.Descriptor, input mcpCatalogOperationInput, requestID string) (hfClientGrant, error) {
-	if len(input.Arguments) != 0 || len(input.SealedArguments) != 0 || input.CredentialSlot != "" || input.Minutes < 0 {
+	if !validMCPWindowInput(input) {
 		return hfClientGrant{}, errors.New("window operation arguments are invalid")
 	}
 	var target policy.Target
@@ -477,4 +585,11 @@ func callMCPWindowOperation(ctx context.Context, client *hfGrantClient, descript
 		request.MaxUses = &value
 	}
 	return client.Request(ctx, request)
+}
+
+func validMCPWindowInput(input mcpCatalogOperationInput) bool {
+	return len(input.Arguments) == 0 &&
+		len(input.SealedArguments) == 0 &&
+		input.CredentialSlot == "" &&
+		input.Minutes >= 0
 }

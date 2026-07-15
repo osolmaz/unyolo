@@ -69,16 +69,7 @@ func (s *Server) serveInference(w http.ResponseWriter, r *http.Request, client s
 
 func (s *Server) serveChatCompletion(w http.ResponseWriter, r *http.Request, client string) {
 	const operation = "inference.chat.complete"
-	if r.Method != http.MethodPost {
-		s.refuseInference(w, client, operation, "", http.StatusMethodNotAllowed, "method_not_allowed")
-		return
-	}
-	if r.URL.RawQuery != "" {
-		s.refuseInference(w, client, operation, "", http.StatusBadRequest, "query_not_allowed")
-		return
-	}
-	if !jsonContentType(r.Header.Get("Content-Type")) {
-		s.refuseInference(w, client, operation, "", http.StatusUnsupportedMediaType, "json_content_type_required")
+	if !s.acceptChatCompletionRequest(w, r, client, operation) {
 		return
 	}
 	body, status, reason := readInferenceRequest(w, r)
@@ -101,6 +92,22 @@ func (s *Server) serveChatCompletion(w http.ResponseWriter, r *http.Request, cli
 		return
 	}
 	s.forwardInference(w, r, client, operation, model, body, reserved)
+}
+
+func (s *Server) acceptChatCompletionRequest(w http.ResponseWriter, r *http.Request, client, operation string) bool {
+	if r.Method != http.MethodPost {
+		s.refuseInference(w, client, operation, "", http.StatusMethodNotAllowed, "method_not_allowed")
+		return false
+	}
+	if r.URL.RawQuery != "" {
+		s.refuseInference(w, client, operation, "", http.StatusBadRequest, "query_not_allowed")
+		return false
+	}
+	if !jsonContentType(r.Header.Get("Content-Type")) {
+		s.refuseInference(w, client, operation, "", http.StatusUnsupportedMediaType, "json_content_type_required")
+		return false
+	}
+	return true
 }
 
 func inferencePolicyTarget(model string) (policy.Target, bool) {

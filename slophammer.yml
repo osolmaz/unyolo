@@ -1,7 +1,5 @@
 go:
   exclude:
-    - pattern: "brokers/huggingface/**"
-      reason: the Hugging Face broker has an independently enforced exact CRAP baseline
     - pattern: "brokers/sudo/**"
       reason: the sudo broker retains its independently enforced Slophammer configuration
     - pattern: "brokers/github/cmd/generate-github-surfaces/**"

@@ -58,32 +58,62 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 }
 
 func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
-	switch args[0] {
-	case "--version", "version":
-		_, err := fmt.Fprintln(stdout, version)
-		return err
-	case "doctor":
-		return runDoctor(ctx, stdout, stderr, args[1:])
-	case "setup":
-		return runSetup(ctx, stdout, stderr, args[1:])
-	case "client":
-		return runClientCommand(ctx, getenv, stdout, stderr, args[1:])
-	case "mcp":
-		return runMCP(ctx, getenv, os.Stdin, stdout, stderr, args[1:])
-	case "state":
-		return statecmd.Run(ctx, args[1:], stdout, stderr)
-	case "__doctor-isolation-probe":
-		return runDoctorIsolationProbe(stdout, stderr, args[1:])
-	default:
-		return runAuxiliaryCommand(ctx, stdout, stderr, args)
+	run, found := commandRunners[args[0]]
+	if !found {
+		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp|state]"}
 	}
+	return run(commandContext{ctx: ctx, getenv: getenv, stdout: stdout, stderr: stderr}, args[1:])
 }
 
-func runAuxiliaryCommand(ctx context.Context, stdout, stderr io.Writer, args []string) error {
-	if args[0] == "policy" {
-		return runPolicy(ctx, stdout, stderr, args[1:])
-	}
-	return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp|state]"}
+type commandContext struct {
+	ctx            context.Context
+	getenv         func(string) string
+	stdout, stderr io.Writer
+}
+
+var commandRunners = map[string]func(commandContext, []string) error{
+	"--version":                runVersionCommand,
+	"version":                  runVersionCommand,
+	"doctor":                   runDoctorCommand,
+	"setup":                    runSetupCommand,
+	"policy":                   runPolicyCommand,
+	"client":                   runClientTopLevelCommand,
+	"mcp":                      runMCPCommand,
+	"state":                    runStateCommand,
+	"__doctor-isolation-probe": runIsolationProbeCommand,
+}
+
+func runVersionCommand(command commandContext, _ []string) error {
+	_, err := fmt.Fprintln(command.stdout, version)
+	return err
+}
+
+func runDoctorCommand(command commandContext, args []string) error {
+	return runDoctor(command.ctx, command.stdout, command.stderr, args)
+}
+
+func runSetupCommand(command commandContext, args []string) error {
+	return runSetup(command.ctx, command.stdout, command.stderr, args)
+}
+
+func runPolicyCommand(command commandContext, args []string) error {
+	return runPolicy(command.ctx, command.stdout, command.stderr, args)
+}
+
+func runClientTopLevelCommand(command commandContext, args []string) error {
+	return runClientCommand(command.ctx, command.getenv, command.stdout, command.stderr, args)
+}
+
+func runMCPCommand(command commandContext, args []string) error {
+	return runMCP(command.ctx, command.getenv, os.Stdin, command.stdout, command.stderr, args)
+}
+
+func runStateCommand(command commandContext, args []string) error {
+	return statecmd.Run(command.ctx, args, command.stdout, command.stderr)
+}
+
+func runIsolationProbeCommand(command commandContext, args []string) error {
+	return runDoctorIsolationProbe(command.stdout, command.stderr, args)
 }
 
 func runClientCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
@@ -107,17 +137,22 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
-	if cfg.Development {
-		if err := writeReadiness(stdout, cfg, bindings); err != nil {
-			_ = serverhttp.Shutdown(bindings)
-			return err
-		}
+	if err := writeDevelopmentReadiness(stdout, cfg, bindings); err != nil {
+		_ = serverhttp.Shutdown(bindings)
+		return err
 	}
 	err = serverhttp.Serve(ctx, bindings)
 	if ctx.Err() != nil && err == nil {
 		_, _ = fmt.Fprintln(stderr, "hf-broker stopped")
 	}
 	return err
+}
+
+func writeDevelopmentReadiness(stdout io.Writer, cfg config.Config, bindings []serverhttp.Binding) error {
+	if !cfg.Development {
+		return nil
+	}
+	return writeReadiness(stdout, cfg, bindings)
 }
 
 func buildHTTPHandler(ctx context.Context, stdout io.Writer, cfg config.Config) (*httpapi.Server, error) {

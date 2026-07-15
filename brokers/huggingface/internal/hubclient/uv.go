@@ -39,46 +39,82 @@ type uvVolume struct {
 	Path      string `json:"path,omitempty"`
 }
 
-//nolint:cyclop // Fixed transform dispatch is explicit and tracked by the exact HF CRAP baseline.
 func transformBoundBody(transform string, raw json.RawMessage) (any, error) {
 	var arguments uvJobArguments
-	if err := strictjson.Decode(raw, &arguments, true); err != nil || arguments.Script == "" {
+	if err := decodeUVJobArguments(raw, &arguments); err != nil {
 		return nil, errors.New("hubclient: UV Job arguments are invalid")
 	}
-	if localUVInput(arguments.Script) {
+	if uvJobReferencesLocalInput(arguments) {
 		return nil, errors.New("hubclient: UV Job local files require a prior explicit upload operation")
-	}
-	for _, argument := range arguments.ScriptArgs {
-		if localUVInput(argument) {
-			return nil, errors.New("hubclient: UV Job local files require a prior explicit upload operation")
-		}
 	}
 	job := uvJobSpec(arguments)
 	switch transform {
 	case "uv_job":
-		if arguments.Schedule != "" || arguments.Suspend != nil || arguments.Concurrency != nil {
-			return nil, errors.New("hubclient: UV Job schedule fields are invalid")
-		}
-		return job, nil
+		return uvJobBody(arguments, job)
 	case "uv_scheduled_job":
-		if arguments.Schedule == "" || arguments.SSH {
-			return nil, errors.New("hubclient: scheduled UV Job arguments are invalid")
-		}
-		body := map[string]any{"jobSpec": job, "schedule": arguments.Schedule}
-		if arguments.Suspend != nil {
-			body["suspend"] = *arguments.Suspend
-		}
-		if arguments.Concurrency != nil {
-			body["concurrency"] = *arguments.Concurrency
-		}
-		return body, nil
+		return uvScheduledJobBody(arguments, job)
 	default:
 		return nil, errors.New("hubclient: bound transform is unavailable")
 	}
 }
 
-//nolint:cyclop // Optional SDK fields are explicit and tracked by the exact HF CRAP baseline.
+func uvJobBody(arguments uvJobArguments, job map[string]any) (any, error) {
+	if arguments.Schedule != "" || arguments.Suspend != nil || arguments.Concurrency != nil {
+		return nil, errors.New("hubclient: UV Job schedule fields are invalid")
+	}
+	return job, nil
+}
+
+func uvScheduledJobBody(arguments uvJobArguments, job map[string]any) (any, error) {
+	if arguments.Schedule == "" || arguments.SSH {
+		return nil, errors.New("hubclient: scheduled UV Job arguments are invalid")
+	}
+	body := map[string]any{"jobSpec": job, "schedule": arguments.Schedule}
+	addUVScheduleOptions(body, arguments)
+	return body, nil
+}
+
+func addUVScheduleOptions(body map[string]any, arguments uvJobArguments) {
+	if arguments.Suspend != nil {
+		body["suspend"] = *arguments.Suspend
+	}
+	if arguments.Concurrency != nil {
+		body["concurrency"] = *arguments.Concurrency
+	}
+}
+
+func decodeUVJobArguments(raw json.RawMessage, arguments *uvJobArguments) error {
+	if err := strictjson.Decode(raw, arguments, true); err != nil || arguments.Script == "" {
+		return errors.New("invalid UV Job arguments")
+	}
+	return nil
+}
+
+func uvJobReferencesLocalInput(arguments uvJobArguments) bool {
+	if localUVInput(arguments.Script) {
+		return true
+	}
+	for _, argument := range arguments.ScriptArgs {
+		if localUVInput(argument) {
+			return true
+		}
+	}
+	return false
+}
+
 func uvJobSpec(arguments uvJobArguments) map[string]any {
+	command := uvCommand(arguments)
+	flavor := arguments.Flavor
+	if flavor == "" {
+		flavor = "cpu-basic"
+	}
+	job := map[string]any{"command": command, "arguments": []string{}, "environment": nonNilMap(arguments.Environment), "flavor": flavor}
+	addUVJobImage(job, arguments.Image)
+	addUVJobOptionalFields(job, arguments)
+	return job
+}
+
+func uvCommand(arguments uvJobArguments) []string {
 	command := []string{"uv", "run"}
 	for _, dependency := range arguments.Dependencies {
 		command = append(command, "--with", dependency)
@@ -88,12 +124,10 @@ func uvJobSpec(arguments uvJobArguments) map[string]any {
 	}
 	command = append(command, arguments.Script)
 	command = append(command, arguments.ScriptArgs...)
-	flavor := arguments.Flavor
-	if flavor == "" {
-		flavor = "cpu-basic"
-	}
-	job := map[string]any{"command": command, "arguments": []string{}, "environment": nonNilMap(arguments.Environment), "flavor": flavor}
-	image := arguments.Image
+	return command
+}
+
+func addUVJobImage(job map[string]any, image string) {
 	if image == "" {
 		image = defaultUVImage
 	}
@@ -102,6 +136,9 @@ func uvJobSpec(arguments uvJobArguments) map[string]any {
 	} else {
 		job["dockerImage"] = image
 	}
+}
+
+func addUVJobOptionalFields(job map[string]any, arguments uvJobArguments) {
 	if len(arguments.Secrets) > 0 {
 		job["secrets"] = arguments.Secrets
 	}
@@ -120,7 +157,6 @@ func uvJobSpec(arguments uvJobArguments) map[string]any {
 	if arguments.SSH {
 		job["ssh"] = map[string]any{"enabled": true}
 	}
-	return job
 }
 
 func uvVolumes(values []uvVolume) []map[string]any {

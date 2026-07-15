@@ -68,6 +68,17 @@ type Config struct {
 // Load reads and validates configuration from getenv (normally
 // os.Getenv). It reads the secrets file, if configured, from disk.
 func Load(getenv func(string) string) (Config, error) {
+	cfg, err := loadBaseConfig(getenv)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := loadConfigSections(getenv, &cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func loadBaseConfig(getenv func(string) string) (Config, error) {
 	hfToken, err := loadHFToken(getenv)
 	if err != nil {
 		return Config{}, err
@@ -82,22 +93,27 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.HFToken == "" {
 		return Config{}, fmt.Errorf("%s or %s is required", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))
 	}
+	return cfg, nil
+}
+
+func loadConfigSections(getenv func(string) string, cfg *Config) error {
+	var err error
 	if cfg.Clients, err = loadClients(getenv); err != nil {
-		return Config{}, err
+		return err
 	}
 	if cfg.Operators, err = loadOperators(getenv, cfg.Clients); err != nil {
-		return Config{}, err
+		return err
 	}
 	if cfg.Admission, err = admission.LoadFile(brokerEnv(getenv, "ADMISSION_CONFIG"), clientNames(cfg.Clients)); err != nil {
-		return Config{}, fmt.Errorf("%s: %w", brokerEnvName("ADMISSION_CONFIG"), err)
+		return fmt.Errorf("%s: %w", brokerEnvName("ADMISSION_CONFIG"), err)
 	}
-	if err := loadRuntime(getenv, &cfg); err != nil {
-		return Config{}, err
+	if err := loadRuntime(getenv, cfg); err != nil {
+		return err
 	}
-	if err := loadNumeric(getenv, &cfg); err != nil {
-		return Config{}, err
+	if err := loadNumeric(getenv, cfg); err != nil {
+		return err
 	}
-	return cfg, loadTelegram(getenv, &cfg)
+	return loadTelegram(getenv, cfg)
 }
 
 func clientNames(clients []Client) []string {
@@ -119,6 +135,17 @@ func loadRuntime(getenv func(string) string, cfg *Config) error {
 		return err
 	}
 	parseOptions := endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: allowNetwork}
+	if err := loadRuntimeEndpoints(getenv, cfg, parseOptions); err != nil {
+		return err
+	}
+	if err := validateRuntimePaths(cfg.ScopeFile, cfg.StateDir, development); err != nil {
+		return err
+	}
+	return validateRuntimeOrigins(cfg.UpstreamHubURL, cfg.UpstreamRouterURL, development)
+}
+
+func loadRuntimeEndpoints(getenv func(string) string, cfg *Config, parseOptions endpoint.ParseOptions) error {
+	var err error
 	cfg.AgentEndpoint, err = parseEndpoint(brokerEnv(getenv, "AGENT_ENDPOINT"), "AGENT_ENDPOINT", parseOptions)
 	if err != nil {
 		return err
@@ -133,13 +160,14 @@ func loadRuntime(getenv func(string) string, cfg *Config) error {
 		}
 		cfg.OperatorEndpoint = &operatorEndpoint
 	}
-	if err := validateRuntimePaths(cfg.ScopeFile, cfg.StateDir, development); err != nil {
-		return err
-	}
-	if err := endpoint.ValidateHTTPOrigin(cfg.UpstreamHubURL, development); err != nil {
+	return nil
+}
+
+func validateRuntimeOrigins(upstreamHubURL, upstreamRouterURL string, development bool) error {
+	if err := endpoint.ValidateHTTPOrigin(upstreamHubURL, development); err != nil {
 		return fmt.Errorf("%s: %w", brokerEnvName("UPSTREAM_HUB_URL"), err)
 	}
-	if err := endpoint.ValidateHTTPOrigin(cfg.UpstreamRouterURL, development); err != nil {
+	if err := endpoint.ValidateHTTPOrigin(upstreamRouterURL, development); err != nil {
 		return fmt.Errorf("%s: %w", brokerEnvName("UPSTREAM_ROUTER_URL"), err)
 	}
 	return nil
@@ -180,13 +208,21 @@ func parseEndpoint(raw, suffix string, options endpoint.ParseOptions) (endpoint.
 }
 
 func validateRuntimePaths(scopeFile, stateDir string, development bool) error {
-	if scopeFile == "" || stateDir == "" {
+	if missingRuntimePath(scopeFile, stateDir) {
 		return fmt.Errorf("%s and %s are required", brokerEnvName("SCOPE_FILE"), brokerEnvName("STATE_DIR"))
 	}
-	if !development && (!filepath.IsAbs(scopeFile) || !filepath.IsAbs(stateDir)) {
+	if productionRuntimePathIsRelative(scopeFile, stateDir, development) {
 		return errors.New("production policy and state paths must be absolute")
 	}
 	return nil
+}
+
+func missingRuntimePath(scopeFile, stateDir string) bool {
+	return scopeFile == "" || stateDir == ""
+}
+
+func productionRuntimePathIsRelative(scopeFile, stateDir string, development bool) bool {
+	return !development && (!filepath.IsAbs(scopeFile) || !filepath.IsAbs(stateDir))
 }
 
 func loadHFToken(getenv func(string) string) (string, error) {
