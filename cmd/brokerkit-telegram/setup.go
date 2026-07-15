@@ -266,7 +266,8 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 func ingressReadyCheck(clients []*operatorclient.Client) bkservice.ReadinessCheck {
 	return func(ctx context.Context) error {
 		for _, client := range clients {
-			if err := client.Health(ctx); err != nil {
+			descriptor, err := client.Discover(ctx)
+			if err != nil || descriptor.APIVersion == "" {
 				return errors.New("broker operator route is not ready")
 			}
 		}

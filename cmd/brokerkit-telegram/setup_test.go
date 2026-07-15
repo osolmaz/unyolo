@@ -4,6 +4,8 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -12,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/operatorclient"
+	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/service"
 )
 
@@ -85,6 +89,35 @@ func TestSetupDryRunDoesNotExposeSecrets(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "telegram-token") || strings.Contains(stdout.String(), strings.Repeat("o", 32)) {
 		t.Fatalf("dry run leaked credentials: %s", stdout.String())
+	}
+}
+
+func TestIngressReadyCheckAuthenticatesOperatorRoute(t *testing.T) {
+	token := strings.Repeat("o", 32)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if request.Header.Get("Authorization") != "Bearer "+token {
+			writer.WriteHeader(http.StatusUnauthorized)
+			_, _ = writer.Write([]byte(`{"error":{"code":"unauthorized","message":"denied","correlation_id":"test"}}`))
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(operatorv1.Descriptor{APIVersion: operatorv1.APIVersion})
+	}))
+	defer server.Close()
+	endpoint := strings.Replace(server.URL, "http://", "tcp://", 1)
+	valid, err := operatorclient.New(endpoint, token, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ingressReadyCheck([]*operatorclient.Client{valid})(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	invalid, err := operatorclient.New(endpoint, strings.Repeat("x", 32), server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ingressReadyCheck([]*operatorclient.Client{invalid})(t.Context()); err == nil {
+		t.Fatal("readiness accepted an invalid operator credential")
 	}
 }
 
