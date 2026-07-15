@@ -26,7 +26,7 @@ run(
     "--ignore-scripts",
     "--no-audit",
     "--no-fund",
-    "openclaw@2026.7.1-beta.5",
+    "openclaw@2026.7.1",
     path.join(temporary, tarball),
   ],
   temporary,
@@ -46,7 +46,7 @@ const installed = JSON.parse(
     "utf8",
   ),
 );
-if (installed.peerDependencies?.openclaw !== ">=2026.7.1-beta.5")
+if (installed.peerDependencies?.openclaw !== ">=2026.7.1")
   throw new Error(
     "packed plugin has an unexpected OpenClaw compatibility range",
   );

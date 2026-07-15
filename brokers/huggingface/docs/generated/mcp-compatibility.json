@@ -1,7 +1,7 @@
 {
   "api_version": "brokerkit.io/mcp-compatibility-manifest/v1",
   "provider": "huggingface",
-  "host_profiles": ["openclaw@2026.7.1-beta.5"],
+  "host_profiles": ["openclaw@2026.7.1"],
   "agent_facing_operations": 257,
   "operation_tools": 257,
   "utility_tools": 3,

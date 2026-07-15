@@ -13,7 +13,7 @@ const packageDocument = JSON.parse(
     "utf8",
   ),
 );
-const expectedVersion = "2026.7.1-beta.5";
+const expectedVersion = "2026.7.1";
 if (packageDocument.version !== expectedVersion) {
   throw new Error(
     `OpenClaw fixture requires ${expectedVersion}, got ${packageDocument.version}`,
@@ -61,7 +61,7 @@ const fixture = {
     package: "openclaw",
     version: expectedVersion,
     integrity:
-      "sha512-ejdttiBZwk5RJmZdGD3gQPW1+4819pb0gyw4ZbGg/NcEAdozk6UQWq4n3P2XfDBgOn2k7D8fSKLcN+YDdJ77TA==",
+      "sha512-ge/Xss99CHAjPL/ikmH/UFoiOrjcxDB4sW3y9mhyCD+dYW3wzV7TKbAVdkrXFgAG2d2BjpJofP97zUZ+umxo8g==",
     entrypoint: "openclaw/plugin-sdk/text-runtime",
   },
   cases: names.map((name) => ({
@@ -73,7 +73,7 @@ const fixture = {
 };
 const output = `${JSON.stringify(fixture, null, 2)}\n`;
 const target = new URL(
-  "../../../capability/testdata/openclaw-redaction-v2026.7.1-beta.5.json",
+  "../../../capability/testdata/openclaw-redaction-v2026.7.1.json",
   import.meta.url,
 );
 

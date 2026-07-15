@@ -63,7 +63,7 @@ func TestCompatibilityManifestMatchesCatalog(t *testing.T) {
 		}
 	}
 	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "github" ||
-		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1-beta.5"}) ||
+		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1"}) ||
 		manifest.AgentFacingOperations != agentFacing || manifest.AuditedOperations != opcatalog.ExpectedCount ||
 		manifest.OperationTools != agentFacing || manifest.UtilityTools != 3 ||
 		!slices.Equal(manifest.ProjectedOperations, projected) || manifest.UnresolvedCollisions != 0 {
