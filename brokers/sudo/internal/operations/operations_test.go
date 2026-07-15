@@ -1,15 +1,19 @@
 package operations
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
+	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	sudoplan "github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/grants"
@@ -93,6 +97,65 @@ func TestExecutionFailureClassification(t *testing.T) {
 		if failure := ExecutionFailure(test.err, nil); failure.Code != test.code {
 			t.Fatalf("failure %v = %+v", test.err, failure)
 		}
+	}
+}
+
+func TestCommandAdapterExecuteClassifiesHelperResponses(t *testing.T) {
+	t.Parallel()
+	value := executablePlan()
+	completed, err := commandAdapter{helper: helperClient(t, executorprotocol.NewCompleted(value.ExecutionID, executorprotocol.Outcome{
+		Started: true, ExitCode: 7, Stdout: []byte("out"),
+	}))}.Execute(context.Background(), value)
+	if err != nil || !completed.Proven || !strings.Contains(string(completed.Result), `"exit_code":7`) {
+		t.Fatalf("completed execution = %+v, %v", completed, err)
+	}
+	_, err = commandAdapter{helper: helperClient(t, executorprotocol.NewRejected("policy_denied"))}.Execute(context.Background(), value)
+	if !errors.Is(err, errExecutionRejected) || operationruntime.IsPossiblePartial(err) {
+		t.Fatalf("rejected execution err = %v", err)
+	}
+	_, err = commandAdapter{helper: helperClient(t, executorprotocol.NewAmbiguous(value.ExecutionID, "lost_response"))}.Execute(context.Background(), value)
+	if !operationruntime.IsPossiblePartial(err) {
+		t.Fatalf("ambiguous execution err = %v", err)
+	}
+	_, err = commandAdapter{helper: &executorclient.Client{SocketPath: "/unused", Dial: func(context.Context, string, string) (net.Conn, error) {
+		client, server := net.Pipe()
+		_ = server.Close()
+		return client, nil
+	}}}.Execute(context.Background(), value)
+	if !operationruntime.IsPossiblePartial(err) {
+		t.Fatalf("dispatched transport failure err = %v", err)
+	}
+	if _, err := (commandAdapter{}).Execute(context.Background(), Plan{}); err == nil {
+		t.Fatal("incomplete execution authority was accepted")
+	}
+}
+
+func helperClient(t *testing.T, response executorprotocol.Response) *executorclient.Client {
+	t.Helper()
+	return &executorclient.Client{SocketPath: "/unused", Dial: func(context.Context, string, string) (net.Conn, error) {
+		client, server := net.Pipe()
+		go func() {
+			defer func() { _ = server.Close() }()
+			if _, err := executorprotocol.ReadRequest(server); err != nil {
+				return
+			}
+			_ = executorprotocol.WriteResponse(server, response)
+		}()
+		return client, nil
+	}}
+}
+
+func executablePlan() Plan {
+	now := time.Now().UTC()
+	return Plan{
+		ExecutionID: "op-1", GrantID: "grant-1", ReservationID: "grant-1:r1", GrantExpiresAt: now.Add(time.Minute),
+		Command: sudoplan.Plan{
+			Schema: sudoplan.SchemaV1, RequestID: "op-1", ClientID: "bob", Operation: sudopolicy.OperationExecCommand,
+			CommandID: "scale", TargetUser: "root", TargetUID: 0, TargetGID: 0, Executable: "/usr/bin/printf",
+			Arguments: []string{"%s"}, WorkingDirectory: "/", Environment: []string{"LANG=C", "LC_ALL=C"},
+			TimeoutSeconds: 5, MaxOutputBytes: 100, CatalogDigest: strings.Repeat("a", 64),
+			RequestedDurationSeconds: 60, RequestedMaxUses: 1, CreatedAt: now,
+		},
 	}
 }
 

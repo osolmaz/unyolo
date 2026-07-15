@@ -35,9 +35,13 @@ func postIdentityLimits() []resourceLimit { return []resourceLimit{{unix.RLIMIT_
 
 func applyResourceLimits(limits []resourceLimit) error {
 	for _, limit := range limits {
-		if err := unix.Setrlimit(limit.resource, &unix.Rlimit{Cur: limit.value, Max: limit.value}); err != nil {
+		if err := applyResourceLimit(limit); err != nil {
 			return errors.New("apply process resource limit")
 		}
 	}
 	return nil
+}
+
+func applyResourceLimit(limit resourceLimit) error {
+	return unix.Setrlimit(limit.resource, &unix.Rlimit{Cur: limit.value, Max: limit.value})
 }

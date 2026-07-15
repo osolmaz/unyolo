@@ -20,4 +20,7 @@ func TestProcessLimitIsAppliedAfterIdentityTransition(t *testing.T) {
 	if len(limits) != 1 || limits[0].resource != unix.RLIMIT_NPROC || limits[0].value != 64 {
 		t.Fatalf("post-identity limits = %+v", limits)
 	}
+	if err := applyResourceLimits(nil); err != nil {
+		t.Fatalf("empty resource limits = %v", err)
+	}
 }

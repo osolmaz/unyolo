@@ -167,24 +167,48 @@ func (commandAdapter) BindReservation(value Plan, grant grants.Grant) (Plan, err
 }
 
 func (a commandAdapter) Execute(ctx context.Context, value Plan) (operationruntime.Outcome, error) {
-	if value.ExecutionID == "" || value.GrantID == "" || value.ReservationID == "" || value.GrantExpiresAt.IsZero() {
-		return operationruntime.Outcome{}, errors.New("sudo execution authority is incomplete")
+	if err := validateExecutionAuthority(value); err != nil {
+		return operationruntime.Outcome{}, err
 	}
 	response, err := a.helper.Execute(ctx, value.ExecutionID, value.Command, value.GrantID, value.ReservationID, value.GrantExpiresAt)
 	if err != nil {
-		if executorclient.WasDispatched(err) {
-			return operationruntime.Outcome{}, &operationruntime.PossiblePartialError{Err: err}
-		}
-		return operationruntime.Outcome{}, err
+		return helperDispatchFailure(err)
 	}
-	if response.Status == executorprotocol.StatusCompleted && response.Outcome != nil && response.Outcome.Started {
+	return outcomeFromHelperResponse(response)
+}
+
+func validateExecutionAuthority(value Plan) error {
+	if value.ExecutionID == "" || value.GrantID == "" || value.ReservationID == "" || value.GrantExpiresAt.IsZero() {
+		return errors.New("sudo execution authority is incomplete")
+	}
+	return nil
+}
+
+func helperDispatchFailure(err error) (operationruntime.Outcome, error) {
+	if executorclient.WasDispatched(err) {
+		return operationruntime.Outcome{}, &operationruntime.PossiblePartialError{Err: err}
+	}
+	return operationruntime.Outcome{}, err
+}
+
+func outcomeFromHelperResponse(response executorprotocol.Response) (operationruntime.Outcome, error) {
+	if completedStarted(response) {
 		encoded, marshalErr := json.Marshal(executionView(response))
 		return operationruntime.Outcome{Proven: marshalErr == nil, Result: encoded}, marshalErr
 	}
-	if response.Status == executorprotocol.StatusRejected || response.Status == executorprotocol.StatusCompleted && response.Outcome != nil {
+	if definitiveHelperRejection(response) {
 		return operationruntime.Outcome{}, fmt.Errorf("%w: %s", errExecutionRejected, response.ErrorCode)
 	}
 	return operationruntime.Outcome{}, &operationruntime.PossiblePartialError{Err: fmt.Errorf("%w: %s", errResultUnknown, response.ErrorCode)}
+}
+
+func completedStarted(response executorprotocol.Response) bool {
+	return response.Status == executorprotocol.StatusCompleted && response.Outcome != nil && response.Outcome.Started
+}
+
+func definitiveHelperRejection(response executorprotocol.Response) bool {
+	return response.Status == executorprotocol.StatusRejected ||
+		response.Status == executorprotocol.StatusCompleted && response.Outcome != nil
 }
 
 func (commandAdapter) Reconcile(context.Context, Plan) (operationruntime.Outcome, error) {
