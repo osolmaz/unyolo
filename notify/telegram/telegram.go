@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/osolmaz/brokerkit/httpx"
@@ -25,6 +26,7 @@ const (
 	defaultRoute              = "d"
 	defaultForeignRetries     = 30
 	maxForeignCallbacks       = 1024
+	maxDurableStatusEdits     = 4096
 )
 
 const (
@@ -58,6 +60,8 @@ type Client struct {
 	route              string
 	foreignRetries     int
 	foreignAttempts    map[string]int
+	statusMu           sync.Mutex
+	durableStatusEdits map[messageKey]struct{}
 	retryDelay         time.Duration
 	ignoredAnswer      string
 	approveText        string
@@ -96,6 +100,7 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 		route:              opts.Route,
 		foreignRetries:     opts.ForeignRetries,
 		foreignAttempts:    make(map[string]int),
+		durableStatusEdits: make(map[messageKey]struct{}),
 		retryDelay:         time.Second,
 		ignoredAnswer:      opts.IgnoredAnswer,
 		approveText:        opts.ApproveText,
@@ -160,11 +165,29 @@ func (c *Client) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (
 
 // UpdateStatus edits an existing approval message status.
 func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status string) error {
+	c.statusMu.Lock()
+	defer c.statusMu.Unlock()
 	err := c.editMessageStatus(ctx, ref.ChatID, ref.MessageID, ref.Text, status)
 	if errors.Is(err, errMessageNotModified) {
-		return nil
+		err = nil
+	}
+	if err == nil {
+		if len(c.durableStatusEdits) >= maxDurableStatusEdits {
+			clear(c.durableStatusEdits)
+		}
+		c.durableStatusEdits[messageKey{chatID: ref.ChatID, messageID: ref.MessageID}] = struct{}{}
 	}
 	return err
+}
+
+func (c *Client) editImmediateStatus(ctx context.Context, decision notify.Decision, status string) error {
+	c.statusMu.Lock()
+	defer c.statusMu.Unlock()
+	key := messageKey{chatID: decision.ChatID, messageID: decision.MessageID}
+	if _, durable := c.durableStatusEdits[key]; durable {
+		return nil
+	}
+	return c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, status)
 }
 
 // Poll runs Telegram long polling until ctx is canceled.
@@ -471,4 +494,9 @@ type telegramMessage struct {
 
 type telegramChat struct {
 	ID int64 `json:"id"`
+}
+
+type messageKey struct {
+	chatID    int64
+	messageID int
 }

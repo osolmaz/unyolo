@@ -40,11 +40,11 @@ func offsetAfterUpdate(offset, updateID int64) int64 {
 }
 
 func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, handler func(context.Context, notify.Decision) notify.DecisionResult) bool {
+	if decision.Route != c.route {
+		return c.retryForeignDecision(ctx, decision)
+	}
 	result := notify.DecisionResult{Answer: c.ignoredAnswer}
 	if decision.ChatID == c.chatID {
-		if decision.Route != c.route {
-			return c.retryForeignDecision(ctx, decision)
-		}
 		delete(c.foreignAttempts, decision.CallbackID)
 		result = c.normalizeDecisionResult(handler(ctx, decision))
 		if result.Retry {
@@ -52,7 +52,7 @@ func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, h
 		}
 		if result.MessageStatus != "" {
 			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
-			_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, result.MessageStatus)
+			_ = c.editImmediateStatus(ctx, decision, result.MessageStatus)
 			return false
 		}
 	}

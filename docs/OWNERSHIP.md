@@ -180,6 +180,7 @@ brokerkit should own:
 - sending approval messages
 - explicit approval status edits requested by the broker
 - immediate best-effort terminal edits after a committed callback decision
+- serialized immediate and durable edits so stale callback status cannot replace newer state
 - inline approve/deny buttons
 - compact broker-routed callback payloads without interpreting the decision token
 - configured-chat filtering

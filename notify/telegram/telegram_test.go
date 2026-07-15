@@ -206,6 +206,27 @@ func TestPollOnceCommitsCallbackWhenImmediateEditFails(t *testing.T) {
 	}
 }
 
+func TestPollOnceDoesNotOverwriteNewerDurableStatus(t *testing.T) {
+	state := &pollServerState{}
+	server := newPollServer(t, state)
+	defer server.Close()
+	client, err := New("test-token", 123, server.Client(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := notify.MessageRef{ChatID: 123, MessageID: 42, Text: "Approval requested"}
+	if err := client.UpdateStatus(t.Context(), ref, "Used. Access is now closed."); err != nil {
+		t.Fatal(err)
+	}
+	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
+		return notify.DecisionResult{Answer: "Grant approved", MessageStatus: "Approved. Access is active."}
+	})
+	if err != nil || offset != 12 || len(state.edits) != 1 {
+		t.Fatalf("PollOnce() offset=%d edits=%d err=%v, want durable edit preserved", offset, len(state.edits), err)
+	}
+	assertClosedDecisionMessage(t, state.edits[0], "Used. Access is now closed.")
+}
+
 func TestPollOnceBoundsForeignBrokerHandoff(t *testing.T) {
 	state := &pollServerState{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -224,7 +245,7 @@ func TestPollOnceBoundsForeignBrokerHandoff(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{Route: RouteHuggingFace, ForeignRetries: 1})
+	client, err := NewWithOptions("test-token", 999, server.Client(), server.URL, Options{Route: RouteHuggingFace, ForeignRetries: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
