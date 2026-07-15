@@ -1,2 +1,0 @@
-# Exact cutover exceptions. Columns: source path, package:function, metric, maximum score.
-# Every row is package-qualified, score-bounded, source-verified, and rejected when stale.

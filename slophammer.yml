@@ -1,7 +1,5 @@
 go:
   exclude:
-    - pattern: "brokers/sudo/**"
-      reason: the sudo broker retains its independently enforced Slophammer configuration
     - pattern: "brokers/github/cmd/generate-github-surfaces/**"
       reason: deterministic generator code is enforced by the pinned generated-artifact drift gate
     - pattern: "plugins/**"
