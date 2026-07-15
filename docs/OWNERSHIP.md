@@ -182,13 +182,13 @@ brokerkit should own:
 - explicit approval status edits requested by the broker
 - immediate callback acknowledgement and decision-control removal
 - inline approve/deny buttons
-- compact broker-routed callback payloads without interpreting the decision token
+- compact broker-routed callback payloads that carry the one-time decision token
 - configured-chat filtering
 - Telegram operator metadata extraction
 - callback-query answers
 - retry behavior
-- offset-preserving callback retry without acknowledgement after durable-store
-  failure
+- per-message retry UX that acknowledges transient route failures without
+  blocking callbacks for healthy routes
 - one Bot API poller per bot token
 - route dispatch over authenticated Operator V1 sources
 - transport errors
