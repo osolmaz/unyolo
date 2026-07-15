@@ -3,8 +3,10 @@ useDefault = true
 
 [[allowlists]]
 description = "Reviewed non-secret protocol and historical test fixtures"
+condition = "AND"
 paths = [
   '''docs/2026-07-11-universal-broker-platform-plan\.md''',
+  '''brokers/github/cmd/gh-broker/operations_test\.go''',
   '''(^|/)internal/httpapi/server_test\.go'''
 ]
 regexTarget = "match"
@@ -21,6 +23,7 @@ paths = [
 
 [[allowlists]]
 description = "Encrypted sealed-payload test canary"
+condition = "AND"
 paths = [
   '''brokers/github/internal/operations/operations_test\.go'''
 ]
@@ -31,6 +34,7 @@ regexes = [
 
 [[allowlists]]
 description = "Synthetic authentication test credentials"
+condition = "AND"
 paths = [
   '''auth/auth_test\.go'''
 ]
