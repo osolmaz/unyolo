@@ -78,7 +78,9 @@ sudo gh-broker setup systemd \
 Add Telegram notifications with `--telegram-bot-token-file ./telegram-bot-token`
 and `--telegram-chat-id 123456789`. The token is copied to a service-owned
 protected file; pending requests remain available in the operator inbox
-without Telegram.
+without Telegram. Run the separate `brokerkit-telegram` ingress to receive
+button decisions; provider services never compete for the shared bot's update
+offset. See [Telegram approval ingress](../../docs/TELEGRAM_INGRESS.md).
 
 Write a client config file for an agent account:
 

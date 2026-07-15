@@ -37,7 +37,7 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 	if err != nil {
 		return nil, nil, err
 	}
-	return telegram, telegram, nil
+	return telegram, nil, nil
 }
 
 func (s *Server) Start(ctx context.Context) {

@@ -348,10 +348,11 @@ hf-broker keeps the HF-specific message summary. Telegram messages are
 updated when a request is approved, denied, used, expired, revoked, or fails
 during execution. A verified callback can atomically recover missing notifier
 metadata after an ambiguous send in the same durable transaction as the grant
-decision. A durable write failure leaves the callback unanswered and its
-Telegram update pending for retry. After a successful transaction, the callback
-is acknowledged before any message edit; restart-safe status delivery then
-removes the buttons after the first terminal decision.
+decision. The BrokerKit Telegram ingress commits callbacks through Operator V1.
+A durable write failure leaves the callback unanswered and its Telegram update
+pending for retry. After a successful transaction, the ingress acknowledges the
+callback and removes the buttons; restart-safe broker status delivery writes the
+authoritative terminal text.
 
 Operator prompts must show:
 
@@ -410,12 +411,13 @@ Two operator surfaces are supported:
    carrying the request's operation class, target, duration, and
    reason, with inline Approve / Deny buttons. The decision
    authenticates through the bot conversation itself: the bot token and
-   the operator's chat id are configured on the broker host, the broker
-   accepts a decision only from that chat id, and nothing about the
+   the operator's chat id are configured on the broker host, the shared
+   ingress accepts a decision only from that chat id, and nothing about the
    flow travels over a URL the agent could forge. Telegram gives two-way
    interaction with
-   a single bot token and no server-side callback to host — the broker
-   long-polls the Bot API, so it works from behind the Tailnet with no
+   a single bot token and no server-side callback to host. One BrokerKit-owned
+   ingress long-polls the Bot API and dispatches over authenticated Operator V1,
+   so it works from behind the Tailnet with no
    inbound exposure. Deny requires no action: unapproved requests expire
    on their own.
 

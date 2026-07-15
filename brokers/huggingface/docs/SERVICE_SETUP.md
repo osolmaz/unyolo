@@ -106,7 +106,9 @@ nor access to the operator socket through their client configuration.
 When Telegram is configured, its token is copied to
 `/etc/hf-broker/telegram-bot-token` with the same ownership and mode. The
 service environment contains the token-file path and operator chat ID, never
-the token value.
+the token value. The broker uses it only to send approval messages and durable
+status updates. Install the single shared callback receiver as described in
+[Telegram approval ingress](../../../docs/TELEGRAM_INGRESS.md).
 
 Rerun setup without both Telegram flags to disable Telegram. Setup writes the
 Telegram-free environment, restarts the service, waits for `/healthz`, and only

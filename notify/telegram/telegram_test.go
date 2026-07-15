@@ -148,6 +148,11 @@ func assertClosedDecisionMessage(t *testing.T, payload map[string]any, status st
 	if text, _ := payload["text"].(string); !strings.Contains(text, "Status: "+status) {
 		t.Fatalf("edited message text = %q, want status %q", text, status)
 	}
+	assertEmptyKeyboard(t, payload)
+}
+
+func assertEmptyKeyboard(t *testing.T, payload map[string]any) {
+	t.Helper()
 	markup, ok := payload["reply_markup"].(map[string]any)
 	if !ok {
 		t.Fatalf("edited message reply markup = %#v", payload["reply_markup"])
@@ -206,7 +211,7 @@ func TestPollOnceCommitsCallbackWhenImmediateEditFails(t *testing.T) {
 	}
 }
 
-func TestPollOnceDoesNotOverwriteNewerDurableStatus(t *testing.T) {
+func TestPollOnceClearsButtonsWithoutReplacingStatusText(t *testing.T) {
 	state := &pollServerState{}
 	server := newPollServer(t, state)
 	defer server.Close()
@@ -214,57 +219,16 @@ func TestPollOnceDoesNotOverwriteNewerDurableStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := notify.MessageRef{ChatID: 123, MessageID: 42, Text: "Approval requested"}
-	if err := client.UpdateStatus(t.Context(), ref, "Used. Access is now closed."); err != nil {
-		t.Fatal(err)
-	}
 	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
-		return notify.DecisionResult{Answer: "Grant approved", MessageStatus: "Approved. Access is active."}
+		return notify.DecisionResult{Answer: "Grant approved", ClearButtons: true}
 	})
 	if err != nil || offset != 12 || len(state.edits) != 1 {
-		t.Fatalf("PollOnce() offset=%d edits=%d err=%v, want durable edit preserved", offset, len(state.edits), err)
+		t.Fatalf("PollOnce() offset=%d edits=%d err=%v", offset, len(state.edits), err)
 	}
-	assertClosedDecisionMessage(t, state.edits[0], "Used. Access is now closed.")
-}
-
-func TestPollOnceBoundsForeignBrokerHandoff(t *testing.T) {
-	state := &pollServerState{}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
-			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":7,"callback_query":{"id":"foreign","from":{"id":2},"message":{"message_id":42,"chat":{"id":123},"text":"Approval requested"},"data":"` + CallbackData(notify.ActionApprove, "g1", "t1") + `"}}]}`))
-		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
-			payload := decodePayload(t, r)
-			state.answered = append(state.answered, payload["text"].(string))
-			writeOK(w)
-		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
-			state.edits = append(state.edits, decodePayload(t, r))
-			writeOK(w)
-		default:
-			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-	client, err := NewWithOptions("test-token", 999, server.Client(), server.URL, Options{Route: RouteHuggingFace, ForeignRetries: 1})
-	if err != nil {
-		t.Fatal(err)
+	if _, hasText := state.edits[0]["text"]; hasText {
+		t.Fatalf("button-only edit replaced message text: %+v", state.edits[0])
 	}
-	handled := false
-	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
-		handled = true
-		return notify.DecisionResult{}
-	})
-	if !errors.Is(err, ErrDecisionRetry) || offset != 0 || handled || len(state.answered) != 0 {
-		t.Fatalf("first foreign poll offset=%d handled=%v answers=%v err=%v", offset, handled, state.answered, err)
-	}
-	offset, err = client.PollOnce(t.Context(), offset, func(context.Context, notify.Decision) notify.DecisionResult {
-		handled = true
-		return notify.DecisionResult{}
-	})
-	if err != nil || offset != 8 || handled || len(state.answered) != 1 || len(state.edits) != 1 {
-		t.Fatalf("bounded foreign poll offset=%d handled=%v answers=%v edits=%v err=%v", offset, handled, state.answered, state.edits, err)
-	}
-	assertClosedDecisionMessage(t, state.edits[0], "Unavailable. Approval broker did not respond.")
+	assertEmptyKeyboard(t, state.edits[0])
 }
 
 func retryGrantOne(_ context.Context, decision notify.Decision) notify.DecisionResult {
@@ -383,8 +347,7 @@ func TestNewRejectsInvalidCallbackRoute(t *testing.T) {
 func TestNormalizeOptions(t *testing.T) {
 	defaults := normalizeOptions(Options{})
 	if defaults.PollTimeoutSeconds != defaultPollTimeoutSeconds || defaults.Route != defaultRoute ||
-		defaults.ForeignRetries != defaultForeignRetries || defaults.IgnoredAnswer != defaultIgnoredAnswer ||
-		defaults.ApproveText != "Approve" || defaults.DenyText != "Deny" {
+		defaults.IgnoredAnswer != defaultIgnoredAnswer || defaults.ApproveText != "Approve" || defaults.DenyText != "Deny" {
 		t.Fatalf("normalizeOptions(defaults) = %+v", defaults)
 	}
 	invalid := normalizeOptions(Options{PollTimeoutSeconds: -1, Route: "invalid"})
@@ -392,7 +355,7 @@ func TestNormalizeOptions(t *testing.T) {
 		t.Fatalf("normalizeOptions(invalid) = %+v", invalid)
 	}
 
-	custom := Options{PollTimeoutSeconds: 5, Route: RouteGitHub, ForeignRetries: 2,
+	custom := Options{PollTimeoutSeconds: 5, Route: RouteGitHub,
 		IgnoredAnswer: "ignored", ApproveText: "yes", DenyText: "no"}
 	if got := normalizeOptions(custom); got != custom {
 		t.Fatalf("normalizeOptions(custom) = %+v, want %+v", got, custom)
@@ -620,7 +583,7 @@ func newPollServer(t *testing.T, state *pollServerState) *httptest.Server {
 			payload := decodePayload(t, r)
 			state.answered = append(state.answered, payload["callback_query_id"].(string)+":"+payload["text"].(string))
 			writeOK(w)
-		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"), strings.HasSuffix(r.URL.Path, "/editMessageReplyMarkup"):
 			state.edits = append(state.edits, decodePayload(t, r))
 			writeOK(w)
 		default:

@@ -312,7 +312,7 @@ func notifierDependencies(notifier *bktelegram.Client) (notify.Notifier, routes.
 	if notifier == nil {
 		return nil, nil
 	}
-	return notifier, notifier
+	return notifier, nil
 }
 
 func serverHelperReady(ctx context.Context, server *routes.Server) error {

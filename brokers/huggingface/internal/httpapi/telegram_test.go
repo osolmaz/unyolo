@@ -99,8 +99,8 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if _, err := client.PollOnce(context.Background(), 0, restarted.handleTelegramDecision); err != nil {
 		t.Fatalf("replay PollOnce() error = %v", err)
 	}
-	if bot.editAttempts != 3 || !strings.Contains(bot.edits[2], "Status: ✅ Approved. Access is active.") {
-		t.Fatalf("replay overwrote the durable terminal message state: edits=%+v attempts=%d", bot.edits, bot.editAttempts)
+	if bot.editAttempts != 4 || !strings.Contains(bot.edits[3], "Status: Approved. Access is active.") {
+		t.Fatalf("direct callback replay did not restore terminal state: edits=%+v attempts=%d", bot.edits, bot.editAttempts)
 	}
 	if len(bot.answers) != 2 || bot.answers[0] != "Grant approved" || bot.answers[1] != "Grant already approved" {
 		t.Fatalf("callback answers = %+v", bot.answers)

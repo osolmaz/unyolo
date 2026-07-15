@@ -1635,8 +1635,8 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 	if server.maxReceivePackBytes != 99 {
 		t.Fatalf("max receive-pack bytes = %d, want 99", server.maxReceivePackBytes)
 	}
-	if server.notifier == nil || server.telegram == nil {
-		t.Fatal("telegram notifier was not configured")
+	if server.notifier == nil || server.telegram != nil {
+		t.Fatal("telegram notifier must be send-only; ingress owns polling")
 	}
 }
 

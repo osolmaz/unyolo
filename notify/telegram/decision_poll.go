@@ -40,39 +40,24 @@ func offsetAfterUpdate(offset, updateID int64) int64 {
 }
 
 func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, handler func(context.Context, notify.Decision) notify.DecisionResult) bool {
-	if decision.Route != c.route {
-		return c.retryForeignDecision(ctx, decision)
-	}
 	result := notify.DecisionResult{Answer: c.ignoredAnswer}
 	if decision.ChatID == c.chatID {
-		delete(c.foreignAttempts, decision.CallbackID)
 		result = c.normalizeDecisionResult(handler(ctx, decision))
 		if result.Retry {
 			return true
 		}
 		if result.MessageStatus != "" {
 			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
-			_ = c.editImmediateStatus(ctx, decision, result.MessageStatus)
+			_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, result.MessageStatus)
+			return false
+		}
+		if result.ClearButtons {
+			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
+			_ = c.clearDecisionButtons(ctx, decision)
 			return false
 		}
 	}
 	_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
-	return false
-}
-
-func (c *Client) retryForeignDecision(ctx context.Context, decision notify.Decision) bool {
-	if _, exists := c.foreignAttempts[decision.CallbackID]; !exists && len(c.foreignAttempts) >= maxForeignCallbacks {
-		clear(c.foreignAttempts)
-	}
-	attempts := c.foreignAttempts[decision.CallbackID] + 1
-	if attempts <= c.foreignRetries {
-		c.foreignAttempts[decision.CallbackID] = attempts
-		return true
-	}
-	delete(c.foreignAttempts, decision.CallbackID)
-	answer := "Approval broker is unavailable"
-	_ = c.answerCallback(ctx, decision.CallbackID, answer)
-	_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, "Unavailable. Approval broker did not respond.")
 	return false
 }
 

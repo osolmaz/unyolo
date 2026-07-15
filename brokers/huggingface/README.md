@@ -375,11 +375,12 @@ store used by the operator inbox; a decision through either path closes the
 same request exactly once. For a service deployment, pass
 `--telegram-bot-token-file` and `--telegram-chat-id` during `setup systemd`.
 The broker sends approval requests to the configured operator chat with
-Approve and Deny buttons and long-polls the Bot API for the answer; there is
-no inbound Telegram callback URL, and decisions from any other chat are
-ignored. Rerunning setup without both Telegram flags disables Telegram and
-retires the managed token file after the restarted service passes its
-readiness check.
+Approve and Deny buttons and applies durable status edits. The separate
+`brokerkit-telegram` service is the only Bot API poller and sends decisions to
+this broker's authenticated Operator V1 socket. Configure it as described in
+[Telegram approval ingress](../../docs/TELEGRAM_INGRESS.md). Rerunning provider
+setup without both Telegram flags disables Telegram notifications and retires
+the managed token file after the restarted service passes its readiness check.
 
 Authenticated clients can also request grants over HTTP. Every request must
 carry a unique `client_request_id`, reused on retries:

@@ -65,6 +65,8 @@ type DecisionResult struct {
 	// MessageStatus is the durable status rendered into the approval message.
 	// A non-empty value also closes the message's decision controls.
 	MessageStatus string
+	// ClearButtons closes decision controls without replacing broker-owned status text.
+	ClearButtons bool
 	// Retry leaves the callback unanswered and its update offset uncommitted.
 	// Brokers use it when a durable decision transaction could not be saved.
 	Retry bool

@@ -172,15 +172,15 @@ adapters.
 ### Telegram Adapter
 
 Telegram is a shared approval channel for `hf-broker`, `gh-broker`, and
-`sudo-broker`, so the reusable Telegram implementation belongs in brokerkit.
+`sudo-broker`, so the reusable implementation and single inbound poller belong
+in brokerkit.
 
 brokerkit should own:
 
 - Bot API client
 - sending approval messages
 - explicit approval status edits requested by the broker
-- immediate best-effort terminal edits after a committed callback decision
-- serialized immediate and durable edits so stale callback status cannot replace newer state
+- immediate callback acknowledgement and decision-control removal
 - inline approve/deny buttons
 - compact broker-routed callback payloads without interpreting the decision token
 - configured-chat filtering
@@ -189,28 +189,24 @@ brokerkit should own:
 - retry behavior
 - offset-preserving callback retry without acknowledgement after durable-store
   failure
-- offset-preserving handoff when a broker sharing the bot does not own a grant
-- bounded foreign-route handoff that closes an unavailable broker's stale callback
+- one Bot API poller per bot token
+- route dispatch over authenticated Operator V1 sources
 - transport errors
 - shared tests for callback and token safety
 
 Status: brokerkit now owns the reusable Telegram client, inline callback data,
 long polling, configured-chat filtering, callback answering, and status edits.
-The adapter is stateless and never tracks pending or active expiry. After the
-broker durably commits a callback decision, the adapter immediately writes the
-returned terminal status into the original message and removes its inline
-keyboard. That edit is best effort: the shared grant store remains authoritative
-and its durable status outbox retries the edit after transport failures or
-restart. The store owns decision-token verification, durable delivery claims,
+The single ingress owns the bot update offset. After the owning broker durably
+commits a callback decision through Operator V1, the ingress acknowledges the
+callback and removes its inline keyboard without replacing status text. The
+broker's durable status outbox writes the authoritative text and retries after
+transport failures or restart. The store owns durable delivery claims,
 notification references, expiry, due status updates, atomic approve/deny
 transitions, channel actor naming, and retry classification. Brokers own
-domain-specific approval summaries and later lifecycle status wording. A broker
-with extra approval invariants implements the shared decider interface; it does
-not reimplement channel mapping. A retry leaves the callback unanswered and
-does not advance its update offset. This also lets several brokers share one bot:
-the callback route lets a non-owning broker leave the update pending for the
-owner instead of showing a false failure. Foreign handoff is bounded so a stale
-callback cannot block every later bot update indefinitely.
+domain-specific approval summaries and later lifecycle status wording. A retry
+leaves the callback unanswered and does not advance its update offset. Several
+brokers can share one bot because broker processes only send and update
+messages; they never run competing `getUpdates` loops.
 
 ### Control-Plane Assembly
 

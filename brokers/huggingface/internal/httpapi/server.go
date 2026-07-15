@@ -565,7 +565,7 @@ func grantReservationTimeout(hfTimeout time.Duration) time.Duration {
 	return hfTimeout + grantReservationGrace
 }
 
-func (s *Server) startTelegram(ctx context.Context, opts Options) error {
+func (s *Server) startTelegram(_ context.Context, opts Options) error {
 	if opts.Config.TelegramBotToken == "" {
 		return nil
 	}
@@ -579,7 +579,6 @@ func (s *Server) startTelegram(ctx context.Context, opts Options) error {
 		return fmt.Errorf("configure Telegram notifier: %w", err)
 	}
 	s.notifier = telegram
-	go telegram.Poll(ctx, s.control.HandleDecision)
 	return nil
 }
 
