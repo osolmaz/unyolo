@@ -43,6 +43,23 @@ func TestRenderNormalizesAndPreservesDenyOverrides(t *testing.T) {
 	}
 }
 
+func TestParseProfileRoundTrip(t *testing.T) {
+	artifacts, err := Render(NewProfile([]string{"agent-a"}, []string{"repo.delete"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := ParseProfile(artifacts.ProfileJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(profile.Clients, []string{"agent-a"}) || !slices.Equal(profile.DeniedOperations, []string{"repo.delete"}) {
+		t.Fatalf("profile = %+v", profile)
+	}
+	if _, err := ParseProfile([]byte(`{"version":1,"provider":"github","preset":"wrong"}`)); err == nil {
+		t.Fatal("invalid preset accepted")
+	}
+}
+
 func TestCatalogNeverDefaultsDangerousOperationsToAllow(t *testing.T) {
 	for _, descriptor := range opcatalog.MustAll() {
 		if descriptor.DefaultPolicyEffect != opcatalog.DefaultEffectAllow {

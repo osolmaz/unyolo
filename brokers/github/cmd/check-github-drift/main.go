@@ -21,16 +21,36 @@ func main() {
 }
 
 func run() error {
-	var outputPath, statusPath string
-	flag.StringVar(&outputPath, "output", "", "write the Markdown report to this path")
-	flag.StringVar(&statusPath, "status-output", "", "write clean or drift to this path")
-	flag.Parse()
-	root, err := repositoryRoot()
+	return runWith(checkRuntime{
+		args:         os.Args[1:],
+		stdout:       os.Stdout,
+		timeout:      5 * time.Minute,
+		root:         repositoryRoot,
+		loadPinned:   upstreamdrift.LoadPinned,
+		fetchCurrent: fetchCurrentFromGitHub,
+	})
+}
+
+type checkRuntime struct {
+	args         []string
+	stdout       io.Writer
+	timeout      time.Duration
+	root         func() (string, error)
+	loadPinned   func(string) (upstreamdrift.SnapshotSet, error)
+	fetchCurrent func(context.Context, []byte) (upstreamdrift.SnapshotSet, error)
+}
+
+func runWith(runtime checkRuntime) error {
+	options, err := parseOptions(runtime.args)
+	if err != nil {
+		return err
+	}
+	root, err := runtime.root()
 	if err != nil {
 		return err
 	}
 	base := filepath.Join(root, "brokers", "github", "internal", "upstream")
-	pinned, err := upstreamdrift.LoadPinned(filepath.Join(base, "snapshots"))
+	pinned, err := runtime.loadPinned(filepath.Join(base, "snapshots"))
 	if err != nil {
 		return fmt.Errorf("load reviewed GitHub snapshots: %w", err)
 	}
@@ -38,9 +58,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), runtime.timeout)
 	defer cancel()
-	current, err := upstreamdrift.NewClient(os.Getenv("GITHUB_TOKEN")).FetchCurrent(ctx, query)
+	current, err := runtime.fetchCurrent(ctx, query)
 	if err != nil {
 		return err
 	}
@@ -48,19 +68,40 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := writeReport(outputPath, report); err != nil {
+	if err := writeReport(runtime.stdout, options.outputPath, report); err != nil {
 		return err
 	}
 	status := "clean\n"
 	if report.HasDrift() {
 		status = "drift\n"
 	}
-	return writeOptional(statusPath, []byte(status), 0o600)
+	return writeOptional(options.statusPath, []byte(status), 0o600)
 }
 
-func writeReport(path string, report upstreamdrift.Report) error {
+type checkOptions struct {
+	outputPath string
+	statusPath string
+}
+
+func parseOptions(args []string) (checkOptions, error) {
+	var outputPath, statusPath string
+	flags := flag.NewFlagSet("check-github-drift", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&outputPath, "output", "", "write the Markdown report to this path")
+	flags.StringVar(&statusPath, "status-output", "", "write clean or drift to this path")
+	if err := flags.Parse(args); err != nil {
+		return checkOptions{}, err
+	}
+	return checkOptions{outputPath: outputPath, statusPath: statusPath}, nil
+}
+
+func fetchCurrentFromGitHub(ctx context.Context, query []byte) (upstreamdrift.SnapshotSet, error) {
+	return upstreamdrift.NewClient(os.Getenv("GITHUB_TOKEN")).FetchCurrent(ctx, query)
+}
+
+func writeReport(stdout io.Writer, path string, report upstreamdrift.Report) error {
 	if path == "" {
-		return upstreamdrift.WriteMarkdown(os.Stdout, report)
+		return upstreamdrift.WriteMarkdown(stdout, report)
 	}
 	directory := filepath.Dir(path)
 	if err := os.MkdirAll(directory, 0o755); err != nil {

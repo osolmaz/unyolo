@@ -561,6 +561,42 @@ func TestStreamRequestsUseTransferTimeout(t *testing.T) {
 	}
 }
 
+func TestDoAPIWithTimeoutAuthorizesAndClassifiesFailures(t *testing.T) {
+	apiURL, _ := url.Parse("https://api.github.test/")
+	var sawRequest bool
+	manager := &Manager{
+		apiURL: apiURL,
+		client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			sawRequest = true
+			if request.Header.Get("Authorization") != "Bearer token" || request.Header.Get("X-GitHub-Api-Version") != APIVersion {
+				t.Fatalf("headers = %+v", request.Header)
+			}
+			return responseForTest(http.StatusOK, `{}`), nil
+		})},
+		development: &Credential{metadata: Metadata{Kind: KindDevelopmentToken, APIHost: apiURL.Host}, token: []byte("token")},
+	}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://api.github.test/repos", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := manager.doAPIWithTimeout(t.Context(), manager.development.Metadata(), request, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if !sawRequest {
+		t.Fatal("request was not sent")
+	}
+
+	manager.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return responseForTest(http.StatusForbidden, "credential-canary"), nil
+	})
+	_, err = manager.doAPIWithTimeout(t.Context(), manager.development.Metadata(), request.Clone(t.Context()), 0)
+	if err == nil || strings.Contains(err.Error(), "credential-canary") {
+		t.Fatalf("classified error = %v", err)
+	}
+}
+
 func TestCredentialClientsAndTransportFailures(t *testing.T) {
 	apiURL, _ := url.Parse("https://api.github.test/")
 	baseClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {

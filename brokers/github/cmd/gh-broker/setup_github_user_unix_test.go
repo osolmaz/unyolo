@@ -20,6 +20,14 @@ func assertSetupStateOwnership(t *testing.T, stateDir string, paths ...string) {
 }
 
 func TestGitHubUserSetupRequiresExistingStateDirectory(t *testing.T) {
+	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := githubUserSetupStateOwner(stateDir)
+	if err != nil || owner != setupPathOwner(t, stateDir) {
+		t.Fatalf("trusted state owner = %+v, %v", owner, err)
+	}
 	if err := preserveGitHubUserStateOwnership(t.TempDir() + "/missing"); err == nil {
 		t.Fatal("missing state directory accepted")
 	}
@@ -29,6 +37,13 @@ func TestGitHubUserSetupRequiresExistingStateDirectory(t *testing.T) {
 	}
 	if err := preserveGitHubUserStateOwnership(unsafe); err == nil {
 		t.Fatal("group-writable state directory accepted")
+	}
+	link := stateDir + "-link"
+	if err := os.Symlink(stateDir, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := githubUserSetupStateOwner(link); err == nil {
+		t.Fatal("symlink state directory accepted")
 	}
 }
 
