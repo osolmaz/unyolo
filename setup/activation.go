@@ -69,7 +69,7 @@ func BuildSystemdActivation(opts SystemdOptions, operatorEndpoint, serviceUnit s
 			opts.AgentAccessGroup:    {opts.AgentUser},
 			opts.OperatorAccessGroup: {opts.OperatorUser},
 		},
-		ActivationUnits: []string{sockets[0].UnitName, sockets[1].UnitName},
+		ActivationUnits: []string{sockets[0].UnitName, sockets[1].UnitName, serviceUnit},
 	}, nil
 }
 

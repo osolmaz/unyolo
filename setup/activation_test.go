@@ -16,6 +16,9 @@ func TestBuildSystemdActivation(t *testing.T) {
 	if got.GroupMembers[opts.AgentAccessGroup][0] != opts.AgentUser || got.GroupMembers[opts.OperatorAccessGroup][0] != opts.OperatorUser {
 		t.Fatalf("group members = %+v", got.GroupMembers)
 	}
+	if len(got.ActivationUnits) != 3 || got.ActivationUnits[2] != "test-broker.service" {
+		t.Fatalf("activation units = %v", got.ActivationUnits)
+	}
 }
 
 func TestBuildSystemdActivationRejectsTCP(t *testing.T) {
