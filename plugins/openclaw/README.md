@@ -5,7 +5,7 @@ Approvals tab and `/brokerkit` commands to OpenClaw. It connects to one or
 more BrokerKit Operator V1 sources; the brokers remain authoritative and
 retain all provider credentials and executable plans.
 
-The minimum supported host is `openclaw@2026.7.1-beta.5`, the first published
+The minimum supported host is `openclaw@2026.7.1`, the first stable
 SDK used by this package that includes public tab descriptors.
 
 ## Install

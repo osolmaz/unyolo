@@ -41,7 +41,7 @@ func TestCompatibilityAuditDescendsThroughSchemaContainers(t *testing.T) {
 }
 
 func TestCompatibilityProfileConformsToPinnedOpenClawFixture(t *testing.T) {
-	raw, err := os.ReadFile("testdata/openclaw-redaction-v2026.7.1-beta.5.json")
+	raw, err := os.ReadFile("testdata/openclaw-redaction-v2026.7.1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestCompatibilityProfileConformsToPinnedOpenClawFixture(t *testing.T) {
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}
-	if fixture.Source.Package != "openclaw" || fixture.Source.Version != "2026.7.1-beta.5" || len(fixture.Cases) < 30 {
+	if fixture.Source.Package != "openclaw" || fixture.Source.Version != "2026.7.1" || len(fixture.Cases) < 30 {
 		t.Fatalf("invalid OpenClaw fixture metadata: %+v", fixture.Source)
 	}
 	profile := MCPCompatibilityProfile{}
