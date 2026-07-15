@@ -111,9 +111,9 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		return bkservice.SystemdInstallPlan{}, err
 	}
 	files := []bkservice.ManagedFile{
-		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		{Area: bkservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "huggingface-access"},
+		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-client"},
+		{Area: bkservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator"},
 	}
 	var removeFiles []bkservice.ManagedFileRef
 	if policyFiles.managedPreset {
@@ -137,9 +137,9 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		if readErr != nil {
 			return bkservice.SystemdInstallPlan{}, readErr
 		}
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"})
 	} else {
-		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName})
+		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, CredentialClass: "telegram-bot"})
 	}
 	if len(removeFiles) > 0 {
 		readyCheck = bkservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
@@ -162,6 +162,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		NoStart:          plan.opts.NoStart,
 		AllowNonRoot:     plan.opts.AllowNonRoot,
 		Runner:           plan.opts.CommandRunner,
+		Lifecycle:        plan.opts.Lifecycle,
 	}, nil
 }
 

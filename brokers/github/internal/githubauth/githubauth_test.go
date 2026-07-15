@@ -24,6 +24,8 @@ import (
 	"time"
 
 	github "github.com/google/go-github/v88/github"
+	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/credentialstore"
 )
 
@@ -454,6 +456,147 @@ func TestUserRotationAndWebhookInvalidationHaveNoReadback(t *testing.T) {
 	}
 }
 
+func TestUserLifecycleAuditRecordsProviderRevocationOutcome(t *testing.T) {
+	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			_, _ = io.WriteString(w, `{"id":7,"login":"agent-a"}`)
+		case "/applications/client-id/token":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	store, err := credentialstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	reporter, err := credentiallifecycle.New(audit.New(&output), "gh-broker", "operator-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := url.Parse(server.URL)
+	manager, err := New(Config{AppClientID: "client-id", AppClientSecret: []byte("client-secret-canary"), APIBaseURL: base, WebBaseURL: base,
+		HTTPClient: server.Client(), Store: store, Now: func() time.Time { return now }, Lifecycle: reporter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrollment := UserEnrollment{UserID: 7, Login: "agent-a", AccessToken: []byte("access-canary"), RefreshToken: []byte("refresh-canary"),
+		AccessExpiresAt: now.Add(time.Hour), RefreshExpiresAt: now.Add(24 * time.Hour)}
+	if err := manager.EnrollUser(t.Context(), enrollment); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RevokeUser(t.Context(), 7); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	for _, want := range []string{`"lifecycle_action":"created"`, `"lifecycle_action":"revoked"`, `"lifecycle_outcome":"succeeded"`, `"previous_id":"github-user:7"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("lifecycle audit missing %s: %s", want, got)
+		}
+	}
+	for _, forbidden := range []string{"access-canary", "refresh-canary", "client-secret-canary"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("lifecycle audit leaked %q: %s", forbidden, got)
+		}
+	}
+}
+
+func TestUserRotationRevocationFailureRestoresOldCredentialAndAuditsFailure(t *testing.T) {
+	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			_, _ = io.WriteString(w, `{"id":7,"login":"agent-a"}`)
+		case "/applications/client-id/token":
+			http.Error(w, "provider-canary", http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	store, err := credentialstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	reporter, _ := credentiallifecycle.New(audit.New(&output), "gh-broker", "operator-a")
+	base, _ := url.Parse(server.URL)
+	manager, err := New(Config{AppClientID: "client-id", AppClientSecret: []byte("client-secret-canary"), APIBaseURL: base, WebBaseURL: base,
+		HTTPClient: server.Client(), Store: store, Now: func() time.Time { return now }, Lifecycle: reporter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := UserEnrollment{UserID: 7, Login: "agent-a", AccessToken: []byte("old-access-canary"), RefreshToken: []byte("old-refresh-canary"),
+		AccessExpiresAt: now.Add(time.Hour), RefreshExpiresAt: now.Add(24 * time.Hour)}
+	newValue := UserEnrollment{UserID: 7, Login: "agent-a", AccessToken: []byte("new-access-canary"), RefreshToken: []byte("new-refresh-canary"),
+		AccessExpiresAt: now.Add(2 * time.Hour), RefreshExpiresAt: now.Add(48 * time.Hour)}
+	if err := manager.EnrollUser(t.Context(), old); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RotateUser(t.Context(), newValue); err == nil || strings.Contains(err.Error(), "provider-canary") {
+		t.Fatalf("rotation error = %v", err)
+	}
+	credential, err := manager.UserCredential(t.Context(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertBearer(t, credential, "old-access-canary")
+	got := output.String()
+	if !strings.Contains(got, `"lifecycle_action":"rotated"`) || !strings.Contains(got, `"lifecycle_outcome":"failed"`) {
+		t.Fatalf("failed rotation audit = %s", got)
+	}
+	for _, forbidden := range []string{"old-access-canary", "new-access-canary", "provider-canary"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("failed rotation audit leaked %q: %s", forbidden, got)
+		}
+	}
+}
+
+func TestInspectStoredUserCredentialsReturnsOnlyLifecycleMetadata(t *testing.T) {
+	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			_, _ = io.WriteString(w, `{"id":7,"login":"agent-a"}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+	stateDir := t.TempDir()
+	store, err := OpenUserCredentialStore(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := url.Parse(server.URL)
+	manager, err := New(Config{AppClientID: "client-id", AppClientSecret: []byte("client-secret-canary"), APIBaseURL: base, WebBaseURL: base,
+		HTTPClient: server.Client(), Store: store, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrollment := UserEnrollment{UserID: 7, Login: "agent-a", AccessToken: []byte("access-canary"), RefreshToken: []byte("refresh-canary"),
+		AccessExpiresAt: now.Add(time.Hour), RefreshExpiresAt: now.Add(24 * time.Hour)}
+	if err := manager.EnrollUser(t.Context(), enrollment); err != nil {
+		t.Fatal(err)
+	}
+	statuses, err := InspectStoredUserCredentials(stateDir)
+	if err != nil || len(statuses) != 1 || statuses[0].UserID != 7 || !statuses[0].AccessExpiresAt.Equal(enrollment.AccessExpiresAt) {
+		t.Fatalf("statuses = %+v, %v", statuses, err)
+	}
+	encoded, err := json.Marshal(statuses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"agent-a", "access-canary", "refresh-canary", "client-secret-canary"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("stored metadata leaked %q: %s", forbidden, encoded)
+		}
+	}
+}
+
 func TestUserInvalidationWinsAgainstConcurrentRefresh(t *testing.T) {
 	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
 	refreshStarted := make(chan struct{})
@@ -698,7 +841,7 @@ func TestCredentialBoundaryHelpersFailClosed(t *testing.T) {
 			t.Fatalf("invalid config accepted: %+v", cfg)
 		}
 	}
-	provider := newInstallationProvider(nil, &url.URL{Scheme: "https", Host: "api.github.test"}, nil, time.Now, time.Minute)
+	provider := newInstallationProvider(nil, &url.URL{Scheme: "https", Host: "api.github.test"}, nil, time.Now, time.Minute, nil)
 	oldest := &Credential{token: []byte("oldest")}
 	provider.cache["oldest"] = cacheEntry{credential: oldest, refreshAt: time.Unix(1, 0)}
 	provider.cache["newest"] = cacheEntry{credential: &Credential{token: []byte("newest")}, refreshAt: time.Unix(2, 0)}

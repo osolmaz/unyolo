@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
@@ -31,6 +32,7 @@ type LaunchdInstallPlan struct {
 	NoStart            bool
 	AllowNonRoot       bool
 	Runner             CommandRunner
+	Lifecycle          *credentiallifecycle.Reporter
 }
 
 // LaunchdDirectory is one explicitly managed runtime directory required by a
@@ -139,6 +141,9 @@ func pathOverlaps(left, right string) bool {
 }
 
 func validateLaunchdManagedFiles(plan LaunchdInstallPlan) error {
+	if err := validateCredentialClasses(plan.Files, plan.RemoveFiles); err != nil {
+		return err
+	}
 	seen := make(map[string]struct{}, len(plan.Files)+len(plan.RemoveFiles))
 	for _, file := range plan.Files {
 		if err := validateLaunchdManagedFile(plan, file); err != nil {

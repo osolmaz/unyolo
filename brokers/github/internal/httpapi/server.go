@@ -33,6 +33,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/controlplane"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
@@ -95,7 +96,7 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	e.Use(middleware.Recover())
 	e.Use(noStore)
 	e.GET("/healthz", health)
-	gitBaseURL, apiBaseURL, githubClient, appSource, credentialSlots, err := newGitHubDependencies(cfg)
+	gitBaseURL, apiBaseURL, githubClient, appSource, credentialSlots, err := newGitHubDependencies(cfg, core.audit)
 	if err != nil {
 		_ = core.database.Close()
 		return nil, err
@@ -224,7 +225,7 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
 }
 
-func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {
+func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {
 	gitBaseURL, apiBaseURL, err := githubBaseURLs(cfg)
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
@@ -234,11 +235,15 @@ func newGitHubDependencies(cfg config.Config) (*url.URL, *url.URL, *http.Client,
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
+	lifecycle, err := credentiallifecycle.New(auditWriter, "gh-broker", "broker")
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
 	manager, err := githubauth.New(githubauth.Config{
 		AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey, AppClientID: cfg.GitHubAppClientID,
 		AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
 		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: apiBaseURL, WebBaseURL: gitBaseURL,
-		HTTPClient: client, StreamTimeout: defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute), Store: userStore,
+		HTTPClient: client, StreamTimeout: defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute), Store: userStore, Lifecycle: lifecycle,
 	})
 	if err != nil {
 		return nil, nil, nil, nil, nil, err

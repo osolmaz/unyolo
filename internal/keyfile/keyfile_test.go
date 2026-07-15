@@ -18,6 +18,10 @@ func TestLoadOrCreate(t *testing.T) {
 			if err != nil || string(loaded) != string(created) {
 				t.Fatalf("load = %d bytes, %v", len(loaded), err)
 			}
+			existing, err := LoadExisting(path, 32, "test", encoding)
+			if err != nil || string(existing) != string(created) {
+				t.Fatalf("existing = %d bytes, %v", len(existing), err)
+			}
 			if err := os.Chmod(path, 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -25,5 +29,8 @@ func TestLoadOrCreate(t *testing.T) {
 				t.Fatal("unsafe permissions accepted")
 			}
 		})
+	}
+	if _, err := LoadExisting(filepath.Join(t.TempDir(), "missing"), 32, "test", Raw); err == nil {
+		t.Fatal("LoadExisting created a missing key")
 	}
 }

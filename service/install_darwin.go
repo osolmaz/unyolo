@@ -64,7 +64,41 @@ func applyLaunchdInstall(ctx context.Context, runner CommandRunner, plan Launchd
 	if err := waitForLaunchdReady(ctx, plan); err != nil {
 		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
 	}
-	return removeLaunchdManagedFiles(plan)
+	removed, err := captureLaunchdCredentialRemovals(plan)
+	if err != nil {
+		return err
+	}
+	if err := removeLaunchdManagedFiles(plan); err != nil {
+		return err
+	}
+	return recordLaunchdCredentialChanges(plan, snapshot, removed)
+}
+
+func recordLaunchdCredentialChanges(plan LaunchdInstallPlan, snapshot *launchdInstallSnapshot, removed map[string]string) error {
+	previous := make([]previousManagedCredential, len(plan.Files))
+	for index := range plan.Files {
+		file := snapshot.files[index]
+		previous[index] = previousManagedCredential{existed: file.restorable, data: file.data}
+	}
+	return recordManagedCredentialChanges(plan.Lifecycle, plan.Files, previous, removed)
+}
+
+func captureLaunchdCredentialRemovals(plan LaunchdInstallPlan) (map[string]string, error) {
+	result := make(map[string]string)
+	for _, file := range plan.RemoveFiles {
+		if file.CredentialClass == "" {
+			continue
+		}
+		snapshot, _, err := captureLaunchdFile(launchdManagedPath(plan, file.Area, file.Name))
+		if err != nil {
+			return nil, err
+		}
+		if snapshot.restorable {
+			result[file.CredentialClass] = credentialIdentifier(snapshot.data)
+		}
+		clearSecretBytes(snapshot.data)
+	}
+	return result, nil
 }
 
 func validateLaunchdExecution(plan LaunchdInstallPlan) error {

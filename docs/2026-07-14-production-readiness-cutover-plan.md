@@ -414,8 +414,14 @@ Write, activation, and readiness failures restore the previous credentials and
 service definition, then reactivate the previous installation when one
 existed. Successful readiness retires obsolete files, and rollback copies are
 cleared before setup exits. Broker and client readers still accept only one
-current secret. Provider-side revocation automation, credential age/expiry
-doctor reporting, and credential-lifecycle audit events remain.
+current secret. Native setup now audits created, rotated, and retired material
+with non-secret identifiers. Doctor reports source, installed age, expiry
+state, rotation need, and revocation mode without reading protected values.
+GitHub user OAuth and discarded installation credentials use supported
+upstream revocation APIs with audited failures; static GitHub App material,
+Hugging Face user tokens, and Telegram bot tokens expose explicit manual
+upstream retirement because no suitably scoped supported API is available to
+the broker.
 
 ### Observability contract
 

@@ -15,13 +15,16 @@ import (
 )
 
 type doctorOptions struct {
-	agentUser     string
-	serviceUser   string
-	catalogPath   string
-	helperState   string
-	helperSocket  string
-	jsonOutput    bool
-	helperTimeout time.Duration
+	agentUser       string
+	serviceUser     string
+	catalogPath     string
+	helperState     string
+	helperSocket    string
+	clientSecrets   string
+	operatorSecrets string
+	telegramToken   string
+	jsonOutput      bool
+	helperTimeout   time.Duration
 }
 
 func runDoctor(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
@@ -60,7 +63,9 @@ func runDoctorWithReport(ctx context.Context, args []string, stdout io.Writer, s
 
 func parseDoctorOptions(args []string, stderr io.Writer) (doctorOptions, bool, error) {
 	opts := doctorOptions{serviceUser: "sudo-broker", catalogPath: "/etc/sudo-broker/catalog.json",
-		helperState: "/var/lib/sudo-broker/helper", helperSocket: "/run/sudo-broker/helper.sock", helperTimeout: 3 * time.Second}
+		helperState: "/var/lib/sudo-broker/helper", helperSocket: "/run/sudo-broker/helper.sock",
+		clientSecrets: "/etc/sudo-broker/secrets", operatorSecrets: "/etc/sudo-broker/operator-secrets",
+		telegramToken: "/etc/sudo-broker/telegram-bot-token", helperTimeout: 3 * time.Second}
 	var output strings.Builder
 	flags := flag.NewFlagSet("sudo-broker doctor host", flag.ContinueOnError)
 	flags.SetOutput(&output)
@@ -69,6 +74,9 @@ func parseDoctorOptions(args []string, stderr io.Writer) (doctorOptions, bool, e
 	flags.StringVar(&opts.catalogPath, "catalog", opts.catalogPath, "root-owned command catalog")
 	flags.StringVar(&opts.helperState, "helper-state-dir", opts.helperState, "root-owned helper state directory")
 	flags.StringVar(&opts.helperSocket, "helper-socket", opts.helperSocket, "helper Unix socket")
+	flags.StringVar(&opts.clientSecrets, "client-secrets-file", opts.clientSecrets, "broker client secret file")
+	flags.StringVar(&opts.operatorSecrets, "operator-secrets-file", opts.operatorSecrets, "broker operator secret file")
+	flags.StringVar(&opts.telegramToken, "telegram-token-file", opts.telegramToken, "Telegram bot token file")
 	flags.DurationVar(&opts.helperTimeout, "helper-timeout", opts.helperTimeout, "helper readiness timeout")
 	flags.BoolVar(&opts.jsonOutput, "json", false, "emit JSON")
 	if err := flags.Parse(args); err != nil {
@@ -81,7 +89,7 @@ func parseDoctorOptions(args []string, stderr io.Writer) (doctorOptions, bool, e
 	if flags.NArg() != 0 || strings.TrimSpace(opts.agentUser) == "" || opts.helperTimeout <= 0 || opts.helperTimeout > 30*time.Second {
 		return doctorOptions{}, false, errors.New("doctor host requires --agent and valid bounded flags")
 	}
-	for _, value := range []string{opts.catalogPath, opts.helperState, opts.helperSocket} {
+	for _, value := range []string{opts.catalogPath, opts.helperState, opts.helperSocket, opts.clientSecrets, opts.operatorSecrets, opts.telegramToken} {
 		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
 			return doctorOptions{}, false, errors.New("doctor paths must be absolute and normalized")
 		}
@@ -136,7 +144,13 @@ func sudoDoctorReportWith(ctx context.Context, opts doctorOptions, deps doctorDe
 	defer cancel()
 	readyErr := deps.helperReady(readyCtx, opts.helperSocket, opts.helperTimeout)
 	checks = append(checks, hostDoctorCheck("helper_ready", "privileged helper authenticated and answered the bounded readiness probe", readyErr))
-	return doctor.NewReport(agent, checks...), nil
+	report := doctor.NewReport(agent, checks...)
+	credentials := []doctor.CredentialStatus{
+		doctor.CredentialFileStatus("broker-client", opts.clientSecrets, time.Now().UTC(), doctor.DefaultCredentialRotationAge, time.Time{}, doctor.CredentialRevocationLocal),
+		doctor.CredentialFileStatus("broker-operator", opts.operatorSecrets, time.Now().UTC(), doctor.DefaultCredentialRotationAge, time.Time{}, doctor.CredentialRevocationLocal),
+		doctor.CredentialFileStatus("telegram-bot", opts.telegramToken, time.Now().UTC(), doctor.DefaultCredentialRotationAge, time.Time{}, doctor.CredentialRevocationManual),
+	}
+	return doctor.WithCredentials(report, credentials...), nil
 }
 
 func hostDoctorCheck(name string, success string, err error) doctor.Check {

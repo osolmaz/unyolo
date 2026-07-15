@@ -27,6 +27,12 @@ func WriteText(w io.Writer, report Report) error {
 			}
 		}
 	}
+	for _, credential := range report.Credentials {
+		if _, err := fmt.Fprintf(w, "- credential %s: source=%s age=%s expiry=%s expires_at=%s rotation=%s revocation=%s\n",
+			credential.Class, credential.Source, credential.Age, credential.Expiry, credential.ExpiresAt, credential.Rotation, credential.Revocation); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -28,6 +30,10 @@ func runSetupLaunchdCommand(ctx context.Context, stdout, stderr io.Writer, stdin
 	}
 	if os.Geteuid() != 0 && !opts.AllowNonRoot && !opts.DryRun {
 		return errors.New("setup launchd must run as root; try sudo gh-broker setup launchd")
+	}
+	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "gh-broker", "local-operator")
+	if err != nil {
+		return err
 	}
 	plan := systemdSetupPlan(opts)
 	if opts.DryRun {
@@ -86,7 +92,7 @@ func brokerkitLaunchdInstallPlan(plan systemdPlan) (bkservice.LaunchdInstallPlan
 		Files: withoutGHLaunchdEnvironment(base.Files), RemoveFiles: base.RemoveFiles,
 		ReadyCheck: base.ReadyCheck, ReadyTimeout: base.ReadyTimeout, ReadyInterval: base.ReadyInterval,
 		Unit: ghLaunchdUnit(plan, activation.Sockets), NoStart: plan.opts.NoStart,
-		AllowNonRoot: plan.opts.AllowNonRoot, Runner: plan.opts.CommandRunner,
+		AllowNonRoot: plan.opts.AllowNonRoot, Runner: plan.opts.CommandRunner, Lifecycle: base.Lifecycle,
 	}, nil
 }
 

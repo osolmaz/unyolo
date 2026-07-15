@@ -257,3 +257,41 @@ func TestCredentialStoreFilesystemFailures(t *testing.T) {
 		t.Fatalf("zero() = %v", value)
 	}
 }
+
+func TestExistingNamespaceAndMetadataInspectionAreReadOnly(t *testing.T) {
+	state := t.TempDir()
+	if _, err := OpenNamespaceExisting(state, "github-users"); err == nil {
+		t.Fatal("missing namespace was created by read-only open")
+	}
+	store, err := OpenNamespace(state, "github-users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.now = func() time.Time { return time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC) }
+	if _, err := store.Put("user-9", "github-app-user-token", []byte("second-canary")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put("user-7", "github-app-user-token", []byte("first-canary")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put("other", "other-kind", []byte("other-canary")); err != nil {
+		t.Fatal(err)
+	}
+	existing, err := OpenNamespaceExisting(state, "github-users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := existing.ListMetadata("github-app-user-token")
+	if err != nil || len(metadata) != 2 || metadata[0].Slot != "user-7" || metadata[1].Slot != "user-9" {
+		t.Fatalf("metadata = %+v, %v", metadata, err)
+	}
+	if _, err := existing.ListMetadata("bad kind"); err == nil {
+		t.Fatal("invalid metadata kind accepted")
+	}
+	if err := os.WriteFile(filepath.Join(existing.dir, "unexpected"), []byte("canary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := existing.ListMetadata("github-app-user-token"); err == nil {
+		t.Fatal("invalid store entry accepted")
+	}
+}

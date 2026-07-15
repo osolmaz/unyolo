@@ -63,6 +63,7 @@ type githubCredentialSource struct {
 	name  string
 	mode  os.FileMode
 	owner bkservice.ManagedFileOwner
+	class string
 }
 
 func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOptions) error {
@@ -139,23 +140,23 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	if plan.opts.DevTokenFallback {
 		removeFiles = append(removeFiles,
 			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppIDFileName},
-			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppPrivateKeyFileName},
+			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppPrivateKeyFileName, CredentialClass: "github-app-private-key"},
 			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientIDFileName},
-			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientSecretFileName},
-			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubWebhookSecretFileName},
+			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientSecretFileName, CredentialClass: "github-app-client-secret"},
+			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubWebhookSecretFileName, CredentialClass: "github-webhook"},
 		)
 	} else {
-		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName})
+		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName, CredentialClass: "github-development"})
 		if plan.opts.GitHubAppClientIDFile == "" {
 			removeFiles = append(removeFiles,
 				bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientIDFileName},
-				bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientSecretFileName},
+				bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientSecretFileName, CredentialClass: "github-app-client-secret"},
 			)
 		}
 	}
 	var readyCheck bkservice.ReadinessCheck
 	if plan.opts.TelegramBotTokenFile == "" {
-		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName})
+		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName, CredentialClass: "telegram-bot"})
 		readyCheck = bkservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
 	}
 	return bkservice.SystemdInstallPlan{
@@ -176,6 +177,7 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		NoStart:          plan.opts.NoStart,
 		AllowNonRoot:     plan.opts.AllowNonRoot,
 		Runner:           plan.opts.CommandRunner,
+		Lifecycle:        plan.opts.Lifecycle,
 	}, nil
 }
 
@@ -189,8 +191,8 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 		return nil, err
 	}
 	files := append(credentials,
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghSecretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghOperatorSecretsFileName, Data: []byte(plan.opts.OperatorID + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghSecretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-client"},
+		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghOperatorSecretsFileName, Data: []byte(plan.opts.OperatorID + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator"},
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghScopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
 		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghEnvFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	)
@@ -205,7 +207,7 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"})
 	}
 	return files, nil
 }
@@ -321,7 +323,7 @@ func githubCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []bkservice.ManagedFile{{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName, Data: data, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService}}, nil
+		return []bkservice.ManagedFile{{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName, Data: data, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "github-development"}}, nil
 	}
 	return githubAppCredentialFiles(plan)
 }
@@ -329,13 +331,13 @@ func githubCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 func githubAppCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 	sources := []githubCredentialSource{
 		{path: plan.opts.GitHubAppIDFile, label: "--github-app-id-file", name: githubAppIDFileName, mode: 0o640, owner: bkservice.ManagedFileOwnerRoot},
-		{path: plan.opts.GitHubAppPrivateKeyFile, label: "--github-app-private-key-file", name: githubAppPrivateKeyFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService},
-		{path: plan.opts.GitHubWebhookSecretFile, label: "--github-webhook-secret-file", name: githubWebhookSecretFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService},
+		{path: plan.opts.GitHubAppPrivateKeyFile, label: "--github-app-private-key-file", name: githubAppPrivateKeyFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService, class: "github-app-private-key"},
+		{path: plan.opts.GitHubWebhookSecretFile, label: "--github-webhook-secret-file", name: githubWebhookSecretFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService, class: "github-webhook"},
 	}
 	if plan.opts.GitHubAppClientIDFile != "" {
 		sources = append(sources,
 			githubCredentialSource{path: plan.opts.GitHubAppClientIDFile, label: "--github-app-client-id-file", name: githubAppClientIDFileName, mode: 0o640, owner: bkservice.ManagedFileOwnerRoot},
-			githubCredentialSource{path: plan.opts.GitHubAppClientSecretFile, label: "--github-app-client-secret-file", name: githubAppClientSecretFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService},
+			githubCredentialSource{path: plan.opts.GitHubAppClientSecretFile, label: "--github-app-client-secret-file", name: githubAppClientSecretFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService, class: "github-app-client-secret"},
 		)
 	}
 	files := make([]bkservice.ManagedFile, 0, len(sources))
@@ -344,7 +346,7 @@ func githubAppCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: source.name, Data: data, Mode: source.mode, Owner: source.owner})
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: source.name, Data: data, Mode: source.mode, Owner: source.owner, CredentialClass: source.class})
 	}
 	return files, nil
 }

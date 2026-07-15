@@ -9,8 +9,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
 	"github.com/osolmaz/brokerkit/clientconfig"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/endpoint"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
@@ -49,6 +51,7 @@ type setupSystemdOptions struct {
 	TelegramChatID            int64
 	DevTokenFallback          bool
 	CommandRunner             bkservice.CommandRunner
+	Lifecycle                 *credentiallifecycle.Reporter
 }
 
 func runSetup(stdout io.Writer, stderr io.Writer, args []string) error {
@@ -86,6 +89,10 @@ func runSetupClientCommand(stdout io.Writer, stderr io.Writer, args []string) er
 
 func runSetupSystemdCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, stdin io.Reader, args []string) error {
 	opts, help, err := parseSetupSystemdCommand(stderr, stdin, args)
+	if err != nil {
+		return err
+	}
+	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "gh-broker", "local-operator")
 	if err != nil {
 		return err
 	}

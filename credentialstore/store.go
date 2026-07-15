@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"sync"
 	"time"
 
@@ -25,11 +26,12 @@ import (
 )
 
 const (
-	keySize             = 32
-	maxCredentialBytes  = 1 << 20
-	credentialFileMode  = 0o600
-	credentialDirectory = 0o700
-	namespaceDirectory  = "credential-namespaces"
+	keySize              = 32
+	maxCredentialBytes   = 1 << 20
+	credentialFileMode   = 0o600
+	credentialDirectory  = 0o700
+	namespaceDirectory   = "credential-namespaces"
+	maxListedCredentials = 1024
 )
 
 var (
@@ -116,6 +118,16 @@ func OpenNamespace(stateDir, namespace string) (*Store, error) {
 	return Open(root)
 }
 
+// OpenNamespaceExisting opens an existing namespace without creating or
+// changing directories, keys, modes, or records.
+func OpenNamespaceExisting(stateDir, namespace string) (*Store, error) {
+	root, err := NamespacePath(stateDir, namespace)
+	if err != nil {
+		return nil, err
+	}
+	return openExisting(root)
+}
+
 func secureStoreDirectory(path string) error {
 	if err := os.MkdirAll(path, credentialDirectory); err != nil {
 		return errors.New("create credential namespace directory")
@@ -142,7 +154,32 @@ func Open(stateDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	return storeFromKey(dir, key)
+}
+
+func openExisting(stateDir string) (*Store, error) {
+	dir := filepath.Join(stateDir, "credential-slots")
+	if err := validateExistingStoreDirectory(dir); err != nil {
+		return nil, err
+	}
+	key, err := keyfile.LoadExisting(filepath.Join(stateDir, "credential-slots.key"), keySize, "credential slot", keyfile.Raw)
+	if err != nil {
+		return nil, err
+	}
+	return storeFromKey(dir, key)
+}
+
+func validateExistingStoreDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("credential slot directory is invalid")
+	}
+	return nil
+}
+
+func storeFromKey(dir string, key []byte) (*Store, error) {
 	block, err := aes.NewCipher(key)
+	zero(key)
 	if err != nil {
 		return nil, errors.New("initialize credential slot cipher")
 	}
@@ -151,6 +188,55 @@ func Open(stateDir string) (*Store, error) {
 		return nil, errors.New("initialize credential slot cipher")
 	}
 	return &Store{dir: dir, aead: aead, now: time.Now}, nil
+}
+
+// ListMetadata returns bounded, stable metadata for one credential kind. It
+// validates records but never decrypts or returns credential values.
+func (s *Store) ListMetadata(kind string) ([]Metadata, error) {
+	if s == nil || !kindPattern.MatchString(kind) {
+		return nil, errors.New("credential kind is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(s.dir)
+	if err != nil || len(entries) > maxListedCredentials {
+		return nil, errors.New("list credential slots")
+	}
+	result := make([]Metadata, 0, len(entries))
+	for _, entry := range entries {
+		metadata, include, readErr := s.readMetadataEntry(entry, kind)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if include {
+			result = append(result, metadata)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Slot < result[j].Slot })
+	return result, nil
+}
+
+func (s *Store) readMetadataEntry(entry os.DirEntry, kind string) (Metadata, bool, error) {
+	if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+		return Metadata{}, false, errors.New("credential slot directory contains an invalid entry")
+	}
+	data, err := os.ReadFile(filepath.Join(s.dir, entry.Name())) // #nosec G304 -- bounded entry under the private store directory.
+	if err != nil || len(data) > 2*maxCredentialBytes {
+		return Metadata{}, false, errors.New("credential slot is unavailable")
+	}
+	var record encryptedRecord
+	if json.Unmarshal(data, &record) != nil || !validListedRecord(record, entry.Name()) {
+		return Metadata{}, false, errors.New("credential slot is invalid")
+	}
+	return record.Metadata, record.Kind == kind, nil
+}
+
+func validListedRecord(record encryptedRecord, filename string) bool {
+	if !slotPattern.MatchString(record.Slot) || !kindPattern.MatchString(record.Kind) || !validRecord(record, record.Slot, record.Kind) {
+		return false
+	}
+	digest := sha256.Sum256([]byte(record.Slot))
+	return filename == hex.EncodeToString(digest[:])+".json"
 }
 
 func (s *Store) Put(slot, kind string, plaintext []byte) (Metadata, error) {

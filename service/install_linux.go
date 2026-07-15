@@ -84,7 +84,41 @@ func applySystemdInstall(ctx context.Context, runner CommandRunner, roots instal
 	if err := waitForSystemdReady(ctx, plan); err != nil {
 		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
 	}
-	return removeManagedFiles(roots, plan.RemoveFiles)
+	removed, err := captureSystemdCredentialRemovals(roots, plan.RemoveFiles)
+	if err != nil {
+		return err
+	}
+	if err := removeManagedFiles(roots, plan.RemoveFiles); err != nil {
+		return err
+	}
+	return recordSystemdCredentialChanges(plan, snapshot, removed)
+}
+
+func recordSystemdCredentialChanges(plan SystemdInstallPlan, snapshot *systemdInstallSnapshot, removed map[string]string) error {
+	previous := make([]previousManagedCredential, len(plan.Files))
+	for index := range plan.Files {
+		file := snapshot.files[index]
+		previous[index] = previousManagedCredential{existed: file.restorable, data: file.data}
+	}
+	return recordManagedCredentialChanges(plan.Lifecycle, plan.Files, previous, removed)
+}
+
+func captureSystemdCredentialRemovals(roots installRoots, files []ManagedFileRef) (map[string]string, error) {
+	result := make(map[string]string)
+	for _, file := range files {
+		if file.CredentialClass == "" {
+			continue
+		}
+		snapshot, _, err := captureInstallFile(installTarget{root: managedFileRoot(roots, file.Area), name: file.Name})
+		if err != nil {
+			return nil, err
+		}
+		if snapshot.restorable {
+			result[file.CredentialClass] = credentialIdentifier(snapshot.data)
+		}
+		clearSecretBytes(snapshot.data)
+	}
+	return result, nil
 }
 
 func writeSystemdInstall(roots installRoots, plan SystemdInstallPlan, serviceUID, serviceGID uint64) error {
@@ -303,6 +337,9 @@ func validUnitNameCharacters(name string) bool {
 }
 
 func validateManagedFiles(plan SystemdInstallPlan) error {
+	if err := validateCredentialClasses(plan.Files, plan.RemoveFiles); err != nil {
+		return err
+	}
 	seen := make(map[string]struct{}, len(plan.Files)+len(plan.RemoveFiles))
 	environmentManaged, err := validateManagedFileWrites(plan, seen)
 	if err != nil {

@@ -45,6 +45,55 @@ type UserEnrollment struct {
 
 type storedUserCredential = UserEnrollment
 
+// StoredUserCredentialStatus is secret-safe metadata for one encrypted user
+// credential. It contains no login or credential value.
+type StoredUserCredentialStatus struct {
+	UserID           int64
+	UpdatedAt        time.Time
+	AccessExpiresAt  time.Time
+	RefreshExpiresAt time.Time
+}
+
+// InspectStoredUserCredentials opens the existing user namespace read-only and
+// returns only lifecycle metadata.
+func InspectStoredUserCredentials(stateDir string) ([]StoredUserCredentialStatus, error) {
+	store, err := credentialstore.OpenNamespaceExisting(stateDir, userCredentialNamespace)
+	if err != nil {
+		return nil, err
+	}
+	metadata, err := store.ListMetadata(userCredentialKind)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]StoredUserCredentialStatus, 0, len(metadata))
+	for _, item := range metadata {
+		status, decodeErr := storedUserStatus(store, item)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		result = append(result, status)
+	}
+	return result, nil
+}
+
+func storedUserStatus(store *credentialstore.Store, metadata credentialstore.Metadata) (StoredUserCredentialStatus, error) {
+	encoded, _, err := store.Get(metadata.Slot, userCredentialKind)
+	if err != nil {
+		return StoredUserCredentialStatus{}, errors.New("GitHub user credential metadata is unavailable")
+	}
+	defer zero(encoded)
+	var value storedUserCredential
+	if strictjson.Decode(encoded, &value, true) != nil || metadata.Slot != userSlot(value.UserID) ||
+		value.UserID <= 0 || value.AccessExpiresAt.IsZero() || !value.RefreshExpiresAt.After(value.AccessExpiresAt) {
+		zeroStored(&value)
+		return StoredUserCredentialStatus{}, errors.New("GitHub user credential metadata is invalid")
+	}
+	status := StoredUserCredentialStatus{UserID: value.UserID, UpdatedAt: metadata.UpdatedAt.UTC(),
+		AccessExpiresAt: value.AccessExpiresAt.UTC(), RefreshExpiresAt: value.RefreshExpiresAt.UTC()}
+	zeroStored(&value)
+	return status, nil
+}
+
 type refreshPayload struct {
 	AccessToken           string `json:"access_token"`
 	ExpiresIn             int64  `json:"expires_in"`

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/credentialstore"
 )
 
@@ -26,6 +28,7 @@ type Config struct {
 	Store                *credentialstore.Store
 	Now                  func() time.Time
 	RefreshBefore        time.Duration
+	Lifecycle            *credentiallifecycle.Reporter
 }
 
 type Manager struct {
@@ -37,6 +40,7 @@ type Manager struct {
 	installation  *installationProvider
 	user          *userProvider
 	development   *Credential
+	lifecycle     *credentiallifecycle.Reporter
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -53,7 +57,7 @@ func New(cfg Config) (*Manager, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopRedirect}
 	}
-	manager := &Manager{apiURL: apiURL, webURL: webURL, client: client, streamTimeout: defaultStreamTimeout(cfg.StreamTimeout)}
+	manager := &Manager{apiURL: apiURL, webURL: webURL, client: client, streamTimeout: defaultStreamTimeout(cfg.StreamTimeout), lifecycle: cfg.Lifecycle}
 	mode, err := configuredCredentialMode(cfg)
 	if err != nil {
 		return nil, err
@@ -74,7 +78,7 @@ func New(cfg Config) (*Manager, error) {
 		return nil, err
 	}
 	manager.app = app
-	manager.installation = newInstallationProvider(app, apiURL, client, cfg.Now, cfg.RefreshBefore)
+	manager.installation = newInstallationProvider(app, apiURL, client, cfg.Now, cfg.RefreshBefore, cfg.Lifecycle)
 	if cfg.Store != nil {
 		manager.user = manager.newUserProvider(cfg)
 	}
@@ -196,21 +200,42 @@ func (m *Manager) EnrollUser(ctx context.Context, enrollment UserEnrollment) err
 	if m == nil || m.user == nil {
 		return errors.New("GitHub user credential provider is unavailable")
 	}
-	return m.user.enroll(ctx, enrollment, false)
+	err := m.user.enroll(ctx, enrollment, false)
+	return errors.Join(err, m.recordUserLifecycle(credentiallifecycle.ActionCreated, enrollment.UserID, false, err))
 }
 
 func (m *Manager) RotateUser(ctx context.Context, enrollment UserEnrollment) error {
 	if m == nil || m.user == nil {
 		return errors.New("GitHub user credential provider is unavailable")
 	}
-	return m.user.enroll(ctx, enrollment, true)
+	err := m.user.enroll(ctx, enrollment, true)
+	return errors.Join(err, m.recordUserLifecycle(credentiallifecycle.ActionRotated, enrollment.UserID, true, err))
 }
 
 func (m *Manager) RevokeUser(ctx context.Context, userID int64) error {
 	if m == nil || m.user == nil {
 		return errors.New("GitHub user credential provider is unavailable")
 	}
-	return m.user.revoke(ctx, userID)
+	err := m.user.revoke(ctx, userID)
+	return errors.Join(err, m.recordUserLifecycle(credentiallifecycle.ActionRevoked, userID, true, err))
+}
+
+func (m *Manager) recordUserLifecycle(action credentiallifecycle.Action, userID int64, hadPrevious bool, operationErr error) error {
+	if m == nil || m.lifecycle == nil || userID <= 0 {
+		return nil
+	}
+	id := fmt.Sprintf("github-user:%d", userID)
+	event := credentiallifecycle.Event{Class: "github-user-oauth", Action: action, Outcome: credentiallifecycle.OutcomeSucceeded, Provider: "github"}
+	if hadPrevious {
+		event.PreviousID = id
+	}
+	if action != credentiallifecycle.ActionRevoked {
+		event.CurrentID = id
+	}
+	if operationErr != nil {
+		event.Outcome = credentiallifecycle.OutcomeFailed
+	}
+	return m.lifecycle.Record(event)
 }
 
 func (m *Manager) InvalidateUser(userID int64) error {

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,12 +44,19 @@ func Run(ctx context.Context, cfg config.Config, opts Options) (bkdoctor.Report,
 	}
 	checks := []bkdoctor.Check{bkdoctor.RootEquivalentCheck(agent), bkdoctor.SeparationCheck(agent, service)}
 	checks = append(checks, localSecretChecks(cfg, agent)...)
+	storedCredentials, storedCheck := storedCredentialStatuses(cfg.StateDir, time.Now().UTC())
+	if storedCheck != nil {
+		checks = append(checks, *storedCheck)
+	}
 	checks = append(checks, githubChecks(ctx, cfg, opts, owner, repo)...)
-	return bkdoctor.NewReport(agent, checks...), nil
+	report := bkdoctor.NewReport(agent, checks...)
+	credentials := append(localCredentialStatuses(cfg, time.Now().UTC()), storedCredentials...)
+	return bkdoctor.WithCredentials(report, credentials...), nil
 }
 
 func localSecretChecks(cfg config.Config, agent bkdoctor.Identity) []bkdoctor.Check {
-	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubAppClientSecretFile, cfg.GitHubWebhookSecretFile, cfg.SecretsFile, cfg.TelegramBotTokenFile}
+	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubAppClientSecretFile, cfg.GitHubWebhookSecretFile,
+		cfg.SecretsFile, cfg.OperatorSecretsFile, cfg.TelegramBotTokenFile}
 	checks := make([]bkdoctor.Check, 0, len(paths)*5)
 	for _, path := range paths {
 		if path != "" {
@@ -56,6 +65,83 @@ func localSecretChecks(cfg config.Config, agent bkdoctor.Identity) []bkdoctor.Ch
 	}
 	checks = append(checks, inlineCredentialChecks(cfg)...)
 	return checks
+}
+
+func localCredentialStatuses(cfg config.Config, now time.Time) []bkdoctor.CredentialStatus {
+	const rotateAfter = bkdoctor.DefaultCredentialRotationAge
+	values := make([]bkdoctor.CredentialStatus, 0, 7)
+	values = appendCredentialFileStatus(values, "broker-client", cfg.SecretsFile, now, rotateAfter, bkdoctor.CredentialRevocationLocal)
+	values = appendCredentialFileStatus(values, "broker-operator", cfg.OperatorSecretsFile, now, rotateAfter, bkdoctor.CredentialRevocationLocal)
+	values = appendCredentialFileStatus(values, "github-development", cfg.GitHubTokenFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "github-app-private-key", cfg.GitHubAppPrivateKeyFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "github-app-client-secret", cfg.GitHubAppClientSecretFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "github-webhook", cfg.GitHubWebhookSecretFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "telegram-bot", cfg.TelegramBotTokenFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
+	return appendInlineCredentialStatuses(values, cfg)
+}
+
+func appendCredentialFileStatus(values []bkdoctor.CredentialStatus, class, path string, now time.Time, rotateAfter time.Duration, revocation string) []bkdoctor.CredentialStatus {
+	if strings.TrimSpace(path) == "" {
+		return values
+	}
+	return append(values, bkdoctor.CredentialFileStatus(class, path, now, rotateAfter, time.Time{}, revocation))
+}
+
+func appendInlineCredentialStatuses(values []bkdoctor.CredentialStatus, cfg config.Config) []bkdoctor.CredentialStatus {
+	inline := []struct {
+		class, value, file, revocation string
+	}{
+		{"broker-client", cfg.SharedSecret, cfg.SecretsFile, bkdoctor.CredentialRevocationLocal},
+		{"broker-operator", cfg.OperatorSecret, cfg.OperatorSecretsFile, bkdoctor.CredentialRevocationLocal},
+		{"github-development", cfg.GitHubToken, cfg.GitHubTokenFile, bkdoctor.CredentialRevocationManual},
+		{"github-app-client-secret", cfg.GitHubAppClientSecret, cfg.GitHubAppClientSecretFile, bkdoctor.CredentialRevocationManual},
+		{"github-webhook", cfg.GitHubWebhookSecret, cfg.GitHubWebhookSecretFile, bkdoctor.CredentialRevocationManual},
+		{"telegram-bot", cfg.TelegramBotToken, cfg.TelegramBotTokenFile, bkdoctor.CredentialRevocationManual},
+	}
+	for _, item := range inline {
+		if item.value != "" && item.file == "" {
+			values = append(values, bkdoctor.InlineCredentialStatus(item.class, item.revocation))
+		}
+	}
+	return values
+}
+
+func storedCredentialStatuses(stateDir string, now time.Time) ([]bkdoctor.CredentialStatus, *bkdoctor.Check) {
+	if strings.TrimSpace(stateDir) == "" {
+		return nil, nil
+	}
+	path, err := githubauth.UserCredentialStorePath(stateDir)
+	if err != nil {
+		return nil, storedCredentialCheck(bkdoctor.CheckUnknown)
+	}
+	if _, err := os.Lstat(path); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, storedCredentialCheck(bkdoctor.CheckUnknown)
+	}
+	items, err := githubauth.InspectStoredUserCredentials(stateDir)
+	if err != nil {
+		return nil, storedCredentialCheck(bkdoctor.CheckUnknown)
+	}
+	values := make([]bkdoctor.CredentialStatus, 0, 2*len(items))
+	for _, item := range items {
+		id := strconv.FormatInt(item.UserID, 10)
+		values = append(values,
+			bkdoctor.StoredCredentialStatus("github-user-access:"+id, item.UpdatedAt, item.AccessExpiresAt, now,
+				bkdoctor.DefaultCredentialRotationAge, bkdoctor.CredentialRevocationAutomatic),
+			bkdoctor.StoredCredentialStatus("github-user-refresh:"+id, item.UpdatedAt, item.RefreshExpiresAt, now,
+				bkdoctor.DefaultCredentialRotationAge, bkdoctor.CredentialRevocationAutomatic),
+		)
+	}
+	return values, storedCredentialCheck(bkdoctor.CheckPass)
+}
+
+func storedCredentialCheck(status bkdoctor.CheckStatus) *bkdoctor.Check {
+	message := "encrypted GitHub user lifecycle metadata is valid"
+	if status != bkdoctor.CheckPass {
+		message = "encrypted GitHub user lifecycle metadata could not be inspected"
+	}
+	return &bkdoctor.Check{Status: status, Name: "github_user_lifecycle_metadata", Message: message}
 }
 
 func inlineCredentialChecks(cfg config.Config) []bkdoctor.Check {

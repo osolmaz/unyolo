@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/credentialstore"
 )
 
@@ -37,7 +39,11 @@ func runSetupGitHubUser(ctx context.Context, stdout, stderr io.Writer, args []st
 	if err != nil {
 		return err
 	}
-	return executeGitHubUserSetup(ctx, stdout, opts)
+	lifecycle, err := credentiallifecycle.New(audit.New(stderr), "gh-broker", "local-operator")
+	if err != nil {
+		return err
+	}
+	return executeGitHubUserSetup(ctx, stdout, opts, lifecycle)
 }
 
 func parseGitHubUserSetup(stderr io.Writer, action string, args []string) (githubUserSetupOptions, error) {
@@ -78,8 +84,8 @@ func validateGitHubUserAction(opts githubUserSetupOptions) error {
 	return nil
 }
 
-func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUserSetupOptions) (resultErr error) {
-	manager, err := newGitHubUserSetupManager(opts)
+func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUserSetupOptions, lifecycle *credentiallifecycle.Reporter) (resultErr error) {
+	manager, err := newGitHubUserSetupManager(opts, lifecycle)
 	if err != nil {
 		return err
 	}
@@ -98,7 +104,7 @@ func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUs
 	return storeGitHubUserSetup(ctx, stdout, opts, manager)
 }
 
-func newGitHubUserSetupManager(opts githubUserSetupOptions) (*githubauth.Manager, error) {
+func newGitHubUserSetupManager(opts githubUserSetupOptions, lifecycle *credentiallifecycle.Reporter) (*githubauth.Manager, error) {
 	clientID, err := readProtectedSetupFile(opts.clientID)
 	if err != nil {
 		return nil, fmt.Errorf("read GitHub App client id: %w", err)
@@ -119,7 +125,7 @@ func newGitHubUserSetupManager(opts githubUserSetupOptions) (*githubauth.Manager
 		return nil, err
 	}
 	manager, err := githubauth.New(githubauth.Config{AppClientID: strings.TrimSpace(string(clientID)), AppClientSecret: clientSecret,
-		APIBaseURL: apiURL, WebBaseURL: webURL, Store: store, HTTPClient: &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopUserSetupRedirect}})
+		APIBaseURL: apiURL, WebBaseURL: webURL, Store: store, HTTPClient: &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopUserSetupRedirect}, Lifecycle: lifecycle})
 	if err != nil {
 		return nil, err
 	}

@@ -13,10 +13,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/clientconfig"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/endpoint"
 	bkpolicy "github.com/osolmaz/brokerkit/policy"
 	bkservice "github.com/osolmaz/brokerkit/service"
@@ -39,6 +41,7 @@ type sudoSystemdOptions struct {
 	OperatorEndpoint     string
 	TelegramBotTokenFile string
 	TelegramChatID       int64
+	Lifecycle            *credentiallifecycle.Reporter
 }
 
 type sudoInstallPaths struct {
@@ -52,6 +55,10 @@ func runSetupSystemd(ctx context.Context, args []string, stdout io.Writer, stder
 	}
 	if os.Geteuid() != 0 && !opts.DryRun {
 		return errors.New("setup systemd must run as root; try sudo sudo-broker setup systemd")
+	}
+	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "sudo-broker", "local-operator")
+	if err != nil {
+		return err
 	}
 	paths := sudoPaths(opts)
 	helperPlan, frontendPlan, err := sudoInstallPlans(opts, paths)
@@ -236,10 +243,14 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservic
 		}
 		frontendFiles = append(frontendFiles, frontendSecretFile("telegram-bot-token", data))
 	}
+	var removeFiles []bkservice.ManagedFileRef
+	if opts.TelegramBotTokenFile == "" {
+		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: "telegram-bot-token", CredentialClass: "telegram-bot"})
+	}
 	frontendPlan := bkservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SharedStateDir: sharedStateDir,
-		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker.service", NoStart: opts.NoStart, Unit: frontendUnit, Files: frontendFiles,
+		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker.service", NoStart: opts.NoStart, Unit: frontendUnit, Files: frontendFiles, RemoveFiles: removeFiles,
 		AdditionalGroups: activation.Groups, GroupMembers: activation.GroupMembers, SocketUnits: activation.Sockets,
-		ActivationUnits: activation.ActivationUnits, ReadyCheck: bkservice.EndpointReadyCheck(opts.Endpoint, "/readyz")}
+		ActivationUnits: activation.ActivationUnits, ReadyCheck: bkservice.EndpointReadyCheck(opts.Endpoint, "/readyz"), Lifecycle: opts.Lifecycle}
 	return helperPlan, frontendPlan, nil
 }
 
@@ -252,7 +263,8 @@ func sharedStateDirectory(frontend string, helper string) string {
 }
 
 func frontendSecretFile(name string, data []byte) bkservice.ManagedFile {
-	return bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: name, Data: data, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot}
+	classes := map[string]string{"secrets": "broker-client", "operator-secrets": "broker-operator", "telegram-bot-token": "telegram-bot"}
+	return bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: name, Data: data, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot, CredentialClass: classes[name]}
 }
 
 func frontendExec(opts sudoSystemdOptions, paths sudoInstallPaths) string {

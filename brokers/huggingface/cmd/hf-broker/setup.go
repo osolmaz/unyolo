@@ -11,9 +11,11 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 	"github.com/osolmaz/brokerkit/clientconfig"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/endpoint"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
@@ -45,6 +47,7 @@ type setupSystemdOptions struct {
 	OperatorSecret        string
 	OperatorEndpoint      string
 	CommandRunner         bkservice.CommandRunner
+	Lifecycle             *credentiallifecycle.Reporter
 }
 
 func runSetup(ctx context.Context, stdout, stderr io.Writer, args []string) error {
@@ -58,6 +61,10 @@ func runSetupInput(ctx context.Context, stdin io.Reader, stdout, stderr io.Write
 	switch args[0] {
 	case "systemd":
 		opts, err := parseSetupSystemdInput(stderr, stdin, args[1:])
+		if err != nil {
+			return err
+		}
+		opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "hf-broker", "local-operator")
 		if err != nil {
 			return err
 		}

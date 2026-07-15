@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"time"
+
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 )
 
 const (
@@ -33,18 +35,20 @@ const (
 
 // ManagedFile is one opaque provider-owned setup payload.
 type ManagedFile struct {
-	Area  ManagedFileArea
-	Name  string
-	Data  []byte
-	Mode  os.FileMode
-	Owner ManagedFileOwner
+	Area            ManagedFileArea
+	Name            string
+	Data            []byte
+	Mode            os.FileMode
+	Owner           ManagedFileOwner
+	CredentialClass string
 }
 
 // ManagedFileRef identifies one provider-owned file that should no longer
 // exist after a successful configuration cutover.
 type ManagedFileRef struct {
-	Area ManagedFileArea
-	Name string
+	Area            ManagedFileArea
+	Name            string
+	CredentialClass string
 }
 
 // ReadinessCheck confirms that a restarted broker initialized with its new
@@ -73,4 +77,5 @@ type SystemdInstallPlan struct {
 	NoStart          bool
 	AllowNonRoot     bool
 	Runner           CommandRunner
+	Lifecycle        *credentiallifecycle.Reporter
 }

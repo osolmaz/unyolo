@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -27,6 +29,10 @@ func runSetupLaunchdCommand(ctx context.Context, stdin io.Reader, stdout, stderr
 	}
 	if os.Geteuid() != 0 && !opts.AllowNonRoot && !opts.DryRun {
 		return exitError{code: 1, message: "setup launchd must run as root; try sudo hf-broker setup launchd ..."}
+	}
+	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "hf-broker", "local-operator")
+	if err != nil {
+		return err
 	}
 	plan := systemdSetupPlan(opts)
 	if opts.DryRun {
@@ -85,7 +91,7 @@ func brokerkitLaunchdInstallPlan(plan systemdPlan) (bkservice.LaunchdInstallPlan
 		Files: withoutLaunchdEnvironmentFile(base.Files), RemoveFiles: base.RemoveFiles,
 		ReadyCheck: base.ReadyCheck, ReadyTimeout: base.ReadyTimeout, ReadyInterval: base.ReadyInterval,
 		Unit: hfLaunchdUnit(plan, activation.Sockets), NoStart: plan.opts.NoStart,
-		AllowNonRoot: plan.opts.AllowNonRoot, Runner: plan.opts.CommandRunner,
+		AllowNonRoot: plan.opts.AllowNonRoot, Runner: plan.opts.CommandRunner, Lifecycle: base.Lifecycle,
 	}, nil
 }
 

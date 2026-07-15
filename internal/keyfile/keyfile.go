@@ -30,6 +30,15 @@ func LoadOrCreate(path string, size int, noun string, encoding Encoding) ([]byte
 	return create(path, size, noun, encoding)
 }
 
+// LoadExisting reads a private key without creating one when it is absent.
+func LoadExisting(path string, size int, noun string, encoding Encoding) ([]byte, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- caller owns the fixed store path.
+	if err != nil {
+		return nil, errors.New("read " + noun + " key")
+	}
+	return decodeExisting(path, data, size, noun, encoding)
+}
+
 func decodeExisting(path string, data []byte, size int, noun string, encoding Encoding) ([]byte, error) {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
