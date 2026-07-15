@@ -827,7 +827,7 @@ Popover host integration:
   the pending count, and sends the iframe an invalidation when the cursor
   advances. Do not retain an unrelated fixed-interval badge poll as a second
   notion of freshness.
-- The iframe also maintains its own long poll so direct/top-level use and an
+- The iframe also maintains its own long poll so direct use and an
   already-open popover update without depending on parent messages. Duplicate
   invalidations are harmless because snapshot reconciliation is coalesced.
 - ML Claw implements the delegated `/snapshot` and `/events` pass-through and

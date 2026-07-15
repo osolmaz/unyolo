@@ -2,7 +2,26 @@
 
 Date: 2026-07-14
 
-Status: implemented
+Status: correction required
+
+## Required Decision UX
+
+The OpenClaw Gateway approvals popover is the canonical review and decision
+surface. Operators inspect requests, approve, deny, and revoke directly inside
+that popover. BrokerKit must not replace those controls with a **Review
+securely** launcher, navigate the Gateway tab away from the current screen, or
+require a second top-level approval page.
+
+The trusted backend keeps broker operator credentials and policy authority. It
+issues the sandboxed popover a short-lived, audience-bound delegated session
+with `access: "decide"`. The iframe holds that session only in memory and uses
+it only through the fixed delegated API. This preserves the credential
+boundary without moving the operator out of the Gateway UI.
+
+An `access: "read"` session is allowed only for a deliberately non-actionable
+viewer. It shows no decision controls and offers no navigation-based authority
+upgrade. The OpenClaw Gateway approvals popover is not such a viewer and must
+receive `access: "decide"`.
 
 ## Contract At A Glance
 
@@ -40,6 +59,10 @@ gateways, and ordinary same-origin hosts without host-specific UI code.
 The change must also make transient delegated-web failures recover cleanly in
 the UI. A recovered event or snapshot connection must not leave a stale
 `Approvals are unavailable` banner visible.
+
+The change must preserve direct decisions inside the mounted OpenClaw Gateway
+popover. Security comes from the trusted backend's short-lived delegated
+session and server-side authorization, not from leaving the Gateway UI.
 
 ## Confirmed Failure
 
@@ -86,6 +109,10 @@ OpenClaw owns only the plugin registration and surrounding Gateway surface.
 Individual brokers remain authoritative for requests and decisions. No
 OpenClaw core, HF Broker, GH Broker, Sudo Broker, provider policy, or Operator
 V1 route change is required.
+
+The OpenClaw Gateway host must request and renew `access: "decide"` for its
+authenticated operator popover. It must keep the iframe mounted and must not
+navigate the parent tab in response to BrokerKit UI actions.
 
 ## Delegated-Web V1 Transport Contract
 
@@ -142,6 +169,10 @@ one-time `brokerkit-delegated-session` meta element or return it through the
 nonce-bound parent bridge. The UI removes the meta element immediately and
 holds the token only in memory.
 
+For the OpenClaw Gateway approvals popover, the injected or bridged session has
+`access: "decide"`. The trusted backend validates that access on every detail
+and decision request. The browser never receives an Operator V1 credential.
+
 For `renewal_transport: "direct"`, the UI sends the current token in
 `BrokerKit-Session` to `POST <basePath>/session`. The request uses
 `credentials: "omit"`, `cache: "no-store"`, and no `Authorization` field.
@@ -194,6 +225,11 @@ Update `plugins/openclaw/ui/src/api.ts` so that:
 - the credential is applied after normalizing safe non-authentication headers;
   and
 - fetch continues to omit credentials and disable caching.
+
+Remove the delegated top-level launcher protocol, launcher-only meta marker,
+and parent-tab navigation request. A read-only delegated session remains
+read-only in place. A decision-capable session renders Approve, Deny, and
+Revoke directly in the popover.
 
 Use one small browser credential helper shared by both UI modes. Keep the
 field name as one exported constant used by implementation and tests. Do not
@@ -267,14 +303,16 @@ fixture must simulate an identity-aware edge that:
 - reserves `Authorization` and returns `404` when any browser request uses it;
 - forwards `BrokerKit-Session` unchanged to the trusted test backend;
 - requires the opaque sandbox origin and successful preflight;
-- serves a read-only popover and a decision-capable top-level view;
+- serves a decision-capable sandboxed OpenClaw Gateway popover;
 - renews a session without cookies; and
 - streams a newly created request into the already-mounted UI.
 
-The test passes only when the request renders and a permitted decision reaches
-the fake Operator V1 backend. Add a negative assertion that the delegated
-token is absent from captured URLs, cookies, storage, logs, DOM after bootstrap
-consumption, and host-owned `Authorization` observations.
+The test passes only when the request renders, the operator decides it without
+leaving the parent Gateway URL, and the permitted decision reaches the fake
+Operator V1 backend. Assert that **Review securely** and **Open approvals** do
+not render. Add a negative assertion that the delegated token is absent from
+captured URLs, cookies, storage, logs, DOM after bootstrap consumption, and
+host-owned `Authorization` observations.
 
 ### Package and quality checks
 
@@ -301,7 +339,8 @@ considered complete.
 Land BrokerKit and its MLClaw consumer as one coordinated pre-release change:
 
 1. implement and verify the BrokerKit client contract;
-2. implement the MLClaw trusted-host adapter against that exact contract;
+2. implement the trusted-host adapter so the OpenClaw Gateway popover receives
+   a short-lived `access: "decide"` session;
 3. advance MLClaw's immutable BrokerKit revision to the reviewed commit;
 4. build and publish the candidate MLClaw runtime image;
 5. deploy the candidate to `osolmaz/mlclaw-test`; and
@@ -324,7 +363,11 @@ bearer transport. There is no mixed-version compatibility window.
   URLs and persistent browser state.
 - A recovered connection clears `Approvals are unavailable` without reloading
   the iframe.
-- Read-only popover and decision-capable top-level behavior remain intact.
+- Approve, Deny, and Revoke work inside the OpenClaw Gateway popover.
+- Decision controls do not navigate, replace, or reload the parent Gateway
+  page.
+- No **Review securely** or **Open approvals** launcher exists in the Gateway
+  flow.
 - Chromium, Firefox, and WebKit pass delegated browser coverage at desktop and
   mobile sizes.
 - The packaged plugin passes install and minimum-OpenClaw verification.
