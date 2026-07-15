@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -46,22 +44,14 @@ func runDoctorPolicy(stdout, stderr io.Writer, args []string) error {
 
 func parseDoctorPolicy(stderr io.Writer, args []string) (doctorPolicyCommand, error) {
 	var command doctorPolicyCommand
-	var output bytes.Buffer
-	fs := flag.NewFlagSet("gh-broker doctor policy", flag.ContinueOnError)
-	fs.SetOutput(&output)
-	fs.StringVar(&command.profilePath, "profile", "", "policy profile path")
-	fs.StringVar(&command.manifestPath, "manifest", "", "policy manifest path")
-	fs.StringVar(&command.policyPath, "scope", "", "rendered scope policy path")
-	fs.BoolVar(&command.jsonOutput, "json", false, "write JSON output")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = io.Copy(stderr, &output)
-			return doctorPolicyCommand{}, exitError{code: 0}
-		}
-		return doctorPolicyCommand{}, exitError{code: 64, message: "invalid doctor policy flags"}
-	}
-	if fs.NArg() != 0 || command.profilePath == "" || command.manifestPath == "" || command.policyPath == "" {
-		return doctorPolicyCommand{}, exitError{code: 64, message: "doctor policy requires --profile, --manifest, and --scope"}
+	err := parseRequiredFlagCommand(stderr, args, "gh-broker doctor policy", "invalid doctor policy flags", "doctor policy requires --profile, --manifest, and --scope", func(fs *flag.FlagSet) {
+		fs.StringVar(&command.profilePath, "profile", "", "policy profile path")
+		fs.StringVar(&command.manifestPath, "manifest", "", "policy manifest path")
+		fs.StringVar(&command.policyPath, "scope", "", "rendered scope policy path")
+		fs.BoolVar(&command.jsonOutput, "json", false, "write JSON output")
+	}, &command.profilePath, &command.manifestPath, &command.policyPath)
+	if err != nil {
+		return doctorPolicyCommand{}, err
 	}
 	return command, nil
 }

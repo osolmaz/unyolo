@@ -39,31 +39,48 @@ var once sync.Once
 var loaded document
 var loadErr error
 
-//nolint:cyclop // Registry count and closure checks are kept in the single load boundary.
 func load() error {
 	once.Do(func() {
 		if err := json.Unmarshal(raw, &loaded); err != nil {
 			loadErr = err
 			return
 		}
-		if loaded.Version != 1 || len(loaded.Targets) < 30 || len(loaded.Operations) != 1436 {
+		if !validRegistryCounts(loaded) {
 			loadErr = errors.New("GitHub schema registry count drifted")
 			return
 		}
-		for kind, schema := range loaded.Targets {
-			if !targetregistry.Known(kind) || !closedSchema(schema) {
-				loadErr = fmt.Errorf("GitHub target schema %q is invalid", kind)
-				return
-			}
-		}
-		for name, schemas := range loaded.Operations {
-			if schemas.Target == "" || !closedSchema(schemas.Arguments) || !closedSchema(schemas.Result) {
-				loadErr = fmt.Errorf("GitHub operation schema %q is invalid", name)
-				return
-			}
-		}
+		loadErr = validateRegistrySchemas(loaded)
 	})
 	return loadErr
+}
+
+func validRegistryCounts(value document) bool {
+	return value.Version == 1 && len(value.Targets) >= 30 && len(value.Operations) == 1436
+}
+
+func validateRegistrySchemas(value document) error {
+	if err := validateTargetSchemas(value.Targets); err != nil {
+		return err
+	}
+	return validateOperationSchemas(value.Operations)
+}
+
+func validateTargetSchemas(targets map[string]map[string]any) error {
+	for kind, schema := range targets {
+		if !targetregistry.Known(kind) || !closedSchema(schema) {
+			return fmt.Errorf("GitHub target schema %q is invalid", kind)
+		}
+	}
+	return nil
+}
+
+func validateOperationSchemas(operations map[string]Operation) error {
+	for name, schemas := range operations {
+		if schemas.Target == "" || !closedSchema(schemas.Arguments) || !closedSchema(schemas.Result) {
+			return fmt.Errorf("GitHub operation schema %q is invalid", name)
+		}
+	}
+	return nil
 }
 
 func ForOperation(name string) (Operation, bool) {
@@ -114,28 +131,43 @@ func OperationNames() ([]string, error) {
 	return result, nil
 }
 
-//nolint:cyclop // Recursive JSON Schema shapes require explicit map and array handling.
 func closedSchema(value any) bool {
 	switch typed := value.(type) {
 	case map[string]any:
-		if _, present := typed["$ref"]; present {
+		return closedSchemaMap(typed)
+	case []any:
+		return closedSchemaList(typed)
+	}
+	return true
+}
+
+func closedSchemaMap(value map[string]any) bool {
+	if _, present := value["$ref"]; present {
+		return false
+	}
+	if !closedObjectSchema(value) {
+		return false
+	}
+	for _, child := range value {
+		if !closedSchema(child) {
 			return false
 		}
-		if typed["type"] == "object" {
-			if extra, present := typed["additionalProperties"]; !present || extra == true {
-				return false
-			}
-		}
-		for _, child := range typed {
-			if !closedSchema(child) {
-				return false
-			}
-		}
-	case []any:
-		for _, child := range typed {
-			if !closedSchema(child) {
-				return false
-			}
+	}
+	return true
+}
+
+func closedObjectSchema(value map[string]any) bool {
+	if value["type"] != "object" {
+		return true
+	}
+	extra, present := value["additionalProperties"]
+	return present && extra != true
+}
+
+func closedSchemaList(value []any) bool {
+	for _, child := range value {
+		if !closedSchema(child) {
+			return false
 		}
 	}
 	return true

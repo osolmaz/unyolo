@@ -86,12 +86,8 @@ func parsePolicyRender(stderr io.Writer, args []string) (policyRenderCommand, er
 	fs.StringVar(&command.profileOutput, "profile-out", "", "policy profile output path")
 	fs.StringVar(&command.manifestOutput, "manifest-out", "", "policy manifest output path")
 	fs.BoolVar(&command.replace, "replace", false, "replace existing output files")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = io.Copy(stderr, &output)
-			return policyRenderCommand{}, exitError{code: 0}
-		}
-		return policyRenderCommand{}, exitError{code: 64, message: "invalid policy render flags"}
+	if err := parseCommandFlags(stderr, fs, &output, args, "invalid policy render flags"); err != nil {
+		return policyRenderCommand{}, err
 	}
 	if fs.NArg() != 0 || command.policyOutput == "" || command.profileOutput == "" || command.manifestOutput == "" {
 		return policyRenderCommand{}, exitError{code: 64, message: "policy render requires --output, --profile-out, and --manifest-out"}
@@ -104,12 +100,8 @@ func runPolicyCheck(stdout, stderr io.Writer, args []string) error {
 	fs := flag.NewFlagSet("gh-broker policy check", flag.ContinueOnError)
 	fs.SetOutput(&output)
 	path := fs.String("file", "", "scope policy file")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = io.Copy(stderr, &output)
-			return exitError{code: 0}
-		}
-		return exitError{code: 64, message: "invalid policy check flags"}
+	if err := parseCommandFlags(stderr, fs, &output, args, "invalid policy check flags"); err != nil {
+		return err
 	}
 	if fs.NArg() != 0 || *path == "" {
 		return exitError{code: 64, message: "policy check requires --file"}
