@@ -43,18 +43,19 @@ func TestHandleDecisionFailures(t *testing.T) {
 		t.Fatalf("HandleDecision(unknown) = %+v", got)
 	}
 	for _, test := range []struct {
-		name  string
-		err   error
-		want  string
-		retry bool
+		name              string
+		err               error
+		want              string
+		retry             bool
+		wantMessageStatus bool
 	}{
-		{name: "not found", err: grants.ErrNotFound, want: "Grant not found"},
+		{name: "not found", err: grants.ErrNotFound, want: "Grant not found", wantMessageStatus: true},
 		{name: "invalid token", err: grants.ErrInvalidDecisionToken, want: "Grant decision token did not match"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			decision := notify.Decision{Action: notify.ActionApprove}
 			got := HandleDecision(t.Context(), fakeDecider{approveErr: test.err}, decision)
-			if got.Answer != test.want || got.Retry != test.retry || (test.err == grants.ErrNotFound && got.MessageStatus == "") {
+			if got.Answer != test.want || got.Retry != test.retry || (test.wantMessageStatus && got.MessageStatus == "") {
 				t.Fatalf("HandleDecision() = %+v, want answer %q", got, test.want)
 			}
 		})

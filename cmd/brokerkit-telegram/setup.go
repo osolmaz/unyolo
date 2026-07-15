@@ -64,10 +64,11 @@ func defaultSetupOptions() setupOptions {
 }
 
 func runSetup(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	if len(args) == 0 || args[0] != "systemd" {
-		return errors.New("usage: brokerkit-telegram setup systemd --telegram-bot-token-file <path> --telegram-chat-id <id> [route flags]")
+	setupArgs, err := systemdSetupArgs(args)
+	if err != nil {
+		return err
 	}
-	opts, err := parseSetupOptions(args[1:], stderr)
+	opts, err := parseSetupOptions(setupArgs, stderr)
 	if err != nil {
 		return err
 	}
@@ -75,13 +76,19 @@ func runSetup(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	if err != nil {
 		return err
 	}
+	return applyIngressInstall(ctx, opts, plan, stdout)
+}
+
+func systemdSetupArgs(args []string) ([]string, error) {
+	if len(args) == 0 || args[0] != "systemd" {
+		return nil, errors.New("usage: brokerkit-telegram setup systemd --telegram-bot-token-file <path> --telegram-chat-id <id> [route flags]")
+	}
+	return args[1:], nil
+}
+
+func applyIngressInstall(ctx context.Context, opts setupOptions, plan bkservice.SystemdInstallPlan, stdout io.Writer) error {
 	if opts.DryRun {
-		unit, renderErr := bkservice.RenderSystemd(plan.Unit)
-		if renderErr != nil {
-			return renderErr
-		}
-		_, err = fmt.Fprintf(stdout, "Would install %s with routes %s\n\n%s", ingressUnitName, strings.Join(configuredRoutes(opts), ","), unit)
-		return err
+		return writeIngressDryRun(opts, plan, stdout)
 	}
 	if runtime.GOOS != "linux" {
 		return errors.New("setup systemd is only supported on Linux")
@@ -92,7 +99,16 @@ func runSetup(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	if err := bkservice.InstallSystemd(ctx, plan); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "Installed %s with routes %s\n", ingressUnitName, strings.Join(configuredRoutes(opts), ","))
+	_, err := fmt.Fprintf(stdout, "Installed %s with routes %s\n", ingressUnitName, strings.Join(configuredRoutes(opts), ","))
+	return err
+}
+
+func writeIngressDryRun(opts setupOptions, plan bkservice.SystemdInstallPlan, stdout io.Writer) error {
+	unit, err := bkservice.RenderSystemd(plan.Unit)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "Would install %s with routes %s\n\n%s", ingressUnitName, strings.Join(configuredRoutes(opts), ","), unit)
 	return err
 }
 
@@ -160,7 +176,14 @@ func validateSetupOptions(opts setupOptions) error {
 	if err := validatex.AccountNames(map[string]string{"user": opts.User, "group": opts.Group}); err != nil {
 		return err
 	}
-	for route, value := range opts.Routes {
+	if err := validateSetupRoutes(opts.Routes); err != nil {
+		return err
+	}
+	return validateSetupPaths(opts)
+}
+
+func validateSetupRoutes(routes map[string]setupRoute) error {
+	for route, value := range routes {
 		if value.TokenFile == "" {
 			continue
 		}
@@ -172,6 +195,10 @@ func validateSetupOptions(opts setupOptions) error {
 			return fmt.Errorf("route %q operator endpoint is invalid", route)
 		}
 	}
+	return nil
+}
+
+func validateSetupPaths(opts setupOptions) error {
 	for name, path := range map[string]string{
 		"config-dir": opts.ConfigDir, "state-dir": opts.StateDir, "systemd-dir": opts.SystemdDir, "binary": opts.BinaryPath,
 	} {
