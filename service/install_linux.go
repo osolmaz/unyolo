@@ -118,7 +118,7 @@ func startInstalledSystemdUnit(ctx context.Context, runner CommandRunner, plan S
 	if len(units) == 0 {
 		units = []string{plan.UnitName}
 	}
-	return activateSystemdUnits(ctx, runner, units)
+	return activateSystemdUnits(ctx, runner, plan.UnitName, units)
 }
 
 // Validate validates a systemd install plan without mutating the host.
@@ -829,19 +829,4 @@ func syncInstallRoot(root *os.Root) error {
 		return err
 	}
 	return handle.Close()
-}
-
-func activateSystemdUnits(ctx context.Context, runner CommandRunner, unitNames []string) error {
-	if err := runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-		return fmt.Errorf("systemctl daemon-reload: %w", err)
-	}
-	for _, unitName := range unitNames {
-		if err := runner.Run(ctx, "systemctl", "enable", unitName); err != nil {
-			return fmt.Errorf("systemctl enable %s: %w", unitName, err)
-		}
-		if err := runner.Run(ctx, "systemctl", "restart", unitName); err != nil {
-			return fmt.Errorf("systemctl restart %s: %w", unitName, err)
-		}
-	}
-	return nil
 }

@@ -419,19 +419,45 @@ func TestEnsureSystemAccountCreatesMissingAccount(t *testing.T) {
 
 func TestActivateSystemdUnits(t *testing.T) {
 	runner := &recordingCommandRunner{}
-	if err := activateSystemdUnits(context.Background(), runner, []string{"broker.service"}); err != nil {
+	if err := activateSystemdUnits(context.Background(), runner, "broker.service", []string{"broker.service"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(runner.calls, "\n"); got != "systemctl daemon-reload\nsystemctl enable broker.service\nsystemctl restart broker.service" {
 		t.Fatalf("runner calls:\n%s", got)
 	}
 	runner.fail = map[string]error{"systemctl daemon-reload": errors.New("failed")}
-	if err := activateSystemdUnits(context.Background(), runner, []string{"broker.service"}); err == nil {
+	if err := activateSystemdUnits(context.Background(), runner, "broker.service", []string{"broker.service"}); err == nil {
 		t.Fatal("activateSystemdUnits(failed reload) error = nil")
 	}
 	runner = &recordingCommandRunner{fail: map[string]error{"systemctl restart broker.service": errors.New("failed")}}
-	if err := activateSystemdUnits(context.Background(), runner, []string{"broker.service"}); err == nil || !strings.Contains(err.Error(), "restart") {
+	if err := activateSystemdUnits(context.Background(), runner, "broker.service", []string{"broker.service"}); err == nil || !strings.Contains(err.Error(), "restart") {
 		t.Fatalf("activateSystemdUnits(failed restart) error = %v", err)
+	}
+}
+
+func TestActivateSystemdUnitsRestartsSocketsBeforeService(t *testing.T) {
+	units := []string{"broker-agent.socket", "broker-operator.socket", "broker.service"}
+	runner := &recordingCommandRunner{}
+	if err := activateSystemdUnits(context.Background(), runner, "broker.service", units); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"systemctl daemon-reload",
+		"systemctl enable broker-agent.socket",
+		"systemctl enable broker-operator.socket",
+		"systemctl enable broker.service",
+		"systemctl stop broker.service broker-agent.socket broker-operator.socket",
+		"systemctl restart broker-agent.socket",
+		"systemctl restart broker-operator.socket",
+		"systemctl restart broker.service",
+	}
+	if got := strings.Join(runner.calls, "\n"); got != strings.Join(want, "\n") {
+		t.Fatalf("runner calls:\n%s", got)
+	}
+	stopCommand := "systemctl stop broker.service broker-agent.socket broker-operator.socket"
+	runner = &recordingCommandRunner{fail: map[string]error{stopCommand: errors.New("failed")}}
+	if err := activateSystemdUnits(context.Background(), runner, "broker.service", units); err == nil || !strings.Contains(err.Error(), "stop") {
+		t.Fatalf("activateSystemdUnits(failed stop) error = %v", err)
 	}
 }
 

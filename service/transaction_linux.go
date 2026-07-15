@@ -140,7 +140,7 @@ func (s *systemdInstallSnapshot) rollback(ctx context.Context, runner CommandRun
 	if len(units) == 0 {
 		units = []string{plan.UnitName}
 	}
-	activateErr := activateSystemdUnits(ctx, runner, units)
+	activateErr := activateSystemdUnits(ctx, runner, plan.UnitName, units)
 	return errors.Join(restoreErr, activateErr)
 }
 
