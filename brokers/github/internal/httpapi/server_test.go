@@ -1330,6 +1330,27 @@ func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 	}
 }
 
+func TestGrantStoreHTTPError(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		err        error
+		wantStatus int
+	}{
+		"idempotency conflict": {err: grants.ErrIdempotencyConflict, wantStatus: http.StatusConflict},
+		"capacity":             {err: grants.ErrCapacity, wantStatus: http.StatusTooManyRequests},
+		"validation":           {err: errors.New("invalid grant"), wantStatus: http.StatusBadRequest},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var httpError *echo.HTTPError
+			if err := grantStoreHTTPError(tc.err); !errors.As(err, &httpError) || httpError.Code != tc.wantStatus {
+				t.Fatalf("grantStoreHTTPError() = %#v, want status %d", err, tc.wantStatus)
+			}
+		})
+	}
+}
+
 func TestDecodeGrantCreateDirect(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)

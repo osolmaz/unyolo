@@ -81,7 +81,6 @@ type Server struct {
 	backgroundWorkers   sync.WaitGroup
 }
 
-//nolint:cyclop // Startup constructs and validates every security-sensitive dependency in one fail-closed boundary.
 func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if brokerPolicy == nil {
 		return nil, errors.New("policy is required")
@@ -90,100 +89,181 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	server, err := newServerWithCore(cfg, brokerPolicy, core)
+	if err != nil {
+		_ = core.database.Close()
+		return nil, err
+	}
+	return server, nil
+}
+
+func newServerWithCore(cfg config.Config, brokerPolicy *policy.Policy, core coreDependencies) (*Server, error) {
+	gitBaseURL, apiBaseURL, githubClient, appSource, credentialSlots, err := newGitHubDependencies(cfg, core.audit)
+	if err != nil {
+		return nil, err
+	}
+	operationStore, admissionController, err := newAdmissionDependencies(cfg, core)
+	if err != nil {
+		return nil, err
+	}
+	server := newServerSkeleton(cfg, brokerPolicy, core, operationStore, admissionController, githubDependencies{
+		gitBaseURL:       gitBaseURL,
+		apiBaseURL:       apiBaseURL,
+		client:           githubClient,
+		appSource:        appSource,
+		credentialStore:  credentialSlots,
+		webhookSecret:    cfg.GitHubWebhookSecret,
+		receivePackLimit: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
+	})
+	if err := server.configureServerFeatures(cfg, brokerPolicy, core, appSource); err != nil {
+		return nil, err
+	}
+	server.registerRoutes(core.auth)
+	return server, nil
+}
+
+type githubDependencies struct {
+	gitBaseURL       *url.URL
+	apiBaseURL       *url.URL
+	client           *http.Client
+	appSource        *githubauth.Manager
+	credentialStore  *credentialstore.Store
+	webhookSecret    string
+	receivePackLimit int64
+}
+
+func newAdmissionDependencies(cfg config.Config, core coreDependencies) (*agentops.Store, *admission.Controller, error) {
+	operationStore := agentops.New(core.database)
+	controller, err := admission.NewConfigured([]string{cfg.ClientID}, cfg.Admission, operationStore.AdmissionUsage)
+	if err != nil {
+		return nil, nil, err
+	}
+	controller.SetObserver(core.control.Metrics)
+	return operationStore, controller, nil
+}
+
+func newServerSkeleton(
+	cfg config.Config,
+	brokerPolicy *policy.Policy,
+	core coreDependencies,
+	operationStore *agentops.Store,
+	admissionController *admission.Controller,
+	github githubDependencies,
+) *Server {
+	return &Server{
+		echo: newEcho(), policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
+		database: core.database, operations: operationStore, admission: admissionController, notifier: core.notifier, telegram: core.telegram,
+		githubCredentials: github.appSource, githubWebhookSecret: github.webhookSecret,
+		credentialStore: github.credentialStore,
+		githubClient:    github.client, githubGitBaseURL: github.gitBaseURL, githubAPIBaseURL: github.apiBaseURL,
+		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: github.receivePackLimit,
+		operatorConfigured: cfg.OperatorSecret != "",
+	}
+}
+
+func newEcho() *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
 	e.Use(middleware.Recover())
 	e.Use(noStore)
 	e.GET("/healthz", health)
-	gitBaseURL, apiBaseURL, githubClient, appSource, credentialSlots, err := newGitHubDependencies(cfg, core.audit)
+	return e
+}
+
+func (s *Server) configureServerFeatures(cfg config.Config, brokerPolicy *policy.Policy, core coreDependencies, appSource *githubauth.Manager) error {
+	for _, configure := range []func() error{
+		func() error { return s.configureAgentRuntimeStores(cfg) },
+		func() error { return s.configureOperationRegistry(cfg, appSource) },
+		func() error { return s.configureAuthorization(brokerPolicy, core.grants) },
+		s.configureOperationRuntime,
+		func() error { return s.configureAgentAPI(core.control) },
+		s.configureSealedPayloads,
+	} {
+		if err := configure(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) configureAgentRuntimeStores(cfg config.Config) error {
+	var err error
+	s.sealedStore, err = sealedstore.Open(stateDir(cfg.StateDir))
 	if err != nil {
-		_ = core.database.Close()
-		return nil, err
+		return err
 	}
-	operationStore := agentops.New(core.database)
-	admissionController, err := admission.NewConfigured([]string{cfg.ClientID}, cfg.Admission, operationStore.AdmissionUsage)
-	if err != nil {
-		_ = core.database.Close()
-		return nil, err
-	}
-	admissionController.SetObserver(core.control.Metrics)
-	server := &Server{
-		echo: e, policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
-		database: core.database, operations: operationStore, admission: admissionController, notifier: core.notifier, telegram: core.telegram,
-		githubCredentials: appSource, githubWebhookSecret: cfg.GitHubWebhookSecret,
-		credentialStore: credentialSlots,
-		githubClient:    githubClient, githubGitBaseURL: gitBaseURL, githubAPIBaseURL: apiBaseURL,
-		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
-		operatorConfigured: cfg.OperatorSecret != "",
-	}
-	server.sealedStore, err = sealedstore.Open(stateDir(cfg.StateDir))
-	if err != nil {
-		_ = core.database.Close()
-		return nil, err
-	}
-	server.streamStore, err = streamstore.Open(stateDir(cfg.StateDir))
-	if err != nil {
-		_ = core.database.Close()
-		return nil, err
-	}
+	s.streamStore, err = streamstore.Open(stateDir(cfg.StateDir))
+	return err
+}
+
+func (s *Server) configureOperationRegistry(cfg config.Config, appSource *githubauth.Manager) error {
 	adapters, err := operations.NewGeneratedAdapters(appSource, operations.Options{
 		RequestingUserID: cfg.GitHubUserID,
-		SealedStore:      server.sealedStore,
-		CredentialStore:  server.credentialStore,
-		StreamStore:      server.streamStore,
+		SealedStore:      s.sealedStore,
+		CredentialStore:  s.credentialStore,
+		StreamStore:      s.streamStore,
 	})
 	if err != nil {
-		_ = core.database.Close()
-		return nil, err
+		return err
 	}
-	server.operationRegistry, err = operations.NewRegistry(adapters...)
+	registry, err := operations.NewRegistry(adapters...)
 	if err != nil {
-		_ = core.database.Close()
-		return nil, err
+		return err
 	}
-	if err = server.operationRegistry.ValidateCoverage(); err != nil {
-		_ = core.database.Close()
-		return nil, err
+	if err := registry.ValidateCoverage(); err != nil {
+		return err
 	}
+	s.operationRegistry = registry
+	return nil
+}
+
+func (s *Server) configureAuthorization(brokerPolicy *policy.Policy, grantStore *grants.Store) error {
 	registry, registryErr := policy.AuthorizationRegistry()
 	if registryErr == nil {
-		server.authorization, registryErr = bkauthorization.New(bkauthorization.Options{
-			Registry: registry, Decide: brokerPolicy.DecideAuthorization, Grants: core.grants,
+		s.authorization, registryErr = bkauthorization.New(bkauthorization.Options{
+			Registry: registry, Decide: brokerPolicy.DecideAuthorization, Grants: grantStore,
 		})
 	}
-	if registryErr != nil {
-		_ = core.database.Close()
-		return nil, registryErr
-	}
-	server.operationRuntime, err = server.newOperationRuntime()
+	return registryErr
+}
+
+func (s *Server) configureOperationRuntime() error {
+	runtime, err := s.newOperationRuntime()
 	if err != nil {
-		_ = core.database.Close()
-		return nil, err
+		return err
 	}
-	server.agentAPI, err = agentapi.New(agentapi.Options{
-		Store: server.operations, Authenticate: core.control.Clients.AuthenticateHeader,
-		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "gh-broker",
+	s.operationRuntime = runtime
+	return nil
+}
+
+func (s *Server) configureAgentAPI(control *controlplane.Runtime) error {
+	handler, err := agentapi.New(agentapi.Options{
+		Store: s.operations, Authenticate: control.Clients.AuthenticateHeader,
+		Submit: s.submitAgentOperation, Cancel: s.cancelAgentOperation, Realm: "gh-broker",
 	})
 	if err != nil {
-		_ = core.database.Close()
-		return nil, err
+		return err
 	}
-	server.sealedPayloads, err = sealedpayload.New(sealedpayload.Options{
-		Store: server.sealedStore,
+	s.agentAPI = handler
+	return nil
+}
+
+func (s *Server) configureSealedPayloads() error {
+	payloads, err := sealedpayload.New(sealedpayload.Options{
+		Store: s.sealedStore,
 		Descriptor: func(name string) (capability.Descriptor, bool) {
 			descriptor, found := opcatalog.ByName(name)
 			return descriptor.Descriptor, found
 		},
-		Authenticate: server.authenticateAgentUpload,
+		Authenticate: s.authenticateAgentUpload,
 		WriteFailure: writeSealedPayloadFailure,
 	})
 	if err != nil {
-		_ = core.database.Close()
-		return nil, err
+		return err
 	}
-	server.registerRoutes(core.auth)
-	return server, nil
+	s.sealedPayloads = payloads
+	return nil
 }
 
 type coreDependencies struct {

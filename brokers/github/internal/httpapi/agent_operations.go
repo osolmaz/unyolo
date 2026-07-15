@@ -64,47 +64,81 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 }
 
 func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkauthorization.GrantIntent, error) {
-	adapter, found := s.operationRegistry.Lookup(preparation.DescriptorName)
-	if !found {
-		return bkauthorization.GrantIntent{}, errors.New("operation adapter is unavailable")
+	adapter, descriptor, err := s.runtimePlanDescriptor(preparation.DescriptorName)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
 	}
-	descriptor, found := opcatalog.ByName(preparation.DescriptorName)
-	if !found {
-		return bkauthorization.GrantIntent{}, errors.New("operation descriptor is unavailable")
+	mode := runtimeGrantMode(descriptor)
+	duration, pending, err := runtimeGrantBounds(adapter, preparation, mode)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
 	}
-	mode := corepolicy.GrantModeWindow
+	request := runtimeGrantRequest(preparation, mode, duration, pending)
+	presentation := adapter.Present(preparation.Plan)
+	prepared, err := prepareAdapterPlan(preparation.Plan, request, presentation, string(preparation.Decision.Effect),
+		runtimePlanRuleIDs(preparation), preparation.CreatedAt)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
+	}
+	bindPreparedRuntimePlan(&request, prepared, presentation, preparation.Direct)
+	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+}
+
+func (s *Server) runtimePlanDescriptor(name string) (operations.Adapter, opcatalog.Descriptor, error) {
+	adapter, found := s.operationRegistry.Lookup(name)
+	if !found {
+		return nil, opcatalog.Descriptor{}, errors.New("operation adapter is unavailable")
+	}
+	descriptor, found := opcatalog.ByName(name)
+	if !found {
+		return nil, opcatalog.Descriptor{}, errors.New("operation descriptor is unavailable")
+	}
+	return adapter, descriptor, nil
+}
+
+func runtimeGrantMode(descriptor opcatalog.Descriptor) corepolicy.GrantMode {
 	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-		mode = corepolicy.GrantModeExecution
+		return corepolicy.GrantModeExecution
 	}
+	return corepolicy.GrantModeWindow
+}
+
+func runtimeGrantBounds(adapter operations.Adapter, preparation operations.Preparation, mode corepolicy.GrantMode) (time.Duration, time.Duration, error) {
 	duration := time.Duration(adapter.Descriptor().ApprovalTTLSeconds) * time.Second
 	pending := time.Duration(adapter.Descriptor().RequestTTLSeconds) * time.Second
-	if !preparation.Direct {
-		bounds := preparation.Decision.GrantPolicy
-		if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
-			return bkauthorization.GrantIntent{}, errors.New("operation approval mode does not match policy")
-		}
-		duration = min(time.Duration(bounds.DefaultMinutes)*time.Minute, duration)
-		pending = min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, pending)
+	if preparation.Direct {
+		return duration, pending, nil
 	}
-	request := grants.Request{
+	bounds := preparation.Decision.GrantPolicy
+	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
+		return 0, 0, errors.New("operation approval mode does not match policy")
+	}
+	return min(time.Duration(bounds.DefaultMinutes)*time.Minute, duration),
+		min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, pending), nil
+}
+
+func runtimeGrantRequest(preparation operations.Preparation, mode corepolicy.GrantMode, duration time.Duration, pending time.Duration) grants.Request {
+	return grants.Request{
 		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
 		Target: preparation.Core.Target, Attrs: preparation.Core.Attrs, Reason: preparation.Reason,
 		Duration: duration, PendingTimeout: pending, MaxUses: usebudget.Limit(1), MaxUsesSpecified: true,
 		Metadata: map[string]string{"github_grant_mode": string(mode)},
 	}
-	ruleIDs := preparation.Decision.MatchedRequestRuleIDs
+}
+
+func runtimePlanRuleIDs(preparation operations.Preparation) []string {
 	if preparation.Direct {
-		ruleIDs = preparation.Decision.MatchedAllowRuleIDs
+		return preparation.Decision.MatchedAllowRuleIDs
 	}
-	prepared, err := prepareAdapterPlan(preparation.Plan, request, adapter.Present(preparation.Plan), string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt)
-	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+	return preparation.Decision.MatchedRequestRuleIDs
+}
+
+func bindPreparedRuntimePlan(request *grants.Request, prepared grants.ImmutablePlan, presentation agentv1.Presentation, direct bool) {
+	if direct {
+		return
 	}
-	if !preparation.Direct {
-		ghplan.BindPrepared(&request, prepared)
-		ghplan.BindPresentation(&request, adapter.Present(preparation.Plan))
-	}
-	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+	ghplan.BindPrepared(request, prepared)
+	ghplan.BindPresentation(request, presentation)
 }
 
 func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {
@@ -121,30 +155,61 @@ func prepareAdapterPlan(provider operations.Plan, request grants.Request, presen
 	})
 }
 
-//nolint:cyclop // Provider plan binding is intentionally explicit at the trust boundary.
 func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations.Adapter) (operations.Plan, error) {
 	envelope, err := s.plans.Get(operation.PlanDigest)
-	if err != nil || envelope.Operation != operation.Operation || envelope.OperationRevision != adapter.Descriptor().OperationRevision ||
-		envelope.ClientID != operation.ClientID || envelope.ClientRequestID != operation.ID || envelope.ExpiresAt.Before(time.Now().UTC()) {
+	if err != nil || !runtimeEnvelopeMatchesOperation(envelope, operation, adapter) {
 		return operations.Plan{}, errors.New("operation plan binding is invalid")
 	}
-	credential, err := operations.CredentialFromPreconditions(envelope.Preconditions)
-	if err != nil || string(credential.Kind) != envelope.CredentialSelector.Kind {
+	credential, err := runtimeEnvelopeCredential(envelope)
+	if err != nil {
 		return operations.Plan{}, errors.New("operation credential binding is invalid")
 	}
-	plan := operations.Plan{ExecutionID: operation.ID, Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
-		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Credential: credential, Presentation: envelope.Presentation,
-		PolicyDecision: operations.PolicyDecision{Effect: envelope.Authorization.PolicyEffect, RuleIDs: envelope.Authorization.PolicyRuleIDs}}
-	input, err := adapter.Decode(plan.Target, plan.Arguments)
-	if err != nil || !operationruntime.EqualJSONObject(input.Target, plan.Target) || !operationruntime.EqualJSONObject(input.Arguments, plan.Arguments) {
+	plan := runtimePlanFromEnvelope(operation, envelope, credential)
+	if !runtimePlanPayloadMatches(adapter, plan) {
 		return operations.Plan{}, errors.New("operation plan payload is invalid")
 	}
-	plan.Authorization = adapter.Authorize(plan)
-	plan.Authorization.Client = operation.ClientID
+	plan.Authorization = runtimePlanAuthorization(adapter, operation, plan)
 	if plan.Authorization.Operation == "" {
 		return operations.Plan{}, errors.New("operation policy metadata is invalid")
 	}
 	return plan, nil
+}
+
+func runtimeEnvelopeMatchesOperation(envelope ghplan.Plan, operation agentv1.Operation, adapter operations.Adapter) bool {
+	return envelope.Operation == operation.Operation &&
+		envelope.OperationRevision == adapter.Descriptor().OperationRevision &&
+		envelope.ClientID == operation.ClientID &&
+		envelope.ClientRequestID == operation.ID &&
+		!envelope.ExpiresAt.Before(time.Now().UTC())
+}
+
+func runtimeEnvelopeCredential(envelope ghplan.Plan) (githubauth.Metadata, error) {
+	credential, err := operations.CredentialFromPreconditions(envelope.Preconditions)
+	if err != nil || string(credential.Kind) != envelope.CredentialSelector.Kind {
+		return githubauth.Metadata{}, errors.New("operation credential binding is invalid")
+	}
+	return credential, nil
+}
+
+func runtimePlanFromEnvelope(operation agentv1.Operation, envelope ghplan.Plan, credential githubauth.Metadata) operations.Plan {
+	return operations.Plan{
+		ExecutionID: operation.ID, Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
+		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Credential: credential, Presentation: envelope.Presentation,
+		PolicyDecision: operations.PolicyDecision{Effect: envelope.Authorization.PolicyEffect, RuleIDs: envelope.Authorization.PolicyRuleIDs},
+	}
+}
+
+func runtimePlanPayloadMatches(adapter operations.Adapter, plan operations.Plan) bool {
+	input, err := adapter.Decode(plan.Target, plan.Arguments)
+	return err == nil &&
+		operationruntime.EqualJSONObject(input.Target, plan.Target) &&
+		operationruntime.EqualJSONObject(input.Arguments, plan.Arguments)
+}
+
+func runtimePlanAuthorization(adapter operations.Adapter, operation agentv1.Operation, plan operations.Plan) operations.Authorization {
+	authorization := adapter.Authorize(plan)
+	authorization.Client = operation.ClientID
+	return authorization
 }
 
 func definitiveExecutionFailure(err error) bool {
