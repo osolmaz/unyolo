@@ -61,17 +61,37 @@ func Load() (Config, error) {
 // LoadFromLookup loads configuration from an injected environment lookup.
 func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	env := environment{lookup: lookup}
-	development, err := env.boolean("GH_BROKER_DEVELOPMENT", false)
+	cfg, development, networkExposure, err := loadBaseConfig(env)
 	if err != nil {
 		return Config{}, err
+	}
+	if err := loadOperatorEndpoint(env, &cfg, development, networkExposure); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.loadCredentialFiles(); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
+	if err := loadAdmissionConfig(env, &cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func loadBaseConfig(env environment) (Config, bool, bool, error) {
+	development, err := env.boolean("GH_BROKER_DEVELOPMENT", false)
+	if err != nil {
+		return Config{}, false, false, err
 	}
 	networkExposure, err := env.networkExposure("GH_BROKER_NETWORK_EXPOSURE")
 	if err != nil {
-		return Config{}, err
+		return Config{}, false, false, err
 	}
 	agentEndpoint, err := loadEndpoint(env, "GH_BROKER_AGENT_ENDPOINT", development, networkExposure)
 	if err != nil {
-		return Config{}, err
+		return Config{}, false, false, err
 	}
 	cfg := Config{
 		Environment:               map[bool]string{false: "production", true: "development"}[development],
@@ -101,26 +121,30 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		TelegramBotTokenFile:      env.value("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", ""),
 	}
 	if err := loadNumericEnvironment(env, &cfg); err != nil {
-		return Config{}, err
+		return Config{}, false, false, err
 	}
+	return cfg, development, networkExposure, nil
+}
+
+func loadOperatorEndpoint(env environment, cfg *Config, development, networkExposure bool) error {
 	if cfg.OperatorSecret != "" || cfg.OperatorSecretsFile != "" {
 		operatorEndpoint, endpointErr := loadEndpoint(env, "GH_BROKER_OPERATOR_ENDPOINT", development, networkExposure)
 		if endpointErr != nil {
-			return Config{}, endpointErr
+			return endpointErr
 		}
 		cfg.OperatorEndpoint = &operatorEndpoint
 	}
-	if err := cfg.loadCredentialFiles(); err != nil {
-		return Config{}, err
-	}
-	if err := cfg.Validate(); err != nil {
-		return Config{}, err
-	}
+	return nil
+}
+
+func loadAdmissionConfig(env environment, cfg *Config) error {
 	admissionPath := env.value("GH_BROKER_ADMISSION_CONFIG", "")
-	if cfg.Admission, err = admission.LoadFile(admissionPath, []string{cfg.ClientID}); err != nil {
-		return Config{}, fmt.Errorf("GH_BROKER_ADMISSION_CONFIG: %w", err)
+	loaded, err := admission.LoadFile(admissionPath, []string{cfg.ClientID})
+	if err != nil {
+		return fmt.Errorf("GH_BROKER_ADMISSION_CONFIG: %w", err)
 	}
-	return cfg, nil
+	cfg.Admission = loaded
+	return nil
 }
 
 type environment struct{ lookup func(string) (string, bool) }

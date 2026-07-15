@@ -56,33 +56,50 @@ func (renderer) Operations() ([]shared.Operation, error) {
 	if err != nil {
 		return nil, err
 	}
-	targetByKind := make(map[string]targetregistry.Descriptor, len(targets))
-	for _, target := range targets {
-		targetByKind[target.Kind] = target
-	}
 	bindings, err := opbinding.All()
 	if err != nil {
 		return nil, err
 	}
+	return buildOperations(descriptors, indexTargets(targets), indexBindings(bindings))
+}
+
+func indexTargets(targets []targetregistry.Descriptor) map[string]targetregistry.Descriptor {
+	targetByKind := make(map[string]targetregistry.Descriptor, len(targets))
+	for _, target := range targets {
+		targetByKind[target.Kind] = target
+	}
+	return targetByKind
+}
+
+func indexBindings(bindings []opbinding.Binding) map[string][]opbinding.Binding {
 	bindingsByOperation := make(map[string][]opbinding.Binding, len(bindings))
 	for _, binding := range bindings {
 		bindingsByOperation[binding.Operation] = append(bindingsByOperation[binding.Operation], binding)
 	}
+	return bindingsByOperation
+}
+
+func buildOperations(descriptors []opcatalog.Descriptor, targetByKind map[string]targetregistry.Descriptor, bindingsByOperation map[string][]opbinding.Binding) ([]shared.Operation, error) {
 	operations := make([]shared.Operation, 0, len(descriptors))
 	for _, descriptor := range descriptors {
-		digest, err := shared.AuthorizationDigest(authorizationMetadata{
-			Descriptor: descriptor, Bindings: bindingsByOperation[descriptor.Name],
-			Target: targetByKind[descriptor.TargetKind], Attributes: policyAttributes(descriptor.Name),
-		})
+		operation, err := buildOperation(descriptor, targetByKind[descriptor.TargetKind], bindingsByOperation[descriptor.Name])
 		if err != nil {
-			return nil, fmt.Errorf("fingerprint operation %s: %w", descriptor.Name, err)
+			return nil, err
 		}
-		operations = append(operations, shared.Operation{
-			Name: descriptor.Name, OperationRevision: descriptor.OperationRevision,
-			DefaultEffect: descriptor.DefaultPolicyEffect, AuthorizationDigest: digest,
-		})
+		operations = append(operations, operation)
 	}
 	return operations, nil
+}
+
+func buildOperation(descriptor opcatalog.Descriptor, target targetregistry.Descriptor, bindings []opbinding.Binding) (shared.Operation, error) {
+	digest, err := shared.AuthorizationDigest(authorizationMetadata{
+		Descriptor: descriptor, Bindings: bindings, Target: target, Attributes: policyAttributes(descriptor.Name),
+	})
+	if err != nil {
+		return shared.Operation{}, fmt.Errorf("fingerprint operation %s: %w", descriptor.Name, err)
+	}
+	return shared.Operation{Name: descriptor.Name, OperationRevision: descriptor.OperationRevision,
+		DefaultEffect: descriptor.DefaultPolicyEffect, AuthorizationDigest: digest}, nil
 }
 
 func policyAttributes(operation string) []string {

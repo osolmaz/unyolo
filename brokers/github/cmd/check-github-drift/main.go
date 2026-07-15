@@ -45,37 +45,48 @@ func runWith(runtime checkRuntime) error {
 	if err != nil {
 		return err
 	}
-	root, err := runtime.root()
+	report, err := buildDriftReport(runtime)
 	if err != nil {
 		return err
+	}
+	return writeDriftResult(runtime.stdout, options, report)
+}
+
+func buildDriftReport(runtime checkRuntime) (upstreamdrift.Report, error) {
+	root, err := runtime.root()
+	if err != nil {
+		return upstreamdrift.Report{}, err
 	}
 	base := filepath.Join(root, "brokers", "github", "internal", "upstream")
 	pinned, err := runtime.loadPinned(filepath.Join(base, "snapshots"))
 	if err != nil {
-		return fmt.Errorf("load reviewed GitHub snapshots: %w", err)
+		return upstreamdrift.Report{}, fmt.Errorf("load reviewed GitHub snapshots: %w", err)
 	}
 	query, err := os.ReadFile(filepath.Join(base, "graphql-introspection.graphql"))
 	if err != nil {
-		return err
+		return upstreamdrift.Report{}, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), runtime.timeout)
 	defer cancel()
 	current, err := runtime.fetchCurrent(ctx, query)
 	if err != nil {
+		return upstreamdrift.Report{}, err
+	}
+	return upstreamdrift.Analyze(pinned, current)
+}
+
+func writeDriftResult(stdout io.Writer, options checkOptions, report upstreamdrift.Report) error {
+	if err := writeReport(stdout, options.outputPath, report); err != nil {
 		return err
 	}
-	report, err := upstreamdrift.Analyze(pinned, current)
-	if err != nil {
-		return err
-	}
-	if err := writeReport(runtime.stdout, options.outputPath, report); err != nil {
-		return err
-	}
-	status := "clean\n"
+	return writeOptional(options.statusPath, driftStatus(report), 0o600)
+}
+
+func driftStatus(report upstreamdrift.Report) []byte {
 	if report.HasDrift() {
-		status = "drift\n"
+		return []byte("drift\n")
 	}
-	return writeOptional(options.statusPath, []byte(status), 0o600)
+	return []byte("clean\n")
 }
 
 type checkOptions struct {
