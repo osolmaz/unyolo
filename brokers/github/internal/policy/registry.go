@@ -78,7 +78,11 @@ func expandFamilyOperation(op Operation) ([]Operation, bool) {
 	if !strings.HasSuffix(text, ".*") {
 		return nil, false
 	}
-	prefix := strings.TrimSuffix(text, "*")
+	out := familyOperations(strings.TrimSuffix(text, "*"))
+	return out, len(out) > 0
+}
+
+func familyOperations(prefix string) []Operation {
 	out := []Operation{}
 	for name, info := range operationInfos() {
 		if info.familyGlobAllowed && strings.HasPrefix(string(name), prefix) {
@@ -86,7 +90,7 @@ func expandFamilyOperation(op Operation) ([]Operation, bool) {
 		}
 	}
 	slices.Sort(out)
-	return out, len(out) > 0
+	return out
 }
 
 func canonicalOperation(op Operation) Operation {

@@ -23,8 +23,6 @@ var catalogAttributesErr error
 
 // CatalogRegistry is the generated stage-3 policy vocabulary. The current
 // executor cutover continues to use registry() until the later lifecycle stage.
-//
-//nolint:cyclop // Descriptor policy metadata is translated through one fail-closed registry boundary.
 func CatalogRegistry() (corepolicy.Registry, error) {
 	descriptors, err := opcatalog.All()
 	if err != nil {
@@ -34,31 +32,55 @@ func CatalogRegistry() (corepolicy.Registry, error) {
 	if err != nil {
 		return corepolicy.Registry{}, err
 	}
+	return corepolicy.Registry{
+		Operations: catalogOperationSpecs(descriptors),
+		Targets:    catalogTargetSpecs(targets),
+		Attrs:      catalogAttributeSpecs(),
+	}, nil
+}
+
+func catalogOperationSpecs(descriptors []opcatalog.Descriptor) map[string]corepolicy.OperationSpec {
 	operations := make(map[string]corepolicy.OperationSpec, len(descriptors))
 	for _, descriptor := range descriptors {
-		spec := corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name), Grantable: descriptor.AgentFacing}
-		if spec.Grantable {
-			spec.GrantMode = map[bool]corepolicy.GrantMode{true: corepolicy.GrantModeExecution, false: corepolicy.GrantModeWindow}[descriptor.AuthorizationMode == opcatalog.ModeExecution]
-		}
-		operations[descriptor.Name] = spec
+		operations[descriptor.Name] = catalogOperationSpec(descriptor)
 	}
 	for name, spec := range protocolOperationSpecs() {
 		operations[string(name)] = spec
 	}
+	return operations
+}
+
+func catalogOperationSpec(descriptor opcatalog.Descriptor) corepolicy.OperationSpec {
+	spec := corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name), Grantable: descriptor.AgentFacing}
+	if spec.Grantable {
+		spec.GrantMode = map[bool]corepolicy.GrantMode{true: corepolicy.GrantModeExecution, false: corepolicy.GrantModeWindow}[descriptor.AuthorizationMode == opcatalog.ModeExecution]
+	}
+	return spec
+}
+
+func catalogTargetSpecs(targets []targetregistry.Descriptor) map[string]corepolicy.TargetSpec {
 	targetSpecs := make(map[string]corepolicy.TargetSpec, len(targets))
 	for _, target := range targets {
-		fields := make(map[string]corepolicy.FieldSpec, len(target.PolicyFields))
-		for _, name := range target.PolicyFields {
-			fields[name] = corepolicy.FieldSpec{Required: target.Kind == "repo" && (name == "owner" || name == "name")}
-		}
-		targetSpecs[target.Kind] = corepolicy.TargetSpec{Fields: fields}
+		targetSpecs[target.Kind] = corepolicy.TargetSpec{Fields: catalogTargetFields(target)}
 	}
-	attributeNames := CatalogAttributeNames()
-	attrs := make(map[string]corepolicy.AttrSpec, len(attributeNames))
-	for _, name := range attributeNames {
+	return targetSpecs
+}
+
+func catalogTargetFields(target targetregistry.Descriptor) map[string]corepolicy.FieldSpec {
+	fields := make(map[string]corepolicy.FieldSpec, len(target.PolicyFields))
+	for _, name := range target.PolicyFields {
+		fields[name] = corepolicy.FieldSpec{Required: target.Kind == "repo" && (name == "owner" || name == "name")}
+	}
+	return fields
+}
+
+func catalogAttributeSpecs() map[string]corepolicy.AttrSpec {
+	names := CatalogAttributeNames()
+	attrs := make(map[string]corepolicy.AttrSpec, len(names))
+	for _, name := range names {
 		attrs[name] = corepolicy.AttrSpec{}
 	}
-	return corepolicy.Registry{Operations: operations, Targets: targetSpecs, Attrs: attrs}, nil
+	return attrs
 }
 
 func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {

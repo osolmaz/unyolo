@@ -5,11 +5,9 @@ brokers/github/cmd/gh-broker/operations.go	main:submitCatalogOperation	crap	30.5
 brokers/github/cmd/gh-broker/operations.go	main:(operationConnection).downloadStream	crap	18.5
 brokers/github/cmd/gh-broker/operations.go	main:(operationConnection).uploadStream	crap	17.6
 brokers/github/cmd/gh-broker/operations.go	main:validateOperationInput	crap	17.4
-brokers/github/internal/policy/registry.go	policy:expandFamilyOperation	crap	13.6
 brokers/github/cmd/gh-broker/main.go	main:runWithArgs	crap	12.3
 brokers/github/cmd/gh-broker/mcp.go	main:handleMCP	crap	11.6
 brokers/github/cmd/gh-broker/mcp.go	main:runMCP	crap	11.2
-brokers/github/internal/policy/catalog_registry.go	policy:CatalogRegistry	crap	11.1
 brokers/github/cmd/gh-broker/operations.go	main:listOperations	crap	11.0
 brokers/github/cmd/gh-broker/operations.go	main:runOperationLifecycle	crap	10.5
 brokers/github/cmd/gh-broker/operations.go	main:(operationConnection).uploadSealedPayload	crap	10.3

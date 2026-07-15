@@ -17,13 +17,8 @@ func IsOperation(value string) bool {
 	if descriptor, found := opcatalog.ByName(value); found && descriptor.AgentFacing {
 		return true
 	}
-	switch Operation(value) {
-	case OperationGitFetch, OperationGitPushAdvertise, OperationGitPushBranchCreate, OperationGitPushFastForward,
-		OperationGitPushForce, OperationGitRefDelete, OperationGitTagUpdate, OperationWebhookGitHubReceive:
-		return true
-	default:
-		return false
-	}
+	_, found := protocolOperationSpecs()[Operation(value)]
+	return found
 }
 
 type Effect string
